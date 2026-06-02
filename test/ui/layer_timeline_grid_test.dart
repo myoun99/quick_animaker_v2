@@ -34,7 +34,9 @@ void main() {
       _grid(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
     );
 
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
+    );
 
     expect(selectedFrameIndex, 3);
   });
@@ -46,7 +48,9 @@ void main() {
       _grid(onSelectLayer: (layerId) => selectedLayerId = layerId),
     );
 
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')),
+    );
 
     expect(selectedLayerId, const LayerId('layer-2'));
   });
@@ -105,11 +109,15 @@ final _layers = [
   Layer(
     id: const LayerId('layer-1'),
     name: 'Layer 1',
-    frames: [Frame(id: const FrameId('frame-1'), duration: 1, strokes: const [])],
+    frames: [
+      Frame(id: const FrameId('frame-1'), duration: 1, strokes: const []),
+    ],
   ),
   Layer(
     id: const LayerId('layer-2'),
     name: 'Layer 2',
-    frames: [Frame(id: const FrameId('frame-2'), duration: 1, strokes: const [])],
+    frames: [
+      Frame(id: const FrameId('frame-2'), duration: 1, strokes: const []),
+    ],
   ),
 ];

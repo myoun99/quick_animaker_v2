@@ -57,9 +57,11 @@ class XSheetTimelineGrid extends StatelessWidget {
                   ),
               ],
             ),
-            for (var frameIndex = 0;
-                frameIndex < visibleFrameCount;
-                frameIndex += 1)
+            for (
+              var frameIndex = 0;
+              frameIndex < visibleFrameCount;
+              frameIndex += 1
+            )
               _XSheetFrameRow(
                 layers: layers,
                 activeLayerId: activeLayerId,
@@ -159,9 +161,13 @@ class _XSheetFrameRow extends StatelessWidget {
             height: XSheetTimelineGrid._rowHeight,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: current ? colorScheme.primaryContainer : colorScheme.surface,
+              color: current
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surface,
               border: Border.all(
-                color: current ? colorScheme.primary : colorScheme.outlineVariant,
+                color: current
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
                 width: current ? 2 : 1,
               ),
             ),

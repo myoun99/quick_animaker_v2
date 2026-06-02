@@ -49,9 +49,11 @@ class LayerTimelineGrid extends StatelessWidget {
                   height: _rowHeight,
                   child: const Text('Layer'),
                 ),
-                for (var frameIndex = 0;
-                    frameIndex < visibleFrameCount;
-                    frameIndex += 1)
+                for (
+                  var frameIndex = 0;
+                  frameIndex < visibleFrameCount;
+                  frameIndex += 1
+                )
                   _FrameHeader(
                     frameIndex: frameIndex,
                     selected: frameIndex == currentFrameIndex,
@@ -132,7 +134,11 @@ class _LayerRow extends StatelessWidget {
             ),
           ),
         ),
-        for (var frameIndex = 0; frameIndex < visibleFrameCount; frameIndex += 1)
+        for (
+          var frameIndex = 0;
+          frameIndex < visibleFrameCount;
+          frameIndex += 1
+        )
           _TimelineCell(
             layer: layer,
             frameIndex: frameIndex,
