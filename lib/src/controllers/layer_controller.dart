@@ -110,9 +110,8 @@ class LayerController {
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _repository.updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(
-        opacity: opacity.clamp(0.0, 1.0).toDouble(),
-      ),
+      update: (layer) =>
+          layer.copyWith(opacity: opacity.clamp(0.0, 1.0).toDouble()),
     );
   }
 

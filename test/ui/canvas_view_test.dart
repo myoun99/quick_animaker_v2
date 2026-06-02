@@ -27,10 +27,7 @@ void main() {
           body: SizedBox(
             width: 300,
             height: 300,
-            child: CanvasView(
-              controller: fixture.controller,
-              cutId: _cutId,
-            ),
+            child: CanvasView(controller: fixture.controller, cutId: _cutId),
           ),
         ),
       ),
@@ -50,10 +47,7 @@ void main() {
           body: SizedBox(
             width: 300,
             height: 300,
-            child: CanvasView(
-              controller: fixture.controller,
-              cutId: _cutId,
-            ),
+            child: CanvasView(controller: fixture.controller, cutId: _cutId),
           ),
         ),
       ),

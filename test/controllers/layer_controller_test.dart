@@ -82,9 +82,8 @@ void main() {
         throwsStateError,
       );
       expect(
-        () => fixture.controller.toggleLayerVisibility(
-          const LayerId('missing'),
-        ),
+        () =>
+            fixture.controller.toggleLayerVisibility(const LayerId('missing')),
         throwsStateError,
       );
       expect(
