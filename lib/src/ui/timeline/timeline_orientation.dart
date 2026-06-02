@@ -1,0 +1,1 @@
+enum TimelineOrientation { horizontal, vertical }

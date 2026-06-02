@@ -18,6 +18,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
 import 'layers/layer_panel.dart';
+import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
 class HomePage extends StatefulWidget {
@@ -38,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   late final TimelineController _timelineController;
 
   int _layerSequence = 2;
+  TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
 
   @override
   void initState() {
@@ -143,10 +145,21 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           TimelinePanel(
+            layers: _layerController.layers,
+            activeLayerId: _layerController.activeLayerId,
             currentFrameIndex: _timelineController.currentFrameIndex,
             frameCount: _timelineController.totalFrameCount,
+            resolveFrameForLayer: (layer, frameIndex) => _timelineController
+                .resolveFrameForLayer(layer: layer, frameIndex: frameIndex),
+            onSelectLayer: (layerId) {
+              setState(() => _layerController.selectLayer(layerId));
+            },
             onSelectFrame: (frameIndex) {
               setState(() => _timelineController.selectFrameIndex(frameIndex));
+            },
+            orientation: _timelineOrientation,
+            onOrientationChanged: (orientation) {
+              setState(() => _timelineOrientation = orientation);
             },
           ),
         ],
