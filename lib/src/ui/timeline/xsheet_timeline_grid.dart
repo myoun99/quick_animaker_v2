@@ -35,7 +35,7 @@ class XSheetTimelineGrid extends StatelessWidget {
   static const double _addLayerColumnWidth = 96;
   static const double _layerColumnWidth = 164;
   static const double _rowHeight = 36;
-  static const double _headerHeight = 76;
+  static const double _headerHeight = 92;
 
   @override
   Widget build(BuildContext context) {
@@ -144,10 +144,20 @@ class _LayerHeader extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              layer.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+            InkWell(
+              key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
+              onTap: () => onSelectLayer(layer.id),
+              child: SizedBox(
+                width: double.infinity,
+                child: Text(
+                  layer.name,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: active ? FontWeight.bold : null,
+                  ),
+                ),
+              ),
             ),
             Row(
               children: [

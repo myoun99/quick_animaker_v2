@@ -115,7 +115,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')),
+      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
