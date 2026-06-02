@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
 import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
+import 'package:quick_animaker_v2/src/controllers/timeline_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -79,17 +80,23 @@ _CanvasFixture _createFixture() {
     cutId: _cutId,
     frameId: _frameId,
   );
+  final timelineController = TimelineController(
+    repository: repository,
+    cutId: _cutId,
+  );
   final controller = CanvasController(
     repository: repository,
     historyManager: historyManager,
     frameId: _frameId,
-    getCurrentFrameId: () => layerController.frameId,
+    layerController: layerController,
+    timelineController: timelineController,
   );
 
   return _CanvasFixture(
     repository: repository,
     controller: controller,
     layerController: layerController,
+    timelineController: timelineController,
   );
 }
 
@@ -152,9 +159,11 @@ class _CanvasFixture {
     required this.repository,
     required this.controller,
     required this.layerController,
+    required this.timelineController,
   });
 
   final ProjectRepository repository;
   final CanvasController controller;
   final LayerController layerController;
+  final TimelineController timelineController;
 }

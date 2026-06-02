@@ -5,10 +5,13 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_id.dart';
 import '../models/stroke.dart';
 import '../models/stroke_id.dart';
 import '../models/stroke_point.dart';
 import '../services/commands/add_stroke_command.dart';
+import 'layer_controller.dart';
+import 'timeline_controller.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 
@@ -18,26 +21,40 @@ class CanvasController {
     required HistoryManager historyManager,
     required FrameId frameId,
     FrameId Function()? getCurrentFrameId,
+    LayerController? layerController,
+    TimelineController? timelineController,
     BrushSettings brushSettings = const BrushSettings(),
   }) : _repository = repository,
        _historyManager = historyManager,
        _frameId = frameId,
        _getCurrentFrameId = getCurrentFrameId,
+       _layerController = layerController,
+       _timelineController = timelineController,
        _brushSettings = brushSettings;
 
   final ProjectRepository _repository;
   final HistoryManager _historyManager;
   final FrameId _frameId;
   final FrameId Function()? _getCurrentFrameId;
+  final LayerController? _layerController;
+  final TimelineController? _timelineController;
   final BrushSettings _brushSettings;
   final List<StrokePoint> _activePoints = <StrokePoint>[];
 
   int _strokeSequence = 0;
 
-  FrameId get currentFrameId => _getCurrentFrameId?.call() ?? _frameId;
+  FrameId get currentFrameId =>
+      _resolveCurrentFrameId(createIfMissing: false) ??
+      _getCurrentFrameId?.call() ??
+      _frameId;
 
-  List<Stroke> get strokes =>
-      _findFrame(currentFrameId)?.strokes ?? const <Stroke>[];
+  List<Stroke> get strokes {
+    if (_layerController != null && _timelineController != null) {
+      return _resolveActiveFrame()?.strokes ?? const <Stroke>[];
+    }
+
+    return _findFrame(currentFrameId)?.strokes ?? const <Stroke>[];
+  }
 
   List<StrokePoint> get activePoints => List.unmodifiable(_activePoints);
 
@@ -72,10 +89,16 @@ class CanvasController {
       brushSettings: _brushSettings,
     );
 
+    final frameId = _resolveCurrentFrameId(createIfMissing: true);
+    if (frameId == null) {
+      _activePoints.clear();
+      return;
+    }
+
     _historyManager.execute(
       AddStrokeCommand(
         repository: _repository,
-        frameId: currentFrameId,
+        frameId: frameId,
         stroke: stroke,
       ),
     );
@@ -107,6 +130,10 @@ class CanvasController {
     return 'stroke-${DateTime.now().microsecondsSinceEpoch}-$_strokeSequence';
   }
 
+  String _nextFrameId(LayerId layerId) {
+    return 'frame-${layerId.value}-${DateTime.now().microsecondsSinceEpoch}-$_strokeSequence';
+  }
+
   List<LayerFrame> layerFramesForCut(CutId cutId) {
     final project = _repository.currentProject;
     if (project == null) {
@@ -119,14 +146,76 @@ class CanvasController {
           continue;
         }
 
+        final timelineController = _timelineController;
+        if (timelineController == null) {
+          return cut.layers
+              .where((layer) => layer.frames.isNotEmpty)
+              .map(
+                (layer) => LayerFrame(layer: layer, frame: layer.frames.first),
+              )
+              .toList(growable: false);
+        }
+
         return cut.layers
-            .where((layer) => layer.frames.isNotEmpty)
-            .map((layer) => LayerFrame(layer: layer, frame: layer.frames.first))
+            .map((layer) {
+              final frame = timelineController.resolveFrameForLayer(
+                layer: layer,
+              );
+              if (frame == null) {
+                return null;
+              }
+              return LayerFrame(layer: layer, frame: frame);
+            })
+            .nonNulls
             .toList(growable: false);
       }
     }
 
     return const <LayerFrame>[];
+  }
+
+  Frame? _resolveActiveFrame() {
+    final layerController = _layerController;
+    final timelineController = _timelineController;
+    if (layerController == null || timelineController == null) {
+      return null;
+    }
+
+    final layer = layerController.activeLayer;
+    if (layer == null) {
+      return null;
+    }
+
+    return timelineController.resolveFrameForLayer(layer: layer);
+  }
+
+  FrameId? _resolveCurrentFrameId({required bool createIfMissing}) {
+    final layerController = _layerController;
+    final timelineController = _timelineController;
+    if (layerController == null || timelineController == null) {
+      return null;
+    }
+
+    final layer = layerController.activeLayer;
+    if (layer == null) {
+      return null;
+    }
+
+    final resolvedFrame = timelineController.resolveFrameForLayer(layer: layer);
+    if (resolvedFrame != null) {
+      return resolvedFrame.id;
+    }
+
+    if (!createIfMissing) {
+      return null;
+    }
+
+    final frameId = FrameId(_nextFrameId(layer.id));
+    timelineController.createDrawingFrameForLayer(
+      layerId: layer.id,
+      frameId: frameId,
+    );
+    return frameId;
   }
 
   Frame? _findFrame(FrameId frameId) {

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
 import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
+import 'package:quick_animaker_v2/src/controllers/timeline_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -139,6 +140,72 @@ void main() {
       );
     });
 
+    test('drawing uses current timeline frame', () {
+      final fixture = _createFixture(
+        layers: [
+          Layer(
+            id: const LayerId('layer-1'),
+            name: 'Layer 1',
+            frames: [
+              Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
+              Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
+            ],
+          ),
+        ],
+      );
+
+      fixture.timelineController.selectFrameIndex(0);
+      _drawStroke(fixture.controller);
+      fixture.timelineController.selectFrameIndex(1);
+      _drawStroke(fixture.controller);
+
+      expect(
+        _findFrameById(fixture.repository, const FrameId('frame-a')).strokes,
+        hasLength(1),
+      );
+      expect(
+        _findFrameById(fixture.repository, const FrameId('frame-b')).strokes,
+        hasLength(1),
+      );
+    });
+
+    test('drawing creates one sparse frame when no frame exists', () {
+      final fixture = _createFixture(
+        layers: [
+          Layer(
+            id: const LayerId('layer-1'),
+            name: 'Layer 1',
+            frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
+          ),
+        ],
+      );
+
+      fixture.timelineController.selectFrameIndex(10);
+      _drawStroke(fixture.controller);
+
+      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      expect(layer.frames, hasLength(2));
+      expect(layer.frames.last.duration, 1);
+      expect(layer.frames.last.strokes, hasLength(1));
+    });
+
+    test('drawing still targets active layer at current timeline frame', () {
+      final fixture = _createFixture();
+
+      fixture.layerController.selectLayer(const LayerId('layer-2'));
+      fixture.timelineController.selectFrameIndex(0);
+      _drawStroke(fixture.controller);
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+        hasLength(1),
+      );
+    });
+
     test('redo active layer stroke', () {
       final fixture = _createFixture();
 
@@ -162,8 +229,10 @@ void main() {
 const _cutId = CutId('cut-1');
 const _frameId = FrameId('frame-1');
 
-_CanvasFixture _createFixture() {
-  final repository = ProjectRepository(initialProject: _createSampleProject());
+_CanvasFixture _createFixture({List<Layer>? layers}) {
+  final repository = ProjectRepository(
+    initialProject: _createSampleProject(layers: layers),
+  );
   final historyManager = HistoryManager();
   final layerController = LayerController(
     repository: repository,
@@ -171,21 +240,27 @@ _CanvasFixture _createFixture() {
     cutId: _cutId,
     frameId: _frameId,
   );
+  final timelineController = TimelineController(
+    repository: repository,
+    cutId: _cutId,
+  );
   final controller = CanvasController(
     repository: repository,
     historyManager: historyManager,
     frameId: _frameId,
-    getCurrentFrameId: () => layerController.frameId,
+    layerController: layerController,
+    timelineController: timelineController,
   );
 
   return _CanvasFixture(
     repository: repository,
     controller: controller,
     layerController: layerController,
+    timelineController: timelineController,
   );
 }
 
-Project _createSampleProject() {
+Project _createSampleProject({List<Layer>? layers}) {
   return Project(
     id: const ProjectId('project-1'),
     name: 'Test Project',
@@ -200,29 +275,62 @@ Project _createSampleProject() {
             name: 'Cut 1',
             duration: 1,
             canvasSize: const CanvasSize(width: 100, height: 100),
-            layers: [
-              Layer(
-                id: const LayerId('layer-1'),
-                name: 'Layer 1',
-                frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
-              ),
-              Layer(
-                id: const LayerId('layer-2'),
-                name: 'Layer 2',
-                frames: [
-                  Frame(
-                    id: const FrameId('frame-2'),
-                    duration: 1,
-                    strokes: const [],
+            layers: layers ??
+                [
+                  Layer(
+                    id: const LayerId('layer-1'),
+                    name: 'Layer 1',
+                    frames: [
+                      Frame(id: _frameId, duration: 1, strokes: const []),
+                    ],
+                  ),
+                  Layer(
+                    id: const LayerId('layer-2'),
+                    name: 'Layer 2',
+                    frames: [
+                      Frame(
+                        id: const FrameId('frame-2'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
           ),
         ],
       ),
     ],
   );
+}
+
+Layer _findLayer(ProjectRepository repository, LayerId layerId) {
+  for (final track in repository.requireProject().tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        if (layer.id == layerId) {
+          return layer;
+        }
+      }
+    }
+  }
+
+  throw StateError('Layer not found.');
+}
+
+Frame _findFrameById(ProjectRepository repository, FrameId frameId) {
+  for (final track in repository.requireProject().tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        for (final frame in layer.frames) {
+          if (frame.id == frameId) {
+            return frame;
+          }
+        }
+      }
+    }
+  }
+
+  throw StateError('Frame not found.');
 }
 
 Frame _findLayerFrame(ProjectRepository repository, LayerId layerId) {
@@ -250,9 +358,11 @@ class _CanvasFixture {
     required this.repository,
     required this.controller,
     required this.layerController,
+    required this.timelineController,
   });
 
   final ProjectRepository repository;
   final CanvasController controller;
   final LayerController layerController;
+  final TimelineController timelineController;
 }

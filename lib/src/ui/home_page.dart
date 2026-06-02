@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/canvas_controller.dart';
 import '../controllers/layer_controller.dart';
+import '../controllers/timeline_controller.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -17,6 +18,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
 import 'layers/layer_panel.dart';
+import 'timeline/timeline_panel.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,6 +35,7 @@ class _HomePageState extends State<HomePage> {
   late final HistoryManager _historyManager;
   late final CanvasController _canvasController;
   late final LayerController _layerController;
+  late final TimelineController _timelineController;
 
   int _layerSequence = 2;
 
@@ -47,11 +50,16 @@ class _HomePageState extends State<HomePage> {
       cutId: _cutId,
       frameId: _frameId,
     );
+    _timelineController = TimelineController(
+      repository: _repository,
+      cutId: _cutId,
+    );
     _canvasController = CanvasController(
       repository: _repository,
       historyManager: _historyManager,
       frameId: _frameId,
-      getCurrentFrameId: () => _layerController.frameId,
+      layerController: _layerController,
+      timelineController: _timelineController,
     );
   }
 
@@ -66,6 +74,8 @@ class _HomePageState extends State<HomePage> {
             child: Row(
               children: [
                 Text('Active strokes: ${_canvasController.strokes.length}'),
+                const SizedBox(width: 16),
+                Text('Current frame: ${_timelineController.currentFrameIndex}'),
                 const SizedBox(width: 16),
                 TextButton(
                   onPressed: _canvasController.canUndo
@@ -131,6 +141,13 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
+          ),
+          TimelinePanel(
+            currentFrameIndex: _timelineController.currentFrameIndex,
+            frameCount: _timelineController.totalFrameCount,
+            onSelectFrame: (frameIndex) {
+              setState(() => _timelineController.selectFrameIndex(frameIndex));
+            },
           ),
         ],
       ),
