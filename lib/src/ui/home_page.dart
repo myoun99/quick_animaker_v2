@@ -104,9 +104,7 @@ class _HomePageState extends State<HomePage> {
                 Layer(
                   id: const LayerId('sample-layer'),
                   name: 'Layer 1',
-                  frames: [
-                    Frame(id: _frameId, duration: 1, strokes: const []),
-                  ],
+                  frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
                 ),
               ],
             ),

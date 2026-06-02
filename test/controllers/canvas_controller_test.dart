@@ -1,4 +1,3 @@
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
