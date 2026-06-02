@@ -113,7 +113,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-layer-header-layer-2')),
+      find.byKey(const ValueKey<String>('xsheet-layer-name-layer-2')),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));

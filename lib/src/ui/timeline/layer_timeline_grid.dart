@@ -146,10 +146,19 @@ class _LayerRow extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    layer.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+                  child: InkWell(
+                    key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                    onTap: () => onSelectLayer(layer.id),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        layer.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: active ? FontWeight.bold : null,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 IconButton(
