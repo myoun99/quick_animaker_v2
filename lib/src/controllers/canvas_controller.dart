@@ -1,8 +1,10 @@
 import 'package:flutter/widgets.dart';
 
 import '../models/brush_settings.dart';
+import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/layer.dart';
 import '../models/stroke.dart';
 import '../models/stroke_id.dart';
 import '../models/stroke_point.dart';
@@ -15,21 +17,27 @@ class CanvasController {
     required ProjectRepository repository,
     required HistoryManager historyManager,
     required FrameId frameId,
+    FrameId Function()? getCurrentFrameId,
     BrushSettings brushSettings = const BrushSettings(),
   }) : _repository = repository,
        _historyManager = historyManager,
        _frameId = frameId,
+       _getCurrentFrameId = getCurrentFrameId,
        _brushSettings = brushSettings;
 
   final ProjectRepository _repository;
   final HistoryManager _historyManager;
   final FrameId _frameId;
+  final FrameId Function()? _getCurrentFrameId;
   final BrushSettings _brushSettings;
   final List<StrokePoint> _activePoints = <StrokePoint>[];
 
   int _strokeSequence = 0;
 
-  List<Stroke> get strokes => _findFrame()?.strokes ?? const <Stroke>[];
+  FrameId get currentFrameId => _getCurrentFrameId?.call() ?? _frameId;
+
+  List<Stroke> get strokes =>
+      _findFrame(currentFrameId)?.strokes ?? const <Stroke>[];
 
   List<StrokePoint> get activePoints => List.unmodifiable(_activePoints);
 
@@ -67,7 +75,7 @@ class CanvasController {
     _historyManager.execute(
       AddStrokeCommand(
         repository: _repository,
-        frameId: _frameId,
+        frameId: currentFrameId,
         stroke: stroke,
       ),
     );
@@ -99,7 +107,29 @@ class CanvasController {
     return 'stroke-${DateTime.now().microsecondsSinceEpoch}-$_strokeSequence';
   }
 
-  Frame? _findFrame() {
+  List<LayerFrame> layerFramesForCut(CutId cutId) {
+    final project = _repository.currentProject;
+    if (project == null) {
+      return const <LayerFrame>[];
+    }
+
+    for (final track in project.tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id != cutId) {
+          continue;
+        }
+
+        return cut.layers
+            .where((layer) => layer.frames.isNotEmpty)
+            .map((layer) => LayerFrame(layer: layer, frame: layer.frames.first))
+            .toList(growable: false);
+      }
+    }
+
+    return const <LayerFrame>[];
+  }
+
+  Frame? _findFrame(FrameId frameId) {
     final project = _repository.currentProject;
     if (project == null) {
       return null;
@@ -109,7 +139,7 @@ class CanvasController {
       for (final cut in track.cuts) {
         for (final layer in cut.layers) {
           for (final frame in layer.frames) {
-            if (frame.id == _frameId) {
+            if (frame.id == frameId) {
               return frame;
             }
           }
@@ -119,4 +149,11 @@ class CanvasController {
 
     return null;
   }
+}
+
+class LayerFrame {
+  const LayerFrame({required this.layer, required this.frame});
+
+  final Layer layer;
+  final Frame frame;
 }

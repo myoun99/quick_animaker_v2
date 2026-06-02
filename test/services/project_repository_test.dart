@@ -301,6 +301,77 @@ void main() {
       },
     );
 
+    test('replaces an existing layer', () {
+      final layer = _layer(id: 'layer-1', name: 'Line');
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final track = _track(id: 'track-1', name: 'Video', cuts: [cut]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+      final replacement = _layer(id: 'layer-1', name: 'Paint');
+
+      repository.replaceLayer(layer: replacement);
+
+      expect(
+        repository.requireProject().tracks.single.cuts.single.layers.single,
+        replacement,
+      );
+      expect(project.tracks.single.cuts.single.layers.single, layer);
+    });
+
+    test('updates an existing layer', () {
+      final layer = _layer(id: 'layer-1', name: 'Line');
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final track = _track(id: 'track-1', name: 'Video', cuts: [cut]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      repository.updateLayer(
+        layerId: const LayerId('layer-1'),
+        update: (layer) => layer.copyWith(isVisible: false, opacity: 0.5),
+      );
+
+      final updatedLayer = repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .single;
+      expect(updatedLayer.isVisible, isFalse);
+      expect(updatedLayer.opacity, 0.5);
+      expect(project.tracks.single.cuts.single.layers.single.isVisible, isTrue);
+    });
+
+    test('throws when replacing or updating a missing layer', () {
+      final repository = ProjectRepository(
+        initialProject: _project(id: 'project-1', name: 'Project'),
+      );
+
+      expect(
+        () => repository.replaceLayer(
+          layer: _layer(id: 'missing', name: 'Missing'),
+        ),
+        throwsStateError,
+      );
+
+      expect(
+        () => repository.updateLayer(
+          layerId: const LayerId('missing'),
+          update: (layer) => layer,
+        ),
+        throwsStateError,
+      );
+    });
+
     test('clears the current project', () {
       final repository = ProjectRepository(
         initialProject: _project(id: 'project-1', name: 'Project'),

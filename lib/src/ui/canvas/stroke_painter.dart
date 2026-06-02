@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
+import '../../models/frame.dart';
+import '../../models/layer.dart';
 import '../../models/stroke.dart';
 import '../../models/stroke_point.dart';
 
+class PaintableLayer {
+  const PaintableLayer({required this.layer, required this.frame});
+
+  final Layer layer;
+  final Frame frame;
+}
+
 class StrokePainter extends CustomPainter {
   const StrokePainter({
-    required this.strokes,
+    this.strokes = const <Stroke>[],
+    this.paintableLayers = const <PaintableLayer>[],
     this.activePoints = const <StrokePoint>[],
   });
 
   final List<Stroke> strokes;
+  final List<PaintableLayer> paintableLayers;
   final List<StrokePoint> activePoints;
 
   @override
@@ -18,8 +29,28 @@ class StrokePainter extends CustomPainter {
     final backgroundPaint = Paint()..color = const Color(0xFFFFFFFF);
     canvas.drawRect(Offset.zero & size, backgroundPaint);
 
-    for (final stroke in strokes) {
-      _paintPoints(canvas, stroke.points, stroke.brushSettings);
+    if (paintableLayers.isEmpty) {
+      for (final stroke in strokes) {
+        _paintPoints(canvas, stroke.points, stroke.brushSettings);
+      }
+    } else {
+      for (final paintableLayer in paintableLayers) {
+        if (!paintableLayer.layer.isVisible) {
+          continue;
+        }
+
+        final layerOpacity = paintableLayer.layer.opacity
+            .clamp(0.0, 1.0)
+            .toDouble();
+        for (final stroke in paintableLayer.frame.strokes) {
+          _paintPoints(
+            canvas,
+            stroke.points,
+            stroke.brushSettings,
+            opacityMultiplier: layerOpacity,
+          );
+        }
+      }
     }
 
     _paintPoints(canvas, activePoints, const BrushSettings(opacity: 0.6));
@@ -34,20 +65,22 @@ class StrokePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant StrokePainter oldDelegate) {
     return oldDelegate.strokes != strokes ||
+        oldDelegate.paintableLayers != paintableLayers ||
         oldDelegate.activePoints != activePoints;
   }
 
   void _paintPoints(
     Canvas canvas,
     List<StrokePoint> points,
-    BrushSettings brushSettings,
-  ) {
+    BrushSettings brushSettings, {
+    double opacityMultiplier = 1.0,
+  }) {
     if (points.isEmpty) {
       return;
     }
 
     final paint = Paint()
-      ..color = _colorForBrush(brushSettings)
+      ..color = _colorForBrush(brushSettings, opacityMultiplier)
       ..strokeWidth = brushSettings.size
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -70,13 +103,15 @@ class StrokePainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  Color _colorForBrush(BrushSettings brushSettings) {
+  Color _colorForBrush(BrushSettings brushSettings, double opacityMultiplier) {
     final argb = brushSettings.color;
     final alpha = (argb >> 24) & 0xFF;
     final red = (argb >> 16) & 0xFF;
     final green = (argb >> 8) & 0xFF;
     final blue = argb & 0xFF;
-    final opacity = brushSettings.opacity.clamp(0.0, 1.0);
+    final opacity = (brushSettings.opacity * opacityMultiplier)
+        .clamp(0.0, 1.0)
+        .toDouble();
 
     return Color.fromARGB((alpha * opacity).round(), red, green, blue);
   }
