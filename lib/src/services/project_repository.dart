@@ -128,6 +128,48 @@ class ProjectRepository {
     });
   }
 
+  void replaceLayer({required Layer layer}) {
+    updateLayer(layerId: layer.id, update: (_) => layer);
+  }
+
+  void updateLayer({
+    required LayerId layerId,
+    required Layer Function(Layer layer) update,
+  }) {
+    updateProject((project) {
+      var foundLayer = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  final layers = cut.layers
+                      .map((layer) {
+                        if (layer.id != layerId) {
+                          return layer;
+                        }
+
+                        foundLayer = true;
+                        return update(layer);
+                      })
+                      .toList(growable: false);
+
+                  return cut.copyWith(layers: layers);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundLayer) {
+        throw StateError('Layer not found: $layerId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
   void addFrame({required LayerId layerId, required Frame frame}) {
     updateProject((project) {
       var foundLayer = false;

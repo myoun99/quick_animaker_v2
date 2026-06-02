@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
+import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -29,7 +30,10 @@ void main() {
       fixture.controller.updateStroke(const Offset(30, 40));
       fixture.controller.endStroke();
 
-      final strokes = _findFrame(fixture.repository).strokes;
+      final strokes = _findLayerFrame(
+        fixture.repository,
+        const LayerId('layer-1'),
+      ).strokes;
       expect(strokes, hasLength(1));
       expect(strokes.single.points, hasLength(2));
       expect(strokes.single.points[0].x, 10);
@@ -44,7 +48,10 @@ void main() {
       fixture.controller.beginStroke(const Offset(10, 20));
       fixture.controller.endStroke();
 
-      expect(_findFrame(fixture.repository).strokes, isEmpty);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
     });
 
     test('undo stroke', () {
@@ -53,7 +60,10 @@ void main() {
       _drawStroke(fixture.controller);
       fixture.controller.undo();
 
-      expect(_findFrame(fixture.repository).strokes, isEmpty);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
     });
 
     test('redo stroke', () {
@@ -63,7 +73,10 @@ void main() {
       fixture.controller.undo();
       fixture.controller.redo();
 
-      expect(_findFrame(fixture.repository).strokes, hasLength(1));
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        hasLength(1),
+      );
     });
 
     test('cancel stroke', () {
@@ -75,23 +88,101 @@ void main() {
       fixture.controller.endStroke();
 
       expect(fixture.controller.activePoints, isEmpty);
-      expect(_findFrame(fixture.repository).strokes, isEmpty);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
+    });
+
+    test('drawing targets active layer', () {
+      final fixture = _createFixture();
+
+      fixture.layerController.selectLayer(const LayerId('layer-1'));
+      _drawStroke(fixture.controller);
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        hasLength(1),
+      );
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+        isEmpty,
+      );
+
+      fixture.layerController.selectLayer(const LayerId('layer-2'));
+      _drawStroke(fixture.controller);
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        hasLength(1),
+      );
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+        hasLength(1),
+      );
+    });
+
+    test('undo active layer stroke', () {
+      final fixture = _createFixture();
+
+      fixture.layerController.selectLayer(const LayerId('layer-2'));
+      _drawStroke(fixture.controller);
+      fixture.controller.undo();
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+        isEmpty,
+      );
+    });
+
+    test('redo active layer stroke', () {
+      final fixture = _createFixture();
+
+      fixture.layerController.selectLayer(const LayerId('layer-2'));
+      _drawStroke(fixture.controller);
+      fixture.controller.undo();
+      fixture.controller.redo();
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+        hasLength(1),
+      );
     });
   });
 }
 
+const _cutId = CutId('cut-1');
 const _frameId = FrameId('frame-1');
 
 _CanvasFixture _createFixture() {
   final repository = ProjectRepository(initialProject: _createSampleProject());
   final historyManager = HistoryManager();
+  final layerController = LayerController(
+    repository: repository,
+    historyManager: historyManager,
+    cutId: _cutId,
+    frameId: _frameId,
+  );
   final controller = CanvasController(
     repository: repository,
     historyManager: historyManager,
     frameId: _frameId,
+    getCurrentFrameId: () => layerController.frameId,
   );
 
-  return _CanvasFixture(repository: repository, controller: controller);
+  return _CanvasFixture(
+    repository: repository,
+    controller: controller,
+    layerController: layerController,
+  );
 }
 
 Project _createSampleProject() {
@@ -105,7 +196,7 @@ Project _createSampleProject() {
         name: 'Track 1',
         cuts: [
           Cut(
-            id: const CutId('cut-1'),
+            id: _cutId,
             name: 'Cut 1',
             duration: 1,
             canvasSize: const CanvasSize(width: 100, height: 100),
@@ -115,6 +206,17 @@ Project _createSampleProject() {
                 name: 'Layer 1',
                 frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
               ),
+              Layer(
+                id: const LayerId('layer-2'),
+                name: 'Layer 2',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-2'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+              ),
             ],
           ),
         ],
@@ -123,20 +225,18 @@ Project _createSampleProject() {
   );
 }
 
-Frame _findFrame(ProjectRepository repository) {
+Frame _findLayerFrame(ProjectRepository repository, LayerId layerId) {
   for (final track in repository.requireProject().tracks) {
     for (final cut in track.cuts) {
       for (final layer in cut.layers) {
-        for (final frame in layer.frames) {
-          if (frame.id == _frameId) {
-            return frame;
-          }
+        if (layer.id == layerId) {
+          return layer.frames.single;
         }
       }
     }
   }
 
-  throw StateError('Frame not found.');
+  throw StateError('Layer not found.');
 }
 
 void _drawStroke(CanvasController controller) {
@@ -146,8 +246,13 @@ void _drawStroke(CanvasController controller) {
 }
 
 class _CanvasFixture {
-  const _CanvasFixture({required this.repository, required this.controller});
+  const _CanvasFixture({
+    required this.repository,
+    required this.controller,
+    required this.layerController,
+  });
 
   final ProjectRepository repository;
   final CanvasController controller;
+  final LayerController layerController;
 }

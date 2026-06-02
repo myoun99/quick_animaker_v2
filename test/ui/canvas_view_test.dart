@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
+import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -26,7 +27,10 @@ void main() {
           body: SizedBox(
             width: 300,
             height: 300,
-            child: CanvasView(controller: fixture.controller),
+            child: CanvasView(
+              controller: fixture.controller,
+              cutId: _cutId,
+            ),
           ),
         ),
       ),
@@ -36,8 +40,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('drag gesture creates stroke', (tester) async {
+  testWidgets('drag gesture creates stroke in active layer', (tester) async {
     final fixture = _createFixture();
+    fixture.layerController.selectLayer(const LayerId('layer-2'));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -45,7 +50,10 @@ void main() {
           body: SizedBox(
             width: 300,
             height: 300,
-            child: CanvasView(controller: fixture.controller),
+            child: CanvasView(
+              controller: fixture.controller,
+              cutId: _cutId,
+            ),
           ),
         ),
       ),
@@ -54,21 +62,41 @@ void main() {
     await tester.drag(find.byType(CanvasView), const Offset(50, 50));
     await tester.pump();
 
-    expect(_findFrame(fixture.repository).strokes, hasLength(1));
+    expect(
+      _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+      isEmpty,
+    );
+    expect(
+      _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
+      hasLength(1),
+    );
   });
 }
 
+const _cutId = CutId('cut-1');
 const _frameId = FrameId('frame-1');
 
 _CanvasFixture _createFixture() {
   final repository = ProjectRepository(initialProject: _createSampleProject());
-  final controller = CanvasController(
+  final historyManager = HistoryManager();
+  final layerController = LayerController(
     repository: repository,
-    historyManager: HistoryManager(),
+    historyManager: historyManager,
+    cutId: _cutId,
     frameId: _frameId,
   );
+  final controller = CanvasController(
+    repository: repository,
+    historyManager: historyManager,
+    frameId: _frameId,
+    getCurrentFrameId: () => layerController.frameId,
+  );
 
-  return _CanvasFixture(repository: repository, controller: controller);
+  return _CanvasFixture(
+    repository: repository,
+    controller: controller,
+    layerController: layerController,
+  );
 }
 
 Project _createSampleProject() {
@@ -82,7 +110,7 @@ Project _createSampleProject() {
         name: 'Track 1',
         cuts: [
           Cut(
-            id: const CutId('cut-1'),
+            id: _cutId,
             name: 'Cut 1',
             duration: 1,
             canvasSize: const CanvasSize(width: 100, height: 100),
@@ -92,6 +120,17 @@ Project _createSampleProject() {
                 name: 'Layer 1',
                 frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
               ),
+              Layer(
+                id: const LayerId('layer-2'),
+                name: 'Layer 2',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-2'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+              ),
             ],
           ),
         ],
@@ -100,25 +139,28 @@ Project _createSampleProject() {
   );
 }
 
-Frame _findFrame(ProjectRepository repository) {
+Frame _findLayerFrame(ProjectRepository repository, LayerId layerId) {
   for (final track in repository.requireProject().tracks) {
     for (final cut in track.cuts) {
       for (final layer in cut.layers) {
-        for (final frame in layer.frames) {
-          if (frame.id == _frameId) {
-            return frame;
-          }
+        if (layer.id == layerId) {
+          return layer.frames.single;
         }
       }
     }
   }
 
-  throw StateError('Frame not found.');
+  throw StateError('Layer not found.');
 }
 
 class _CanvasFixture {
-  const _CanvasFixture({required this.repository, required this.controller});
+  const _CanvasFixture({
+    required this.repository,
+    required this.controller,
+    required this.layerController,
+  });
 
   final ProjectRepository repository;
   final CanvasController controller;
+  final LayerController layerController;
 }
