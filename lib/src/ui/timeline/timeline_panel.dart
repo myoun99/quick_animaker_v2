@@ -1,67 +1,114 @@
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import 'layer_timeline_grid.dart';
+import 'timeline_orientation.dart';
+import 'xsheet_timeline_grid.dart';
+
 class TimelinePanel extends StatelessWidget {
   const TimelinePanel({
     super.key,
+    required this.layers,
+    required this.activeLayerId,
     required this.currentFrameIndex,
     required this.frameCount,
+    required this.resolveFrameForLayer,
+    required this.onSelectLayer,
     required this.onSelectFrame,
+    required this.orientation,
+    required this.onOrientationChanged,
   });
 
+  final List<Layer> layers;
+  final LayerId? activeLayerId;
   final int currentFrameIndex;
   final int frameCount;
+  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
-
-  static const int _minimumVisibleCells = 24;
+  final TimelineOrientation orientation;
+  final ValueChanged<TimelineOrientation> onOrientationChanged;
 
   @override
   Widget build(BuildContext context) {
-    final visibleFrameCount = frameCount < _minimumVisibleCells
-        ? _minimumVisibleCells
-        : frameCount;
+    final colorScheme = Theme.of(context).colorScheme;
+    final nextOrientation = orientation == TimelineOrientation.horizontal
+        ? TimelineOrientation.vertical
+        : TimelineOrientation.horizontal;
 
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: colorScheme.surfaceContainerHighest,
       child: SizedBox(
-        height: 88,
+        height: 180,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-              child: Text(
-                'Timeline • Current frame: $currentFrameIndex',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Timeline • Current frame: $currentFrameIndex',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  SegmentedButton<TimelineOrientation>(
+                    key: const ValueKey<String>('timeline-orientation-toggle'),
+                    segments: const [
+                      ButtonSegment<TimelineOrientation>(
+                        value: TimelineOrientation.horizontal,
+                        label: Text('Horizontal'),
+                        icon: Icon(Icons.view_week),
+                      ),
+                      ButtonSegment<TimelineOrientation>(
+                        value: TimelineOrientation.vertical,
+                        label: Text('X-sheet'),
+                        icon: Icon(Icons.view_column),
+                      ),
+                    ],
+                    selected: {orientation},
+                    onSelectionChanged: (selection) {
+                      onOrientationChanged(selection.single);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    key: const ValueKey<String>(
+                      'timeline-orientation-toggle-button',
+                    ),
+                    onPressed: () => onOrientationChanged(nextOrientation),
+                    child: Text(
+                      orientation == TimelineOrientation.horizontal
+                          ? 'Show X-sheet'
+                          : 'Show Timeline',
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: visibleFrameCount,
-                itemBuilder: (context, index) {
-                  final selected = index == currentFrameIndex;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 2,
-                      vertical: 6,
+              child: orientation == TimelineOrientation.horizontal
+                  ? LayerTimelineGrid(
+                      layers: layers,
+                      activeLayerId: activeLayerId,
+                      currentFrameIndex: currentFrameIndex,
+                      frameCount: frameCount,
+                      resolveFrameForLayer: resolveFrameForLayer,
+                      onSelectLayer: onSelectLayer,
+                      onSelectFrame: onSelectFrame,
+                    )
+                  : XSheetTimelineGrid(
+                      layers: layers,
+                      activeLayerId: activeLayerId,
+                      currentFrameIndex: currentFrameIndex,
+                      frameCount: frameCount,
+                      resolveFrameForLayer: resolveFrameForLayer,
+                      onSelectLayer: onSelectLayer,
+                      onSelectFrame: onSelectFrame,
                     ),
-                    child: OutlinedButton(
-                      key: ValueKey<String>('timeline-frame-$index'),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: selected
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : null,
-                        foregroundColor: selected
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : null,
-                        minimumSize: const Size(72, 44),
-                      ),
-                      onPressed: () => onSelectFrame(index),
-                      child: Text(selected ? 'Frame $index' : '$index'),
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
