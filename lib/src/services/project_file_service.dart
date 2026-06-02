@@ -5,9 +5,7 @@ import 'project_json_serializer.dart';
 import 'project_repository.dart';
 
 class ProjectFileService {
-  const ProjectFileService({
-    this.serializer = const ProjectJsonSerializer(),
-  });
+  const ProjectFileService({this.serializer = const ProjectJsonSerializer()});
 
   final ProjectJsonSerializer serializer;
 
@@ -20,9 +18,7 @@ class ProjectFileService {
     await file.writeAsString(jsonString);
   }
 
-  Future<Project> loadProject({
-    required String filePath,
-  }) async {
+  Future<Project> loadProject({required String filePath}) async {
     final file = File(filePath);
     final jsonString = await file.readAsString();
     return serializer.decode(jsonString);
@@ -32,10 +28,7 @@ class ProjectFileService {
     required ProjectRepository repository,
     required String filePath,
   }) async {
-    await saveProject(
-      project: repository.requireProject(),
-      filePath: filePath,
-    );
+    await saveProject(project: repository.requireProject(), filePath: filePath);
   }
 
   Future<Project> loadIntoRepository({
