@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'src/ui/home_page.dart';
+
 void main() {
   runApp(const QuickAnimakerApp());
 }
@@ -11,11 +13,7 @@ class QuickAnimakerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       title: 'QuickAnimaker v2.1',
-      home: Scaffold(
-        body: Center(
-          child: Text('QuickAnimaker v2.1'),
-        ),
-      ),
+      home: HomePage(),
     );
   }
 }
