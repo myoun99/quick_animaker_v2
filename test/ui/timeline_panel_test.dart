@@ -7,8 +7,20 @@ void main() {
     await tester.pumpWidget(_panel());
 
     expect(find.byType(TimelinePanel), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('timeline-frame-0')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('timeline-frame-23')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-0')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('timeline-frame-23')),
+      500,
+      scrollable: find.byType(Scrollable),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-23')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('select frame callback', (tester) async {

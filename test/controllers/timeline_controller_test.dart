@@ -32,7 +32,10 @@ void main() {
     test('reject negative frame index', () {
       final fixture = _createFixture();
 
-      expect(() => fixture.controller.selectFrameIndex(-1), throwsArgumentError);
+      expect(
+        () => fixture.controller.selectFrameIndex(-1),
+        throwsArgumentError,
+      );
     });
 
     test('resolves sparse exposure frames', () {
@@ -75,7 +78,10 @@ void main() {
 
     test('empty layer resolves null', () {
       final fixture = _createFixture();
-      final layer = _findLayer(fixture.repository, const LayerId('empty-layer'));
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
 
       expect(
         fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 0),
@@ -102,7 +108,10 @@ void main() {
         frameId: const FrameId('new-frame'),
       );
 
-      final layer = _findLayer(fixture.repository, const LayerId('empty-layer'));
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
       expect(layer.frames, hasLength(1));
       expect(layer.frames.single.id, const FrameId('new-frame'));
       expect(layer.frames.single.duration, 1);
@@ -112,7 +121,9 @@ void main() {
       final layer = Layer(
         id: const LayerId('duration-layer'),
         name: 'Duration Layer',
-        frames: [Frame(id: const FrameId('zero'), duration: 0, strokes: const [])],
+        frames: [
+          Frame(id: const FrameId('zero'), duration: 0, strokes: const []),
+        ],
       );
       final fixture = _createFixture();
 
@@ -169,8 +180,16 @@ Project _createSampleProject() {
                 id: const LayerId('layer-1'),
                 name: 'Layer 1',
                 frames: [
-                  Frame(id: const FrameId('frame-a'), duration: 4, strokes: const []),
-                  Frame(id: const FrameId('frame-b'), duration: 3, strokes: const []),
+                  Frame(
+                    id: const FrameId('frame-a'),
+                    duration: 4,
+                    strokes: const [],
+                  ),
+                  Frame(
+                    id: const FrameId('frame-b'),
+                    duration: 3,
+                    strokes: const [],
+                  ),
                 ],
               ),
               Layer(
@@ -182,7 +201,11 @@ Project _createSampleProject() {
                 id: const LayerId('short-layer'),
                 name: 'Short Layer',
                 frames: [
-                  Frame(id: const FrameId('short-frame'), duration: 2, strokes: const []),
+                  Frame(
+                    id: const FrameId('short-frame'),
+                    duration: 2,
+                    strokes: const [],
+                  ),
                 ],
               ),
             ],

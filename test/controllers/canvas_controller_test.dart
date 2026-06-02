@@ -147,8 +147,16 @@ void main() {
             id: const LayerId('layer-1'),
             name: 'Layer 1',
             frames: [
-              Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
-              Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
+              Frame(
+                id: const FrameId('frame-a'),
+                duration: 1,
+                strokes: const [],
+              ),
+              Frame(
+                id: const FrameId('frame-b'),
+                duration: 1,
+                strokes: const [],
+              ),
             ],
           ),
         ],
@@ -275,7 +283,8 @@ Project _createSampleProject({List<Layer>? layers}) {
             name: 'Cut 1',
             duration: 1,
             canvasSize: const CanvasSize(width: 100, height: 100),
-            layers: layers ??
+            layers:
+                layers ??
                 [
                   Layer(
                     id: const LayerId('layer-1'),

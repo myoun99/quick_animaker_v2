@@ -126,8 +126,7 @@ class TimelineController {
       );
     }
 
-    _explicitFrameStarts
-        .putIfAbsent(layerId, () => <FrameId, int>{})[frameId] =
+    _explicitFrameStarts.putIfAbsent(layerId, () => <FrameId, int>{})[frameId] =
         _currentFrameIndex;
     _repository.addFrame(
       layerId: layerId,
