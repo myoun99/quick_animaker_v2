@@ -162,10 +162,15 @@ class _LayerRow extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
+                  key: ValueKey<String>(
+                    'timeline-layer-visibility-${layer.id}',
+                  ),
                   tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
                   icon: Icon(
                     layer.isVisible ? Icons.visibility : Icons.visibility_off,
                     size: 18,
@@ -179,7 +184,8 @@ class _LayerRow extends StatelessWidget {
                     min: 0,
                     max: 1,
                     value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged(layer.id, opacity),
                   ),
                 ),
                 SizedBox(

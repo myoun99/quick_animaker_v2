@@ -135,7 +135,9 @@ void main() {
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('highlights current frame without triangle label', (tester) async {
+  testWidgets('highlights current frame without triangle label', (
+    tester,
+  ) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
     expect(find.text('3'), findsOneWidget);

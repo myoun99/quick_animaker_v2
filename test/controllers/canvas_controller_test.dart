@@ -228,28 +228,31 @@ void main() {
       );
     });
 
-    test('undo on different timeline frame moves first then removes stroke', () {
-      final fixture = _createFixture();
+    test(
+      'undo on different timeline frame moves first then removes stroke',
+      () {
+        final fixture = _createFixture();
 
-      fixture.timelineController.selectFrameIndex(0);
-      _drawStroke(fixture.controller);
-      fixture.timelineController.selectFrameIndex(5);
+        fixture.timelineController.selectFrameIndex(0);
+        _drawStroke(fixture.controller);
+        fixture.timelineController.selectFrameIndex(5);
 
-      fixture.controller.undo();
+        fixture.controller.undo();
 
-      expect(fixture.timelineController.currentFrameIndex, 0);
-      expect(
-        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
-        hasLength(1),
-      );
+        expect(fixture.timelineController.currentFrameIndex, 0);
+        expect(
+          _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+          hasLength(1),
+        );
 
-      fixture.controller.undo();
+        fixture.controller.undo();
 
-      expect(
-        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
-        isEmpty,
-      );
-    });
+        expect(
+          _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+          isEmpty,
+        );
+      },
+    );
 
     test('undo on same timeline frame removes stroke immediately', () {
       final fixture = _createFixture();

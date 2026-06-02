@@ -153,9 +153,7 @@ class _LayerHeader extends StatelessWidget {
                   layer.name,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: active ? FontWeight.bold : null,
-                  ),
+                  style: TextStyle(fontWeight: active ? FontWeight.bold : null),
                 ),
               ),
             ),
@@ -165,7 +163,10 @@ class _LayerHeader extends StatelessWidget {
                   key: ValueKey<String>('xsheet-layer-visibility-${layer.id}'),
                   tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 28,
+                    height: 28,
+                  ),
                   icon: Icon(
                     layer.isVisible ? Icons.visibility : Icons.visibility_off,
                     size: 16,
@@ -178,7 +179,8 @@ class _LayerHeader extends StatelessWidget {
                     min: 0,
                     max: 1,
                     value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged(layer.id, opacity),
                   ),
                 ),
                 SizedBox(

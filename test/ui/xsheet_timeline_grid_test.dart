@@ -30,7 +30,9 @@ void main() {
     var called = false;
 
     await tester.pumpWidget(_grid(onAddLayer: () => called = true));
-    await tester.tap(find.byKey(const ValueKey<String>('xsheet-add-layer-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
+    );
 
     expect(called, isTrue);
   });

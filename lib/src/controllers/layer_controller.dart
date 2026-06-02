@@ -85,7 +85,9 @@ class LayerController {
   }
 
   void addLayerWithDefaults({required LayerId layerId, required String name}) {
-    addLayer(layer: Layer(id: layerId, name: name, frames: const []));
+    addLayer(
+      layer: Layer(id: layerId, name: name, frames: const []),
+    );
   }
 
   void toggleLayerVisibility(LayerId layerId) {
