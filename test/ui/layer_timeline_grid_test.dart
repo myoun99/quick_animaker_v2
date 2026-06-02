@@ -7,16 +7,77 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 
 void main() {
-  testWidgets('renders layer names', (tester) async {
+  testWidgets('renders integrated layer controls', (tester) async {
     await tester.pumpWidget(_grid());
 
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('renders frame cells', (tester) async {
+  testWidgets('add layer button calls callback', (tester) async {
+    var called = false;
+
+    await tester.pumpWidget(_grid(onAddLayer: () => called = true));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+    );
+
+    expect(called, isTrue);
+  });
+
+  testWidgets('visibility button calls callback', (tester) async {
+    LayerId? toggledLayerId;
+
+    await tester.pumpWidget(
+      _grid(onToggleLayerVisibility: (layerId) => toggledLayerId = layerId),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-2')),
+    );
+
+    expect(toggledLayerId, const LayerId('layer-2'));
+  });
+
+  testWidgets('opacity control calls callback', (tester) async {
+    LayerId? changedLayerId;
+    double? changedOpacity;
+
+    await tester.pumpWidget(
+      _grid(
+        onLayerOpacityChanged: (layerId, opacity) {
+          changedLayerId = layerId;
+          changedOpacity = opacity;
+        },
+      ),
+    );
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      const Offset(-30, 0),
+    );
+
+    expect(changedLayerId, const LayerId('layer-1'));
+    expect(changedOpacity, isNotNull);
+  });
+
+  testWidgets('renders frame headers and cells', (tester) async {
     await tester.pumpWidget(_grid());
 
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,
@@ -27,21 +88,26 @@ void main() {
     );
   });
 
-  testWidgets('selects frame', (tester) async {
+  testWidgets('selecting a cell selects layer and frame', (tester) async {
+    LayerId? selectedLayerId;
     int? selectedFrameIndex;
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
+      _grid(
+        onSelectLayer: (layerId) => selectedLayerId = layerId,
+        onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
+      ),
     );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
     );
 
+    expect(selectedLayerId, const LayerId('layer-1'));
     expect(selectedFrameIndex, 3);
   });
 
-  testWidgets('selects layer', (tester) async {
+  testWidgets('selects layer from row controls', (tester) async {
     LayerId? selectedLayerId;
 
     await tester.pumpWidget(
@@ -68,14 +134,15 @@ void main() {
     expect(find.text('●'), findsOneWidget);
   });
 
-  testWidgets('highlights current frame', (tester) async {
+  testWidgets('current frame header uses plain text', (tester) async {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-3')),
       findsOneWidget,
     );
-    expect(find.text('▶ 3'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('▶ 3'), findsNothing);
   });
 }
 
@@ -85,12 +152,15 @@ Widget _grid({
   Frame? Function(Layer layer, int frameIndex)? resolveFrameForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
+  VoidCallback? onAddLayer,
+  ValueChanged<LayerId>? onToggleLayerVisibility,
+  void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
 }) {
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
         width: 900,
-        height: 240,
+        height: 260,
         child: LayerTimelineGrid(
           layers: _layers,
           activeLayerId: const LayerId('layer-1'),
@@ -99,6 +169,9 @@ Widget _grid({
           resolveFrameForLayer: resolveFrameForLayer ?? (_, _) => null,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
+          onAddLayer: onAddLayer ?? () {},
+          onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
+          onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
         ),
       ),
     ),
@@ -116,6 +189,7 @@ final _layers = [
   Layer(
     id: const LayerId('layer-2'),
     name: 'Layer 2',
+    opacity: 0.5,
     frames: [
       Frame(id: const FrameId('frame-2'), duration: 1, strokes: const []),
     ],

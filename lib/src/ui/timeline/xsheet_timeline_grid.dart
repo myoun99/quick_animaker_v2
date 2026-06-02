@@ -14,6 +14,9 @@ class XSheetTimelineGrid extends StatelessWidget {
     required this.resolveFrameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    required this.onAddLayer,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
   });
 
   final List<Layer> layers;
@@ -23,11 +26,16 @@ class XSheetTimelineGrid extends StatelessWidget {
   final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final VoidCallback onAddLayer;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   static const int _minimumVisibleFrames = 24;
   static const double _frameColumnWidth = 72;
-  static const double _layerColumnWidth = 96;
+  static const double _addLayerColumnWidth = 96;
+  static const double _layerColumnWidth = 164;
   static const double _rowHeight = 36;
+  static const double _headerHeight = 76;
 
   @override
   Widget build(BuildContext context) {
@@ -46,14 +54,26 @@ class XSheetTimelineGrid extends StatelessWidget {
               children: [
                 _HeaderCell(
                   width: _frameColumnWidth,
-                  height: _rowHeight,
+                  height: _headerHeight,
                   child: const Text('Frame'),
+                ),
+                _HeaderCell(
+                  width: _addLayerColumnWidth,
+                  height: _headerHeight,
+                  child: TextButton.icon(
+                    key: const ValueKey<String>('xsheet-add-layer-button'),
+                    onPressed: onAddLayer,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Layer'),
+                  ),
                 ),
                 for (final layer in layers)
                   _LayerHeader(
                     layer: layer,
                     active: layer.id == activeLayerId,
                     onSelectLayer: onSelectLayer,
+                    onToggleLayerVisibility: onToggleLayerVisibility,
+                    onLayerOpacityChanged: onLayerOpacityChanged,
                   ),
               ],
             ),
@@ -94,11 +114,15 @@ class _LayerHeader extends StatelessWidget {
     required this.layer,
     required this.active,
     required this.onSelectLayer,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
   });
 
   final Layer layer;
   final bool active;
   final ValueChanged<LayerId> onSelectLayer;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -109,19 +133,55 @@ class _LayerHeader extends StatelessWidget {
       onTap: () => onSelectLayer(layer.id),
       child: Container(
         width: XSheetTimelineGrid._layerColumnWidth,
-        height: XSheetTimelineGrid._rowHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        alignment: Alignment.center,
+        height: XSheetTimelineGrid._headerHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: active
               ? colorScheme.secondaryContainer
               : colorScheme.surfaceContainerHighest,
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Text(
-          layer.name,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              layer.name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  key: ValueKey<String>('xsheet-layer-visibility-${layer.id}'),
+                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                  icon: Icon(
+                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                    size: 16,
+                  ),
+                  onPressed: () => onToggleLayerVisibility(layer.id),
+                ),
+                Expanded(
+                  child: Slider(
+                    key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+                  ),
+                ),
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${(layer.opacity * 100).round()}%',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -171,8 +231,13 @@ class _XSheetFrameRow extends StatelessWidget {
                 width: current ? 2 : 1,
               ),
             ),
-            child: Text(current ? '▶ $frameIndex' : '$frameIndex'),
+            child: Text('$frameIndex'),
           ),
+        ),
+        _HeaderCell(
+          width: XSheetTimelineGrid._addLayerColumnWidth,
+          height: XSheetTimelineGrid._rowHeight,
+          child: const SizedBox.shrink(),
         ),
         for (final layer in layers)
           _XSheetCell(
