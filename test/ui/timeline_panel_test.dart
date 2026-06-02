@@ -10,7 +10,9 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
 void main() {
-  testWidgets('renders horizontal mode', (tester) async {
+  testWidgets('horizontal mode renders integrated layer timeline', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _panel(orientation: TimelineOrientation.horizontal),
     );
@@ -18,16 +20,26 @@ void main() {
     expect(find.byType(TimelinePanel), findsOneWidget);
     expect(find.byType(LayerTimelineGrid), findsOneWidget);
     expect(
+      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,
     );
   });
 
-  testWidgets('renders vertical mode', (tester) async {
+  testWidgets('vertical mode renders integrated X-sheet timeline', (
+    tester,
+  ) async {
     await tester.pumpWidget(_panel(orientation: TimelineOrientation.vertical));
 
     expect(find.byType(TimelinePanel), findsOneWidget);
     expect(find.byType(XSheetTimelineGrid), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
       findsOneWidget,
@@ -48,6 +60,51 @@ void main() {
     await tester.tap(find.text('Show X-sheet'));
 
     expect(selectedOrientation, TimelineOrientation.vertical);
+  });
+
+  testWidgets('add layer callback is forwarded', (tester) async {
+    var called = false;
+
+    await tester.pumpWidget(_panel(onAddLayer: () => called = true));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+    );
+
+    expect(called, isTrue);
+  });
+
+  testWidgets('visibility callback is forwarded', (tester) async {
+    LayerId? toggledLayerId;
+
+    await tester.pumpWidget(
+      _panel(onToggleLayerVisibility: (layerId) => toggledLayerId = layerId),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-2')),
+    );
+
+    expect(toggledLayerId, const LayerId('layer-2'));
+  });
+
+  testWidgets('opacity callback is forwarded', (tester) async {
+    LayerId? changedLayerId;
+    double? changedOpacity;
+
+    await tester.pumpWidget(
+      _panel(
+        onLayerOpacityChanged: (layerId, opacity) {
+          changedLayerId = layerId;
+          changedOpacity = opacity;
+        },
+      ),
+    );
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      const Offset(-30, 0),
+    );
+
+    expect(changedLayerId, const LayerId('layer-1'));
+    expect(changedOpacity, isNotNull);
   });
 
   testWidgets('select frame callback still works', (tester) async {
@@ -72,16 +129,17 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')),
+      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('highlights current frame', (tester) async {
+  testWidgets('highlights current frame without triangle label', (tester) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
-    expect(find.text('▶ 3'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('▶ 3'), findsNothing);
     expect(find.textContaining('Current frame: 3'), findsOneWidget);
   });
 }
@@ -92,6 +150,9 @@ Widget _panel({
   TimelineOrientation orientation = TimelineOrientation.horizontal,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
+  VoidCallback? onAddLayer,
+  ValueChanged<LayerId>? onToggleLayerVisibility,
+  void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<TimelineOrientation>? onOrientationChanged,
 }) {
   return MaterialApp(
@@ -105,6 +166,9 @@ Widget _panel({
             frameIndex == 0 ? layer.frames.first : null,
         onSelectLayer: onSelectLayer ?? (_) {},
         onSelectFrame: onSelectFrame ?? (_) {},
+        onAddLayer: onAddLayer ?? () {},
+        onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
+        onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
         orientation: orientation,
         onOrientationChanged: onOrientationChanged ?? (_) {},
       ),
@@ -123,6 +187,7 @@ final _layers = [
   Layer(
     id: const LayerId('layer-2'),
     name: 'Layer 2',
+    opacity: 0.5,
     frames: [
       Frame(id: const FrameId('frame-2'), duration: 1, strokes: const []),
     ],

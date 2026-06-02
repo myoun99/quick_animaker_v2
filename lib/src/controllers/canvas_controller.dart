@@ -40,6 +40,8 @@ class CanvasController {
   final TimelineController? _timelineController;
   final BrushSettings _brushSettings;
   final List<StrokePoint> _activePoints = <StrokePoint>[];
+  final List<_StrokeUndoEntry> _strokeUndoEntries = <_StrokeUndoEntry>[];
+  final List<_StrokeRedoEntry> _strokeRedoEntries = <_StrokeRedoEntry>[];
 
   int _strokeSequence = 0;
 
@@ -102,6 +104,16 @@ class CanvasController {
         stroke: stroke,
       ),
     );
+    final timelineController = _timelineController;
+    if (timelineController != null) {
+      _strokeUndoEntries.add(
+        _StrokeUndoEntry(
+          frameIndex: timelineController.currentFrameIndex,
+          undoCount: _historyManager.undoCount,
+        ),
+      );
+      _strokeRedoEntries.clear();
+    }
     _activePoints.clear();
   }
 
@@ -110,15 +122,81 @@ class CanvasController {
   }
 
   void undo() {
-    if (canUndo) {
-      _historyManager.undo();
+    if (!canUndo) {
+      return;
+    }
+
+    final topStrokeEntry = _nextUndoableStrokeEntry();
+    final timelineController = _timelineController;
+    if (topStrokeEntry != null &&
+        timelineController != null &&
+        timelineController.currentFrameIndex != topStrokeEntry.frameIndex) {
+      timelineController.selectFrameIndex(topStrokeEntry.frameIndex);
+      return;
+    }
+
+    final undoneStrokeEntry = _popUndoableStrokeEntry();
+    _historyManager.undo();
+    if (undoneStrokeEntry != null) {
+      _strokeRedoEntries.add(
+        _StrokeRedoEntry(
+          frameIndex: undoneStrokeEntry.frameIndex,
+          redoCount: _historyManager.redoCount,
+        ),
+      );
     }
   }
 
   void redo() {
-    if (canRedo) {
-      _historyManager.redo();
+    if (!canRedo) {
+      return;
     }
+
+    final redoneStrokeEntry = _popRedoableStrokeEntry();
+    _historyManager.redo();
+    if (redoneStrokeEntry != null) {
+      _strokeUndoEntries.add(
+        _StrokeUndoEntry(
+          frameIndex: redoneStrokeEntry.frameIndex,
+          undoCount: _historyManager.undoCount,
+        ),
+      );
+    }
+  }
+
+  _StrokeUndoEntry? _nextUndoableStrokeEntry() {
+    if (_strokeUndoEntries.isEmpty) {
+      return null;
+    }
+
+    final entry = _strokeUndoEntries.last;
+    if (entry.undoCount != _historyManager.undoCount) {
+      return null;
+    }
+
+    return entry;
+  }
+
+  _StrokeUndoEntry? _popUndoableStrokeEntry() {
+    final entry = _nextUndoableStrokeEntry();
+    if (entry == null) {
+      return null;
+    }
+
+    return _strokeUndoEntries.removeLast();
+  }
+
+  _StrokeRedoEntry? _popRedoableStrokeEntry() {
+    if (_strokeRedoEntries.isEmpty) {
+      return null;
+    }
+
+    final entry = _strokeRedoEntries.last;
+    if (entry.redoCount != _historyManager.redoCount) {
+      return null;
+    }
+
+    return _strokeRedoEntries.removeLast();
   }
 
   StrokePoint _pointFromOffset(Offset position) {
@@ -245,4 +323,18 @@ class LayerFrame {
 
   final Layer layer;
   final Frame frame;
+}
+
+class _StrokeUndoEntry {
+  const _StrokeUndoEntry({required this.frameIndex, required this.undoCount});
+
+  final int frameIndex;
+  final int undoCount;
+}
+
+class _StrokeRedoEntry {
+  const _StrokeRedoEntry({required this.frameIndex, required this.redoCount});
+
+  final int frameIndex;
+  final int redoCount;
 }
