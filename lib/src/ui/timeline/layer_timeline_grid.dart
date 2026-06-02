@@ -14,6 +14,9 @@ class LayerTimelineGrid extends StatelessWidget {
     required this.resolveFrameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    required this.onAddLayer,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
   });
 
   final List<Layer> layers;
@@ -23,11 +26,14 @@ class LayerTimelineGrid extends StatelessWidget {
   final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final VoidCallback onAddLayer;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   static const int _minimumVisibleCells = 24;
-  static const double _layerNameWidth = 132;
+  static const double _layerControlsWidth = 220;
   static const double _cellWidth = 48;
-  static const double _rowHeight = 36;
+  static const double _rowHeight = 52;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +51,14 @@ class LayerTimelineGrid extends StatelessWidget {
             Row(
               children: [
                 _HeaderCell(
-                  width: _layerNameWidth,
+                  width: _layerControlsWidth,
                   height: _rowHeight,
-                  child: const Text('Layer'),
+                  child: TextButton.icon(
+                    key: const ValueKey<String>('timeline-add-layer-button'),
+                    onPressed: onAddLayer,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Layer'),
+                  ),
                 ),
                 for (
                   var frameIndex = 0;
@@ -70,6 +81,8 @@ class LayerTimelineGrid extends StatelessWidget {
                 resolveFrameForLayer: resolveFrameForLayer,
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
+                onToggleLayerVisibility: onToggleLayerVisibility,
+                onLayerOpacityChanged: onLayerOpacityChanged,
               ),
             if (layers.isEmpty)
               SizedBox(
@@ -98,6 +111,8 @@ class _LayerRow extends StatelessWidget {
     required this.resolveFrameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
   });
 
   final Layer layer;
@@ -107,6 +122,8 @@ class _LayerRow extends StatelessWidget {
   final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -119,18 +136,52 @@ class _LayerRow extends StatelessWidget {
           key: ValueKey<String>('timeline-layer-row-${layer.id}'),
           onTap: () => onSelectLayer(layer.id),
           child: Container(
-            width: LayerTimelineGrid._layerNameWidth,
+            width: LayerTimelineGrid._layerControlsWidth,
             height: LayerTimelineGrid._rowHeight,
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            alignment: Alignment.centerLeft,
             decoration: BoxDecoration(
               color: active ? activeColor : colorScheme.surface,
               border: Border.all(color: colorScheme.outlineVariant),
             ),
-            child: Text(
-              layer.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    layer.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+                  ),
+                ),
+                IconButton(
+                  key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
+                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                  icon: Icon(
+                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                    size: 18,
+                  ),
+                  onPressed: () => onToggleLayerVisibility(layer.id),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Slider(
+                    key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+                  ),
+                ),
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${(layer.opacity * 100).round()}%',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -182,7 +233,7 @@ class _FrameHeader extends StatelessWidget {
             width: selected ? 2 : 1,
           ),
         ),
-        child: Text(selected ? '▶ $frameIndex' : '$frameIndex'),
+        child: Text('$frameIndex'),
       ),
     );
   }

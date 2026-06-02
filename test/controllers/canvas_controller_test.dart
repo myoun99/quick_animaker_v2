@@ -183,7 +183,7 @@ void main() {
           Layer(
             id: const LayerId('layer-1'),
             name: 'Layer 1',
-            frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
+            frames: const [],
           ),
         ],
       );
@@ -192,9 +192,23 @@ void main() {
       _drawStroke(fixture.controller);
 
       final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
-      expect(layer.frames, hasLength(2));
-      expect(layer.frames.last.duration, 1);
-      expect(layer.frames.last.strokes, hasLength(1));
+      expect(layer.frames, hasLength(1));
+      expect(layer.frames.single.duration, 1);
+      expect(layer.frames.single.strokes, hasLength(1));
+      expect(
+        fixture.timelineController.resolveFrameForLayer(
+          layer: layer,
+          frameIndex: 9,
+        ),
+        isNull,
+      );
+      expect(
+        fixture.timelineController.resolveFrameForLayer(
+          layer: layer,
+          frameIndex: 10,
+        ),
+        isNotNull,
+      );
     });
 
     test('drawing still targets active layer at current timeline frame', () {
@@ -211,6 +225,43 @@ void main() {
       expect(
         _findLayerFrame(fixture.repository, const LayerId('layer-2')).strokes,
         hasLength(1),
+      );
+    });
+
+    test('undo on different timeline frame moves first then removes stroke', () {
+      final fixture = _createFixture();
+
+      fixture.timelineController.selectFrameIndex(0);
+      _drawStroke(fixture.controller);
+      fixture.timelineController.selectFrameIndex(5);
+
+      fixture.controller.undo();
+
+      expect(fixture.timelineController.currentFrameIndex, 0);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        hasLength(1),
+      );
+
+      fixture.controller.undo();
+
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
+      );
+    });
+
+    test('undo on same timeline frame removes stroke immediately', () {
+      final fixture = _createFixture();
+
+      fixture.timelineController.selectFrameIndex(0);
+      _drawStroke(fixture.controller);
+      fixture.controller.undo();
+
+      expect(fixture.timelineController.currentFrameIndex, 0);
+      expect(
+        _findLayerFrame(fixture.repository, const LayerId('layer-1')).strokes,
+        isEmpty,
       );
     });
 

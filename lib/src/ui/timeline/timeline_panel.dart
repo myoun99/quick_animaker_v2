@@ -17,6 +17,9 @@ class TimelinePanel extends StatelessWidget {
     required this.resolveFrameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    required this.onAddLayer,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
     required this.orientation,
     required this.onOrientationChanged,
   });
@@ -28,6 +31,9 @@ class TimelinePanel extends StatelessWidget {
   final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final VoidCallback onAddLayer;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
 
@@ -41,7 +47,7 @@ class TimelinePanel extends StatelessWidget {
     return Material(
       color: colorScheme.surfaceContainerHighest,
       child: SizedBox(
-        height: 180,
+        height: 220,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -99,6 +105,9 @@ class TimelinePanel extends StatelessWidget {
                       resolveFrameForLayer: resolveFrameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
+                      onAddLayer: onAddLayer,
+                      onToggleLayerVisibility: onToggleLayerVisibility,
+                      onLayerOpacityChanged: onLayerOpacityChanged,
                     )
                   : XSheetTimelineGrid(
                       layers: layers,
@@ -108,6 +117,9 @@ class TimelinePanel extends StatelessWidget {
                       resolveFrameForLayer: resolveFrameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
+                      onAddLayer: onAddLayer,
+                      onToggleLayerVisibility: onToggleLayerVisibility,
+                      onLayerOpacityChanged: onLayerOpacityChanged,
                     ),
             ),
           ],

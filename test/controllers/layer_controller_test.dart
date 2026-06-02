@@ -42,6 +42,7 @@ void main() {
       expect(fixture.controller.layers, hasLength(3));
       fixture.controller.selectLayer(const LayerId('layer-3'));
       expect(fixture.controller.activeLayer?.name, 'Layer 3');
+      expect(fixture.controller.activeLayer?.frames, isEmpty);
     });
 
     test('toggles visibility', () {

@@ -6,7 +6,6 @@ import '../controllers/timeline_controller.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
-import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
@@ -17,7 +16,6 @@ import '../models/track_id.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
-import 'layers/layer_panel.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
@@ -95,53 +93,18 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFBDBDBD)),
-                      ),
-                      child: CanvasView(
-                        controller: _canvasController,
-                        cutId: _cutId,
-                        onChanged: () => setState(() {}),
-                      ),
-                    ),
-                  ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFBDBDBD)),
                 ),
-                LayerPanel(
-                  layers: _layerController.layers,
-                  activeLayerId: _layerController.activeLayerId,
-                  onSelectLayer: (layerId) {
-                    setState(() => _layerController.selectLayer(layerId));
-                  },
-                  onAddLayer: () {
-                    setState(() {
-                      _layerSequence += 1;
-                      _layerController.addLayerWithDefaults(
-                        layerId: LayerId('sample-layer-$_layerSequence'),
-                        name: 'Layer $_layerSequence',
-                      );
-                    });
-                  },
-                  onToggleVisibility: (layerId) {
-                    setState(() {
-                      _layerController.toggleLayerVisibility(layerId);
-                    });
-                  },
-                  onOpacityChanged: (layerId, opacity) {
-                    setState(() {
-                      _layerController.setLayerOpacity(
-                        layerId: layerId,
-                        opacity: opacity,
-                      );
-                    });
-                  },
+                child: CanvasView(
+                  controller: _canvasController,
+                  cutId: _cutId,
+                  onChanged: () => setState(() {}),
                 ),
-              ],
+              ),
             ),
           ),
           TimelinePanel(
@@ -156,6 +119,28 @@ class _HomePageState extends State<HomePage> {
             },
             onSelectFrame: (frameIndex) {
               setState(() => _timelineController.selectFrameIndex(frameIndex));
+            },
+            onAddLayer: () {
+              setState(() {
+                _layerSequence += 1;
+                _layerController.addLayerWithDefaults(
+                  layerId: LayerId('sample-layer-$_layerSequence'),
+                  name: 'Layer $_layerSequence',
+                );
+              });
+            },
+            onToggleLayerVisibility: (layerId) {
+              setState(() {
+                _layerController.toggleLayerVisibility(layerId);
+              });
+            },
+            onLayerOpacityChanged: (layerId, opacity) {
+              setState(() {
+                _layerController.setLayerOpacity(
+                  layerId: layerId,
+                  opacity: opacity,
+                );
+              });
             },
             orientation: _timelineOrientation,
             onOrientationChanged: (orientation) {
@@ -186,18 +171,12 @@ class _HomePageState extends State<HomePage> {
                 Layer(
                   id: const LayerId('sample-layer-1'),
                   name: 'Layer 1',
-                  frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
+                  frames: const [],
                 ),
                 Layer(
                   id: const LayerId('sample-layer-2'),
                   name: 'Layer 2',
-                  frames: [
-                    Frame(
-                      id: const FrameId('sample-frame-layer-2'),
-                      duration: 1,
-                      strokes: const [],
-                    ),
-                  ],
+                  frames: const [],
                 ),
               ],
             ),
