@@ -1,0 +1,71 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
+import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/commands/update_layer_timeline_command.dart';
+import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
+
+void main() {
+  test('execute applies after layer and undo restores before layer', () {
+    final before = Layer(
+      id: const LayerId('layer-1'),
+      name: 'Layer 1',
+      frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
+    );
+    final after = before.copyWith(
+      timeline: {0: TimelineExposure.drawing(const FrameId('a')), 4: const TimelineExposure.blank()},
+    );
+    final repository = ProjectRepository(initialProject: _project(before));
+    final history = HistoryManager();
+
+    history.execute(UpdateLayerTimelineCommand(repository: repository, before: before, after: after));
+
+    expect(_layer(repository).timeline[4]?.type, TimelineExposureType.blank);
+
+    history.undo();
+
+    expect(_layer(repository), before);
+
+    history.redo();
+
+    expect(_layer(repository), after);
+  });
+}
+
+Project _project(Layer layer) {
+  return Project(
+    id: const ProjectId('project-1'),
+    name: 'Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('track-1'),
+        name: 'Track',
+        cuts: [
+          Cut(
+            id: const CutId('cut-1'),
+            name: 'Cut',
+            duration: 1,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [layer],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Layer _layer(ProjectRepository repository) {
+  return repository.requireProject().tracks.single.cuts.single.layers.single;
+}

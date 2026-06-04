@@ -1,1 +1,7 @@
-enum TimelineCellExposureState { empty, drawingStart, heldExposure }
+enum TimelineCellExposureState {
+  empty,
+  drawingStart,
+  heldExposure,
+  blankStart,
+  blankHeld,
+}

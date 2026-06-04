@@ -282,12 +282,19 @@ class _XSheetCell extends StatelessWidget {
       TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
       TimelineCellExposureState.heldExposure =>
         colorScheme.tertiaryContainer.withValues(alpha: 0.62),
+      TimelineCellExposureState.blankStart => colorScheme.errorContainer,
+      TimelineCellExposureState.blankHeld =>
+        colorScheme.errorContainer.withValues(alpha: 0.35),
     };
     final exposureBorderColor = switch (exposureState) {
       TimelineCellExposureState.empty => colorScheme.outlineVariant,
       TimelineCellExposureState.drawingStart => colorScheme.tertiary,
       TimelineCellExposureState.heldExposure => colorScheme.tertiary.withValues(
         alpha: 0.55,
+      ),
+      TimelineCellExposureState.blankStart => colorScheme.error,
+      TimelineCellExposureState.blankHeld => colorScheme.error.withValues(
+        alpha: 0.45,
       ),
     };
 
@@ -330,6 +337,8 @@ String _markerForState(TimelineCellExposureState state) {
     TimelineCellExposureState.empty => '',
     TimelineCellExposureState.drawingStart => '○',
     TimelineCellExposureState.heldExposure => '',
+    TimelineCellExposureState.blankStart => 'X',
+    TimelineCellExposureState.blankHeld => '',
   };
 }
 
@@ -338,6 +347,8 @@ String? _semanticsLabelForState(TimelineCellExposureState state) {
     TimelineCellExposureState.empty => null,
     TimelineCellExposureState.drawingStart => 'drawing start',
     TimelineCellExposureState.heldExposure => 'held exposure',
+    TimelineCellExposureState.blankStart => 'blank exposure start',
+    TimelineCellExposureState.blankHeld => 'blank held exposure',
   };
 }
 

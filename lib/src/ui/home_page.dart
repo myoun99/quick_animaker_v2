@@ -55,6 +55,7 @@ class _HomePageState extends State<HomePage> {
     );
     _timelineController = TimelineController(
       repository: _repository,
+      historyManager: _historyManager,
       cutId: _cutId,
     );
     _canvasController = CanvasController(
@@ -83,7 +84,20 @@ class _HomePageState extends State<HomePage> {
       return false;
     }
 
-    return !_timelineController.isDrawingStartForLayer(
+    return _timelineController.canCreateDrawingAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+
+  bool get _canCreateBlankAtCurrentFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return false;
+    }
+
+    return _timelineController.canCreateBlankAt(
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
     );
@@ -100,6 +114,15 @@ class _HomePageState extends State<HomePage> {
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
     );
+  }
+
+  void _createBlankAtCurrentFrame() {
+    final layer = _activeLayer;
+    if (layer == null || !_canCreateBlankAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.createBlankExposureForLayer(layerId: layer.id);
   }
 
   String _nextFrameId(LayerId layerId) {
@@ -143,6 +166,20 @@ class _HomePageState extends State<HomePage> {
       frameIndex: frameIndex,
     )) {
       return TimelineCellExposureState.heldExposure;
+    }
+
+    if (_timelineController.isBlankStartForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    )) {
+      return TimelineCellExposureState.blankStart;
+    }
+
+    if (_timelineController.isBlankHeldForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    )) {
+      return TimelineCellExposureState.blankHeld;
     }
 
     return TimelineCellExposureState.empty;
@@ -203,6 +240,13 @@ class _HomePageState extends State<HomePage> {
                         ? () => setState(_createDrawingAtCurrentFrame)
                         : null,
                     child: const Text('New Drawing'),
+                  ),
+                  TextButton(
+                    key: const ValueKey<String>('blank-exposure-button'),
+                    onPressed: _canCreateBlankAtCurrentFrame
+                        ? () => setState(_createBlankAtCurrentFrame)
+                        : null,
+                    child: const Text('Blank / X'),
                   ),
                   TextButton(
                     key: const ValueKey<String>('decrease-exposure-button'),
