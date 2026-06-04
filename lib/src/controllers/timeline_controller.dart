@@ -147,6 +147,41 @@ class TimelineController {
     return _entryForFrame(layer: layer, frameId: frameId)?.startIndex;
   }
 
+  int? effectiveDurationForLayerFrame({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    final entry = _entryForFrame(layer: layer, frameId: frameId);
+    if (entry == null) {
+      return null;
+    }
+
+    return _effectiveEndIndexForEntry(layer: layer, entry: entry) -
+        entry.startIndex;
+  }
+
+  bool canIncreaseExposure({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    return _entryForFrame(layer: layer, frameId: frameId) != null;
+  }
+
+  bool canDecreaseExposure({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    final entry = _entryForFrame(layer: layer, frameId: frameId);
+    if (entry == null) {
+      return false;
+    }
+
+    return _nextEntryForFrame(layer: layer, frameId: frameId) != null &&
+        _effectiveEndIndexForEntry(layer: layer, entry: entry) -
+                entry.startIndex >
+            1;
+  }
+
   void createDrawingFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
@@ -200,8 +235,7 @@ class TimelineController {
   void decreaseExposure({required LayerId layerId, required FrameId frameId}) {
     final layer = _requireLayer(layerId);
     final frame = _requireFrameInLayer(layer: layer, frameId: frameId);
-    final currentDuration = _safeDuration(frame.duration);
-    if (currentDuration == 1) {
+    if (!canDecreaseExposure(layer: layer, frameId: frameId)) {
       return;
     }
 
@@ -214,10 +248,13 @@ class TimelineController {
       _shiftFrameStarts(layerId: layerId, entries: connectedEntries, delta: -1);
     }
 
-    _repository.updateFrame(
-      frameId: frameId,
-      update: (frame) => frame.copyWith(duration: currentDuration - 1),
-    );
+    final currentDuration = _safeDuration(frame.duration);
+    if (currentDuration > 1) {
+      _repository.updateFrame(
+        frameId: frameId,
+        update: (frame) => frame.copyWith(duration: currentDuration - 1),
+      );
+    }
   }
 
   Frame _requireFrameInLayer({required Layer layer, required FrameId frameId}) {
@@ -321,8 +358,12 @@ class TimelineController {
       return const <_FrameExposureEntry>[];
     }
 
+    final targetEntry = entries[targetIndex];
     final connectedEntries = <_FrameExposureEntry>[];
-    var expectedStartIndex = entries[targetIndex].authoredEndIndex;
+    var expectedStartIndex = _effectiveEndIndexForEntry(
+      layer: layer,
+      entry: targetEntry,
+    );
     for (var index = targetIndex + 1; index < entries.length; index += 1) {
       final entry = entries[index];
       if (entry.startIndex != expectedStartIndex) {
@@ -334,6 +375,41 @@ class TimelineController {
     }
 
     return connectedEntries;
+  }
+
+  _FrameExposureEntry? _nextEntryForFrame({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    final entries = _entriesForLayer(layer);
+    final targetIndex = entries.indexWhere(
+      (entry) => entry.frame.id == frameId,
+    );
+    if (targetIndex == -1 || targetIndex + 1 >= entries.length) {
+      return null;
+    }
+
+    return entries[targetIndex + 1];
+  }
+
+  int _effectiveEndIndexForEntry({
+    required Layer layer,
+    required _FrameExposureEntry entry,
+  }) {
+    final nextEntry = _nextEntryForFrame(
+      layer: layer,
+      frameId: entry.frame.id,
+    );
+    if (nextEntry != null) {
+      return nextEntry.startIndex;
+    }
+
+    final visibleTimelineEnd = totalFrameCount;
+    if (visibleTimelineEnd > entry.startIndex) {
+      return visibleTimelineEnd;
+    }
+
+    return entry.authoredEndIndex;
   }
 
   void _shiftFrameStarts({

@@ -120,7 +120,7 @@ class _HomePageState extends State<HomePage> {
   void _decreaseSelectedExposure() {
     final layer = _activeLayer;
     final frame = _selectedFrame;
-    if (layer == null || frame == null || frame.duration <= 1) {
+    if (layer == null || frame == null) {
       return;
     }
 
@@ -152,6 +152,25 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final activeLayer = _activeLayer;
     final selectedFrame = _selectedFrame;
+    final selectedEffectiveDuration =
+        activeLayer == null || selectedFrame == null
+        ? null
+        : _timelineController.effectiveDurationForLayerFrame(
+            layer: activeLayer,
+            frameId: selectedFrame.id,
+          );
+    final canDecreaseExposure = activeLayer == null || selectedFrame == null
+        ? false
+        : _timelineController.canDecreaseExposure(
+            layer: activeLayer,
+            frameId: selectedFrame.id,
+          );
+    final canIncreaseExposure = activeLayer == null || selectedFrame == null
+        ? false
+        : _timelineController.canIncreaseExposure(
+            layer: activeLayer,
+            frameId: selectedFrame.id,
+          );
 
     return Scaffold(
       appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
@@ -176,7 +195,7 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 16),
                   Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
                   const SizedBox(width: 16),
-                  Text('Duration: ${selectedFrame?.duration ?? '-'}'),
+                  Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),
                   TextButton(
                     key: const ValueKey<String>('new-drawing-button'),
@@ -187,15 +206,14 @@ class _HomePageState extends State<HomePage> {
                   ),
                   TextButton(
                     key: const ValueKey<String>('decrease-exposure-button'),
-                    onPressed:
-                        selectedFrame != null && selectedFrame.duration > 1
+                    onPressed: canDecreaseExposure
                         ? () => setState(_decreaseSelectedExposure)
                         : null,
                     child: const Text('- Exposure'),
                   ),
                   TextButton(
                     key: const ValueKey<String>('increase-exposure-button'),
-                    onPressed: selectedFrame != null
+                    onPressed: canIncreaseExposure
                         ? () => setState(_increaseSelectedExposure)
                         : null,
                     child: const Text('+ Exposure'),
