@@ -514,15 +514,16 @@ class TimelineController {
       }
     }
 
-    final entriesToMove = movingIndexes
-        .map(
-          (startIndex) => _TimelineEntry(
-            startIndex: startIndex,
-            exposure: timeline[startIndex]!,
-          ),
-        )
-        .toList(growable: false)
-      ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
+    final entriesToMove =
+        movingIndexes
+            .map(
+              (startIndex) => _TimelineEntry(
+                startIndex: startIndex,
+                exposure: timeline[startIndex]!,
+              ),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(timeline)
       ..removeWhere((index, _) => movingIndexes.contains(index));
 
