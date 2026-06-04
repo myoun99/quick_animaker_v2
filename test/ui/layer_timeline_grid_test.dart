@@ -148,7 +148,9 @@ void main() {
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
-  testWidgets('blank start shows X with low-emphasis background', (tester) async {
+  testWidgets('blank start shows X with low-emphasis background', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>

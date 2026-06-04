@@ -218,33 +218,36 @@ void main() {
       expect(layer.timeline[0]?.frameId, const FrameId('blank-replacement'));
     });
 
-    test('create drawing frame inside blank hold adds sparse drawing entry', () {
-      final fixture = _createFixture(
-        extraLayers: [
-          Layer(
-            id: const LayerId('blank-layer'),
-            name: 'Blank Layer',
-            frames: const [],
-            timeline: const {0: TimelineExposure.blank()},
-          ),
-        ],
-      );
-      fixture.controller.selectFrameIndex(5);
+    test(
+      'create drawing frame inside blank hold adds sparse drawing entry',
+      () {
+        final fixture = _createFixture(
+          extraLayers: [
+            Layer(
+              id: const LayerId('blank-layer'),
+              name: 'Blank Layer',
+              frames: const [],
+              timeline: const {0: TimelineExposure.blank()},
+            ),
+          ],
+        );
+        fixture.controller.selectFrameIndex(5);
 
-      fixture.controller.createDrawingFrameForLayer(
-        layerId: const LayerId('blank-layer'),
-        frameId: const FrameId('inside-blank-hold'),
-      );
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('blank-layer'),
+          frameId: const FrameId('inside-blank-hold'),
+        );
 
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('blank-layer'),
-      );
-      expect(layer.frames, hasLength(1));
-      expect(layer.timeline.keys, orderedEquals([0, 5]));
-      expect(layer.timeline[0]?.type, TimelineExposureType.blank);
-      expect(layer.timeline[5]?.frameId, const FrameId('inside-blank-hold'));
-    });
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('blank-layer'),
+        );
+        expect(layer.frames, hasLength(1));
+        expect(layer.timeline.keys, orderedEquals([0, 5]));
+        expect(layer.timeline[0]?.type, TimelineExposureType.blank);
+        expect(layer.timeline[5]?.frameId, const FrameId('inside-blank-hold'));
+      },
+    );
 
     test('blank creation is disabled for null and blank regions', () {
       final fixture = _createFixture();
