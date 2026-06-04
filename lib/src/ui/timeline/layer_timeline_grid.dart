@@ -250,7 +250,7 @@ class _FrameHeader extends StatelessWidget {
             width: selected ? 2 : 1,
           ),
         ),
-        child: Text('$frameIndex'),
+        child: Text('${frameIndex + 1}'),
       ),
     );
   }
@@ -281,6 +281,18 @@ class _TimelineCell extends StatelessWidget {
     final baseColor = active
         ? colorScheme.secondaryContainer.withValues(alpha: 0.35)
         : colorScheme.surface;
+    final exposureColor = switch (exposureState) {
+      TimelineCellExposureState.empty => baseColor,
+      TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
+      TimelineCellExposureState.heldExposure => colorScheme.tertiaryContainer
+          .withValues(alpha: 0.62),
+    };
+    final exposureBorderColor = switch (exposureState) {
+      TimelineCellExposureState.empty => colorScheme.outlineVariant,
+      TimelineCellExposureState.drawingStart => colorScheme.tertiary,
+      TimelineCellExposureState.heldExposure => colorScheme.tertiary
+          .withValues(alpha: 0.55),
+    };
 
     return InkWell(
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
@@ -293,9 +305,9 @@ class _TimelineCell extends StatelessWidget {
         height: LayerTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: current ? colorScheme.primaryContainer : baseColor,
+          color: current ? colorScheme.primaryContainer : exposureColor,
           border: Border.all(
-            color: current ? colorScheme.primary : colorScheme.outlineVariant,
+            color: current ? colorScheme.primary : exposureBorderColor,
             width: current ? 2 : 1,
           ),
         ),
@@ -319,8 +331,8 @@ class _TimelineCell extends StatelessWidget {
 String _markerForState(TimelineCellExposureState state) {
   return switch (state) {
     TimelineCellExposureState.empty => '',
-    TimelineCellExposureState.drawingStart => '●',
-    TimelineCellExposureState.heldExposure => '─',
+    TimelineCellExposureState.drawingStart => '○',
+    TimelineCellExposureState.heldExposure => '',
   };
 }
 

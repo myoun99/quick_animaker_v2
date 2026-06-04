@@ -15,7 +15,7 @@ void main() {
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-1')),
@@ -27,15 +27,15 @@ void main() {
     );
   });
 
-  testWidgets('add layer button calls callback', (tester) async {
-    var called = false;
+  testWidgets('does not render a dedicated add layer grid column', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid());
 
-    await tester.pumpWidget(_grid(onAddLayer: () => called = true));
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
+      findsNothing,
     );
-
-    expect(called, isTrue);
   });
 
   testWidgets('visibility button calls callback', (tester) async {
@@ -132,7 +132,7 @@ void main() {
       ),
     );
 
-    expect(find.text('●'), findsOneWidget);
+    expect(find.text('○'), findsOneWidget);
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -145,14 +145,14 @@ void main() {
       ),
     );
 
-    expect(find.text('─'), findsOneWidget);
+    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('●'), findsNothing);
-    expect(find.text('─'), findsNothing);
+    expect(find.text('○'), findsNothing);
+    expect(find.bySemanticsLabel('held exposure'), findsNothing);
   });
 
   testWidgets('current frame row uses plain text', (tester) async {
@@ -162,8 +162,8 @@ void main() {
       find.byKey(const ValueKey<String>('xsheet-frame-row-3')),
       findsOneWidget,
     );
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('▶ 3'), findsNothing);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('▶ 4'), findsNothing);
   });
 }
 

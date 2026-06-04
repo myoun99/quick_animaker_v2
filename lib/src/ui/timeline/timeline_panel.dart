@@ -58,28 +58,17 @@ class TimelinePanel extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Timeline • Current frame: $currentFrameIndex',
+                      'Timeline • Current frame: ${currentFrameIndex + 1}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
-                  SegmentedButton<TimelineOrientation>(
-                    key: const ValueKey<String>('timeline-orientation-toggle'),
-                    segments: const [
-                      ButtonSegment<TimelineOrientation>(
-                        value: TimelineOrientation.horizontal,
-                        label: Text('Horizontal'),
-                        icon: Icon(Icons.view_week),
-                      ),
-                      ButtonSegment<TimelineOrientation>(
-                        value: TimelineOrientation.vertical,
-                        label: Text('X-sheet'),
-                        icon: Icon(Icons.view_column),
-                      ),
-                    ],
-                    selected: {orientation},
-                    onSelectionChanged: (selection) {
-                      onOrientationChanged(selection.single);
-                    },
+                  TextButton.icon(
+                    key: const ValueKey<String>(
+                      'timeline-toolbar-add-layer-button',
+                    ),
+                    onPressed: onAddLayer,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Layer'),
                   ),
                   const SizedBox(width: 8),
                   TextButton(

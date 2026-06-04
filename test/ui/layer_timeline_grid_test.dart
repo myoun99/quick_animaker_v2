@@ -132,7 +132,7 @@ void main() {
       ),
     );
 
-    expect(find.text('●'), findsOneWidget);
+    expect(find.text('○'), findsOneWidget);
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -145,14 +145,14 @@ void main() {
       ),
     );
 
-    expect(find.text('─'), findsOneWidget);
+    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('●'), findsNothing);
-    expect(find.text('─'), findsNothing);
+    expect(find.text('○'), findsNothing);
+    expect(find.bySemanticsLabel('held exposure'), findsNothing);
   });
 
   testWidgets('current frame header uses plain text', (tester) async {
@@ -162,8 +162,8 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-3')),
       findsOneWidget,
     );
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('▶ 3'), findsNothing);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('▶ 4'), findsNothing);
   });
 }
 
