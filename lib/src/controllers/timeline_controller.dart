@@ -187,11 +187,7 @@ class TimelineController {
     );
 
     if (connectedEntries.isNotEmpty) {
-      _shiftFrameStarts(
-        layerId: layerId,
-        entries: connectedEntries,
-        delta: 1,
-      );
+      _shiftFrameStarts(layerId: layerId, entries: connectedEntries, delta: 1);
     }
 
     _repository.updateFrame(
@@ -215,11 +211,7 @@ class TimelineController {
     );
 
     if (connectedEntries.isNotEmpty) {
-      _shiftFrameStarts(
-        layerId: layerId,
-        entries: connectedEntries,
-        delta: -1,
-      );
+      _shiftFrameStarts(layerId: layerId, entries: connectedEntries, delta: -1);
     }
 
     _repository.updateFrame(
@@ -322,7 +314,9 @@ class TimelineController {
     required FrameId frameId,
   }) {
     final entries = _entriesForLayer(layer);
-    final targetIndex = entries.indexWhere((entry) => entry.frame.id == frameId);
+    final targetIndex = entries.indexWhere(
+      (entry) => entry.frame.id == frameId,
+    );
     if (targetIndex == -1 || targetIndex + 1 >= entries.length) {
       return const <_FrameExposureEntry>[];
     }

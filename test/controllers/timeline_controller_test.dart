@@ -62,10 +62,7 @@ void main() {
         const FrameId('one-frame'),
       );
       expect(
-        fixture.controller.isHeldExposureForLayer(
-          layer: layer,
-          frameIndex: 10,
-        ),
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 10),
         isTrue,
       );
     });
@@ -148,11 +145,14 @@ void main() {
       );
     });
 
-    test('total frame count uses max authored exposure length across layers', () {
-      final fixture = _createFixture();
+    test(
+      'total frame count uses max authored exposure length across layers',
+      () {
+        final fixture = _createFixture();
 
-      expect(fixture.controller.totalFrameCount, 7);
-    });
+        expect(fixture.controller.totalFrameCount, 7);
+      },
+    );
 
     test('create drawing frame creates one sparse frame and holds forward', () {
       final fixture = _createFixture();
@@ -180,17 +180,11 @@ void main() {
         );
       }
       expect(
-        fixture.controller.isDrawingStartForLayer(
-          layer: layer,
-          frameIndex: 10,
-        ),
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 10),
         isTrue,
       );
       expect(
-        fixture.controller.isHeldExposureForLayer(
-          layer: layer,
-          frameIndex: 11,
-        ),
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 11),
         isTrue,
       );
     });
@@ -318,10 +312,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 2),
-          _FrameSpec(FrameId('b'), 4, 2),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 2), _FrameSpec(FrameId('b'), 4, 2)],
       );
 
       fixture.controller.increaseExposure(
@@ -348,10 +339,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 2),
-          _FrameSpec(FrameId('b'), 4, 2),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 2), _FrameSpec(FrameId('b'), 4, 2)],
       );
 
       fixture.controller.increaseExposure(
@@ -440,10 +428,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 3),
-          _FrameSpec(FrameId('b'), 5, 2),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 3), _FrameSpec(FrameId('b'), 5, 2)],
       );
 
       fixture.controller.decreaseExposure(
@@ -465,35 +450,38 @@ void main() {
       );
     });
 
-    test('decrease exposure does not go below one or move following frames', () {
-      final fixture = _createFixture();
-      _createSparseBlock(
-        fixture.controller,
-        const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 1, 2),
-        ],
-      );
+    test(
+      'decrease exposure does not go below one or move following frames',
+      () {
+        final fixture = _createFixture();
+        _createSparseBlock(
+          fixture.controller,
+          const LayerId('empty-layer'),
+          const [
+            _FrameSpec(FrameId('a'), 0, 1),
+            _FrameSpec(FrameId('b'), 1, 2),
+          ],
+        );
 
-      fixture.controller.decreaseExposure(
-        layerId: const LayerId('empty-layer'),
-        frameId: const FrameId('a'),
-      );
+        fixture.controller.decreaseExposure(
+          layerId: const LayerId('empty-layer'),
+          frameId: const FrameId('a'),
+        );
 
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('empty-layer'),
-      );
-      expect(_findFrame(layer, const FrameId('a')).duration, 1);
-      expect(
-        fixture.controller.exposureStartIndexForLayer(
-          layer: layer,
-          frameId: const FrameId('b'),
-        ),
-        1,
-      );
-    });
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('empty-layer'),
+        );
+        expect(_findFrame(layer, const FrameId('a')).duration, 1);
+        expect(
+          fixture.controller.exposureStartIndexForLayer(
+            layer: layer,
+            frameId: const FrameId('b'),
+          ),
+          1,
+        );
+      },
+    );
 
     test('dense frame duplication is not introduced', () {
       final fixture = _createFixture();
