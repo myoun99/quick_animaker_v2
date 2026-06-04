@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import 'timeline_cell_exposure_state.dart';
 
 class LayerTimelineGrid extends StatelessWidget {
   const LayerTimelineGrid({
@@ -11,7 +11,7 @@ class LayerTimelineGrid extends StatelessWidget {
     required this.activeLayerId,
     required this.currentFrameIndex,
     required this.frameCount,
-    required this.resolveFrameForLayer,
+    required this.exposureStateForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
@@ -23,7 +23,8 @@ class LayerTimelineGrid extends StatelessWidget {
   final LayerId? activeLayerId;
   final int currentFrameIndex;
   final int frameCount;
-  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
@@ -78,7 +79,7 @@ class LayerTimelineGrid extends StatelessWidget {
                 active: layer.id == activeLayerId,
                 currentFrameIndex: currentFrameIndex,
                 visibleFrameCount: visibleFrameCount,
-                resolveFrameForLayer: resolveFrameForLayer,
+                exposureStateForLayer: exposureStateForLayer,
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
                 onToggleLayerVisibility: onToggleLayerVisibility,
@@ -108,7 +109,7 @@ class _LayerRow extends StatelessWidget {
     required this.active,
     required this.currentFrameIndex,
     required this.visibleFrameCount,
-    required this.resolveFrameForLayer,
+    required this.exposureStateForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onToggleLayerVisibility,
@@ -119,7 +120,8 @@ class _LayerRow extends StatelessWidget {
   final bool active;
   final int currentFrameIndex;
   final int visibleFrameCount;
-  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -210,7 +212,7 @@ class _LayerRow extends StatelessWidget {
             frameIndex: frameIndex,
             active: active,
             current: frameIndex == currentFrameIndex,
-            hasResolvedFrame: resolveFrameForLayer(layer, frameIndex) != null,
+            exposureState: exposureStateForLayer(layer, frameIndex),
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
           ),
@@ -260,7 +262,7 @@ class _TimelineCell extends StatelessWidget {
     required this.frameIndex,
     required this.active,
     required this.current,
-    required this.hasResolvedFrame,
+    required this.exposureState,
     required this.onSelectLayer,
     required this.onSelectFrame,
   });
@@ -269,7 +271,7 @@ class _TimelineCell extends StatelessWidget {
   final int frameIndex;
   final bool active;
   final bool current;
-  final bool hasResolvedFrame;
+  final TimelineCellExposureState exposureState;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -298,18 +300,36 @@ class _TimelineCell extends StatelessWidget {
           ),
         ),
         child: Text(
-          hasResolvedFrame ? '●' : '',
-          semanticsLabel: hasResolvedFrame ? 'drawing exposure' : null,
+          _markerForState(exposureState),
+          semanticsLabel: _semanticsLabelForState(exposureState),
           style: TextStyle(
             color: current
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            fontWeight: hasResolvedFrame ? FontWeight.bold : null,
+            fontWeight: exposureState == TimelineCellExposureState.empty
+                ? null
+                : FontWeight.bold,
           ),
         ),
       ),
     );
   }
+}
+
+String _markerForState(TimelineCellExposureState state) {
+  return switch (state) {
+    TimelineCellExposureState.empty => '',
+    TimelineCellExposureState.drawingStart => '●',
+    TimelineCellExposureState.heldExposure => '─',
+  };
+}
+
+String? _semanticsLabelForState(TimelineCellExposureState state) {
+  return switch (state) {
+    TimelineCellExposureState.empty => null,
+    TimelineCellExposureState.drawingStart => 'drawing start',
+    TimelineCellExposureState.heldExposure => 'held exposure',
+  };
 }
 
 class _HeaderCell extends StatelessWidget {

@@ -109,8 +109,90 @@ class TimelineController {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex)?.id;
   }
 
+  Frame? getSelectedFrameForLayer(Layer layer) {
+    return resolveFrameForLayer(layer: layer);
+  }
+
+  FrameId? getSelectedFrameIdForLayer(Layer layer) {
+    return getSelectedFrameForLayer(layer)?.id;
+  }
+
+  bool hasSelectedFrameForLayer(Layer layer) {
+    return getSelectedFrameForLayer(layer) != null;
+  }
+
   bool hasDrawingAtCurrentFrame({required Layer layer}) {
-    return resolveFrameForLayer(layer: layer) != null;
+    return hasSelectedFrameForLayer(layer);
+  }
+
+  bool isDrawingStartForLayer({
+    required Layer layer,
+    required int frameIndex,
+  }) {
+    if (frameIndex < 0) {
+      return false;
+    }
+
+    final resolvedFrameId = resolveFrameIdForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    );
+    if (resolvedFrameId == null) {
+      return false;
+    }
+
+    return exposureStartIndexForLayer(
+          layer: layer,
+          frameId: resolvedFrameId,
+        ) ==
+        frameIndex;
+  }
+
+  bool isHeldExposureForLayer({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return false;
+    }
+
+    final resolvedFrameId = resolveFrameIdForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    );
+    if (resolvedFrameId == null) {
+      return false;
+    }
+
+    return exposureStartIndexForLayer(
+          layer: layer,
+          frameId: resolvedFrameId,
+        ) !=
+        frameIndex;
+  }
+
+  int? exposureStartIndexForLayer({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    final explicitStarts =
+        _explicitFrameStarts[layer.id] ?? const <FrameId, int>{};
+    final explicitStart = explicitStarts[frameId];
+    if (explicitStart != null) {
+      return explicitStart;
+    }
+
+    var currentStart = 0;
+    for (final frame in layer.frames) {
+      if (explicitStarts.containsKey(frame.id)) {
+        continue;
+      }
+
+      if (frame.id == frameId) {
+        return currentStart;
+      }
+
+      currentStart += _safeDuration(frame.duration);
+    }
+
+    return null;
   }
 
   void createDrawingFrameForLayer({
@@ -126,12 +208,68 @@ class TimelineController {
       );
     }
 
-    _explicitFrameStarts.putIfAbsent(layerId, () => <FrameId, int>{})[frameId] =
-        _currentFrameIndex;
     _repository.addFrame(
       layerId: layerId,
       frame: Frame(id: frameId, duration: duration, strokes: const []),
     );
+    _explicitFrameStarts.putIfAbsent(layerId, () => <FrameId, int>{})[frameId] =
+        _currentFrameIndex;
+  }
+
+  void increaseExposure({
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    _requireFrameInLayer(layerId: layerId, frameId: frameId);
+    _repository.updateFrame(
+      frameId: frameId,
+      update: (frame) => frame.copyWith(
+        duration: _safeDuration(frame.duration) + 1,
+      ),
+    );
+  }
+
+  void decreaseExposure({
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    _requireFrameInLayer(layerId: layerId, frameId: frameId);
+    _repository.updateFrame(
+      frameId: frameId,
+      update: (frame) {
+        final nextDuration = _safeDuration(frame.duration) - 1;
+        return frame.copyWith(duration: nextDuration < 1 ? 1 : nextDuration);
+      },
+    );
+  }
+
+  Frame _requireFrameInLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    final layer = _requireLayer(layerId);
+    for (final frame in layer.frames) {
+      if (frame.id == frameId) {
+        return frame;
+      }
+    }
+
+    throw StateError('Frame not found in layer $layerId: $frameId');
+  }
+
+  Layer _requireLayer(LayerId layerId) {
+    final cut = _findCutOrNull();
+    if (cut == null) {
+      throw StateError('Cut not found: $_cutId');
+    }
+
+    for (final layer in cut.layers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+
+    throw StateError('Layer not found: $layerId');
   }
 
   Cut? _findCutOrNull() {

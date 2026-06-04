@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import 'timeline_cell_exposure_state.dart';
 
 class XSheetTimelineGrid extends StatelessWidget {
   const XSheetTimelineGrid({
@@ -11,7 +11,7 @@ class XSheetTimelineGrid extends StatelessWidget {
     required this.activeLayerId,
     required this.currentFrameIndex,
     required this.frameCount,
-    required this.resolveFrameForLayer,
+    required this.exposureStateForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
@@ -23,7 +23,8 @@ class XSheetTimelineGrid extends StatelessWidget {
   final LayerId? activeLayerId;
   final int currentFrameIndex;
   final int frameCount;
-  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
@@ -87,7 +88,7 @@ class XSheetTimelineGrid extends StatelessWidget {
                 activeLayerId: activeLayerId,
                 frameIndex: frameIndex,
                 current: frameIndex == currentFrameIndex,
-                resolveFrameForLayer: resolveFrameForLayer,
+                exposureStateForLayer: exposureStateForLayer,
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
               ),
@@ -206,7 +207,7 @@ class _XSheetFrameRow extends StatelessWidget {
     required this.activeLayerId,
     required this.frameIndex,
     required this.current,
-    required this.resolveFrameForLayer,
+    required this.exposureStateForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
   });
@@ -215,7 +216,8 @@ class _XSheetFrameRow extends StatelessWidget {
   final LayerId? activeLayerId;
   final int frameIndex;
   final bool current;
-  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -257,7 +259,7 @@ class _XSheetFrameRow extends StatelessWidget {
             frameIndex: frameIndex,
             active: layer.id == activeLayerId,
             current: current,
-            hasResolvedFrame: resolveFrameForLayer(layer, frameIndex) != null,
+            exposureState: exposureStateForLayer(layer, frameIndex),
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
           ),
@@ -272,7 +274,7 @@ class _XSheetCell extends StatelessWidget {
     required this.frameIndex,
     required this.active,
     required this.current,
-    required this.hasResolvedFrame,
+    required this.exposureState,
     required this.onSelectLayer,
     required this.onSelectFrame,
   });
@@ -281,7 +283,7 @@ class _XSheetCell extends StatelessWidget {
   final int frameIndex;
   final bool active;
   final bool current;
-  final bool hasResolvedFrame;
+  final TimelineCellExposureState exposureState;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -310,18 +312,36 @@ class _XSheetCell extends StatelessWidget {
           ),
         ),
         child: Text(
-          hasResolvedFrame ? '●' : '',
-          semanticsLabel: hasResolvedFrame ? 'drawing exposure' : null,
+          _markerForState(exposureState),
+          semanticsLabel: _semanticsLabelForState(exposureState),
           style: TextStyle(
             color: current
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            fontWeight: hasResolvedFrame ? FontWeight.bold : null,
+            fontWeight: exposureState == TimelineCellExposureState.empty
+                ? null
+                : FontWeight.bold,
           ),
         ),
       ),
     );
   }
+}
+
+String _markerForState(TimelineCellExposureState state) {
+  return switch (state) {
+    TimelineCellExposureState.empty => '',
+    TimelineCellExposureState.drawingStart => '●',
+    TimelineCellExposureState.heldExposure => '─',
+  };
+}
+
+String? _semanticsLabelForState(TimelineCellExposureState state) {
+  return switch (state) {
+    TimelineCellExposureState.empty => null,
+    TimelineCellExposureState.drawingStart => 'drawing start',
+    TimelineCellExposureState.heldExposure => 'held exposure',
+  };
 }
 
 class _HeaderCell extends StatelessWidget {

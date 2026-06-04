@@ -205,6 +205,50 @@ class ProjectRepository {
     });
   }
 
+  void updateFrame({
+    required FrameId frameId,
+    required Frame Function(Frame frame) update,
+  }) {
+    updateProject((project) {
+      var foundFrame = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  final layers = cut.layers
+                      .map((layer) {
+                        final frames = layer.frames
+                            .map((frame) {
+                              if (frame.id != frameId) {
+                                return frame;
+                              }
+
+                              foundFrame = true;
+                              return update(frame);
+                            })
+                            .toList(growable: false);
+
+                        return layer.copyWith(frames: frames);
+                      })
+                      .toList(growable: false);
+
+                  return cut.copyWith(layers: layers);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundFrame) {
+        throw StateError('Frame not found: $frameId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
   void addStroke({required FrameId frameId, required Stroke stroke}) {
     updateProject((project) {
       var foundFrame = false;

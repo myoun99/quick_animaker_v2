@@ -117,6 +117,123 @@ void main() {
       expect(layer.frames.single.duration, 1);
     });
 
+    test('detects drawing starts and held exposures', () {
+      final fixture = _createFixture();
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('exposure-layer'),
+      );
+
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 0),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 1),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 2),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 3),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 4),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 5),
+        isFalse,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 5),
+        isFalse,
+      );
+    });
+
+    test('held exposure is false for drawing starts and empty cells', () {
+      final fixture = _createFixture();
+      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 0),
+        isFalse,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 4),
+        isFalse,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 7),
+        isFalse,
+      );
+    });
+
+    test('increase exposure updates duration without creating frames', () {
+      final fixture = _createFixture();
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('one-frame-layer'),
+        frameId: const FrameId('one-frame'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('one-frame-layer'),
+      );
+      expect(layer.frames, hasLength(1));
+      expect(layer.frames.single.duration, 2);
+    });
+
+    test('decrease exposure lowers duration', () {
+      final fixture = _createFixture();
+
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-a'),
+      );
+
+      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      expect(layer.frames.first.duration, 3);
+    });
+
+    test('decrease exposure does not go below one', () {
+      final fixture = _createFixture();
+
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('one-frame-layer'),
+        frameId: const FrameId('one-frame'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('one-frame-layer'),
+      );
+      expect(layer.frames.single.duration, 1);
+    });
+
+    test('exposure editing throws clear errors for missing layer or frame', () {
+      final fixture = _createFixture();
+
+      expect(
+        () => fixture.controller.increaseExposure(
+          layerId: const LayerId('missing-layer'),
+          frameId: const FrameId('frame-a'),
+        ),
+        throwsStateError,
+      );
+      expect(
+        () => fixture.controller.decreaseExposure(
+          layerId: const LayerId('layer-1'),
+          frameId: const FrameId('missing-frame'),
+        ),
+        throwsStateError,
+      );
+    });
+
     test('duration less than one is treated as one for resolution', () {
       final layer = Layer(
         id: const LayerId('duration-layer'),
@@ -193,6 +310,22 @@ Project _createSampleProject() {
                 ],
               ),
               Layer(
+                id: const LayerId('exposure-layer'),
+                name: 'Exposure Layer',
+                frames: [
+                  Frame(
+                    id: const FrameId('exposure-a'),
+                    duration: 3,
+                    strokes: const [],
+                  ),
+                  Frame(
+                    id: const FrameId('exposure-b'),
+                    duration: 2,
+                    strokes: const [],
+                  ),
+                ],
+              ),
+              Layer(
                 id: const LayerId('empty-layer'),
                 name: 'Empty Layer',
                 frames: const [],
@@ -204,6 +337,17 @@ Project _createSampleProject() {
                   Frame(
                     id: const FrameId('short-frame'),
                     duration: 2,
+                    strokes: const [],
+                  ),
+                ],
+              ),
+              Layer(
+                id: const LayerId('one-frame-layer'),
+                name: 'One Frame Layer',
+                frames: [
+                  Frame(
+                    id: const FrameId('one-frame'),
+                    duration: 1,
                     strokes: const [],
                   ),
                 ],

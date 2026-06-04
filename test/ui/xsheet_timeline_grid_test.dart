@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 
 void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
@@ -124,14 +125,34 @@ void main() {
   testWidgets('shows drawing marker', (tester) async {
     await tester.pumpWidget(
       _grid(
-        resolveFrameForLayer: (layer, frameIndex) =>
+        exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? layer.frames.first
-            : null,
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
       ),
     );
 
     expect(find.text('●'), findsOneWidget);
+  });
+
+  testWidgets('shows held exposure marker', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? TimelineCellExposureState.heldExposure
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(find.text('─'), findsOneWidget);
+  });
+
+  testWidgets('empty cells stay blank', (tester) async {
+    await tester.pumpWidget(_grid());
+
+    expect(find.text('●'), findsNothing);
+    expect(find.text('─'), findsNothing);
   });
 
   testWidgets('current frame row uses plain text', (tester) async {
@@ -149,7 +170,7 @@ void main() {
 Widget _grid({
   int currentFrameIndex = 0,
   int frameCount = 12,
-  Frame? Function(Layer layer, int frameIndex)? resolveFrameForLayer,
+  TimelineCellExposureState Function(Layer layer, int frameIndex)? exposureStateForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
   VoidCallback? onAddLayer,
@@ -166,7 +187,7 @@ Widget _grid({
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           frameCount: frameCount,
-          resolveFrameForLayer: resolveFrameForLayer ?? (_, _) => null,
+          exposureStateForLayer: exposureStateForLayer ?? (_, _) => TimelineCellExposureState.empty,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
           onAddLayer: onAddLayer ?? () {},

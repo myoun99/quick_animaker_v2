@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'layer_timeline_grid.dart';
+import 'timeline_cell_exposure_state.dart';
 import 'timeline_orientation.dart';
 import 'xsheet_timeline_grid.dart';
 
@@ -14,7 +14,7 @@ class TimelinePanel extends StatelessWidget {
     required this.activeLayerId,
     required this.currentFrameIndex,
     required this.frameCount,
-    required this.resolveFrameForLayer,
+    required this.exposureStateForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
@@ -28,7 +28,8 @@ class TimelinePanel extends StatelessWidget {
   final LayerId? activeLayerId;
   final int currentFrameIndex;
   final int frameCount;
-  final Frame? Function(Layer layer, int frameIndex) resolveFrameForLayer;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
@@ -102,7 +103,7 @@ class TimelinePanel extends StatelessWidget {
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       frameCount: frameCount,
-                      resolveFrameForLayer: resolveFrameForLayer,
+                      exposureStateForLayer: exposureStateForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
@@ -114,7 +115,7 @@ class TimelinePanel extends StatelessWidget {
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       frameCount: frameCount,
-                      resolveFrameForLayer: resolveFrameForLayer,
+                      exposureStateForLayer: exposureStateForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
