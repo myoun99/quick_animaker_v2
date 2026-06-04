@@ -33,7 +33,6 @@ class XSheetTimelineGrid extends StatelessWidget {
 
   static const int _minimumVisibleFrames = 24;
   static const double _frameColumnWidth = 72;
-  static const double _addLayerColumnWidth = 96;
   static const double _layerColumnWidth = 164;
   static const double _rowHeight = 36;
   static const double _headerHeight = 92;
@@ -57,16 +56,6 @@ class XSheetTimelineGrid extends StatelessWidget {
                   width: _frameColumnWidth,
                   height: _headerHeight,
                   child: const Text('Frame'),
-                ),
-                _HeaderCell(
-                  width: _addLayerColumnWidth,
-                  height: _headerHeight,
-                  child: TextButton.icon(
-                    key: const ValueKey<String>('xsheet-add-layer-button'),
-                    onPressed: onAddLayer,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Layer'),
-                  ),
                 ),
                 for (final layer in layers)
                   _LayerHeader(
@@ -245,13 +234,8 @@ class _XSheetFrameRow extends StatelessWidget {
                 width: current ? 2 : 1,
               ),
             ),
-            child: Text('$frameIndex'),
+            child: Text('${frameIndex + 1}'),
           ),
-        ),
-        _HeaderCell(
-          width: XSheetTimelineGrid._addLayerColumnWidth,
-          height: XSheetTimelineGrid._rowHeight,
-          child: const SizedBox.shrink(),
         ),
         for (final layer in layers)
           _XSheetCell(
@@ -293,6 +277,18 @@ class _XSheetCell extends StatelessWidget {
     final baseColor = active
         ? colorScheme.secondaryContainer.withValues(alpha: 0.35)
         : colorScheme.surface;
+    final exposureColor = switch (exposureState) {
+      TimelineCellExposureState.empty => baseColor,
+      TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
+      TimelineCellExposureState.heldExposure => colorScheme.tertiaryContainer
+          .withValues(alpha: 0.62),
+    };
+    final exposureBorderColor = switch (exposureState) {
+      TimelineCellExposureState.empty => colorScheme.outlineVariant,
+      TimelineCellExposureState.drawingStart => colorScheme.tertiary,
+      TimelineCellExposureState.heldExposure => colorScheme.tertiary
+          .withValues(alpha: 0.55),
+    };
 
     return InkWell(
       key: ValueKey<String>('xsheet-cell-${layer.id}-$frameIndex'),
@@ -305,9 +301,9 @@ class _XSheetCell extends StatelessWidget {
         height: XSheetTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: current ? colorScheme.primaryContainer : baseColor,
+          color: current ? colorScheme.primaryContainer : exposureColor,
           border: Border.all(
-            color: current ? colorScheme.primary : colorScheme.outlineVariant,
+            color: current ? colorScheme.primary : exposureBorderColor,
             width: current ? 2 : 1,
           ),
         ),
@@ -331,8 +327,8 @@ class _XSheetCell extends StatelessWidget {
 String _markerForState(TimelineCellExposureState state) {
   return switch (state) {
     TimelineCellExposureState.empty => '',
-    TimelineCellExposureState.drawingStart => '●',
-    TimelineCellExposureState.heldExposure => '─',
+    TimelineCellExposureState.drawingStart => '○',
+    TimelineCellExposureState.heldExposure => '',
   };
 }
 

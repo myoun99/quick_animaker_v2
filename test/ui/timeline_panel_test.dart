@@ -21,7 +21,7 @@ void main() {
     expect(find.byType(TimelinePanel), findsOneWidget);
     expect(find.byType(LayerTimelineGrid), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
       findsOneWidget,
     );
     expect(
@@ -38,8 +38,12 @@ void main() {
     expect(find.byType(TimelinePanel), findsOneWidget);
     expect(find.byType(XSheetTimelineGrid), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
+      find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
@@ -60,7 +64,7 @@ void main() {
       ),
     );
 
-    expect(find.text('─'), findsOneWidget);
+    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
   testWidgets('exposure state callback is used in vertical mode', (
@@ -76,7 +80,20 @@ void main() {
       ),
     );
 
-    expect(find.text('─'), findsOneWidget);
+    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
+  });
+
+  testWidgets('renders only one orientation toggle control', (tester) async {
+    await tester.pumpWidget(_panel());
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('orientation toggle callback', (tester) async {
@@ -100,7 +117,7 @@ void main() {
 
     await tester.pumpWidget(_panel(onAddLayer: () => called = true));
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
     );
 
     expect(called, isTrue);
@@ -173,9 +190,9 @@ void main() {
   ) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('▶ 3'), findsNothing);
-    expect(find.textContaining('Current frame: 3'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('▶ 4'), findsNothing);
+    expect(find.textContaining('Current frame: 4'), findsOneWidget);
   });
 }
 
