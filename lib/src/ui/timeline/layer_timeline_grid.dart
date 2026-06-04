@@ -284,14 +284,15 @@ class _TimelineCell extends StatelessWidget {
     final exposureColor = switch (exposureState) {
       TimelineCellExposureState.empty => baseColor,
       TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
-      TimelineCellExposureState.heldExposure => colorScheme.tertiaryContainer
-          .withValues(alpha: 0.62),
+      TimelineCellExposureState.heldExposure =>
+        colorScheme.tertiaryContainer.withValues(alpha: 0.62),
     };
     final exposureBorderColor = switch (exposureState) {
       TimelineCellExposureState.empty => colorScheme.outlineVariant,
       TimelineCellExposureState.drawingStart => colorScheme.tertiary,
-      TimelineCellExposureState.heldExposure => colorScheme.tertiary
-          .withValues(alpha: 0.55),
+      TimelineCellExposureState.heldExposure => colorScheme.tertiary.withValues(
+        alpha: 0.55,
+      ),
     };
 
     return InkWell(
