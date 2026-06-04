@@ -6,6 +6,7 @@ import '../controllers/timeline_controller.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
@@ -16,6 +17,7 @@ import '../models/track_id.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
+import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
@@ -37,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   late final TimelineController _timelineController;
 
   int _layerSequence = 2;
+  int _frameSequence = 0;
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
 
   @override
@@ -63,33 +66,143 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Layer? get _activeLayer => _layerController.activeLayer;
+
+  Frame? get _selectedFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return null;
+    }
+
+    return _timelineController.getSelectedFrameForLayer(layer);
+  }
+
+  void _createDrawingAtCurrentFrame() {
+    final layer = _activeLayer;
+    if (layer == null || _selectedFrame != null) {
+      return;
+    }
+
+    _frameSequence += 1;
+    _timelineController.createDrawingFrameForLayer(
+      layerId: layer.id,
+      frameId: FrameId(_nextFrameId(layer.id)),
+    );
+  }
+
+  String _nextFrameId(LayerId layerId) {
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
+  }
+
+  void _increaseSelectedExposure() {
+    final layer = _activeLayer;
+    final frame = _selectedFrame;
+    if (layer == null || frame == null) {
+      return;
+    }
+
+    _timelineController.increaseExposure(layerId: layer.id, frameId: frame.id);
+  }
+
+  void _decreaseSelectedExposure() {
+    final layer = _activeLayer;
+    final frame = _selectedFrame;
+    if (layer == null || frame == null || frame.duration <= 1) {
+      return;
+    }
+
+    _timelineController.decreaseExposure(layerId: layer.id, frameId: frame.id);
+  }
+
+  TimelineCellExposureState _exposureStateForLayer(
+    Layer layer,
+    int frameIndex,
+  ) {
+    if (_timelineController.isDrawingStartForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    )) {
+      return TimelineCellExposureState.drawingStart;
+    }
+
+    if (_timelineController.isHeldExposureForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    )) {
+      return TimelineCellExposureState.heldExposure;
+    }
+
+    return TimelineCellExposureState.empty;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final activeLayer = _activeLayer;
+    final selectedFrame = _selectedFrame;
+
     return Scaffold(
       appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Text('Active strokes: ${_canvasController.strokes.length}'),
-                const SizedBox(width: 16),
-                Text('Current frame: ${_timelineController.currentFrameIndex}'),
-                const SizedBox(width: 16),
-                TextButton(
-                  onPressed: _canvasController.canUndo
-                      ? () => setState(_canvasController.undo)
-                      : null,
-                  child: const Text('Undo'),
-                ),
-                TextButton(
-                  onPressed: _canvasController.canRedo
-                      ? () => setState(_canvasController.redo)
-                      : null,
-                  child: const Text('Redo'),
-                ),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text('Active strokes: ${_canvasController.strokes.length}'),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Current frame: ${_timelineController.currentFrameIndex}',
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Selected: ${activeLayer?.name ?? 'No layer'} / Frame '
+                    '${_timelineController.currentFrameIndex}',
+                  ),
+                  const SizedBox(width: 16),
+                  Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
+                  const SizedBox(width: 16),
+                  Text('Duration: ${selectedFrame?.duration ?? '-'}'),
+                  const SizedBox(width: 16),
+                  TextButton(
+                    key: const ValueKey<String>('new-drawing-button'),
+                    onPressed: activeLayer != null && selectedFrame == null
+                        ? () => setState(_createDrawingAtCurrentFrame)
+                        : null,
+                    child: const Text('New Drawing'),
+                  ),
+                  TextButton(
+                    key: const ValueKey<String>('decrease-exposure-button'),
+                    onPressed:
+                        selectedFrame != null && selectedFrame.duration > 1
+                        ? () => setState(_decreaseSelectedExposure)
+                        : null,
+                    child: const Text('- Exposure'),
+                  ),
+                  TextButton(
+                    key: const ValueKey<String>('increase-exposure-button'),
+                    onPressed: selectedFrame != null
+                        ? () => setState(_increaseSelectedExposure)
+                        : null,
+                    child: const Text('+ Exposure'),
+                  ),
+                  const SizedBox(width: 16),
+                  TextButton(
+                    onPressed: _canvasController.canUndo
+                        ? () => setState(_canvasController.undo)
+                        : null,
+                    child: const Text('Undo'),
+                  ),
+                  TextButton(
+                    onPressed: _canvasController.canRedo
+                        ? () => setState(_canvasController.redo)
+                        : null,
+                    child: const Text('Redo'),
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -112,8 +225,7 @@ class _HomePageState extends State<HomePage> {
             activeLayerId: _layerController.activeLayerId,
             currentFrameIndex: _timelineController.currentFrameIndex,
             frameCount: _timelineController.totalFrameCount,
-            resolveFrameForLayer: (layer, frameIndex) => _timelineController
-                .resolveFrameForLayer(layer: layer, frameIndex: frameIndex),
+            exposureStateForLayer: _exposureStateForLayer,
             onSelectLayer: (layerId) {
               setState(() => _layerController.selectLayer(layerId));
             },

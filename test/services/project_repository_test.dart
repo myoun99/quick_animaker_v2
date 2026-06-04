@@ -227,6 +227,57 @@ void main() {
       );
     });
 
+    test('updates only the target frame through immutable copies', () {
+      final frameA = _frame(id: 'frame-a');
+      final frameB = _frame(id: 'frame-b');
+      final layer = _layer(
+        id: 'layer-1',
+        name: 'Line',
+        frames: [frameA, frameB],
+      );
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final track = _track(id: 'track-1', name: 'Video', cuts: [cut]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      repository.updateFrame(
+        frameId: const FrameId('frame-b'),
+        update: (frame) => frame.copyWith(duration: 3),
+      );
+
+      final updatedFrames = repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .single
+          .frames;
+      expect(updatedFrames.first, frameA);
+      expect(updatedFrames.last.duration, 3);
+      expect(project.tracks.single.cuts.single.layers.single.frames.last, frameB);
+      expect(updatedFrames.last, isNot(same(frameB)));
+    });
+
+    test('throws when updating a missing frame', () {
+      final repository = ProjectRepository(
+        initialProject: _project(id: 'project-1', name: 'Project'),
+      );
+
+      expect(
+        () => repository.updateFrame(
+          frameId: const FrameId('missing'),
+          update: (frame) => frame,
+        ),
+        throwsStateError,
+      );
+    });
+
     test('throws when adding a stroke to a missing frame', () {
       final repository = ProjectRepository(
         initialProject: _project(id: 'project-1', name: 'Project'),

@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -44,6 +45,36 @@ void main() {
       find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('exposure state callback is used in horizontal mode', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.horizontal,
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.heldExposure
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(find.text('─'), findsOneWidget);
+  });
+
+  testWidgets('exposure state callback is used in vertical mode', (tester) async {
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.vertical,
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.heldExposure
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(find.text('─'), findsOneWidget);
   });
 
   testWidgets('orientation toggle callback', (tester) async {
@@ -156,6 +187,8 @@ Widget _panel({
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<TimelineOrientation>? onOrientationChanged,
+  TimelineCellExposureState Function(Layer layer, int frameIndex)?
+  exposureStateForLayer,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -164,8 +197,11 @@ Widget _panel({
         activeLayerId: const LayerId('layer-1'),
         currentFrameIndex: currentFrameIndex,
         frameCount: frameCount,
-        resolveFrameForLayer: (layer, frameIndex) =>
-            frameIndex == 0 ? layer.frames.first : null,
+        exposureStateForLayer:
+            exposureStateForLayer ??
+            (layer, frameIndex) => frameIndex == 0
+                ? TimelineCellExposureState.drawingStart
+                : TimelineCellExposureState.empty,
         onSelectLayer: onSelectLayer ?? (_) {},
         onSelectFrame: onSelectFrame ?? (_) {},
         onAddLayer: onAddLayer ?? () {},
