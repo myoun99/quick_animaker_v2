@@ -192,6 +192,184 @@ void main() {
       history.undo();
       expect(_latestLayer(fixture.repository).timeline.containsKey(6), isTrue);
     });
+
+    test(
+      'increase exposure pushes blank into drawing collision chain',
+      () {
+        final fixture = _fixture(
+          Layer(
+            id: const LayerId('layer'),
+            name: 'Layer',
+            frames: [
+              Frame(id: const FrameId('a'), duration: 4, strokes: const []),
+              Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('a')),
+              5: const TimelineExposure.blank(),
+              6: TimelineExposure.drawing(const FrameId('b')),
+            },
+          ),
+        );
+
+        expect(
+          () => fixture.controller.increaseExposure(
+            layerId: const LayerId('layer'),
+            frameId: const FrameId('a'),
+          ),
+          returnsNormally,
+        );
+
+        final timeline = _latestLayer(fixture.repository).timeline;
+        expect(timeline.keys, orderedEquals([0, 6, 7]));
+        expect(timeline[6]?.type, TimelineExposureType.blank);
+        expect(timeline[7]?.frameId, const FrameId('b'));
+      },
+    );
+
+    test('increase exposure pushes B into C collision chain', () {
+      final fixture = _fixture(
+        Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: [
+            Frame(id: const FrameId('a'), duration: 2, strokes: const []),
+            Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+            Frame(id: const FrameId('c'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a')),
+            2: TimelineExposure.drawing(const FrameId('b')),
+            3: TimelineExposure.drawing(const FrameId('c')),
+          },
+        ),
+      );
+
+      expect(
+        () => fixture.controller.increaseExposure(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('a'),
+        ),
+        returnsNormally,
+      );
+
+      final timeline = _latestLayer(fixture.repository).timeline;
+      expect(timeline.keys, orderedEquals([0, 3, 4]));
+      expect(timeline[3]?.frameId, const FrameId('b'));
+      expect(timeline[4]?.frameId, const FrameId('c'));
+    });
+
+    test(
+      'repeated increase exposure keeps sorted unique timeline indexes',
+      () {
+        final fixture = _fixture(
+          Layer(
+            id: const LayerId('layer'),
+            name: 'Layer',
+            frames: [
+              Frame(id: const FrameId('a'), duration: 1, strokes: const []),
+              Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+              Frame(id: const FrameId('c'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('a')),
+              2: TimelineExposure.drawing(const FrameId('b')),
+              3: TimelineExposure.drawing(const FrameId('c')),
+            },
+          ),
+        );
+
+        for (var count = 0; count < 5; count += 1) {
+          expect(
+            () => fixture.controller.increaseExposure(
+              layerId: const LayerId('layer'),
+              frameId: const FrameId('a'),
+            ),
+            returnsNormally,
+          );
+          _expectSortedUniqueTimelineIndexes(_latestLayer(fixture.repository));
+        }
+
+        expect(_latestLayer(fixture.repository).timeline.keys, [0, 7, 8]);
+      },
+    );
+
+    test('decrease exposure does not create duplicate indexes', () {
+      final fixture = _fixture(
+        Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: [
+            Frame(id: const FrameId('a'), duration: 5, strokes: const []),
+            Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+            Frame(id: const FrameId('c'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a')),
+            4: TimelineExposure.drawing(const FrameId('b')),
+            5: TimelineExposure.drawing(const FrameId('c')),
+          },
+        ),
+      );
+
+      expect(
+        () => fixture.controller.decreaseExposure(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('a'),
+        ),
+        returnsNormally,
+      );
+
+      final timeline = _latestLayer(fixture.repository).timeline;
+      expect(timeline.keys, orderedEquals([0, 3, 5]));
+      expect(timeline[3]?.frameId, const FrameId('b'));
+      expect(timeline[5]?.frameId, const FrameId('c'));
+      _expectSortedUniqueTimelineIndexes(_latestLayer(fixture.repository));
+    });
+
+    test('undo and redo restore collision-chain timeline map', () {
+      final history = HistoryManager();
+      final fixture = _fixture(
+        Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: [
+            Frame(id: const FrameId('a'), duration: 4, strokes: const []),
+            Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a')),
+            5: const TimelineExposure.blank(),
+            6: TimelineExposure.drawing(const FrameId('b')),
+          },
+        ),
+        historyManager: history,
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+      );
+      expect(_latestLayer(fixture.repository).timeline.keys, [0, 6, 7]);
+
+      history.undo();
+      expect(_latestLayer(fixture.repository).timeline.keys, [0, 5, 6]);
+      expect(
+        _latestLayer(fixture.repository).timeline[5]?.type,
+        TimelineExposureType.blank,
+      );
+
+      history.redo();
+      expect(_latestLayer(fixture.repository).timeline.keys, [0, 6, 7]);
+      expect(
+        _latestLayer(fixture.repository).timeline[6]?.type,
+        TimelineExposureType.blank,
+      );
+      expect(
+        _latestLayer(fixture.repository).timeline[7]?.frameId,
+        const FrameId('b'),
+      );
+    });
   });
 }
 
@@ -236,6 +414,13 @@ Project _project(Layer layer) {
 
 Layer _latestLayer(ProjectRepository repository) {
   return repository.requireProject().tracks.single.cuts.single.layers.single;
+}
+
+void _expectSortedUniqueTimelineIndexes(Layer layer) {
+  final indexes = layer.timeline.keys.toList(growable: false);
+  final sortedIndexes = indexes.toList(growable: false)..sort();
+  expect(indexes.toSet(), hasLength(indexes.length));
+  expect(indexes, orderedEquals(sortedIndexes));
 }
 
 class _TimelineMapFixture {

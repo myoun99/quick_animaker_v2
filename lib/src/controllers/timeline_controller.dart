@@ -496,18 +496,38 @@ class TimelineController {
     Iterable<_TimelineEntry> entries,
     int delta,
   ) {
-    final entriesToMove = entries.toList(growable: false);
-    final movingIndexes = entriesToMove
-        .map((entry) => entry.startIndex)
-        .toSet();
+    final movingIndexes = entries.map((entry) => entry.startIndex).toSet();
+    var foundCollision = true;
+    while (foundCollision) {
+      foundCollision = false;
+      for (final movingIndex in movingIndexes.toList(growable: false)) {
+        final nextStartIndex = movingIndex + delta;
+        if (nextStartIndex < 0) {
+          throw StateError('Timeline entry cannot move before index zero.');
+        }
+
+        if (timeline.containsKey(nextStartIndex) &&
+            !movingIndexes.contains(nextStartIndex)) {
+          movingIndexes.add(nextStartIndex);
+          foundCollision = true;
+        }
+      }
+    }
+
+    final entriesToMove = movingIndexes
+        .map(
+          (startIndex) => _TimelineEntry(
+            startIndex: startIndex,
+            exposure: timeline[startIndex]!,
+          ),
+        )
+        .toList(growable: false)
+      ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(timeline)
       ..removeWhere((index, _) => movingIndexes.contains(index));
 
     for (final entry in entriesToMove) {
       final nextStartIndex = entry.startIndex + delta;
-      if (nextStartIndex < 0) {
-        throw StateError('Timeline entry cannot move before index zero.');
-      }
       if (nextTimeline.containsKey(nextStartIndex)) {
         throw StateError(
           'Timeline entry already exists at index $nextStartIndex.',
