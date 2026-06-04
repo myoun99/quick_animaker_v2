@@ -254,10 +254,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 6, 1),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 1), _FrameSpec(FrameId('b'), 6, 1)],
       );
       final layer = _findLayer(
         fixture.repository,
@@ -278,10 +275,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 6, 1),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 1), _FrameSpec(FrameId('b'), 6, 1)],
       );
 
       fixture.controller.increaseExposure(
@@ -307,10 +301,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 6, 1),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 1), _FrameSpec(FrameId('b'), 6, 1)],
       );
 
       fixture.controller.decreaseExposure(
@@ -337,10 +328,7 @@ void main() {
       _createSparseBlock(
         fixture.controller,
         const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 1, 1),
-        ],
+        const [_FrameSpec(FrameId('a'), 0, 1), _FrameSpec(FrameId('b'), 1, 1)],
       );
 
       fixture.controller.decreaseExposure(
@@ -426,42 +414,45 @@ void main() {
       );
     });
 
-    test('increase exposure does not move authored gaps after the next block', () {
-      final fixture = _createFixture();
-      _createSparseBlock(
-        fixture.controller,
-        const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 6, 1),
-          _FrameSpec(FrameId('c'), 10, 1),
-        ],
-      );
+    test(
+      'increase exposure does not move authored gaps after the next block',
+      () {
+        final fixture = _createFixture();
+        _createSparseBlock(
+          fixture.controller,
+          const LayerId('empty-layer'),
+          const [
+            _FrameSpec(FrameId('a'), 0, 1),
+            _FrameSpec(FrameId('b'), 6, 1),
+            _FrameSpec(FrameId('c'), 10, 1),
+          ],
+        );
 
-      fixture.controller.increaseExposure(
-        layerId: const LayerId('empty-layer'),
-        frameId: const FrameId('a'),
-      );
+        fixture.controller.increaseExposure(
+          layerId: const LayerId('empty-layer'),
+          frameId: const FrameId('a'),
+        );
 
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('empty-layer'),
-      );
-      expect(
-        fixture.controller.exposureStartIndexForLayer(
-          layer: layer,
-          frameId: const FrameId('b'),
-        ),
-        7,
-      );
-      expect(
-        fixture.controller.exposureStartIndexForLayer(
-          layer: layer,
-          frameId: const FrameId('c'),
-        ),
-        10,
-      );
-    });
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('empty-layer'),
+        );
+        expect(
+          fixture.controller.exposureStartIndexForLayer(
+            layer: layer,
+            frameId: const FrameId('b'),
+          ),
+          7,
+        );
+        expect(
+          fixture.controller.exposureStartIndexForLayer(
+            layer: layer,
+            frameId: const FrameId('c'),
+          ),
+          10,
+        );
+      },
+    );
 
     test('decrease exposure pulls directly adjacent following blocks', () {
       final fixture = _createFixture();
@@ -501,42 +492,45 @@ void main() {
       );
     });
 
-    test('decrease exposure does not move authored gaps after the next block', () {
-      final fixture = _createFixture();
-      _createSparseBlock(
-        fixture.controller,
-        const LayerId('empty-layer'),
-        const [
-          _FrameSpec(FrameId('a'), 0, 1),
-          _FrameSpec(FrameId('b'), 6, 1),
-          _FrameSpec(FrameId('c'), 10, 1),
-        ],
-      );
+    test(
+      'decrease exposure does not move authored gaps after the next block',
+      () {
+        final fixture = _createFixture();
+        _createSparseBlock(
+          fixture.controller,
+          const LayerId('empty-layer'),
+          const [
+            _FrameSpec(FrameId('a'), 0, 1),
+            _FrameSpec(FrameId('b'), 6, 1),
+            _FrameSpec(FrameId('c'), 10, 1),
+          ],
+        );
 
-      fixture.controller.decreaseExposure(
-        layerId: const LayerId('empty-layer'),
-        frameId: const FrameId('a'),
-      );
+        fixture.controller.decreaseExposure(
+          layerId: const LayerId('empty-layer'),
+          frameId: const FrameId('a'),
+        );
 
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('empty-layer'),
-      );
-      expect(
-        fixture.controller.exposureStartIndexForLayer(
-          layer: layer,
-          frameId: const FrameId('b'),
-        ),
-        5,
-      );
-      expect(
-        fixture.controller.exposureStartIndexForLayer(
-          layer: layer,
-          frameId: const FrameId('c'),
-        ),
-        10,
-      );
-    });
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('empty-layer'),
+        );
+        expect(
+          fixture.controller.exposureStartIndexForLayer(
+            layer: layer,
+            frameId: const FrameId('b'),
+          ),
+          5,
+        );
+        expect(
+          fixture.controller.exposureStartIndexForLayer(
+            layer: layer,
+            frameId: const FrameId('c'),
+          ),
+          10,
+        );
+      },
+    );
 
     test(
       'decrease exposure does not go below one or move following frames',

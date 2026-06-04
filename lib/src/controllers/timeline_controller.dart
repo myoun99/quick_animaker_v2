@@ -160,17 +160,11 @@ class TimelineController {
         entry.startIndex;
   }
 
-  bool canIncreaseExposure({
-    required Layer layer,
-    required FrameId frameId,
-  }) {
+  bool canIncreaseExposure({required Layer layer, required FrameId frameId}) {
     return _entryForFrame(layer: layer, frameId: frameId) != null;
   }
 
-  bool canDecreaseExposure({
-    required Layer layer,
-    required FrameId frameId,
-  }) {
+  bool canDecreaseExposure({required Layer layer, required FrameId frameId}) {
     final entry = _entryForFrame(layer: layer, frameId: frameId);
     if (entry == null) {
       return false;
@@ -396,10 +390,7 @@ class TimelineController {
     required Layer layer,
     required _FrameExposureEntry entry,
   }) {
-    final nextEntry = _nextEntryForFrame(
-      layer: layer,
-      frameId: entry.frame.id,
-    );
+    final nextEntry = _nextEntryForFrame(layer: layer, frameId: entry.frame.id);
     if (nextEntry != null) {
       return nextEntry.startIndex;
     }
