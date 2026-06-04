@@ -194,11 +194,25 @@ class TimelineController {
   }
 
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
-    return frameIndex >= 0 && !layer.timeline.containsKey(frameIndex);
+    if (frameIndex < 0) {
+      return false;
+    }
+
+    final authoredExposure = layer.timeline[frameIndex];
+    return authoredExposure == null ||
+        authoredExposure.type == TimelineExposureType.blank;
   }
 
   bool canCreateBlankAt({required Layer layer, required int frameIndex}) {
-    return frameIndex >= 0 && !layer.timeline.containsKey(frameIndex);
+    if (frameIndex < 0 || layer.timeline.containsKey(frameIndex)) {
+      return false;
+    }
+
+    final exposure = resolveExposureEntryForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    );
+    return exposure?.type == TimelineExposureType.drawing;
   }
 
   bool canIncreaseExposure({required Layer layer, required FrameId frameId}) {

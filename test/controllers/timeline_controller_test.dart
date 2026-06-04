@@ -9,6 +9,8 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -186,6 +188,88 @@ void main() {
       expect(
         fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 11),
         isTrue,
+      );
+    });
+
+    test('create drawing frame replaces a blank head exposure', () {
+      final fixture = _createFixture(
+        extraLayers: [
+          Layer(
+            id: const LayerId('blank-layer'),
+            name: 'Blank Layer',
+            frames: const [],
+            timeline: const {0: TimelineExposure.blank()},
+          ),
+        ],
+      );
+
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: const LayerId('blank-layer'),
+        frameId: const FrameId('blank-replacement'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('blank-layer'),
+      );
+      expect(layer.frames, hasLength(1));
+      expect(layer.timeline, hasLength(1));
+      expect(layer.timeline[0]?.type, TimelineExposureType.drawing);
+      expect(layer.timeline[0]?.frameId, const FrameId('blank-replacement'));
+    });
+
+    test('create drawing frame inside blank hold adds sparse drawing entry', () {
+      final fixture = _createFixture(
+        extraLayers: [
+          Layer(
+            id: const LayerId('blank-layer'),
+            name: 'Blank Layer',
+            frames: const [],
+            timeline: const {0: TimelineExposure.blank()},
+          ),
+        ],
+      );
+      fixture.controller.selectFrameIndex(5);
+
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: const LayerId('blank-layer'),
+        frameId: const FrameId('inside-blank-hold'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('blank-layer'),
+      );
+      expect(layer.frames, hasLength(1));
+      expect(layer.timeline.keys, orderedEquals([0, 5]));
+      expect(layer.timeline[0]?.type, TimelineExposureType.blank);
+      expect(layer.timeline[5]?.frameId, const FrameId('inside-blank-hold'));
+    });
+
+    test('blank creation is disabled for null and blank regions', () {
+      final fixture = _createFixture();
+      final emptyLayer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(
+        fixture.controller.canCreateBlankAt(layer: emptyLayer, frameIndex: 0),
+        isFalse,
+      );
+
+      final blankLayer = Layer(
+        id: const LayerId('blank-layer'),
+        name: 'Blank Layer',
+        frames: const [],
+        timeline: const {5: TimelineExposure.blank()},
+      );
+      expect(
+        fixture.controller.canCreateBlankAt(layer: blankLayer, frameIndex: 5),
+        isFalse,
+      );
+      expect(
+        fixture.controller.canCreateBlankAt(layer: blankLayer, frameIndex: 6),
+        isFalse,
       );
     });
 
@@ -681,8 +765,10 @@ void main() {
 
 const _cutId = CutId('cut-1');
 
-_TimelineFixture _createFixture() {
-  final repository = ProjectRepository(initialProject: _createSampleProject());
+_TimelineFixture _createFixture({List<Layer> extraLayers = const []}) {
+  final repository = ProjectRepository(
+    initialProject: _createSampleProject(extraLayers: extraLayers),
+  );
   final controller = TimelineController(repository: repository, cutId: _cutId);
   return _TimelineFixture(repository: repository, controller: controller);
 }
@@ -718,7 +804,7 @@ void _createSparseFrame(
   );
 }
 
-Project _createSampleProject() {
+Project _createSampleProject({List<Layer> extraLayers = const []}) {
   return Project(
     id: const ProjectId('project-1'),
     name: 'Test Project',
@@ -793,6 +879,7 @@ Project _createSampleProject() {
                   ),
                 ],
               ),
+              ...extraLayers,
             ],
           ),
         ],

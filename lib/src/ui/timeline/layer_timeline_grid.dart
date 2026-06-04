@@ -286,9 +286,10 @@ class _TimelineCell extends StatelessWidget {
       TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
       TimelineCellExposureState.heldExposure =>
         colorScheme.tertiaryContainer.withValues(alpha: 0.62),
-      TimelineCellExposureState.blankStart => colorScheme.errorContainer,
+      TimelineCellExposureState.blankStart =>
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
       TimelineCellExposureState.blankHeld =>
-        colorScheme.errorContainer.withValues(alpha: 0.35),
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
     };
     final exposureBorderColor = switch (exposureState) {
       TimelineCellExposureState.empty => colorScheme.outlineVariant,
@@ -296,10 +297,9 @@ class _TimelineCell extends StatelessWidget {
       TimelineCellExposureState.heldExposure => colorScheme.tertiary.withValues(
         alpha: 0.55,
       ),
-      TimelineCellExposureState.blankStart => colorScheme.error,
-      TimelineCellExposureState.blankHeld => colorScheme.error.withValues(
-        alpha: 0.45,
-      ),
+      TimelineCellExposureState.blankStart => colorScheme.outlineVariant,
+      TimelineCellExposureState.blankHeld =>
+        colorScheme.outlineVariant.withValues(alpha: 0.55),
     };
 
     return InkWell(
@@ -341,7 +341,7 @@ String _markerForState(TimelineCellExposureState state) {
     TimelineCellExposureState.empty => '',
     TimelineCellExposureState.drawingStart => '○',
     TimelineCellExposureState.heldExposure => '',
-    TimelineCellExposureState.blankStart => 'X',
+    TimelineCellExposureState.blankStart => '',
     TimelineCellExposureState.blankHeld => '',
   };
 }

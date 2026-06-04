@@ -234,11 +234,11 @@ class _HomePageState extends State<HomePage> {
                   Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),
                   TextButton(
-                    key: const ValueKey<String>('new-drawing-button'),
+                    key: const ValueKey<String>('new-frame-button'),
                     onPressed: _canCreateDrawingAtCurrentFrame
                         ? () => setState(_createDrawingAtCurrentFrame)
                         : null,
-                    child: const Text('New Drawing'),
+                    child: const Text('New Frame'),
                   ),
                   TextButton(
                     key: const ValueKey<String>('blank-exposure-button'),
