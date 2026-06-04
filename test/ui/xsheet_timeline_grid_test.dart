@@ -148,7 +148,7 @@ void main() {
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
-  testWidgets('blank exposure cells are low-emphasis and unmarked', (tester) async {
+  testWidgets('blank start shows X with low-emphasis background', (tester) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
@@ -158,7 +158,7 @@ void main() {
       ),
     );
 
-    expect(find.text('X'), findsNothing);
+    expect(find.text('X'), findsOneWidget);
     expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
   });
 

@@ -337,7 +337,7 @@ String _markerForState(TimelineCellExposureState state) {
     TimelineCellExposureState.empty => '',
     TimelineCellExposureState.drawingStart => '○',
     TimelineCellExposureState.heldExposure => '',
-    TimelineCellExposureState.blankStart => '',
+    TimelineCellExposureState.blankStart => 'X',
     TimelineCellExposureState.blankHeld => '',
   };
 }
