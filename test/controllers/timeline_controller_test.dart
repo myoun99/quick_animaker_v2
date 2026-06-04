@@ -38,7 +38,39 @@ void main() {
       );
     });
 
-    test('resolves sparse exposure frames', () {
+    test('last frame holds to visible timeline end', () {
+      final fixture = _createFixture();
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('one-frame-layer'),
+      );
+
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 0),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 1),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 2),
+        isTrue,
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 10),
+        const FrameId('one-frame'),
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(
+          layer: layer,
+          frameIndex: 10,
+        ),
+        isTrue,
+      );
+    });
+
+    test('frame holds until next frame starts', () {
       final fixture = _createFixture();
       final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
 
@@ -63,16 +95,39 @@ void main() {
         const FrameId('frame-b'),
       );
       expect(
-        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 5),
-        const FrameId('frame-b'),
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 4),
+        isTrue,
       );
-      expect(
-        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 6),
-        const FrameId('frame-b'),
+    });
+
+    test('empty before first frame remains empty', () {
+      final fixture = _createFixture();
+      _createSparseFrame(
+        fixture.controller,
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('late-frame'),
+        startIndex: 5,
       );
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+
       expect(
-        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 7),
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 0),
         isNull,
+      );
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 1),
+        isNull,
+      );
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 4),
+        isNull,
+      );
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 5),
+        isTrue,
       );
     });
 
@@ -93,13 +148,13 @@ void main() {
       );
     });
 
-    test('total frame count uses max exposure length across layers', () {
+    test('total frame count uses max authored exposure length across layers', () {
       final fixture = _createFixture();
 
       expect(fixture.controller.totalFrameCount, 7);
     });
 
-    test('create drawing frame appends one sparse frame only', () {
+    test('create drawing frame creates one sparse frame and holds forward', () {
       final fixture = _createFixture();
       fixture.controller.selectFrameIndex(10);
 
@@ -115,6 +170,29 @@ void main() {
       expect(layer.frames, hasLength(1));
       expect(layer.frames.single.id, const FrameId('new-frame'));
       expect(layer.frames.single.duration, 1);
+      for (var frameIndex = 0; frameIndex < 10; frameIndex += 1) {
+        expect(
+          fixture.controller.resolveFrameForLayer(
+            layer: layer,
+            frameIndex: frameIndex,
+          ),
+          isNull,
+        );
+      }
+      expect(
+        fixture.controller.isDrawingStartForLayer(
+          layer: layer,
+          frameIndex: 10,
+        ),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(
+          layer: layer,
+          frameIndex: 11,
+        ),
+        isTrue,
+      );
     });
 
     test('detects drawing starts and held exposures', () {
@@ -145,18 +223,23 @@ void main() {
         isTrue,
       );
       expect(
-        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 5),
-        isFalse,
-      );
-      expect(
         fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 5),
-        isFalse,
+        isTrue,
       );
     });
 
     test('held exposure is false for drawing starts and empty cells', () {
       final fixture = _createFixture();
-      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      _createSparseFrame(
+        fixture.controller,
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('late-frame'),
+        startIndex: 5,
+      );
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
 
       expect(
         fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 0),
@@ -167,9 +250,281 @@ void main() {
         isFalse,
       );
       expect(
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 7),
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 5),
         isFalse,
       );
+    });
+
+    test('increase exposure pushes directly adjacent following blocks', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 2),
+          _FrameSpec(FrameId('b'), 2, 2),
+          _FrameSpec(FrameId('c'), 4, 1),
+        ],
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(_findFrame(layer, const FrameId('a')).duration, 3);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        3,
+      );
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('c'),
+        ),
+        5,
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 0),
+        const FrameId('a'),
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 1),
+        const FrameId('a'),
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 2),
+        const FrameId('a'),
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 3),
+        const FrameId('b'),
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 5),
+        const FrameId('c'),
+      );
+    });
+
+    test('increase exposure does not move non-adjacent blocks', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 2),
+          _FrameSpec(FrameId('b'), 4, 2),
+        ],
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(_findFrame(layer, const FrameId('a')).duration, 3);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        4,
+      );
+    });
+
+    test('increase exposure pushes when it collides after gap is consumed', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 2),
+          _FrameSpec(FrameId('b'), 4, 2),
+        ],
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+      var layer = _findLayer(fixture.repository, const LayerId('empty-layer'));
+      expect(_findFrame(layer, const FrameId('a')).duration, 3);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        4,
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+      layer = _findLayer(fixture.repository, const LayerId('empty-layer'));
+      expect(_findFrame(layer, const FrameId('a')).duration, 4);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        4,
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+      layer = _findLayer(fixture.repository, const LayerId('empty-layer'));
+      expect(_findFrame(layer, const FrameId('a')).duration, 5);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        5,
+      );
+    });
+
+    test('decrease exposure pulls directly adjacent following blocks', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 3),
+          _FrameSpec(FrameId('b'), 3, 2),
+          _FrameSpec(FrameId('c'), 5, 1),
+        ],
+      );
+
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(_findFrame(layer, const FrameId('a')).duration, 2);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        2,
+      );
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('c'),
+        ),
+        4,
+      );
+    });
+
+    test('decrease exposure does not move non-adjacent blocks', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 3),
+          _FrameSpec(FrameId('b'), 5, 2),
+        ],
+      );
+
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(_findFrame(layer, const FrameId('a')).duration, 2);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        5,
+      );
+    });
+
+    test('decrease exposure does not go below one or move following frames', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 1),
+          _FrameSpec(FrameId('b'), 1, 2),
+        ],
+      );
+
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(_findFrame(layer, const FrameId('a')).duration, 1);
+      expect(
+        fixture.controller.exposureStartIndexForLayer(
+          layer: layer,
+          frameId: const FrameId('b'),
+        ),
+        1,
+      );
+    });
+
+    test('dense frame duplication is not introduced', () {
+      final fixture = _createFixture();
+      _createSparseBlock(
+        fixture.controller,
+        const LayerId('empty-layer'),
+        const [
+          _FrameSpec(FrameId('a'), 0, 2),
+          _FrameSpec(FrameId('b'), 2, 2),
+          _FrameSpec(FrameId('c'), 4, 1),
+        ],
+      );
+
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('a'),
+      );
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('empty-layer'),
+        frameId: const FrameId('b'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('empty-layer'),
+      );
+      expect(layer.frames, hasLength(3));
     });
 
     test('increase exposure updates duration without creating frames', () {
@@ -198,21 +553,6 @@ void main() {
 
       final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
       expect(layer.frames.first.duration, 3);
-    });
-
-    test('decrease exposure does not go below one', () {
-      final fixture = _createFixture();
-
-      fixture.controller.decreaseExposure(
-        layerId: const LayerId('one-frame-layer'),
-        frameId: const FrameId('one-frame'),
-      );
-
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('one-frame-layer'),
-      );
-      expect(layer.frames.single.duration, 1);
     });
 
     test('exposure editing throws clear errors for missing layer or frame', () {
@@ -249,8 +589,8 @@ void main() {
         const FrameId('zero'),
       );
       expect(
-        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 1),
-        isNull,
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 1),
+        const FrameId('zero'),
       );
     });
 
@@ -275,6 +615,37 @@ _TimelineFixture _createFixture() {
   final repository = ProjectRepository(initialProject: _createSampleProject());
   final controller = TimelineController(repository: repository, cutId: _cutId);
   return _TimelineFixture(repository: repository, controller: controller);
+}
+
+void _createSparseBlock(
+  TimelineController controller,
+  LayerId layerId,
+  List<_FrameSpec> specs,
+) {
+  for (final spec in specs) {
+    _createSparseFrame(
+      controller,
+      layerId: layerId,
+      frameId: spec.frameId,
+      startIndex: spec.startIndex,
+      duration: spec.duration,
+    );
+  }
+}
+
+void _createSparseFrame(
+  TimelineController controller, {
+  required LayerId layerId,
+  required FrameId frameId,
+  required int startIndex,
+  int duration = 1,
+}) {
+  controller.selectFrameIndex(startIndex);
+  controller.createDrawingFrameForLayer(
+    layerId: layerId,
+    frameId: frameId,
+    duration: duration,
+  );
 }
 
 Project _createSampleProject() {
@@ -372,6 +743,24 @@ Layer _findLayer(ProjectRepository repository, LayerId layerId) {
   }
 
   throw StateError('Layer not found.');
+}
+
+Frame _findFrame(Layer layer, FrameId frameId) {
+  for (final frame in layer.frames) {
+    if (frame.id == frameId) {
+      return frame;
+    }
+  }
+
+  throw StateError('Frame not found.');
+}
+
+class _FrameSpec {
+  const _FrameSpec(this.frameId, this.startIndex, this.duration);
+
+  final FrameId frameId;
+  final int startIndex;
+  final int duration;
 }
 
 class _TimelineFixture {

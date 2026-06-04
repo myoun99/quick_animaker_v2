@@ -45,24 +45,12 @@ class TimelineController {
 
     var maxLength = 0;
     for (final layer in cut.layers) {
-      var layerLength = 0;
-      final explicitStarts =
-          _explicitFrameStarts[layer.id] ?? const <FrameId, int>{};
-      for (final frame in layer.frames) {
-        final explicitStart = explicitStarts[frame.id];
-        if (explicitStart != null) {
-          final explicitEnd = explicitStart + _safeDuration(frame.duration);
-          if (explicitEnd > layerLength) {
-            layerLength = explicitEnd;
-          }
-          continue;
+      final entries = _entriesForLayer(layer);
+      for (final entry in entries) {
+        final authoredEnd = entry.authoredEndIndex;
+        if (authoredEnd > maxLength) {
+          maxLength = authoredEnd;
         }
-
-        layerLength += _safeDuration(frame.duration);
-      }
-
-      if (layerLength > maxLength) {
-        maxLength = layerLength;
       }
     }
 
@@ -75,34 +63,27 @@ class TimelineController {
       return null;
     }
 
-    final explicitStarts =
-        _explicitFrameStarts[layer.id] ?? const <FrameId, int>{};
-    for (final frame in layer.frames) {
-      final explicitStart = explicitStarts[frame.id];
-      if (explicitStart == null) {
-        continue;
+    final entries = _entriesForLayer(layer);
+    if (entries.isEmpty || targetIndex < entries.first.startIndex) {
+      return null;
+    }
+
+    for (var index = 0; index < entries.length; index += 1) {
+      final entry = entries[index];
+      final nextStartIndex = index + 1 < entries.length
+          ? entries[index + 1].startIndex
+          : null;
+
+      if (targetIndex < entry.startIndex) {
+        return null;
       }
 
-      final endExclusive = explicitStart + _safeDuration(frame.duration);
-      if (targetIndex >= explicitStart && targetIndex < endExclusive) {
-        return frame;
+      if (nextStartIndex == null || targetIndex < nextStartIndex) {
+        return entry.frame;
       }
     }
 
-    var currentStart = 0;
-    for (final frame in layer.frames) {
-      if (explicitStarts.containsKey(frame.id)) {
-        continue;
-      }
-
-      final endExclusive = currentStart + _safeDuration(frame.duration);
-      if (targetIndex >= currentStart && targetIndex < endExclusive) {
-        return frame;
-      }
-      currentStart = endExclusive;
-    }
-
-    return null;
+    return entries.last.frame;
   }
 
   FrameId? resolveFrameIdForLayer({required Layer layer, int? frameIndex}) {
@@ -163,27 +144,7 @@ class TimelineController {
     required Layer layer,
     required FrameId frameId,
   }) {
-    final explicitStarts =
-        _explicitFrameStarts[layer.id] ?? const <FrameId, int>{};
-    final explicitStart = explicitStarts[frameId];
-    if (explicitStart != null) {
-      return explicitStart;
-    }
-
-    var currentStart = 0;
-    for (final frame in layer.frames) {
-      if (explicitStarts.containsKey(frame.id)) {
-        continue;
-      }
-
-      if (frame.id == frameId) {
-        return currentStart;
-      }
-
-      currentStart += _safeDuration(frame.duration);
-    }
-
-    return null;
+    return _entryForFrame(layer: layer, frameId: frameId)?.startIndex;
   }
 
   void createDrawingFrameForLayer({
@@ -199,6 +160,16 @@ class TimelineController {
       );
     }
 
+    final layer = _requireLayer(layerId);
+    final hasFrameAtCurrentIndex = _entriesForLayer(
+      layer,
+    ).any((entry) => entry.startIndex == _currentFrameIndex);
+    if (hasFrameAtCurrentIndex) {
+      throw StateError(
+        'Drawing frame already exists at timeline index $_currentFrameIndex.',
+      );
+    }
+
     _repository.addFrame(
       layerId: layerId,
       frame: Frame(id: frameId, duration: duration, strokes: const []),
@@ -208,7 +179,21 @@ class TimelineController {
   }
 
   void increaseExposure({required LayerId layerId, required FrameId frameId}) {
-    _requireFrameInLayer(layerId: layerId, frameId: frameId);
+    final layer = _requireLayer(layerId);
+    _requireFrameInLayer(layer: layer, frameId: frameId);
+    final connectedEntries = _connectedFollowingEntries(
+      layer: layer,
+      frameId: frameId,
+    );
+
+    if (connectedEntries.isNotEmpty) {
+      _shiftFrameStarts(
+        layerId: layerId,
+        entries: connectedEntries,
+        delta: 1,
+      );
+    }
+
     _repository.updateFrame(
       frameId: frameId,
       update: (frame) =>
@@ -217,28 +202,40 @@ class TimelineController {
   }
 
   void decreaseExposure({required LayerId layerId, required FrameId frameId}) {
-    _requireFrameInLayer(layerId: layerId, frameId: frameId);
+    final layer = _requireLayer(layerId);
+    final frame = _requireFrameInLayer(layer: layer, frameId: frameId);
+    final currentDuration = _safeDuration(frame.duration);
+    if (currentDuration == 1) {
+      return;
+    }
+
+    final connectedEntries = _connectedFollowingEntries(
+      layer: layer,
+      frameId: frameId,
+    );
+
+    if (connectedEntries.isNotEmpty) {
+      _shiftFrameStarts(
+        layerId: layerId,
+        entries: connectedEntries,
+        delta: -1,
+      );
+    }
+
     _repository.updateFrame(
       frameId: frameId,
-      update: (frame) {
-        final nextDuration = _safeDuration(frame.duration) - 1;
-        return frame.copyWith(duration: nextDuration < 1 ? 1 : nextDuration);
-      },
+      update: (frame) => frame.copyWith(duration: currentDuration - 1),
     );
   }
 
-  Frame _requireFrameInLayer({
-    required LayerId layerId,
-    required FrameId frameId,
-  }) {
-    final layer = _requireLayer(layerId);
+  Frame _requireFrameInLayer({required Layer layer, required FrameId frameId}) {
     for (final frame in layer.frames) {
       if (frame.id == frameId) {
         return frame;
       }
     }
 
-    throw StateError('Frame not found in layer $layerId: $frameId');
+    throw StateError('Frame not found in layer ${layer.id}: $frameId');
   }
 
   Layer _requireLayer(LayerId layerId) {
@@ -273,5 +270,112 @@ class TimelineController {
     return null;
   }
 
+  List<_FrameExposureEntry> _entriesForLayer(Layer layer) {
+    final explicitStarts =
+        _explicitFrameStarts[layer.id] ?? const <FrameId, int>{};
+    var nextImplicitStart = 0;
+    final entries = <_FrameExposureEntry>[];
+
+    for (final frame in layer.frames) {
+      final startIndex = explicitStarts[frame.id] ?? nextImplicitStart;
+      final duration = _safeDuration(frame.duration);
+      entries.add(
+        _FrameExposureEntry(
+          frame: frame,
+          startIndex: startIndex,
+          duration: duration,
+        ),
+      );
+      nextImplicitStart = startIndex + duration;
+    }
+
+    entries.sort((a, b) {
+      final startComparison = a.startIndex.compareTo(b.startIndex);
+      if (startComparison != 0) {
+        return startComparison;
+      }
+
+      return layer.frames
+          .indexWhere((frame) => frame.id == a.frame.id)
+          .compareTo(
+            layer.frames.indexWhere((frame) => frame.id == b.frame.id),
+          );
+    });
+    return entries;
+  }
+
+  _FrameExposureEntry? _entryForFrame({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    for (final entry in _entriesForLayer(layer)) {
+      if (entry.frame.id == frameId) {
+        return entry;
+      }
+    }
+
+    return null;
+  }
+
+  List<_FrameExposureEntry> _connectedFollowingEntries({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    final entries = _entriesForLayer(layer);
+    final targetIndex = entries.indexWhere((entry) => entry.frame.id == frameId);
+    if (targetIndex == -1 || targetIndex + 1 >= entries.length) {
+      return const <_FrameExposureEntry>[];
+    }
+
+    final connectedEntries = <_FrameExposureEntry>[];
+    var expectedStartIndex = entries[targetIndex].authoredEndIndex;
+    for (var index = targetIndex + 1; index < entries.length; index += 1) {
+      final entry = entries[index];
+      if (entry.startIndex != expectedStartIndex) {
+        break;
+      }
+
+      connectedEntries.add(entry);
+      expectedStartIndex = entry.authoredEndIndex;
+    }
+
+    return connectedEntries;
+  }
+
+  void _shiftFrameStarts({
+    required LayerId layerId,
+    required Iterable<_FrameExposureEntry> entries,
+    required int delta,
+  }) {
+    final layerStarts = _explicitFrameStarts.putIfAbsent(
+      layerId,
+      () => <FrameId, int>{},
+    );
+    for (final entry in entries) {
+      final nextStartIndex = entry.startIndex + delta;
+      if (nextStartIndex < 0) {
+        throw StateError(
+          'Frame start cannot be shifted before timeline index zero.',
+        );
+      }
+
+      layerStarts[entry.frame.id] = nextStartIndex;
+    }
+  }
+
   int _safeDuration(int duration) => duration <= 0 ? 1 : duration;
+}
+
+class _FrameExposureEntry {
+  const _FrameExposureEntry({
+    required this.frame,
+    required this.startIndex,
+    required this.duration,
+  });
+
+  final Frame frame;
+  final int startIndex;
+  final int duration;
+
+  int get authoredEndIndex => startIndex + duration;
 }
