@@ -131,16 +131,22 @@ void main() {
           historyManager: history,
         );
 
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('start'),
+        );
         fixture.controller.selectFrameIndex(6);
         fixture.controller.createBlankExposureForLayer(
           layerId: const LayerId('layer'),
         );
-        expect(_latestLayer(fixture.repository).frames, isEmpty);
+        expect(_latestLayer(fixture.repository).frames, hasLength(1));
         expect(
           _latestLayer(fixture.repository).timeline[6]?.type,
           TimelineExposureType.blank,
         );
 
+        history.undo();
+        expect(_latestLayer(fixture.repository).timeline, hasLength(1));
         history.undo();
         expect(_latestLayer(fixture.repository).timeline, isEmpty);
 
@@ -157,6 +163,45 @@ void main() {
         expect(_latestLayer(fixture.repository).timeline, isEmpty);
       },
     );
+
+    test('replacing blank with drawing is undoable without dense frames', () {
+      final history = HistoryManager();
+      final fixture = _fixture(
+        Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: const [],
+          timeline: const {0: TimelineExposure.blank()},
+        ),
+        historyManager: history,
+      );
+
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('draw'),
+      );
+
+      expect(_latestLayer(fixture.repository).frames, hasLength(1));
+      expect(_latestLayer(fixture.repository).timeline, hasLength(1));
+      expect(
+        _latestLayer(fixture.repository).timeline[0]?.type,
+        TimelineExposureType.drawing,
+      );
+
+      history.undo();
+      expect(_latestLayer(fixture.repository).frames, isEmpty);
+      expect(
+        _latestLayer(fixture.repository).timeline[0]?.type,
+        TimelineExposureType.blank,
+      );
+
+      history.redo();
+      expect(_latestLayer(fixture.repository).frames, hasLength(1));
+      expect(
+        _latestLayer(fixture.repository).timeline[0]?.frameId,
+        const FrameId('draw'),
+      );
+    });
 
     test('+ and - exposure move following timeline entry and are undoable', () {
       final history = HistoryManager();

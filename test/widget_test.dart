@@ -8,5 +8,8 @@ void main() {
 
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.text('QuickAnimaker v2.1'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('new-frame-button')), findsOneWidget);
+    expect(find.text('New Frame'), findsOneWidget);
+    expect(find.text('New Drawing'), findsNothing);
   });
 }

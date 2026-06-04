@@ -4,6 +4,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/timeline_exposure.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -86,7 +87,12 @@ class LayerController {
 
   void addLayerWithDefaults({required LayerId layerId, required String name}) {
     addLayer(
-      layer: Layer(id: layerId, name: name, frames: const []),
+      layer: Layer(
+        id: layerId,
+        name: name,
+        frames: const [],
+        timeline: const {0: TimelineExposure.blank()},
+      ),
     );
   }
 

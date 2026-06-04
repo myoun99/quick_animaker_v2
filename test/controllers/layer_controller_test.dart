@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -43,6 +44,11 @@ void main() {
       fixture.controller.selectLayer(const LayerId('layer-3'));
       expect(fixture.controller.activeLayer?.name, 'Layer 3');
       expect(fixture.controller.activeLayer?.frames, isEmpty);
+      expect(fixture.controller.activeLayer?.timeline, hasLength(1));
+      expect(
+        fixture.controller.activeLayer?.timeline[0]?.type,
+        TimelineExposureType.blank,
+      );
     });
 
     test('toggles visibility', () {

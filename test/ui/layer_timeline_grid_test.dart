@@ -148,6 +148,20 @@ void main() {
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
+  testWidgets('blank start shows X with low-emphasis background', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? TimelineCellExposureState.blankStart
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(find.text('X'), findsOneWidget);
+    expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
+  });
+
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
