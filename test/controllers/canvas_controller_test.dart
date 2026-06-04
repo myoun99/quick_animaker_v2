@@ -177,7 +177,7 @@ void main() {
       );
     });
 
-    test('drawing creates one sparse frame when no frame exists', () {
+    test('drawing on an empty timeline does not automatically create a frame', () {
       final fixture = _createFixture(
         layers: [
           Layer(
@@ -192,22 +192,14 @@ void main() {
       _drawStroke(fixture.controller);
 
       final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
-      expect(layer.frames, hasLength(1));
-      expect(layer.frames.single.duration, 1);
-      expect(layer.frames.single.strokes, hasLength(1));
-      expect(
-        fixture.timelineController.resolveFrameForLayer(
-          layer: layer,
-          frameIndex: 9,
-        ),
-        isNull,
-      );
+      expect(layer.frames, isEmpty);
+      expect(layer.timeline, isEmpty);
       expect(
         fixture.timelineController.resolveFrameForLayer(
           layer: layer,
           frameIndex: 10,
         ),
-        isNotNull,
+        isNull,
       );
     });
 

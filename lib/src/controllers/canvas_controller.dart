@@ -5,7 +5,6 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
-import '../models/layer_id.dart';
 import '../models/stroke.dart';
 import '../models/stroke_id.dart';
 import '../models/stroke_point.dart';
@@ -208,10 +207,6 @@ class CanvasController {
     return 'stroke-${DateTime.now().microsecondsSinceEpoch}-$_strokeSequence';
   }
 
-  String _nextFrameId(LayerId layerId) {
-    return 'frame-${layerId.value}-${DateTime.now().microsecondsSinceEpoch}-$_strokeSequence';
-  }
-
   List<LayerFrame> layerFramesForCut(CutId cutId) {
     final project = _repository.currentProject;
     if (project == null) {
@@ -288,12 +283,7 @@ class CanvasController {
       return null;
     }
 
-    final frameId = FrameId(_nextFrameId(layer.id));
-    timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: frameId,
-    );
-    return frameId;
+    return null;
   }
 
   Frame? _findFrame(FrameId frameId) {
