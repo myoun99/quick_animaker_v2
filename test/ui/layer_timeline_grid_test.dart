@@ -170,7 +170,8 @@ void main() {
 Widget _grid({
   int currentFrameIndex = 0,
   int frameCount = 12,
-  TimelineCellExposureState Function(Layer layer, int frameIndex)? exposureStateForLayer,
+  TimelineCellExposureState Function(Layer layer, int frameIndex)?
+  exposureStateForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
   VoidCallback? onAddLayer,
@@ -187,7 +188,9 @@ Widget _grid({
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           frameCount: frameCount,
-          exposureStateForLayer: exposureStateForLayer ?? (_, _) => TimelineCellExposureState.empty,
+          exposureStateForLayer:
+              exposureStateForLayer ??
+              (_, _) => TimelineCellExposureState.empty,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
           onAddLayer: onAddLayer ?? () {},

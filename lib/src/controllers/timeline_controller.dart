@@ -125,10 +125,7 @@ class TimelineController {
     return hasSelectedFrameForLayer(layer);
   }
 
-  bool isDrawingStartForLayer({
-    required Layer layer,
-    required int frameIndex,
-  }) {
+  bool isDrawingStartForLayer({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
     }
@@ -141,10 +138,7 @@ class TimelineController {
       return false;
     }
 
-    return exposureStartIndexForLayer(
-          layer: layer,
-          frameId: resolvedFrameId,
-        ) ==
+    return exposureStartIndexForLayer(layer: layer, frameId: resolvedFrameId) ==
         frameIndex;
   }
 
@@ -161,10 +155,7 @@ class TimelineController {
       return false;
     }
 
-    return exposureStartIndexForLayer(
-          layer: layer,
-          frameId: resolvedFrameId,
-        ) !=
+    return exposureStartIndexForLayer(layer: layer, frameId: resolvedFrameId) !=
         frameIndex;
   }
 
@@ -216,23 +207,16 @@ class TimelineController {
         _currentFrameIndex;
   }
 
-  void increaseExposure({
-    required LayerId layerId,
-    required FrameId frameId,
-  }) {
+  void increaseExposure({required LayerId layerId, required FrameId frameId}) {
     _requireFrameInLayer(layerId: layerId, frameId: frameId);
     _repository.updateFrame(
       frameId: frameId,
-      update: (frame) => frame.copyWith(
-        duration: _safeDuration(frame.duration) + 1,
-      ),
+      update: (frame) =>
+          frame.copyWith(duration: _safeDuration(frame.duration) + 1),
     );
   }
 
-  void decreaseExposure({
-    required LayerId layerId,
-    required FrameId frameId,
-  }) {
+  void decreaseExposure({required LayerId layerId, required FrameId frameId}) {
     _requireFrameInLayer(layerId: layerId, frameId: frameId);
     _repository.updateFrame(
       frameId: frameId,

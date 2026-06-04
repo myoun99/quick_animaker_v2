@@ -63,7 +63,9 @@ void main() {
     expect(find.text('─'), findsOneWidget);
   });
 
-  testWidgets('exposure state callback is used in vertical mode', (tester) async {
+  testWidgets('exposure state callback is used in vertical mode', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _panel(
         orientation: TimelineOrientation.vertical,

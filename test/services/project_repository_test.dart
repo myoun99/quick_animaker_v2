@@ -260,7 +260,10 @@ void main() {
           .frames;
       expect(updatedFrames.first, frameA);
       expect(updatedFrames.last.duration, 3);
-      expect(project.tracks.single.cuts.single.layers.single.frames.last, frameB);
+      expect(
+        project.tracks.single.cuts.single.layers.single.frames.last,
+        frameB,
+      );
       expect(updatedFrames.last, isNot(same(frameB)));
     });
 
