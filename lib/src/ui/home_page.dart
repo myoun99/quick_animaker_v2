@@ -77,9 +77,21 @@ class _HomePageState extends State<HomePage> {
     return _timelineController.getSelectedFrameForLayer(layer);
   }
 
+  bool get _canCreateDrawingAtCurrentFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return false;
+    }
+
+    return !_timelineController.isDrawingStartForLayer(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
   void _createDrawingAtCurrentFrame() {
     final layer = _activeLayer;
-    if (layer == null || _selectedFrame != null) {
+    if (layer == null || !_canCreateDrawingAtCurrentFrame) {
       return;
     }
 
@@ -168,7 +180,7 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 16),
                   TextButton(
                     key: const ValueKey<String>('new-drawing-button'),
-                    onPressed: activeLayer != null && selectedFrame == null
+                    onPressed: _canCreateDrawingAtCurrentFrame
                         ? () => setState(_createDrawingAtCurrentFrame)
                         : null,
                     child: const Text('New Drawing'),
