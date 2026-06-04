@@ -20,10 +20,21 @@ void main() {
   group('Timeline map controller', () {
     test('empty timeline resolves null', () {
       final fixture = _fixture(
-        Layer(id: const LayerId('layer'), name: 'Layer', frames: const [], timeline: const {}),
+        Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: const [],
+          timeline: const {},
+        ),
       );
 
-      expect(fixture.controller.resolveFrameForLayer(layer: fixture.layer, frameIndex: 0), isNull);
+      expect(
+        fixture.controller.resolveFrameForLayer(
+          layer: fixture.layer,
+          frameIndex: 0,
+        ),
+        isNull,
+      );
     });
 
     test('drawing and blank entries hold until next exposure entry', () {
@@ -42,16 +53,46 @@ void main() {
       );
       final fixture = _fixture(layer);
 
-      expect(fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 4), isNull);
-      expect(fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 5), const FrameId('a'));
-      expect(fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 7), const FrameId('a'));
-      expect(fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 8), isNull);
-      expect(fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 9), isNull);
-      expect(fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 10), const FrameId('b'));
-      expect(fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 5), isTrue);
-      expect(fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 6), isTrue);
-      expect(fixture.controller.isBlankStartForLayer(layer: layer, frameIndex: 8), isTrue);
-      expect(fixture.controller.isBlankHeldForLayer(layer: layer, frameIndex: 9), isTrue);
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 4),
+        isNull,
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 5),
+        const FrameId('a'),
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 7),
+        const FrameId('a'),
+      );
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 8),
+        isNull,
+      );
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 9),
+        isNull,
+      );
+      expect(
+        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 10),
+        const FrameId('b'),
+      );
+      expect(
+        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 5),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 6),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isBlankStartForLayer(layer: layer, frameIndex: 8),
+        isTrue,
+      );
+      expect(
+        fixture.controller.isBlankHeldForLayer(layer: layer, frameIndex: 9),
+        isTrue,
+      );
     });
 
     test('last blank holds forward as null', () {
@@ -59,41 +100,63 @@ void main() {
         id: const LayerId('layer'),
         name: 'Layer',
         frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
-        timeline: {0: TimelineExposure.drawing(const FrameId('a')), 3: const TimelineExposure.blank()},
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('a')),
+          3: const TimelineExposure.blank(),
+        },
       );
       final fixture = _fixture(layer);
 
-      expect(fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 100), isNull);
-      expect(fixture.controller.isBlankHeldForLayer(layer: layer, frameIndex: 100), isTrue);
+      expect(
+        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 100),
+        isNull,
+      );
+      expect(
+        fixture.controller.isBlankHeldForLayer(layer: layer, frameIndex: 100),
+        isTrue,
+      );
     });
 
-    test('new drawing and blank are undoable and do not create dense frames', () {
-      final history = HistoryManager();
-      final fixture = _fixture(
-        Layer(id: const LayerId('layer'), name: 'Layer', frames: const [], timeline: const {}),
-        historyManager: history,
-      );
+    test(
+      'new drawing and blank are undoable and do not create dense frames',
+      () {
+        final history = HistoryManager();
+        final fixture = _fixture(
+          Layer(
+            id: const LayerId('layer'),
+            name: 'Layer',
+            frames: const [],
+            timeline: const {},
+          ),
+          historyManager: history,
+        );
 
-      fixture.controller.selectFrameIndex(6);
-      fixture.controller.createBlankExposureForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(fixture.repository).frames, isEmpty);
-      expect(_latestLayer(fixture.repository).timeline[6]?.type, TimelineExposureType.blank);
+        fixture.controller.selectFrameIndex(6);
+        fixture.controller.createBlankExposureForLayer(
+          layerId: const LayerId('layer'),
+        );
+        expect(_latestLayer(fixture.repository).frames, isEmpty);
+        expect(
+          _latestLayer(fixture.repository).timeline[6]?.type,
+          TimelineExposureType.blank,
+        );
 
-      history.undo();
-      expect(_latestLayer(fixture.repository).timeline, isEmpty);
+        history.undo();
+        expect(_latestLayer(fixture.repository).timeline, isEmpty);
 
-      fixture.controller.selectFrameIndex(8);
-      fixture.controller.createDrawingFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('draw'),
-      );
-      expect(_latestLayer(fixture.repository).frames, hasLength(1));
-      expect(_latestLayer(fixture.repository).timeline, hasLength(1));
+        fixture.controller.selectFrameIndex(8);
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('draw'),
+        );
+        expect(_latestLayer(fixture.repository).frames, hasLength(1));
+        expect(_latestLayer(fixture.repository).timeline, hasLength(1));
 
-      history.undo();
-      expect(_latestLayer(fixture.repository).frames, isEmpty);
-      expect(_latestLayer(fixture.repository).timeline, isEmpty);
-    });
+        history.undo();
+        expect(_latestLayer(fixture.repository).frames, isEmpty);
+        expect(_latestLayer(fixture.repository).timeline, isEmpty);
+      },
+    );
 
     test('+ and - exposure move following timeline entry and are undoable', () {
       final history = HistoryManager();
@@ -113,12 +176,18 @@ void main() {
         historyManager: history,
       );
 
-      fixture.controller.increaseExposure(layerId: const LayerId('layer'), frameId: const FrameId('a'));
+      fixture.controller.increaseExposure(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+      );
       expect(_latestLayer(fixture.repository).timeline.containsKey(7), isTrue);
       history.undo();
       expect(_latestLayer(fixture.repository).timeline.containsKey(6), isTrue);
 
-      fixture.controller.decreaseExposure(layerId: const LayerId('layer'), frameId: const FrameId('a'));
+      fixture.controller.decreaseExposure(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+      );
       expect(_latestLayer(fixture.repository).timeline.containsKey(5), isTrue);
       history.undo();
       expect(_latestLayer(fixture.repository).timeline.containsKey(6), isTrue);
@@ -135,7 +204,11 @@ _TimelineMapFixture _fixture(Layer layer, {HistoryManager? historyManager}) {
     historyManager: historyManager,
     cutId: _cutId,
   );
-  return _TimelineMapFixture(repository: repository, controller: controller, layer: layer);
+  return _TimelineMapFixture(
+    repository: repository,
+    controller: controller,
+    layer: layer,
+  );
 }
 
 Project _project(Layer layer) {

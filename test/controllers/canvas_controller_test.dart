@@ -177,31 +177,34 @@ void main() {
       );
     });
 
-    test('drawing on an empty timeline does not automatically create a frame', () {
-      final fixture = _createFixture(
-        layers: [
-          Layer(
-            id: const LayerId('layer-1'),
-            name: 'Layer 1',
-            frames: const [],
+    test(
+      'drawing on an empty timeline does not automatically create a frame',
+      () {
+        final fixture = _createFixture(
+          layers: [
+            Layer(
+              id: const LayerId('layer-1'),
+              name: 'Layer 1',
+              frames: const [],
+            ),
+          ],
+        );
+
+        fixture.timelineController.selectFrameIndex(10);
+        _drawStroke(fixture.controller);
+
+        final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+        expect(layer.frames, isEmpty);
+        expect(layer.timeline, isEmpty);
+        expect(
+          fixture.timelineController.resolveFrameForLayer(
+            layer: layer,
+            frameIndex: 10,
           ),
-        ],
-      );
-
-      fixture.timelineController.selectFrameIndex(10);
-      _drawStroke(fixture.controller);
-
-      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
-      expect(layer.frames, isEmpty);
-      expect(layer.timeline, isEmpty);
-      expect(
-        fixture.timelineController.resolveFrameForLayer(
-          layer: layer,
-          frameIndex: 10,
-        ),
-        isNull,
-      );
-    });
+          isNull,
+        );
+      },
+    );
 
     test('drawing still targets active layer at current timeline frame', () {
       final fixture = _createFixture();

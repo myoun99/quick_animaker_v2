@@ -13,7 +13,10 @@ class TimelineExposure {
       );
 
   factory TimelineExposure.drawing(FrameId frameId) {
-    return TimelineExposure(type: TimelineExposureType.drawing, frameId: frameId);
+    return TimelineExposure(
+      type: TimelineExposureType.drawing,
+      frameId: frameId,
+    );
   }
 
   const TimelineExposure.blank()
@@ -44,10 +47,14 @@ class TimelineExposure {
         : FrameId.fromJson(frameIdJson as Map<String, dynamic>);
 
     if (type == TimelineExposureType.drawing && frameId == null) {
-      throw const FormatException('Drawing timeline exposure requires frameId.');
+      throw const FormatException(
+        'Drawing timeline exposure requires frameId.',
+      );
     }
     if (type == TimelineExposureType.blank && frameId != null) {
-      throw const FormatException('Blank timeline exposure cannot have frameId.');
+      throw const FormatException(
+        'Blank timeline exposure cannot have frameId.',
+      );
     }
 
     return TimelineExposure(type: type, frameId: frameId);
@@ -56,7 +63,9 @@ class TimelineExposure {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TimelineExposure && other.type == type && other.frameId == frameId;
+      other is TimelineExposure &&
+          other.type == type &&
+          other.frameId == frameId;
 
   @override
   int get hashCode => Object.hash(type, frameId);

@@ -21,10 +21,10 @@ class Frame {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
-        'duration': duration,
-        'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
-      };
+    'id': id.toJson(),
+    'duration': duration,
+    'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
+  };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
     return Frame(

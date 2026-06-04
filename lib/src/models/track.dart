@@ -31,11 +31,11 @@ class Track {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
-        'name': name,
-        'cuts': cuts.map((cut) => cut.toJson()).toList(),
-        'type': type.name,
-      };
+    'id': id.toJson(),
+    'name': name,
+    'cuts': cuts.map((cut) => cut.toJson()).toList(),
+    'type': type.name,
+  };
 
   factory Track.fromJson(Map<String, dynamic> json) {
     return Track(
@@ -61,8 +61,7 @@ class Track {
   int get hashCode => Object.hash(id, name, Object.hashAll(cuts), type);
 
   @override
-  String toString() =>
-      'Track(id: $id, name: $name, cuts: $cuts, type: $type)';
+  String toString() => 'Track(id: $id, name: $name, cuts: $cuts, type: $type)';
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {

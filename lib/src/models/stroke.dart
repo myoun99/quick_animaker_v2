@@ -26,10 +26,10 @@ class Stroke {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
-        'points': points.map((point) => point.toJson()).toList(),
-        'brushSettings': brushSettings.toJson(),
-      };
+    'id': id.toJson(),
+    'points': points.map((point) => point.toJson()).toList(),
+    'brushSettings': brushSettings.toJson(),
+  };
 
   factory Stroke.fromJson(Map<String, dynamic> json) {
     return Stroke(

@@ -33,12 +33,12 @@ class Project {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
-        'name': name,
-        'tracks': tracks.map((track) => track.toJson()).toList(),
-        'createdAt': createdAt.toIso8601String(),
-        'fps': fps,
-      };
+    'id': id.toJson(),
+    'name': name,
+    'tracks': tracks.map((track) => track.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+    'fps': fps,
+  };
 
   factory Project.fromJson(Map<String, dynamic> json) {
     return Project(
@@ -63,7 +63,8 @@ class Project {
           other.fps == fps;
 
   @override
-  int get hashCode => Object.hash(id, name, Object.hashAll(tracks), createdAt, fps);
+  int get hashCode =>
+      Object.hash(id, name, Object.hashAll(tracks), createdAt, fps);
 
   @override
   String toString() =>

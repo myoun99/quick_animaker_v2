@@ -7,10 +7,8 @@ void main() {
   group('TimelineExposure', () {
     test('drawing exposure requires frameId', () {
       expect(
-        () => TimelineExposure(
-          type: TimelineExposureType.drawing,
-          frameId: null,
-        ),
+        () =>
+            TimelineExposure(type: TimelineExposureType.drawing, frameId: null),
         throwsAssertionError,
       );
     });

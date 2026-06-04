@@ -141,7 +141,8 @@ class TimelineController {
   }
 
   bool isHeldExposureForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 || isDrawingStartForLayer(layer: layer, frameIndex: frameIndex)) {
+    if (frameIndex < 0 ||
+        isDrawingStartForLayer(layer: layer, frameIndex: frameIndex)) {
       return false;
     }
 
@@ -153,7 +154,8 @@ class TimelineController {
   }
 
   bool isBlankHeldForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 || isBlankStartForLayer(layer: layer, frameIndex: frameIndex)) {
+    if (frameIndex < 0 ||
+        isBlankStartForLayer(layer: layer, frameIndex: frameIndex)) {
       return false;
     }
 
@@ -187,7 +189,8 @@ class TimelineController {
       return null;
     }
 
-    return _effectiveEndIndexForEntry(layer: layer, entry: entry) - entry.startIndex;
+    return _effectiveEndIndexForEntry(layer: layer, entry: entry) -
+        entry.startIndex;
   }
 
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
@@ -208,7 +211,10 @@ class TimelineController {
       return false;
     }
 
-    final nextEntry = _nextEntryAfterStart(layer: layer, startIndex: entry.startIndex);
+    final nextEntry = _nextEntryAfterStart(
+      layer: layer,
+      startIndex: entry.startIndex,
+    );
     return nextEntry != null && nextEntry.startIndex - entry.startIndex > 1;
   }
 
@@ -232,7 +238,9 @@ class TimelineController {
       );
     }
 
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(before.timeline);
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
     nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(frameId);
     final after = before.copyWith(
       frames: [
@@ -250,7 +258,9 @@ class TimelineController {
       return;
     }
 
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(before.timeline);
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
     nextTimeline[_currentFrameIndex] = const TimelineExposure.blank();
     final after = before.copyWith(timeline: nextTimeline);
     _applyLayerEdit(before: before, after: after);
@@ -274,9 +284,11 @@ class TimelineController {
       1,
     );
     final nextFrames = before.frames
-        .map((frame) => frame.id == frameId
-            ? frame.copyWith(duration: _safeDuration(frame.duration) + 1)
-            : frame)
+        .map(
+          (frame) => frame.id == frameId
+              ? frame.copyWith(duration: _safeDuration(frame.duration) + 1)
+              : frame,
+        )
         .toList(growable: false);
     _applyLayerEdit(
       before: before,
@@ -302,13 +314,15 @@ class TimelineController {
       -1,
     );
     final nextFrames = before.frames
-        .map((existingFrame) => existingFrame.id == frameId
-            ? existingFrame.copyWith(
-                duration: _safeDuration(frame.duration) > 1
-                    ? _safeDuration(frame.duration) - 1
-                    : 1,
-              )
-            : existingFrame)
+        .map(
+          (existingFrame) => existingFrame.id == frameId
+              ? existingFrame.copyWith(
+                  duration: _safeDuration(frame.duration) > 1
+                      ? _safeDuration(frame.duration) - 1
+                      : 1,
+                )
+              : existingFrame,
+        )
         .toList(growable: false);
     _applyLayerEdit(
       before: before,
@@ -374,7 +388,10 @@ class TimelineController {
 
   List<_TimelineEntry> _entriesForLayer(Layer layer) {
     return layer.timeline.entries
-        .map((entry) => _TimelineEntry(startIndex: entry.key, exposure: entry.value))
+        .map(
+          (entry) =>
+              _TimelineEntry(startIndex: entry.key, exposure: entry.value),
+        )
         .toList(growable: false);
   }
 
@@ -397,14 +414,19 @@ class TimelineController {
     required int startIndex,
   }) {
     final entries = _entriesForLayer(layer);
-    final targetIndex = entries.indexWhere((entry) => entry.startIndex == startIndex);
+    final targetIndex = entries.indexWhere(
+      (entry) => entry.startIndex == startIndex,
+    );
     if (targetIndex == -1 || targetIndex + 1 >= entries.length) {
       return const <_TimelineEntry>[];
     }
 
     final connectedEntries = <_TimelineEntry>[];
     var previousEntry = entries[targetIndex];
-    var expectedStartIndex = _authoredEndIndex(layer: layer, entry: previousEntry);
+    var expectedStartIndex = _authoredEndIndex(
+      layer: layer,
+      entry: previousEntry,
+    );
     for (var index = targetIndex + 1; index < entries.length; index += 1) {
       final entry = entries[index];
       if (entry.startIndex != expectedStartIndex) {
@@ -416,7 +438,10 @@ class TimelineController {
 
       connectedEntries.add(entry);
       previousEntry = entry;
-      expectedStartIndex = _authoredEndIndex(layer: layer, entry: previousEntry);
+      expectedStartIndex = _authoredEndIndex(
+        layer: layer,
+        entry: previousEntry,
+      );
     }
 
     return connectedEntries;
@@ -438,7 +463,10 @@ class TimelineController {
     required Layer layer,
     required _TimelineEntry entry,
   }) {
-    final nextEntry = _nextEntryAfterStart(layer: layer, startIndex: entry.startIndex);
+    final nextEntry = _nextEntryAfterStart(
+      layer: layer,
+      startIndex: entry.startIndex,
+    );
     if (nextEntry != null) {
       return nextEntry.startIndex;
     }
@@ -457,7 +485,9 @@ class TimelineController {
     }
 
     final frameId = entry.exposure.frameId;
-    final frame = frameId == null ? null : _frameOrNull(layer: layer, frameId: frameId);
+    final frame = frameId == null
+        ? null
+        : _frameOrNull(layer: layer, frameId: frameId);
     return entry.startIndex + _safeDuration(frame?.duration ?? 1);
   }
 
@@ -467,7 +497,9 @@ class TimelineController {
     int delta,
   ) {
     final entriesToMove = entries.toList(growable: false);
-    final movingIndexes = entriesToMove.map((entry) => entry.startIndex).toSet();
+    final movingIndexes = entriesToMove
+        .map((entry) => entry.startIndex)
+        .toSet();
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(timeline)
       ..removeWhere((index, _) => movingIndexes.contains(index));
 
@@ -477,7 +509,9 @@ class TimelineController {
         throw StateError('Timeline entry cannot move before index zero.');
       }
       if (nextTimeline.containsKey(nextStartIndex)) {
-        throw StateError('Timeline entry already exists at index $nextStartIndex.');
+        throw StateError(
+          'Timeline entry already exists at index $nextStartIndex.',
+        );
       }
       nextTimeline[nextStartIndex] = entry.exposure;
     }
@@ -501,5 +535,4 @@ class _TimelineEntry {
 
   final int startIndex;
   final TimelineExposure exposure;
-
 }

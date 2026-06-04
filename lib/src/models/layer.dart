@@ -46,12 +46,7 @@ class Layer {
     'name': name,
     'frames': frames.map((frame) => frame.toJson()).toList(),
     'timeline': timeline.entries
-        .map(
-          (entry) => {
-            'index': entry.key,
-            'exposure': entry.value.toJson(),
-          },
-        )
+        .map((entry) => {'index': entry.key, 'exposure': entry.value.toJson()})
         .toList(),
     'isVisible': isVisible,
     'opacity': opacity,
@@ -89,7 +84,9 @@ class Layer {
     id,
     name,
     Object.hashAll(frames),
-    Object.hashAll(timeline.entries.map((entry) => Object.hash(entry.key, entry.value))),
+    Object.hashAll(
+      timeline.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
     isVisible,
     opacity,
   );

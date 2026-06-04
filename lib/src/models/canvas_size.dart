@@ -11,10 +11,7 @@ class CanvasSize {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'width': width,
-        'height': height,
-      };
+  Map<String, dynamic> toJson() => {'width': width, 'height': height};
 
   factory CanvasSize.fromJson(Map<String, dynamic> json) {
     return CanvasSize(

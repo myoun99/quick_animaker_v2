@@ -24,12 +24,21 @@ void main() {
       frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
     );
     final after = before.copyWith(
-      timeline: {0: TimelineExposure.drawing(const FrameId('a')), 4: const TimelineExposure.blank()},
+      timeline: {
+        0: TimelineExposure.drawing(const FrameId('a')),
+        4: const TimelineExposure.blank(),
+      },
     );
     final repository = ProjectRepository(initialProject: _project(before));
     final history = HistoryManager();
 
-    history.execute(UpdateLayerTimelineCommand(repository: repository, before: before, after: after));
+    history.execute(
+      UpdateLayerTimelineCommand(
+        repository: repository,
+        before: before,
+        after: after,
+      ),
+    );
 
     expect(_layer(repository).timeline[4]?.type, TimelineExposureType.blank);
 

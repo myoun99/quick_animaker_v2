@@ -18,10 +18,10 @@ class BrushSettings {
   }
 
   Map<String, dynamic> toJson() => {
-        'color': color,
-        'size': size,
-        'opacity': opacity,
-      };
+    'color': color,
+    'size': size,
+    'opacity': opacity,
+  };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
     return BrushSettings(

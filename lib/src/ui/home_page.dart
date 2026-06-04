@@ -90,7 +90,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   bool get _canCreateBlankAtCurrentFrame {
     final layer = _activeLayer;
     if (layer == null) {

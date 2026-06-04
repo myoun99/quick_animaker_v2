@@ -16,35 +16,66 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 
 void main() {
-  test('creates the full Project -> Track -> Cut -> Layer -> Frame -> Stroke hierarchy', () {
-    final stroke = Stroke(
-      id: const StrokeId('stroke-1'),
-      points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-      brushSettings: const BrushSettings(size: 8),
-    );
-    final frame = Frame(id: const FrameId('frame-1'), duration: 1, strokes: [stroke]);
-    final layer = Layer(id: const LayerId('layer-1'), name: 'Line', frames: [frame]);
-    final cut = Cut(
-      id: const CutId('cut-1'),
-      name: 'Cut 1',
-      layers: [layer],
-      duration: 24,
-      canvasSize: const CanvasSize(width: 1280, height: 720),
-    );
-    final track = Track(id: const TrackId('track-1'), name: 'Video', cuts: [cut]);
-    final project = Project(
-      id: const ProjectId('project-1'),
-      name: 'Project',
-      tracks: [track],
-      createdAt: DateTime.utc(2026),
-    );
+  test(
+    'creates the full Project -> Track -> Cut -> Layer -> Frame -> Stroke hierarchy',
+    () {
+      final stroke = Stroke(
+        id: const StrokeId('stroke-1'),
+        points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
+        brushSettings: const BrushSettings(size: 8),
+      );
+      final frame = Frame(
+        id: const FrameId('frame-1'),
+        duration: 1,
+        strokes: [stroke],
+      );
+      final layer = Layer(
+        id: const LayerId('layer-1'),
+        name: 'Line',
+        frames: [frame],
+      );
+      final cut = Cut(
+        id: const CutId('cut-1'),
+        name: 'Cut 1',
+        layers: [layer],
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+      );
+      final track = Track(
+        id: const TrackId('track-1'),
+        name: 'Video',
+        cuts: [cut],
+      );
+      final project = Project(
+        id: const ProjectId('project-1'),
+        name: 'Project',
+        tracks: [track],
+        createdAt: DateTime.utc(2026),
+      );
 
-    expect(project.tracks.single, track);
-    expect(project.tracks.single.cuts.single, cut);
-    expect(project.tracks.single.cuts.single.layers.single, layer);
-    expect(project.tracks.single.cuts.single.layers.single.frames.single, frame);
-    expect(project.tracks.single.cuts.single.layers.single.frames.single.strokes.single, stroke);
-  });
+      expect(project.tracks.single, track);
+      expect(project.tracks.single.cuts.single, cut);
+      expect(project.tracks.single.cuts.single.layers.single, layer);
+      expect(
+        project.tracks.single.cuts.single.layers.single.frames.single,
+        frame,
+      );
+      expect(
+        project
+            .tracks
+            .single
+            .cuts
+            .single
+            .layers
+            .single
+            .frames
+            .single
+            .strokes
+            .single,
+        stroke,
+      );
+    },
+  );
 
   test('defensively copies child lists as unmodifiable lists', () {
     final strokes = <Stroke>[
@@ -54,11 +85,18 @@ void main() {
         brushSettings: const BrushSettings(),
       ),
     ];
-    final frame = Frame(id: const FrameId('frame-1'), duration: 1, strokes: strokes);
+    final frame = Frame(
+      id: const FrameId('frame-1'),
+      duration: 1,
+      strokes: strokes,
+    );
 
     strokes.clear();
 
     expect(frame.strokes, hasLength(1));
-    expect(() => frame.strokes.add(frame.strokes.first), throwsUnsupportedError);
+    expect(
+      () => frame.strokes.add(frame.strokes.first),
+      throwsUnsupportedError,
+    );
   });
 }

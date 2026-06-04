@@ -75,7 +75,9 @@ void main() {
     final layer = Layer(
       id: const LayerId('layer-timeline'),
       name: 'Timeline Layer',
-      frames: [Frame(id: const FrameId('frame-a'), duration: 2, strokes: const [])],
+      frames: [
+        Frame(id: const FrameId('frame-a'), duration: 2, strokes: const []),
+      ],
       timeline: {
         0: TimelineExposure.drawing(const FrameId('frame-a')),
         6: const TimelineExposure.blank(),
@@ -88,21 +90,32 @@ void main() {
     expect(restored.timeline[6], const TimelineExposure.blank());
   });
 
-  test('old layer JSON without timeline derives timeline from frame durations', () {
-    final json = {
-      'id': const LayerId('old-layer').toJson(),
-      'name': 'Old Layer',
-      'frames': [
-        Frame(id: const FrameId('a'), duration: 3, strokes: const []).toJson(),
-        Frame(id: const FrameId('b'), duration: 2, strokes: const []).toJson(),
-      ],
-      'isVisible': true,
-      'opacity': 1.0,
-    };
+  test(
+    'old layer JSON without timeline derives timeline from frame durations',
+    () {
+      final json = {
+        'id': const LayerId('old-layer').toJson(),
+        'name': 'Old Layer',
+        'frames': [
+          Frame(
+            id: const FrameId('a'),
+            duration: 3,
+            strokes: const [],
+          ).toJson(),
+          Frame(
+            id: const FrameId('b'),
+            duration: 2,
+            strokes: const [],
+          ).toJson(),
+        ],
+        'isVisible': true,
+        'opacity': 1.0,
+      };
 
-    final layer = Layer.fromJson(json);
+      final layer = Layer.fromJson(json);
 
-    expect(layer.timeline[0], TimelineExposure.drawing(const FrameId('a')));
-    expect(layer.timeline[3], TimelineExposure.drawing(const FrameId('b')));
-  });
+      expect(layer.timeline[0], TimelineExposure.drawing(const FrameId('a')));
+      expect(layer.timeline[3], TimelineExposure.drawing(const FrameId('b')));
+    },
+  );
 }

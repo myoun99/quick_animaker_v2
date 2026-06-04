@@ -34,12 +34,12 @@ class Cut {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
-        'name': name,
-        'layers': layers.map((layer) => layer.toJson()).toList(),
-        'duration': duration,
-        'canvasSize': canvasSize.toJson(),
-      };
+    'id': id.toJson(),
+    'name': name,
+    'layers': layers.map((layer) => layer.toJson()).toList(),
+    'duration': duration,
+    'canvasSize': canvasSize.toJson(),
+  };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
     return Cut(

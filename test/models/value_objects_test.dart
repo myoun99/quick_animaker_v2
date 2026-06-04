@@ -13,14 +13,17 @@ void main() {
       expect(CanvasSize.fromJson(size.toJson()), size);
     });
 
-    test('BrushSettings creates with defaults and round-trips through JSON', () {
-      const brush = BrushSettings();
+    test(
+      'BrushSettings creates with defaults and round-trips through JSON',
+      () {
+        const brush = BrushSettings();
 
-      expect(brush.color, 0xFF000000);
-      expect(brush.size, 4.0);
-      expect(brush.opacity, 1.0);
-      expect(BrushSettings.fromJson(brush.toJson()), brush);
-    });
+        expect(brush.color, 0xFF000000);
+        expect(brush.size, 4.0);
+        expect(brush.opacity, 1.0);
+        expect(BrushSettings.fromJson(brush.toJson()), brush);
+      },
+    );
 
     test('StrokePoint creates and round-trips through JSON', () {
       const point = StrokePoint(x: 12.5, y: 24.75);
