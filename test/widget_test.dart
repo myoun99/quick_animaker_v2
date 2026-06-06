@@ -114,4 +114,110 @@ void main() {
       expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
   );
+  testWidgets('frame editing toolbar buttons, rename dialog, and delete cell work', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final renameButton = find.byKey(
+      const ValueKey<String>('rename-frame-button'),
+    );
+    final deleteButton = find.byKey(
+      const ValueKey<String>('delete-cell-button'),
+    );
+    final newFrameButton = find.byKey(
+      const ValueKey<String>('new-frame-button'),
+    );
+    final markButton = find.byKey(
+      const ValueKey<String>('toggle-mark-button'),
+    );
+
+    expect(renameButton, findsOneWidget);
+    expect(deleteButton, findsOneWidget);
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
+
+    await tester.tap(newFrameButton);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
+    await tester.tap(renameButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename Frame'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A1',
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('rename-frame-ok-button')));
+    await tester.pumpAndSettle();
+
+    final layer1FirstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('A1')),
+      findsOneWidget,
+    );
+
+    await tester.tap(markButton);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('●')),
+      findsOneWidget,
+    );
+
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('A1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('●')),
+      findsNothing,
+    );
+
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('A1')),
+      findsNothing,
+    );
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
+  });
+
+  testWidgets('rename cancel leaves frame marker unchanged', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('rename-frame-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'Cancelled',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final layer1FirstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('○')),
+      findsOneWidget,
+    );
+    expect(find.text('Cancelled'), findsNothing);
+  });
+
 }

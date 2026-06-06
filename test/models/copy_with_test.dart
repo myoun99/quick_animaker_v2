@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 
 void main() {
+  frameNameCopyWithTests();
   test('copyWith changes only specified value object fields', () {
     const size = CanvasSize(width: 100, height: 200);
     const brush = BrushSettings(size: 4);
@@ -118,4 +119,33 @@ void main() {
       expect(stroke.brushSettings, const BrushSettings());
     },
   );
+}
+
+void frameNameCopyWithTests() {
+  test('frame copyWith sets and clears nullable name', () {
+    final frame = Frame(
+      id: const FrameId('named-frame'),
+      duration: 1,
+      strokes: const [],
+    );
+
+    final namedFrame = frame.copyWith(name: 'A1');
+    final clearedFrame = namedFrame.copyWith(name: null);
+
+    expect(frame.name, isNull);
+    expect(namedFrame.name, 'A1');
+    expect(clearedFrame.name, isNull);
+  });
+
+  test('frame equality includes nullable name', () {
+    final unnamedFrame = Frame(
+      id: const FrameId('frame'),
+      duration: 1,
+      strokes: const [],
+    );
+    final namedFrame = unnamedFrame.copyWith(name: 'A1');
+
+    expect(namedFrame, isNot(unnamedFrame));
+    expect(namedFrame, unnamedFrame.copyWith(name: 'A1'));
+  });
 }

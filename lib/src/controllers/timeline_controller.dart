@@ -267,6 +267,80 @@ class TimelineController {
     );
   }
 
+
+  bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
+    return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
+  }
+
+  void renameFrameForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+    required String? name,
+  }) {
+    final before = _requireLayer(layerId);
+    _requireFrameInLayer(layer: before, frameId: frameId);
+    final normalizedName = _normalizeFrameName(name);
+    final nextFrames = before.frames
+        .map(
+          (frame) => frame.id == frameId
+              ? frame.copyWith(name: normalizedName)
+              : frame,
+        )
+        .toList(growable: false);
+    final after = before.copyWith(frames: nextFrames);
+    if (after == before) {
+      return;
+    }
+
+    _applyLayerEdit(before: before, after: after);
+  }
+
+  bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return false;
+    }
+
+    return hasMarkAt(layer: layer, frameIndex: frameIndex) ||
+        isDrawingStartForLayer(layer: layer, frameIndex: frameIndex) ||
+        isBlankStartForLayer(layer: layer, frameIndex: frameIndex);
+  }
+
+  void deleteCellForLayer({required LayerId layerId}) {
+    final before = _requireLayer(layerId);
+    if (!canDeleteCellAt(layer: before, frameIndex: _currentFrameIndex)) {
+      return;
+    }
+
+    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks);
+    if (nextMarks.remove(_currentFrameIndex) != null) {
+      _applyLayerEdit(before: before, after: before.copyWith(marks: nextMarks));
+      return;
+    }
+
+    final authoredExposure = before.timeline[_currentFrameIndex];
+    if (authoredExposure == null) {
+      return;
+    }
+
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    )..remove(_currentFrameIndex);
+    var nextFrames = before.frames;
+    if (authoredExposure.type == TimelineExposureType.drawing) {
+      final frameId = authoredExposure.frameId;
+      if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
+        nextFrames = before.frames
+            .where((frame) => frame.id != frameId)
+            .toList(growable: false);
+      }
+    }
+
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    );
+  }
+
   void createDrawingFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
@@ -376,6 +450,26 @@ class TimelineController {
     _applyLayerEdit(
       before: before,
       after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    );
+  }
+
+
+  String? _normalizeFrameName(String? name) {
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  bool _timelineReferencesFrame(
+    Map<int, TimelineExposure> timeline,
+    FrameId frameId,
+  ) {
+    return timeline.values.any(
+      (exposure) =>
+          exposure.type == TimelineExposureType.drawing &&
+          exposure.frameId == frameId,
     );
   }
 

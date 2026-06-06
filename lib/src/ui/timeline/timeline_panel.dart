@@ -16,6 +16,7 @@ class TimelinePanel extends StatelessWidget {
     required this.frameCount,
     required this.exposureStateForLayer,
     this.hasMarkForLayer,
+    this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
@@ -32,6 +33,7 @@ class TimelinePanel extends StatelessWidget {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
+  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
@@ -96,6 +98,7 @@ class TimelinePanel extends StatelessWidget {
                       frameCount: frameCount,
                       exposureStateForLayer: exposureStateForLayer,
                       hasMarkForLayer: hasMarkForLayer,
+                      frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
@@ -109,6 +112,7 @@ class TimelinePanel extends StatelessWidget {
                       frameCount: frameCount,
                       exposureStateForLayer: exposureStateForLayer,
                       hasMarkForLayer: hasMarkForLayer,
+                      frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
