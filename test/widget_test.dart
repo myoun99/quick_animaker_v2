@@ -149,9 +149,15 @@ void main() {
       await tester.tap(renameButton);
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
+      final renameDialog = find.byType(AlertDialog);
+      expect(renameDialog, findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('rename-frame-text-field')),
+        find.descendant(
+          of: renameDialog,
+          matching: find.byKey(
+            const ValueKey<String>('rename-frame-text-field'),
+          ),
+        ),
         findsOneWidget,
       );
 
