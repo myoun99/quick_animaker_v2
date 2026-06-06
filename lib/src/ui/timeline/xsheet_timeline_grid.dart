@@ -12,6 +12,7 @@ class XSheetTimelineGrid extends StatelessWidget {
     required this.currentFrameIndex,
     required this.frameCount,
     required this.exposureStateForLayer,
+    this.hasMarkForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
@@ -25,6 +26,7 @@ class XSheetTimelineGrid extends StatelessWidget {
   final int frameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
+  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
@@ -78,6 +80,7 @@ class XSheetTimelineGrid extends StatelessWidget {
                 frameIndex: frameIndex,
                 current: frameIndex == currentFrameIndex,
                 exposureStateForLayer: exposureStateForLayer,
+                hasMarkForLayer: hasMarkForLayer,
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
               ),
@@ -197,6 +200,7 @@ class _XSheetFrameRow extends StatelessWidget {
     required this.frameIndex,
     required this.current,
     required this.exposureStateForLayer,
+    this.hasMarkForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
   });
@@ -207,6 +211,7 @@ class _XSheetFrameRow extends StatelessWidget {
   final bool current;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
+  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -244,6 +249,7 @@ class _XSheetFrameRow extends StatelessWidget {
             active: layer.id == activeLayerId,
             current: current,
             exposureState: exposureStateForLayer(layer, frameIndex),
+            hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
           ),
@@ -259,6 +265,7 @@ class _XSheetCell extends StatelessWidget {
     required this.active,
     required this.current,
     required this.exposureState,
+    required this.hasMark,
     required this.onSelectLayer,
     required this.onSelectFrame,
   });
@@ -268,6 +275,7 @@ class _XSheetCell extends StatelessWidget {
   final bool active;
   final bool current;
   final TimelineCellExposureState exposureState;
+  final bool hasMark;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -316,15 +324,18 @@ class _XSheetCell extends StatelessWidget {
           ),
         ),
         child: Text(
-          _markerForState(exposureState),
-          semanticsLabel: _semanticsLabelForState(exposureState),
+          _markerForCell(exposureState: exposureState, hasMark: hasMark),
+          semanticsLabel: _semanticsLabelForCell(
+            exposureState: exposureState,
+            hasMark: hasMark,
+          ),
           style: TextStyle(
             color: current
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            fontWeight: exposureState == TimelineCellExposureState.empty
-                ? null
-                : FontWeight.bold,
+            fontWeight: hasMark || exposureState != TimelineCellExposureState.empty
+                ? FontWeight.bold
+                : null,
           ),
         ),
       ),
@@ -332,8 +343,15 @@ class _XSheetCell extends StatelessWidget {
   }
 }
 
-String _markerForState(TimelineCellExposureState state) {
-  return switch (state) {
+String _markerForCell({
+  required TimelineCellExposureState exposureState,
+  required bool hasMark,
+}) {
+  if (hasMark) {
+    return '●';
+  }
+
+  return switch (exposureState) {
     TimelineCellExposureState.empty => '',
     TimelineCellExposureState.drawingStart => '○',
     TimelineCellExposureState.heldExposure => '',
@@ -342,8 +360,15 @@ String _markerForState(TimelineCellExposureState state) {
   };
 }
 
-String? _semanticsLabelForState(TimelineCellExposureState state) {
-  return switch (state) {
+String? _semanticsLabelForCell({
+  required TimelineCellExposureState exposureState,
+  required bool hasMark,
+}) {
+  if (hasMark) {
+    return 'inbetween mark';
+  }
+
+  return switch (exposureState) {
     TimelineCellExposureState.empty => null,
     TimelineCellExposureState.drawingStart => 'drawing start',
     TimelineCellExposureState.heldExposure => 'held exposure',

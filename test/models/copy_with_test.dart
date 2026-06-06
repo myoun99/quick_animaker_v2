@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 
 void main() {
   test('copyWith changes only specified value object fields', () {
@@ -30,6 +31,30 @@ void main() {
       const BrushSettings(size: 4, opacity: 0.25),
     );
     expect(point.copyWith(y: 3), const StrokePoint(x: 1, y: 3));
+  });
+
+  test('layer marks default empty, copyWith replaces marks, and equality includes marks', () {
+    final layer = Layer(
+      id: const LayerId('layer-1'),
+      name: 'Layer',
+      frames: const [],
+    );
+    final markedLayer = layer.copyWith(
+      marks: const {3: TimelineMark.inbetween()},
+    );
+
+    expect(layer.marks, isEmpty);
+    expect(markedLayer.marks[3], const TimelineMark.inbetween());
+    expect(markedLayer, isNot(layer));
+    expect(
+      markedLayer,
+      Layer(
+        id: const LayerId('layer-1'),
+        name: 'Layer',
+        frames: const [],
+        marks: const {3: TimelineMark.inbetween()},
+      ),
+    );
   });
 
   test(
