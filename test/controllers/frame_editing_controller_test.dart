@@ -94,23 +94,26 @@ void main() {
       expect(_latestLayer(fixture.repository), markOnlyLayer);
     });
 
-    test('delete drawing start removes entry and unreferenced backing frame', () {
-      final fixture = _fixture(
-        _editingLayer(marks: const {2: TimelineMark.inbetween()}),
-      );
-      fixture.controller.selectFrameIndex(5);
+    test(
+      'delete drawing start removes entry and unreferenced backing frame',
+      () {
+        final fixture = _fixture(
+          _editingLayer(marks: const {2: TimelineMark.inbetween()}),
+        );
+        fixture.controller.selectFrameIndex(5);
 
-      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      final layer = _latestLayer(fixture.repository);
+        fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+        final layer = _latestLayer(fixture.repository);
 
-      expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
-      expect(
-        layer.frames.map((frame) => frame.id),
-        orderedEquals([const FrameId('a')]),
-      );
-      expect(layer.marks.keys, orderedEquals([2]));
-      expect(layer.timeline[9]?.frameId, const FrameId('a'));
-    });
+        expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
+        expect(
+          layer.frames.map((frame) => frame.id),
+          orderedEquals([const FrameId('a')]),
+        );
+        expect(layer.marks.keys, orderedEquals([2]));
+        expect(layer.timeline[9]?.frameId, const FrameId('a'));
+      },
+    );
 
     test('delete drawing start with mark deletes frame and mark together', () {
       final fixture = _fixture(
@@ -129,49 +132,53 @@ void main() {
       expect(layer.marks, isEmpty);
     });
 
-    test('delete drawing start keeps backing frame while referenced elsewhere', () {
-      final fixture = _fixture(_editingLayer());
-      fixture.controller.selectFrameIndex(9);
+    test(
+      'delete drawing start keeps backing frame while referenced elsewhere',
+      () {
+        final fixture = _fixture(_editingLayer());
+        fixture.controller.selectFrameIndex(9);
 
-      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      final layer = _latestLayer(fixture.repository);
+        fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+        final layer = _latestLayer(fixture.repository);
 
-      expect(layer.timeline.keys, orderedEquals([0, 3, 5]));
-      expect(
-        layer.frames.map((frame) => frame.id),
-        orderedEquals([const FrameId('a'), const FrameId('b')]),
-      );
-      expect(layer.timeline[0]?.frameId, const FrameId('a'));
-    });
+        expect(layer.timeline.keys, orderedEquals([0, 3, 5]));
+        expect(
+          layer.frames.map((frame) => frame.id),
+          orderedEquals([const FrameId('a'), const FrameId('b')]),
+        );
+        expect(layer.timeline[0]?.frameId, const FrameId('a'));
+      },
+    );
 
-    test('delete cell does nothing on held drawing, blank held, and empty cells', () {
-      final drawingHeld = _fixture(_editingLayer());
-      drawingHeld.controller.selectFrameIndex(1);
-      drawingHeld.controller.deleteCellForLayer(
-        layerId: const LayerId('layer'),
-      );
-      expect(_latestLayer(drawingHeld.repository), _editingLayer());
+    test(
+      'delete cell does nothing on held drawing, blank held, and empty cells',
+      () {
+        final drawingHeld = _fixture(_editingLayer());
+        drawingHeld.controller.selectFrameIndex(1);
+        drawingHeld.controller.deleteCellForLayer(
+          layerId: const LayerId('layer'),
+        );
+        expect(_latestLayer(drawingHeld.repository), _editingLayer());
 
-      final blankHeld = _fixture(_editingLayer());
-      blankHeld.controller.selectFrameIndex(4);
-      blankHeld.controller.deleteCellForLayer(
-        layerId: const LayerId('layer'),
-      );
-      expect(_latestLayer(blankHeld.repository), _editingLayer());
+        final blankHeld = _fixture(_editingLayer());
+        blankHeld.controller.selectFrameIndex(4);
+        blankHeld.controller.deleteCellForLayer(
+          layerId: const LayerId('layer'),
+        );
+        expect(_latestLayer(blankHeld.repository), _editingLayer());
 
-      final emptyLayer = Layer(
-        id: const LayerId('layer'),
-        name: 'Layer',
-        frames: const [],
-        timeline: const {},
-      );
-      final empty = _fixture(emptyLayer);
-      empty.controller.selectFrameIndex(4);
-      empty.controller.deleteCellForLayer(
-        layerId: const LayerId('layer'),
-      );
-      expect(_latestLayer(empty.repository), emptyLayer);
-    });
+        final emptyLayer = Layer(
+          id: const LayerId('layer'),
+          name: 'Layer',
+          frames: const [],
+          timeline: const {},
+        );
+        final empty = _fixture(emptyLayer);
+        empty.controller.selectFrameIndex(4);
+        empty.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+        expect(_latestLayer(empty.repository), emptyLayer);
+      },
+    );
 
     test('delete drawing start with mark is undo and redo able', () {
       final history = HistoryManager();
@@ -182,10 +189,7 @@ void main() {
       fixture.controller.selectFrameIndex(5);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      expect(
-        _latestLayer(fixture.repository).timeline.containsKey(5),
-        isFalse,
-      );
+      expect(_latestLayer(fixture.repository).timeline.containsKey(5), isFalse);
       expect(_latestLayer(fixture.repository).marks, isEmpty);
 
       history.undo();
@@ -199,10 +203,7 @@ void main() {
       );
 
       history.redo();
-      expect(
-        _latestLayer(fixture.repository).timeline.containsKey(5),
-        isFalse,
-      );
+      expect(_latestLayer(fixture.repository).timeline.containsKey(5), isFalse);
       expect(_latestLayer(fixture.repository).marks, isEmpty);
     });
 

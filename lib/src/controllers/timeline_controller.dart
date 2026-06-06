@@ -267,7 +267,6 @@ class TimelineController {
     );
   }
 
-
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
@@ -445,7 +444,6 @@ class TimelineController {
       after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
     );
   }
-
 
   String? _normalizeFrameName(String? name) {
     final trimmed = name?.trim();
