@@ -171,7 +171,6 @@ class _HomePageState extends State<HomePage> {
     _timelineController.toggleMarkForLayer(layerId: layer.id);
   }
 
-
   bool get _canRenameFrameAtCurrentFrame {
     final layer = _activeLayer;
     if (layer == null) {
@@ -203,32 +202,10 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final textController = TextEditingController(text: frame.name ?? '');
-    final nextName = await showDialog<String?>(
+    final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename Frame'),
-        content: TextField(
-          key: const ValueKey<String>('rename-frame-text-field'),
-          controller: textController,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Frame name'),
-        ),
-        actions: [
-          TextButton(
-            key: const ValueKey<String>('rename-frame-cancel-button'),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            key: const ValueKey<String>('rename-frame-ok-button'),
-            onPressed: () => Navigator.of(context).pop(textController.text),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      builder: (context) => _RenameFrameDialog(initialName: frame.name ?? ''),
     );
-    textController.dispose();
     if (!mounted || nextName == null) {
       return;
     }
@@ -503,6 +480,56 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _RenameFrameDialog extends StatefulWidget {
+  const _RenameFrameDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameFrameDialog> createState() => _RenameFrameDialogState();
+}
+
+class _RenameFrameDialogState extends State<_RenameFrameDialog> {
+  late final TextEditingController _textController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename Frame'),
+      content: TextField(
+        key: const ValueKey<String>('rename-frame-text-field'),
+        controller: _textController,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Frame name'),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('rename-frame-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('rename-frame-ok-button'),
+          onPressed: () => Navigator.of(context).pop(_textController.text),
+          child: const Text('OK'),
         ),
       ],
     );

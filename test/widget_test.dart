@@ -67,6 +67,8 @@ void main() {
       );
       expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
 
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
@@ -149,7 +151,7 @@ void main() {
       await tester.tap(renameButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('Rename Frame'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('rename-frame-text-field')),
         findsOneWidget,
