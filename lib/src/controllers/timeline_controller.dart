@@ -267,7 +267,6 @@ class TimelineController {
     );
   }
 
-
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
@@ -313,7 +312,10 @@ class TimelineController {
 
     final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks);
     if (nextMarks.remove(_currentFrameIndex) != null) {
-      _applyLayerEdit(before: before, after: before.copyWith(marks: nextMarks));
+      _applyLayerEdit(
+        before: before,
+        after: before.copyWith(marks: nextMarks),
+      );
       return;
     }
 
@@ -452,7 +454,6 @@ class TimelineController {
       after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
     );
   }
-
 
   String? _normalizeFrameName(String? name) {
     final trimmed = name?.trim();

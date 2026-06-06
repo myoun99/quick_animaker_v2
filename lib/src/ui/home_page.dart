@@ -171,7 +171,6 @@ class _HomePageState extends State<HomePage> {
     _timelineController.toggleMarkForLayer(layerId: layer.id);
   }
 
-
   bool get _canRenameFrameAtCurrentFrame {
     final layer = _activeLayer;
     if (layer == null) {

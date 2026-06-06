@@ -388,7 +388,9 @@ String? _semanticsLabelForCell({
   return switch (exposureState) {
     TimelineCellExposureState.empty => null,
     TimelineCellExposureState.drawingStart =>
-      frameName == null || frameName.isEmpty ? 'drawing start' : 'drawing start $frameName',
+      frameName == null || frameName.isEmpty
+          ? 'drawing start'
+          : 'drawing start $frameName',
     TimelineCellExposureState.heldExposure => 'held exposure',
     TimelineCellExposureState.blankStart => 'blank exposure start',
     TimelineCellExposureState.blankHeld => 'blank held exposure',

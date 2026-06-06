@@ -218,7 +218,9 @@ void main() {
     expect(find.text('▶ 4'), findsNothing);
   });
 
-  testWidgets('named drawing start displays name and mark has priority', (tester) async {
+  testWidgets('named drawing start displays name and mark has priority', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
@@ -226,12 +228,17 @@ void main() {
             ? TimelineCellExposureState.drawingStart
             : TimelineCellExposureState.empty,
         frameNameForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2 ? 'A1' : null,
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? 'A1'
+            : null,
       ),
     );
 
     final cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2'));
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsOneWidget);
+    expect(
+      find.descendant(of: cell, matching: find.text('A1')),
+      findsOneWidget,
+    );
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
 
     await tester.pumpWidget(
@@ -243,14 +250,15 @@ void main() {
         hasMarkForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2,
         frameNameForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2 ? 'A1' : null,
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? 'A1'
+            : null,
       ),
     );
 
     expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
     expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
   });
-
 }
 
 Widget _grid({

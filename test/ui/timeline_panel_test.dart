@@ -209,11 +209,15 @@ void main() {
     expect(find.textContaining('Current frame: 4'), findsOneWidget);
   });
 
-  testWidgets('passes frame names to horizontal and x-sheet renderers', (tester) async {
+  testWidgets('passes frame names to horizontal and x-sheet renderers', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _panel(
         frameNameForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0 ? 'A1' : null,
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? 'A1'
+            : null,
       ),
     );
     expect(find.text('A1'), findsOneWidget);
@@ -222,12 +226,13 @@ void main() {
       _panel(
         orientation: TimelineOrientation.vertical,
         frameNameForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0 ? 'A1' : null,
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? 'A1'
+            : null,
       ),
     );
     expect(find.text('A1'), findsOneWidget);
   });
-
 }
 
 Widget _panel({
