@@ -3,13 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 
 void main() {
-  Future<void> tapToolbarButton(WidgetTester tester, Finder button) async {
-    await tester.ensureVisible(button);
-    await tester.pumpAndSettle();
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-  }
-
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
@@ -63,7 +56,10 @@ void main() {
         const ValueKey<String>('timeline-cell-sample-layer-1-0'),
       );
 
-      await tapToolbarButton(tester, markButton);
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
 
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('●')),
@@ -71,7 +67,10 @@ void main() {
       );
       expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
 
-      await tapToolbarButton(tester, markButton);
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
 
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('●')),
@@ -92,7 +91,10 @@ void main() {
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),
       );
-      await tapToolbarButton(tester, newFrameButton);
+      await tester.ensureVisible(newFrameButton);
+      await tester.pumpAndSettle();
+      await tester.tap(newFrameButton);
+      await tester.pumpAndSettle();
 
       final layer1FirstCell = find.byKey(
         const ValueKey<String>('timeline-cell-sample-layer-1-0'),
@@ -137,10 +139,16 @@ void main() {
       expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
       expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
 
-      await tapToolbarButton(tester, newFrameButton);
+      await tester.ensureVisible(newFrameButton);
+      await tester.pumpAndSettle();
+      await tester.tap(newFrameButton);
+      await tester.pumpAndSettle();
 
       expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
-      await tapToolbarButton(tester, renameButton);
+      await tester.ensureVisible(renameButton);
+      await tester.pumpAndSettle();
+      await tester.tap(renameButton);
+      await tester.pumpAndSettle();
 
       final renameDialog = find.byType(AlertDialog);
       expect(renameDialog, findsOneWidget);
@@ -171,13 +179,19 @@ void main() {
         findsOneWidget,
       );
 
-      await tapToolbarButton(tester, markButton);
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('●')),
         findsOneWidget,
       );
 
-      await tapToolbarButton(tester, deleteButton);
+      await tester.ensureVisible(deleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('A1')),
         findsOneWidget,
@@ -187,7 +201,10 @@ void main() {
         findsNothing,
       );
 
-      await tapToolbarButton(tester, deleteButton);
+      await tester.ensureVisible(deleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('A1')),
         findsNothing,
@@ -208,8 +225,14 @@ void main() {
       const ValueKey<String>('rename-frame-button'),
     );
 
-    await tapToolbarButton(tester, newFrameButton);
-    await tapToolbarButton(tester, renameButton);
+    await tester.ensureVisible(newFrameButton);
+    await tester.pumpAndSettle();
+    await tester.tap(newFrameButton);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(renameButton);
+    await tester.pumpAndSettle();
+    await tester.tap(renameButton);
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-frame-text-field')),
       'Cancelled',
