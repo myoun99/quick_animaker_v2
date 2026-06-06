@@ -364,6 +364,7 @@ class _HomePageState extends State<HomePage> {
                   id: const LayerId('sample-layer-2'),
                   name: 'Layer 2',
                   frames: const [],
+                  timeline: const {0: TimelineExposure.blank()},
                 ),
               ],
             ),
