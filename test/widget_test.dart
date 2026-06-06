@@ -39,8 +39,14 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
-    await tester.pump();
+    final newFrameButton = find.byKey(
+      const ValueKey<String>('new-frame-button'),
+    );
+    await tester.ensureVisible(newFrameButton);
+    await tester.pumpAndSettle();
+
+    await tester.tap(newFrameButton);
+    await tester.pumpAndSettle();
 
     final firstCell = find.byKey(
       const ValueKey<String>('timeline-cell-sample-layer-1-0'),
@@ -50,6 +56,7 @@ void main() {
       find.descendant(of: firstCell, matching: find.text('○')),
       findsOneWidget,
     );
+    expect(find.bySemanticsLabel('drawing start'), findsOneWidget);
     expect(find.text('X'), findsNothing);
     expect(find.text('●'), findsNothing);
   });
