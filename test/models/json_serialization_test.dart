@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 
 void main() {
+  frameNameJsonTests();
   test('round-trips a full project hierarchy through JSON', () {
     final project = Project(
       id: const ProjectId('project-1'),
@@ -118,4 +119,32 @@ void main() {
       expect(layer.timeline[3], TimelineExposure.drawing(const FrameId('b')));
     },
   );
+}
+
+void frameNameJsonTests() {
+  test('frame JSON includes name when present and round trips it', () {
+    final frame = Frame(
+      id: const FrameId('named-frame'),
+      duration: 2,
+      strokes: const [],
+      name: 'A1',
+    );
+
+    final json = frame.toJson();
+    final decoded = Frame.fromJson(json);
+
+    expect(json['name'], 'A1');
+    expect(decoded, frame);
+  });
+
+  test('old frame JSON without name loads with null name', () {
+    final frame = Frame.fromJson({
+      'id': const FrameId('old-frame').toJson(),
+      'duration': 1,
+      'strokes': const <dynamic>[],
+    });
+
+    expect(frame.name, isNull);
+    expect(frame.toJson().containsKey('name'), isFalse);
+  });
 }

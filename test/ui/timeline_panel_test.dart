@@ -208,6 +208,26 @@ void main() {
     expect(find.text('▶ 4'), findsNothing);
     expect(find.textContaining('Current frame: 4'), findsOneWidget);
   });
+
+  testWidgets('passes frame names to horizontal and x-sheet renderers', (tester) async {
+    await tester.pumpWidget(
+      _panel(
+        frameNameForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0 ? 'A1' : null,
+      ),
+    );
+    expect(find.text('A1'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.vertical,
+        frameNameForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0 ? 'A1' : null,
+      ),
+    );
+    expect(find.text('A1'), findsOneWidget);
+  });
+
 }
 
 Widget _panel({
@@ -223,6 +243,7 @@ Widget _panel({
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
   bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
+  String? Function(Layer layer, int frameIndex)? frameNameForLayer,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -237,6 +258,7 @@ Widget _panel({
                 ? TimelineCellExposureState.drawingStart
                 : TimelineCellExposureState.empty,
         hasMarkForLayer: hasMarkForLayer,
+        frameNameForLayer: frameNameForLayer,
         onSelectLayer: onSelectLayer ?? (_) {},
         onSelectFrame: onSelectFrame ?? (_) {},
         onAddLayer: onAddLayer ?? () {},

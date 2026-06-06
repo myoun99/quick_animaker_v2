@@ -171,8 +171,94 @@ class _HomePageState extends State<HomePage> {
     _timelineController.toggleMarkForLayer(layerId: layer.id);
   }
 
+
+  bool get _canRenameFrameAtCurrentFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return false;
+    }
+
+    return _timelineController.canRenameFrameAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+  bool get _canDeleteCellAtCurrentFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return false;
+    }
+
+    return _timelineController.canDeleteCellAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+  Future<void> _renameSelectedFrame() async {
+    final layer = _activeLayer;
+    final frame = _selectedFrame;
+    if (layer == null || frame == null || !_canRenameFrameAtCurrentFrame) {
+      return;
+    }
+
+    final textController = TextEditingController(text: frame.name ?? '');
+    final nextName = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Frame'),
+        content: TextField(
+          key: const ValueKey<String>('rename-frame-text-field'),
+          controller: textController,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Frame name'),
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey<String>('rename-frame-cancel-button'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            key: const ValueKey<String>('rename-frame-ok-button'),
+            onPressed: () => Navigator.of(context).pop(textController.text),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    textController.dispose();
+    if (!mounted || nextName == null) {
+      return;
+    }
+
+    setState(() {
+      _timelineController.renameFrameForLayer(
+        layerId: layer.id,
+        frameId: frame.id,
+        name: nextName,
+      );
+    });
+  }
+
+  void _deleteCellAtCurrentFrame() {
+    final layer = _activeLayer;
+    if (layer == null || !_canDeleteCellAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.deleteCellForLayer(layerId: layer.id);
+  }
+
   bool _hasMarkForLayer(Layer layer, int frameIndex) {
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
+  }
+
+  String? _frameNameForLayer(Layer layer, int frameIndex) {
+    return _timelineController
+        .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
+        ?.name;
   }
 
   TimelineCellExposureState _exposureStateForLayer(
@@ -294,6 +380,20 @@ class _HomePageState extends State<HomePage> {
                         : null,
                     child: const Text('Mark ●'),
                   ),
+                  TextButton(
+                    key: const ValueKey<String>('rename-frame-button'),
+                    onPressed: _canRenameFrameAtCurrentFrame
+                        ? _renameSelectedFrame
+                        : null,
+                    child: const Text('Rename Frame'),
+                  ),
+                  TextButton(
+                    key: const ValueKey<String>('delete-cell-button'),
+                    onPressed: _canDeleteCellAtCurrentFrame
+                        ? () => setState(_deleteCellAtCurrentFrame)
+                        : null,
+                    child: const Text('Delete Cell'),
+                  ),
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: _canvasController.canUndo
@@ -333,6 +433,7 @@ class _HomePageState extends State<HomePage> {
             frameCount: _timelineController.totalFrameCount,
             exposureStateForLayer: _exposureStateForLayer,
             hasMarkForLayer: _hasMarkForLayer,
+            frameNameForLayer: _frameNameForLayer,
             onSelectLayer: (layerId) {
               setState(() => _layerController.selectLayer(layerId));
             },
