@@ -267,6 +267,7 @@ class TimelineController {
     );
   }
 
+
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
@@ -295,13 +296,7 @@ class TimelineController {
   }
 
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
-      return false;
-    }
-
-    return hasMarkAt(layer: layer, frameIndex: frameIndex) ||
-        isDrawingStartForLayer(layer: layer, frameIndex: frameIndex) ||
-        isBlankStartForLayer(layer: layer, frameIndex: frameIndex);
+    return isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
   }
 
   void deleteCellForLayer({required LayerId layerId}) {
@@ -310,36 +305,32 @@ class TimelineController {
       return;
     }
 
-    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks);
-    if (nextMarks.remove(_currentFrameIndex) != null) {
-      _applyLayerEdit(
-        before: before,
-        after: before.copyWith(marks: nextMarks),
-      );
-      return;
-    }
-
     final authoredExposure = before.timeline[_currentFrameIndex];
-    if (authoredExposure == null) {
+    if (authoredExposure == null ||
+        authoredExposure.type != TimelineExposureType.drawing) {
       return;
     }
 
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     )..remove(_currentFrameIndex);
+    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks)
+      ..remove(_currentFrameIndex);
     var nextFrames = before.frames;
-    if (authoredExposure.type == TimelineExposureType.drawing) {
-      final frameId = authoredExposure.frameId;
-      if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
-        nextFrames = before.frames
-            .where((frame) => frame.id != frameId)
-            .toList(growable: false);
-      }
+    final frameId = authoredExposure.frameId;
+    if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
+      nextFrames = before.frames
+          .where((frame) => frame.id != frameId)
+          .toList(growable: false);
     }
 
     _applyLayerEdit(
       before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+      after: before.copyWith(
+        frames: nextFrames,
+        timeline: nextTimeline,
+        marks: nextMarks,
+      ),
     );
   }
 
@@ -454,6 +445,7 @@ class TimelineController {
       after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
     );
   }
+
 
   String? _normalizeFrameName(String? name) {
     final trimmed = name?.trim();

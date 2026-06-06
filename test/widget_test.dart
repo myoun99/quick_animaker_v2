@@ -138,7 +138,7 @@ void main() {
       expect(renameButton, findsOneWidget);
       expect(deleteButton, findsOneWidget);
       expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
-      expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
+      expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
 
       await tester.ensureVisible(newFrameButton);
       await tester.pumpAndSettle();
@@ -183,28 +183,21 @@ void main() {
         findsOneWidget,
       );
 
+      expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
       await tester.ensureVisible(deleteButton);
       await tester.pumpAndSettle();
       await tester.tap(deleteButton);
       await tester.pumpAndSettle();
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('A1')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('●')),
         findsNothing,
       );
-
-      await tester.ensureVisible(deleteButton);
-      await tester.pumpAndSettle();
-      await tester.tap(deleteButton);
-      await tester.pumpAndSettle();
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('A1')),
-        findsNothing,
-      );
       expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
+      expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
     },
   );
 
