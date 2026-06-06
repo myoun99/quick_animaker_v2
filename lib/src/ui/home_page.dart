@@ -14,6 +14,7 @@ import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/timeline_exposure.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
@@ -357,6 +358,7 @@ class _HomePageState extends State<HomePage> {
                   id: const LayerId('sample-layer-1'),
                   name: 'Layer 1',
                   frames: const [],
+                  timeline: const {0: TimelineExposure.blank()},
                 ),
                 Layer(
                   id: const LayerId('sample-layer-2'),
