@@ -164,8 +164,9 @@ void main() {
     expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
   });
 
-
-  testWidgets('shows inbetween mark with priority over exposure marker', (tester) async {
+  testWidgets('shows inbetween mark with priority over exposure marker', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>

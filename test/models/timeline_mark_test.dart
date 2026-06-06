@@ -5,10 +5,7 @@ import 'package:quick_animaker_v2/src/models/timeline_mark_type.dart';
 void main() {
   group('TimelineMark', () {
     test('inbetween constructor creates inbetween mark', () {
-      expect(
-        const TimelineMark.inbetween().type,
-        TimelineMarkType.inbetween,
-      );
+      expect(const TimelineMark.inbetween().type, TimelineMarkType.inbetween);
     });
 
     test('round-trips JSON', () {

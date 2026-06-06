@@ -62,13 +62,17 @@ void main() {
     });
 
     test('loads old layer JSON without marks as empty marks', () {
-      final json = jsonDecode(serializer.encode(_sampleProject()))
-          as Map<String, dynamic>;
-      final layerJson = (((json['tracks'] as List<dynamic>).single
-              as Map<String, dynamic>)['cuts']
-          as List<dynamic>).single as Map<String, dynamic>;
-      (((layerJson['layers'] as List<dynamic>).single)
-          as Map<String, dynamic>).remove('marks');
+      final json =
+          jsonDecode(serializer.encode(_sampleProject()))
+              as Map<String, dynamic>;
+      final layerJson =
+          (((json['tracks'] as List<dynamic>).single
+                          as Map<String, dynamic>)['cuts']
+                      as List<dynamic>)
+                  .single
+              as Map<String, dynamic>;
+      (((layerJson['layers'] as List<dynamic>).single) as Map<String, dynamic>)
+          .remove('marks');
 
       final restored = serializer.decode(jsonEncode(json));
 
@@ -76,13 +80,16 @@ void main() {
     });
 
     test('rejects negative mark index in JSON', () {
-      final json = jsonDecode(serializer.encode(_sampleProject()))
-          as Map<String, dynamic>;
-      final layer = ((((json['tracks'] as List<dynamic>).single
-                      as Map<String, dynamic>)['cuts']
-                  as List<dynamic>)
-              .single as Map<String, dynamic>)['layers']
-          as List<dynamic>;
+      final json =
+          jsonDecode(serializer.encode(_sampleProject()))
+              as Map<String, dynamic>;
+      final layer =
+          ((((json['tracks'] as List<dynamic>).single
+                              as Map<String, dynamic>)['cuts']
+                          as List<dynamic>)
+                      .single
+                  as Map<String, dynamic>)['layers']
+              as List<dynamic>;
       (layer.single as Map<String, dynamic>)['marks'] = [
         {
           'index': -1,

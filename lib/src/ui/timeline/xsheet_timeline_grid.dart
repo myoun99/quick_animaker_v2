@@ -333,7 +333,8 @@ class _XSheetCell extends StatelessWidget {
             color: current
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
-            fontWeight: hasMark || exposureState != TimelineCellExposureState.empty
+            fontWeight:
+                hasMark || exposureState != TimelineCellExposureState.empty
                 ? FontWeight.bold
                 : null,
           ),

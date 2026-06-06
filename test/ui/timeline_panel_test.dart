@@ -185,8 +185,9 @@ void main() {
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
-
-  testWidgets('forwards mark display callback to timeline grids', (tester) async {
+  testWidgets('forwards mark display callback to timeline grids', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _panel(
         hasMarkForLayer: (layer, frameIndex) =>

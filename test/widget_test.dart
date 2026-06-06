@@ -41,41 +41,44 @@ void main() {
     expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
   });
 
-  testWidgets('mark button toggles current cell without changing exposure marker', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'mark button toggles current cell without changing exposure marker',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    final markButton = find.byKey(const ValueKey<String>('toggle-mark-button'));
-    expect(markButton, findsOneWidget);
-    expect(find.text('Mark ●'), findsOneWidget);
+      final markButton = find.byKey(
+        const ValueKey<String>('toggle-mark-button'),
+      );
+      expect(markButton, findsOneWidget);
+      expect(find.text('Mark ●'), findsOneWidget);
 
-    final layer1FirstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
-    );
+      final layer1FirstCell = find.byKey(
+        const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+      );
 
-    await tester.ensureVisible(markButton);
-    await tester.tap(markButton);
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(markButton);
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
 
-    expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('●')),
-      findsOneWidget,
-    );
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+      expect(
+        find.descendant(of: layer1FirstCell, matching: find.text('●')),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
 
-    await tester.tap(markButton);
-    await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
 
-    expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('●')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('X')),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.descendant(of: layer1FirstCell, matching: find.text('●')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: layer1FirstCell, matching: find.text('X')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets(
     'new frame replaces selected layer blank exposure with drawing start',

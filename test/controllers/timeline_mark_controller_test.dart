@@ -51,17 +51,22 @@ void main() {
       expect(layer.timeline.keys, orderedEquals([0, 3]));
     });
 
-    test('marks are allowed on drawing, held, blank, blank-held, and empty cells', () {
-      final fixture = _fixture(_markedTestLayer());
+    test(
+      'marks are allowed on drawing, held, blank, blank-held, and empty cells',
+      () {
+        final fixture = _fixture(_markedTestLayer());
 
-      for (final index in [0, 1, 3, 4, 8]) {
-        fixture.controller.selectFrameIndex(index);
-        fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-      }
+        for (final index in [0, 1, 3, 4, 8]) {
+          fixture.controller.selectFrameIndex(index);
+          fixture.controller.toggleMarkForLayer(
+            layerId: const LayerId('layer'),
+          );
+        }
 
-      final layer = _latestLayer(fixture.repository);
-      expect(layer.marks.keys, orderedEquals([0, 1, 3, 4, 8]));
-    });
+        final layer = _latestLayer(fixture.repository);
+        expect(layer.marks.keys, orderedEquals([0, 1, 3, 4, 8]));
+      },
+    );
 
     test('marks do not affect drawing, blank, duration, or exposure edits', () {
       final fixture = _fixture(_markedTestLayer());

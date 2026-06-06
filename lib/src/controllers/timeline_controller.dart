@@ -261,7 +261,10 @@ class TimelineController {
       nextMarks[_currentFrameIndex] = const TimelineMark.inbetween();
     }
 
-    _applyLayerEdit(before: before, after: before.copyWith(marks: nextMarks));
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(marks: nextMarks),
+    );
   }
 
   void createDrawingFrameForLayer({

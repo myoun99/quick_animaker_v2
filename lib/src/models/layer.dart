@@ -225,9 +225,7 @@ SplayTreeMap<int, TimelineMark> _marksFromJson(Object? json) {
       if (marks.containsKey(index)) {
         throw FormatException('Duplicate timeline mark index: $index');
       }
-      marks[index] = TimelineMark.fromJson(
-        entry.value as Map<String, dynamic>,
-      );
+      marks[index] = TimelineMark.fromJson(entry.value as Map<String, dynamic>);
     }
     return marks;
   }

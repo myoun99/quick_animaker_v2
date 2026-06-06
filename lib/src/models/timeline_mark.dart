@@ -19,8 +19,7 @@ class TimelineMark {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is TimelineMark && other.type == type;
+      identical(this, other) || other is TimelineMark && other.type == type;
 
   @override
   int get hashCode => type.hashCode;
