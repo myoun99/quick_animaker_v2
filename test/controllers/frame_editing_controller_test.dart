@@ -26,14 +26,20 @@ void main() {
         frameId: const FrameId('a'),
         name: '  A1  ',
       );
-      expect(_frame(_latestLayer(fixture.repository), const FrameId('a')).name, 'A1');
+      expect(
+        _frame(_latestLayer(fixture.repository), const FrameId('a')).name,
+        'A1',
+      );
 
       fixture.controller.renameFrameForLayer(
         layerId: const LayerId('layer'),
         frameId: const FrameId('a'),
         name: '   ',
       );
-      expect(_frame(_latestLayer(fixture.repository), const FrameId('a')).name, isNull);
+      expect(
+        _frame(_latestLayer(fixture.repository), const FrameId('a')).name,
+        isNull,
+      );
     });
 
     test('rename is undo and redo able', () {
@@ -45,16 +51,68 @@ void main() {
         frameId: const FrameId('a'),
         name: 'A1',
       );
-      expect(_frame(_latestLayer(fixture.repository), const FrameId('a')).name, 'A1');
+      expect(
+        _frame(_latestLayer(fixture.repository), const FrameId('a')).name,
+        'A1',
+      );
 
       history.undo();
-      expect(_frame(_latestLayer(fixture.repository), const FrameId('a')).name, isNull);
+      expect(
+        _frame(_latestLayer(fixture.repository), const FrameId('a')).name,
+        isNull,
+      );
 
       history.redo();
-      expect(_frame(_latestLayer(fixture.repository), const FrameId('a')).name, 'A1');
+      expect(
+        _frame(_latestLayer(fixture.repository), const FrameId('a')).name,
+        'A1',
+      );
     });
 
-    test('delete cell removes mark first without changing frame resolution', () {
+    test('delete cell does nothing on blank start / X', () {
+      final fixture = _fixture(_editingLayer());
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+
+      expect(_latestLayer(fixture.repository), _editingLayer());
+    });
+
+    test('delete cell does nothing on mark-only cell', () {
+      final markOnlyLayer = Layer(
+        id: const LayerId('layer'),
+        name: 'Layer',
+        frames: const [],
+        timeline: const {},
+        marks: const {4: TimelineMark.inbetween()},
+      );
+      final fixture = _fixture(markOnlyLayer);
+      fixture.controller.selectFrameIndex(4);
+
+      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+
+      expect(_latestLayer(fixture.repository), markOnlyLayer);
+    });
+
+    test('delete drawing start removes entry and unreferenced backing frame', () {
+      final fixture = _fixture(
+        _editingLayer(marks: const {2: TimelineMark.inbetween()}),
+      );
+      fixture.controller.selectFrameIndex(5);
+
+      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      final layer = _latestLayer(fixture.repository);
+
+      expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a')]),
+      );
+      expect(layer.marks.keys, orderedEquals([2]));
+      expect(layer.timeline[9]?.frameId, const FrameId('a'));
+    });
+
+    test('delete drawing start with mark deletes frame and mark together', () {
       final fixture = _fixture(
         _editingLayer(marks: const {5: TimelineMark.inbetween()}),
       );
@@ -63,25 +121,12 @@ void main() {
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
       final layer = _latestLayer(fixture.repository);
 
-      expect(layer.marks, isEmpty);
-      expect(layer.timeline.keys, orderedEquals([0, 3, 5, 9]));
-      expect(
-        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 5),
-        const FrameId('b'),
-      );
-    });
-
-    test('delete drawing start removes entry and unreferenced backing frame', () {
-      final fixture = _fixture(_editingLayer(marks: const {2: TimelineMark.inbetween()}));
-      fixture.controller.selectFrameIndex(5);
-
-      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      final layer = _latestLayer(fixture.repository);
-
       expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
-      expect(layer.frames.map((frame) => frame.id), orderedEquals([const FrameId('a')]));
-      expect(layer.marks.keys, orderedEquals([2]));
-      expect(layer.timeline[9]?.frameId, const FrameId('a'));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a')]),
+      );
+      expect(layer.marks, isEmpty);
     });
 
     test('delete drawing start keeps backing frame while referenced elsewhere', () {
@@ -92,90 +137,121 @@ void main() {
       final layer = _latestLayer(fixture.repository);
 
       expect(layer.timeline.keys, orderedEquals([0, 3, 5]));
-      expect(layer.frames.map((frame) => frame.id), orderedEquals([const FrameId('a'), const FrameId('b')]));
-      expect(layer.timeline[0]?.frameId, const FrameId('a'));
-    });
-
-    test('delete blank start removes only blank entry and previous drawing holds through', () {
-      final fixture = _fixture(_editingLayer());
-      fixture.controller.selectFrameIndex(3);
-
-      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      final layer = _latestLayer(fixture.repository);
-
-      expect(layer.timeline.keys, orderedEquals([0, 5, 9]));
-      expect(layer.frames.map((frame) => frame.id), orderedEquals([const FrameId('a'), const FrameId('b')]));
       expect(
-        fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 4),
-        const FrameId('a'),
+        layer.frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a'), const FrameId('b')]),
       );
+      expect(layer.timeline[0]?.frameId, const FrameId('a'));
     });
 
     test('delete cell does nothing on held drawing, blank held, and empty cells', () {
       final drawingHeld = _fixture(_editingLayer());
       drawingHeld.controller.selectFrameIndex(1);
-      drawingHeld.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      drawingHeld.controller.deleteCellForLayer(
+        layerId: const LayerId('layer'),
+      );
       expect(_latestLayer(drawingHeld.repository), _editingLayer());
 
       final blankHeld = _fixture(_editingLayer());
       blankHeld.controller.selectFrameIndex(4);
-      blankHeld.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      blankHeld.controller.deleteCellForLayer(
+        layerId: const LayerId('layer'),
+      );
       expect(_latestLayer(blankHeld.repository), _editingLayer());
 
-      final empty = _fixture(
-        Layer(id: const LayerId('layer'), name: 'Layer', frames: const [], timeline: const {}),
+      final emptyLayer = Layer(
+        id: const LayerId('layer'),
+        name: 'Layer',
+        frames: const [],
+        timeline: const {},
       );
+      final empty = _fixture(emptyLayer);
       empty.controller.selectFrameIndex(4);
-      empty.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(empty.repository).timeline, isEmpty);
-    });
-
-    test('delete operations are undo and redo able', () {
-      final markHistory = HistoryManager();
-      final markFixture = _fixture(
-        _editingLayer(marks: const {1: TimelineMark.inbetween()}),
-        historyManager: markHistory,
+      empty.controller.deleteCellForLayer(
+        layerId: const LayerId('layer'),
       );
-      markFixture.controller.selectFrameIndex(1);
-      markFixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(markFixture.repository).marks, isEmpty);
-      markHistory.undo();
-      expect(_latestLayer(markFixture.repository).marks[1], const TimelineMark.inbetween());
-      markHistory.redo();
-      expect(_latestLayer(markFixture.repository).marks, isEmpty);
-
-      final drawingHistory = HistoryManager();
-      final drawingFixture = _fixture(_editingLayer(), historyManager: drawingHistory);
-      drawingFixture.controller.selectFrameIndex(5);
-      drawingFixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(drawingFixture.repository).timeline.containsKey(5), isFalse);
-      drawingHistory.undo();
-      expect(_latestLayer(drawingFixture.repository).timeline[5]?.frameId, const FrameId('b'));
-      drawingHistory.redo();
-      expect(_latestLayer(drawingFixture.repository).timeline.containsKey(5), isFalse);
-
-      final blankHistory = HistoryManager();
-      final blankFixture = _fixture(_editingLayer(), historyManager: blankHistory);
-      blankFixture.controller.selectFrameIndex(3);
-      blankFixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(blankFixture.repository).timeline.containsKey(3), isFalse);
-      blankHistory.undo();
-      expect(_latestLayer(blankFixture.repository).timeline[3], const TimelineExposure.blank());
-      blankHistory.redo();
-      expect(_latestLayer(blankFixture.repository).timeline.containsKey(3), isFalse);
+      expect(_latestLayer(empty.repository), emptyLayer);
     });
 
-    test('can delete and rename checks match Phase 16 cell rules', () {
-      final fixture = _fixture(_editingLayer(marks: const {4: TimelineMark.inbetween()}));
+    test('delete drawing start with mark is undo and redo able', () {
+      final history = HistoryManager();
+      final fixture = _fixture(
+        _editingLayer(marks: const {5: TimelineMark.inbetween()}),
+        historyManager: history,
+      );
+      fixture.controller.selectFrameIndex(5);
+
+      fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      expect(
+        _latestLayer(fixture.repository).timeline.containsKey(5),
+        isFalse,
+      );
+      expect(_latestLayer(fixture.repository).marks, isEmpty);
+
+      history.undo();
+      expect(
+        _latestLayer(fixture.repository).timeline[5]?.frameId,
+        const FrameId('b'),
+      );
+      expect(
+        _latestLayer(fixture.repository).marks[5],
+        const TimelineMark.inbetween(),
+      );
+
+      history.redo();
+      expect(
+        _latestLayer(fixture.repository).timeline.containsKey(5),
+        isFalse,
+      );
+      expect(_latestLayer(fixture.repository).marks, isEmpty);
+    });
+
+    test('mark toggle can still remove marks', () {
+      final fixture = _fixture(
+        _editingLayer(marks: const {4: TimelineMark.inbetween()}),
+      );
+      fixture.controller.selectFrameIndex(4);
+
+      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+
+      expect(_latestLayer(fixture.repository).marks, isEmpty);
+      expect(_latestLayer(fixture.repository).timeline, fixture.layer.timeline);
+    });
+
+    test('can delete and rename checks match follow-up cell rules', () {
+      final fixture = _fixture(
+        _editingLayer(marks: const {4: TimelineMark.inbetween()}),
+      );
       final layer = fixture.layer;
 
-      expect(fixture.controller.canRenameFrameAt(layer: layer, frameIndex: 1), isTrue);
-      expect(fixture.controller.canRenameFrameAt(layer: layer, frameIndex: 4), isFalse);
-      expect(fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 4), isTrue);
-      expect(fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 5), isTrue);
-      expect(fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 3), isTrue);
-      expect(fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 1), isFalse);
-      expect(fixture.controller.canDeleteCellAt(layer: layer, frameIndex: -1), isFalse);
+      expect(
+        fixture.controller.canRenameFrameAt(layer: layer, frameIndex: 1),
+        isTrue,
+      );
+      expect(
+        fixture.controller.canRenameFrameAt(layer: layer, frameIndex: 4),
+        isFalse,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 4),
+        isFalse,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 5),
+        isTrue,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 3),
+        isFalse,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 1),
+        isFalse,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(layer: layer, frameIndex: -1),
+        isFalse,
+      );
     });
   });
 }
