@@ -150,6 +150,31 @@ class _HomePageState extends State<HomePage> {
     _timelineController.decreaseExposure(layerId: layer.id, frameId: frame.id);
   }
 
+  bool get _canToggleMarkAtCurrentFrame {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return false;
+    }
+
+    return _timelineController.canToggleMarkAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+  void _toggleMarkAtCurrentFrame() {
+    final layer = _activeLayer;
+    if (layer == null || !_canToggleMarkAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.toggleMarkForLayer(layerId: layer.id);
+  }
+
+  bool _hasMarkForLayer(Layer layer, int frameIndex) {
+    return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
+  }
+
   TimelineCellExposureState _exposureStateForLayer(
     Layer layer,
     int frameIndex,
@@ -262,6 +287,13 @@ class _HomePageState extends State<HomePage> {
                         : null,
                     child: const Text('+ Exposure'),
                   ),
+                  TextButton(
+                    key: const ValueKey<String>('toggle-mark-button'),
+                    onPressed: _canToggleMarkAtCurrentFrame
+                        ? () => setState(_toggleMarkAtCurrentFrame)
+                        : null,
+                    child: const Text('Mark ●'),
+                  ),
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: _canvasController.canUndo
@@ -300,6 +332,7 @@ class _HomePageState extends State<HomePage> {
             currentFrameIndex: _timelineController.currentFrameIndex,
             frameCount: _timelineController.totalFrameCount,
             exposureStateForLayer: _exposureStateForLayer,
+            hasMarkForLayer: _hasMarkForLayer,
             onSelectLayer: (layerId) {
               setState(() => _layerController.selectLayer(layerId));
             },

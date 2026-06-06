@@ -8,6 +8,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_exposure_type.dart';
+import '../models/timeline_mark.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -230,6 +231,37 @@ class TimelineController {
       startIndex: entry.startIndex,
     );
     return nextEntry != null && nextEntry.startIndex - entry.startIndex > 1;
+  }
+
+  bool hasMarkAt({required Layer layer, required int frameIndex}) {
+    return markAt(layer: layer, frameIndex: frameIndex) != null;
+  }
+
+  TimelineMark? markAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return null;
+    }
+    return layer.marks[frameIndex];
+  }
+
+  bool canToggleMarkAt({required Layer layer, required int frameIndex}) {
+    return frameIndex >= 0;
+  }
+
+  void toggleMarkForLayer({required LayerId layerId}) {
+    final before = _requireLayer(layerId);
+    if (!canToggleMarkAt(layer: before, frameIndex: _currentFrameIndex)) {
+      return;
+    }
+
+    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks);
+    if (nextMarks.containsKey(_currentFrameIndex)) {
+      nextMarks.remove(_currentFrameIndex);
+    } else {
+      nextMarks[_currentFrameIndex] = const TimelineMark.inbetween();
+    }
+
+    _applyLayerEdit(before: before, after: before.copyWith(marks: nextMarks));
   }
 
   void createDrawingFrameForLayer({

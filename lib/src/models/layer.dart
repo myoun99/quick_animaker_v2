@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'frame.dart';
 import 'layer_id.dart';
 import 'timeline_exposure.dart';
+import 'timeline_mark.dart';
 
 class Layer {
   Layer({
@@ -10,15 +11,18 @@ class Layer {
     required this.name,
     required List<Frame> frames,
     Map<int, TimelineExposure>? timeline,
+    Map<int, TimelineMark>? marks,
     this.isVisible = true,
     this.opacity = 1.0,
   }) : frames = List.unmodifiable(frames),
-       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames));
+       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
+       marks = _immutableMarks(marks ?? const {});
 
   final LayerId id;
   final String name;
   final List<Frame> frames;
   final SplayTreeMap<int, TimelineExposure> timeline;
+  final SplayTreeMap<int, TimelineMark> marks;
   final bool isVisible;
   final double opacity;
 
@@ -27,6 +31,7 @@ class Layer {
     String? name,
     List<Frame>? frames,
     Map<int, TimelineExposure>? timeline,
+    Map<int, TimelineMark>? marks,
     bool? isVisible,
     double? opacity,
   }) {
@@ -36,6 +41,7 @@ class Layer {
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
+      marks: marks ?? this.marks,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
     );
@@ -47,6 +53,9 @@ class Layer {
     'frames': frames.map((frame) => frame.toJson()).toList(),
     'timeline': timeline.entries
         .map((entry) => {'index': entry.key, 'exposure': entry.value.toJson()})
+        .toList(),
+    'marks': marks.entries
+        .map((entry) => {'index': entry.key, 'mark': entry.value.toJson()})
         .toList(),
     'isVisible': isVisible,
     'opacity': opacity,
@@ -63,6 +72,9 @@ class Layer {
       timeline: json.containsKey('timeline')
           ? _timelineFromJson(json['timeline'])
           : _deriveTimeline(frames),
+      marks: json.containsKey('marks')
+          ? _marksFromJson(json['marks'])
+          : const {},
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),
     );
@@ -76,6 +88,7 @@ class Layer {
           other.name == name &&
           _listEquals(other.frames, frames) &&
           _mapEquals(other.timeline, timeline) &&
+          _mapEquals(other.marks, marks) &&
           other.isVisible == isVisible &&
           other.opacity == opacity;
 
@@ -87,13 +100,17 @@ class Layer {
     Object.hashAll(
       timeline.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
+    Object.hashAll(
+      marks.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
     isVisible,
     opacity,
   );
 
   @override
   String toString() =>
-      'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, isVisible: $isVisible, opacity: $opacity)';
+      'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, '
+      'marks: $marks, isVisible: $isVisible, opacity: $opacity)';
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(
@@ -106,6 +123,21 @@ SplayTreeMap<int, TimelineExposure> _immutableTimeline(
         entry.key,
         'timeline',
         'Timeline indexes must be non-negative.',
+      );
+    }
+    result[entry.key] = entry.value;
+  }
+  return result;
+}
+
+SplayTreeMap<int, TimelineMark> _immutableMarks(Map<int, TimelineMark> marks) {
+  final result = SplayTreeMap<int, TimelineMark>();
+  for (final entry in marks.entries) {
+    if (entry.key < 0) {
+      throw ArgumentError.value(
+        entry.key,
+        'marks',
+        'Timeline mark indexes must be non-negative.',
       );
     }
     result[entry.key] = entry.value;
@@ -160,6 +192,47 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(Object? json) {
   }
 
   throw const FormatException('Layer timeline must be a list or object.');
+}
+
+SplayTreeMap<int, TimelineMark> _marksFromJson(Object? json) {
+  final marks = SplayTreeMap<int, TimelineMark>();
+
+  if (json is List<dynamic>) {
+    for (final item in json) {
+      final entry = item as Map<String, dynamic>;
+      final index = entry['index'] as int;
+      if (index < 0) {
+        throw const FormatException(
+          'Timeline mark indexes must be non-negative.',
+        );
+      }
+      if (marks.containsKey(index)) {
+        throw FormatException('Duplicate timeline mark index: $index');
+      }
+      marks[index] = TimelineMark.fromJson(
+        entry['mark'] as Map<String, dynamic>,
+      );
+    }
+    return marks;
+  }
+
+  if (json is Map<String, dynamic>) {
+    for (final entry in json.entries) {
+      final index = int.tryParse(entry.key);
+      if (index == null || index < 0) {
+        throw FormatException('Invalid timeline mark index: ${entry.key}');
+      }
+      if (marks.containsKey(index)) {
+        throw FormatException('Duplicate timeline mark index: $index');
+      }
+      marks[index] = TimelineMark.fromJson(
+        entry.value as Map<String, dynamic>,
+      );
+    }
+    return marks;
+  }
+
+  throw const FormatException('Layer marks must be a list or object.');
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {

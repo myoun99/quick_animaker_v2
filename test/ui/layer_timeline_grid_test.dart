@@ -164,6 +164,41 @@ void main() {
     expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
   });
 
+
+  testWidgets('shows inbetween mark with priority over exposure marker', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+        hasMarkForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2,
+      ),
+    );
+
+    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2-2'));
+    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
+    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+  });
+
+  testWidgets('shows inbetween mark on blank held cell', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2
+            ? TimelineCellExposureState.blankHeld
+            : TimelineCellExposureState.empty,
+        hasMarkForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-2') && frameIndex == 2,
+      ),
+    );
+
+    expect(find.text('●'), findsOneWidget);
+    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+  });
+
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
@@ -193,6 +228,7 @@ Widget _grid({
   VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
+  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -207,6 +243,7 @@ Widget _grid({
           exposureStateForLayer:
               exposureStateForLayer ??
               (_, _) => TimelineCellExposureState.empty,
+          hasMarkForLayer: hasMarkForLayer,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
           onAddLayer: onAddLayer ?? () {},

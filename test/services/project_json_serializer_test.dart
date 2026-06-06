@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/services/project_json_serializer.dart';
 
 void main() {
@@ -41,6 +42,55 @@ void main() {
       final restored = serializer.decode(jsonString);
 
       expect(restored, project);
+    });
+
+    test('preserves layer marks through JSON', () {
+      final restored = serializer.decode(serializer.encode(_sampleProject()));
+
+      expect(
+        restored.tracks.single.cuts.single.layers.single.marks[3],
+        const TimelineMark.inbetween(),
+      );
+      expect(
+        restored.tracks.single.cuts.single.layers.single.frames,
+        hasLength(1),
+      );
+      expect(
+        restored.tracks.single.cuts.single.layers.single.timeline,
+        hasLength(1),
+      );
+    });
+
+    test('loads old layer JSON without marks as empty marks', () {
+      final json = jsonDecode(serializer.encode(_sampleProject()))
+          as Map<String, dynamic>;
+      final layerJson = (((json['tracks'] as List<dynamic>).single
+              as Map<String, dynamic>)['cuts']
+          as List<dynamic>).single as Map<String, dynamic>;
+      (((layerJson['layers'] as List<dynamic>).single)
+          as Map<String, dynamic>).remove('marks');
+
+      final restored = serializer.decode(jsonEncode(json));
+
+      expect(restored.tracks.single.cuts.single.layers.single.marks, isEmpty);
+    });
+
+    test('rejects negative mark index in JSON', () {
+      final json = jsonDecode(serializer.encode(_sampleProject()))
+          as Map<String, dynamic>;
+      final layer = ((((json['tracks'] as List<dynamic>).single
+                      as Map<String, dynamic>)['cuts']
+                  as List<dynamic>)
+              .single as Map<String, dynamic>)['layers']
+          as List<dynamic>;
+      (layer.single as Map<String, dynamic>)['marks'] = [
+        {
+          'index': -1,
+          'mark': {'type': 'inbetween'},
+        },
+      ];
+
+      expect(() => serializer.decode(jsonEncode(json)), throwsFormatException);
     });
 
     test('throws a FormatException for invalid JSON', () {
@@ -90,6 +140,7 @@ Layer _sampleLayer() {
     name: 'Ink Layer',
     frames: [_sampleFrame()],
     opacity: 0.75,
+    marks: const {3: TimelineMark.inbetween()},
   );
 }
 

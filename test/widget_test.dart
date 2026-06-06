@@ -38,7 +38,43 @@ void main() {
     );
     expect(find.bySemanticsLabel('blank exposure start'), findsNWidgets(2));
     expect(find.bySemanticsLabel('blank held exposure'), findsWidgets);
-    expect(find.text('●'), findsNothing);
+    expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
+  });
+
+  testWidgets('mark button toggles current cell without changing exposure marker', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final markButton = find.byKey(const ValueKey<String>('toggle-mark-button'));
+    expect(markButton, findsOneWidget);
+    expect(find.text('Mark ●'), findsOneWidget);
+
+    final layer1FirstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+
+    await tester.ensureVisible(markButton);
+    await tester.tap(markButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('●')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+
+    await tester.tap(markButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('●')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('X')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -72,7 +108,7 @@ void main() {
       );
       expect(find.bySemanticsLabel('drawing start'), findsOneWidget);
       expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
-      expect(find.text('●'), findsNothing);
+      expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
   );
 }

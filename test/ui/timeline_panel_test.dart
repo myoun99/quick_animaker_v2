@@ -185,6 +185,19 @@ void main() {
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
+
+  testWidgets('forwards mark display callback to timeline grids', (tester) async {
+    await tester.pumpWidget(
+      _panel(
+        hasMarkForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0,
+      ),
+    );
+
+    expect(find.text('●'), findsOneWidget);
+    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+  });
+
   testWidgets('highlights current frame without triangle label', (
     tester,
   ) async {
@@ -208,6 +221,7 @@ Widget _panel({
   ValueChanged<TimelineOrientation>? onOrientationChanged,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
+  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -221,6 +235,7 @@ Widget _panel({
             (layer, frameIndex) => frameIndex == 0
                 ? TimelineCellExposureState.drawingStart
                 : TimelineCellExposureState.empty,
+        hasMarkForLayer: hasMarkForLayer,
         onSelectLayer: onSelectLayer ?? (_) {},
         onSelectFrame: onSelectFrame ?? (_) {},
         onAddLayer: onAddLayer ?? () {},
