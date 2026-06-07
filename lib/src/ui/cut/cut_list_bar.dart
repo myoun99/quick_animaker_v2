@@ -1,0 +1,90 @@
+import 'package:flutter/material.dart';
+
+import '../../controllers/cut_list_helpers.dart';
+
+class CutListBar extends StatelessWidget {
+  const CutListBar({super.key, required this.entries});
+
+  final List<CutListEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const SizedBox.shrink(key: ValueKey<String>('cut-list-bar-empty'));
+    }
+
+    final theme = Theme.of(context);
+
+    return DecoratedBox(
+      key: const ValueKey<String>('cut-list-bar'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Cuts:',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 6),
+            for (var index = 0; index < entries.length; index += 1) ...[
+              _CutListChip(entry: entries[index]),
+              if (index < entries.length - 1) const SizedBox(width: 4),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CutListChip extends StatelessWidget {
+  const _CutListChip({required this.entry});
+
+  final CutListEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final backgroundColor = entry.isActive
+        ? colorScheme.primaryContainer
+        : colorScheme.surfaceContainerHighest;
+    final foregroundColor = entry.isActive
+        ? colorScheme.onPrimaryContainer
+        : colorScheme.onSurfaceVariant;
+    final borderColor = entry.isActive
+        ? colorScheme.primary
+        : colorScheme.outlineVariant;
+
+    return Tooltip(
+      message: entry.isActive
+          ? 'Active cut: ${entry.cutName}'
+          : 'Cut: ${entry.cutName}',
+      child: Container(
+        key: ValueKey<String>('cut-list-entry-${entry.cutId.value}'),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          entry.cutName,
+          key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: foregroundColor,
+            fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
