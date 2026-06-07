@@ -62,10 +62,7 @@ void main() {
     );
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(_cellActionHint(tester), contains('Delete Cell'));
     expect(_cellActionHint(tester), contains('delete this drawing frame'));
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);

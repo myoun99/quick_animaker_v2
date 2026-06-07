@@ -306,21 +306,26 @@ class _HomePageState extends State<HomePage> {
     final exposureState = _exposureStateForLayer(layer, frameIndex);
 
     return switch (exposureState) {
-      TimelineCellExposureState.drawingStart => hasMark
-          ? 'Drawing start + Mark ●: Delete Cell will delete this drawing and its mark.'
-          : 'Drawing start: Delete Cell will delete this drawing frame.',
-      TimelineCellExposureState.heldExposure => hasMark
-          ? 'Held drawing + Mark ●: Mark ● will remove the mark.'
-          : 'Held drawing: Rename Frame can rename the held drawing.',
-      TimelineCellExposureState.blankStart => hasMark
-          ? 'Blank start (X) + Mark ●: New Frame will replace X; Mark ● will remove the mark.'
-          : 'Blank start (X): New Frame will replace X with a drawing.',
-      TimelineCellExposureState.blankHeld => hasMark
-          ? 'Blank held + Mark ●: New Frame can create a drawing here; Mark ● will remove the mark.'
-          : 'Blank held: New Frame can create a drawing here.',
-      TimelineCellExposureState.empty => hasMark
-          ? 'Empty + Mark ●: Mark ● will remove the mark.'
-          : 'Empty: New Frame can create a drawing here.',
+      TimelineCellExposureState.drawingStart =>
+        hasMark
+            ? 'Drawing start + Mark ●: Delete Cell will delete this drawing and its mark.'
+            : 'Drawing start: Delete Cell will delete this drawing frame.',
+      TimelineCellExposureState.heldExposure =>
+        hasMark
+            ? 'Held drawing + Mark ●: Mark ● will remove the mark.'
+            : 'Held drawing: Rename Frame can rename the held drawing.',
+      TimelineCellExposureState.blankStart =>
+        hasMark
+            ? 'Blank start (X) + Mark ●: New Frame will replace X; Mark ● will remove the mark.'
+            : 'Blank start (X): New Frame will replace X with a drawing.',
+      TimelineCellExposureState.blankHeld =>
+        hasMark
+            ? 'Blank held + Mark ●: New Frame can create a drawing here; Mark ● will remove the mark.'
+            : 'Blank held: New Frame can create a drawing here.',
+      TimelineCellExposureState.empty =>
+        hasMark
+            ? 'Empty + Mark ●: Mark ● will remove the mark.'
+            : 'Empty: New Frame can create a drawing here.',
     };
   }
 
