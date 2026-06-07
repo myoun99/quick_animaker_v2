@@ -190,8 +190,19 @@ class TimelineController {
       return null;
     }
 
-    return _effectiveEndIndexForEntry(layer: layer, entry: entry) -
-        entry.startIndex;
+    return _effectiveDurationForEntry(layer: layer, entry: entry);
+  }
+
+  int? effectiveDurationForLayerAt({required Layer layer, int? frameIndex}) {
+    final entry = _entryForFrameIndex(
+      layer: layer,
+      frameIndex: frameIndex ?? _currentFrameIndex,
+    );
+    if (entry == null || entry.exposure.type != TimelineExposureType.drawing) {
+      return null;
+    }
+
+    return _effectiveDurationForEntry(layer: layer, entry: entry);
   }
 
   bool canPasteLinkedFrameAt({
@@ -277,12 +288,29 @@ class TimelineController {
     return exposure?.type == TimelineExposureType.drawing;
   }
 
-  bool canIncreaseExposure({required Layer layer, required FrameId frameId}) {
-    return _entryForFrame(layer: layer, frameId: frameId) != null;
+  bool canIncreaseExposure({
+    required Layer layer,
+    FrameId? frameId,
+    int? frameIndex,
+  }) {
+    return _entryForExposureEdit(
+          layer: layer,
+          frameId: frameId,
+          frameIndex: frameIndex,
+        ) !=
+        null;
   }
 
-  bool canDecreaseExposure({required Layer layer, required FrameId frameId}) {
-    final entry = _entryForFrame(layer: layer, frameId: frameId);
+  bool canDecreaseExposure({
+    required Layer layer,
+    FrameId? frameId,
+    int? frameIndex,
+  }) {
+    final entry = _entryForExposureEdit(
+      layer: layer,
+      frameId: frameId,
+      frameIndex: frameIndex,
+    );
     if (entry == null) {
       return false;
     }
@@ -442,14 +470,33 @@ class TimelineController {
     _applyLayerEdit(before: before, after: after);
   }
 
-  void increaseExposure({required LayerId layerId, required FrameId frameId}) {
+  void increaseExposure({
+    required LayerId layerId,
+    FrameId? frameId,
+    int? frameIndex,
+  }) {
     final before = _requireLayer(layerId);
-    _requireFrameInLayer(layer: before, frameId: frameId);
-    final targetEntry = _entryForFrame(layer: before, frameId: frameId);
-    if (targetEntry == null) {
-      throw StateError('Timeline entry not found for frame $frameId.');
+    if (frameId != null) {
+      _requireFrameInLayer(layer: before, frameId: frameId);
     }
 
+    final targetEntry = _entryForExposureEdit(
+      layer: before,
+      frameId: frameId,
+      frameIndex: frameIndex,
+    );
+    if (targetEntry == null) {
+      throw StateError('Timeline entry not found for exposure edit.');
+    }
+
+    final targetFrameId = targetEntry.exposure.frameId;
+    if (targetFrameId == null) {
+      throw StateError('Timeline entry does not reference a drawing frame.');
+    }
+    final targetFrame = _requireFrameInLayer(
+      layer: before,
+      frameId: targetFrameId,
+    );
     final connectedEntries = _connectedFollowingEntries(
       layer: before,
       startIndex: targetEntry.startIndex,
@@ -459,27 +506,59 @@ class TimelineController {
       connectedEntries,
       1,
     );
-    final nextFrames = before.frames
-        .map(
-          (frame) => frame.id == frameId
-              ? frame.copyWith(duration: _safeDuration(frame.duration) + 1)
-              : frame,
-        )
-        .toList(growable: false);
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    final sharesAuthoredFrame = _hasMultipleAuthoredUses(
+      layer: before,
+      frameId: targetFrameId,
     );
-  }
-
-  void decreaseExposure({required LayerId layerId, required FrameId frameId}) {
-    final before = _requireLayer(layerId);
-    final frame = _requireFrameInLayer(layer: before, frameId: frameId);
-    if (!canDecreaseExposure(layer: before, frameId: frameId)) {
+    final nextFrames = sharesAuthoredFrame
+        ? before.frames
+        : before.frames
+              .map(
+                (frame) => frame.id == targetFrameId
+                    ? frame.copyWith(
+                        duration: _safeDuration(targetFrame.duration) + 1,
+                      )
+                    : frame,
+              )
+              .toList(growable: false);
+    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
+    if (after == before) {
       return;
     }
 
-    final targetEntry = _entryForFrame(layer: before, frameId: frameId)!;
+    _applyLayerEdit(before: before, after: after);
+  }
+
+  void decreaseExposure({
+    required LayerId layerId,
+    FrameId? frameId,
+    int? frameIndex,
+  }) {
+    final before = _requireLayer(layerId);
+    if (frameId != null) {
+      _requireFrameInLayer(layer: before, frameId: frameId);
+    }
+    if (!canDecreaseExposure(
+      layer: before,
+      frameId: frameId,
+      frameIndex: frameIndex,
+    )) {
+      return;
+    }
+
+    final targetEntry = _entryForExposureEdit(
+      layer: before,
+      frameId: frameId,
+      frameIndex: frameIndex,
+    )!;
+    final targetFrameId = targetEntry.exposure.frameId;
+    if (targetFrameId == null) {
+      return;
+    }
+    final targetFrame = _requireFrameInLayer(
+      layer: before,
+      frameId: targetFrameId,
+    );
     final connectedEntries = _connectedFollowingEntries(
       layer: before,
       startIndex: targetEntry.startIndex,
@@ -489,21 +568,29 @@ class TimelineController {
       connectedEntries,
       -1,
     );
-    final nextFrames = before.frames
-        .map(
-          (existingFrame) => existingFrame.id == frameId
-              ? existingFrame.copyWith(
-                  duration: _safeDuration(frame.duration) > 1
-                      ? _safeDuration(frame.duration) - 1
-                      : 1,
-                )
-              : existingFrame,
-        )
-        .toList(growable: false);
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    final sharesAuthoredFrame = _hasMultipleAuthoredUses(
+      layer: before,
+      frameId: targetFrameId,
     );
+    final nextFrames = sharesAuthoredFrame
+        ? before.frames
+        : before.frames
+              .map(
+                (existingFrame) => existingFrame.id == targetFrameId
+                    ? existingFrame.copyWith(
+                        duration: _safeDuration(targetFrame.duration) > 1
+                            ? _safeDuration(targetFrame.duration) - 1
+                            : 1,
+                      )
+                    : existingFrame,
+              )
+              .toList(growable: false);
+    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
+    if (after == before) {
+      return;
+    }
+
+    _applyLayerEdit(before: before, after: after);
   }
 
   String? _normalizeFrameName(String? name) {
@@ -604,6 +691,63 @@ class TimelineController {
     return null;
   }
 
+  _TimelineEntry? _entryForFrameIndex({
+    required Layer layer,
+    required int frameIndex,
+  }) {
+    if (frameIndex < 0 || layer.timeline.isEmpty) {
+      return null;
+    }
+
+    _TimelineEntry? activeEntry;
+    for (final entry in _entriesForLayer(layer)) {
+      if (entry.startIndex > frameIndex) {
+        break;
+      }
+      activeEntry = entry;
+    }
+
+    return activeEntry;
+  }
+
+  _TimelineEntry? _entryForExposureEdit({
+    required Layer layer,
+    FrameId? frameId,
+    int? frameIndex,
+  }) {
+    final selectedEntry = _entryForFrameIndex(
+      layer: layer,
+      frameIndex: frameIndex ?? _currentFrameIndex,
+    );
+    if (selectedEntry?.exposure.type == TimelineExposureType.drawing &&
+        (frameId == null || selectedEntry?.exposure.frameId == frameId)) {
+      return selectedEntry;
+    }
+
+    if (frameId == null) {
+      return null;
+    }
+
+    return _entryForFrame(layer: layer, frameId: frameId);
+  }
+
+  bool _hasMultipleAuthoredUses({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    var count = 0;
+    for (final exposure in layer.timeline.values) {
+      if (exposure.type == TimelineExposureType.drawing &&
+          exposure.frameId == frameId) {
+        count += 1;
+        if (count > 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   List<_TimelineEntry> _connectedFollowingEntries({
     required Layer layer,
     required int startIndex,
@@ -652,6 +796,14 @@ class TimelineController {
       }
     }
     return null;
+  }
+
+  int _effectiveDurationForEntry({
+    required Layer layer,
+    required _TimelineEntry entry,
+  }) {
+    return _effectiveEndIndexForEntry(layer: layer, entry: entry) -
+        entry.startIndex;
   }
 
   int _effectiveEndIndexForEntry({
