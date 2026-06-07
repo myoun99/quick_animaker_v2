@@ -30,8 +30,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const CutId _cutId = CutId('sample-cut');
+  static const CutId _sampleCutId = CutId('sample-cut');
   static const FrameId _frameId = FrameId('sample-frame');
+
+  late CutId _activeCutId;
 
   late final ProjectRepository _repository;
   late final HistoryManager _historyManager;
@@ -47,18 +49,19 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _activeCutId = _sampleCutId;
     _repository = ProjectRepository(initialProject: _createSampleProject());
     _historyManager = HistoryManager();
     _layerController = LayerController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _cutId,
+      cutId: _activeCutId,
       frameId: _frameId,
     );
     _timelineController = TimelineController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _cutId,
+      cutId: _activeCutId,
     );
     _canvasController = CanvasController(
       repository: _repository,
@@ -775,7 +778,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 child: CanvasView(
                   controller: _canvasController,
-                  cutId: _cutId,
+                  cutId: _activeCutId,
                   onChanged: () => setState(() {}),
                 ),
               ),
@@ -845,7 +848,7 @@ class _HomePageState extends State<HomePage> {
           name: 'Video Track',
           cuts: [
             Cut(
-              id: _cutId,
+              id: _sampleCutId,
               name: 'Cut 1',
               duration: 1,
               canvasSize: const CanvasSize(width: 1280, height: 720),
