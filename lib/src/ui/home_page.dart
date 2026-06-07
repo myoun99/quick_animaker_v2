@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/active_cut_helpers.dart';
 import '../controllers/canvas_controller.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -50,7 +51,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final project = _createSampleProject();
-    _activeCutId = _defaultActiveCutIdFor(project);
+    _activeCutId = defaultActiveCutIdFor(project);
     _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
     _layerController = LayerController(
@@ -836,26 +837,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  CutId _defaultActiveCutIdFor(Project project) {
-    for (final track in project.tracks) {
-      if (track.type != TrackType.video) {
-        continue;
-      }
-
-      if (track.cuts.isNotEmpty) {
-        return track.cuts.first.id;
-      }
-    }
-
-    for (final track in project.tracks) {
-      if (track.cuts.isNotEmpty) {
-        return track.cuts.first.id;
-      }
-    }
-
-    throw StateError('Project has no cuts.');
   }
 
   Project _createSampleProject() {
