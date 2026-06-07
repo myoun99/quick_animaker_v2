@@ -499,6 +499,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _timelineToolbarGroup({
+    required ValueKey<String> key,
+    required List<Widget> children,
+  }) {
+    return Row(key: key, mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  Widget _timelineToolbarGroupDivider(BuildContext context) {
+    return SizedBox(
+      height: 28,
+      child: VerticalDivider(
+        width: 16,
+        thickness: 1,
+        color: Theme.of(context).colorScheme.outlineVariant,
+      ),
+    );
+  }
+
   Widget _buildTimelineActionToolbar(
     BuildContext context, {
     required Frame? selectedFrame,
@@ -577,79 +595,118 @@ class _HomePageState extends State<HomePage> {
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 8),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('new-frame-button'),
-                        tooltip: 'New Frame',
-                        icon: Icons.add_box_outlined,
-                        onPressed: _hasActiveNonNegativeCell
-                            ? () => setState(_createDrawingAtCurrentFrame)
-                            : null,
-                      ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('blank-exposure-button'),
-                        tooltip: 'Blank / X',
-                        icon: Icons.close,
-                        onPressed: _hasActiveNonNegativeCell
-                            ? () => setState(_createBlankAtCurrentFrame)
-                            : null,
-                      ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('toggle-mark-button'),
-                        tooltip: 'Mark ●',
-                        icon: Icons.circle,
-                        onPressed: _hasActiveNonNegativeCell
-                            ? () => setState(_toggleMarkAtCurrentFrame)
-                            : null,
-                      ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('copy-frame-button'),
-                        tooltip: 'Copy Frame',
-                        icon: Icons.content_copy,
-                        onPressed: _canCopyFrameAtCurrentFrame
-                            ? () => setState(_copyFrameAtCurrentFrame)
-                            : null,
-                      ),
-                      _timelineActionIconButton(
+                      _timelineToolbarGroup(
                         key: const ValueKey<String>(
-                          'paste-linked-frame-button',
+                          'timeline-toolbar-create-group',
                         ),
-                        tooltip: 'Paste Linked Frame',
-                        icon: Icons.link,
-                        onPressed: _canPasteLinkedFrameAtCurrentFrame
-                            ? () => setState(_pasteLinkedFrameAtCurrentFrame)
-                            : null,
+                        children: [
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>('new-frame-button'),
+                            tooltip: 'New Frame',
+                            icon: Icons.add_box_outlined,
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_createDrawingAtCurrentFrame)
+                                : null,
+                          ),
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>(
+                              'blank-exposure-button',
+                            ),
+                            tooltip: 'Blank / X',
+                            icon: Icons.close,
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_createBlankAtCurrentFrame)
+                                : null,
+                          ),
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>('toggle-mark-button'),
+                            tooltip: 'Mark ●',
+                            icon: Icons.circle,
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_toggleMarkAtCurrentFrame)
+                                : null,
+                          ),
+                        ],
                       ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('rename-frame-button'),
-                        tooltip: 'Rename Frame',
-                        icon: Icons.edit_outlined,
-                        onPressed: _canRenameFrameAtCurrentFrame
-                            ? _renameSelectedFrame
-                            : null,
+                      _timelineToolbarGroupDivider(context),
+                      _timelineToolbarGroup(
+                        key: const ValueKey<String>(
+                          'timeline-toolbar-copy-group',
+                        ),
+                        children: [
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>('copy-frame-button'),
+                            tooltip: 'Copy Frame',
+                            icon: Icons.content_copy,
+                            onPressed: _canCopyFrameAtCurrentFrame
+                                ? () => setState(_copyFrameAtCurrentFrame)
+                                : null,
+                          ),
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>(
+                              'paste-linked-frame-button',
+                            ),
+                            tooltip: 'Paste Linked Frame',
+                            icon: Icons.link,
+                            onPressed: _canPasteLinkedFrameAtCurrentFrame
+                                ? () => setState(
+                                    _pasteLinkedFrameAtCurrentFrame,
+                                  )
+                                : null,
+                          ),
+                        ],
                       ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('delete-cell-button'),
-                        tooltip: 'Delete Cell',
-                        icon: Icons.delete_outline,
-                        onPressed: _canDeleteCellAtCurrentFrame
-                            ? () => setState(_deleteCellAtCurrentFrame)
-                            : null,
+                      _timelineToolbarGroupDivider(context),
+                      _timelineToolbarGroup(
+                        key: const ValueKey<String>(
+                          'timeline-toolbar-edit-group',
+                        ),
+                        children: [
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>('rename-frame-button'),
+                            tooltip: 'Rename Frame',
+                            icon: Icons.edit_outlined,
+                            onPressed: _canRenameFrameAtCurrentFrame
+                                ? _renameSelectedFrame
+                                : null,
+                          ),
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>('delete-cell-button'),
+                            tooltip: 'Delete Cell',
+                            icon: Icons.delete_outline,
+                            onPressed: _canDeleteCellAtCurrentFrame
+                                ? () => setState(_deleteCellAtCurrentFrame)
+                                : null,
+                          ),
+                        ],
                       ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('decrease-exposure-button'),
-                        tooltip: 'Decrease Exposure',
-                        icon: Icons.remove,
-                        onPressed: canDecreaseExposure
-                            ? () => setState(_decreaseSelectedExposure)
-                            : null,
-                      ),
-                      _timelineActionIconButton(
-                        key: const ValueKey<String>('increase-exposure-button'),
-                        tooltip: 'Increase Exposure',
-                        icon: Icons.add,
-                        onPressed: canIncreaseExposure
-                            ? () => setState(_increaseSelectedExposure)
-                            : null,
+                      _timelineToolbarGroupDivider(context),
+                      _timelineToolbarGroup(
+                        key: const ValueKey<String>(
+                          'timeline-toolbar-exposure-group',
+                        ),
+                        children: [
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>(
+                              'decrease-exposure-button',
+                            ),
+                            tooltip: 'Decrease Exposure',
+                            icon: Icons.remove,
+                            onPressed: canDecreaseExposure
+                                ? () => setState(_decreaseSelectedExposure)
+                                : null,
+                          ),
+                          _timelineActionIconButton(
+                            key: const ValueKey<String>(
+                              'increase-exposure-button',
+                            ),
+                            tooltip: 'Increase Exposure',
+                            icon: Icons.add,
+                            onPressed: canIncreaseExposure
+                                ? () => setState(_increaseSelectedExposure)
+                                : null,
+                          ),
+                        ],
                       ),
                     ],
                   ),

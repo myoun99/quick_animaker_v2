@@ -163,6 +163,22 @@ void main() {
     _expectTimelineActionKeys();
     _expectTimelineActionTooltips();
     expect(
+      find.byKey(const ValueKey<String>('timeline-toolbar-create-group')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-toolbar-copy-group')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-toolbar-edit-group')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-toolbar-exposure-group')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey<String>('current-layer-status')),
       findsOneWidget,
     );
