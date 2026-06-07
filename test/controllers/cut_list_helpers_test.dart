@@ -35,26 +35,29 @@ void main() {
         _track(
           id: 'track-1',
           name: 'Track 1',
-          cuts: [_cut(id: 'cut-1-a'), _cut(id: 'cut-1-b')],
+          cuts: [
+            _cut(id: 'cut-1-a'),
+            _cut(id: 'cut-1-b'),
+          ],
         ),
         _track(
           id: 'track-2',
           name: 'Track 2',
-          cuts: [_cut(id: 'cut-2-a'), _cut(id: 'cut-2-b')],
+          cuts: [
+            _cut(id: 'cut-2-a'),
+            _cut(id: 'cut-2-b'),
+          ],
         ),
       ]);
 
       final entries = cutListEntriesFor(project);
 
-      expect(
-        entries.map((entry) => entry.cutId).toList(),
-        const [
-          CutId('cut-1-a'),
-          CutId('cut-1-b'),
-          CutId('cut-2-a'),
-          CutId('cut-2-b'),
-        ],
-      );
+      expect(entries.map((entry) => entry.cutId).toList(), const [
+        CutId('cut-1-a'),
+        CutId('cut-1-b'),
+        CutId('cut-2-a'),
+        CutId('cut-2-b'),
+      ]);
     });
 
     test('includes track and cut identity, display data, and indexes', () {
@@ -83,7 +86,10 @@ void main() {
         _track(
           id: 'track-1',
           name: 'Track 1',
-          cuts: [_cut(id: 'cut-1'), _cut(id: 'cut-2')],
+          cuts: [
+            _cut(id: 'cut-1'),
+            _cut(id: 'cut-2'),
+          ],
         ),
       ]);
 
@@ -100,7 +106,10 @@ void main() {
         _track(
           id: 'track-1',
           name: 'Track 1',
-          cuts: [_cut(id: 'cut-1'), _cut(id: 'cut-2')],
+          cuts: [
+            _cut(id: 'cut-1'),
+            _cut(id: 'cut-2'),
+          ],
         ),
       ]);
 
@@ -114,7 +123,10 @@ void main() {
         _track(
           id: 'track-1',
           name: 'Track 1',
-          cuts: [_cut(id: 'cut-1'), _cut(id: 'cut-2')],
+          cuts: [
+            _cut(id: 'cut-1'),
+            _cut(id: 'cut-2'),
+          ],
         ),
       ]);
 
@@ -131,12 +143,18 @@ void main() {
         _track(
           id: 'track-1',
           name: 'Track 1',
-          cuts: [_cut(id: 'cut-1-a'), _cut(id: 'cut-1-b')],
+          cuts: [
+            _cut(id: 'cut-1-a'),
+            _cut(id: 'cut-1-b'),
+          ],
         ),
         _track(
           id: 'track-2',
           name: 'Track 2',
-          cuts: [_cut(id: 'cut-2-a'), _cut(id: 'cut-2-b')],
+          cuts: [
+            _cut(id: 'cut-2-a'),
+            _cut(id: 'cut-2-b'),
+          ],
         ),
         _track(
           id: 'track-3',
@@ -148,14 +166,14 @@ void main() {
       final entries = cutListEntriesFor(project);
 
       expect(entries, hasLength(5));
-      expect(
-        entries.map((entry) => entry.trackIndex).toList(),
-        [0, 0, 1, 1, 2],
-      );
-      expect(
-        entries.map((entry) => entry.cutIndex).toList(),
-        [0, 1, 0, 1, 0],
-      );
+      expect(entries.map((entry) => entry.trackIndex).toList(), [
+        0,
+        0,
+        1,
+        1,
+        2,
+      ]);
+      expect(entries.map((entry) => entry.cutIndex).toList(), [0, 1, 0, 1, 0]);
     });
 
     test('preserves audio/video track type in entries', () {
