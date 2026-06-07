@@ -233,6 +233,41 @@ void main() {
     );
     expect(find.text('A1'), findsOneWidget);
   });
+
+  testWidgets('forwards selected cell and layer highlights to both grids', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.horizontal,
+        currentFrameIndex: 3,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-cell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.vertical,
+        currentFrameIndex: 3,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-selected-cell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+      findsOneWidget,
+    );
+  });
+
 }
 
 Widget _panel({

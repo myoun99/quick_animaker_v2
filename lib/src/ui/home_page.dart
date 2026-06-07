@@ -273,6 +273,54 @@ class _HomePageState extends State<HomePage> {
     return TimelineCellExposureState.empty;
   }
 
+  String get _currentLayerStatusText {
+    final layer = _activeLayer;
+    return 'Layer: ${layer?.name ?? 'None'}';
+  }
+
+  String get _currentFrameStatusText {
+    return 'Frame: ${_timelineController.currentFrameIndex + 1}';
+  }
+
+  String get _currentCellStatusText {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return 'Cell: No layer';
+    }
+
+    return 'Cell: ${_cellStatusLabelForLayer(layer)}';
+  }
+
+  String _cellStatusLabelForLayer(Layer layer) {
+    final frameIndex = _timelineController.currentFrameIndex;
+    final exposureState = _exposureStateForLayer(layer, frameIndex);
+    final baseLabel = switch (exposureState) {
+      TimelineCellExposureState.drawingStart => _drawingStartStatusForLayer(
+        layer,
+        frameIndex,
+      ),
+      TimelineCellExposureState.heldExposure => 'Held drawing',
+      TimelineCellExposureState.blankStart => 'Blank start (X)',
+      TimelineCellExposureState.blankHeld => 'Blank held',
+      TimelineCellExposureState.empty => 'Empty',
+    };
+
+    if (_hasMarkForLayer(layer, frameIndex)) {
+      return '$baseLabel + Mark ●';
+    }
+
+    return baseLabel;
+  }
+
+  String _drawingStartStatusForLayer(Layer layer, int frameIndex) {
+    final frameName = _frameNameForLayer(layer, frameIndex);
+    if (frameName == null || frameName.isEmpty) {
+      return 'Drawing start';
+    }
+
+    return 'Drawing start: $frameName';
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeLayer = _activeLayer;
@@ -310,12 +358,18 @@ class _HomePageState extends State<HomePage> {
                   Text('Active strokes: ${_canvasController.strokes.length}'),
                   const SizedBox(width: 16),
                   Text(
-                    'Current frame: ${_timelineController.currentFrameIndex}',
+                    _currentLayerStatusText,
+                    key: const ValueKey<String>('current-layer-status'),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    'Selected: ${activeLayer?.name ?? 'No layer'} / Frame '
-                    '${_timelineController.currentFrameIndex}',
+                    _currentFrameStatusText,
+                    key: const ValueKey<String>('current-frame-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _currentCellStatusText,
+                    key: const ValueKey<String>('current-cell-status'),
                   ),
                   const SizedBox(width: 16),
                   Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
