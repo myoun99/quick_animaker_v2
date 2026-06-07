@@ -13,10 +13,7 @@ Future<void> _tapToolbarButton(
   await tester.pumpAndSettle();
 }
 
-Future<void> _tapTimelineCell(
-  WidgetTester tester,
-  ValueKey<String> key,
-) async {
+Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
   final cell = find.byKey(key);
   await tester.ensureVisible(cell);
   await tester.pumpAndSettle();
@@ -59,10 +56,7 @@ void main() {
 
     expect(toolbar, findsOneWidget);
     expect(cellActions, findsOneWidget);
-    expect(
-      find.descendant(of: toolbar, matching: cellActions),
-      findsOneWidget,
-    );
+    expect(find.descendant(of: toolbar, matching: cellActions), findsOneWidget);
     expect(
       find.descendant(
         of: toolbar,
