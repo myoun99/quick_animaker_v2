@@ -79,33 +79,24 @@ class _HomePageState extends State<HomePage> {
     return _timelineController.getSelectedFrameForLayer(layer);
   }
 
-  bool get _canCreateDrawingAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
+  bool get _hasActiveNonNegativeCell =>
+      _activeLayer != null && _timelineController.currentFrameIndex >= 0;
 
-    return _timelineController.canCreateDrawingAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
+  bool get _canCreateDrawingAtCurrentFrame => _hasActiveNonNegativeCell;
 
-  bool get _canCreateBlankAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canCreateBlankAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
+  bool get _canCreateBlankAtCurrentFrame => _hasActiveNonNegativeCell;
 
   void _createDrawingAtCurrentFrame() {
     final layer = _activeLayer;
-    if (layer == null || !_canCreateDrawingAtCurrentFrame) {
+    if (layer == null) {
+      return;
+    }
+
+    final canCreate = _timelineController.canCreateDrawingAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+    if (!canCreate) {
       return;
     }
 
@@ -118,7 +109,15 @@ class _HomePageState extends State<HomePage> {
 
   void _createBlankAtCurrentFrame() {
     final layer = _activeLayer;
-    if (layer == null || !_canCreateBlankAtCurrentFrame) {
+    if (layer == null) {
+      return;
+    }
+
+    final canCreate = _timelineController.canCreateBlankAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+    if (!canCreate) {
       return;
     }
 
@@ -150,17 +149,7 @@ class _HomePageState extends State<HomePage> {
     _timelineController.decreaseExposure(layerId: layer.id, frameId: frame.id);
   }
 
-  bool get _canToggleMarkAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canToggleMarkAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
+  bool get _canToggleMarkAtCurrentFrame => _hasActiveNonNegativeCell;
 
   void _toggleMarkAtCurrentFrame() {
     final layer = _activeLayer;
@@ -238,6 +227,45 @@ class _HomePageState extends State<HomePage> {
         ?.name;
   }
 
+  String get _currentLayerStatusText => 'Layer: ${_activeLayer?.name ?? 'None'}';
+
+  String get _currentFrameStatusText =>
+      'Frame: ${_timelineController.currentFrameIndex + 1}';
+
+  String get _currentCellStatusText {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return 'Cell: No layer';
+    }
+
+    final frameIndex = _timelineController.currentFrameIndex;
+    final status = _cellStatusForLayer(layer, frameIndex);
+    final markSuffix = _hasMarkForLayer(layer, frameIndex) ? ' + Mark ●' : '';
+    return 'Cell: $status$markSuffix';
+  }
+
+  String _cellStatusForLayer(Layer layer, int frameIndex) {
+    final state = _exposureStateForLayer(layer, frameIndex);
+    return switch (state) {
+      TimelineCellExposureState.drawingStart => _drawingStartStatusForLayer(
+        layer,
+        frameIndex,
+      ),
+      TimelineCellExposureState.heldExposure => 'Held drawing',
+      TimelineCellExposureState.blankStart => 'Blank start (X)',
+      TimelineCellExposureState.blankHeld => 'Blank held',
+      TimelineCellExposureState.empty => 'Empty',
+    };
+  }
+
+  String _drawingStartStatusForLayer(Layer layer, int frameIndex) {
+    final frameName = _frameNameForLayer(layer, frameIndex);
+    if (frameName == null || frameName.isEmpty) {
+      return 'Drawing start';
+    }
+    return 'Drawing start: $frameName';
+  }
+
   TimelineCellExposureState _exposureStateForLayer(
     Layer layer,
     int frameIndex,
@@ -310,15 +338,19 @@ class _HomePageState extends State<HomePage> {
                   Text('Active strokes: ${_canvasController.strokes.length}'),
                   const SizedBox(width: 16),
                   Text(
-                    'Current frame: ${_timelineController.currentFrameIndex}',
+                    _currentLayerStatusText,
+                    key: const ValueKey<String>('current-layer-status'),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    'Selected: ${activeLayer?.name ?? 'No layer'} / Frame '
-                    '${_timelineController.currentFrameIndex}',
+                    _currentFrameStatusText,
+                    key: const ValueKey<String>('current-frame-status'),
                   ),
                   const SizedBox(width: 16),
-                  Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
+                  Text(
+                    _currentCellStatusText,
+                    key: const ValueKey<String>('current-cell-status'),
+                  ),
                   const SizedBox(width: 16),
                   Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),

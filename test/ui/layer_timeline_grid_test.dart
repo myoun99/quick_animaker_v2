@@ -164,7 +164,7 @@ void main() {
     expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
   });
 
-  testWidgets('shows inbetween mark with priority over exposure marker', (
+  testWidgets('shows inbetween mark without hiding exposure marker', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -180,7 +180,7 @@ void main() {
 
     final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2-2'));
     expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(find.descendant(of: cell, matching: find.text('○')), findsOneWidget);
     expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
   });
 
@@ -218,7 +218,14 @@ void main() {
     expect(find.text('▶ 4'), findsNothing);
   });
 
-  testWidgets('named drawing start displays name and mark has priority', (
+  testWidgets('active layer and selected cell expose semantics', (tester) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 2));
+
+    expect(find.bySemanticsLabel('selected layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('selected timeline cell'), findsOneWidget);
+  });
+
+  testWidgets('named drawing start displays name alongside mark', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -257,7 +264,7 @@ void main() {
     );
 
     expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
+    expect(find.descendant(of: cell, matching: find.text('A1')), findsOneWidget);
   });
 }
 

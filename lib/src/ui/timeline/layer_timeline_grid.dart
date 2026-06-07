@@ -144,71 +144,78 @@ class _LayerRow extends StatelessWidget {
 
     return Row(
       children: [
-        InkWell(
-          key: ValueKey<String>('timeline-layer-row-${layer.id}'),
-          onTap: () => onSelectLayer(layer.id),
-          child: Container(
-            width: LayerTimelineGrid._layerControlsWidth,
-            height: LayerTimelineGrid._rowHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: active ? activeColor : colorScheme.surface,
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                    onTap: () => onSelectLayer(layer.id),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        layer.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: active ? FontWeight.bold : null,
+        Semantics(
+          label: active ? 'selected layer' : null,
+          container: active,
+          explicitChildNodes: active,
+          child: InkWell(
+            key: ValueKey<String>('timeline-layer-row-${layer.id}'),
+            onTap: () => onSelectLayer(layer.id),
+            child: Container(
+              width: LayerTimelineGrid._layerControlsWidth,
+              height: LayerTimelineGrid._rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: active ? activeColor : colorScheme.surface,
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                      onTap: () => onSelectLayer(layer.id),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          layer.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: active ? FontWeight.bold : null,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  key: ValueKey<String>(
-                    'timeline-layer-visibility-${layer.id}',
+                  IconButton(
+                    key: ValueKey<String>(
+                      'timeline-layer-visibility-${layer.id}',
+                    ),
+                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    icon: Icon(
+                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                      size: 18,
+                    ),
+                    onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 32,
-                    height: 32,
+                  SizedBox(
+                    width: 64,
+                    child: Slider(
+                      key: ValueKey<String>(
+                        'timeline-layer-opacity-${layer.id}',
+                      ),
+                      min: 0,
+                      max: 1,
+                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                      onChanged: (opacity) =>
+                          onLayerOpacityChanged(layer.id, opacity),
+                    ),
                   ),
-                  icon: Icon(
-                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                    size: 18,
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      '${(layer.opacity * 100).round()}%',
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                  onPressed: () => onToggleLayerVisibility(layer.id),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Slider(
-                    key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged(layer.id, opacity),
-                  ),
-                ),
-                SizedBox(
-                  width: 34,
-                  child: Text(
-                    '${(layer.opacity * 100).round()}%',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -221,7 +228,7 @@ class _LayerRow extends StatelessWidget {
             layer: layer,
             frameIndex: frameIndex,
             active: active,
-            current: frameIndex == currentFrameIndex,
+            selected: active && frameIndex == currentFrameIndex,
             exposureState: exposureStateForLayer(layer, frameIndex),
             hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
             frameName: frameNameForLayer?.call(layer, frameIndex),
@@ -273,7 +280,7 @@ class _TimelineCell extends StatelessWidget {
     required this.layer,
     required this.frameIndex,
     required this.active,
-    required this.current,
+    required this.selected,
     required this.exposureState,
     required this.hasMark,
     this.frameName,
@@ -284,7 +291,7 @@ class _TimelineCell extends StatelessWidget {
   final Layer layer;
   final int frameIndex;
   final bool active;
-  final bool current;
+  final bool selected;
   final TimelineCellExposureState exposureState;
   final bool hasMark;
   final String? frameName;
@@ -329,31 +336,60 @@ class _TimelineCell extends StatelessWidget {
         height: LayerTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: current ? colorScheme.primaryContainer : exposureColor,
+          color: selected ? colorScheme.primaryContainer : exposureColor,
           border: Border.all(
-            color: current ? colorScheme.primary : exposureBorderColor,
-            width: current ? 2 : 1,
+            color: selected ? colorScheme.primary : exposureBorderColor,
+            width: selected ? 3 : 1,
           ),
         ),
-        child: Text(
-          _markerForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
-          semanticsLabel: _semanticsLabelForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
-          style: TextStyle(
-            color: current
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurface,
-            fontWeight:
-                hasMark || exposureState != TimelineCellExposureState.empty
-                ? FontWeight.bold
-                : null,
+        child: Semantics(
+          label: selected ? 'selected timeline cell' : null,
+          container: selected,
+          explicitChildNodes: selected,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Text(
+                _exposureMarkerForCell(
+                  exposureState: exposureState,
+                  frameName: frameName,
+                ),
+                semanticsLabel: _semanticsLabelForExposure(
+                  exposureState: exposureState,
+                  frameName: frameName,
+                ),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface,
+                  fontWeight:
+                      exposureState != TimelineCellExposureState.empty
+                      ? FontWeight.bold
+                      : null,
+                ),
+              ),
+              if (hasMark)
+                Align(
+                  alignment: exposureState == TimelineCellExposureState.empty
+                      ? Alignment.center
+                      : Alignment.topRight,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Text(
+                      '●',
+                      semanticsLabel: 'inbetween mark',
+                      style: TextStyle(
+                        color: selected
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -361,15 +397,10 @@ class _TimelineCell extends StatelessWidget {
   }
 }
 
-String _markerForCell({
+String _exposureMarkerForCell({
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
   String? frameName,
 }) {
-  if (hasMark) {
-    return '●';
-  }
-
   return switch (exposureState) {
     TimelineCellExposureState.empty => '',
     TimelineCellExposureState.drawingStart =>
@@ -380,15 +411,10 @@ String _markerForCell({
   };
 }
 
-String? _semanticsLabelForCell({
+String? _semanticsLabelForExposure({
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
   String? frameName,
 }) {
-  if (hasMark) {
-    return 'inbetween mark';
-  }
-
   return switch (exposureState) {
     TimelineCellExposureState.empty => null,
     TimelineCellExposureState.drawingStart =>

@@ -239,4 +239,132 @@ void main() {
     );
     expect(find.text('Cancelled'), findsNothing);
   });
+  testWidgets('selection status text shows layer, 1-based frame, and cell status', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(
+      find.byKey(const ValueKey<String>('current-layer-status')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('current-frame-status')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('current-cell-status')),
+      findsOneWidget,
+    );
+    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Frame: 1'), findsOneWidget);
+    expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+
+    final secondFrameCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    await tester.ensureVisible(secondFrameCell);
+    await tester.pumpAndSettle();
+    await tester.tap(secondFrameCell);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Frame: 2'), findsOneWidget);
+    expect(find.text('Cell: Blank held'), findsOneWidget);
+  });
+
+  testWidgets('cell status combines drawing names and marks', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final newFrameButton = find.byKey(
+      const ValueKey<String>('new-frame-button'),
+    );
+    final renameButton = find.byKey(
+      const ValueKey<String>('rename-frame-button'),
+    );
+    final markButton = find.byKey(
+      const ValueKey<String>('toggle-mark-button'),
+    );
+
+    await tester.ensureVisible(newFrameButton);
+    await tester.pumpAndSettle();
+    await tester.tap(newFrameButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Cell: Drawing start'), findsOneWidget);
+
+    await tester.ensureVisible(renameButton);
+    await tester.pumpAndSettle();
+    await tester.tap(renameButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A1',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Cell: Drawing start: A1'), findsOneWidget);
+
+    await tester.ensureVisible(markButton);
+    await tester.pumpAndSettle();
+    await tester.tap(markButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Cell: Drawing start: A1 + Mark ●'), findsOneWidget);
+  });
+
+  testWidgets('timeline toolbar edit buttons keep Phase 17 enablement policy', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final newFrameButton = find.byKey(
+      const ValueKey<String>('new-frame-button'),
+    );
+    final blankButton = find.byKey(
+      const ValueKey<String>('blank-exposure-button'),
+    );
+    final markButton = find.byKey(
+      const ValueKey<String>('toggle-mark-button'),
+    );
+    final renameButton = find.byKey(
+      const ValueKey<String>('rename-frame-button'),
+    );
+    final deleteButton = find.byKey(
+      const ValueKey<String>('delete-cell-button'),
+    );
+
+    expect(tester.widget<TextButton>(newFrameButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(blankButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(markButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNull);
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
+
+    await tester.ensureVisible(newFrameButton);
+    await tester.pumpAndSettle();
+    await tester.tap(newFrameButton);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextButton>(newFrameButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(blankButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(markButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
+
+    final secondFrameCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    await tester.ensureVisible(secondFrameCell);
+    await tester.pumpAndSettle();
+    await tester.tap(secondFrameCell);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextButton>(newFrameButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(blankButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(markButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
+  });
+
 }
