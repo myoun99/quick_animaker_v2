@@ -465,6 +465,24 @@ class _HomePageState extends State<HomePage> {
     return 'Drawing start: $frameName';
   }
 
+  Widget _timelineActionIconButton({
+    required ValueKey<String> key,
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      key: key,
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 20,
+      padding: const EdgeInsets.all(6),
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
   Widget _buildTimelineActionToolbar(
     BuildContext context, {
     required Frame? selectedFrame,
@@ -543,70 +561,79 @@ class _HomePageState extends State<HomePage> {
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 8),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('new-frame-button'),
+                        tooltip: 'New Frame',
+                        icon: Icons.add_box_outlined,
                         onPressed: _hasActiveNonNegativeCell
                             ? () => setState(_createDrawingAtCurrentFrame)
                             : null,
-                        child: const Text('New Frame'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('blank-exposure-button'),
+                        tooltip: 'Blank / X',
+                        icon: Icons.close,
                         onPressed: _hasActiveNonNegativeCell
                             ? () => setState(_createBlankAtCurrentFrame)
                             : null,
-                        child: const Text('Blank / X'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('toggle-mark-button'),
+                        tooltip: 'Mark ●',
+                        icon: Icons.circle,
                         onPressed: _hasActiveNonNegativeCell
                             ? () => setState(_toggleMarkAtCurrentFrame)
                             : null,
-                        child: const Text('Mark ●'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('copy-frame-button'),
+                        tooltip: 'Copy Frame',
+                        icon: Icons.content_copy,
                         onPressed: _canCopyFrameAtCurrentFrame
                             ? () => setState(_copyFrameAtCurrentFrame)
                             : null,
-                        child: const Text('Copy Frame'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>(
                           'paste-linked-frame-button',
                         ),
+                        tooltip: 'Paste Linked Frame',
+                        icon: Icons.link,
                         onPressed: _canPasteLinkedFrameAtCurrentFrame
                             ? () => setState(_pasteLinkedFrameAtCurrentFrame)
                             : null,
-                        child: const Text('Paste Linked Frame'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('rename-frame-button'),
+                        tooltip: 'Rename Frame',
+                        icon: Icons.edit_outlined,
                         onPressed: _canRenameFrameAtCurrentFrame
                             ? _renameSelectedFrame
                             : null,
-                        child: const Text('Rename Frame'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('delete-cell-button'),
+                        tooltip: 'Delete Cell',
+                        icon: Icons.delete_outline,
                         onPressed: _canDeleteCellAtCurrentFrame
                             ? () => setState(_deleteCellAtCurrentFrame)
                             : null,
-                        child: const Text('Delete Cell'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('decrease-exposure-button'),
+                        tooltip: 'Decrease Exposure',
+                        icon: Icons.remove,
                         onPressed: canDecreaseExposure
                             ? () => setState(_decreaseSelectedExposure)
                             : null,
-                        child: const Text('- Exposure'),
                       ),
-                      TextButton(
+                      _timelineActionIconButton(
                         key: const ValueKey<String>('increase-exposure-button'),
+                        tooltip: 'Increase Exposure',
+                        icon: Icons.add,
                         onPressed: canIncreaseExposure
                             ? () => setState(_increaseSelectedExposure)
                             : null,
-                        child: const Text('+ Exposure'),
                       ),
                     ],
                   ),
