@@ -153,10 +153,21 @@ class _LayerRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
               color: active ? activeColor : colorScheme.surface,
-              border: Border.all(color: colorScheme.outlineVariant),
+              border: Border.all(
+                color: active
+                    ? colorScheme.secondary
+                    : colorScheme.outlineVariant,
+                width: active ? 2 : 1,
+              ),
             ),
-            child: Row(
-              children: [
+            child: Semantics(
+              key: active
+                  ? const ValueKey<String>('timeline-selected-layer')
+                  : null,
+              label: active ? 'selected layer' : 'layer',
+              container: true,
+              child: Row(
+                children: [
                 Expanded(
                   child: InkWell(
                     key: ValueKey<String>('timeline-layer-name-${layer.id}'),
@@ -166,7 +177,7 @@ class _LayerRow extends StatelessWidget {
                       child: Text(
                         layer.name,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                          style: TextStyle(
                           fontWeight: active ? FontWeight.bold : null,
                         ),
                       ),
@@ -208,7 +219,8 @@ class _LayerRow extends StatelessWidget {
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -221,7 +233,7 @@ class _LayerRow extends StatelessWidget {
             layer: layer,
             frameIndex: frameIndex,
             active: active,
-            current: frameIndex == currentFrameIndex,
+            selected: active && frameIndex == currentFrameIndex,
             exposureState: exposureStateForLayer(layer, frameIndex),
             hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
             frameName: frameNameForLayer?.call(layer, frameIndex),
@@ -273,7 +285,7 @@ class _TimelineCell extends StatelessWidget {
     required this.layer,
     required this.frameIndex,
     required this.active,
-    required this.current,
+    required this.selected,
     required this.exposureState,
     required this.hasMark,
     this.frameName,
@@ -284,7 +296,7 @@ class _TimelineCell extends StatelessWidget {
   final Layer layer;
   final int frameIndex;
   final bool active;
-  final bool current;
+  final bool selected;
   final TimelineCellExposureState exposureState;
   final bool hasMark;
   final String? frameName;
@@ -329,31 +341,41 @@ class _TimelineCell extends StatelessWidget {
         height: LayerTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: current ? colorScheme.primaryContainer : exposureColor,
+          color: selected
+              ? Color.alphaBlend(
+                  colorScheme.primary.withValues(alpha: 0.18),
+                  exposureColor,
+                )
+              : exposureColor,
           border: Border.all(
-            color: current ? colorScheme.primary : exposureBorderColor,
-            width: current ? 2 : 1,
+            color: selected ? colorScheme.primary : exposureBorderColor,
+            width: selected ? 3 : 1,
           ),
         ),
-        child: Text(
-          _markerForCell(
+        child: Semantics(
+          key: selected
+              ? const ValueKey<String>('timeline-selected-cell')
+              : null,
+          child: Text(
+            _markerForCell(
             exposureState: exposureState,
             hasMark: hasMark,
             frameName: frameName,
           ),
-          semanticsLabel: _semanticsLabelForCell(
+            semanticsLabel: _semanticsLabelForCell(
             exposureState: exposureState,
             hasMark: hasMark,
             frameName: frameName,
           ),
-          style: TextStyle(
-            color: current
+            style: TextStyle(
+            color: selected
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
             fontWeight:
                 hasMark || exposureState != TimelineCellExposureState.empty
                 ? FontWeight.bold
                 : null,
+            ),
           ),
         ),
       ),

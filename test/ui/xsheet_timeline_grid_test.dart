@@ -259,6 +259,87 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
     expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
   });
+
+  testWidgets('marks only the active current cell as selected', (tester) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 2));
+
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-selected-cell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('selected cell preserves symbol display priority', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+      ),
+    );
+    var cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
+    expect(find.descendant(of: cell, matching: find.text('○')), findsOneWidget);
+
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.blankStart
+            : TimelineCellExposureState.empty,
+      ),
+    );
+    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
+    expect(find.descendant(of: cell, matching: find.text('X')), findsOneWidget);
+
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+        frameNameForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? 'A1'
+            : null,
+      ),
+    );
+    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
+    expect(find.descendant(of: cell, matching: find.text('A1')), findsOneWidget);
+    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+        hasMarkForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0,
+        frameNameForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? 'A1'
+            : null,
+      ),
+    );
+    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
+    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
+    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
+    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+  });
+
 }
 
 Widget _grid({

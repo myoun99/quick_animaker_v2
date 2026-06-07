@@ -135,11 +135,18 @@ class _LayerHeader extends StatelessWidget {
           color: active
               ? colorScheme.secondaryContainer
               : colorScheme.surfaceContainerHighest,
-          border: Border.all(color: colorScheme.outlineVariant),
+          border: Border.all(
+            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
+            width: active ? 2 : 1,
+          ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        child: Semantics(
+          key: active ? const ValueKey<String>('xsheet-selected-layer') : null,
+          label: active ? 'selected layer' : 'layer',
+          container: true,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
             InkWell(
               key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
               onTap: () => onSelectLayer(layer.id),
@@ -189,7 +196,8 @@ class _LayerHeader extends StatelessWidget {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -252,7 +260,7 @@ class _XSheetFrameRow extends StatelessWidget {
             layer: layer,
             frameIndex: frameIndex,
             active: layer.id == activeLayerId,
-            current: current,
+            selected: layer.id == activeLayerId && current,
             exposureState: exposureStateForLayer(layer, frameIndex),
             hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
             frameName: frameNameForLayer?.call(layer, frameIndex),
@@ -269,7 +277,7 @@ class _XSheetCell extends StatelessWidget {
     required this.layer,
     required this.frameIndex,
     required this.active,
-    required this.current,
+    required this.selected,
     required this.exposureState,
     required this.hasMark,
     this.frameName,
@@ -280,7 +288,7 @@ class _XSheetCell extends StatelessWidget {
   final Layer layer;
   final int frameIndex;
   final bool active;
-  final bool current;
+  final bool selected;
   final TimelineCellExposureState exposureState;
   final bool hasMark;
   final String? frameName;
@@ -325,31 +333,41 @@ class _XSheetCell extends StatelessWidget {
         height: XSheetTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: current ? colorScheme.primaryContainer : exposureColor,
+          color: selected
+              ? Color.alphaBlend(
+                  colorScheme.primary.withValues(alpha: 0.18),
+                  exposureColor,
+                )
+              : exposureColor,
           border: Border.all(
-            color: current ? colorScheme.primary : exposureBorderColor,
-            width: current ? 2 : 1,
+            color: selected ? colorScheme.primary : exposureBorderColor,
+            width: selected ? 3 : 1,
           ),
         ),
-        child: Text(
-          _markerForCell(
+        child: Semantics(
+          key: selected
+              ? const ValueKey<String>('xsheet-selected-cell')
+              : null,
+          child: Text(
+            _markerForCell(
             exposureState: exposureState,
             hasMark: hasMark,
             frameName: frameName,
           ),
-          semanticsLabel: _semanticsLabelForCell(
+            semanticsLabel: _semanticsLabelForCell(
             exposureState: exposureState,
             hasMark: hasMark,
             frameName: frameName,
           ),
-          style: TextStyle(
-            color: current
+            style: TextStyle(
+            color: selected
                 ? colorScheme.onPrimaryContainer
                 : colorScheme.onSurface,
             fontWeight:
                 hasMark || exposureState != TimelineCellExposureState.empty
                 ? FontWeight.bold
                 : null,
+            ),
           ),
         ),
       ),
