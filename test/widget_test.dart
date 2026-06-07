@@ -45,10 +45,7 @@ Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
     tester,
     const ValueKey<String>('blank-exposure-button'),
   );
-  await _tapToolbarButton(
-    tester,
-    const ValueKey<String>('new-frame-button'),
-  );
+  await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 }
 
 String _cellActionHint(WidgetTester tester) {
@@ -225,10 +222,7 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(_cellActionHint(tester), contains('Drawing'));
     expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
     expect(
@@ -670,10 +664,7 @@ void main() {
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     expect(find.text('A1'), findsWidgets);
 
@@ -694,10 +685,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     await _createSecondAuthoredFrame(tester);
 
@@ -744,10 +732,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     await _createSecondAuthoredFrame(tester);
 
@@ -848,10 +833,7 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     expect(find.text('Links: 1'), findsOneWidget);
     expect(
@@ -914,10 +896,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('copy-frame-button'),

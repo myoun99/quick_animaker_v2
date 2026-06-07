@@ -904,96 +904,101 @@ void main() {
       );
     });
 
-    test('rename to existing same-layer name is detected and not duplicated', () {
-      final fixture = _createFixture();
+    test(
+      'rename to existing same-layer name is detected and not duplicated',
+      () {
+        final fixture = _createFixture();
 
-      fixture.controller.renameFrameForLayer(
-        layerId: const LayerId('layer-1'),
-        frameId: const FrameId('frame-a'),
-        name: 'A1',
-      );
-      fixture.controller.renameFrameForLayer(
-        layerId: const LayerId('layer-1'),
-        frameId: const FrameId('frame-b'),
-        name: 'A1',
-      );
-
-      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
-      expect(
-        fixture.controller.conflictingFrameIdForRename(
-          layer: layer,
+        fixture.controller.renameFrameForLayer(
+          layerId: const LayerId('layer-1'),
+          frameId: const FrameId('frame-a'),
+          name: 'A1',
+        );
+        fixture.controller.renameFrameForLayer(
+          layerId: const LayerId('layer-1'),
           frameId: const FrameId('frame-b'),
           name: 'A1',
-        ),
-        const FrameId('frame-a'),
-      );
-      expect(_findFrame(layer, const FrameId('frame-a')).name, 'A1');
-      expect(_findFrame(layer, const FrameId('frame-b')).name, isNull);
-    });
+        );
 
-    test('link frame replaces source timeline references and preserves marks', () {
-      final fixture = _createFixture(
-        extraLayers: [
-          Layer(
-            id: const LayerId('link-layer'),
-            name: 'Link Layer',
-            frames: [
-              Frame(
-                id: const FrameId('target'),
-                duration: 2,
-                strokes: const [],
-                name: 'A1',
-              ),
-              Frame(
-                id: const FrameId('source'),
-                duration: 3,
-                strokes: const [],
-                name: 'B1',
-              ),
-            ],
-            timeline: {
-              0: TimelineExposure.drawing(const FrameId('target')),
-              2: const TimelineExposure.blank(),
-              5: TimelineExposure.drawing(const FrameId('source')),
-              9: TimelineExposure.drawing(const FrameId('source')),
-            },
-            marks: const {
-              2: TimelineMark.inbetween(),
-              5: TimelineMark.inbetween(),
-            },
+        final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+        expect(
+          fixture.controller.conflictingFrameIdForRename(
+            layer: layer,
+            frameId: const FrameId('frame-b'),
+            name: 'A1',
           ),
-        ],
-      );
+          const FrameId('frame-a'),
+        );
+        expect(_findFrame(layer, const FrameId('frame-a')).name, 'A1');
+        expect(_findFrame(layer, const FrameId('frame-b')).name, isNull);
+      },
+    );
 
-      fixture.controller.linkFrameForLayer(
-        layerId: const LayerId('link-layer'),
-        sourceFrameId: const FrameId('source'),
-        targetFrameId: const FrameId('target'),
-      );
+    test(
+      'link frame replaces source timeline references and preserves marks',
+      () {
+        final fixture = _createFixture(
+          extraLayers: [
+            Layer(
+              id: const LayerId('link-layer'),
+              name: 'Link Layer',
+              frames: [
+                Frame(
+                  id: const FrameId('target'),
+                  duration: 2,
+                  strokes: const [],
+                  name: 'A1',
+                ),
+                Frame(
+                  id: const FrameId('source'),
+                  duration: 3,
+                  strokes: const [],
+                  name: 'B1',
+                ),
+              ],
+              timeline: {
+                0: TimelineExposure.drawing(const FrameId('target')),
+                2: const TimelineExposure.blank(),
+                5: TimelineExposure.drawing(const FrameId('source')),
+                9: TimelineExposure.drawing(const FrameId('source')),
+              },
+              marks: const {
+                2: TimelineMark.inbetween(),
+                5: TimelineMark.inbetween(),
+              },
+            ),
+          ],
+        );
 
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('link-layer'),
-      );
-      expect(layer.timeline.keys, orderedEquals([0, 2, 5, 9]));
-      expect(layer.timeline[0]?.frameId, const FrameId('target'));
-      expect(layer.timeline[2]?.type, TimelineExposureType.blank);
-      expect(layer.timeline[5]?.frameId, const FrameId('target'));
-      expect(layer.timeline[9]?.frameId, const FrameId('target'));
-      expect(layer.marks.keys, orderedEquals([2, 5]));
-      expect(
-        layer.frames.map((frame) => frame.id),
-        [const FrameId('target')],
-      );
-      expect(layer.frames.single.strokes, isEmpty);
-      expect(
-        fixture.controller.linkedUseCountForLayerFrame(
-          layer: layer,
-          frameId: const FrameId('target'),
-        ),
-        3,
-      );
-    });
+        fixture.controller.linkFrameForLayer(
+          layerId: const LayerId('link-layer'),
+          sourceFrameId: const FrameId('source'),
+          targetFrameId: const FrameId('target'),
+        );
+
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('link-layer'),
+        );
+        expect(layer.timeline.keys, orderedEquals([0, 2, 5, 9]));
+        expect(layer.timeline[0]?.frameId, const FrameId('target'));
+        expect(layer.timeline[2]?.type, TimelineExposureType.blank);
+        expect(layer.timeline[5]?.frameId, const FrameId('target'));
+        expect(layer.timeline[9]?.frameId, const FrameId('target'));
+        expect(layer.marks.keys, orderedEquals([2, 5]));
+        expect(layer.frames.map((frame) => frame.id), [
+          const FrameId('target'),
+        ]);
+        expect(layer.frames.single.strokes, isEmpty);
+        expect(
+          fixture.controller.linkedUseCountForLayerFrame(
+            layer: layer,
+            frameId: const FrameId('target'),
+          ),
+          3,
+        );
+      },
+    );
 
     test('link frame is undo and redo-able', () {
       final historyManager = HistoryManager();
@@ -1033,10 +1038,7 @@ void main() {
         const LayerId('undo-link-layer'),
       );
       expect(layer.timeline[1]?.frameId, const FrameId('target'));
-      expect(
-        layer.frames.map((frame) => frame.id),
-        [const FrameId('target')],
-      );
+      expect(layer.frames.map((frame) => frame.id), [const FrameId('target')]);
 
       historyManager.undo();
       layer = _findLayer(fixture.repository, const LayerId('undo-link-layer'));
@@ -1049,10 +1051,7 @@ void main() {
       historyManager.redo();
       layer = _findLayer(fixture.repository, const LayerId('undo-link-layer'));
       expect(layer.timeline[1]?.frameId, const FrameId('target'));
-      expect(
-        layer.frames.map((frame) => frame.id),
-        [const FrameId('target')],
-      );
+      expect(layer.frames.map((frame) => frame.id), [const FrameId('target')]);
     });
   });
 }
