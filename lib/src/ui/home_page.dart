@@ -649,9 +649,8 @@ class _HomePageState extends State<HomePage> {
                             tooltip: 'Paste Linked Frame',
                             icon: Icons.link,
                             onPressed: _canPasteLinkedFrameAtCurrentFrame
-                                ? () => setState(
-                                    _pasteLinkedFrameAtCurrentFrame,
-                                  )
+                                ? () =>
+                                      setState(_pasteLinkedFrameAtCurrentFrame)
                                 : null,
                           ),
                         ],

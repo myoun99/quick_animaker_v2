@@ -390,7 +390,6 @@ void main() {
     expect(selectedDrawing.border, colorScheme.primary);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
-
 }
 
 Widget _grid({
