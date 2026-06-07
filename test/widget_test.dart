@@ -34,6 +34,40 @@ void main() {
     expect(find.text('New Drawing'), findsNothing);
   });
 
+  testWidgets('timeline action toolbar hosts cell action controls', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final toolbar = find.byKey(
+      const ValueKey<String>('timeline-action-toolbar'),
+    );
+    final cellActions = find.byKey(
+      const ValueKey<String>('cell-actions-section'),
+    );
+
+    expect(toolbar, findsOneWidget);
+    expect(cellActions, findsOneWidget);
+    expect(
+      find.descendant(of: toolbar, matching: cellActions),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: toolbar,
+        matching: find.byKey(const ValueKey<String>('new-frame-button')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: toolbar,
+        matching: find.byKey(const ValueKey<String>('cell-action-hint')),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('phase 18 cell actions section and hints update by cell state', (
     WidgetTester tester,
   ) async {
