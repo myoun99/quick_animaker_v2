@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/canvas_controller.dart';
+import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -19,6 +20,7 @@ import '../models/timeline_exposure.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
+import 'cut/cut_list_bar.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
@@ -746,6 +748,10 @@ class _HomePageState extends State<HomePage> {
     final canIncreaseExposure = activeLayer == null || selectedFrame == null
         ? false
         : _timelineController.canIncreaseExposure(layer: activeLayer);
+    final cutEntries = cutListEntriesFor(
+      _repository.requireProject(),
+      activeCutId: _editingSession.activeCutId,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
@@ -758,6 +764,8 @@ class _HomePageState extends State<HomePage> {
               child: Row(
                 children: [
                   Text('Active strokes: ${_canvasController.strokes.length}'),
+                  const SizedBox(width: 16),
+                  CutListBar(entries: cutEntries),
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: _canvasController.canUndo
