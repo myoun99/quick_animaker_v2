@@ -119,27 +119,27 @@ class _HomePageState extends State<HomePage> {
   String get _copiedFrameStatusText {
     final copiedFrame = _copiedFrame;
     if (copiedFrame == null) {
-      return 'Copied: -';
+      return 'Copy: -';
     }
 
     final label = copiedFrame.frameName?.isNotEmpty == true
         ? copiedFrame.frameName!
         : copiedFrame.frameId.value;
-    return 'Copied: $label';
+    return 'Copy: $label';
   }
 
   String get _linkedFrameUsesStatusText {
     final layer = _activeLayer;
     final frame = _selectedFrame;
     if (layer == null || frame == null) {
-      return 'Linked uses: -';
+      return 'Links: -';
     }
 
     final uses = _timelineController.linkedUseCountForLayerFrame(
       layer: layer,
       frameId: frame.id,
     );
-    return 'Linked uses: $uses';
+    return 'Links: $uses';
   }
 
   bool get _canCreateBlankAtCurrentFrame {
@@ -371,68 +371,55 @@ class _HomePageState extends State<HomePage> {
     return 'Cell: ${_cellStatusLabelForLayer(layer)}';
   }
 
-  String get _cellActionHintText {
+  String get _compactCellActionText {
     final layer = _activeLayer;
     if (layer == null) {
-      return 'No active layer.';
+      return 'No layer';
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
     final hasMark = _hasMarkForLayer(layer, frameIndex);
     final exposureState = _exposureStateForLayer(layer, frameIndex);
+    final canPaste = _canPasteLinkedFrameAtCurrentFrame;
 
-    return switch (exposureState) {
-      TimelineCellExposureState.drawingStart =>
-        hasMark
-            ? 'Drawing start + Mark ●: Copy Frame can copy this material; '
-                  'Delete Cell will delete this drawing and its mark.'
-            : 'Drawing start: Copy Frame can copy this material; '
-                  'Delete Cell will delete this drawing frame.',
-      TimelineCellExposureState.heldExposure =>
-        _canPasteLinkedFrameAtCurrentFrame
-            ? hasMark
-                  ? 'Held drawing + Mark ●: Paste Linked Frame can place '
-                        'the copied drawing here; '
-                        'Rename Frame can rename the held drawing; '
-                        'Mark ● will remove the mark.'
-                  : 'Held drawing: Paste Linked Frame can place the copied '
-                        'drawing here; Rename Frame can rename the held drawing.'
-            : hasMark
-            ? 'Held drawing + Mark ●: Copy Frame can copy this material; '
-                  'Rename Frame can rename the held drawing; '
-                  'Mark ● will remove the mark.'
-            : 'Held drawing: Copy Frame can copy this material; '
-                  'Rename Frame can rename the held drawing.',
-      TimelineCellExposureState.blankStart =>
-        _canPasteLinkedFrameAtCurrentFrame
-            ? hasMark
-                  ? 'Blank start (X) + Mark ●: Paste Linked Frame will '
-                        'replace X with the copied drawing; '
-                        'Mark ● will remove the mark.'
-                  : 'Blank start (X): Paste Linked Frame will replace X with the copied drawing.'
-            : hasMark
-            ? 'Blank start (X) + Mark ●: New Frame will replace X; Mark ● will remove the mark.'
-            : 'Blank start (X): New Frame will replace X with a drawing.',
-      TimelineCellExposureState.blankHeld =>
-        _canPasteLinkedFrameAtCurrentFrame
-            ? hasMark
-                  ? 'Blank held + Mark ●: Paste Linked Frame can place '
-                        'the copied drawing here; Mark ● will remove the mark.'
-                  : 'Blank held: Paste Linked Frame can place the copied drawing here.'
-            : hasMark
-            ? 'Blank held + Mark ●: New Frame can create a drawing here; '
-                  'Mark ● will remove the mark.'
-            : 'Blank held: New Frame can create a drawing here.',
-      TimelineCellExposureState.empty =>
-        _canPasteLinkedFrameAtCurrentFrame
-            ? hasMark
-                  ? 'Empty + Mark ●: Paste Linked Frame can place the copied '
-                        'drawing here; Mark ● will remove the mark.'
-                  : 'Empty: Paste Linked Frame can place the copied drawing here.'
-            : hasMark
-            ? 'Empty + Mark ●: Mark ● will remove the mark.'
-            : 'Empty: New Frame can create a drawing here.',
-    };
+    switch (exposureState) {
+      case TimelineCellExposureState.drawingStart:
+        return hasMark
+            ? 'Drawing + ●: Copy / Rename / Delete'
+            : 'Drawing: Copy / Rename / Delete';
+      case TimelineCellExposureState.heldExposure:
+        if (canPaste) {
+          return hasMark
+              ? 'Held + ●: Paste / Copy / Rename / Mark'
+              : 'Held: Paste / Copy / Rename';
+        }
+        return hasMark
+            ? 'Held + ●: Copy / Rename / Mark'
+            : 'Held: Copy / Rename';
+      case TimelineCellExposureState.blankStart:
+        if (canPaste) {
+          return hasMark
+              ? 'X + ●: Paste / New Frame / Mark'
+              : 'X: Paste / New Frame';
+        }
+        return hasMark ? 'X + ●: New Frame / Mark' : 'X: New Frame';
+      case TimelineCellExposureState.blankHeld:
+        if (canPaste) {
+          return hasMark
+              ? 'Blank held + ●: Paste / New Frame / Mark'
+              : 'Blank held: Paste / New Frame';
+        }
+        return hasMark
+            ? 'Blank held + ●: New Frame / Mark'
+            : 'Blank held: New Frame';
+      case TimelineCellExposureState.empty:
+        if (canPaste) {
+          return hasMark
+              ? 'Empty + ●: Paste / Mark'
+              : 'Empty: Paste / New Frame';
+        }
+        return hasMark ? 'Empty + ●: Mark' : 'Empty: New Frame';
+    }
   }
 
   String _cellStatusLabelForLayer(Layer layer) {
@@ -642,7 +629,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Hint: $_cellActionHintText',
+              _compactCellActionText,
               key: const ValueKey<String>('cell-action-hint'),
             ),
           ],
