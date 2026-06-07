@@ -290,11 +290,40 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final currentLayer = _activeLayer;
+    if (currentLayer == null) {
+      return;
+    }
+
+    final conflictingFrameId = _timelineController.conflictingFrameIdForRename(
+      layer: currentLayer,
+      frameId: frame.id,
+      name: nextName,
+    );
+    if (conflictingFrameId == null) {
+      setState(() {
+        _timelineController.renameFrameForLayer(
+          layerId: currentLayer.id,
+          frameId: frame.id,
+          name: nextName,
+        );
+      });
+      return;
+    }
+
+    final shouldLink = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _FrameNameConflictDialog(),
+    );
+    if (!mounted || shouldLink != true) {
+      return;
+    }
+
     setState(() {
-      _timelineController.renameFrameForLayer(
-        layerId: layer.id,
-        frameId: frame.id,
-        name: nextName,
+      _timelineController.linkFrameForLayer(
+        layerId: currentLayer.id,
+        sourceFrameId: frame.id,
+        targetFrameId: conflictingFrameId,
       );
     });
   }
@@ -796,6 +825,34 @@ class _CopiedFrameReference {
   final LayerId layerId;
   final FrameId frameId;
   final String? frameName;
+}
+
+class _FrameNameConflictDialog extends StatelessWidget {
+  const _FrameNameConflictDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey<String>('frame-name-conflict-dialog'),
+      title: const Text('Frame name already exists'),
+      content: const Text(
+        'This name is already used by another frame in this layer. Link to '
+        'the existing named frame so the same name shares the same material?',
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('frame-name-conflict-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('frame-name-conflict-link-button'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Link'),
+        ),
+      ],
+    );
+  }
 }
 
 class _RenameFrameDialog extends StatefulWidget {

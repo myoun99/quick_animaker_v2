@@ -11,8 +11,10 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
+import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
@@ -861,16 +863,214 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('rename to unique name and empty name update selected material', () {
+      final fixture = _createFixture();
+
+      fixture.controller.renameFrameForLayer(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-a'),
+        name: '  A1  ',
+      );
+      var layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      expect(_findFrame(layer, const FrameId('frame-a')).name, 'A1');
+
+      fixture.controller.renameFrameForLayer(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-a'),
+        name: '   ',
+      );
+      layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      expect(_findFrame(layer, const FrameId('frame-a')).name, isNull);
+    });
+
+    test('same-name rename on same FrameId has no conflict', () {
+      final fixture = _createFixture();
+
+      fixture.controller.renameFrameForLayer(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-a'),
+        name: 'A1',
+      );
+      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+
+      expect(
+        fixture.controller.conflictingFrameIdForRename(
+          layer: layer,
+          frameId: const FrameId('frame-a'),
+          name: 'A1',
+        ),
+        isNull,
+      );
+    });
+
+    test('rename to existing same-layer name is detected and not duplicated', () {
+      final fixture = _createFixture();
+
+      fixture.controller.renameFrameForLayer(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-a'),
+        name: 'A1',
+      );
+      fixture.controller.renameFrameForLayer(
+        layerId: const LayerId('layer-1'),
+        frameId: const FrameId('frame-b'),
+        name: 'A1',
+      );
+
+      final layer = _findLayer(fixture.repository, const LayerId('layer-1'));
+      expect(
+        fixture.controller.conflictingFrameIdForRename(
+          layer: layer,
+          frameId: const FrameId('frame-b'),
+          name: 'A1',
+        ),
+        const FrameId('frame-a'),
+      );
+      expect(_findFrame(layer, const FrameId('frame-a')).name, 'A1');
+      expect(_findFrame(layer, const FrameId('frame-b')).name, isNull);
+    });
+
+    test('link frame replaces source timeline references and preserves marks', () {
+      final fixture = _createFixture(
+        extraLayers: [
+          Layer(
+            id: const LayerId('link-layer'),
+            name: 'Link Layer',
+            frames: [
+              Frame(
+                id: const FrameId('target'),
+                duration: 2,
+                strokes: const [],
+                name: 'A1',
+              ),
+              Frame(
+                id: const FrameId('source'),
+                duration: 3,
+                strokes: const [],
+                name: 'B1',
+              ),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('target')),
+              2: const TimelineExposure.blank(),
+              5: TimelineExposure.drawing(const FrameId('source')),
+              9: TimelineExposure.drawing(const FrameId('source')),
+            },
+            marks: const {
+              2: TimelineMark.inbetween(),
+              5: TimelineMark.inbetween(),
+            },
+          ),
+        ],
+      );
+
+      fixture.controller.linkFrameForLayer(
+        layerId: const LayerId('link-layer'),
+        sourceFrameId: const FrameId('source'),
+        targetFrameId: const FrameId('target'),
+      );
+
+      final layer = _findLayer(
+        fixture.repository,
+        const LayerId('link-layer'),
+      );
+      expect(layer.timeline.keys, orderedEquals([0, 2, 5, 9]));
+      expect(layer.timeline[0]?.frameId, const FrameId('target'));
+      expect(layer.timeline[2]?.type, TimelineExposureType.blank);
+      expect(layer.timeline[5]?.frameId, const FrameId('target'));
+      expect(layer.timeline[9]?.frameId, const FrameId('target'));
+      expect(layer.marks.keys, orderedEquals([2, 5]));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        [const FrameId('target')],
+      );
+      expect(layer.frames.single.strokes, isEmpty);
+      expect(
+        fixture.controller.linkedUseCountForLayerFrame(
+          layer: layer,
+          frameId: const FrameId('target'),
+        ),
+        3,
+      );
+    });
+
+    test('link frame is undo and redo-able', () {
+      final historyManager = HistoryManager();
+      final fixture = _createFixture(
+        historyManager: historyManager,
+        extraLayers: [
+          Layer(
+            id: const LayerId('undo-link-layer'),
+            name: 'Undo Link Layer',
+            frames: [
+              Frame(
+                id: const FrameId('target'),
+                duration: 1,
+                strokes: const [],
+              ),
+              Frame(
+                id: const FrameId('source'),
+                duration: 1,
+                strokes: const [],
+              ),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('target')),
+              1: TimelineExposure.drawing(const FrameId('source')),
+            },
+          ),
+        ],
+      );
+
+      fixture.controller.linkFrameForLayer(
+        layerId: const LayerId('undo-link-layer'),
+        sourceFrameId: const FrameId('source'),
+        targetFrameId: const FrameId('target'),
+      );
+      var layer = _findLayer(
+        fixture.repository,
+        const LayerId('undo-link-layer'),
+      );
+      expect(layer.timeline[1]?.frameId, const FrameId('target'));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        [const FrameId('target')],
+      );
+
+      historyManager.undo();
+      layer = _findLayer(fixture.repository, const LayerId('undo-link-layer'));
+      expect(layer.timeline[1]?.frameId, const FrameId('source'));
+      expect(layer.frames.map((frame) => frame.id), [
+        const FrameId('target'),
+        const FrameId('source'),
+      ]);
+
+      historyManager.redo();
+      layer = _findLayer(fixture.repository, const LayerId('undo-link-layer'));
+      expect(layer.timeline[1]?.frameId, const FrameId('target'));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        [const FrameId('target')],
+      );
+    });
   });
 }
 
 const _cutId = CutId('cut-1');
 
-_TimelineFixture _createFixture({List<Layer> extraLayers = const []}) {
+_TimelineFixture _createFixture({
+  List<Layer> extraLayers = const [],
+  HistoryManager? historyManager,
+}) {
   final repository = ProjectRepository(
     initialProject: _createSampleProject(extraLayers: extraLayers),
   );
-  final controller = TimelineController(repository: repository, cutId: _cutId);
+  final controller = TimelineController(
+    repository: repository,
+    historyManager: historyManager,
+    cutId: _cutId,
+  );
   return _TimelineFixture(repository: repository, controller: controller);
 }
 

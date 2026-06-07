@@ -360,6 +360,26 @@ class TimelineController {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
 
+  FrameId? conflictingFrameIdForRename({
+    required Layer layer,
+    required FrameId frameId,
+    required String? name,
+  }) {
+    _requireFrameInLayer(layer: layer, frameId: frameId);
+    final normalizedName = _normalizeFrameName(name);
+    if (normalizedName == null) {
+      return null;
+    }
+
+    for (final frame in layer.frames) {
+      if (frame.id != frameId && frame.name == normalizedName) {
+        return frame.id;
+      }
+    }
+
+    return null;
+  }
+
   void renameFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
@@ -367,6 +387,15 @@ class TimelineController {
   }) {
     final before = _requireLayer(layerId);
     _requireFrameInLayer(layer: before, frameId: frameId);
+    final conflictingFrameId = conflictingFrameIdForRename(
+      layer: before,
+      frameId: frameId,
+      name: name,
+    );
+    if (conflictingFrameId != null) {
+      return;
+    }
+
     final normalizedName = _normalizeFrameName(name);
     final nextFrames = before.frames
         .map(
@@ -376,6 +405,44 @@ class TimelineController {
         )
         .toList(growable: false);
     final after = before.copyWith(frames: nextFrames);
+    if (after == before) {
+      return;
+    }
+
+    _applyLayerEdit(before: before, after: after);
+  }
+
+  void linkFrameForLayer({
+    required LayerId layerId,
+    required FrameId sourceFrameId,
+    required FrameId targetFrameId,
+  }) {
+    final before = _requireLayer(layerId);
+    _requireFrameInLayer(layer: before, frameId: sourceFrameId);
+    _requireFrameInLayer(layer: before, frameId: targetFrameId);
+    if (sourceFrameId == targetFrameId) {
+      return;
+    }
+
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>();
+    for (final entry in before.timeline.entries) {
+      final exposure = entry.value;
+      if (exposure.type == TimelineExposureType.drawing &&
+          exposure.frameId == sourceFrameId) {
+        nextTimeline[entry.key] = TimelineExposure.drawing(targetFrameId);
+      } else {
+        nextTimeline[entry.key] = exposure;
+      }
+    }
+
+    var nextFrames = before.frames;
+    if (!_timelineReferencesFrame(nextTimeline, sourceFrameId)) {
+      nextFrames = before.frames
+          .where((frame) => frame.id != sourceFrameId)
+          .toList(growable: false);
+    }
+
+    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
     if (after == before) {
       return;
     }

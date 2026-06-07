@@ -21,6 +21,36 @@ Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _renameCurrentFrame(WidgetTester tester, String name) async {
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('rename-frame-button'),
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey<String>('rename-frame-text-field')),
+    name,
+  );
+  await tester.tap(
+    find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
+  await _tapTimelineCell(
+    tester,
+    const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+  );
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('blank-exposure-button'),
+  );
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('new-frame-button'),
+  );
+}
+
 String _cellActionHint(WidgetTester tester) {
   return _statusText(tester, const ValueKey<String>('cell-action-hint'));
 }
@@ -195,7 +225,10 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
     expect(_cellActionHint(tester), contains('Drawing'));
     expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
     expect(
@@ -634,6 +667,114 @@ void main() {
     },
   );
 
+  testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    await _renameCurrentFrame(tester, 'A1');
+    expect(find.text('A1'), findsWidgets);
+
+    await _renameCurrentFrame(tester, '   ');
+
+    final layer1FirstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    expect(
+      find.descendant(of: layer1FirstCell, matching: find.text('○')),
+      findsOneWidget,
+    );
+    expect(find.text('A1'), findsNothing);
+  });
+
+  testWidgets('conflicting frame name dialog cancel leaves frames unchanged', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    await _renameCurrentFrame(tester, 'A1');
+    await _createSecondAuthoredFrame(tester);
+
+    await _renameCurrentFrame(tester, 'A1');
+
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-dialog')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+      findsOneWidget,
+    );
+    expect(find.text('Rename only'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final firstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    final secondCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    expect(
+      find.descendant(of: firstCell, matching: find.text('A1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('○')),
+      findsOneWidget,
+    );
+    expect(find.text('Links: 1'), findsOneWidget);
+  });
+
+  testWidgets('conflicting frame name link merges into existing material', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    await _renameCurrentFrame(tester, 'A1');
+    await _createSecondAuthoredFrame(tester);
+
+    await _renameCurrentFrame(tester, 'A1');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final firstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    final secondCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    expect(
+      find.descendant(of: firstCell, matching: find.text('A1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('A1')),
+      findsOneWidget,
+    );
+    expect(find.text('Links: 2'), findsOneWidget);
+    expect(find.text('Rename only'), findsNothing);
+  });
+
   testWidgets('rename cancel leaves frame marker unchanged', (
     WidgetTester tester,
   ) async {
@@ -707,7 +848,10 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
 
     expect(find.text('Links: 1'), findsOneWidget);
     expect(
@@ -770,7 +914,10 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('copy-frame-button'),
