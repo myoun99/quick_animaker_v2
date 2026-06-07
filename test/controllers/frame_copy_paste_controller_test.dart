@@ -65,7 +65,10 @@ void main() {
 
       expect(layer.timeline[3]?.type, TimelineExposureType.drawing);
       expect(layer.timeline[3]?.frameId, const FrameId('a'));
-      expect(layer.frames.map((frame) => frame.id), contains(const FrameId('a')));
+      expect(
+        layer.frames.map((frame) => frame.id),
+        contains(const FrameId('a')),
+      );
     });
 
     test('paste linked frame on drawingStart replaces old drawing entry', () {
@@ -79,59 +82,77 @@ void main() {
       final layer = _latestLayer(fixture.repository);
 
       expect(layer.timeline[5]?.frameId, const FrameId('a'));
-      expect(layer.timeline.values.where((e) => e.frameId == const FrameId('a')), hasLength(3));
-    });
-
-    test('replacing drawingStart removes old backing frame only when unreferenced', () {
-      final fixture = _fixture(_layer());
-      fixture.controller.selectFrameIndex(5);
-
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('a'),
-      );
-
       expect(
-        _latestLayer(fixture.repository).frames.map((frame) => frame.id),
-        orderedEquals([const FrameId('a')]),
+        layer.timeline.values.where((e) => e.frameId == const FrameId('a')),
+        hasLength(3),
       );
     });
 
-    test('replacing drawingStart keeps old backing frame while still referenced', () {
-      final fixture = _fixture(
-        _layer(
-          timeline: {
-            0: TimelineExposure.drawing(const FrameId('a')),
-            5: TimelineExposure.drawing(const FrameId('b')),
-            9: TimelineExposure.drawing(const FrameId('b')),
-          },
-        ),
-      );
-      fixture.controller.selectFrameIndex(5);
+    test(
+      'replacing drawingStart removes old backing frame only when unreferenced',
+      () {
+        final fixture = _fixture(_layer());
+        fixture.controller.selectFrameIndex(5);
 
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('a'),
-      );
+        fixture.controller.pasteLinkedFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('a'),
+        );
 
-      expect(
-        _latestLayer(fixture.repository).frames.map((frame) => frame.id),
-        orderedEquals([const FrameId('a'), const FrameId('b')]),
-      );
-      expect(_latestLayer(fixture.repository).timeline[9]?.frameId, const FrameId('b'));
-    });
+        expect(
+          _latestLayer(fixture.repository).frames.map((frame) => frame.id),
+          orderedEquals([const FrameId('a')]),
+        );
+      },
+    );
 
-    test('paste linked frame on held drawing creates authored drawingStart', () {
-      final fixture = _fixture(_layer());
-      fixture.controller.selectFrameIndex(1);
+    test(
+      'replacing drawingStart keeps old backing frame while still referenced',
+      () {
+        final fixture = _fixture(
+          _layer(
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('a')),
+              5: TimelineExposure.drawing(const FrameId('b')),
+              9: TimelineExposure.drawing(const FrameId('b')),
+            },
+          ),
+        );
+        fixture.controller.selectFrameIndex(5);
 
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('b'),
-      );
+        fixture.controller.pasteLinkedFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('a'),
+        );
 
-      expect(_latestLayer(fixture.repository).timeline[1]?.frameId, const FrameId('b'));
-    });
+        expect(
+          _latestLayer(fixture.repository).frames.map((frame) => frame.id),
+          orderedEquals([const FrameId('a'), const FrameId('b')]),
+        );
+        expect(
+          _latestLayer(fixture.repository).timeline[9]?.frameId,
+          const FrameId('b'),
+        );
+      },
+    );
+
+    test(
+      'paste linked frame on held drawing creates authored drawingStart',
+      () {
+        final fixture = _fixture(_layer());
+        fixture.controller.selectFrameIndex(1);
+
+        fixture.controller.pasteLinkedFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('b'),
+        );
+
+        expect(
+          _latestLayer(fixture.repository).timeline[1]?.frameId,
+          const FrameId('b'),
+        );
+      },
+    );
 
     test('paste linked frame on blankHeld creates authored drawingStart', () {
       final fixture = _fixture(_layer());
@@ -142,7 +163,10 @@ void main() {
         frameId: const FrameId('a'),
       );
 
-      expect(_latestLayer(fixture.repository).timeline[4]?.frameId, const FrameId('a'));
+      expect(
+        _latestLayer(fixture.repository).timeline[4]?.frameId,
+        const FrameId('a'),
+      );
     });
 
     test('paste linked frame on empty creates authored drawingStart', () {
@@ -154,7 +178,10 @@ void main() {
         frameId: const FrameId('a'),
       );
 
-      expect(_latestLayer(fixture.repository).timeline[6]?.frameId, const FrameId('a'));
+      expect(
+        _latestLayer(fixture.repository).timeline[6]?.frameId,
+        const FrameId('a'),
+      );
     });
 
     test('paste linked frame preserves existing mark at same index', () {
@@ -198,43 +225,55 @@ void main() {
         layerId: const LayerId('layer'),
         frameId: const FrameId('a'),
       );
-      expect(_latestLayer(fixture.repository).timeline[3]?.frameId, const FrameId('a'));
+      expect(
+        _latestLayer(fixture.repository).timeline[3]?.frameId,
+        const FrameId('a'),
+      );
 
       history.undo();
-      expect(_latestLayer(fixture.repository).timeline[3], const TimelineExposure.blank());
+      expect(
+        _latestLayer(fixture.repository).timeline[3],
+        const TimelineExposure.blank(),
+      );
 
       history.redo();
-      expect(_latestLayer(fixture.repository).timeline[3]?.frameId, const FrameId('a'));
+      expect(
+        _latestLayer(fixture.repository).timeline[3]?.frameId,
+        const FrameId('a'),
+      );
     });
 
-    test('linked use count tracks authored drawing exposures without dense frames', () {
-      final fixture = _fixture(_layer());
+    test(
+      'linked use count tracks authored drawing exposures without dense frames',
+      () {
+        final fixture = _fixture(_layer());
 
-      expect(
-        fixture.controller.linkedUseCountForLayerFrame(
-          layer: fixture.layer,
+        expect(
+          fixture.controller.linkedUseCountForLayerFrame(
+            layer: fixture.layer,
+            frameId: const FrameId('b'),
+          ),
+          1,
+        );
+
+        fixture.controller.selectFrameIndex(3);
+        fixture.controller.pasteLinkedFrameForLayer(
+          layerId: const LayerId('layer'),
           frameId: const FrameId('b'),
-        ),
-        1,
-      );
+        );
+        final layer = _latestLayer(fixture.repository);
 
-      fixture.controller.selectFrameIndex(3);
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('b'),
-      );
-      final layer = _latestLayer(fixture.repository);
-
-      expect(
-        fixture.controller.linkedUseCountForLayerFrame(
-          layer: layer,
-          frameId: const FrameId('b'),
-        ),
-        2,
-      );
-      expect(layer.timeline.keys, orderedEquals([0, 3, 5, 9]));
-      expect(layer.frames, hasLength(2));
-    });
+        expect(
+          fixture.controller.linkedUseCountForLayerFrame(
+            layer: layer,
+            frameId: const FrameId('b'),
+          ),
+          2,
+        );
+        expect(layer.timeline.keys, orderedEquals([0, 3, 5, 9]));
+        expect(layer.frames, hasLength(2));
+      },
+    );
   });
 }
 

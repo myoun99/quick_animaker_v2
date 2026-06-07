@@ -103,7 +103,9 @@ class _HomePageState extends State<HomePage> {
   bool get _canPasteLinkedFrameAtCurrentFrame {
     final layer = _activeLayer;
     final copiedFrame = _copiedFrame;
-    if (layer == null || copiedFrame == null || layer.id != copiedFrame.layerId) {
+    if (layer == null ||
+        copiedFrame == null ||
+        layer.id != copiedFrame.layerId) {
       return false;
     }
 
@@ -584,7 +586,8 @@ class _HomePageState extends State<HomePage> {
                               'paste-linked-frame-button',
                             ),
                             onPressed: _canPasteLinkedFrameAtCurrentFrame
-                                ? () => setState(_pasteLinkedFrameAtCurrentFrame)
+                                ? () =>
+                                      setState(_pasteLinkedFrameAtCurrentFrame)
                                 : null,
                             child: const Text('Paste Linked Frame'),
                           ),

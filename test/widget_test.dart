@@ -472,7 +472,10 @@ void main() {
     expect(tester.widget<TextButton>(copyButton).onPressed, isNotNull);
     expect(_cellActionHint(tester), contains('Copy Frame'));
 
-    await _tapToolbarButton(tester, const ValueKey<String>('copy-frame-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('copy-frame-button'),
+    );
     expect(tester.widget<TextButton>(pasteButton).onPressed, isNotNull);
 
     await tester.tap(
@@ -509,7 +512,10 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    await _tapToolbarButton(tester, const ValueKey<String>('copy-frame-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('copy-frame-button'),
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
@@ -528,20 +534,31 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
     );
     await tester.pumpAndSettle();
-    await _tapToolbarButton(tester, const ValueKey<String>('blank-exposure-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('blank-exposure-button'),
+    );
     final secondCell = find.byKey(
       const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    expect(find.descendant(of: secondCell, matching: find.text('X')), findsOneWidget);
+    expect(
+      find.descendant(of: secondCell, matching: find.text('X')),
+      findsOneWidget,
+    );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('toggle-mark-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-mark-button'),
+    );
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('paste-linked-frame-button'),
     );
 
-    expect(find.descendant(of: secondCell, matching: find.text('●')), findsOneWidget);
+    expect(
+      find.descendant(of: secondCell, matching: find.text('●')),
+      findsOneWidget,
+    );
     expect(find.text('Cell: Drawing start + Mark ●'), findsOneWidget);
   });
-
 }
