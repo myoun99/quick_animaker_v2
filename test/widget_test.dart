@@ -128,10 +128,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('New Frame'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-bar')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
     expect(find.text('Cuts:'), findsOneWidget);
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);

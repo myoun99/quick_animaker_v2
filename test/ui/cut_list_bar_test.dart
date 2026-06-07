@@ -74,7 +74,9 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _testApp(
-          CutListBar(entries: [_entry(id: 'cut-1', name: 'Cut 1')]),
+          CutListBar(
+            entries: [_entry(id: 'cut-1', name: 'Cut 1')],
+          ),
         ),
       );
 
