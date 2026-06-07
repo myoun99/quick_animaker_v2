@@ -652,6 +652,116 @@ void main() {
       },
     );
 
+    test(
+      'linked exposure increase targets selected authored entry by frame index',
+      () {
+        final fixture = _createFixture(
+          extraLayers: [
+            Layer(
+              id: const LayerId('linked-layer'),
+              name: 'Linked Layer',
+              frames: [
+                Frame(
+                  id: const FrameId('a'),
+                  duration: 4,
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                0: TimelineExposure.drawing(const FrameId('a')),
+                4: const TimelineExposure.blank(),
+                8: TimelineExposure.drawing(const FrameId('a')),
+              },
+            ),
+          ],
+        );
+        fixture.controller.selectFrameIndex(8);
+
+        fixture.controller.increaseExposure(
+          layerId: const LayerId('linked-layer'),
+        );
+
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('linked-layer'),
+        );
+        expect(layer.timeline.keys, orderedEquals([0, 4, 8]));
+        expect(
+          fixture.controller.effectiveDurationForLayerFrame(
+            layer: layer,
+            frameId: const FrameId('a'),
+          ),
+          4,
+        );
+        expect(
+          fixture.controller.effectiveDurationForLayerAt(
+            layer: layer,
+            frameIndex: 8,
+          ),
+          4,
+        );
+        expect(_findFrame(layer, const FrameId('a')).duration, 4);
+        expect(
+          fixture.controller.linkedUseCountForLayerFrame(
+            layer: layer,
+            frameId: const FrameId('a'),
+          ),
+          2,
+        );
+      },
+    );
+
+    test(
+      'linked exposure duration display resolves selected authored entry',
+      () {
+        final fixture = _createFixture(
+          extraLayers: [
+            Layer(
+              id: const LayerId('linked-duration-layer'),
+              name: 'Linked Duration Layer',
+              frames: [
+                Frame(
+                  id: const FrameId('a'),
+                  duration: 4,
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('b'),
+                  duration: 1,
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                0: TimelineExposure.drawing(const FrameId('a')),
+                4: const TimelineExposure.blank(),
+                8: TimelineExposure.drawing(const FrameId('a')),
+                10: TimelineExposure.drawing(const FrameId('b')),
+              },
+            ),
+          ],
+        );
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('linked-duration-layer'),
+        );
+
+        expect(
+          fixture.controller.effectiveDurationForLayerFrame(
+            layer: layer,
+            frameId: const FrameId('a'),
+          ),
+          4,
+        );
+        expect(
+          fixture.controller.effectiveDurationForLayerAt(
+            layer: layer,
+            frameIndex: 8,
+          ),
+          2,
+        );
+      },
+    );
+
     test('dense frame duplication is not introduced', () {
       final fixture = _createFixture();
       _createSparseBlock(

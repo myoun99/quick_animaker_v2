@@ -217,7 +217,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    _timelineController.increaseExposure(layerId: layer.id, frameId: frame.id);
+    _timelineController.increaseExposure(layerId: layer.id);
   }
 
   void _decreaseSelectedExposure() {
@@ -227,7 +227,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    _timelineController.decreaseExposure(layerId: layer.id, frameId: frame.id);
+    _timelineController.decreaseExposure(layerId: layer.id);
   }
 
   bool get _canToggleMarkAtCurrentFrame {
@@ -658,22 +658,13 @@ class _HomePageState extends State<HomePage> {
     final selectedEffectiveDuration =
         activeLayer == null || selectedFrame == null
         ? null
-        : _timelineController.effectiveDurationForLayerFrame(
-            layer: activeLayer,
-            frameId: selectedFrame.id,
-          );
+        : _timelineController.effectiveDurationForLayerAt(layer: activeLayer);
     final canDecreaseExposure = activeLayer == null || selectedFrame == null
         ? false
-        : _timelineController.canDecreaseExposure(
-            layer: activeLayer,
-            frameId: selectedFrame.id,
-          );
+        : _timelineController.canDecreaseExposure(layer: activeLayer);
     final canIncreaseExposure = activeLayer == null || selectedFrame == null
         ? false
-        : _timelineController.canIncreaseExposure(
-            layer: activeLayer,
-            frameId: selectedFrame.id,
-          );
+        : _timelineController.canIncreaseExposure(layer: activeLayer);
 
     return Scaffold(
       appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
