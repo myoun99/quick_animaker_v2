@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/canvas_controller.dart';
 import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
 import 'package:quick_animaker_v2/src/controllers/timeline_controller.dart';
+import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -11,6 +12,10 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/stroke.dart';
+import 'package:quick_animaker_v2/src/models/stroke_id.dart';
+import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -280,6 +285,38 @@ void main() {
         hasLength(1),
       );
     });
+
+    group('active cut layer frame resolution', () {
+      test('layerFramesForCut returns Cut A paintable data only', () {
+        final fixture = _createTwoCutCanvasFixture();
+
+        final layerFrames = fixture.controller.layerFramesForCut(
+          const CutId('cut-a'),
+        );
+
+        expect(layerFrames, hasLength(1));
+        expect(layerFrames.single.layer.id, const LayerId('layer-a'));
+        expect(layerFrames.single.layer.name, 'Layer A');
+        expect(layerFrames.single.frame.id, const FrameId('frame-a'));
+        expect(layerFrames.single.frame.name, 'Frame A');
+        expect(layerFrames.single.frame.strokes, hasLength(1));
+      });
+
+      test('layerFramesForCut returns Cut B paintable data only', () {
+        final fixture = _createTwoCutCanvasFixture();
+
+        final layerFrames = fixture.controller.layerFramesForCut(
+          const CutId('cut-b'),
+        );
+
+        expect(layerFrames, hasLength(1));
+        expect(layerFrames.single.layer.id, const LayerId('layer-b'));
+        expect(layerFrames.single.layer.name, 'Layer B');
+        expect(layerFrames.single.frame.id, const FrameId('frame-b'));
+        expect(layerFrames.single.frame.name, 'Frame B');
+        expect(layerFrames.single.frame.strokes, hasLength(2));
+      });
+    });
   });
 }
 
@@ -423,4 +460,103 @@ class _CanvasFixture {
   final CanvasController controller;
   final LayerController layerController;
   final TimelineController timelineController;
+}
+
+_CanvasFixture _createTwoCutCanvasFixture() {
+  final repository = ProjectRepository(initialProject: _createTwoCutProject());
+  final historyManager = HistoryManager();
+  final layerController = LayerController(
+    repository: repository,
+    historyManager: historyManager,
+    cutId: const CutId('cut-a'),
+    frameId: const FrameId('frame-a'),
+  );
+  final timelineController = TimelineController(
+    repository: repository,
+    cutId: const CutId('cut-a'),
+  );
+  final controller = CanvasController(
+    repository: repository,
+    historyManager: historyManager,
+    frameId: const FrameId('frame-a'),
+    layerController: layerController,
+    timelineController: timelineController,
+  );
+
+  return _CanvasFixture(
+    repository: repository,
+    controller: controller,
+    layerController: layerController,
+    timelineController: timelineController,
+  );
+}
+
+Project _createTwoCutProject() {
+  return Project(
+    id: const ProjectId('two-cut-project'),
+    name: 'Two Cut Test Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('track-1'),
+        name: 'Track 1',
+        cuts: [
+          Cut(
+            id: const CutId('cut-a'),
+            name: 'Cut A',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-a'),
+                name: 'Layer A',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-a'),
+                    duration: 4,
+                    strokes: [_stroke('stroke-a-1')],
+                    name: 'Frame A',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-a')),
+                },
+              ),
+            ],
+          ),
+          Cut(
+            id: const CutId('cut-b'),
+            name: 'Cut B',
+            duration: 8,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-b'),
+                name: 'Layer B',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-b'),
+                    duration: 2,
+                    strokes: [_stroke('stroke-b-1'), _stroke('stroke-b-2')],
+                    name: 'Frame B',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-b')),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Stroke _stroke(String id) {
+  return Stroke(
+    id: StrokeId(id),
+    points: const [StrokePoint(x: 0, y: 0), StrokePoint(x: 1, y: 1)],
+    brushSettings: const BrushSettings(),
+  );
 }
