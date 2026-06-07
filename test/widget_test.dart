@@ -22,10 +22,12 @@ Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
 }
 
 String _cellActionHint(WidgetTester tester) {
-  final hint = tester.widget<Text>(
-    find.byKey(const ValueKey<String>('cell-action-hint')),
-  );
-  return hint.data ?? '';
+  return _statusText(tester, const ValueKey<String>('cell-action-hint'));
+}
+
+String _statusText(WidgetTester tester, ValueKey<String> key) {
+  final status = tester.widget<Text>(find.byKey(key));
+  return status.data ?? '';
 }
 
 bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
@@ -155,7 +157,7 @@ void main() {
     );
   });
 
-  testWidgets('phase 18 cell actions section and hints update by cell state', (
+  testWidgets('phase 22 compact cell action hints update by cell state', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -172,8 +174,10 @@ void main() {
     expect(find.text('Layer: Layer 1'), findsOneWidget);
     expect(find.text('Frame: 1'), findsOneWidget);
     expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+    expect(_cellActionHint(tester), contains('X:'));
     expect(_cellActionHint(tester), contains('New Frame'));
-    expect(_cellActionHint(tester), contains('replace X'));
+    expect(_cellActionHint(tester), isNot(contains('replace X')));
+    expect(_cellActionHint(tester), isNot(contains('will')));
 
     final deleteButton = find.byKey(
       const ValueKey<String>('delete-cell-button'),
@@ -191,9 +195,16 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expect(_cellActionHint(tester), contains('Delete Cell'));
-    expect(_cellActionHint(tester), contains('delete this drawing frame'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    expect(_cellActionHint(tester), contains('Drawing'));
+    expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
+    expect(
+      _cellActionHint(tester),
+      isNot(contains('delete this drawing frame')),
+    );
     expect(
       _isActionButtonEnabled(
         tester,
@@ -206,7 +217,12 @@ void main() {
       tester,
       const ValueKey<String>('toggle-mark-button'),
     );
-    expect(_cellActionHint(tester), contains('drawing and its mark'));
+    expect(_cellActionHint(tester), contains('Drawing + ●'));
+    expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
+    expect(
+      _cellActionHint(tester),
+      isNot(contains('drawing and its mark')),
+    );
 
     await _tapToolbarButton(
       tester,
@@ -216,8 +232,9 @@ void main() {
       tester,
       const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    expect(_cellActionHint(tester), contains('Held drawing'));
-    expect(_cellActionHint(tester), contains('Rename Frame'));
+    expect(_cellActionHint(tester), contains('Held'));
+    expect(_cellActionHint(tester), contains('Copy / Rename'));
+    expect(_cellActionHint(tester), isNot(contains('Rename Frame')));
     expect(
       _isActionButtonEnabled(
         tester,
@@ -242,14 +259,19 @@ void main() {
       const ValueKey<String>('delete-cell-button'),
     );
     expect(_cellActionHint(tester), contains('Empty'));
-    expect(_cellActionHint(tester), contains('New Frame can create'));
+    expect(_cellActionHint(tester), contains('New Frame'));
+    expect(
+      _cellActionHint(tester),
+      isNot(contains('New Frame can create')),
+    );
 
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('toggle-mark-button'),
     );
-    expect(_cellActionHint(tester), contains('Empty + Mark ●'));
-    expect(_cellActionHint(tester), contains('Mark ● will remove the mark'));
+    expect(_cellActionHint(tester), contains('Empty + ●'));
+    expect(_cellActionHint(tester), contains('Mark'));
+    expect(_cellActionHint(tester), isNot(contains('will remove')));
 
     expect(find.byTooltip('New Frame'), findsOneWidget);
     expect(find.byTooltip('Blank / X'), findsOneWidget);
@@ -677,7 +699,8 @@ void main() {
     expect(find.byTooltip('Copy Frame'), findsOneWidget);
     expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
     expect(linkedUsesStatus, findsOneWidget);
-    expect(find.text('Linked uses: -'), findsOneWidget);
+    expect(find.text('Links: -'), findsOneWidget);
+    expect(find.text('Copy: -'), findsOneWidget);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -695,7 +718,7 @@ void main() {
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    expect(find.text('Linked uses: 1'), findsOneWidget);
+    expect(find.text('Links: 1'), findsOneWidget);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -703,7 +726,8 @@ void main() {
       ),
       isTrue,
     );
-    expect(_cellActionHint(tester), contains('Copy Frame'));
+    expect(_cellActionHint(tester), contains('Copy'));
+    expect(_cellActionHint(tester), isNot(contains('Copy Frame can')));
 
     await _tapToolbarButton(
       tester,
@@ -721,7 +745,8 @@ void main() {
       tester,
       const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    expect(_cellActionHint(tester), contains('Paste Linked Frame'));
+    expect(_cellActionHint(tester), contains('Paste'));
+    expect(_cellActionHint(tester), isNot(contains('Paste Linked Frame')));
 
     await _tapToolbarButton(
       tester,
@@ -742,7 +767,14 @@ void main() {
       find.descendant(of: secondCell, matching: find.text('○')),
       findsOneWidget,
     );
-    expect(find.text('Linked uses: 2'), findsOneWidget);
+    expect(find.text('Links: 2'), findsOneWidget);
+    expect(
+      _statusText(
+        tester,
+        const ValueKey<String>('copied-frame-status'),
+      ),
+      startsWith('Copy: ui-frame-'),
+    );
   });
 
   testWidgets('linked paste replaces X and preserves mark priority', (
