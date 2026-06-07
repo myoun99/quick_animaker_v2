@@ -41,23 +41,26 @@ void main() {
       expect(defaultActiveCutIdFor(project), const CutId('video-cut'));
     });
 
-    test('falls back to the first non-video track cut if no video cut exists', () {
-      final project = _projectWithTracks([
-        _track(id: 'empty-video-track', cuts: []),
-        _track(
-          id: 'audio-track-1',
-          type: TrackType.audio,
-          cuts: [_cut('audio-cut-1')],
-        ),
-        _track(
-          id: 'audio-track-2',
-          type: TrackType.audio,
-          cuts: [_cut('audio-cut-2')],
-        ),
-      ]);
+    test(
+      'falls back to the first non-video track cut if no video cut exists',
+      () {
+        final project = _projectWithTracks([
+          _track(id: 'empty-video-track', cuts: []),
+          _track(
+            id: 'audio-track-1',
+            type: TrackType.audio,
+            cuts: [_cut('audio-cut-1')],
+          ),
+          _track(
+            id: 'audio-track-2',
+            type: TrackType.audio,
+            cuts: [_cut('audio-cut-2')],
+          ),
+        ]);
 
-      expect(defaultActiveCutIdFor(project), const CutId('audio-cut-1'));
-    });
+        expect(defaultActiveCutIdFor(project), const CutId('audio-cut-1'));
+      },
+    );
 
     test('throws when no cuts exist', () {
       final project = _projectWithTracks([
