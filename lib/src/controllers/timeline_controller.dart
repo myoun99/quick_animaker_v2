@@ -194,6 +194,67 @@ class TimelineController {
         entry.startIndex;
   }
 
+  bool canPasteLinkedFrameAt({
+    required Layer layer,
+    required int frameIndex,
+    required FrameId copiedFrameId,
+  }) {
+    if (frameIndex < 0) {
+      return false;
+    }
+
+    return _frameOrNull(layer: layer, frameId: copiedFrameId) != null;
+  }
+
+  int linkedUseCountForLayerFrame({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    return layer.timeline.values
+        .where(
+          (exposure) =>
+              exposure.type == TimelineExposureType.drawing &&
+              exposure.frameId == frameId,
+        )
+        .length;
+  }
+
+  void pasteLinkedFrameForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    final before = _requireLayer(layerId);
+    if (!canPasteLinkedFrameAt(
+      layer: before,
+      frameIndex: _currentFrameIndex,
+      copiedFrameId: frameId,
+    )) {
+      return;
+    }
+
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    final previousExposure = nextTimeline[_currentFrameIndex];
+    nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(frameId);
+
+    var nextFrames = before.frames;
+    final previousFrameId = previousExposure?.frameId;
+    if (previousExposure?.type == TimelineExposureType.drawing &&
+        previousFrameId != null &&
+        previousFrameId != frameId &&
+        !_timelineReferencesFrame(nextTimeline, previousFrameId)) {
+      nextFrames = before.frames
+          .where((frame) => frame.id != previousFrameId)
+          .toList(growable: false);
+    }
+
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    );
+  }
+
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
