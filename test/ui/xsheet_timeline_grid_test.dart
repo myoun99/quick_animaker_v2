@@ -6,6 +6,15 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
+
+bool _isGray(Color color) {
+  final value = color.toARGB32();
+  final red = (value >> 16) & 0xff;
+  final green = (value >> 8) & 0xff;
+  final blue = value & 0xff;
+  return red == green && green == blue;
+}
 
 void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
@@ -344,6 +353,44 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
   });
+
+  test('cell style keeps drawing cells neutral and blank cells muted', () {
+    const colorScheme = ColorScheme.light();
+
+    final drawingStart = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: TimelineCellExposureState.drawingStart,
+      active: true,
+      selected: false,
+    );
+    final heldDrawing = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: TimelineCellExposureState.heldExposure,
+      active: true,
+      selected: false,
+    );
+    final blankStart = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: TimelineCellExposureState.blankStart,
+      active: true,
+      selected: false,
+    );
+    final selectedDrawing = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: TimelineCellExposureState.heldExposure,
+      active: true,
+      selected: true,
+    );
+
+    expect(heldDrawing.background, timelineDrawingHeldColor);
+    expect(drawingStart.background, timelineDrawingStartColor);
+    expect(drawingStart.border, timelineDrawingStartBorderColor);
+    expect(_isGray(blankStart.background), isTrue);
+    expect(blankStart.background, isNot(heldDrawing.background));
+    expect(selectedDrawing.border, colorScheme.primary);
+    expect(selectedDrawing.background, isNot(heldDrawing.background));
+  });
+
 }
 
 Widget _grid({

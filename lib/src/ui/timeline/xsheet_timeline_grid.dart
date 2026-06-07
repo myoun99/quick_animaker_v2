@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_cell_style.dart';
 
 class XSheetTimelineGrid extends StatelessWidget {
   const XSheetTimelineGrid({
@@ -302,29 +303,12 @@ class _XSheetCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final baseColor = active
-        ? colorScheme.secondaryContainer.withValues(alpha: 0.35)
-        : colorScheme.surface;
-    final exposureColor = switch (exposureState) {
-      TimelineCellExposureState.empty => baseColor,
-      TimelineCellExposureState.drawingStart => colorScheme.tertiaryContainer,
-      TimelineCellExposureState.heldExposure =>
-        colorScheme.tertiaryContainer.withValues(alpha: 0.62),
-      TimelineCellExposureState.blankStart =>
-        colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-      TimelineCellExposureState.blankHeld =>
-        colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
-    };
-    final exposureBorderColor = switch (exposureState) {
-      TimelineCellExposureState.empty => colorScheme.outlineVariant,
-      TimelineCellExposureState.drawingStart => colorScheme.tertiary,
-      TimelineCellExposureState.heldExposure => colorScheme.tertiary.withValues(
-        alpha: 0.55,
-      ),
-      TimelineCellExposureState.blankStart => colorScheme.outlineVariant,
-      TimelineCellExposureState.blankHeld =>
-        colorScheme.outlineVariant.withValues(alpha: 0.55),
-    };
+    final styleColors = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: exposureState,
+      active: active,
+      selected: selected,
+    );
 
     return InkWell(
       key: ValueKey<String>('xsheet-cell-${layer.id}-$frameIndex'),
@@ -337,14 +321,9 @@ class _XSheetCell extends StatelessWidget {
         height: XSheetTimelineGrid._rowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected
-              ? Color.alphaBlend(
-                  colorScheme.primary.withValues(alpha: 0.18),
-                  exposureColor,
-                )
-              : exposureColor,
+          color: styleColors.background,
           border: Border.all(
-            color: selected ? colorScheme.primary : exposureBorderColor,
+            color: styleColors.border,
             width: selected ? 3 : 1,
           ),
         ),
