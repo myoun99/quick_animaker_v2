@@ -42,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   int _layerSequence = 2;
   int _frameSequence = 0;
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
+  _CopiedFrameReference? _copiedFrame;
 
   @override
   void initState() {
@@ -95,6 +96,50 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  bool get _canCopyFrameAtCurrentFrame {
+    return _selectedFrame != null;
+  }
+
+  bool get _canPasteLinkedFrameAtCurrentFrame {
+    final layer = _activeLayer;
+    final copiedFrame = _copiedFrame;
+    if (layer == null || copiedFrame == null || layer.id != copiedFrame.layerId) {
+      return false;
+    }
+
+    return _timelineController.canPasteLinkedFrameAt(
+      layer: layer,
+      frameIndex: _timelineController.currentFrameIndex,
+      copiedFrameId: copiedFrame.frameId,
+    );
+  }
+
+  String get _copiedFrameStatusText {
+    final copiedFrame = _copiedFrame;
+    if (copiedFrame == null) {
+      return 'Copied: -';
+    }
+
+    final label = copiedFrame.frameName?.isNotEmpty == true
+        ? copiedFrame.frameName!
+        : copiedFrame.frameId.value;
+    return 'Copied: $label';
+  }
+
+  String get _linkedFrameUsesStatusText {
+    final layer = _activeLayer;
+    final frame = _selectedFrame;
+    if (layer == null || frame == null) {
+      return 'Linked uses: -';
+    }
+
+    final uses = _timelineController.linkedUseCountForLayerFrame(
+      layer: layer,
+      frameId: frame.id,
+    );
+    return 'Linked uses: $uses';
+  }
+
   bool get _canCreateBlankAtCurrentFrame {
     final layer = _activeLayer;
     if (layer == null) {
@@ -117,6 +162,35 @@ class _HomePageState extends State<HomePage> {
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
+    );
+  }
+
+  void _copyFrameAtCurrentFrame() {
+    final layer = _activeLayer;
+    final frame = _selectedFrame;
+    if (layer == null || frame == null || !_canCopyFrameAtCurrentFrame) {
+      return;
+    }
+
+    _copiedFrame = _CopiedFrameReference(
+      layerId: layer.id,
+      frameId: frame.id,
+      frameName: frame.name,
+    );
+  }
+
+  void _pasteLinkedFrameAtCurrentFrame() {
+    final layer = _activeLayer;
+    final copiedFrame = _copiedFrame;
+    if (layer == null ||
+        copiedFrame == null ||
+        !_canPasteLinkedFrameAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.pasteLinkedFrameForLayer(
+      layerId: layer.id,
+      frameId: copiedFrame.frameId,
     );
   }
 
@@ -308,22 +382,44 @@ class _HomePageState extends State<HomePage> {
     return switch (exposureState) {
       TimelineCellExposureState.drawingStart =>
         hasMark
-            ? 'Drawing start + Mark ●: Delete Cell will delete this drawing and its mark.'
-            : 'Drawing start: Delete Cell will delete this drawing frame.',
+            ? 'Drawing start + Mark ●: Copy Frame can copy this material; '
+                  'Delete Cell will delete this drawing and its mark.'
+            : 'Drawing start: Copy Frame can copy this material; '
+                  'Delete Cell will delete this drawing frame.',
       TimelineCellExposureState.heldExposure =>
         hasMark
-            ? 'Held drawing + Mark ●: Mark ● will remove the mark.'
-            : 'Held drawing: Rename Frame can rename the held drawing.',
+            ? 'Held drawing + Mark ●: Copy Frame can copy this material; '
+                  'Rename Frame can rename the held drawing; '
+                  'Mark ● will remove the mark.'
+            : 'Held drawing: Copy Frame can copy this material; '
+                  'Rename Frame can rename the held drawing.',
       TimelineCellExposureState.blankStart =>
-        hasMark
+        _canPasteLinkedFrameAtCurrentFrame
+            ? hasMark
+                  ? 'Blank start (X) + Mark ●: Paste Linked Frame will '
+                        'replace X with the copied drawing; '
+                        'Mark ● will remove the mark.'
+                  : 'Blank start (X): Paste Linked Frame will replace X with the copied drawing.'
+            : hasMark
             ? 'Blank start (X) + Mark ●: New Frame will replace X; Mark ● will remove the mark.'
             : 'Blank start (X): New Frame will replace X with a drawing.',
       TimelineCellExposureState.blankHeld =>
-        hasMark
-            ? 'Blank held + Mark ●: New Frame can create a drawing here; Mark ● will remove the mark.'
+        _canPasteLinkedFrameAtCurrentFrame
+            ? hasMark
+                  ? 'Blank held + Mark ●: Paste Linked Frame can place '
+                        'the copied drawing here; Mark ● will remove the mark.'
+                  : 'Blank held: Paste Linked Frame can place the copied drawing here.'
+            : hasMark
+            ? 'Blank held + Mark ●: New Frame can create a drawing here; '
+                  'Mark ● will remove the mark.'
             : 'Blank held: New Frame can create a drawing here.',
       TimelineCellExposureState.empty =>
-        hasMark
+        _canPasteLinkedFrameAtCurrentFrame
+            ? hasMark
+                  ? 'Empty + Mark ●: Paste Linked Frame can place the copied '
+                        'drawing here; Mark ● will remove the mark.'
+                  : 'Empty: Paste Linked Frame can place the copied drawing here.'
+            : hasMark
             ? 'Empty + Mark ●: Mark ● will remove the mark.'
             : 'Empty: New Frame can create a drawing here.',
     };
@@ -414,6 +510,16 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 16),
                   Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),
+                  Text(
+                    _linkedFrameUsesStatusText,
+                    key: const ValueKey<String>('linked-frame-uses-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _copiedFrameStatusText,
+                    key: const ValueKey<String>('copied-frame-status'),
+                  ),
+                  const SizedBox(width: 16),
                   DecoratedBox(
                     key: const ValueKey<String>('cell-actions-section'),
                     decoration: BoxDecoration(
@@ -457,6 +563,22 @@ class _HomePageState extends State<HomePage> {
                                 ? () => setState(_toggleMarkAtCurrentFrame)
                                 : null,
                             child: const Text('Mark ●'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>('copy-frame-button'),
+                            onPressed: _canCopyFrameAtCurrentFrame
+                                ? () => setState(_copyFrameAtCurrentFrame)
+                                : null,
+                            child: const Text('Copy Frame'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>(
+                              'paste-linked-frame-button',
+                            ),
+                            onPressed: _canPasteLinkedFrameAtCurrentFrame
+                                ? () => setState(_pasteLinkedFrameAtCurrentFrame)
+                                : null,
+                            child: const Text('Paste Linked Frame'),
                           ),
                           TextButton(
                             key: const ValueKey<String>('rename-frame-button'),
@@ -612,6 +734,18 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
+}
+
+class _CopiedFrameReference {
+  const _CopiedFrameReference({
+    required this.layerId,
+    required this.frameId,
+    required this.frameName,
+  });
+
+  final LayerId layerId;
+  final FrameId frameId;
+  final String? frameName;
 }
 
 class _RenameFrameDialog extends StatefulWidget {

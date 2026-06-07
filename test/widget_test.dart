@@ -444,4 +444,104 @@ void main() {
     );
     expect(find.text('Cancelled'), findsNothing);
   });
+
+  testWidgets('linked frame copy and paste buttons link authored exposures', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final copyButton = find.byKey(const ValueKey<String>('copy-frame-button'));
+    final pasteButton = find.byKey(
+      const ValueKey<String>('paste-linked-frame-button'),
+    );
+    final linkedUsesStatus = find.byKey(
+      const ValueKey<String>('linked-frame-uses-status'),
+    );
+    expect(copyButton, findsOneWidget);
+    expect(pasteButton, findsOneWidget);
+    expect(find.text('Copy Frame'), findsOneWidget);
+    expect(find.text('Paste Linked Frame'), findsOneWidget);
+    expect(linkedUsesStatus, findsOneWidget);
+    expect(find.text('Linked uses: -'), findsOneWidget);
+    expect(tester.widget<TextButton>(copyButton).onPressed, isNull);
+    expect(tester.widget<TextButton>(pasteButton).onPressed, isNull);
+
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+
+    expect(find.text('Linked uses: 1'), findsOneWidget);
+    expect(tester.widget<TextButton>(copyButton).onPressed, isNotNull);
+    expect(_cellActionHint(tester), contains('Copy Frame'));
+
+    await _tapToolbarButton(tester, const ValueKey<String>('copy-frame-button'));
+    expect(tester.widget<TextButton>(pasteButton).onPressed, isNotNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(_cellActionHint(tester), contains('Paste Linked Frame'));
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('paste-linked-frame-button'),
+    );
+
+    final firstCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
+    );
+    final secondCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    expect(
+      find.descendant(of: firstCell, matching: find.text('○')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('○')),
+      findsOneWidget,
+    );
+    expect(find.text('Linked uses: 2'), findsOneWidget);
+  });
+
+  testWidgets('linked paste replaces X and preserves mark priority', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+    await _tapToolbarButton(tester, const ValueKey<String>('copy-frame-button'));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextButton>(
+            find.byKey(const ValueKey<String>('paste-linked-frame-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    );
+    await tester.pumpAndSettle();
+    await _tapToolbarButton(tester, const ValueKey<String>('blank-exposure-button'));
+    final secondCell = find.byKey(
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
+    );
+    expect(find.descendant(of: secondCell, matching: find.text('X')), findsOneWidget);
+
+    await _tapToolbarButton(tester, const ValueKey<String>('toggle-mark-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('paste-linked-frame-button'),
+    );
+
+    expect(find.descendant(of: secondCell, matching: find.text('●')), findsOneWidget);
+    expect(find.text('Cell: Drawing start + Mark ●'), findsOneWidget);
+  });
+
 }
