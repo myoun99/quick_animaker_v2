@@ -387,7 +387,15 @@ class _HomePageState extends State<HomePage> {
             : 'Drawing start: Copy Frame can copy this material; '
                   'Delete Cell will delete this drawing frame.',
       TimelineCellExposureState.heldExposure =>
-        hasMark
+        _canPasteLinkedFrameAtCurrentFrame
+            ? hasMark
+                  ? 'Held drawing + Mark ●: Paste Linked Frame can place '
+                        'the copied drawing here; '
+                        'Rename Frame can rename the held drawing; '
+                        'Mark ● will remove the mark.'
+                  : 'Held drawing: Paste Linked Frame can place the copied '
+                        'drawing here; Rename Frame can rename the held drawing.'
+            : hasMark
             ? 'Held drawing + Mark ●: Copy Frame can copy this material; '
                   'Rename Frame can rename the held drawing; '
                   'Mark ● will remove the mark.'
