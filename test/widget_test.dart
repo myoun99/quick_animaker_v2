@@ -2,6 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 
+Future<void> _tapToolbarButton(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  final button = find.byKey(key);
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+String _cellActionHint(WidgetTester tester) {
+  final hint = tester.widget<Text>(
+    find.byKey(const ValueKey<String>('cell-action-hint')),
+  );
+  return hint.data ?? '';
+}
+
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -14,6 +32,88 @@ void main() {
     );
     expect(find.text('New Frame'), findsOneWidget);
     expect(find.text('New Drawing'), findsNothing);
+  });
+
+  testWidgets('phase 18 cell actions section and hints update by cell state', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(
+      find.byKey(const ValueKey<String>('cell-actions-section')),
+      findsOneWidget,
+    );
+    expect(find.text('Cell Actions'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('cell-action-hint')),
+      findsOneWidget,
+    );
+    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Frame: 1'), findsOneWidget);
+    expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+    expect(_cellActionHint(tester), contains('New Frame'));
+    expect(_cellActionHint(tester), contains('replace X'));
+
+    final deleteButton = find.byKey(
+      const ValueKey<String>('delete-cell-button'),
+    );
+    final renameButton = find.byKey(
+      const ValueKey<String>('rename-frame-button'),
+    );
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    expect(_cellActionHint(tester), contains('Delete Cell'));
+    expect(_cellActionHint(tester), contains('delete this drawing frame'));
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-mark-button'),
+    );
+    expect(_cellActionHint(tester), contains('drawing and its mark'));
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-mark-button'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(_cellActionHint(tester), contains('Held drawing'));
+    expect(_cellActionHint(tester), contains('Rename Frame'));
+    expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
+    expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-0')),
+    );
+    await tester.pumpAndSettle();
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('delete-cell-button'),
+    );
+    expect(_cellActionHint(tester), contains('Empty'));
+    expect(_cellActionHint(tester), contains('New Frame can create'));
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-mark-button'),
+    );
+    expect(_cellActionHint(tester), contains('Empty + Mark ●'));
+    expect(_cellActionHint(tester), contains('Mark ● will remove the mark'));
+
+    expect(find.text('New Frame'), findsOneWidget);
+    expect(find.text('Blank / X'), findsOneWidget);
+    expect(find.text('Mark ●'), findsOneWidget);
+    expect(find.text('Rename Frame'), findsOneWidget);
+    expect(find.text('Delete Cell'), findsOneWidget);
+    expect(find.text('- Exposure'), findsOneWidget);
+    expect(find.text('+ Exposure'), findsOneWidget);
   });
 
   testWidgets('initial layers start with blank exposures at frame 1', (

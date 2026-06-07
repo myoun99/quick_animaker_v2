@@ -79,6 +79,10 @@ class _HomePageState extends State<HomePage> {
     return _timelineController.getSelectedFrameForLayer(layer);
   }
 
+  bool get _hasActiveNonNegativeCell {
+    return _activeLayer != null && _timelineController.currentFrameIndex >= 0;
+  }
+
   bool get _canCreateDrawingAtCurrentFrame {
     final layer = _activeLayer;
     if (layer == null) {
@@ -291,6 +295,35 @@ class _HomePageState extends State<HomePage> {
     return 'Cell: ${_cellStatusLabelForLayer(layer)}';
   }
 
+  String get _cellActionHintText {
+    final layer = _activeLayer;
+    if (layer == null) {
+      return 'No active layer.';
+    }
+
+    final frameIndex = _timelineController.currentFrameIndex;
+    final hasMark = _hasMarkForLayer(layer, frameIndex);
+    final exposureState = _exposureStateForLayer(layer, frameIndex);
+
+    return switch (exposureState) {
+      TimelineCellExposureState.drawingStart => hasMark
+          ? 'Drawing start + Mark ●: Delete Cell will delete this drawing and its mark.'
+          : 'Drawing start: Delete Cell will delete this drawing frame.',
+      TimelineCellExposureState.heldExposure => hasMark
+          ? 'Held drawing + Mark ●: Mark ● will remove the mark.'
+          : 'Held drawing: Rename Frame can rename the held drawing.',
+      TimelineCellExposureState.blankStart => hasMark
+          ? 'Blank start (X) + Mark ●: New Frame will replace X; Mark ● will remove the mark.'
+          : 'Blank start (X): New Frame will replace X with a drawing.',
+      TimelineCellExposureState.blankHeld => hasMark
+          ? 'Blank held + Mark ●: New Frame can create a drawing here; Mark ● will remove the mark.'
+          : 'Blank held: New Frame can create a drawing here.',
+      TimelineCellExposureState.empty => hasMark
+          ? 'Empty + Mark ●: Mark ● will remove the mark.'
+          : 'Empty: New Frame can create a drawing here.',
+    };
+  }
+
   String _cellStatusLabelForLayer(Layer layer) {
     final frameIndex = _timelineController.currentFrameIndex;
     final exposureState = _exposureStateForLayer(layer, frameIndex);
@@ -376,54 +409,90 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 16),
                   Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),
-                  TextButton(
-                    key: const ValueKey<String>('new-frame-button'),
-                    onPressed: _canCreateDrawingAtCurrentFrame
-                        ? () => setState(_createDrawingAtCurrentFrame)
-                        : null,
-                    child: const Text('New Frame'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('blank-exposure-button'),
-                    onPressed: _canCreateBlankAtCurrentFrame
-                        ? () => setState(_createBlankAtCurrentFrame)
-                        : null,
-                    child: const Text('Blank / X'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('decrease-exposure-button'),
-                    onPressed: canDecreaseExposure
-                        ? () => setState(_decreaseSelectedExposure)
-                        : null,
-                    child: const Text('- Exposure'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('increase-exposure-button'),
-                    onPressed: canIncreaseExposure
-                        ? () => setState(_increaseSelectedExposure)
-                        : null,
-                    child: const Text('+ Exposure'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('toggle-mark-button'),
-                    onPressed: _canToggleMarkAtCurrentFrame
-                        ? () => setState(_toggleMarkAtCurrentFrame)
-                        : null,
-                    child: const Text('Mark ●'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('rename-frame-button'),
-                    onPressed: _canRenameFrameAtCurrentFrame
-                        ? _renameSelectedFrame
-                        : null,
-                    child: const Text('Rename Frame'),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('delete-cell-button'),
-                    onPressed: _canDeleteCellAtCurrentFrame
-                        ? () => setState(_deleteCellAtCurrentFrame)
-                        : null,
-                    child: const Text('Delete Cell'),
+                  DecoratedBox(
+                    key: const ValueKey<String>('cell-actions-section'),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Cell Actions',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            key: const ValueKey<String>('new-frame-button'),
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_createDrawingAtCurrentFrame)
+                                : null,
+                            child: const Text('New Frame'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>(
+                              'blank-exposure-button',
+                            ),
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_createBlankAtCurrentFrame)
+                                : null,
+                            child: const Text('Blank / X'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>('toggle-mark-button'),
+                            onPressed: _hasActiveNonNegativeCell
+                                ? () => setState(_toggleMarkAtCurrentFrame)
+                                : null,
+                            child: const Text('Mark ●'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>('rename-frame-button'),
+                            onPressed: _canRenameFrameAtCurrentFrame
+                                ? _renameSelectedFrame
+                                : null,
+                            child: const Text('Rename Frame'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>('delete-cell-button'),
+                            onPressed: _canDeleteCellAtCurrentFrame
+                                ? () => setState(_deleteCellAtCurrentFrame)
+                                : null,
+                            child: const Text('Delete Cell'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>(
+                              'decrease-exposure-button',
+                            ),
+                            onPressed: canDecreaseExposure
+                                ? () => setState(_decreaseSelectedExposure)
+                                : null,
+                            child: const Text('- Exposure'),
+                          ),
+                          TextButton(
+                            key: const ValueKey<String>(
+                              'increase-exposure-button',
+                            ),
+                            onPressed: canIncreaseExposure
+                                ? () => setState(_increaseSelectedExposure)
+                                : null,
+                            child: const Text('+ Exposure'),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Hint: $_cellActionHintText',
+                            key: const ValueKey<String>('cell-action-hint'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 16),
                   TextButton(
