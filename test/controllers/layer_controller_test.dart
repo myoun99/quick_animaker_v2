@@ -131,15 +131,17 @@ void main() {
         );
 
         expect(
-          _findCut(fixture.repository, const CutId('cut-a')).layers.map(
-            (layer) => layer.id,
-          ),
+          _findCut(
+            fixture.repository,
+            const CutId('cut-a'),
+          ).layers.map((layer) => layer.id),
           [const LayerId('layer-a'), const LayerId('layer-a-added')],
         );
         expect(
-          _findCut(fixture.repository, const CutId('cut-b')).layers.map(
-            (layer) => layer.id,
-          ),
+          _findCut(
+            fixture.repository,
+            const CutId('cut-b'),
+          ).layers.map((layer) => layer.id),
           [const LayerId('layer-b')],
         );
       });
@@ -153,15 +155,17 @@ void main() {
         );
 
         expect(
-          _findCut(fixture.repository, const CutId('cut-a')).layers.map(
-            (layer) => layer.id,
-          ),
+          _findCut(
+            fixture.repository,
+            const CutId('cut-a'),
+          ).layers.map((layer) => layer.id),
           [const LayerId('layer-a')],
         );
         expect(
-          _findCut(fixture.repository, const CutId('cut-b')).layers.map(
-            (layer) => layer.id,
-          ),
+          _findCut(
+            fixture.repository,
+            const CutId('cut-b'),
+          ).layers.map((layer) => layer.id),
           [const LayerId('layer-b'), const LayerId('layer-b-added')],
         );
       });
