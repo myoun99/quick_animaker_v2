@@ -50,13 +50,22 @@ void _expectTimelineActionTooltips() {
 }
 
 void _expectTimelineActionKeys() {
-  expect(find.byKey(const ValueKey<String>('new-frame-button')), findsOneWidget);
+  expect(
+    find.byKey(const ValueKey<String>('new-frame-button')),
+    findsOneWidget,
+  );
   expect(
     find.byKey(const ValueKey<String>('blank-exposure-button')),
     findsOneWidget,
   );
-  expect(find.byKey(const ValueKey<String>('toggle-mark-button')), findsOneWidget);
-  expect(find.byKey(const ValueKey<String>('copy-frame-button')), findsOneWidget);
+  expect(
+    find.byKey(const ValueKey<String>('toggle-mark-button')),
+    findsOneWidget,
+  );
+  expect(
+    find.byKey(const ValueKey<String>('copy-frame-button')),
+    findsOneWidget,
+  );
   expect(
     find.byKey(const ValueKey<String>('paste-linked-frame-button')),
     findsOneWidget,
@@ -65,7 +74,10 @@ void _expectTimelineActionKeys() {
     find.byKey(const ValueKey<String>('rename-frame-button')),
     findsOneWidget,
   );
-  expect(find.byKey(const ValueKey<String>('delete-cell-button')), findsOneWidget);
+  expect(
+    find.byKey(const ValueKey<String>('delete-cell-button')),
+    findsOneWidget,
+  );
   expect(
     find.byKey(const ValueKey<String>('decrease-exposure-button')),
     findsOneWidget,
@@ -121,9 +133,18 @@ void main() {
     );
     _expectTimelineActionKeys();
     _expectTimelineActionTooltips();
-    expect(find.byKey(const ValueKey<String>('current-layer-status')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('current-frame-status')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('current-cell-status')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('current-layer-status')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('current-frame-status')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('current-cell-status')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('linked-frame-uses-status')),
       findsOneWidget,
@@ -162,12 +183,24 @@ void main() {
     );
     expect(deleteButton, findsOneWidget);
     expect(renameButton, findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isFalse,
+    );
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(_cellActionHint(tester), contains('Delete Cell'));
     expect(_cellActionHint(tester), contains('delete this drawing frame'));
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isTrue,
+    );
 
     await _tapToolbarButton(
       tester,
@@ -185,8 +218,20 @@ void main() {
     );
     expect(_cellActionHint(tester), contains('Held drawing'));
     expect(_cellActionHint(tester), contains('Rename Frame'));
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('rename-frame-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isFalse,
+    );
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('rename-frame-button'),
+      ),
+      isTrue,
+    );
 
     await _tapTimelineCell(
       tester,
@@ -306,7 +351,13 @@ void main() {
     );
     expect(deleteButton, findsOneWidget);
     expect(renameButton, findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isFalse,
+    );
 
     await _tapTimelineCell(
       tester,
@@ -314,7 +365,13 @@ void main() {
     );
     expect(find.text('Frame: 2'), findsOneWidget);
     expect(find.text('Cell: Blank held'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isFalse,
+    );
 
     await _tapTimelineCell(
       tester,
@@ -327,7 +384,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(newFrameButton);
     await tester.pumpAndSettle();
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isTrue,
+    );
 
     await _tapTimelineCell(
       tester,
@@ -346,8 +409,20 @@ void main() {
       const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
     expect(find.text('Cell: Held drawing'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('rename-frame-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      ),
+      isFalse,
+    );
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('rename-frame-button'),
+      ),
+      isTrue,
+    );
   });
 
   testWidgets(
@@ -446,15 +521,33 @@ void main() {
 
       expect(renameButton, findsOneWidget);
       expect(deleteButton, findsOneWidget);
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('rename-frame-button')), isFalse);
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('rename-frame-button'),
+        ),
+        isFalse,
+      );
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('delete-cell-button'),
+        ),
+        isFalse,
+      );
 
       await tester.ensureVisible(newFrameButton);
       await tester.pumpAndSettle();
       await tester.tap(newFrameButton);
       await tester.pumpAndSettle();
 
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('rename-frame-button')), isTrue);
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('rename-frame-button'),
+        ),
+        isTrue,
+      );
       await tester.ensureVisible(renameButton);
       await tester.pumpAndSettle();
       await tester.tap(renameButton);
@@ -492,7 +585,13 @@ void main() {
         findsOneWidget,
       );
 
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isTrue);
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('delete-cell-button'),
+        ),
+        isTrue,
+      );
       await tester.ensureVisible(deleteButton);
       await tester.pumpAndSettle();
       await tester.tap(deleteButton);
@@ -505,8 +604,20 @@ void main() {
         find.descendant(of: layer1FirstCell, matching: find.text('●')),
         findsNothing,
       );
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('rename-frame-button')), isFalse);
-      expect(_isActionButtonEnabled(tester, const ValueKey<String>('delete-cell-button')), isFalse);
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('rename-frame-button'),
+        ),
+        isFalse,
+      );
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('delete-cell-button'),
+        ),
+        isFalse,
+      );
     },
   );
 
@@ -567,20 +678,44 @@ void main() {
     expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
     expect(linkedUsesStatus, findsOneWidget);
     expect(find.text('Linked uses: -'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('copy-frame-button')), isFalse);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('paste-linked-frame-button')), isFalse);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('copy-frame-button'),
+      ),
+      isFalse,
+    );
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('paste-linked-frame-button'),
+      ),
+      isFalse,
+    );
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     expect(find.text('Linked uses: 1'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('copy-frame-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('copy-frame-button'),
+      ),
+      isTrue,
+    );
     expect(_cellActionHint(tester), contains('Copy Frame'));
 
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('copy-frame-button'),
     );
-    expect(_isActionButtonEnabled(tester, const ValueKey<String>('paste-linked-frame-button')), isTrue);
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('paste-linked-frame-button'),
+      ),
+      isTrue,
+    );
 
     await _tapTimelineCell(
       tester,
