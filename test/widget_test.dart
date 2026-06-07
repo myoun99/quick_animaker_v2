@@ -195,10 +195,7 @@ void main() {
       isFalse,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(_cellActionHint(tester), contains('Drawing'));
     expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
     expect(
@@ -219,10 +216,7 @@ void main() {
     );
     expect(_cellActionHint(tester), contains('Drawing + ●'));
     expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
-    expect(
-      _cellActionHint(tester),
-      isNot(contains('drawing and its mark')),
-    );
+    expect(_cellActionHint(tester), isNot(contains('drawing and its mark')));
 
     await _tapToolbarButton(
       tester,
@@ -260,10 +254,7 @@ void main() {
     );
     expect(_cellActionHint(tester), contains('Empty'));
     expect(_cellActionHint(tester), contains('New Frame'));
-    expect(
-      _cellActionHint(tester),
-      isNot(contains('New Frame can create')),
-    );
+    expect(_cellActionHint(tester), isNot(contains('New Frame can create')));
 
     await _tapToolbarButton(
       tester,
@@ -769,10 +760,7 @@ void main() {
     );
     expect(find.text('Links: 2'), findsOneWidget);
     expect(
-      _statusText(
-        tester,
-        const ValueKey<String>('copied-frame-status'),
-      ),
+      _statusText(tester, const ValueKey<String>('copied-frame-status')),
       startsWith('Copy: ui-frame-'),
     );
   });
