@@ -12,6 +12,8 @@ Project -> Track -> Cut -> Layer -> Frame -> Stroke
 
 However, full multi-cut editing should not be assumed to exist yet. Current timeline, layer, canvas, save/load, undo/redo, and UI behavior should be treated as the stabilized single-cut workflow until future phases explicitly introduce active Cut state and cut switching.
 
+See [Cut Structure Audit](Cut_Structure_Audit.md) for the current codebase audit before active Cut implementation.
+
 ## Target Direction
 
 The next architecture direction should be:
