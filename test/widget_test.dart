@@ -131,6 +131,24 @@ void main() {
     expect(find.text('New Drawing'), findsNothing);
   });
 
+  testWidgets('uses the sample cut resolved from the project by default', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer 1'), findsWidgets);
+    expect(find.text('Layer 2'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('timeline action toolbar hosts cell action controls', (
     WidgetTester tester,
   ) async {

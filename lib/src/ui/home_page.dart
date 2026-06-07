@@ -49,8 +49,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _activeCutId = _sampleCutId;
-    _repository = ProjectRepository(initialProject: _createSampleProject());
+    final project = _createSampleProject();
+    _activeCutId = _defaultActiveCutIdFor(project);
+    _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
     _layerController = LayerController(
       repository: _repository,
@@ -835,6 +836,26 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  CutId _defaultActiveCutIdFor(Project project) {
+    for (final track in project.tracks) {
+      if (track.type != TrackType.video) {
+        continue;
+      }
+
+      if (track.cuts.isNotEmpty) {
+        return track.cuts.first.id;
+      }
+    }
+
+    for (final track in project.tracks) {
+      if (track.cuts.isNotEmpty) {
+        return track.cuts.first.id;
+      }
+    }
+
+    throw StateError('Project has no cuts.');
   }
 
   Project _createSampleProject() {
