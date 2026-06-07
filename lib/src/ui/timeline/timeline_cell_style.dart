@@ -13,10 +13,10 @@ class TimelineCellStyleColors {
 }
 
 const Color timelineDrawingHeldColor = Colors.white;
-const Color timelineDrawingStartColor = Color(0xFFF7F7F7);
+const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = Color(0xFFBDBDBD);
-const Color timelineBlankStartColor = Color(0xFFE0E0E0);
-const Color timelineBlankHeldColor = Color(0xFFF0F0F0);
+const Color timelineBlankStartColor = Color(0xFFD0D0D0);
+const Color timelineBlankHeldColor = timelineBlankStartColor;
 
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
