@@ -375,6 +375,12 @@ void main() {
       active: true,
       selected: false,
     );
+    final blankHeld = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: TimelineCellExposureState.blankHeld,
+      active: true,
+      selected: false,
+    );
     final selectedDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.heldExposure,
@@ -384,9 +390,14 @@ void main() {
 
     expect(heldDrawing.background, timelineDrawingHeldColor);
     expect(drawingStart.background, timelineDrawingStartColor);
+    expect(drawingStart.background, heldDrawing.background);
     expect(drawingStart.border, timelineDrawingStartBorderColor);
     expect(_isGray(blankStart.background), isTrue);
+    expect(blankStart.background, timelineBlankStartColor);
+    expect(blankHeld.background, timelineBlankHeldColor);
+    expect(blankStart.background, blankHeld.background);
     expect(blankStart.background, isNot(heldDrawing.background));
+    expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
     expect(selectedDrawing.border, colorScheme.primary);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
