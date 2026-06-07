@@ -51,6 +51,24 @@ void main() {
     );
   });
 
+  testWidgets('renders provided timeline action toolbar', (tester) async {
+    await tester.pumpWidget(
+      _panel(
+        timelineActionToolbar: const Text(
+          'Timeline action toolbar content',
+          key: ValueKey<String>('provided-timeline-toolbar'),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('provided-timeline-toolbar')),
+      findsOneWidget,
+    );
+    expect(find.text('Timeline action toolbar content'), findsOneWidget);
+    expect(find.byType(LayerTimelineGrid), findsOneWidget);
+  });
+
   testWidgets('exposure state callback is used in horizontal mode', (
     tester,
   ) async {
@@ -277,6 +295,7 @@ Widget _panel({
   exposureStateForLayer,
   bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
+  Widget? timelineActionToolbar,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -299,6 +318,7 @@ Widget _panel({
         onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
         orientation: orientation,
         onOrientationChanged: onOrientationChanged ?? (_) {},
+        timelineActionToolbar: timelineActionToolbar,
       ),
     ),
   );

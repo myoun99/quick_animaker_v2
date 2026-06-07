@@ -24,6 +24,7 @@ class TimelinePanel extends StatelessWidget {
     required this.onLayerOpacityChanged,
     required this.orientation,
     required this.onOrientationChanged,
+    this.timelineActionToolbar,
   });
 
   final List<Layer> layers;
@@ -41,6 +42,7 @@ class TimelinePanel extends StatelessWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
+  final Widget? timelineActionToolbar;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +54,7 @@ class TimelinePanel extends StatelessWidget {
     return Material(
       color: colorScheme.surfaceContainerHighest,
       child: SizedBox(
-        height: 220,
+        height: timelineActionToolbar == null ? 220 : 320,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -89,6 +91,11 @@ class TimelinePanel extends StatelessWidget {
                 ],
               ),
             ),
+            if (timelineActionToolbar != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                child: timelineActionToolbar,
+              ),
             Expanded(
               child: orientation == TimelineOrientation.horizontal
                   ? LayerTimelineGrid(

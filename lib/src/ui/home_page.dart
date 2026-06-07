@@ -465,6 +465,167 @@ class _HomePageState extends State<HomePage> {
     return 'Drawing start: $frameName';
   }
 
+  Widget _buildTimelineActionToolbar(
+    BuildContext context, {
+    required Frame? selectedFrame,
+    required int? selectedEffectiveDuration,
+    required bool canDecreaseExposure,
+    required bool canIncreaseExposure,
+  }) {
+    return DecoratedBox(
+      key: const ValueKey<String>('timeline-action-toolbar'),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(
+                    _currentLayerStatusText,
+                    key: const ValueKey<String>('current-layer-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _currentFrameStatusText,
+                    key: const ValueKey<String>('current-frame-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _currentCellStatusText,
+                    key: const ValueKey<String>('current-cell-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
+                  const SizedBox(width: 16),
+                  Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
+                  const SizedBox(width: 16),
+                  Text(
+                    _linkedFrameUsesStatusText,
+                    key: const ValueKey<String>('linked-frame-uses-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _copiedFrameStatusText,
+                    key: const ValueKey<String>('copied-frame-status'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DecoratedBox(
+                key: const ValueKey<String>('cell-actions-section'),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Cell Actions',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        key: const ValueKey<String>('new-frame-button'),
+                        onPressed: _hasActiveNonNegativeCell
+                            ? () => setState(_createDrawingAtCurrentFrame)
+                            : null,
+                        child: const Text('New Frame'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('blank-exposure-button'),
+                        onPressed: _hasActiveNonNegativeCell
+                            ? () => setState(_createBlankAtCurrentFrame)
+                            : null,
+                        child: const Text('Blank / X'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('toggle-mark-button'),
+                        onPressed: _hasActiveNonNegativeCell
+                            ? () => setState(_toggleMarkAtCurrentFrame)
+                            : null,
+                        child: const Text('Mark ●'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('copy-frame-button'),
+                        onPressed: _canCopyFrameAtCurrentFrame
+                            ? () => setState(_copyFrameAtCurrentFrame)
+                            : null,
+                        child: const Text('Copy Frame'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>(
+                          'paste-linked-frame-button',
+                        ),
+                        onPressed: _canPasteLinkedFrameAtCurrentFrame
+                            ? () => setState(_pasteLinkedFrameAtCurrentFrame)
+                            : null,
+                        child: const Text('Paste Linked Frame'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('rename-frame-button'),
+                        onPressed: _canRenameFrameAtCurrentFrame
+                            ? _renameSelectedFrame
+                            : null,
+                        child: const Text('Rename Frame'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('delete-cell-button'),
+                        onPressed: _canDeleteCellAtCurrentFrame
+                            ? () => setState(_deleteCellAtCurrentFrame)
+                            : null,
+                        child: const Text('Delete Cell'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('decrease-exposure-button'),
+                        onPressed: canDecreaseExposure
+                            ? () => setState(_decreaseSelectedExposure)
+                            : null,
+                        child: const Text('- Exposure'),
+                      ),
+                      TextButton(
+                        key: const ValueKey<String>('increase-exposure-button'),
+                        onPressed: canIncreaseExposure
+                            ? () => setState(_increaseSelectedExposure)
+                            : null,
+                        child: const Text('+ Exposure'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hint: $_cellActionHintText',
+              key: const ValueKey<String>('cell-action-hint'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeLayer = _activeLayer;
@@ -500,138 +661,6 @@ class _HomePageState extends State<HomePage> {
               child: Row(
                 children: [
                   Text('Active strokes: ${_canvasController.strokes.length}'),
-                  const SizedBox(width: 16),
-                  Text(
-                    _currentLayerStatusText,
-                    key: const ValueKey<String>('current-layer-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    _currentFrameStatusText,
-                    key: const ValueKey<String>('current-frame-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    _currentCellStatusText,
-                    key: const ValueKey<String>('current-cell-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
-                  const SizedBox(width: 16),
-                  Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
-                  const SizedBox(width: 16),
-                  Text(
-                    _linkedFrameUsesStatusText,
-                    key: const ValueKey<String>('linked-frame-uses-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    _copiedFrameStatusText,
-                    key: const ValueKey<String>('copied-frame-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  DecoratedBox(
-                    key: const ValueKey<String>('cell-actions-section'),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Cell Actions',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            key: const ValueKey<String>('new-frame-button'),
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_createDrawingAtCurrentFrame)
-                                : null,
-                            child: const Text('New Frame'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>(
-                              'blank-exposure-button',
-                            ),
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_createBlankAtCurrentFrame)
-                                : null,
-                            child: const Text('Blank / X'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>('toggle-mark-button'),
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_toggleMarkAtCurrentFrame)
-                                : null,
-                            child: const Text('Mark ●'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>('copy-frame-button'),
-                            onPressed: _canCopyFrameAtCurrentFrame
-                                ? () => setState(_copyFrameAtCurrentFrame)
-                                : null,
-                            child: const Text('Copy Frame'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>(
-                              'paste-linked-frame-button',
-                            ),
-                            onPressed: _canPasteLinkedFrameAtCurrentFrame
-                                ? () =>
-                                      setState(_pasteLinkedFrameAtCurrentFrame)
-                                : null,
-                            child: const Text('Paste Linked Frame'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>('rename-frame-button'),
-                            onPressed: _canRenameFrameAtCurrentFrame
-                                ? _renameSelectedFrame
-                                : null,
-                            child: const Text('Rename Frame'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>('delete-cell-button'),
-                            onPressed: _canDeleteCellAtCurrentFrame
-                                ? () => setState(_deleteCellAtCurrentFrame)
-                                : null,
-                            child: const Text('Delete Cell'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>(
-                              'decrease-exposure-button',
-                            ),
-                            onPressed: canDecreaseExposure
-                                ? () => setState(_decreaseSelectedExposure)
-                                : null,
-                            child: const Text('- Exposure'),
-                          ),
-                          TextButton(
-                            key: const ValueKey<String>(
-                              'increase-exposure-button',
-                            ),
-                            onPressed: canIncreaseExposure
-                                ? () => setState(_increaseSelectedExposure)
-                                : null,
-                            child: const Text('+ Exposure'),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Hint: $_cellActionHintText',
-                            key: const ValueKey<String>('cell-action-hint'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: _canvasController.canUndo
@@ -704,6 +733,13 @@ class _HomePageState extends State<HomePage> {
             onOrientationChanged: (orientation) {
               setState(() => _timelineOrientation = orientation);
             },
+            timelineActionToolbar: _buildTimelineActionToolbar(
+              context,
+              selectedFrame: selectedFrame,
+              selectedEffectiveDuration: selectedEffectiveDuration,
+              canDecreaseExposure: canDecreaseExposure,
+              canIncreaseExposure: canIncreaseExposure,
+            ),
           ),
         ],
       ),
