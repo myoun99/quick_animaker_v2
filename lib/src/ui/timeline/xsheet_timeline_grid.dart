@@ -147,55 +147,59 @@ class _LayerHeader extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-            InkWell(
-              key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
-              onTap: () => onSelectLayer(layer.id),
-              child: SizedBox(
-                width: double.infinity,
-                child: Text(
-                  layer.name,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: active ? FontWeight.bold : null),
+              InkWell(
+                key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
+                onTap: () => onSelectLayer(layer.id),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    layer.name,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: active ? FontWeight.bold : null,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  key: ValueKey<String>('xsheet-layer-visibility-${layer.id}'),
-                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
+              Row(
+                children: [
+                  IconButton(
+                    key: ValueKey<String>(
+                      'xsheet-layer-visibility-${layer.id}',
+                    ),
+                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    icon: Icon(
+                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                      size: 16,
+                    ),
+                    onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  icon: Icon(
-                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                    size: 16,
+                  Expanded(
+                    child: Slider(
+                      key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
+                      min: 0,
+                      max: 1,
+                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                      onChanged: (opacity) =>
+                          onLayerOpacityChanged(layer.id, opacity),
+                    ),
                   ),
-                  onPressed: () => onToggleLayerVisibility(layer.id),
-                ),
-                Expanded(
-                  child: Slider(
-                    key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged(layer.id, opacity),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      '${(layer.opacity * 100).round()}%',
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: 34,
-                  child: Text(
-                    '${(layer.opacity * 100).round()}%',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ],
           ),
         ),
@@ -345,28 +349,26 @@ class _XSheetCell extends StatelessWidget {
           ),
         ),
         child: Semantics(
-          key: selected
-              ? const ValueKey<String>('xsheet-selected-cell')
-              : null,
+          key: selected ? const ValueKey<String>('xsheet-selected-cell') : null,
           child: Text(
             _markerForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
+              exposureState: exposureState,
+              hasMark: hasMark,
+              frameName: frameName,
+            ),
             semanticsLabel: _semanticsLabelForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
+              exposureState: exposureState,
+              hasMark: hasMark,
+              frameName: frameName,
+            ),
             style: TextStyle(
-            color: selected
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurface,
-            fontWeight:
-                hasMark || exposureState != TimelineCellExposureState.empty
-                ? FontWeight.bold
-                : null,
+              color: selected
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurface,
+              fontWeight:
+                  hasMark || exposureState != TimelineCellExposureState.empty
+                  ? FontWeight.bold
+                  : null,
             ),
           ),
         ),

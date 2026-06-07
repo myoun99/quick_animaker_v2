@@ -168,57 +168,59 @@ class _LayerRow extends StatelessWidget {
               container: true,
               child: Row(
                 children: [
-                Expanded(
-                  child: InkWell(
-                    key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                    onTap: () => onSelectLayer(layer.id),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        layer.name,
-                        overflow: TextOverflow.ellipsis,
+                  Expanded(
+                    child: InkWell(
+                      key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                      onTap: () => onSelectLayer(layer.id),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          layer.name,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                          fontWeight: active ? FontWeight.bold : null,
+                            fontWeight: active ? FontWeight.bold : null,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  key: ValueKey<String>(
-                    'timeline-layer-visibility-${layer.id}',
+                  IconButton(
+                    key: ValueKey<String>(
+                      'timeline-layer-visibility-${layer.id}',
+                    ),
+                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    icon: Icon(
+                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                      size: 18,
+                    ),
+                    onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 32,
-                    height: 32,
+                  SizedBox(
+                    width: 64,
+                    child: Slider(
+                      key: ValueKey<String>(
+                        'timeline-layer-opacity-${layer.id}',
+                      ),
+                      min: 0,
+                      max: 1,
+                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                      onChanged: (opacity) =>
+                          onLayerOpacityChanged(layer.id, opacity),
+                    ),
                   ),
-                  icon: Icon(
-                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                    size: 18,
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      '${(layer.opacity * 100).round()}%',
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                  onPressed: () => onToggleLayerVisibility(layer.id),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Slider(
-                    key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged(layer.id, opacity),
-                  ),
-                ),
-                SizedBox(
-                  width: 34,
-                  child: Text(
-                    '${(layer.opacity * 100).round()}%',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
                 ],
               ),
             ),
@@ -358,23 +360,23 @@ class _TimelineCell extends StatelessWidget {
               : null,
           child: Text(
             _markerForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
+              exposureState: exposureState,
+              hasMark: hasMark,
+              frameName: frameName,
+            ),
             semanticsLabel: _semanticsLabelForCell(
-            exposureState: exposureState,
-            hasMark: hasMark,
-            frameName: frameName,
-          ),
+              exposureState: exposureState,
+              hasMark: hasMark,
+              frameName: frameName,
+            ),
             style: TextStyle(
-            color: selected
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurface,
-            fontWeight:
-                hasMark || exposureState != TimelineCellExposureState.empty
-                ? FontWeight.bold
-                : null,
+              color: selected
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurface,
+              fontWeight:
+                  hasMark || exposureState != TimelineCellExposureState.empty
+                  ? FontWeight.bold
+                  : null,
             ),
           ),
         ),

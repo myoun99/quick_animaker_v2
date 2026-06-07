@@ -41,57 +41,58 @@ void main() {
     expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
   });
 
-  testWidgets('selection status text updates for blank, drawing, name, and mark', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'selection status text updates for blank, drawing, name, and mark',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(
-      find.byKey(const ValueKey<String>('current-layer-status')),
-      findsOneWidget,
-    );
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
-    expect(find.text('Frame: 1'), findsOneWidget);
-    expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('current-layer-status')),
+        findsOneWidget,
+      );
+      expect(find.text('Layer: Layer 1'), findsOneWidget);
+      expect(find.text('Frame: 1'), findsOneWidget);
+      expect(find.text('Cell: Blank start (X)'), findsOneWidget);
 
-    final newFrameButton = find.byKey(
-      const ValueKey<String>('new-frame-button'),
-    );
-    await tester.ensureVisible(newFrameButton);
-    await tester.pumpAndSettle();
-    await tester.tap(newFrameButton);
-    await tester.pumpAndSettle();
+      final newFrameButton = find.byKey(
+        const ValueKey<String>('new-frame-button'),
+      );
+      await tester.ensureVisible(newFrameButton);
+      await tester.pumpAndSettle();
+      await tester.tap(newFrameButton);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Cell: Drawing start'), findsOneWidget);
+      expect(find.text('Cell: Drawing start'), findsOneWidget);
 
-    final renameButton = find.byKey(
-      const ValueKey<String>('rename-frame-button'),
-    );
-    await tester.ensureVisible(renameButton);
-    await tester.pumpAndSettle();
-    await tester.tap(renameButton);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('rename-frame-text-field')),
-      'A1',
-    );
-    await tester.tap(
-      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
-    );
-    await tester.pumpAndSettle();
+      final renameButton = find.byKey(
+        const ValueKey<String>('rename-frame-button'),
+      );
+      await tester.ensureVisible(renameButton);
+      await tester.pumpAndSettle();
+      await tester.tap(renameButton);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('rename-frame-text-field')),
+        'A1',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Cell: Drawing start: A1'), findsOneWidget);
+      expect(find.text('Cell: Drawing start: A1'), findsOneWidget);
 
-    final markButton = find.byKey(
-      const ValueKey<String>('toggle-mark-button'),
-    );
-    await tester.ensureVisible(markButton);
-    await tester.pumpAndSettle();
-    await tester.tap(markButton);
-    await tester.pumpAndSettle();
+      final markButton = find.byKey(
+        const ValueKey<String>('toggle-mark-button'),
+      );
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Cell: Drawing start: A1 + Mark ●'), findsOneWidget);
-  });
+      expect(find.text('Cell: Drawing start: A1 + Mark ●'), findsOneWidget);
+    },
+  );
 
   testWidgets('selection status and toolbar state distinguish held cells', (
     WidgetTester tester,

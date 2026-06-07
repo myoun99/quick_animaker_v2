@@ -281,7 +281,9 @@ void main() {
     );
   });
 
-  testWidgets('selected cell preserves symbol display priority', (tester) async {
+  testWidgets('selected cell preserves symbol display priority', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
@@ -317,7 +319,10 @@ void main() {
       ),
     );
     cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsOneWidget);
+    expect(
+      find.descendant(of: cell, matching: find.text('A1')),
+      findsOneWidget,
+    );
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
 
     await tester.pumpWidget(
@@ -339,7 +344,6 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
   });
-
 }
 
 Widget _grid({
