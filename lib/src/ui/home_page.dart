@@ -52,18 +52,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     final project = _createSampleProject();
     _editingSession = EditingSessionState.forProject(project);
+    final activeCutId = _editingSession.activeCutId;
+
     _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
     _layerController = LayerController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _editingSession.activeCutId,
+      cutId: activeCutId,
       frameId: _frameId,
     );
     _timelineController = TimelineController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _editingSession.activeCutId,
+      cutId: activeCutId,
     );
     _canvasController = CanvasController(
       repository: _repository,
@@ -73,6 +75,8 @@ class _HomePageState extends State<HomePage> {
       timelineController: _timelineController,
     );
   }
+
+  CutId get _activeCutId => _editingSession.activeCutId;
 
   Layer? get _activeLayer => _layerController.activeLayer;
 
@@ -780,7 +784,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 child: CanvasView(
                   controller: _canvasController,
-                  cutId: _editingSession.activeCutId,
+                  cutId: _activeCutId,
                   onChanged: () => setState(() {}),
                 ),
               ),
