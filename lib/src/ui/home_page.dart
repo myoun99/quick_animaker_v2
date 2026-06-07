@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../controllers/active_cut_helpers.dart';
 import '../controllers/canvas_controller.dart';
+import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/canvas_size.dart';
@@ -34,7 +34,7 @@ class _HomePageState extends State<HomePage> {
   static const CutId _sampleCutId = CutId('sample-cut');
   static const FrameId _frameId = FrameId('sample-frame');
 
-  late CutId _activeCutId;
+  late final EditingSessionState _editingSession;
 
   late final ProjectRepository _repository;
   late final HistoryManager _historyManager;
@@ -51,19 +51,19 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final project = _createSampleProject();
-    _activeCutId = defaultActiveCutIdFor(project);
+    _editingSession = EditingSessionState.forProject(project);
     _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
     _layerController = LayerController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _activeCutId,
+      cutId: _editingSession.activeCutId,
       frameId: _frameId,
     );
     _timelineController = TimelineController(
       repository: _repository,
       historyManager: _historyManager,
-      cutId: _activeCutId,
+      cutId: _editingSession.activeCutId,
     );
     _canvasController = CanvasController(
       repository: _repository,
@@ -780,7 +780,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 child: CanvasView(
                   controller: _canvasController,
-                  cutId: _activeCutId,
+                  cutId: _editingSession.activeCutId,
                   onChanged: () => setState(() {}),
                 ),
               ),
