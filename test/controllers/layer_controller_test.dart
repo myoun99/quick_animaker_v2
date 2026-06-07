@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -101,6 +102,70 @@ void main() {
         throwsStateError,
       );
     });
+
+    group('active cut isolation', () {
+      test('cut-a controller exposes only Cut A layers', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-a'));
+
+        expect(fixture.controller.layers.map((layer) => layer.id), [
+          const LayerId('layer-a'),
+        ]);
+        expect(fixture.controller.layers.single.name, 'Layer A');
+      });
+
+      test('cut-b controller exposes only Cut B layers', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-b'));
+
+        expect(fixture.controller.layers.map((layer) => layer.id), [
+          const LayerId('layer-b'),
+        ]);
+        expect(fixture.controller.layers.single.name, 'Layer B');
+      });
+
+      test('adding through cut-a controller updates Cut A only', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-a'));
+
+        fixture.controller.addLayerWithDefaults(
+          layerId: const LayerId('layer-a-added'),
+          name: 'Layer A Added',
+        );
+
+        expect(
+          _findCut(fixture.repository, const CutId('cut-a')).layers.map(
+            (layer) => layer.id,
+          ),
+          [const LayerId('layer-a'), const LayerId('layer-a-added')],
+        );
+        expect(
+          _findCut(fixture.repository, const CutId('cut-b')).layers.map(
+            (layer) => layer.id,
+          ),
+          [const LayerId('layer-b')],
+        );
+      });
+
+      test('adding through cut-b controller updates Cut B only', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-b'));
+
+        fixture.controller.addLayerWithDefaults(
+          layerId: const LayerId('layer-b-added'),
+          name: 'Layer B Added',
+        );
+
+        expect(
+          _findCut(fixture.repository, const CutId('cut-a')).layers.map(
+            (layer) => layer.id,
+          ),
+          [const LayerId('layer-a')],
+        );
+        expect(
+          _findCut(fixture.repository, const CutId('cut-b')).layers.map(
+            (layer) => layer.id,
+          ),
+          [const LayerId('layer-b'), const LayerId('layer-b-added')],
+        );
+      });
+    });
   });
 }
 
@@ -177,4 +242,89 @@ class _LayerFixture {
 
   final ProjectRepository repository;
   final LayerController controller;
+}
+
+_LayerFixture _createTwoCutFixture(CutId cutId) {
+  final repository = ProjectRepository(initialProject: _createTwoCutProject());
+  final controller = LayerController(
+    repository: repository,
+    historyManager: HistoryManager(),
+    cutId: cutId,
+    frameId: const FrameId('frame-a'),
+  );
+
+  return _LayerFixture(repository: repository, controller: controller);
+}
+
+Project _createTwoCutProject() {
+  return Project(
+    id: const ProjectId('two-cut-project'),
+    name: 'Two Cut Test Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('track-1'),
+        name: 'Track 1',
+        cuts: [
+          Cut(
+            id: const CutId('cut-a'),
+            name: 'Cut A',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-a'),
+                name: 'Layer A',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-a'),
+                    duration: 4,
+                    strokes: const [],
+                    name: 'Frame A',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-a')),
+                },
+              ),
+            ],
+          ),
+          Cut(
+            id: const CutId('cut-b'),
+            name: 'Cut B',
+            duration: 8,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-b'),
+                name: 'Layer B',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-b'),
+                    duration: 2,
+                    strokes: const [],
+                    name: 'Frame B',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-b')),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Cut _findCut(ProjectRepository repository, CutId cutId) {
+  for (final track in repository.requireProject().tracks) {
+    for (final cut in track.cuts) {
+      if (cut.id == cutId) {
+        return cut;
+      }
+    }
+  }
+  throw StateError('Cut not found.');
 }

@@ -1053,6 +1053,110 @@ void main() {
       expect(layer.timeline[1]?.frameId, const FrameId('target'));
       expect(layer.frames.map((frame) => frame.id), [const FrameId('target')]);
     });
+
+    group('active cut isolation', () {
+      test('cut-a controller resolves timeline state from Cut A', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-a'));
+        final layerA = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-a'),
+          const LayerId('layer-a'),
+        );
+
+        expect(fixture.controller.totalFrameCount, 4);
+        expect(
+          fixture.controller.resolveFrameIdForLayer(
+            layer: layerA,
+            frameIndex: 0,
+          ),
+          const FrameId('frame-a'),
+        );
+        expect(
+          fixture.controller
+              .resolveFrameForLayer(layer: layerA, frameIndex: 0)
+              ?.name,
+          'Frame A',
+        );
+      });
+
+      test('cut-b controller resolves timeline state from Cut B', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-b'));
+        final layerB = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-b'),
+          const LayerId('layer-b'),
+        );
+
+        expect(fixture.controller.totalFrameCount, 2);
+        expect(
+          fixture.controller.resolveFrameIdForLayer(
+            layer: layerB,
+            frameIndex: 0,
+          ),
+          const FrameId('frame-b'),
+        );
+        expect(
+          fixture.controller
+              .resolveFrameForLayer(layer: layerB, frameIndex: 0)
+              ?.name,
+          'Frame B',
+        );
+      });
+
+      test('creating a drawing frame through cut-a updates Cut A only', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-a'));
+
+        fixture.controller.selectFrameIndex(5);
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('layer-a'),
+          frameId: const FrameId('frame-a-new'),
+        );
+
+        final layerA = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-a'),
+          const LayerId('layer-a'),
+        );
+        final layerB = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-b'),
+          const LayerId('layer-b'),
+        );
+        expect(layerA.frames.map((frame) => frame.id), [
+          const FrameId('frame-a'),
+          const FrameId('frame-a-new'),
+        ]);
+        expect(layerA.timeline[5]?.frameId, const FrameId('frame-a-new'));
+        expect(layerB.frames.map((frame) => frame.id), [
+          const FrameId('frame-b'),
+        ]);
+        expect(layerB.timeline.keys, orderedEquals([0]));
+      });
+
+      test('creating a blank exposure through cut-b updates Cut B only', () {
+        final fixture = _createTwoCutFixture(const CutId('cut-b'));
+
+        fixture.controller.selectFrameIndex(1);
+        fixture.controller.createBlankExposureForLayer(
+          layerId: const LayerId('layer-b'),
+        );
+
+        final layerA = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-a'),
+          const LayerId('layer-a'),
+        );
+        final layerB = _findLayerInCut(
+          fixture.repository,
+          const CutId('cut-b'),
+          const LayerId('layer-b'),
+        );
+        expect(layerA.timeline.keys, orderedEquals([0]));
+        expect(layerA.timeline[0]?.frameId, const FrameId('frame-a'));
+        expect(layerB.timeline.keys, orderedEquals([0, 1]));
+        expect(layerB.timeline[1]?.type, TimelineExposureType.blank);
+      });
+    });
   });
 }
 
@@ -1225,4 +1329,93 @@ class _TimelineFixture {
 
   final ProjectRepository repository;
   final TimelineController controller;
+}
+
+_TimelineFixture _createTwoCutFixture(CutId cutId) {
+  final repository = ProjectRepository(initialProject: _createTwoCutProject());
+  final controller = TimelineController(repository: repository, cutId: cutId);
+  return _TimelineFixture(repository: repository, controller: controller);
+}
+
+Project _createTwoCutProject() {
+  return Project(
+    id: const ProjectId('two-cut-project'),
+    name: 'Two Cut Test Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('track-1'),
+        name: 'Track 1',
+        cuts: [
+          Cut(
+            id: const CutId('cut-a'),
+            name: 'Cut A',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-a'),
+                name: 'Layer A',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-a'),
+                    duration: 4,
+                    strokes: const [],
+                    name: 'Frame A',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-a')),
+                },
+              ),
+            ],
+          ),
+          Cut(
+            id: const CutId('cut-b'),
+            name: 'Cut B',
+            duration: 8,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: [
+              Layer(
+                id: const LayerId('layer-b'),
+                name: 'Layer B',
+                frames: [
+                  Frame(
+                    id: const FrameId('frame-b'),
+                    duration: 2,
+                    strokes: const [],
+                    name: 'Frame B',
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('frame-b')),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Layer _findLayerInCut(
+  ProjectRepository repository,
+  CutId cutId,
+  LayerId layerId,
+) {
+  for (final track in repository.requireProject().tracks) {
+    for (final cut in track.cuts) {
+      if (cut.id != cutId) {
+        continue;
+      }
+      for (final layer in cut.layers) {
+        if (layer.id == layerId) {
+          return layer;
+        }
+      }
+    }
+  }
+
+  throw StateError('Layer not found in cut.');
 }
