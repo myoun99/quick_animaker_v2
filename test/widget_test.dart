@@ -13,6 +13,17 @@ Future<void> _tapToolbarButton(
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapTimelineCell(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  final cell = find.byKey(key);
+  await tester.ensureVisible(cell);
+  await tester.pumpAndSettle();
+  await tester.tap(cell);
+  await tester.pumpAndSettle();
+}
+
 String _cellActionHint(WidgetTester tester) {
   final hint = tester.widget<Text>(
     find.byKey(const ValueKey<String>('cell-action-hint')),
@@ -111,19 +122,19 @@ void main() {
       tester,
       const ValueKey<String>('toggle-mark-button'),
     );
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    await tester.pumpAndSettle();
     expect(_cellActionHint(tester), contains('Held drawing'));
     expect(_cellActionHint(tester), contains('Rename Frame'));
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
     expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-0')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
     );
-    await tester.pumpAndSettle();
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('delete-cell-button'),
@@ -238,18 +249,18 @@ void main() {
     );
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    await tester.pumpAndSettle();
     expect(find.text('Frame: 2'), findsOneWidget);
     expect(find.text('Cell: Blank held'), findsOneWidget);
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-0')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-0'),
     );
-    await tester.pumpAndSettle();
     final newFrameButton = find.byKey(
       const ValueKey<String>('new-frame-button'),
     );
@@ -259,10 +270,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNotNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-2')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-2'),
     );
-    await tester.pumpAndSettle();
     final blankButton = find.byKey(
       const ValueKey<String>('blank-exposure-button'),
     );
@@ -271,10 +282,10 @@ void main() {
     await tester.tap(blankButton);
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    await tester.pumpAndSettle();
     expect(find.text('Cell: Held drawing'), findsOneWidget);
     expect(tester.widget<TextButton>(deleteButton).onPressed, isNull);
     expect(tester.widget<TextButton>(renameButton).onPressed, isNotNull);
@@ -512,10 +523,10 @@ void main() {
     );
     expect(tester.widget<TextButton>(pasteButton).onPressed, isNotNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    await tester.pumpAndSettle();
     expect(_cellActionHint(tester), contains('Paste Linked Frame'));
 
     await _tapToolbarButton(
@@ -551,10 +562,10 @@ void main() {
       const ValueKey<String>('copy-frame-button'),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-2-0'),
     );
-    await tester.pumpAndSettle();
     expect(
       tester
           .widget<TextButton>(
@@ -564,10 +575,10 @@ void main() {
       isNull,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-1')),
+    await _tapTimelineCell(
+      tester,
+      const ValueKey<String>('timeline-cell-sample-layer-1-1'),
     );
-    await tester.pumpAndSettle();
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('blank-exposure-button'),
