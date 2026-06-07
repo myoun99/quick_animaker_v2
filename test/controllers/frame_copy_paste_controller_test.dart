@@ -216,51 +216,48 @@ void main() {
       expect(_frame(layer, const FrameId('a')).strokes, _sampleStrokes);
     });
 
-    test(
-      'pasted linked end exposure edits selected authored use only',
-      () {
-        final fixture = _fixture(
-          _layer(
-            timeline: {
-              0: TimelineExposure.drawing(const FrameId('a')),
-              4: const TimelineExposure.blank(),
-            },
-          ),
-        );
-        fixture.controller.selectFrameIndex(8);
-        fixture.controller.pasteLinkedFrameForLayer(
-          layerId: const LayerId('layer'),
+    test('pasted linked end exposure edits selected authored use only', () {
+      final fixture = _fixture(
+        _layer(
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a')),
+            4: const TimelineExposure.blank(),
+          },
+        ),
+      );
+      fixture.controller.selectFrameIndex(8);
+      fixture.controller.pasteLinkedFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+      );
+
+      fixture.controller.increaseExposure(layerId: const LayerId('layer'));
+
+      final layer = _latestLayer(fixture.repository);
+      expect(layer.timeline.keys, orderedEquals([0, 4, 8]));
+      expect(_frame(layer, const FrameId('a')).strokes, _sampleStrokes);
+      expect(
+        fixture.controller.linkedUseCountForLayerFrame(
+          layer: layer,
           frameId: const FrameId('a'),
-        );
-
-        fixture.controller.increaseExposure(layerId: const LayerId('layer'));
-
-        final layer = _latestLayer(fixture.repository);
-        expect(layer.timeline.keys, orderedEquals([0, 4, 8]));
-        expect(_frame(layer, const FrameId('a')).strokes, _sampleStrokes);
-        expect(
-          fixture.controller.linkedUseCountForLayerFrame(
-            layer: layer,
-            frameId: const FrameId('a'),
-          ),
-          2,
-        );
-        expect(
-          fixture.controller.effectiveDurationForLayerAt(
-            layer: layer,
-            frameIndex: 8,
-          ),
-          3,
-        );
-        expect(
-          fixture.controller.effectiveDurationForLayerFrame(
-            layer: layer,
-            frameId: const FrameId('a'),
-          ),
-          4,
-        );
-      },
-    );
+        ),
+        2,
+      );
+      expect(
+        fixture.controller.effectiveDurationForLayerAt(
+          layer: layer,
+          frameIndex: 8,
+        ),
+        3,
+      );
+      expect(
+        fixture.controller.effectiveDurationForLayerFrame(
+          layer: layer,
+          frameId: const FrameId('a'),
+        ),
+        4,
+      );
+    });
 
     test('paste linked frame is undo and redo able', () {
       final history = HistoryManager();

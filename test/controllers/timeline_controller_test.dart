@@ -661,11 +661,7 @@ void main() {
               id: const LayerId('linked-layer'),
               name: 'Linked Layer',
               frames: [
-                Frame(
-                  id: const FrameId('a'),
-                  duration: 4,
-                  strokes: const [],
-                ),
+                Frame(id: const FrameId('a'), duration: 4, strokes: const []),
               ],
               timeline: {
                 0: TimelineExposure.drawing(const FrameId('a')),
@@ -720,16 +716,8 @@ void main() {
               id: const LayerId('linked-duration-layer'),
               name: 'Linked Duration Layer',
               frames: [
-                Frame(
-                  id: const FrameId('a'),
-                  duration: 4,
-                  strokes: const [],
-                ),
-                Frame(
-                  id: const FrameId('b'),
-                  duration: 1,
-                  strokes: const [],
-                ),
+                Frame(id: const FrameId('a'), duration: 4, strokes: const []),
+                Frame(id: const FrameId('b'), duration: 1, strokes: const []),
               ],
               timeline: {
                 0: TimelineExposure.drawing(const FrameId('a')),
