@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/cut_list_helpers.dart';
+import '../../models/cut_id.dart';
 
 class CutListBar extends StatelessWidget {
-  const CutListBar({super.key, required this.entries});
+  const CutListBar({super.key, required this.entries, this.onCutSelected});
 
   final List<CutListEntry> entries;
+  final ValueChanged<CutId>? onCutSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +37,10 @@ class CutListBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             for (var index = 0; index < entries.length; index += 1) ...[
-              _CutListChip(entry: entries[index]),
+              _CutListChip(
+                entry: entries[index],
+                onSelected: onCutSelected,
+              ),
               if (index < entries.length - 1) const SizedBox(width: 4),
             ],
           ],
@@ -46,9 +51,10 @@ class CutListBar extends StatelessWidget {
 }
 
 class _CutListChip extends StatelessWidget {
-  const _CutListChip({required this.entry});
+  const _CutListChip({required this.entry, required this.onSelected});
 
   final CutListEntry entry;
+  final ValueChanged<CutId>? onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -64,27 +70,34 @@ class _CutListChip extends StatelessWidget {
         ? colorScheme.primary
         : colorScheme.outlineVariant;
 
+    final chip = Container(
+      key: ValueKey<String>('cut-list-entry-${entry.cutId.value}'),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        entry.cutName,
+        key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: foregroundColor,
+          fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    );
+
     return Tooltip(
       message: entry.isActive
           ? 'Active cut: ${entry.cutName}'
           : 'Cut: ${entry.cutName}',
-      child: Container(
-        key: ValueKey<String>('cut-list-entry-${entry.cutId.value}'),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        child: Text(
-          entry.cutName,
-          key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: foregroundColor,
-            fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
-      ),
+      child: onSelected == null
+          ? chip
+          : GestureDetector(
+              onTap: () => onSelected!(entry.cutId),
+              child: chip,
+            ),
     );
   }
 }
