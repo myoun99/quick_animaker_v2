@@ -65,7 +65,13 @@ void main() {
       );
       expect(activeLabel.style?.fontWeight, FontWeight.w700);
       expect(inactiveLabel.style?.fontWeight, FontWeight.w500);
-      expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+      expect(activeDecoration.border?.top.width, 1.5);
+      expect(inactiveDecoration.border?.top.width, 1);
+      expect(
+        find.byKey(const ValueKey<String>('cut-list-entry-active-dot-cut-2')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
       expect(find.byTooltip('Cut: Cut 1'), findsOneWidget);
     });
 
@@ -113,6 +119,27 @@ void main() {
       );
 
       expect(selectedCutId, const CutId('cut-2'));
+      expect(find.byType(InkWell), findsNWidgets(2));
+      expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
+      expect(find.bySemanticsLabel('Switch to cut Cut 2'), findsOneWidget);
+    });
+
+    testWidgets('uses short active semantics label', (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(id: 'cut-1', name: 'Cut 1', isActive: true),
+              _entry(id: 'cut-2', name: 'Cut 2'),
+            ],
+            onCutSelected: (_) {},
+          ),
+        ),
+      );
+
+      expect(find.bySemanticsLabel('Active cut Cut 1'), findsOneWidget);
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
     });
 
     testWidgets('tapping inactive cut does not visually mark it active', (

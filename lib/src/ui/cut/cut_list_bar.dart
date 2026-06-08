@@ -66,32 +66,96 @@ class _CutListChip extends StatelessWidget {
     final borderColor = entry.isActive
         ? colorScheme.primary
         : colorScheme.outlineVariant;
+    final borderRadius = BorderRadius.circular(999);
+    final tooltipMessage = _tooltipMessage;
+    final semanticsLabel = _semanticsLabel;
 
     final chip = Container(
       key: ValueKey<String>('cut-list-entry-${entry.cutId.value}'),
       decoration: BoxDecoration(
         color: backgroundColor,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      child: Text(
-        entry.cutName,
-        key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: foregroundColor,
-          fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+        border: Border.all(
+          color: borderColor,
+          width: entry.isActive ? 1.5 : 1,
         ),
+        borderRadius: borderRadius,
+      ),
+      padding: EdgeInsets.only(
+        left: entry.isActive ? 6 : 8,
+        top: 3,
+        right: 8,
+        bottom: 3,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (entry.isActive) ...[
+            Container(
+              key: ValueKey<String>(
+                'cut-list-entry-active-dot-${entry.cutId.value}',
+              ),
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: foregroundColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            entry.cutName,
+            key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
 
+    final child = onSelected == null
+        ? chip
+        : Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: borderRadius,
+              mouseCursor: SystemMouseCursors.click,
+              onTap: () => onSelected!(entry.cutId),
+              child: chip,
+            ),
+          );
+
     return Tooltip(
-      message: entry.isActive
-          ? 'Active cut: ${entry.cutName}'
-          : 'Cut: ${entry.cutName}',
-      child: onSelected == null
-          ? chip
-          : GestureDetector(onTap: () => onSelected!(entry.cutId), child: chip),
+      message: tooltipMessage,
+      child: Semantics(
+        button: onSelected != null,
+        excludeSemantics: true,
+        label: semanticsLabel,
+        selected: entry.isActive,
+        child: child,
+      ),
     );
+  }
+
+  String get _tooltipMessage {
+    if (entry.isActive) {
+      return 'Active: ${entry.cutName}';
+    }
+    if (onSelected == null) {
+      return 'Cut: ${entry.cutName}';
+    }
+    return 'Switch to ${entry.cutName}';
+  }
+
+  String get _semanticsLabel {
+    if (entry.isActive) {
+      return 'Active cut ${entry.cutName}';
+    }
+    if (onSelected == null) {
+      return 'Cut ${entry.cutName}';
+    }
+    return 'Switch to cut ${entry.cutName}';
   }
 }

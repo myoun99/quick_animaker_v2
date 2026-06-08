@@ -162,7 +162,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
     expect(find.text('Cuts:'), findsOneWidget);
     expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.text('New Drawing'), findsNothing);
   });
 
@@ -191,8 +191,8 @@ void main() {
 
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.text('Cut 2'), findsOneWidget);
-    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
     expect(find.text('Layer: Layer 1'), findsOneWidget);
     expect(find.text('Cut 2 Layer'), findsNothing);
     expect(
@@ -205,8 +205,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Cut: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Switch to Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
     expect(find.text('Layer 1'), findsNothing);
     expect(find.text('Layer 2'), findsNothing);
@@ -226,8 +226,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
     expect(find.text('Layer: Layer 1'), findsOneWidget);
     expect(find.text('Cut 2 Layer'), findsNothing);
     expect(
@@ -242,7 +242,7 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
 
     await _switchToCut(tester, 'sample-cut-2');
-    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
     _expectCellText('sample-cut-2-layer', 0, 'C2');
 
@@ -258,7 +258,7 @@ void main() {
 
     await _switchToCut(tester, 'sample-cut');
 
-    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.text('Layer: Layer 1'), findsOneWidget);
     _expectCellText('sample-layer-1', 0, 'X');
     _expectNoCellText('sample-layer-1', 1, '○');
@@ -267,7 +267,7 @@ void main() {
 
     await _switchToCut(tester, 'sample-cut-2');
 
-    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     _expectCellText('sample-cut-2-layer', 1, '○');
   });
 
@@ -300,7 +300,7 @@ void main() {
 
       await _switchToCut(tester, 'sample-cut');
 
-      expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
       _expectCellText('sample-layer-1', 0, 'X');
       _expectNoCellText('sample-layer-1', 1, 'X');
       _expectNoCellText('sample-layer-1', 2, '●');
@@ -358,7 +358,7 @@ void main() {
 
       await _switchToCut(tester, 'sample-cut-2');
 
-      expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+      expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
       expect(find.text('Copy: -'), findsOneWidget);
       expect(
         _isActionButtonEnabled(
@@ -399,14 +399,14 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Undo'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
     _expectNoCellText('sample-cut-2-layer', 1, '○');
 
     await tester.tap(find.widgetWithText(TextButton, 'Redo'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     _expectCellText('sample-cut-2-layer', 1, '○');
   });
 
