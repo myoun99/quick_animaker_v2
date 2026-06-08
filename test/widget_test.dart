@@ -123,6 +123,14 @@ Future<void> _tapCutCommandButton(
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapTopBarTextButton(WidgetTester tester, String label) async {
+  final button = find.widgetWithText(TextButton, label);
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 void _expectTimelineActionTooltips() {
   expect(find.byTooltip('New Frame'), findsOneWidget);
   expect(find.byTooltip('Blank / X'), findsOneWidget);
@@ -364,8 +372,7 @@ void main() {
       const CutId('sample-cut'),
     );
 
-    await tester.tap(find.widgetWithText(TextButton, 'Undo'));
-    await tester.pumpAndSettle();
+    await _tapTopBarTextButton(tester, 'Undo');
 
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.text('Scene A'), findsNothing);
@@ -375,8 +382,7 @@ void main() {
       const CutId('sample-cut'),
     );
 
-    await tester.tap(find.widgetWithText(TextButton, 'Redo'));
-    await tester.pumpAndSettle();
+    await _tapTopBarTextButton(tester, 'Redo');
 
     expect(find.text('Scene A'), findsOneWidget);
     expect(find.text('Cut 1'), findsNothing);
@@ -652,15 +658,13 @@ void main() {
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     _expectCellText('sample-cut-2-layer', 1, '○');
 
-    await tester.tap(find.widgetWithText(TextButton, 'Undo'));
-    await tester.pumpAndSettle();
+    await _tapTopBarTextButton(tester, 'Undo');
 
     expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
     _expectNoCellText('sample-cut-2-layer', 1, '○');
 
-    await tester.tap(find.widgetWithText(TextButton, 'Redo'));
-    await tester.pumpAndSettle();
+    await _tapTopBarTextButton(tester, 'Redo');
 
     expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     _expectCellText('sample-cut-2-layer', 1, '○');
