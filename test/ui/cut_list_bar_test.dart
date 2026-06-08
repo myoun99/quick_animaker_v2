@@ -80,9 +80,84 @@ void main() {
         ),
       );
 
+      final cutListBar = find.byKey(const ValueKey<String>('cut-list-bar'));
+
       expect(find.byType(TextButton), findsNothing);
       expect(find.byType(IconButton), findsNothing);
       expect(find.byType(InkWell), findsNothing);
+      expect(
+        find.descendant(of: cutListBar, matching: find.byType(GestureDetector)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('calls onCutSelected with tapped cut id when provided', (
+      tester,
+    ) async {
+      CutId? selectedCutId;
+
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(id: 'cut-1', name: 'Cut 1'),
+              _entry(id: 'cut-2', name: 'Cut 2'),
+            ],
+            onCutSelected: (cutId) => selectedCutId = cutId,
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('cut-list-entry-cut-2')),
+      );
+
+      expect(selectedCutId, const CutId('cut-2'));
+    });
+
+    testWidgets('tapping inactive cut does not visually mark it active', (
+      tester,
+    ) async {
+      CutId? selectedCutId;
+
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(id: 'cut-1', name: 'Cut 1', isActive: true),
+              _entry(id: 'cut-2', name: 'Cut 2'),
+            ],
+            onCutSelected: (cutId) => selectedCutId = cutId,
+          ),
+        ),
+      );
+
+      final theme = Theme.of(
+        tester.element(find.byKey(const ValueKey<String>('cut-list-bar'))),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('cut-list-entry-cut-2')),
+      );
+      await tester.pump();
+
+      final activeDecoration = _chipDecoration(tester, 'cut-1');
+      final inactiveDecoration = _chipDecoration(tester, 'cut-2');
+      final activeLabel = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('cut-list-entry-label-cut-1')),
+      );
+      final inactiveLabel = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('cut-list-entry-label-cut-2')),
+      );
+
+      expect(selectedCutId, const CutId('cut-2'));
+      expect(activeDecoration.color, theme.colorScheme.primaryContainer);
+      expect(
+        inactiveDecoration.color,
+        theme.colorScheme.surfaceContainerHighest,
+      );
+      expect(activeLabel.style?.fontWeight, FontWeight.w700);
+      expect(inactiveLabel.style?.fontWeight, FontWeight.w500);
     });
 
     testWidgets('renders nothing when entries are empty', (tester) async {
