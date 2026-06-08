@@ -110,6 +110,47 @@ class ProjectRepository {
     });
   }
 
+  void reorderCut({
+    required TrackId trackId,
+    required CutId cutId,
+    required int newIndex,
+  }) {
+    updateProject((project) {
+      var foundTrack = false;
+      var foundCut = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            if (track.id != trackId) {
+              return track;
+            }
+
+            foundTrack = true;
+            final cuts = [...track.cuts];
+            final oldIndex = cuts.indexWhere((cut) => cut.id == cutId);
+            if (oldIndex == -1) {
+              return track;
+            }
+
+            foundCut = true;
+            final cut = cuts.removeAt(oldIndex);
+            cuts.insert(newIndex, cut);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundTrack) {
+        throw StateError('Track not found: $trackId');
+      }
+      if (!foundCut) {
+        throw StateError('Cut not found in track $trackId: $cutId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
   Cut removeCut({required CutId cutId}) {
     Cut? removedCut;
 

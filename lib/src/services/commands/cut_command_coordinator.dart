@@ -10,6 +10,7 @@ import 'create_cut_command.dart';
 import 'delete_cut_command.dart';
 import 'duplicate_cut_command.dart';
 import 'rename_cut_command.dart';
+import 'reorder_cut_command.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -41,6 +42,21 @@ class CutCommandCoordinator {
   void renameCut({required CutId cutId, required String newName}) {
     historyManager.execute(
       RenameCutCommand(repository: repository, cutId: cutId, newName: newName),
+    );
+  }
+
+  void reorderCut({
+    required TrackId trackId,
+    required CutId cutId,
+    required int newIndex,
+  }) {
+    historyManager.execute(
+      ReorderCutCommand(
+        repository: repository,
+        trackId: trackId,
+        cutId: cutId,
+        newIndex: newIndex,
+      ),
     );
   }
 

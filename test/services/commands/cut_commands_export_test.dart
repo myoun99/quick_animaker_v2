@@ -9,6 +9,7 @@ void main() {
         RenameCutCommand,
         DeleteCutCommand,
         DuplicateCutCommand,
+        ReorderCutCommand,
         CutCommandCoordinator,
       ],
       containsAll(<Type>[
@@ -16,6 +17,7 @@ void main() {
         RenameCutCommand,
         DeleteCutCommand,
         DuplicateCutCommand,
+        ReorderCutCommand,
         CutCommandCoordinator,
       ]),
     );
