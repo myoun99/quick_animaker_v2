@@ -21,7 +21,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutA.id);
@@ -41,7 +43,9 @@ void main() {
       final sameNameCut = _cut(id: 'same-name-cut', name: 'Shared Name');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [targetCut, sameNameCut])],
+          tracks: [
+            _track(id: 'track-1', cuts: [targetCut, sameNameCut]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: sameNameCut.id);
@@ -62,7 +66,9 @@ void main() {
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB, cutC])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB, cutC]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutA.id);
@@ -86,7 +92,9 @@ void main() {
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB, cutC])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB, cutC]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutB.id);
@@ -106,7 +114,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutA.id);
@@ -126,7 +136,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutB.id);
@@ -146,7 +158,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutA.id);
@@ -167,7 +181,9 @@ void main() {
         final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
         final repository = ProjectRepository(
           initialProject: _project(
-            tracks: [_track(id: 'track-1', cuts: [onlyCut])],
+            tracks: [
+              _track(id: 'track-1', cuts: [onlyCut]),
+            ],
           ),
         );
         final editingSession = EditingSessionState(activeCutId: onlyCut.id);
@@ -191,42 +207,55 @@ void main() {
           const CutId('replacement-cut'),
         );
         expect(
-          repository.requireProject().tracks.single.cuts.single.layers.single.id,
+          repository
+              .requireProject()
+              .tracks
+              .single
+              .cuts
+              .single
+              .layers
+              .single
+              .id,
           const LayerId('replacement-layer'),
         );
         expect(editingSession.activeCutId, const CutId('replacement-cut'));
       },
     );
 
-    test('replacement default cut supports caller-provided name and canvas size', () {
-      final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
-      final repository = ProjectRepository(
-        initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [onlyCut])],
-        ),
-      );
-      final editingSession = EditingSessionState(activeCutId: onlyCut.id);
+    test(
+      'replacement default cut supports caller-provided name and canvas size',
+      () {
+        final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(id: 'track-1', cuts: [onlyCut]),
+            ],
+          ),
+        );
+        final editingSession = EditingSessionState(activeCutId: onlyCut.id);
 
-      DeleteCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        cutId: onlyCut.id,
-        replacementCutId: const CutId('replacement-cut'),
-        replacementLayerId: const LayerId('replacement-layer'),
-        replacementName: 'Replacement',
-        replacementCanvasSize: const CanvasSize(width: 640, height: 360),
-      ).execute();
+        DeleteCutCommand(
+          repository: repository,
+          editingSession: editingSession,
+          cutId: onlyCut.id,
+          replacementCutId: const CutId('replacement-cut'),
+          replacementLayerId: const LayerId('replacement-layer'),
+          replacementName: 'Replacement',
+          replacementCanvasSize: const CanvasSize(width: 640, height: 360),
+        ).execute();
 
-      expect(
-        repository.requireProject().tracks.single.cuts.single,
-        createDefaultCut(
-          cutId: const CutId('replacement-cut'),
-          name: 'Replacement',
-          layerId: const LayerId('replacement-layer'),
-          canvasSize: const CanvasSize(width: 640, height: 360),
-        ),
-      );
-    });
+        expect(
+          repository.requireProject().tracks.single.cuts.single,
+          createDefaultCut(
+            cutId: const CutId('replacement-cut'),
+            name: 'Replacement',
+            layerId: const LayerId('replacement-layer'),
+            canvasSize: const CanvasSize(width: 640, height: 360),
+          ),
+        );
+      },
+    );
 
     test('undo restores the deleted cut at its original track and index', () {
       final cutA = _cut(id: 'cut-a', name: 'Cut A');
@@ -261,7 +290,9 @@ void main() {
       final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [onlyCut])],
+          tracks: [
+            _track(id: 'track-1', cuts: [onlyCut]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: onlyCut.id);
@@ -287,7 +318,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutB.id);
@@ -312,7 +345,9 @@ void main() {
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cutA, cutB, cutC])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cutA, cutB, cutC]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cutB.id);
@@ -336,7 +371,9 @@ void main() {
       final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [onlyCut])],
+          tracks: [
+            _track(id: 'track-1', cuts: [onlyCut]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: onlyCut.id);
@@ -354,16 +391,13 @@ void main() {
       historyManager.undo();
       historyManager.redo();
 
-      expect(
-        repository.requireProject().tracks.single.cuts,
-        [
-          createDefaultCut(
-            cutId: const CutId('replacement-cut'),
-            name: 'Cut 1',
-            layerId: const LayerId('replacement-layer'),
-          ),
-        ],
-      );
+      expect(repository.requireProject().tracks.single.cuts, [
+        createDefaultCut(
+          cutId: const CutId('replacement-cut'),
+          name: 'Cut 1',
+          layerId: const LayerId('replacement-layer'),
+        ),
+      ]);
       expect(editingSession.activeCutId, const CutId('replacement-cut'));
     });
 
@@ -371,7 +405,9 @@ void main() {
       final cut = _cut(id: 'cut-a', name: 'Cut A');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', cuts: [cut]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: cut.id);
@@ -392,7 +428,9 @@ void main() {
       () {
         final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
         final project = _project(
-          tracks: [_track(id: 'track-1', cuts: [onlyCut])],
+          tracks: [
+            _track(id: 'track-1', cuts: [onlyCut]),
+          ],
         );
         final repository = ProjectRepository(initialProject: project);
         final editingSession = EditingSessionState(activeCutId: onlyCut.id);
@@ -410,34 +448,41 @@ void main() {
       },
     );
 
-    test('failed missing-target execute does not change project or activeCutId', () {
-      final cut = _cut(id: 'cut-a', name: 'Cut A');
-      final project = _project(
-        tracks: [_track(id: 'track-1', cuts: [cut])],
-      );
-      final repository = ProjectRepository(initialProject: project);
-      final editingSession = EditingSessionState(activeCutId: cut.id);
+    test(
+      'failed missing-target execute does not change project or activeCutId',
+      () {
+        final cut = _cut(id: 'cut-a', name: 'Cut A');
+        final project = _project(
+          tracks: [
+            _track(id: 'track-1', cuts: [cut]),
+          ],
+        );
+        final repository = ProjectRepository(initialProject: project);
+        final editingSession = EditingSessionState(activeCutId: cut.id);
 
-      expect(
-        () => DeleteCutCommand(
-          repository: repository,
-          editingSession: editingSession,
-          cutId: const CutId('missing-cut'),
-          replacementCutId: const CutId('replacement-cut'),
-          replacementLayerId: const LayerId('replacement-layer'),
-        ).execute(),
-        throwsStateError,
-      );
-      expect(repository.requireProject(), project);
-      expect(editingSession.activeCutId, cut.id);
-    });
+        expect(
+          () => DeleteCutCommand(
+            repository: repository,
+            editingSession: editingSession,
+            cutId: const CutId('missing-cut'),
+            replacementCutId: const CutId('replacement-cut'),
+            replacementLayerId: const LayerId('replacement-layer'),
+          ).execute(),
+          throwsStateError,
+        );
+        expect(repository.requireProject(), project);
+        expect(editingSession.activeCutId, cut.id);
+      },
+    );
 
     test('undo before execute throws', () {
       final cut = _cut(id: 'cut-a', name: 'Cut A');
       final command = DeleteCutCommand(
         repository: ProjectRepository(
           initialProject: _project(
-            tracks: [_track(id: 'track-1', cuts: [cut])],
+            tracks: [
+              _track(id: 'track-1', cuts: [cut]),
+            ],
           ),
         ),
         editingSession: EditingSessionState(activeCutId: cut.id),
