@@ -123,12 +123,23 @@ Future<void> _tapCutCommandButton(
   await tester.pumpAndSettle();
 }
 
-Future<void> _tapTopBarTextButton(WidgetTester tester, String label) async {
-  final button = find.widgetWithText(TextButton, label);
+Future<void> _tapTopBarButton(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  final button = find.byKey(key);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
   await tester.pumpAndSettle();
+}
+
+Future<void> _tapUndoButton(WidgetTester tester) async {
+  await _tapTopBarButton(tester, const ValueKey<String>('undo-button'));
+}
+
+Future<void> _tapRedoButton(WidgetTester tester) async {
+  await _tapTopBarButton(tester, const ValueKey<String>('redo-button'));
 }
 
 void _expectTimelineActionTooltips() {
@@ -202,6 +213,60 @@ void main() {
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.text('New Drawing'), findsNothing);
+  });
+
+  testWidgets('top row keeps cut actions and undo redo reachable', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(
+      find.byKey(const ValueKey<String>('top-toolbar-scroll-view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('top-toolbar-row')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('New Cut'), findsOneWidget);
+    expect(find.byTooltip('Rename Cut'), findsOneWidget);
+    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+    expect(find.byTooltip('Delete Cut'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
+
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+    _expectCellText('sample-layer-1', 0, '○');
+
+    await _tapUndoButton(tester);
+
+    _expectCellText('sample-layer-1', 0, 'X');
+    _expectNoCellText('sample-layer-1', 0, '○');
+
+    await _tapRedoButton(tester);
+
+    _expectCellText('sample-layer-1', 0, '○');
+  });
+
+  testWidgets('does not expose future cut management features', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.byTooltip('Reorder Cut'), findsNothing);
+    expect(find.byTooltip('Move Cut Left'), findsNothing);
+    expect(find.byTooltip('Move Cut Right'), findsNothing);
+    expect(find.byTooltip('Linked Cut'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('cut-reorder-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cut-management-panel')),
+      findsNothing,
+    );
+    expect(find.text('Cut Management'), findsNothing);
+    expect(find.text('Manage Cuts'), findsNothing);
   });
 
   testWidgets('creates a new cut from the cut list command', (
@@ -375,7 +440,7 @@ void main() {
       const CutId('sample-cut'),
     );
 
-    await _tapTopBarTextButton(tester, 'Undo');
+    await _tapUndoButton(tester);
 
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.text('Scene A'), findsNothing);
@@ -385,7 +450,7 @@ void main() {
       const CutId('sample-cut'),
     );
 
-    await _tapTopBarTextButton(tester, 'Redo');
+    await _tapRedoButton(tester);
 
     expect(find.text('Scene A'), findsOneWidget);
     expect(find.text('Cut 1'), findsNothing);
@@ -661,13 +726,13 @@ void main() {
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     _expectCellText('sample-cut-2-layer', 1, '○');
 
-    await _tapTopBarTextButton(tester, 'Undo');
+    await _tapUndoButton(tester);
 
     expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
     _expectNoCellText('sample-cut-2-layer', 1, '○');
 
-    await _tapTopBarTextButton(tester, 'Redo');
+    await _tapRedoButton(tester);
 
     expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     _expectCellText('sample-cut-2-layer', 1, '○');

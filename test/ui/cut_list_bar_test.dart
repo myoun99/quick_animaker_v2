@@ -128,6 +128,37 @@ void main() {
       expect(deleteCutCount, 1);
     });
 
+    testWidgets('keeps long cut labels compact', (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(
+                id: 'cut-1',
+                name: 'A very long production cut name for layout hardening',
+                isActive: true,
+              ),
+            ],
+            onNewCut: () {},
+            onRenameActiveCut: () {},
+            onDuplicateActiveCut: () {},
+            onDeleteActiveCut: () {},
+          ),
+        ),
+      );
+
+      final label = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('cut-list-entry-label-cut-1')),
+      );
+
+      expect(label.overflow, TextOverflow.ellipsis);
+      expect(label.softWrap, isFalse);
+      expect(find.byTooltip('New Cut'), findsOneWidget);
+      expect(find.byTooltip('Rename Cut'), findsOneWidget);
+      expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+      expect(find.byTooltip('Delete Cut'), findsOneWidget);
+    });
+
     testWidgets('renders no cut controls for passive read-only display', (
       tester,
     ) async {

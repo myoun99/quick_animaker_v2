@@ -49,6 +49,7 @@ class _HomePageState extends State<HomePage> {
   int _layerSequence = 2;
   int _frameSequence = 0;
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
+  final ScrollController _topToolbarScrollController = ScrollController();
   _CopiedFrameReference? _copiedFrame;
 
   @override
@@ -65,6 +66,12 @@ class _HomePageState extends State<HomePage> {
       historyManager: _historyManager,
     );
     _rebuildActiveCutControllers();
+  }
+
+  @override
+  void dispose() {
+    _topToolbarScrollController.dispose();
+    super.dispose();
   }
 
   void _rebuildActiveCutControllers() {
@@ -870,30 +877,39 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  Text('Active strokes: ${_canvasController.strokes.length}'),
-                  const SizedBox(width: 16),
-                  CutListBar(
-                    entries: cutEntries,
-                    onCutSelected: _handleCutSelected,
-                    onNewCut: _createCutFromList,
-                    onRenameActiveCut: _renameActiveCutFromList,
-                    onDuplicateActiveCut: _duplicateActiveCutFromList,
-                    onDeleteActiveCut: _deleteActiveCutFromList,
-                  ),
-                  const SizedBox(width: 16),
-                  TextButton(
-                    onPressed: _canvasController.canUndo ? _undo : null,
-                    child: const Text('Undo'),
-                  ),
-                  TextButton(
-                    onPressed: _canvasController.canRedo ? _redo : null,
-                    child: const Text('Redo'),
-                  ),
-                ],
+            child: Scrollbar(
+              controller: _topToolbarScrollController,
+              child: SingleChildScrollView(
+                key: const ValueKey<String>('top-toolbar-scroll-view'),
+                controller: _topToolbarScrollController,
+                scrollDirection: Axis.horizontal,
+                primary: false,
+                child: Row(
+                  key: const ValueKey<String>('top-toolbar-row'),
+                  children: [
+                    Text('Active strokes: ${_canvasController.strokes.length}'),
+                    const SizedBox(width: 16),
+                    CutListBar(
+                      entries: cutEntries,
+                      onCutSelected: _handleCutSelected,
+                      onNewCut: _createCutFromList,
+                      onRenameActiveCut: _renameActiveCutFromList,
+                      onDuplicateActiveCut: _duplicateActiveCutFromList,
+                      onDeleteActiveCut: _deleteActiveCutFromList,
+                    ),
+                    const SizedBox(width: 16),
+                    TextButton(
+                      key: const ValueKey<String>('undo-button'),
+                      onPressed: _canvasController.canUndo ? _undo : null,
+                      child: const Text('Undo'),
+                    ),
+                    TextButton(
+                      key: const ValueKey<String>('redo-button'),
+                      onPressed: _canvasController.canRedo ? _redo : null,
+                      child: const Text('Redo'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
