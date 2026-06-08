@@ -4,10 +4,20 @@ import '../../controllers/cut_list_helpers.dart';
 import '../../models/cut_id.dart';
 
 class CutListBar extends StatelessWidget {
-  const CutListBar({super.key, required this.entries, this.onCutSelected});
+  const CutListBar({
+    super.key,
+    required this.entries,
+    this.onCutSelected,
+    this.onNewCut,
+    this.onDuplicateActiveCut,
+    this.onDeleteActiveCut,
+  });
 
   final List<CutListEntry> entries;
   final ValueChanged<CutId>? onCutSelected;
+  final VoidCallback? onNewCut;
+  final VoidCallback? onDuplicateActiveCut;
+  final VoidCallback? onDeleteActiveCut;
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +50,61 @@ class CutListBar extends StatelessWidget {
               _CutListChip(entry: entries[index], onSelected: onCutSelected),
               if (index < entries.length - 1) const SizedBox(width: 4),
             ],
+            if (_hasCommandActions) ...[
+              const SizedBox(width: 6),
+              _CutCommandIconButton(
+                key: const ValueKey<String>('new-cut-button'),
+                tooltip: 'New Cut',
+                icon: Icons.add,
+                onPressed: onNewCut,
+              ),
+              _CutCommandIconButton(
+                key: const ValueKey<String>('duplicate-cut-button'),
+                tooltip: 'Duplicate Cut',
+                icon: Icons.content_copy,
+                onPressed: onDuplicateActiveCut,
+              ),
+              _CutCommandIconButton(
+                key: const ValueKey<String>('delete-cut-button'),
+                tooltip: 'Delete Cut',
+                icon: Icons.delete_outline,
+                onPressed: onDeleteActiveCut,
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  bool get _hasCommandActions =>
+      onNewCut != null ||
+      onDuplicateActiveCut != null ||
+      onDeleteActiveCut != null;
+}
+
+class _CutCommandIconButton extends StatelessWidget {
+  const _CutCommandIconButton({
+    required super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 18,
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      visualDensity: VisualDensity.compact,
     );
   }
 }
