@@ -40,9 +40,11 @@ void main() {
           targetTrackId: const TrackId('track-1'),
           newCutId: const CutId('cut-duplicate'),
           newName: 'Duplicate Cut',
-          layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-          frameIdMap: const {
-            FrameId('frame-source'): FrameId('frame-copy'),
+          layerIdMap: {
+            const LayerId('layer-source'): const LayerId('layer-copy'),
+          },
+          frameIdMap: {
+            const FrameId('frame-source'): const FrameId('frame-copy'),
           },
         ),
       );
@@ -75,11 +77,7 @@ void main() {
       final repository = ProjectRepository(
         initialProject: _project(
           tracks: [
-            _track(
-              id: 'track-1',
-              name: 'Video',
-              cuts: [cutA, sourceCut, cutB],
-            ),
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, sourceCut, cutB]),
           ],
         ),
       );
@@ -92,8 +90,12 @@ void main() {
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
-        layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-        frameIdMap: const {FrameId('frame-source'): FrameId('frame-copy')},
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
         index: 1,
       ).execute();
 
@@ -126,8 +128,12 @@ void main() {
         targetTrackId: const TrackId('track-target'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
-        layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-        frameIdMap: const {FrameId('frame-source'): FrameId('frame-copy')},
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
       ).execute();
 
       final tracks = repository.requireProject().tracks;
@@ -136,36 +142,43 @@ void main() {
       expect(editingSession.activeCutId, const CutId('cut-duplicate'));
     });
 
-    test('undo removes the duplicated cut and restores previous active cut', () {
-      final sourceCut = _sourceCut();
-      final repository = ProjectRepository(
-        initialProject: _project(
-          tracks: [
-            _track(id: 'track-1', name: 'Video', cuts: [sourceCut]),
-          ],
-        ),
-      );
-      final editingSession = EditingSessionState(activeCutId: sourceCut.id);
-      final historyManager = HistoryManager();
+    test(
+      'undo removes the duplicated cut and restores previous active cut',
+      () {
+        final sourceCut = _sourceCut();
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [sourceCut]),
+            ],
+          ),
+        );
+        final editingSession = EditingSessionState(activeCutId: sourceCut.id);
+        final historyManager = HistoryManager();
 
-      historyManager.execute(
-        DuplicateCutCommand(
-          repository: repository,
-          editingSession: editingSession,
-          sourceCutId: sourceCut.id,
-          targetTrackId: const TrackId('track-1'),
-          newCutId: const CutId('cut-duplicate'),
-          newName: 'Duplicate Cut',
-          layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-          frameIdMap: const {FrameId('frame-source'): FrameId('frame-copy')},
-        ),
-      );
+        historyManager.execute(
+          DuplicateCutCommand(
+            repository: repository,
+            editingSession: editingSession,
+            sourceCutId: sourceCut.id,
+            targetTrackId: const TrackId('track-1'),
+            newCutId: const CutId('cut-duplicate'),
+            newName: 'Duplicate Cut',
+            layerIdMap: {
+              const LayerId('layer-source'): const LayerId('layer-copy'),
+            },
+            frameIdMap: {
+              const FrameId('frame-source'): const FrameId('frame-copy'),
+            },
+          ),
+        );
 
-      historyManager.undo();
+        historyManager.undo();
 
-      expect(repository.requireProject().tracks.single.cuts, [sourceCut]);
-      expect(editingSession.activeCutId, const CutId('cut-source'));
-    });
+        expect(repository.requireProject().tracks.single.cuts, [sourceCut]);
+        expect(editingSession.activeCutId, const CutId('cut-source'));
+      },
+    );
 
     test('redo reinserts the same duplicated cut and makes it active', () {
       final sourceCut = _sourceCut();
@@ -186,8 +199,12 @@ void main() {
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
-        layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-        frameIdMap: const {FrameId('frame-source'): FrameId('frame-copy')},
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
         index: 1,
       );
 
@@ -231,7 +248,9 @@ void main() {
       final sourceCut = _sourceCut();
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [sourceCut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [sourceCut]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(activeCutId: sourceCut.id);
@@ -242,8 +261,12 @@ void main() {
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
-        layerIdMap: const {LayerId('layer-source'): LayerId('layer-copy')},
-        frameIdMap: const {FrameId('frame-source'): FrameId('frame-copy')},
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
       );
 
       expect(command.undo, throwsStateError);
