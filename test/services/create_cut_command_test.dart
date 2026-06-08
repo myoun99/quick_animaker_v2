@@ -19,7 +19,9 @@ void main() {
     test('creates a default cut, inserts it, and makes it active', () {
       final existingCut = _cut(id: 'cut-existing', name: 'Existing');
       final project = _project(
-        tracks: [_track(id: 'track-1', name: 'Video', cuts: [existingCut])],
+        tracks: [
+          _track(id: 'track-1', name: 'Video', cuts: [existingCut]),
+        ],
       );
       final repository = ProjectRepository(initialProject: project);
       final editingSession = EditingSessionState(
@@ -51,7 +53,9 @@ void main() {
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(
@@ -80,41 +84,48 @@ void main() {
       expect(editingSession.activeCutId, const CutId('cut-new'));
     });
 
-    test('undo removes the created cut and restores the previous active cut', () {
-      final existingCut = _cut(id: 'cut-existing', name: 'Existing');
-      final repository = ProjectRepository(
-        initialProject: _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [existingCut])],
-        ),
-      );
-      final editingSession = EditingSessionState(
-        activeCutId: const CutId('cut-existing'),
-      );
-      final historyManager = HistoryManager();
+    test(
+      'undo removes the created cut and restores the previous active cut',
+      () {
+        final existingCut = _cut(id: 'cut-existing', name: 'Existing');
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [existingCut]),
+            ],
+          ),
+        );
+        final editingSession = EditingSessionState(
+          activeCutId: const CutId('cut-existing'),
+        );
+        final historyManager = HistoryManager();
 
-      historyManager.execute(
-        CreateCutCommand(
-          repository: repository,
-          editingSession: editingSession,
-          trackId: const TrackId('track-1'),
-          cutId: const CutId('cut-new'),
-          layerId: const LayerId('layer-new'),
-          name: 'New Cut',
-        ),
-      );
+        historyManager.execute(
+          CreateCutCommand(
+            repository: repository,
+            editingSession: editingSession,
+            trackId: const TrackId('track-1'),
+            cutId: const CutId('cut-new'),
+            layerId: const LayerId('layer-new'),
+            name: 'New Cut',
+          ),
+        );
 
-      historyManager.undo();
+        historyManager.undo();
 
-      expect(repository.requireProject().tracks.single.cuts, [existingCut]);
-      expect(editingSession.activeCutId, const CutId('cut-existing'));
-    });
+        expect(repository.requireProject().tracks.single.cuts, [existingCut]);
+        expect(editingSession.activeCutId, const CutId('cut-existing'));
+      },
+    );
 
     test('redo reinserts the same created cut and makes it active', () {
       final cutA = _cut(id: 'cut-a', name: 'Cut A');
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA, cutB])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB]),
+          ],
         ),
       );
       final editingSession = EditingSessionState(
@@ -161,23 +172,26 @@ void main() {
       expect(command.undo, throwsStateError);
     });
 
-    test('missing target propagates an error and leaves active cut unchanged', () {
-      final repository = ProjectRepository(initialProject: _project());
-      final editingSession = EditingSessionState(
-        activeCutId: const CutId('cut-existing'),
-      );
-      final command = CreateCutCommand(
-        repository: repository,
-        editingSession: editingSession,
-        trackId: const TrackId('missing'),
-        cutId: const CutId('cut-new'),
-        layerId: const LayerId('layer-new'),
-        name: 'New Cut',
-      );
+    test(
+      'missing target propagates an error and leaves active cut unchanged',
+      () {
+        final repository = ProjectRepository(initialProject: _project());
+        final editingSession = EditingSessionState(
+          activeCutId: const CutId('cut-existing'),
+        );
+        final command = CreateCutCommand(
+          repository: repository,
+          editingSession: editingSession,
+          trackId: const TrackId('missing'),
+          cutId: const CutId('cut-new'),
+          layerId: const LayerId('layer-new'),
+          name: 'New Cut',
+        );
 
-      expect(command.execute, throwsStateError);
-      expect(editingSession.activeCutId, const CutId('cut-existing'));
-    });
+        expect(command.execute, throwsStateError);
+        expect(editingSession.activeCutId, const CutId('cut-existing'));
+      },
+    );
   });
 }
 
