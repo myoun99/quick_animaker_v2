@@ -37,10 +37,7 @@ class CutListBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             for (var index = 0; index < entries.length; index += 1) ...[
-              _CutListChip(
-                entry: entries[index],
-                onSelected: onCutSelected,
-              ),
+              _CutListChip(entry: entries[index], onSelected: onCutSelected),
               if (index < entries.length - 1) const SizedBox(width: 4),
             ],
           ],
@@ -94,10 +91,7 @@ class _CutListChip extends StatelessWidget {
           : 'Cut: ${entry.cutName}',
       child: onSelected == null
           ? chip
-          : GestureDetector(
-              onTap: () => onSelected!(entry.cutId),
-              child: chip,
-            ),
+          : GestureDetector(onTap: () => onSelected!(entry.cutId), child: chip),
     );
   }
 }
