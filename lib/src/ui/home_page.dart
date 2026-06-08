@@ -40,9 +40,9 @@ class _HomePageState extends State<HomePage> {
 
   late final ProjectRepository _repository;
   late final HistoryManager _historyManager;
-  late final CanvasController _canvasController;
-  late final LayerController _layerController;
-  late final TimelineController _timelineController;
+  late CanvasController _canvasController;
+  late LayerController _layerController;
+  late TimelineController _timelineController;
 
   int _layerSequence = 2;
   int _frameSequence = 0;
@@ -54,10 +54,15 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     final project = _createSampleProject();
     _editingSession = EditingSessionState.forProject(project);
-    final activeCutId = _editingSession.activeCutId;
 
     _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
+    _rebuildActiveCutControllers();
+  }
+
+  void _rebuildActiveCutControllers() {
+    final activeCutId = _editingSession.activeCutId;
+
     _layerController = LayerController(
       repository: _repository,
       historyManager: _historyManager,
@@ -76,6 +81,18 @@ class _HomePageState extends State<HomePage> {
       layerController: _layerController,
       timelineController: _timelineController,
     );
+  }
+
+  void _handleCutSelected(CutId cutId) {
+    if (cutId == _editingSession.activeCutId) {
+      return;
+    }
+
+    setState(() {
+      _editingSession.setActiveCutId(cutId);
+      _copiedFrame = null;
+      _rebuildActiveCutControllers();
+    });
   }
 
   CutId get _activeCutId => _editingSession.activeCutId;
@@ -765,7 +782,10 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Text('Active strokes: ${_canvasController.strokes.length}'),
                   const SizedBox(width: 16),
-                  CutListBar(entries: cutEntries),
+                  CutListBar(
+                    entries: cutEntries,
+                    onCutSelected: _handleCutSelected,
+                  ),
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: _canvasController.canUndo
@@ -878,6 +898,31 @@ class _HomePageState extends State<HomePage> {
                   name: 'Layer 2',
                   frames: const [],
                   timeline: const {0: TimelineExposure.blank()},
+                ),
+              ],
+            ),
+            Cut(
+              id: const CutId('sample-cut-2'),
+              name: 'Cut 2',
+              duration: 1,
+              canvasSize: const CanvasSize(width: 1280, height: 720),
+              layers: [
+                Layer(
+                  id: const LayerId('sample-cut-2-layer'),
+                  name: 'Cut 2 Layer',
+                  frames: [
+                    Frame(
+                      id: const FrameId('sample-cut-2-frame'),
+                      duration: 1,
+                      name: 'C2',
+                      strokes: const [],
+                    ),
+                  ],
+                  timeline: {
+                    0: TimelineExposure.drawing(
+                      const FrameId('sample-cut-2-frame'),
+                    ),
+                  },
                 ),
               ],
             ),

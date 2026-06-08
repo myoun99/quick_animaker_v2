@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
@@ -150,6 +152,58 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('switches between existing sample cuts', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.text('Cut 1'), findsOneWidget);
+    expect(find.text('Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Cut: Cut 2'), findsOneWidget);
+    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Cut 2 Layer'), findsNothing);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cut-list-entry-sample-cut-2')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Cut: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active cut: Cut 2'), findsOneWidget);
+    expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
+    expect(find.text('Layer 1'), findsNothing);
+    expect(find.text('Layer 2'), findsNothing);
+    expect(find.text('Cut 2 Layer'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-cut-2-layer-0')),
+      findsOneWidget,
+    );
+    expect(find.text('C2'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut-2'),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Active cut: Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Cut: Cut 2'), findsOneWidget);
+    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Cut 2 Layer'), findsNothing);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
     );
   });
 
