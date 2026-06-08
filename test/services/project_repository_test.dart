@@ -116,34 +116,37 @@ void main() {
       );
     });
 
-    test('inserts cuts by appending or by index without unique name checks', () {
-      final cutA = _cut(id: 'cut-a', name: 'Shared Name');
-      final cutB = _cut(id: 'cut-b', name: 'Middle');
-      final track = _track(id: 'track-1', name: 'Video', cuts: [cutA]);
-      final project = _project(
-        id: 'project-1',
-        name: 'Project',
-        tracks: [track],
-      );
-      final repository = ProjectRepository(initialProject: project);
-      final cutC = _cut(id: 'cut-c', name: 'Shared Name');
+    test(
+      'inserts cuts by appending or by index without unique name checks',
+      () {
+        final cutA = _cut(id: 'cut-a', name: 'Shared Name');
+        final cutB = _cut(id: 'cut-b', name: 'Middle');
+        final track = _track(id: 'track-1', name: 'Video', cuts: [cutA]);
+        final project = _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [track],
+        );
+        final repository = ProjectRepository(initialProject: project);
+        final cutC = _cut(id: 'cut-c', name: 'Shared Name');
 
-      repository.insertCut(trackId: const TrackId('track-1'), cut: cutC);
-      repository.insertCut(
-        trackId: const TrackId('track-1'),
-        cut: cutB,
-        index: 1,
-      );
+        repository.insertCut(trackId: const TrackId('track-1'), cut: cutC);
+        repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: cutB,
+          index: 1,
+        );
 
-      final cuts = repository.requireProject().tracks.single.cuts;
-      expect(cuts, [cutA, cutB, cutC]);
-      expect(cuts.map((cut) => cut.name), [
-        'Shared Name',
-        'Middle',
-        'Shared Name',
-      ]);
-      expect(project.tracks.single.cuts, [cutA]);
-    });
+        final cuts = repository.requireProject().tracks.single.cuts;
+        expect(cuts, [cutA, cutB, cutC]);
+        expect(cuts.map((cut) => cut.name), [
+          'Shared Name',
+          'Middle',
+          'Shared Name',
+        ]);
+        expect(project.tracks.single.cuts, [cutA]);
+      },
+    );
 
     test('throws when inserting a cut into a missing track', () {
       final repository = ProjectRepository(
