@@ -77,6 +77,10 @@ class ProjectRepository {
   }
 
   void addCut({required TrackId trackId, required Cut cut}) {
+    insertCut(trackId: trackId, cut: cut);
+  }
+
+  void insertCut({required TrackId trackId, required Cut cut, int? index}) {
     updateProject((project) {
       var foundTrack = false;
 
@@ -87,12 +91,76 @@ class ProjectRepository {
             }
 
             foundTrack = true;
-            return track.copyWith(cuts: [...track.cuts, cut]);
+            final cuts = [...track.cuts];
+            if (index == null) {
+              cuts.add(cut);
+            } else {
+              cuts.insert(index, cut);
+            }
+
+            return track.copyWith(cuts: cuts);
           })
           .toList(growable: false);
 
       if (!foundTrack) {
         throw StateError('Track not found: $trackId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
+  Cut removeCut({required CutId cutId}) {
+    Cut? removedCut;
+
+    updateProject((project) {
+      final tracks = project.tracks
+          .map((track) {
+            final cutIndex = track.cuts.indexWhere((cut) => cut.id == cutId);
+            if (cutIndex == -1) {
+              return track;
+            }
+
+            removedCut = track.cuts[cutIndex];
+            final cuts = [...track.cuts]..removeAt(cutIndex);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (removedCut == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+
+    return removedCut!;
+  }
+
+  void renameCut({required CutId cutId, required String name}) {
+    updateProject((project) {
+      var foundCut = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  if (cut.id != cutId) {
+                    return cut;
+                  }
+
+                  foundCut = true;
+                  return cut.copyWith(name: name);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundCut) {
+        throw StateError('Cut not found: $cutId');
       }
 
       return project.copyWith(tracks: tracks);
