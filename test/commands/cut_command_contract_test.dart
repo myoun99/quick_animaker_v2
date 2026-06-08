@@ -236,27 +236,30 @@ void main() {
         _expectActiveCutExists(repository, editingSession);
       });
 
-      test('undo delete last cut removes replacement and restores active cut', () {
-        final onlyCut = _cut(id: 'cut-only', name: 'Only Cut');
-        final repository = _repositoryWithCuts([onlyCut]);
-        final editingSession = EditingSessionState(activeCutId: onlyCut.id);
-        final historyManager = HistoryManager();
+      test(
+        'undo delete last cut removes replacement and restores active cut',
+        () {
+          final onlyCut = _cut(id: 'cut-only', name: 'Only Cut');
+          final repository = _repositoryWithCuts([onlyCut]);
+          final editingSession = EditingSessionState(activeCutId: onlyCut.id);
+          final historyManager = HistoryManager();
 
-        historyManager.execute(
-          DeleteCutCommand(
-            repository: repository,
-            editingSession: editingSession,
-            cutId: onlyCut.id,
-            replacementCutId: const CutId('cut-replacement'),
-            replacementLayerId: const LayerId('layer-replacement'),
-          ),
-        );
-        historyManager.undo();
+          historyManager.execute(
+            DeleteCutCommand(
+              repository: repository,
+              editingSession: editingSession,
+              cutId: onlyCut.id,
+              replacementCutId: const CutId('cut-replacement'),
+              replacementLayerId: const LayerId('layer-replacement'),
+            ),
+          );
+          historyManager.undo();
 
-        expect(_allCuts(repository), [onlyCut]);
-        expect(editingSession.activeCutId, onlyCut.id);
-        _expectActiveCutExists(repository, editingSession);
-      });
+          expect(_allCuts(repository), [onlyCut]);
+          expect(editingSession.activeCutId, onlyCut.id);
+          _expectActiveCutExists(repository, editingSession);
+        },
+      );
     });
 
     group('activeCutId safety after redo', () {
@@ -368,15 +371,9 @@ void main() {
             const LayerId('layer-paint'): const LayerId('layer-paint-copy'),
           },
           frameIdMap: {
-            const FrameId('frame-line-a'): const FrameId(
-              'frame-line-a-copy',
-            ),
-            const FrameId('frame-line-b'): const FrameId(
-              'frame-line-b-copy',
-            ),
-            const FrameId('frame-paint-a'): const FrameId(
-              'frame-paint-a-copy',
-            ),
+            const FrameId('frame-line-a'): const FrameId('frame-line-a-copy'),
+            const FrameId('frame-line-b'): const FrameId('frame-line-b-copy'),
+            const FrameId('frame-paint-a'): const FrameId('frame-paint-a-copy'),
           },
         ).execute();
 
@@ -416,10 +413,10 @@ void main() {
           TimelineExposure.drawing(const FrameId('frame-paint-a-copy')),
         );
         expect(duplicatePaintLayer.timeline[4], const TimelineExposure.blank());
-        expect(
-          duplicateLineLayer.frames.map((frame) => frame.duration),
-          [3, 6],
-        );
+        expect(duplicateLineLayer.frames.map((frame) => frame.duration), [
+          3,
+          6,
+        ]);
         expect(duplicatePaintLayer.frames.map((frame) => frame.duration), [4]);
         expect(duplicate.duration, source.duration);
         expect(duplicate.canvasSize, source.canvasSize);
@@ -470,12 +467,8 @@ void main() {
               const LayerId('layer-paint'): const LayerId('layer-paint-copy'),
             },
             frameIdMap: {
-              const FrameId('frame-line-a'): const FrameId(
-                'frame-line-a-copy',
-              ),
-              const FrameId('frame-line-b'): const FrameId(
-                'frame-line-b-copy',
-              ),
+              const FrameId('frame-line-a'): const FrameId('frame-line-a-copy'),
+              const FrameId('frame-line-b'): const FrameId('frame-line-b-copy'),
               const FrameId('frame-paint-a'): const FrameId(
                 'frame-paint-a-copy',
               ),
@@ -497,10 +490,7 @@ void main() {
 
           var cuts = _allCuts(repository);
           expect(cuts[0], sourceCut);
-          expect(
-            cuts[1].layers[0].frames[0].strokes.single,
-            _editedStroke(),
-          );
+          expect(cuts[1].layers[0].frames[0].strokes.single, _editedStroke());
 
           final sourceLineLayer = cuts[0].layers[0];
           repository.replaceLayer(
@@ -526,10 +516,7 @@ void main() {
           expect(cuts[1].layers[0].frames[0].duration, 3);
           expect(cuts[1].layers[0].frames[0].name, 'Line A');
           expect(cuts[1].layers[0].timeline.keys, [0, 2, 5]);
-          expect(
-            cuts[1].layers[0].frames[0].strokes.single,
-            _editedStroke(),
-          );
+          expect(cuts[1].layers[0].frames[0].strokes.single, _editedStroke());
         },
       );
     });
