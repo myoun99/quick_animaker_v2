@@ -189,12 +189,7 @@ Layer _layer({
   List<Frame> frames = const [],
   Map<int, TimelineExposure>? timeline,
 }) {
-  return Layer(
-    id: LayerId(id),
-    name: name,
-    frames: frames,
-    timeline: timeline,
-  );
+  return Layer(id: LayerId(id), name: name, frames: frames, timeline: timeline);
 }
 
 Frame _frame({required String id, String? name}) {
