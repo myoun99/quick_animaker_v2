@@ -75,6 +75,52 @@ void main() {
       expect(find.byTooltip('Cut: Cut 1'), findsOneWidget);
     });
 
+    testWidgets('renders compact command actions when callbacks are provided', (
+      tester,
+    ) async {
+      var newCutCount = 0;
+      var duplicateCutCount = 0;
+      var deleteCutCount = 0;
+
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [_entry(id: 'cut-1', name: 'Cut 1', isActive: true)],
+            onNewCut: () => newCutCount += 1,
+            onDuplicateActiveCut: () => duplicateCutCount += 1,
+            onDeleteActiveCut: () => deleteCutCount += 1,
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('New Cut'), findsOneWidget);
+      expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+      expect(find.byTooltip('Delete Cut'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('new-cut-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('duplicate-cut-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('delete-cut-button')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Rename Cut'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey<String>('new-cut-button')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('duplicate-cut-button')),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('delete-cut-button')));
+
+      expect(newCutCount, 1);
+      expect(duplicateCutCount, 1);
+      expect(deleteCutCount, 1);
+    });
+
     testWidgets('renders no cut controls for passive read-only display', (
       tester,
     ) async {

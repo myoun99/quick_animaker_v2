@@ -17,6 +17,7 @@ import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/timeline_exposure.dart';
+import '../services/commands/cut_command_coordinator.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
@@ -40,6 +41,7 @@ class _HomePageState extends State<HomePage> {
 
   late final ProjectRepository _repository;
   late final HistoryManager _historyManager;
+  late final CutCommandCoordinator _cutCommandCoordinator;
   late CanvasController _canvasController;
   late LayerController _layerController;
   late TimelineController _timelineController;
@@ -57,6 +59,11 @@ class _HomePageState extends State<HomePage> {
 
     _repository = ProjectRepository(initialProject: project);
     _historyManager = HistoryManager();
+    _cutCommandCoordinator = CutCommandCoordinator(
+      repository: _repository,
+      editingSession: _editingSession,
+      historyManager: _historyManager,
+    );
     _rebuildActiveCutControllers();
   }
 
@@ -81,6 +88,64 @@ class _HomePageState extends State<HomePage> {
       layerController: _layerController,
       timelineController: _timelineController,
     );
+  }
+
+  TrackId get _activeCutTrackId {
+    final activeCutId = _editingSession.activeCutId;
+    final project = _repository.requireProject();
+    for (final track in project.tracks) {
+      if (track.cuts.any((cut) => cut.id == activeCutId)) {
+        return track.id;
+      }
+    }
+
+    if (project.tracks.isEmpty) {
+      throw StateError('Cannot resolve active Cut track in an empty project.');
+    }
+    return project.tracks.first.id;
+  }
+
+  void _refreshAfterCutCommand() {
+    _copiedFrame = null;
+    _rebuildActiveCutControllers();
+  }
+
+  void _createCutFromList() {
+    setState(() {
+      _cutCommandCoordinator.createCut(trackId: _activeCutTrackId);
+      _refreshAfterCutCommand();
+    });
+  }
+
+  void _duplicateActiveCutFromList() {
+    setState(() {
+      _cutCommandCoordinator.duplicateCut(
+        sourceCutId: _editingSession.activeCutId,
+        targetTrackId: _activeCutTrackId,
+      );
+      _refreshAfterCutCommand();
+    });
+  }
+
+  void _deleteActiveCutFromList() {
+    setState(() {
+      _cutCommandCoordinator.deleteCut(cutId: _editingSession.activeCutId);
+      _refreshAfterCutCommand();
+    });
+  }
+
+  void _undo() {
+    setState(() {
+      _canvasController.undo();
+      _refreshAfterCutCommand();
+    });
+  }
+
+  void _redo() {
+    setState(() {
+      _canvasController.redo();
+      _refreshAfterCutCommand();
+    });
   }
 
   void _handleCutSelected(CutId cutId) {
@@ -785,18 +850,17 @@ class _HomePageState extends State<HomePage> {
                   CutListBar(
                     entries: cutEntries,
                     onCutSelected: _handleCutSelected,
+                    onNewCut: _createCutFromList,
+                    onDuplicateActiveCut: _duplicateActiveCutFromList,
+                    onDeleteActiveCut: _deleteActiveCutFromList,
                   ),
                   const SizedBox(width: 16),
                   TextButton(
-                    onPressed: _canvasController.canUndo
-                        ? () => setState(_canvasController.undo)
-                        : null,
+                    onPressed: _canvasController.canUndo ? _undo : null,
                     child: const Text('Undo'),
                   ),
                   TextButton(
-                    onPressed: _canvasController.canRedo
-                        ? () => setState(_canvasController.redo)
-                        : null,
+                    onPressed: _canvasController.canRedo ? _redo : null,
                     child: const Text('Redo'),
                   ),
                 ],
