@@ -121,32 +121,35 @@ void main() {
       _expectActiveCutExists(fixture);
     });
 
-    test('different active cut remains active through execute, undo, and redo', () {
-      final cutA = _cut(id: 'cut-a', name: 'Cut A');
-      final cutB = _cut(id: 'cut-b', name: 'Cut B');
-      final cutC = _cut(id: 'cut-c', name: 'Cut C');
-      final fixture = _fixture([cutA, cutB, cutC], activeCutId: cutB.id);
-      final historyManager = HistoryManager();
+    test(
+      'different active cut remains active through execute, undo, and redo',
+      () {
+        final cutA = _cut(id: 'cut-a', name: 'Cut A');
+        final cutB = _cut(id: 'cut-b', name: 'Cut B');
+        final cutC = _cut(id: 'cut-c', name: 'Cut C');
+        final fixture = _fixture([cutA, cutB, cutC], activeCutId: cutB.id);
+        final historyManager = HistoryManager();
 
-      historyManager.execute(
-        ReorderCutCommand(
-          repository: fixture.repository,
-          trackId: _trackId,
-          cutId: cutA.id,
-          newIndex: 2,
-        ),
-      );
-      expect(fixture.editingSession.activeCutId, cutB.id);
-      _expectActiveCutExists(fixture);
+        historyManager.execute(
+          ReorderCutCommand(
+            repository: fixture.repository,
+            trackId: _trackId,
+            cutId: cutA.id,
+            newIndex: 2,
+          ),
+        );
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        _expectActiveCutExists(fixture);
 
-      historyManager.undo();
-      expect(fixture.editingSession.activeCutId, cutB.id);
-      _expectActiveCutExists(fixture);
+        historyManager.undo();
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        _expectActiveCutExists(fixture);
 
-      historyManager.redo();
-      expect(fixture.editingSession.activeCutId, cutB.id);
-      _expectActiveCutExists(fixture);
-    });
+        historyManager.redo();
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        _expectActiveCutExists(fixture);
+      },
+    );
   });
 }
 
