@@ -5,10 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 
 class CreateCutCommandInputPlan {
-  const CreateCutCommandInputPlan({
-    required this.cutId,
-    required this.layerId,
-  });
+  const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
 
   final CutId cutId;
   final LayerId layerId;
@@ -41,9 +38,7 @@ CreateCutCommandInputPlan planCreateCutCommandInput(Project project) {
   final ids = _ProjectIdSnapshot.fromProject(project);
   return CreateCutCommandInputPlan(
     cutId: CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds)),
-    layerId: LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    ),
+    layerId: LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds)),
   );
 }
 
@@ -68,9 +63,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   final ids = _ProjectIdSnapshot.fromProject(project);
   ids.includeCut(sourceCut);
 
-  final newCutId = CutId(
-    _firstAvailableId(prefix: 'cut', usedIds: ids.cutIds),
-  );
+  final newCutId = CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds));
   ids.cutIds.add(newCutId.value);
 
   final layerIdMap = <LayerId, LayerId>{};

@@ -18,7 +18,10 @@ void main() {
       final project = _projectWithCuts([
         _cut(
           id: 'cut-1',
-          layers: [_layer(id: 'layer-1'), _layer(id: 'layer-3')],
+          layers: [
+            _layer(id: 'layer-1'),
+            _layer(id: 'layer-3'),
+          ],
         ),
         _cut(id: 'cut-2', layers: const []),
       ]);
@@ -37,8 +40,14 @@ void main() {
   group('planDeleteLastCutReplacementInput', () {
     test('returns deterministic first-available IDs without mutation', () {
       final project = _projectWithCuts([
-        _cut(id: 'cut-1', layers: [_layer(id: 'layer-2')]),
-        _cut(id: 'cut-3', layers: [_layer(id: 'layer-1')]),
+        _cut(
+          id: 'cut-1',
+          layers: [_layer(id: 'layer-2')],
+        ),
+        _cut(
+          id: 'cut-3',
+          layers: [_layer(id: 'layer-1')],
+        ),
       ]);
       final before = project.toJson();
 
@@ -57,10 +66,7 @@ void main() {
       final source = _cut(
         id: 'cut-1',
         layers: [
-          _layer(
-            id: 'layer-1',
-            frames: [_frame('frame-1'), _frame('frame-3')],
-          ),
+          _layer(id: 'layer-1', frames: [_frame('frame-1'), _frame('frame-3')]),
           _layer(id: 'layer-3', frames: [_frame('frame-4')]),
         ],
       );
@@ -68,7 +74,9 @@ void main() {
         source,
         _cut(
           id: 'cut-2',
-          layers: [_layer(id: 'layer-4', frames: [_frame('frame-2')])],
+          layers: [
+            _layer(id: 'layer-4', frames: [_frame('frame-2')]),
+          ],
         ),
       ]);
       final before = project.toJson();
@@ -124,14 +132,8 @@ void main() {
       for (final entry in plan.frameIdMap.entries) {
         expect(entry.value, isNot(entry.key));
       }
-      expect(
-        plan.layerIdMap.values.toSet(),
-        hasLength(plan.layerIdMap.length),
-      );
-      expect(
-        plan.frameIdMap.values.toSet(),
-        hasLength(plan.frameIdMap.length),
-      );
+      expect(plan.layerIdMap.values.toSet(), hasLength(plan.layerIdMap.length));
+      expect(plan.frameIdMap.values.toSet(), hasLength(plan.frameIdMap.length));
       expect(project.toJson(), before);
     });
 
@@ -154,7 +156,10 @@ void main() {
     test('plans source layers with no frames without throwing', () {
       final source = _cut(
         id: 'cut-1',
-        layers: [_layer(id: 'layer-1'), _layer(id: 'layer-2')],
+        layers: [
+          _layer(id: 'layer-1'),
+          _layer(id: 'layer-2'),
+        ],
       );
       final project = _projectWithCuts([source]);
       final before = project.toJson();
@@ -180,9 +185,7 @@ Project _projectWithCuts(List<Cut> cuts) {
   return Project(
     id: const ProjectId('project-1'),
     name: 'Project',
-    tracks: [
-      Track(id: const TrackId('track-1'), name: 'Track 1', cuts: cuts),
-    ],
+    tracks: [Track(id: const TrackId('track-1'), name: 'Track 1', cuts: cuts)],
     createdAt: DateTime.utc(2024),
   );
 }
