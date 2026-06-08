@@ -74,10 +74,7 @@ class _CutListChip extends StatelessWidget {
       key: ValueKey<String>('cut-list-entry-${entry.cutId.value}'),
       decoration: BoxDecoration(
         color: backgroundColor,
-        border: Border.all(
-          color: borderColor,
-          width: entry.isActive ? 1.5 : 1,
-        ),
+        border: Border.all(color: borderColor, width: entry.isActive ? 1.5 : 1),
         borderRadius: borderRadius,
       ),
       padding: EdgeInsets.only(
