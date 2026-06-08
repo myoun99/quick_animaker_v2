@@ -171,12 +171,19 @@ class _CutListChip extends StatelessWidget {
             ),
             const SizedBox(width: 5),
           ],
-          Text(
-            entry.cutName,
-            key: ValueKey<String>('cut-list-entry-label-${entry.cutId.value}'),
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: foregroundColor,
-              fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              entry.cutName,
+              key: ValueKey<String>(
+                'cut-list-entry-label-${entry.cutId.value}',
+              ),
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: foregroundColor,
+                fontWeight: entry.isActive ? FontWeight.w700 : FontWeight.w500,
+              ),
             ),
           ),
         ],
