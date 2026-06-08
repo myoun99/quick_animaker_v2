@@ -1,19 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/stroke.dart';
+import 'package:quick_animaker_v2/src/models/stroke_id.dart';
+import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/create_cut_command.dart';
 import 'package:quick_animaker_v2/src/services/commands/delete_cut_command.dart';
 import 'package:quick_animaker_v2/src/services/commands/duplicate_cut_command.dart';
 import 'package:quick_animaker_v2/src/services/commands/rename_cut_command.dart';
-import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
@@ -344,6 +350,190 @@ void main() {
       });
     });
 
+    group('DuplicateCutCommand independent-copy contract', () {
+      test('execute remaps identity and preserves authored cut content', () {
+        final sourceCut = _authoredSourceCut();
+        final repository = _repositoryWithCuts([sourceCut]);
+        final editingSession = EditingSessionState(activeCutId: sourceCut.id);
+
+        DuplicateCutCommand(
+          repository: repository,
+          editingSession: editingSession,
+          sourceCutId: sourceCut.id,
+          targetTrackId: _trackId,
+          newCutId: const CutId('cut-copy'),
+          newName: 'Source Copy',
+          layerIdMap: {
+            const LayerId('layer-line'): const LayerId('layer-line-copy'),
+            const LayerId('layer-paint'): const LayerId('layer-paint-copy'),
+          },
+          frameIdMap: {
+            const FrameId('frame-line-a'): const FrameId(
+              'frame-line-a-copy',
+            ),
+            const FrameId('frame-line-b'): const FrameId(
+              'frame-line-b-copy',
+            ),
+            const FrameId('frame-paint-a'): const FrameId(
+              'frame-paint-a-copy',
+            ),
+          },
+        ).execute();
+
+        final cuts = _allCuts(repository);
+        final source = cuts[0];
+        final duplicate = cuts[1];
+        final duplicateLineLayer = duplicate.layers[0];
+        final duplicatePaintLayer = duplicate.layers[1];
+
+        expect(duplicate.id, const CutId('cut-copy'));
+        expect(duplicate.id, isNot(source.id));
+        expect(duplicate.name, 'Source Copy');
+        expect(duplicate.layers.map((layer) => layer.id), [
+          const LayerId('layer-line-copy'),
+          const LayerId('layer-paint-copy'),
+        ]);
+        expect(duplicateLineLayer.frames.map((frame) => frame.id), [
+          const FrameId('frame-line-a-copy'),
+          const FrameId('frame-line-b-copy'),
+        ]);
+        expect(duplicatePaintLayer.frames.map((frame) => frame.id), [
+          const FrameId('frame-paint-a-copy'),
+        ]);
+        expect(duplicateLineLayer.timeline.keys, [0, 2, 5]);
+        expect(
+          duplicateLineLayer.timeline[0],
+          TimelineExposure.drawing(const FrameId('frame-line-a-copy')),
+        );
+        expect(duplicateLineLayer.timeline[2], const TimelineExposure.blank());
+        expect(
+          duplicateLineLayer.timeline[5],
+          TimelineExposure.drawing(const FrameId('frame-line-b-copy')),
+        );
+        expect(duplicatePaintLayer.timeline.keys, [1, 4]);
+        expect(
+          duplicatePaintLayer.timeline[1],
+          TimelineExposure.drawing(const FrameId('frame-paint-a-copy')),
+        );
+        expect(duplicatePaintLayer.timeline[4], const TimelineExposure.blank());
+        expect(
+          duplicateLineLayer.frames.map((frame) => frame.duration),
+          [3, 6],
+        );
+        expect(duplicatePaintLayer.frames.map((frame) => frame.duration), [4]);
+        expect(duplicate.duration, source.duration);
+        expect(duplicate.canvasSize, source.canvasSize);
+        expect(duplicateLineLayer.isVisible, source.layers[0].isVisible);
+        expect(duplicateLineLayer.opacity, source.layers[0].opacity);
+        expect(duplicateLineLayer.frames[0].strokes.single, _sourceStroke());
+        expect(
+          identical(
+            duplicateLineLayer.frames[0].strokes.single,
+            source.layers[0].frames[0].strokes.single,
+          ),
+          isFalse,
+        );
+        expect(
+          identical(
+            duplicateLineLayer.frames[0].strokes.single.brushSettings,
+            source.layers[0].frames[0].strokes.single.brushSettings,
+          ),
+          isFalse,
+        );
+        expect(
+          identical(
+            duplicateLineLayer.frames[0].strokes.single.points.single,
+            source.layers[0].frames[0].strokes.single.points.single,
+          ),
+          isFalse,
+        );
+        expect(editingSession.activeCutId, duplicate.id);
+        _expectActiveCutExists(repository, editingSession);
+      });
+
+      test(
+        'editing source and duplicate content stays isolated by remapped ids',
+        () {
+          final sourceCut = _authoredSourceCut();
+          final repository = _repositoryWithCuts([sourceCut]);
+          final editingSession = EditingSessionState(activeCutId: sourceCut.id);
+
+          DuplicateCutCommand(
+            repository: repository,
+            editingSession: editingSession,
+            sourceCutId: sourceCut.id,
+            targetTrackId: _trackId,
+            newCutId: const CutId('cut-copy'),
+            newName: 'Source Copy',
+            layerIdMap: {
+              const LayerId('layer-line'): const LayerId('layer-line-copy'),
+              const LayerId('layer-paint'): const LayerId('layer-paint-copy'),
+            },
+            frameIdMap: {
+              const FrameId('frame-line-a'): const FrameId(
+                'frame-line-a-copy',
+              ),
+              const FrameId('frame-line-b'): const FrameId(
+                'frame-line-b-copy',
+              ),
+              const FrameId('frame-paint-a'): const FrameId(
+                'frame-paint-a-copy',
+              ),
+            },
+          ).execute();
+
+          final duplicateBeforeEdit = _allCuts(repository)[1];
+          final duplicateLineLayer = duplicateBeforeEdit.layers[0];
+          repository.replaceLayer(
+            layer: duplicateLineLayer.copyWith(
+              frames: [
+                duplicateLineLayer.frames[0].copyWith(
+                  strokes: [_editedStroke()],
+                ),
+                duplicateLineLayer.frames[1],
+              ],
+            ),
+          );
+
+          var cuts = _allCuts(repository);
+          expect(cuts[0], sourceCut);
+          expect(
+            cuts[1].layers[0].frames[0].strokes.single,
+            _editedStroke(),
+          );
+
+          final sourceLineLayer = cuts[0].layers[0];
+          repository.replaceLayer(
+            layer: sourceLineLayer.copyWith(
+              frames: [
+                sourceLineLayer.frames[0].copyWith(
+                  duration: 9,
+                  name: 'Edited A',
+                ),
+                sourceLineLayer.frames[1],
+              ],
+              timeline: {
+                0: TimelineExposure.drawing(const FrameId('frame-line-a')),
+                8: const TimelineExposure.blank(),
+              },
+            ),
+          );
+
+          cuts = _allCuts(repository);
+          expect(cuts[0].layers[0].frames[0].duration, 9);
+          expect(cuts[0].layers[0].frames[0].name, 'Edited A');
+          expect(cuts[0].layers[0].timeline.keys, [0, 8]);
+          expect(cuts[1].layers[0].frames[0].duration, 3);
+          expect(cuts[1].layers[0].frames[0].name, 'Line A');
+          expect(cuts[1].layers[0].timeline.keys, [0, 2, 5]);
+          expect(
+            cuts[1].layers[0].frames[0].strokes.single,
+            _editedStroke(),
+          );
+        },
+      );
+    });
+
     group('Cut rename duplicate-name policy', () {
       test('renaming a cut to another cut display name is allowed', () {
         final cutA = _cut(id: 'cut-a', name: 'Cut A');
@@ -412,6 +602,81 @@ Cut _cut({required String id, required String name}) {
     layers: const [],
     duration: 24,
     canvasSize: _canvasSize,
+  );
+}
+
+Cut _authoredSourceCut() {
+  final lineFrameA = Frame(
+    id: const FrameId('frame-line-a'),
+    duration: 3,
+    strokes: [_sourceStroke()],
+    name: 'Line A',
+  );
+  final lineFrameB = Frame(
+    id: const FrameId('frame-line-b'),
+    duration: 6,
+    strokes: const [],
+    name: 'Line B',
+  );
+  final paintFrameA = Frame(
+    id: const FrameId('frame-paint-a'),
+    duration: 4,
+    strokes: const [],
+    name: 'Paint A',
+  );
+
+  return Cut(
+    id: const CutId('cut-source'),
+    name: 'Source Cut',
+    layers: [
+      Layer(
+        id: const LayerId('layer-line'),
+        name: 'Line',
+        frames: [lineFrameA, lineFrameB],
+        timeline: {
+          0: TimelineExposure.drawing(lineFrameA.id),
+          2: const TimelineExposure.blank(),
+          5: TimelineExposure.drawing(lineFrameB.id),
+        },
+        isVisible: false,
+        opacity: 0.5,
+      ),
+      Layer(
+        id: const LayerId('layer-paint'),
+        name: 'Paint',
+        frames: [paintFrameA],
+        timeline: {
+          1: TimelineExposure.drawing(paintFrameA.id),
+          4: const TimelineExposure.blank(),
+        },
+      ),
+    ],
+    duration: 18,
+    canvasSize: const CanvasSize(width: 1920, height: 1080),
+  );
+}
+
+Stroke _sourceStroke() {
+  return Stroke(
+    id: const StrokeId('stroke-line-a'),
+    points: [const StrokePoint(x: 1, y: 2)],
+    brushSettings: const BrushSettings(
+      color: 0xFF112233,
+      size: 7,
+      opacity: 0.6,
+    ),
+  );
+}
+
+Stroke _editedStroke() {
+  return Stroke(
+    id: const StrokeId('stroke-edited'),
+    points: [const StrokePoint(x: 10, y: 20)],
+    brushSettings: const BrushSettings(
+      color: 0xFF445566,
+      size: 3,
+      opacity: 0.8,
+    ),
   );
 }
 
