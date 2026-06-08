@@ -55,15 +55,10 @@ Layer _duplicateLayer({
     timeline: layer.timeline.map(
       (index, exposure) => MapEntry(
         index,
-        _duplicateTimelineExposure(
-          exposure: exposure,
-          frameIdMap: frameIdMap,
-        ),
+        _duplicateTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
       ),
     ),
-    marks: layer.marks.map(
-      (index, mark) => MapEntry(index, mark.copyWith()),
-    ),
+    marks: layer.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
     isVisible: layer.isVisible,
     opacity: layer.opacity,
   );

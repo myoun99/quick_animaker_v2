@@ -23,11 +23,11 @@ void main() {
         source: source,
         newCutId: const CutId('cut-copy'),
         newName: 'Cut Copy',
-        layerIdMap: const {
+        layerIdMap: {
           LayerId('layer-a'): LayerId('layer-copy-a'),
           LayerId('layer-b'): LayerId('layer-copy-b'),
         },
-        frameIdMap: const {
+        frameIdMap: {
           FrameId('frame-a'): FrameId('frame-copy-a'),
           FrameId('frame-b'): FrameId('frame-copy-b'),
           FrameId('frame-c'): FrameId('frame-copy-c'),
@@ -103,11 +103,11 @@ void main() {
           source: source,
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: const {
+          layerIdMap: {
             LayerId('layer-a'): LayerId('layer-copy-a'),
             LayerId('layer-b'): LayerId('layer-copy-b'),
           },
-          frameIdMap: const {
+          frameIdMap: {
             FrameId('frame-a'): FrameId('frame-copy-a'),
             FrameId('frame-b'): FrameId('frame-copy-b'),
             FrameId('frame-c'): FrameId('frame-copy-c'),
@@ -159,8 +159,8 @@ void main() {
           source: _sourceCut(),
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: const {LayerId('layer-a'): LayerId('layer-copy-a')},
-          frameIdMap: const {
+          layerIdMap: {LayerId('layer-a'): LayerId('layer-copy-a')},
+          frameIdMap: {
             FrameId('frame-a'): FrameId('frame-copy-a'),
             FrameId('frame-b'): FrameId('frame-copy-b'),
             FrameId('frame-c'): FrameId('frame-copy-c'),
@@ -176,11 +176,11 @@ void main() {
           source: _sourceCut(),
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: const {
+          layerIdMap: {
             LayerId('layer-a'): LayerId('layer-copy-a'),
             LayerId('layer-b'): LayerId('layer-copy-b'),
           },
-          frameIdMap: const {
+          frameIdMap: {
             FrameId('frame-a'): FrameId('frame-copy-a'),
             FrameId('frame-c'): FrameId('frame-copy-c'),
           },
@@ -218,8 +218,8 @@ void main() {
           source: source,
           newCutId: const CutId('cut-copy'),
           newName: 'Cut Copy',
-          layerIdMap: const {LayerId('layer-a'): LayerId('layer-copy-a')},
-          frameIdMap: const {FrameId('frame-a'): FrameId('frame-copy-a')},
+          layerIdMap: {LayerId('layer-a'): LayerId('layer-copy-a')},
+          frameIdMap: {FrameId('frame-a'): FrameId('frame-copy-a')},
         ),
         throwsArgumentError,
       );
@@ -244,11 +244,7 @@ Cut _sourceCut() {
             duration: 3,
             strokes: [_stroke()],
           ),
-          Frame(
-            id: const FrameId('frame-b'),
-            duration: 1,
-            strokes: const [],
-          ),
+          Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
         ],
         timeline: {
           0: TimelineExposure.drawing(const FrameId('frame-a')),
