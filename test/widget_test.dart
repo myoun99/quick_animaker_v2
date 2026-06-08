@@ -336,9 +336,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.widget<TextField>(
-        find.byKey(const ValueKey<String>('rename-cut-text-field')),
-      ).controller?.text,
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey<String>('rename-cut-text-field')),
+          )
+          .controller
+          ?.text,
       'Cut 1',
     );
 
