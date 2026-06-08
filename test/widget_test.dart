@@ -123,10 +123,7 @@ Future<void> _tapCutCommandButton(
   await tester.pumpAndSettle();
 }
 
-Future<void> _tapTopBarButton(
-  WidgetTester tester,
-  ValueKey<String> key,
-) async {
+Future<void> _tapTopBarButton(WidgetTester tester, ValueKey<String> key) async {
   final button = find.byKey(key);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
