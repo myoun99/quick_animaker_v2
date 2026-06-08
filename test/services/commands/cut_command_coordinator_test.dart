@@ -141,11 +141,7 @@ void main() {
       final fixture = _fixture(
         _project(
           tracks: [
-            _track(
-              id: 'track-1',
-              name: 'Video',
-              cuts: [activeCut, deletedCut],
-            ),
+            _track(id: 'track-1', name: 'Video', cuts: [activeCut, deletedCut]),
           ],
         ),
         activeCutId: activeCut.id,
@@ -219,14 +215,22 @@ void main() {
           layers: [
             _layer(
               id: 'layer-1',
-              frames: [_frame(id: 'frame-1'), _frame(id: 'frame-3')],
+              frames: [
+                _frame(id: 'frame-1'),
+                _frame(id: 'frame-3'),
+              ],
             ),
           ],
         );
         final targetCut = _cut(
           id: 'cut-3',
           name: 'Target Existing',
-          layers: [_layer(id: 'layer-3', frames: [_frame(id: 'frame-2')])],
+          layers: [
+            _layer(
+              id: 'layer-3',
+              frames: [_frame(id: 'frame-2')],
+            ),
+          ],
         );
         final fixture = _fixture(
           _project(
