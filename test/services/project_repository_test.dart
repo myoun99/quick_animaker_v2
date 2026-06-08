@@ -116,6 +116,142 @@ void main() {
       );
     });
 
+    test('inserts cuts by appending or by index without unique name checks', () {
+      final cutA = _cut(id: 'cut-a', name: 'Shared Name');
+      final cutB = _cut(id: 'cut-b', name: 'Middle');
+      final track = _track(id: 'track-1', name: 'Video', cuts: [cutA]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+      final cutC = _cut(id: 'cut-c', name: 'Shared Name');
+
+      repository.insertCut(trackId: const TrackId('track-1'), cut: cutC);
+      repository.insertCut(
+        trackId: const TrackId('track-1'),
+        cut: cutB,
+        index: 1,
+      );
+
+      final cuts = repository.requireProject().tracks.single.cuts;
+      expect(cuts, [cutA, cutB, cutC]);
+      expect(cuts.map((cut) => cut.name), [
+        'Shared Name',
+        'Middle',
+        'Shared Name',
+      ]);
+      expect(project.tracks.single.cuts, [cutA]);
+    });
+
+    test('throws when inserting a cut into a missing track', () {
+      final repository = ProjectRepository(
+        initialProject: _project(id: 'project-1', name: 'Project'),
+      );
+
+      expect(
+        () => repository.insertCut(
+          trackId: const TrackId('missing'),
+          cut: _cut(id: 'cut-1', name: 'Cut 1'),
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('throws when inserting a cut at an out-of-range index', () {
+      final track = _track(id: 'track-1', name: 'Video');
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      expect(
+        () => repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: _cut(id: 'cut-1', name: 'Cut 1'),
+          index: 1,
+        ),
+        throwsA(isA<RangeError>()),
+      );
+      expect(repository.requireProject().tracks.single.cuts, isEmpty);
+    });
+
+    test('removes a cut by project-wide id and returns it', () {
+      final cutA = _cut(id: 'cut-a', name: 'Track 1 Cut');
+      final cutB = _cut(id: 'cut-b', name: 'Track 2 Cut');
+      final trackA = _track(id: 'track-a', name: 'Video A', cuts: [cutA]);
+      final trackB = _track(id: 'track-b', name: 'Video B', cuts: [cutB]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [trackA, trackB],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      final removedCut = repository.removeCut(cutId: const CutId('cut-b'));
+
+      expect(removedCut, cutB);
+      expect(repository.requireProject().tracks.first.cuts, [cutA]);
+      expect(repository.requireProject().tracks.last.cuts, isEmpty);
+      expect(project.tracks.last.cuts, [cutB]);
+    });
+
+    test('throws when removing a missing cut', () {
+      final repository = ProjectRepository(
+        initialProject: _project(id: 'project-1', name: 'Project'),
+      );
+
+      expect(
+        () => repository.removeCut(cutId: const CutId('missing')),
+        throwsStateError,
+      );
+    });
+
+    test('renames only the target cut display name and allows duplicates', () {
+      final layer = _layer(id: 'layer-1', name: 'Line');
+      final targetCut = _cut(id: 'cut-a', name: 'Original', layers: [layer]);
+      final otherCut = _cut(id: 'cut-b', name: 'Duplicate');
+      final track = _track(
+        id: 'track-1',
+        name: 'Video',
+        cuts: [targetCut, otherCut],
+      );
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [track],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      repository.renameCut(cutId: const CutId('cut-a'), name: 'Duplicate');
+
+      final cuts = repository.requireProject().tracks.single.cuts;
+      expect(cuts.first.id, targetCut.id);
+      expect(cuts.first.name, 'Duplicate');
+      expect(cuts.first.layers, [layer]);
+      expect(cuts.first.duration, targetCut.duration);
+      expect(cuts.first.canvasSize, targetCut.canvasSize);
+      expect(cuts.last, otherCut);
+      expect(project.tracks.single.cuts.first, targetCut);
+    });
+
+    test('throws when renaming a missing cut', () {
+      final repository = ProjectRepository(
+        initialProject: _project(id: 'project-1', name: 'Project'),
+      );
+
+      expect(
+        () => repository.renameCut(
+          cutId: const CutId('missing'),
+          name: 'Renamed',
+        ),
+        throwsStateError,
+      );
+    });
+
     test('adds a layer to an existing cut', () {
       final cut = _cut(id: 'cut-1', name: 'Cut 1');
       final track = _track(id: 'track-1', name: 'Video', cuts: [cut]);
