@@ -280,6 +280,36 @@ void main() {
       },
     );
 
+    test('duplicateCut throws StateError when source cut is missing', () {
+      final existingCut = _cut(id: 'cut-1', name: 'Existing');
+      final project = _project(
+        tracks: [
+          _track(id: 'track-1', name: 'Video', cuts: [existingCut]),
+        ],
+      );
+      final fixture = _fixture(project, activeCutId: existingCut.id);
+      final beforeJson = fixture.project.toJson();
+
+      expect(
+        () => fixture.coordinator.duplicateCut(
+          sourceCutId: const CutId('cut-missing'),
+          targetTrackId: const TrackId('track-1'),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Cut not found: cut-missing'),
+          ),
+        ),
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+      expect(fixture.cutsFor(const TrackId('track-1')), [existingCut]);
+    });
+
     test('duplicateCut uses caller-provided duplicate name when supplied', () {
       final sourceCut = _cut(id: 'cut-1', name: 'Source');
       final fixture = _fixture(
