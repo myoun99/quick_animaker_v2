@@ -9,12 +9,14 @@ void main() {
         RenameCutCommand,
         DeleteCutCommand,
         DuplicateCutCommand,
+        CutCommandCoordinator,
       ],
       containsAll(<Type>[
         CreateCutCommand,
         RenameCutCommand,
         DeleteCutCommand,
         DuplicateCutCommand,
+        CutCommandCoordinator,
       ]),
     );
   });
