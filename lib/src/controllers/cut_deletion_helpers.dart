@@ -6,11 +6,11 @@ enum CutDeletionFallbackKind { useExistingCut, createDefaultCut }
 
 class CutDeletionFallbackDecision {
   const CutDeletionFallbackDecision.useExistingCut(this.cutId)
-      : kind = CutDeletionFallbackKind.useExistingCut;
+    : kind = CutDeletionFallbackKind.useExistingCut;
 
   const CutDeletionFallbackDecision.createDefaultCut()
-      : kind = CutDeletionFallbackKind.createDefaultCut,
-        cutId = null;
+    : kind = CutDeletionFallbackKind.createDefaultCut,
+      cutId = null;
 
   final CutDeletionFallbackKind kind;
   final CutId? cutId;

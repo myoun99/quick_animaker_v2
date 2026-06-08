@@ -77,10 +77,7 @@ void main() {
         deletingCutId: const CutId('only-cut'),
       );
 
-      expect(
-        decision,
-        const CutDeletionFallbackDecision.createDefaultCut(),
-      );
+      expect(decision, const CutDeletionFallbackDecision.createDefaultCut());
       expect(decision.cutId, isNull);
     });
 
