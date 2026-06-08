@@ -102,6 +102,48 @@ void main() {
     );
 
     test(
+      'reorderCut executes through history without changing activeCutId',
+      () {
+        final cutA = _cut(id: 'cut-1', name: 'Cut A');
+        final cutB = _cut(id: 'cut-2', name: 'Cut B');
+        final cutC = _cut(id: 'cut-3', name: 'Cut C');
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB, cutC]),
+            ],
+          ),
+          activeCutId: cutB.id,
+        );
+
+        fixture.coordinator.reorderCut(
+          trackId: const TrackId('track-1'),
+          cutId: cutA.id,
+          newIndex: 2,
+        );
+
+        expect(fixture.cutsFor(const TrackId('track-1')), [cutB, cutC, cutA]);
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        expect(fixture.historyManager.undoCount, 1);
+        expect(fixture.historyManager.redoCount, 0);
+
+        fixture.historyManager.undo();
+
+        expect(fixture.cutsFor(const TrackId('track-1')), [cutA, cutB, cutC]);
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        expect(fixture.historyManager.undoCount, 0);
+        expect(fixture.historyManager.redoCount, 1);
+
+        fixture.historyManager.redo();
+
+        expect(fixture.cutsFor(const TrackId('track-1')), [cutB, cutC, cutA]);
+        expect(fixture.editingSession.activeCutId, cutB.id);
+        expect(fixture.historyManager.undoCount, 1);
+        expect(fixture.historyManager.redoCount, 0);
+      },
+    );
+
+    test(
       'deleteCut deletes an active cut and lets the command select fallback',
       () {
         final cutA = _cut(id: 'cut-1', name: 'Cut A');

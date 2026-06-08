@@ -213,6 +213,142 @@ void main() {
       );
     });
 
+    test('reorders a cut within one track while preserving cut content', () {
+      final layer = _layer(id: 'layer-a', name: 'Line');
+      final cutA = _cut(id: 'cut-a', name: 'Cut A', layers: [layer]);
+      final cutB = _cut(id: 'cut-b', name: 'Cut B');
+      final cutC = _cut(id: 'cut-c', name: 'Cut C');
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [
+          _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB, cutC]),
+        ],
+      );
+      final repository = ProjectRepository(initialProject: project);
+
+      repository.reorderCut(
+        trackId: const TrackId('track-1'),
+        cutId: cutA.id,
+        newIndex: 2,
+      );
+
+      var cuts = repository.requireProject().tracks.single.cuts;
+      expect(cuts, [cutB, cutC, cutA]);
+      expect(cuts.last.id, cutA.id);
+      expect(cuts.last.layers, [layer]);
+      expect(cuts.last.duration, cutA.duration);
+      expect(cuts.last.canvasSize, cutA.canvasSize);
+      expect(project.tracks.single.cuts, [cutA, cutB, cutC]);
+
+      final secondRepository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-2',
+          name: 'Project 2',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB, cutC]),
+          ],
+        ),
+      );
+
+      secondRepository.reorderCut(
+        trackId: const TrackId('track-1'),
+        cutId: cutC.id,
+        newIndex: 0,
+      );
+
+      cuts = secondRepository.requireProject().tracks.single.cuts;
+      expect(cuts, [cutC, cutA, cutB]);
+    });
+
+    test('reordering a cut to the same index keeps the order unchanged', () {
+      final cutA = _cut(id: 'cut-a', name: 'Cut A');
+      final cutB = _cut(id: 'cut-b', name: 'Cut B');
+      final cutC = _cut(id: 'cut-c', name: 'Cut C');
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB, cutC]),
+          ],
+        ),
+      );
+
+      repository.reorderCut(
+        trackId: const TrackId('track-1'),
+        cutId: cutB.id,
+        newIndex: 1,
+      );
+
+      expect(repository.requireProject().tracks.single.cuts, [
+        cutA,
+        cutB,
+        cutC,
+      ]);
+    });
+
+    test('throws when reordering a cut with missing track or missing cut', () {
+      final cutA = _cut(id: 'cut-a', name: 'Cut A');
+      final cutB = _cut(id: 'cut-b', name: 'Cut B');
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+            _track(id: 'track-2', name: 'Overlay', cuts: [cutB]),
+          ],
+        ),
+      );
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => repository.reorderCut(
+          trackId: const TrackId('missing'),
+          cutId: cutA.id,
+          newIndex: 0,
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+
+      expect(
+        () => repository.reorderCut(
+          trackId: const TrackId('track-1'),
+          cutId: cutB.id,
+          newIndex: 0,
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
+    test('throws when reordering a cut to an out-of-range index', () {
+      final cutA = _cut(id: 'cut-a', name: 'Cut A');
+      final cutB = _cut(id: 'cut-b', name: 'Cut B');
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB]),
+          ],
+        ),
+      );
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => repository.reorderCut(
+          trackId: const TrackId('track-1'),
+          cutId: cutA.id,
+          newIndex: 2,
+        ),
+        throwsA(isA<RangeError>()),
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
     test('renames only the target cut display name and allows duplicates', () {
       final layer = _layer(id: 'layer-1', name: 'Line');
       final targetCut = _cut(id: 'cut-a', name: 'Original', layers: [layer]);
