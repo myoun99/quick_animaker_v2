@@ -67,6 +67,21 @@ Future<void> _renameCurrentFrame(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _renameActiveCut(WidgetTester tester, String name) async {
+  await _tapCutCommandButton(
+    tester,
+    const ValueKey<String>('rename-cut-button'),
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey<String>('rename-cut-text-field')),
+    name,
+  );
+  await tester.tap(
+    find.byKey(const ValueKey<String>('rename-cut-confirm-button')),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
   await _tapTimelineCell(
     tester,
@@ -171,6 +186,10 @@ void main() {
     );
     expect(find.byTooltip('New Frame'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
+    expect(find.byTooltip('New Cut'), findsOneWidget);
+    expect(find.byTooltip('Rename Cut'), findsOneWidget);
+    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+    expect(find.byTooltip('Delete Cut'), findsOneWidget);
     expect(find.text('Cuts:'), findsOneWidget);
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
@@ -287,19 +306,120 @@ void main() {
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
   });
 
-  testWidgets('does not expose rename cut UI', (WidgetTester tester) async {
+  testWidgets('opens and cancels rename cut dialog without mutation', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Rename Cut'), findsNothing);
+    expect(find.byTooltip('Rename Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('rename-cut-button')),
-      findsNothing,
+      findsOneWidget,
     );
+
+    await _tapCutCommandButton(
+      tester,
+      const ValueKey<String>('rename-cut-button'),
+    );
+
+    expect(find.text('Rename Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('rename-cut-text-field')),
-      findsNothing,
+      findsOneWidget,
     );
+    expect(
+      tester.widget<TextField>(
+        find.byKey(const ValueKey<String>('rename-cut-text-field')),
+      ).controller?.text,
+      'Cut 1',
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-cut-text-field')),
+      'Canceled Cut',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-cut-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('Rename Cut'), findsNothing);
+    expect(find.text('Cut 1'), findsOneWidget);
+    expect(find.text('Canceled Cut'), findsNothing);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+  });
+
+  testWidgets('renames active cut and supports undo and redo', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _renameActiveCut(tester, 'Scene A');
+
+    expect(find.text('Scene A'), findsOneWidget);
+    expect(find.text('Cut 1'), findsNothing);
+    expect(find.byTooltip('Active: Scene A'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Undo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cut 1'), findsOneWidget);
+    expect(find.text('Scene A'), findsNothing);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Redo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Scene A'), findsOneWidget);
+    expect(find.text('Cut 1'), findsNothing);
+    expect(find.byTooltip('Active: Scene A'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+  });
+
+  testWidgets('ignores empty rename cut input', (WidgetTester tester) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _renameActiveCut(tester, '   ');
+
+    expect(find.text('Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    final undoButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Undo'),
+    );
+    expect(undoButton.onPressed, isNull);
+  });
+
+  testWidgets('allows duplicate cut names without merging cuts', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _renameActiveCut(tester, 'Cut 2');
+
+    expect(find.text('Cut 2'), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cut-list-entry-sample-cut-2')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+    expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
+    expect(find.textContaining('already'), findsNothing);
+    expect(find.textContaining('duplicate'), findsNothing);
   });
 
   testWidgets('uses the sample cut resolved from the project by default', (

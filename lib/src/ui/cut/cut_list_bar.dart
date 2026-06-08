@@ -9,6 +9,7 @@ class CutListBar extends StatelessWidget {
     required this.entries,
     this.onCutSelected,
     this.onNewCut,
+    this.onRenameActiveCut,
     this.onDuplicateActiveCut,
     this.onDeleteActiveCut,
   });
@@ -16,6 +17,7 @@ class CutListBar extends StatelessWidget {
   final List<CutListEntry> entries;
   final ValueChanged<CutId>? onCutSelected;
   final VoidCallback? onNewCut;
+  final VoidCallback? onRenameActiveCut;
   final VoidCallback? onDuplicateActiveCut;
   final VoidCallback? onDeleteActiveCut;
 
@@ -59,6 +61,12 @@ class CutListBar extends StatelessWidget {
                 onPressed: onNewCut,
               ),
               _CutCommandIconButton(
+                key: const ValueKey<String>('rename-cut-button'),
+                tooltip: 'Rename Cut',
+                icon: Icons.edit_outlined,
+                onPressed: onRenameActiveCut,
+              ),
+              _CutCommandIconButton(
                 key: const ValueKey<String>('duplicate-cut-button'),
                 tooltip: 'Duplicate Cut',
                 icon: Icons.content_copy,
@@ -79,6 +87,7 @@ class CutListBar extends StatelessWidget {
 
   bool get _hasCommandActions =>
       onNewCut != null ||
+      onRenameActiveCut != null ||
       onDuplicateActiveCut != null ||
       onDeleteActiveCut != null;
 }

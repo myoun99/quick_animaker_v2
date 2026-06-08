@@ -79,6 +79,7 @@ void main() {
       tester,
     ) async {
       var newCutCount = 0;
+      var renameCutCount = 0;
       var duplicateCutCount = 0;
       var deleteCutCount = 0;
 
@@ -87,6 +88,7 @@ void main() {
           CutListBar(
             entries: [_entry(id: 'cut-1', name: 'Cut 1', isActive: true)],
             onNewCut: () => newCutCount += 1,
+            onRenameActiveCut: () => renameCutCount += 1,
             onDuplicateActiveCut: () => duplicateCutCount += 1,
             onDeleteActiveCut: () => deleteCutCount += 1,
           ),
@@ -94,10 +96,15 @@ void main() {
       );
 
       expect(find.byTooltip('New Cut'), findsOneWidget);
+      expect(find.byTooltip('Rename Cut'), findsOneWidget);
       expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
       expect(find.byTooltip('Delete Cut'), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('new-cut-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('rename-cut-button')),
         findsOneWidget,
       );
       expect(
@@ -108,15 +115,15 @@ void main() {
         find.byKey(const ValueKey<String>('delete-cut-button')),
         findsOneWidget,
       );
-      expect(find.byTooltip('Rename Cut'), findsNothing);
-
       await tester.tap(find.byKey(const ValueKey<String>('new-cut-button')));
+      await tester.tap(find.byKey(const ValueKey<String>('rename-cut-button')));
       await tester.tap(
         find.byKey(const ValueKey<String>('duplicate-cut-button')),
       );
       await tester.tap(find.byKey(const ValueKey<String>('delete-cut-button')));
 
       expect(newCutCount, 1);
+      expect(renameCutCount, 1);
       expect(duplicateCutCount, 1);
       expect(deleteCutCount, 1);
     });
