@@ -16,12 +16,7 @@ Cut createDefaultCut({
     id: cutId,
     name: name,
     layers: [
-      Layer(
-        id: layerId,
-        name: 'Layer 1',
-        frames: const [],
-        timeline: const {},
-      ),
+      Layer(id: layerId, name: 'Layer 1', frames: const [], timeline: const {}),
     ],
     duration: 1,
     canvasSize: canvasSize,
