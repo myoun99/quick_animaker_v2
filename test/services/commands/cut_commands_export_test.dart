@@ -11,6 +11,8 @@ void main() {
         DuplicateCutCommand,
         ReorderCutCommand,
         CutCommandCoordinator,
+        CutPosition,
+        CutReorderPlanner,
       ],
       containsAll(<Type>[
         CreateCutCommand,
@@ -19,6 +21,8 @@ void main() {
         DuplicateCutCommand,
         ReorderCutCommand,
         CutCommandCoordinator,
+        CutPosition,
+        CutReorderPlanner,
       ]),
     );
   });

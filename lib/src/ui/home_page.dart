@@ -18,6 +18,7 @@ import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/timeline_exposure.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
@@ -42,6 +43,7 @@ class _HomePageState extends State<HomePage> {
   late final ProjectRepository _repository;
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;
+  final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
   late CanvasController _canvasController;
   late LayerController _layerController;
   late TimelineController _timelineController;
@@ -141,52 +143,45 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  _ActiveCutPosition? get _activeCutPositionOrNull {
-    final activeCutId = _editingSession.activeCutId;
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      final cutIndex = track.cuts.indexWhere((cut) => cut.id == activeCutId);
-      if (cutIndex != -1) {
-        return _ActiveCutPosition(
-          trackId: track.id,
-          cutIndex: cutIndex,
-          cutCount: track.cuts.length,
-        );
-      }
-    }
-
-    return null;
+  CutPosition? get _activeCutPositionOrNull {
+    return _cutReorderPlanner.findCutPosition(
+      project: _repository.requireProject(),
+      cutId: _editingSession.activeCutId,
+    );
   }
 
-  _ActiveCutPosition get _activeCutPosition {
-    final position = _activeCutPositionOrNull;
-    if (position == null) {
+  CutPosition get _activeCutPosition {
+    try {
+      return _cutReorderPlanner.requireCutPosition(
+        project: _repository.requireProject(),
+        cutId: _editingSession.activeCutId,
+      );
+    } on StateError {
       throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
     }
-    return position;
   }
 
   bool get _canMoveActiveCutLeft {
     final position = _activeCutPositionOrNull;
-    return position != null && position.cutIndex > 0;
+    return position != null && _cutReorderPlanner.canMoveLeft(position);
   }
 
   bool get _canMoveActiveCutRight {
     final position = _activeCutPositionOrNull;
-    return position != null && position.cutIndex < position.cutCount - 1;
+    return position != null && _cutReorderPlanner.canMoveRight(position);
   }
 
   void _moveActiveCutLeftFromList() {
     final position = _activeCutPosition;
-    if (position.cutIndex <= 0) {
+    if (!_cutReorderPlanner.canMoveLeft(position)) {
       return;
     }
 
     setState(() {
       _cutCommandCoordinator.reorderCut(
         trackId: position.trackId,
-        cutId: _editingSession.activeCutId,
-        newIndex: position.cutIndex - 1,
+        cutId: position.cutId,
+        newIndex: _cutReorderPlanner.moveLeftTargetIndex(position),
       );
       _refreshAfterCutCommand();
     });
@@ -194,15 +189,15 @@ class _HomePageState extends State<HomePage> {
 
   void _moveActiveCutRightFromList() {
     final position = _activeCutPosition;
-    if (position.cutIndex >= position.cutCount - 1) {
+    if (!_cutReorderPlanner.canMoveRight(position)) {
       return;
     }
 
     setState(() {
       _cutCommandCoordinator.reorderCut(
         trackId: position.trackId,
-        cutId: _editingSession.activeCutId,
-        newIndex: position.cutIndex + 1,
+        cutId: position.cutId,
+        newIndex: _cutReorderPlanner.moveRightTargetIndex(position),
       );
       _refreshAfterCutCommand();
     });
@@ -1116,17 +1111,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _ActiveCutPosition {
-  const _ActiveCutPosition({
-    required this.trackId,
-    required this.cutIndex,
-    required this.cutCount,
-  });
-
-  final TrackId trackId;
-  final int cutIndex;
-  final int cutCount;
-}
 
 class _RenameCutDialog extends StatefulWidget {
   const _RenameCutDialog({required this.initialName});
