@@ -232,15 +232,16 @@ void main() {
               ),
             ],
             onCutSelected: (_) {},
-            onCutReordered: ({
-              required CutId draggedCutId,
-              required TrackId targetTrackId,
-              required int targetCutIndex,
-            }) {
-              reorderedCutId = draggedCutId;
-              capturedTargetTrackId = targetTrackId;
-              capturedTargetCutIndex = targetCutIndex;
-            },
+            onCutReordered:
+                ({
+                  required CutId draggedCutId,
+                  required TrackId targetTrackId,
+                  required int targetCutIndex,
+                }) {
+                  reorderedCutId = draggedCutId;
+                  capturedTargetTrackId = targetTrackId;
+                  capturedTargetCutIndex = targetCutIndex;
+                },
           ),
         ),
       );

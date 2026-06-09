@@ -144,43 +144,40 @@ void main() {
       },
     );
 
-    test(
-      'drag reorder plan uses track-local index in a later Track',
-      () {
-        final cutA1 = _cut(id: 'a1', name: 'A1');
-        final cutA2 = _cut(id: 'a2', name: 'A2');
-        final cutB1 = _cut(id: 'b1', name: 'B1');
-        final cutB2 = _cut(id: 'b2', name: 'B2');
-        final fixture = _fixture(
-          _project(
-            tracks: [
-              _track(id: 'track-a', name: 'Track A', cuts: [cutA1, cutA2]),
-              _track(id: 'track-b', name: 'Track B', cuts: [cutB1, cutB2]),
-            ],
-          ),
-          activeCutId: cutB1.id,
-        );
-        const planner = CutReorderPlanner();
+    test('drag reorder plan uses track-local index in a later Track', () {
+      final cutA1 = _cut(id: 'a1', name: 'A1');
+      final cutA2 = _cut(id: 'a2', name: 'A2');
+      final cutB1 = _cut(id: 'b1', name: 'B1');
+      final cutB2 = _cut(id: 'b2', name: 'B2');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-a', name: 'Track A', cuts: [cutA1, cutA2]),
+            _track(id: 'track-b', name: 'Track B', cuts: [cutB1, cutB2]),
+          ],
+        ),
+        activeCutId: cutB1.id,
+      );
+      const planner = CutReorderPlanner();
 
-        final plan = planner.planSameTrackDrop(
-          project: fixture.project,
-          draggedCutId: cutB1.id,
-          targetTrackId: const TrackId('track-b'),
-          targetCutIndex: 1,
-        );
+      final plan = planner.planSameTrackDrop(
+        project: fixture.project,
+        draggedCutId: cutB1.id,
+        targetTrackId: const TrackId('track-b'),
+        targetCutIndex: 1,
+      );
 
-        expect(plan, isNotNull);
-        fixture.coordinator.reorderCut(
-          trackId: plan!.trackId,
-          cutId: plan.cutId,
-          newIndex: plan.newIndex,
-        );
+      expect(plan, isNotNull);
+      fixture.coordinator.reorderCut(
+        trackId: plan!.trackId,
+        cutId: plan.cutId,
+        newIndex: plan.newIndex,
+      );
 
-        expect(fixture.cutsFor(const TrackId('track-a')), [cutA1, cutA2]);
-        expect(fixture.cutsFor(const TrackId('track-b')), [cutB2, cutB1]);
-        expect(fixture.editingSession.activeCutId, cutB1.id);
-      },
-    );
+      expect(fixture.cutsFor(const TrackId('track-a')), [cutA1, cutA2]);
+      expect(fixture.cutsFor(const TrackId('track-b')), [cutB2, cutB1]);
+      expect(fixture.editingSession.activeCutId, cutB1.id);
+    });
 
     test('cross-track drag reorder plan is ignored without mutation', () {
       final cutA1 = _cut(id: 'a1', name: 'A1');

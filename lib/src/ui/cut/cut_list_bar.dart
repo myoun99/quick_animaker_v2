@@ -4,11 +4,12 @@ import '../../controllers/cut_list_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/track_id.dart';
 
-typedef CutReorderedCallback = void Function({
-  required CutId draggedCutId,
-  required TrackId targetTrackId,
-  required int targetCutIndex,
-});
+typedef CutReorderedCallback =
+    void Function({
+      required CutId draggedCutId,
+      required TrackId targetTrackId,
+      required int targetCutIndex,
+    });
 
 class CutListBar extends StatelessWidget {
   const CutListBar({
