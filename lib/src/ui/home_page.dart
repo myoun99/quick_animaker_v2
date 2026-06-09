@@ -954,9 +954,7 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
-                    Text(
-                      'Active strokes: ${_canvasController.strokes.length}',
-                    ),
+                    Text('Active strokes: ${_canvasController.strokes.length}'),
                     const SizedBox(width: 16),
                     CutListBar(
                       entries: cutEntries,
