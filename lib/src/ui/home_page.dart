@@ -1111,7 +1111,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-
 class _RenameCutDialog extends StatefulWidget {
   const _RenameCutDialog({required this.initialName});
 

@@ -89,10 +89,7 @@ void main() {
     test('fails clearly for edge target indexes', () {
       final positions = _positionsForThreeCuts();
 
-      expect(
-        () => planner.moveLeftTargetIndex(positions[0]),
-        throwsStateError,
-      );
+      expect(() => planner.moveLeftTargetIndex(positions[0]), throwsStateError);
       expect(
         () => planner.moveRightTargetIndex(positions[2]),
         throwsStateError,
@@ -124,11 +121,7 @@ Project _projectWithTracks(List<Track> tracks) {
 }
 
 Track _track({required String id, required List<String> cutIds}) {
-  return Track(
-    id: TrackId(id),
-    name: id,
-    cuts: cutIds.map(_cut).toList(),
-  );
+  return Track(id: TrackId(id), name: id, cuts: cutIds.map(_cut).toList());
 }
 
 Cut _cut(String id) {

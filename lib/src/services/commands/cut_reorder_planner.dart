@@ -56,9 +56,7 @@ class CutReorderPlanner {
 
   int moveLeftTargetIndex(CutPosition position) {
     if (!canMoveLeft(position)) {
-      throw StateError(
-        'Cut cannot move left from index ${position.cutIndex}.',
-      );
+      throw StateError('Cut cannot move left from index ${position.cutIndex}.');
     }
     return position.cutIndex - 1;
   }
