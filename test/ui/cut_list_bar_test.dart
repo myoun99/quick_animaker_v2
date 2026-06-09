@@ -81,6 +81,8 @@ void main() {
       var newCutCount = 0;
       var renameCutCount = 0;
       var duplicateCutCount = 0;
+      var moveLeftCount = 0;
+      var moveRightCount = 0;
       var deleteCutCount = 0;
 
       await tester.pumpWidget(
@@ -90,6 +92,8 @@ void main() {
             onNewCut: () => newCutCount += 1,
             onRenameActiveCut: () => renameCutCount += 1,
             onDuplicateActiveCut: () => duplicateCutCount += 1,
+            onMoveActiveCutLeft: () => moveLeftCount += 1,
+            onMoveActiveCutRight: () => moveRightCount += 1,
             onDeleteActiveCut: () => deleteCutCount += 1,
           ),
         ),
@@ -98,6 +102,8 @@ void main() {
       expect(find.byTooltip('New Cut'), findsOneWidget);
       expect(find.byTooltip('Rename Cut'), findsOneWidget);
       expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+      expect(find.byTooltip('Move Cut Left'), findsOneWidget);
+      expect(find.byTooltip('Move Cut Right'), findsOneWidget);
       expect(find.byTooltip('Delete Cut'), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('new-cut-button')),
@@ -112,6 +118,14 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.byKey(const ValueKey<String>('move-cut-left-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('move-cut-right-button')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const ValueKey<String>('delete-cut-button')),
         findsOneWidget,
       );
@@ -120,11 +134,19 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey<String>('duplicate-cut-button')),
       );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('move-cut-left-button')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('move-cut-right-button')),
+      );
       await tester.tap(find.byKey(const ValueKey<String>('delete-cut-button')));
 
       expect(newCutCount, 1);
       expect(renameCutCount, 1);
       expect(duplicateCutCount, 1);
+      expect(moveLeftCount, 1);
+      expect(moveRightCount, 1);
       expect(deleteCutCount, 1);
     });
 

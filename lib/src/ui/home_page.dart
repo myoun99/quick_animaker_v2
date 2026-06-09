@@ -141,6 +141,73 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  _ActiveCutPosition? get _activeCutPositionOrNull {
+    final activeCutId = _editingSession.activeCutId;
+    final project = _repository.requireProject();
+    for (final track in project.tracks) {
+      final cutIndex = track.cuts.indexWhere((cut) => cut.id == activeCutId);
+      if (cutIndex != -1) {
+        return _ActiveCutPosition(
+          trackId: track.id,
+          cutIndex: cutIndex,
+          cutCount: track.cuts.length,
+        );
+      }
+    }
+
+    return null;
+  }
+
+  _ActiveCutPosition get _activeCutPosition {
+    final position = _activeCutPositionOrNull;
+    if (position == null) {
+      throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
+    }
+    return position;
+  }
+
+  bool get _canMoveActiveCutLeft {
+    final position = _activeCutPositionOrNull;
+    return position != null && position.cutIndex > 0;
+  }
+
+  bool get _canMoveActiveCutRight {
+    final position = _activeCutPositionOrNull;
+    return position != null && position.cutIndex < position.cutCount - 1;
+  }
+
+  void _moveActiveCutLeftFromList() {
+    final position = _activeCutPosition;
+    if (position.cutIndex <= 0) {
+      return;
+    }
+
+    setState(() {
+      _cutCommandCoordinator.reorderCut(
+        trackId: position.trackId,
+        cutId: _editingSession.activeCutId,
+        newIndex: position.cutIndex - 1,
+      );
+      _refreshAfterCutCommand();
+    });
+  }
+
+  void _moveActiveCutRightFromList() {
+    final position = _activeCutPosition;
+    if (position.cutIndex >= position.cutCount - 1) {
+      return;
+    }
+
+    setState(() {
+      _cutCommandCoordinator.reorderCut(
+        trackId: position.trackId,
+        cutId: _editingSession.activeCutId,
+        newIndex: position.cutIndex + 1,
+      );
+      _refreshAfterCutCommand();
+    });
+  }
+
   Cut get _activeCut {
     final project = _repository.requireProject();
     for (final track in project.tracks) {
@@ -887,7 +954,9 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
-                    Text('Active strokes: ${_canvasController.strokes.length}'),
+                    Text(
+                      'Active strokes: ${_canvasController.strokes.length}',
+                    ),
                     const SizedBox(width: 16),
                     CutListBar(
                       entries: cutEntries,
@@ -895,6 +964,12 @@ class _HomePageState extends State<HomePage> {
                       onNewCut: _createCutFromList,
                       onRenameActiveCut: _renameActiveCutFromList,
                       onDuplicateActiveCut: _duplicateActiveCutFromList,
+                      onMoveActiveCutLeft: _canMoveActiveCutLeft
+                          ? _moveActiveCutLeftFromList
+                          : null,
+                      onMoveActiveCutRight: _canMoveActiveCutRight
+                          ? _moveActiveCutRightFromList
+                          : null,
                       onDeleteActiveCut: _deleteActiveCutFromList,
                     ),
                     const SizedBox(width: 16),
@@ -1041,6 +1116,18 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
+}
+
+class _ActiveCutPosition {
+  const _ActiveCutPosition({
+    required this.trackId,
+    required this.cutIndex,
+    required this.cutCount,
+  });
+
+  final TrackId trackId;
+  final int cutIndex;
+  final int cutCount;
 }
 
 class _RenameCutDialog extends StatefulWidget {

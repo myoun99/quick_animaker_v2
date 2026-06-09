@@ -11,6 +11,8 @@ class CutListBar extends StatelessWidget {
     this.onNewCut,
     this.onRenameActiveCut,
     this.onDuplicateActiveCut,
+    this.onMoveActiveCutLeft,
+    this.onMoveActiveCutRight,
     this.onDeleteActiveCut,
   });
 
@@ -19,6 +21,8 @@ class CutListBar extends StatelessWidget {
   final VoidCallback? onNewCut;
   final VoidCallback? onRenameActiveCut;
   final VoidCallback? onDuplicateActiveCut;
+  final VoidCallback? onMoveActiveCutLeft;
+  final VoidCallback? onMoveActiveCutRight;
   final VoidCallback? onDeleteActiveCut;
 
   @override
@@ -73,6 +77,18 @@ class CutListBar extends StatelessWidget {
                 onPressed: onDuplicateActiveCut,
               ),
               _CutCommandIconButton(
+                key: const ValueKey<String>('move-cut-left-button'),
+                tooltip: 'Move Cut Left',
+                icon: Icons.chevron_left,
+                onPressed: onMoveActiveCutLeft,
+              ),
+              _CutCommandIconButton(
+                key: const ValueKey<String>('move-cut-right-button'),
+                tooltip: 'Move Cut Right',
+                icon: Icons.chevron_right,
+                onPressed: onMoveActiveCutRight,
+              ),
+              _CutCommandIconButton(
                 key: const ValueKey<String>('delete-cut-button'),
                 tooltip: 'Delete Cut',
                 icon: Icons.delete_outline,
@@ -89,6 +105,8 @@ class CutListBar extends StatelessWidget {
       onNewCut != null ||
       onRenameActiveCut != null ||
       onDuplicateActiveCut != null ||
+      onMoveActiveCutLeft != null ||
+      onMoveActiveCutRight != null ||
       onDeleteActiveCut != null;
 }
 
