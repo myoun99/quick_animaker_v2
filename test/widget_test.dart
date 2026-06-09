@@ -104,12 +104,21 @@ String _statusText(WidgetTester tester, ValueKey<String> key) {
 }
 
 bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
-  final widget = tester.widget(find.byKey(key));
+  final button = find.byKey(key);
+  final widget = tester.widget(button);
+
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
     IconButton(:final onPressed) => onPressed != null,
-    _ => throw StateError('Unsupported button type: ${widget.runtimeType}'),
+    _ => _isDescendantIconButtonEnabled(tester, button),
   };
+}
+
+bool _isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
+  final iconButton = tester.widget<IconButton>(
+    find.descendant(of: button, matching: find.byType(IconButton)),
+  );
+  return iconButton.onPressed != null;
 }
 
 void _expectCutOrder(WidgetTester tester, List<String> cutIds) {
