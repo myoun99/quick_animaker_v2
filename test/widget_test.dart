@@ -112,6 +112,19 @@ bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
   };
 }
 
+void _expectCutOrder(WidgetTester tester, List<String> cutIds) {
+  final centers = [
+    for (final cutId in cutIds)
+      tester
+          .getCenter(find.byKey(ValueKey<String>('cut-list-entry-$cutId')))
+          .dx,
+  ];
+
+  for (var index = 1; index < centers.length; index += 1) {
+    expect(centers[index], greaterThan(centers[index - 1]));
+  }
+}
+
 Future<void> _tapCutCommandButton(
   WidgetTester tester,
   ValueKey<String> key,
@@ -205,6 +218,8 @@ void main() {
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
+    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
     expect(find.text('Cuts:'), findsOneWidget);
     expect(find.text('Cut 1'), findsOneWidget);
@@ -228,6 +243,8 @@ void main() {
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
+    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
+    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
@@ -251,19 +268,128 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
 
     expect(find.byTooltip('Reorder Cut'), findsNothing);
-    expect(find.byTooltip('Move Cut Left'), findsNothing);
-    expect(find.byTooltip('Move Cut Right'), findsNothing);
+    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
+    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Linked Cut'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('cut-reorder-button')),
       findsNothing,
     );
     expect(
+      find.byKey(const ValueKey<String>('cut-reorder-handle')),
+      findsNothing,
+    );
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
+    expect(
       find.byKey(const ValueKey<String>('cut-management-panel')),
       findsNothing,
     );
     expect(find.text('Cut Management'), findsNothing);
     expect(find.text('Manage Cuts'), findsNothing);
+    expect(find.text('Conte Panel'), findsNothing);
+    expect(find.text('Storyboard Panel'), findsNothing);
+    expect(find.byType(ReorderableListView), findsNothing);
+  });
+
+  testWidgets('move cut buttons reorder active cut left with undo and redo', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _switchToCut(tester, 'sample-cut-2');
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+
+    await _tapCutCommandButton(
+      tester,
+      const ValueKey<String>('move-cut-left-button'),
+    );
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut-2'),
+    );
+
+    await _tapUndoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+
+    await _tapRedoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+  });
+
+  testWidgets('move cut buttons reorder active cut right with undo and redo', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+
+    await _tapCutCommandButton(
+      tester,
+      const ValueKey<String>('move-cut-right-button'),
+    );
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await _tapUndoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+
+    await _tapRedoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+  });
+
+  testWidgets('move cut buttons are disabled at cut list edges', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('move-cut-left-button'),
+      ),
+      isFalse,
+    );
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('move-cut-right-button'),
+      ),
+      isTrue,
+    );
+
+    await _switchToCut(tester, 'sample-cut-2');
+
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('move-cut-left-button'),
+      ),
+      isTrue,
+    );
+    expect(
+      _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('move-cut-right-button'),
+      ),
+      isFalse,
+    );
   });
 
   testWidgets('creates a new cut from the cut list command', (
