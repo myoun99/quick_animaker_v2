@@ -28,6 +28,24 @@ Future<void> _switchToCut(WidgetTester tester, String cutId) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _dragCutOnto(
+  WidgetTester tester, {
+  required String sourceCutId,
+  required String targetCutId,
+}) async {
+  final source = find.byKey(ValueKey<String>('cut-list-entry-$sourceCutId'));
+  final target = find.byKey(ValueKey<String>('cut-list-entry-$targetCutId'));
+  await tester.ensureVisible(source);
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+
+  await tester.dragFrom(
+    tester.getCenter(source),
+    tester.getCenter(target) - tester.getCenter(source),
+  );
+  await tester.pumpAndSettle();
+}
+
 Finder _timelineCell(String layerId, int frameIndex) {
   return find.byKey(ValueKey<String>('timeline-cell-$layerId-$frameIndex'));
 }
@@ -298,6 +316,69 @@ void main() {
     expect(find.text('Conte Panel'), findsNothing);
     expect(find.text('Storyboard Panel'), findsNothing);
     expect(find.byType(ReorderableListView), findsNothing);
+  });
+
+  testWidgets('dragging Cut 2 before Cut 1 keeps Cut 2 active', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _switchToCut(tester, 'sample-cut-2');
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+
+    await _dragCutOnto(
+      tester,
+      sourceCutId: 'sample-cut-2',
+      targetCutId: 'sample-cut',
+    );
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut-2'),
+    );
+  });
+
+  testWidgets('dragging Cut 1 after Cut 2 supports undo and redo', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+
+    await _dragCutOnto(
+      tester,
+      sourceCutId: 'sample-cut',
+      targetCutId: 'sample-cut-2',
+    );
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await _tapUndoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut', 'sample-cut-2']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await _tapRedoButton(tester);
+
+    _expectCutOrder(tester, ['sample-cut-2', 'sample-cut']);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
   });
 
   testWidgets('move cut buttons reorder active cut left with undo and redo', (

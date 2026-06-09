@@ -13,8 +13,8 @@ void main() {
         _testApp(
           CutListBar(
             entries: [
-              _entry(id: 'cut-1', name: 'Cut 1'),
-              _entry(id: 'cut-2', name: 'Cut 2'),
+              _entry(id: 'cut-1', name: 'Cut 1', cutIndex: 0),
+              _entry(id: 'cut-2', name: 'Cut 2', cutIndex: 1),
             ],
           ),
         ),
@@ -203,6 +203,61 @@ void main() {
       );
     });
 
+    testWidgets('emits track-local target index for multi-track drag reorder', (
+      tester,
+    ) async {
+      CutId? reorderedCutId;
+      TrackId? capturedTargetTrackId;
+      int? capturedTargetCutIndex;
+
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(id: 'a1', name: 'A1', trackId: 'track-a', cutIndex: 0),
+              _entry(id: 'a2', name: 'A2', trackId: 'track-a', cutIndex: 1),
+              _entry(
+                id: 'b1',
+                name: 'B1',
+                trackId: 'track-b',
+                trackIndex: 1,
+                cutIndex: 0,
+              ),
+              _entry(
+                id: 'b2',
+                name: 'B2',
+                trackId: 'track-b',
+                trackIndex: 1,
+                cutIndex: 1,
+              ),
+            ],
+            onCutSelected: (_) {},
+            onCutReordered: ({
+              required CutId draggedCutId,
+              required TrackId targetTrackId,
+              required int targetCutIndex,
+            }) {
+              reorderedCutId = draggedCutId;
+              capturedTargetTrackId = targetTrackId;
+              capturedTargetCutIndex = targetCutIndex;
+            },
+          ),
+        ),
+      );
+
+      final source = find.byKey(const ValueKey<String>('cut-list-entry-b1'));
+      final target = find.byKey(const ValueKey<String>('cut-list-entry-b2'));
+      await tester.dragFrom(
+        tester.getCenter(source),
+        tester.getCenter(target) - tester.getCenter(source),
+      );
+      await tester.pumpAndSettle();
+
+      expect(reorderedCutId, const CutId('b1'));
+      expect(capturedTargetTrackId, const TrackId('track-b'));
+      expect(capturedTargetCutIndex, 1);
+    });
+
     testWidgets('calls onCutSelected with tapped cut id when provided', (
       tester,
     ) async {
@@ -323,15 +378,18 @@ CutListEntry _entry({
   required String id,
   required String name,
   bool isActive = false,
+  String trackId = 'track-1',
+  int trackIndex = 0,
+  int cutIndex = 0,
 }) {
   return CutListEntry(
-    trackId: const TrackId('track-1'),
+    trackId: TrackId(trackId),
     trackName: 'Video Track',
-    trackIndex: 0,
+    trackIndex: trackIndex,
     trackType: TrackType.video,
     cutId: CutId(id),
     cutName: name,
-    cutIndex: 0,
+    cutIndex: cutIndex,
     isActive: isActive,
   );
 }
