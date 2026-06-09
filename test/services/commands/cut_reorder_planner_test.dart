@@ -95,6 +95,51 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('plans same-track drops with target track-local indexes', () {
+      final project = _projectWithTracks([
+        _track(id: 'track-a', cutIds: ['a1', 'a2']),
+        _track(id: 'track-b', cutIds: ['b1', 'b2']),
+      ]);
+
+      final plan = planner.planSameTrackDrop(
+        project: project,
+        draggedCutId: const CutId('b1'),
+        targetTrackId: const TrackId('track-b'),
+        targetCutIndex: 1,
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.trackId, const TrackId('track-b'));
+      expect(plan.cutId, const CutId('b1'));
+      expect(plan.newIndex, 1);
+    });
+
+    test('ignores cross-track and no-op drag drops', () {
+      final project = _projectWithTracks([
+        _track(id: 'track-a', cutIds: ['a1']),
+        _track(id: 'track-b', cutIds: ['b1']),
+      ]);
+
+      expect(
+        planner.planSameTrackDrop(
+          project: project,
+          draggedCutId: const CutId('a1'),
+          targetTrackId: const TrackId('track-b'),
+          targetCutIndex: 0,
+        ),
+        isNull,
+      );
+      expect(
+        planner.planSameTrackDrop(
+          project: project,
+          draggedCutId: const CutId('a1'),
+          targetTrackId: const TrackId('track-a'),
+          targetCutIndex: 0,
+        ),
+        isNull,
+      );
+    });
   });
 }
 

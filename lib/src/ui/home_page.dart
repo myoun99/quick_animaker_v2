@@ -203,20 +203,26 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _reorderCutFromList(CutId cutId, int newIndex) {
-    final position = _cutReorderPlanner.findCutPosition(
+  void _reorderCutFromList({
+    required CutId draggedCutId,
+    required TrackId targetTrackId,
+    required int targetCutIndex,
+  }) {
+    final plan = _cutReorderPlanner.planSameTrackDrop(
       project: _repository.requireProject(),
-      cutId: cutId,
+      draggedCutId: draggedCutId,
+      targetTrackId: targetTrackId,
+      targetCutIndex: targetCutIndex,
     );
-    if (position == null || position.cutIndex == newIndex) {
+    if (plan == null) {
       return;
     }
 
     setState(() {
       _cutCommandCoordinator.reorderCut(
-        trackId: position.trackId,
-        cutId: position.cutId,
-        newIndex: newIndex,
+        trackId: plan.trackId,
+        cutId: plan.cutId,
+        newIndex: plan.newIndex,
       );
       _refreshAfterCutCommand();
     });

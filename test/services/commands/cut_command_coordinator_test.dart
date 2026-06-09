@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
+import 'package:quick_animaker_v2/src/services/commands/cut_reorder_planner.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
@@ -142,6 +143,78 @@ void main() {
         expect(fixture.historyManager.redoCount, 0);
       },
     );
+
+    test(
+      'drag reorder plan uses track-local index in a later Track',
+      () {
+        final cutA1 = _cut(id: 'a1', name: 'A1');
+        final cutA2 = _cut(id: 'a2', name: 'A2');
+        final cutB1 = _cut(id: 'b1', name: 'B1');
+        final cutB2 = _cut(id: 'b2', name: 'B2');
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-a', name: 'Track A', cuts: [cutA1, cutA2]),
+              _track(id: 'track-b', name: 'Track B', cuts: [cutB1, cutB2]),
+            ],
+          ),
+          activeCutId: cutB1.id,
+        );
+        const planner = CutReorderPlanner();
+
+        final plan = planner.planSameTrackDrop(
+          project: fixture.project,
+          draggedCutId: cutB1.id,
+          targetTrackId: const TrackId('track-b'),
+          targetCutIndex: 1,
+        );
+
+        expect(plan, isNotNull);
+        fixture.coordinator.reorderCut(
+          trackId: plan!.trackId,
+          cutId: plan.cutId,
+          newIndex: plan.newIndex,
+        );
+
+        expect(fixture.cutsFor(const TrackId('track-a')), [cutA1, cutA2]);
+        expect(fixture.cutsFor(const TrackId('track-b')), [cutB2, cutB1]);
+        expect(fixture.editingSession.activeCutId, cutB1.id);
+      },
+    );
+
+    test('cross-track drag reorder plan is ignored without mutation', () {
+      final cutA1 = _cut(id: 'a1', name: 'A1');
+      final cutB1 = _cut(id: 'b1', name: 'B1');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-a', name: 'Track A', cuts: [cutA1]),
+            _track(id: 'track-b', name: 'Track B', cuts: [cutB1]),
+          ],
+        ),
+        activeCutId: cutA1.id,
+      );
+      const planner = CutReorderPlanner();
+
+      final plan = planner.planSameTrackDrop(
+        project: fixture.project,
+        draggedCutId: cutA1.id,
+        targetTrackId: const TrackId('track-b'),
+        targetCutIndex: 0,
+      );
+      if (plan != null) {
+        fixture.coordinator.reorderCut(
+          trackId: plan.trackId,
+          cutId: plan.cutId,
+          newIndex: plan.newIndex,
+        );
+      }
+
+      expect(plan, isNull);
+      expect(fixture.cutsFor(const TrackId('track-a')), [cutA1]);
+      expect(fixture.cutsFor(const TrackId('track-b')), [cutB1]);
+      expect(fixture.historyManager.undoCount, 0);
+    });
 
     test(
       'deleteCut deletes an active cut and lets the command select fallback',

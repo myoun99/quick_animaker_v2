@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../controllers/cut_list_helpers.dart';
 import '../../models/cut_id.dart';
+import '../../models/track_id.dart';
 
-typedef CutReorderedCallback = void Function(CutId cutId, int newIndex);
+typedef CutReorderedCallback = void Function({
+  required CutId draggedCutId,
+  required TrackId targetTrackId,
+  required int targetCutIndex,
+});
 
 class CutListBar extends StatelessWidget {
   const CutListBar({
@@ -59,7 +64,6 @@ class CutListBar extends StatelessWidget {
             for (var index = 0; index < entries.length; index += 1) ...[
               _ReorderableCutListChip(
                 entry: entries[index],
-                index: index,
                 canReorder: onCutReordered != null && entries.length > 1,
                 onSelected: onCutSelected,
                 onCutReordered: onCutReordered,
@@ -123,14 +127,12 @@ class CutListBar extends StatelessWidget {
 class _ReorderableCutListChip extends StatelessWidget {
   const _ReorderableCutListChip({
     required this.entry,
-    required this.index,
     required this.canReorder,
     required this.onSelected,
     required this.onCutReordered,
   });
 
   final CutListEntry entry;
-  final int index;
   final bool canReorder;
   final ValueChanged<CutId>? onSelected;
   final CutReorderedCallback? onCutReordered;
@@ -145,7 +147,11 @@ class _ReorderableCutListChip extends StatelessWidget {
     return DragTarget<CutId>(
       onWillAcceptWithDetails: (details) => details.data != entry.cutId,
       onAcceptWithDetails: (details) {
-        onCutReordered?.call(details.data, index);
+        onCutReordered?.call(
+          draggedCutId: details.data,
+          targetTrackId: entry.trackId,
+          targetCutIndex: entry.cutIndex,
+        );
       },
       builder: (context, candidateData, rejectedData) {
         final isDropTarget = candidateData.isNotEmpty;
