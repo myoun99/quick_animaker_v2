@@ -203,6 +203,40 @@ void main() {
       );
     });
 
+    testWidgets('calls onCutReordered when a cut is dragged onto another cut', (
+      tester,
+    ) async {
+      CutId? reorderedCutId;
+      int? reorderedIndex;
+
+      await tester.pumpWidget(
+        _testApp(
+          CutListBar(
+            entries: [
+              _entry(id: 'cut-1', name: 'Cut 1'),
+              _entry(id: 'cut-2', name: 'Cut 2'),
+            ],
+            onCutSelected: (_) {},
+            onCutReordered: (cutId, newIndex) {
+              reorderedCutId = cutId;
+              reorderedIndex = newIndex;
+            },
+          ),
+        ),
+      );
+
+      final source = find.byKey(const ValueKey<String>('cut-list-entry-cut-2'));
+      final target = find.byKey(const ValueKey<String>('cut-list-entry-cut-1'));
+      await tester.dragFrom(
+        tester.getCenter(source),
+        tester.getCenter(target) - tester.getCenter(source),
+      );
+      await tester.pumpAndSettle();
+
+      expect(reorderedCutId, const CutId('cut-2'));
+      expect(reorderedIndex, 0);
+    });
+
     testWidgets('calls onCutSelected with tapped cut id when provided', (
       tester,
     ) async {

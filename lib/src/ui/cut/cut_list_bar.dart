@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../controllers/cut_list_helpers.dart';
 import '../../models/cut_id.dart';
 
+typedef CutReorderedCallback = void Function(CutId cutId, int newIndex);
+
 class CutListBar extends StatelessWidget {
   const CutListBar({
     super.key,
@@ -14,6 +16,7 @@ class CutListBar extends StatelessWidget {
     this.onMoveActiveCutLeft,
     this.onMoveActiveCutRight,
     this.onDeleteActiveCut,
+    this.onCutReordered,
   });
 
   final List<CutListEntry> entries;
@@ -24,6 +27,7 @@ class CutListBar extends StatelessWidget {
   final VoidCallback? onMoveActiveCutLeft;
   final VoidCallback? onMoveActiveCutRight;
   final VoidCallback? onDeleteActiveCut;
+  final CutReorderedCallback? onCutReordered;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +57,13 @@ class CutListBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             for (var index = 0; index < entries.length; index += 1) ...[
-              _CutListChip(entry: entries[index], onSelected: onCutSelected),
+              _ReorderableCutListChip(
+                entry: entries[index],
+                index: index,
+                canReorder: onCutReordered != null && entries.length > 1,
+                onSelected: onCutSelected,
+                onCutReordered: onCutReordered,
+              ),
               if (index < entries.length - 1) const SizedBox(width: 4),
             ],
             if (_hasCommandActions) ...[
@@ -108,6 +118,64 @@ class CutListBar extends StatelessWidget {
       onMoveActiveCutLeft != null ||
       onMoveActiveCutRight != null ||
       onDeleteActiveCut != null;
+}
+
+class _ReorderableCutListChip extends StatelessWidget {
+  const _ReorderableCutListChip({
+    required this.entry,
+    required this.index,
+    required this.canReorder,
+    required this.onSelected,
+    required this.onCutReordered,
+  });
+
+  final CutListEntry entry;
+  final int index;
+  final bool canReorder;
+  final ValueChanged<CutId>? onSelected;
+  final CutReorderedCallback? onCutReordered;
+
+  @override
+  Widget build(BuildContext context) {
+    final chip = _CutListChip(entry: entry, onSelected: onSelected);
+    if (!canReorder) {
+      return chip;
+    }
+
+    return DragTarget<CutId>(
+      onWillAcceptWithDetails: (details) => details.data != entry.cutId,
+      onAcceptWithDetails: (details) {
+        onCutReordered?.call(details.data, index);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isDropTarget = candidateData.isNotEmpty;
+        return Draggable<CutId>(
+          data: entry.cutId,
+          axis: Axis.horizontal,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Opacity(
+              opacity: 0.85,
+              child: _CutListChip(entry: entry, onSelected: null),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.45, child: chip),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: isDropTarget
+                  ? Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    )
+                  : null,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: chip,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _CutCommandIconButton extends StatelessWidget {

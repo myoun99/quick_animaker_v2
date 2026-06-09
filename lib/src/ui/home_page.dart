@@ -203,6 +203,25 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _reorderCutFromList(CutId cutId, int newIndex) {
+    final position = _cutReorderPlanner.findCutPosition(
+      project: _repository.requireProject(),
+      cutId: cutId,
+    );
+    if (position == null || position.cutIndex == newIndex) {
+      return;
+    }
+
+    setState(() {
+      _cutCommandCoordinator.reorderCut(
+        trackId: position.trackId,
+        cutId: position.cutId,
+        newIndex: newIndex,
+      );
+      _refreshAfterCutCommand();
+    });
+  }
+
   Cut get _activeCut {
     final project = _repository.requireProject();
     for (final track in project.tracks) {
@@ -964,6 +983,7 @@ class _HomePageState extends State<HomePage> {
                           ? _moveActiveCutRightFromList
                           : null,
                       onDeleteActiveCut: _deleteActiveCutFromList,
+                      onCutReordered: _reorderCutFromList,
                     ),
                     const SizedBox(width: 16),
                     TextButton(
