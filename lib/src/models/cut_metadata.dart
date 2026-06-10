@@ -26,6 +26,20 @@ class CutMetadata {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'actionMemo': actionMemo,
+    'dialogueMemo': dialogueMemo,
+    'note': note,
+  };
+
+  factory CutMetadata.fromJson(Map<String, dynamic> json) {
+    return CutMetadata(
+      actionMemo: json['actionMemo'] as String,
+      dialogueMemo: json['dialogueMemo'] as String,
+      note: json['note'] as String,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

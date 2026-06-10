@@ -44,6 +44,7 @@ class Cut {
     'layers': layers.map((layer) => layer.toJson()).toList(),
     'duration': duration,
     'canvasSize': canvasSize.toJson(),
+    'metadata': metadata.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -57,6 +58,9 @@ class Cut {
       canvasSize: CanvasSize.fromJson(
         json['canvasSize'] as Map<String, dynamic>,
       ),
+      metadata: json['metadata'] == null
+          ? const CutMetadata.empty()
+          : CutMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
     );
   }
 

@@ -36,6 +36,37 @@ void main() {
       expect(metadata, isNot(differentMetadata));
     });
 
+    test('serializes to JSON', () {
+      const metadata = CutMetadata(
+        actionMemo: 'Character enters.',
+        dialogueMemo: 'A: Wait!',
+        note: 'Check expression.',
+      );
+
+      expect(metadata.toJson(), {
+        'actionMemo': 'Character enters.',
+        'dialogueMemo': 'A: Wait!',
+        'note': 'Check expression.',
+      });
+    });
+
+    test('deserializes from JSON', () {
+      final metadata = CutMetadata.fromJson({
+        'actionMemo': 'Character exits.',
+        'dialogueMemo': 'B: Too late.',
+        'note': 'Use 3D reference.',
+      });
+
+      expect(
+        metadata,
+        const CutMetadata(
+          actionMemo: 'Character exits.',
+          dialogueMemo: 'B: Too late.',
+          note: 'Use 3D reference.',
+        ),
+      );
+    });
+
     test('copyWith changes only the requested field', () {
       const metadata = CutMetadata(
         actionMemo: 'Original action',
@@ -93,6 +124,29 @@ void main() {
       expect(updatedCut.layers, cut.layers);
       expect(updatedCut.duration, cut.duration);
       expect(updatedCut.canvasSize, cut.canvasSize);
+    });
+
+    test('round-trips non-empty metadata through JSON', () {
+      final cut = _cut().copyWith(
+        metadata: const CutMetadata(
+          actionMemo: 'Run in from screen right.',
+          dialogueMemo: 'A: Wait!',
+          note: 'FX-heavy cut.',
+        ),
+      );
+
+      final restoredCut = Cut.fromJson(cut.toJson());
+
+      expect(restoredCut, cut);
+      expect(restoredCut.metadata, cut.metadata);
+    });
+
+    test('fromJson defaults missing metadata to empty metadata', () {
+      final json = _cut().toJson()..remove('metadata');
+
+      final restoredCut = Cut.fromJson(json);
+
+      expect(restoredCut.metadata, const CutMetadata.empty());
     });
 
     test('equality includes metadata', () {
