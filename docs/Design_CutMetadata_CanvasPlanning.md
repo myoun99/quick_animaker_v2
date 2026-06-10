@@ -51,41 +51,13 @@ These concepts should be introduced gradually and safely.
 
 The first metadata foundation should be text-based and low-risk.
 
-The agreed initial metadata fields are:
+Phase 64 corrects the scope of `CutMetadata`:
 
-* actionMemo
-* dialogueMemo
-* note
-
-These fields correspond to common conte/storyboard needs.
-
-### actionMemo
-
-`actionMemo` represents the action or movement memo for the Cut.
-
-Examples:
-
-* Character A runs in from screen right.
-* Character turns toward camera.
-* Explosion causes hair and clothes to move.
-* Camera shakes after impact.
-* TU from full body to face.
-
-This field should be used for animation/action/staging descriptions.
-
-### dialogueMemo
-
-`dialogueMemo` represents dialogue, voice, or spoken-line notes for the Cut.
-
-Examples:
-
-* A: "Wait!"
-* B: "It is already too late."
-* Monologue line.
-* Timing-related dialogue note.
-* Lip-sync reference note.
-
-This field should not be mixed with general production notes unless necessary.
+* `CutMetadata` is Cut-level metadata only.
+* `CutMetadata` contains only `note`.
+* `actionMemo` and `dialogueMemo` are not Cut-level metadata.
+* `actionMemo` and `dialogueMemo` belong to future StoryboardPanel / ContePanel data because they can vary per storyboard panel.
+* Legacy JSON containing `actionMemo` or `dialogueMemo` may be read for compatibility, but those fields are ignored by `CutMetadata`.
 
 ### note
 
@@ -102,27 +74,25 @@ Examples:
 
 This is a general-purpose memo field.
 
-## Initial implementation decision
+## Corrected implementation decision
 
-Phase 63 should introduce only:
+Phase 63 introduced `CutMetadata` with `actionMemo`, `dialogueMemo`, and `note`.
 
-* CutMetadata value object
-* actionMemo
-* dialogueMemo
-* note
-* default empty metadata
-* equality / copyWith support as appropriate
-* tests
+Phase 64 corrects that model:
 
-Phase 63 should not add UI.
+* `CutMetadata` keeps only `note`.
+* `CutMetadata.empty()` defaults `note` to `''`.
+* `CutMetadata.copyWith` supports `note` only.
+* `CutMetadata` equality, `hashCode`, and JSON serialization use `note` only.
+* `CutMetadata.fromJson` reads `note`, defaults a missing `note` to `''`, and safely ignores legacy `actionMemo` / `dialogueMemo` fields.
 
-Phase 63 should not add Conte Panel.
+Phase 64 should not add UI.
 
-Phase 63 should not add Storyboard Panel.
+Phase 64 should not add Conte Panel.
 
-Phase 63 should not add save/load schema changes unless the project already requires model serialization changes for tests.
+Phase 64 should not add Storyboard Panel.
 
-Phase 63 should not add Cut canvas settings yet.
+Phase 64 should not add Cut canvas settings yet.
 
 ## Future production metadata candidates
 
@@ -277,13 +247,13 @@ final CutCanvasSettings canvasSettings;
 
 Initial Phase 63 should add only CutMetadata.
 
-Possible future structure:
+Current corrected structure:
 
 class CutMetadata {
-final String actionMemo;
-final String dialogueMemo;
 final String note;
 }
+
+Future StoryboardPanel / ContePanel data may later define panel-level action and dialogue fields, but those fields should not be added back to `CutMetadata`.
 
 Possible future structure:
 
@@ -347,9 +317,9 @@ They should be introduced only after the model, coordinate system, renderer, and
 Recommended near-term order:
 
 * Phase 63: CutMetadata foundation
-* Phase 64: CutMetadata command foundation
-* Phase 65: very small Cut metadata UI or inspector preparation
-* Phase 66: Cut visual / storyboard data planning
+* Phase 64: CutMetadata scope correction to note-only Cut-level metadata
+* Phase 65 or later: future Cut metadata UI or inspector preparation, if still needed
+* Phase 66 or later: Cut visual / storyboard data planning
 * Phase 67 or later: Cut canvas settings model planning
 * Later: drawable area and tile-backed bitmap planning
 * Later: camera/framing transform planning
@@ -357,17 +327,15 @@ Recommended near-term order:
 
 ## Current decision
 
-Proceed with Phase 63 as:
-
-CutMetadata foundation only.
+After Phase 64, proceed with `CutMetadata` as Cut-level metadata only.
 
 Fields:
 
-* actionMemo
-* dialogueMemo
 * note
 
-Out of scope for Phase 63:
+Do not add `actionMemo` or `dialogueMemo` back to `CutMetadata`; those belong to future StoryboardPanel / ContePanel data.
+
+Out of scope for this corrected metadata foundation:
 
 * UI
 * Conte Panel
@@ -379,7 +347,6 @@ Out of scope for Phase 63:
 * drawable area
 * camera framing
 * renderer changes
-* save/load schema changes unless unavoidable
 * tile engine
 * project camera changes
 
