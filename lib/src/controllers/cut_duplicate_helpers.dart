@@ -29,6 +29,7 @@ Cut duplicateCutAsIndependentCopy({
         .toList(),
     duration: source.duration,
     canvasSize: source.canvasSize,
+    metadata: source.metadata,
   );
 }
 

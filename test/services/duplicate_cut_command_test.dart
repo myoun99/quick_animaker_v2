@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -54,6 +55,7 @@ void main() {
       expect(cuts.first, sourceCut);
       expect(cuts.last.id, const CutId('cut-duplicate'));
       expect(cuts.last.name, 'Duplicate Cut');
+      expect(cuts.last.metadata, sourceCut.metadata);
       expect(cuts.last.layers.single.id, const LayerId('layer-copy'));
       expect(
         cuts.last.layers.single.frames.single.id,
@@ -68,6 +70,45 @@ void main() {
         const TimelineExposure.blank(),
       );
       expect(editingSession.activeCutId, const CutId('cut-duplicate'));
+    });
+
+    test('preserves metadata through execute', () {
+      final sourceCut = _sourceCut().copyWith(
+        metadata: const CutMetadata(
+          actionMemo: 'Character runs in from screen right.',
+          dialogueMemo: 'A: Wait!',
+          note: 'FX-heavy cut.',
+        ),
+      );
+      final repository = ProjectRepository(
+        initialProject: _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [sourceCut]),
+          ],
+        ),
+      );
+      final editingSession = EditingSessionState(activeCutId: sourceCut.id);
+
+      DuplicateCutCommand(
+        repository: repository,
+        editingSession: editingSession,
+        sourceCutId: sourceCut.id,
+        targetTrackId: const TrackId('track-1'),
+        newCutId: const CutId('cut-duplicate'),
+        newName: 'Duplicate Cut',
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
+      ).execute();
+
+      final duplicatedCut = repository.requireProject().tracks.single.cuts.last;
+
+      expect(duplicatedCut.id, const CutId('cut-duplicate'));
+      expect(duplicatedCut.name, 'Duplicate Cut');
+      expect(duplicatedCut.metadata, sourceCut.metadata);
     });
 
     test('inserts the duplicate at the supplied index', () {

@@ -4,6 +4,7 @@ import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -38,6 +39,7 @@ void main() {
       expect(duplicate.name, 'Cut Copy');
       expect(duplicate.duration, source.duration);
       expect(duplicate.canvasSize, source.canvasSize);
+      expect(duplicate.metadata, source.metadata);
 
       expect(
         duplicate.layers.map((layer) => layer.id),
@@ -92,6 +94,35 @@ void main() {
       );
       expect(duplicate.layers[0].marks, source.layers[0].marks);
       expect(duplicate.layers[1].marks, source.layers[1].marks);
+    });
+
+    test('preserves source metadata', () {
+      final source = _sourceCut().copyWith(
+        metadata: const CutMetadata(
+          actionMemo: 'Character runs in from screen right.',
+          dialogueMemo: 'A: Wait!',
+          note: 'FX-heavy cut.',
+        ),
+      );
+
+      final duplicate = duplicateCutAsIndependentCopy(
+        source: source,
+        newCutId: const CutId('cut-copy'),
+        newName: 'Cut Copy',
+        layerIdMap: {
+          LayerId('layer-a'): LayerId('layer-copy-a'),
+          LayerId('layer-b'): LayerId('layer-copy-b'),
+        },
+        frameIdMap: {
+          FrameId('frame-a'): FrameId('frame-copy-a'),
+          FrameId('frame-b'): FrameId('frame-copy-b'),
+          FrameId('frame-c'): FrameId('frame-copy-c'),
+        },
+      );
+
+      expect(duplicate.id, const CutId('cut-copy'));
+      expect(duplicate.name, 'Cut Copy');
+      expect(duplicate.metadata, source.metadata);
     });
 
     test(
