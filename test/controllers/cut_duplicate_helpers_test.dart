@@ -98,11 +98,7 @@ void main() {
 
     test('preserves source metadata', () {
       final source = _sourceCut().copyWith(
-        metadata: const CutMetadata(
-          actionMemo: 'Character runs in from screen right.',
-          dialogueMemo: 'A: Wait!',
-          note: 'FX-heavy cut.',
-        ),
+        metadata: const CutMetadata(note: 'FX-heavy cut.'),
       );
 
       final duplicate = duplicateCutAsIndependentCopy(

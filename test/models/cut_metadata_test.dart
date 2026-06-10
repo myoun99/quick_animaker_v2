@@ -6,98 +6,64 @@ import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 
 void main() {
   group('CutMetadata', () {
-    test('empty metadata defaults to blank memo fields', () {
+    test('empty metadata defaults to blank note', () {
       const metadata = CutMetadata.empty();
 
-      expect(metadata.actionMemo, '');
-      expect(metadata.dialogueMemo, '');
       expect(metadata.note, '');
     });
 
-    test('supports value equality', () {
-      const metadata = CutMetadata(
-        actionMemo: 'Character enters.',
-        dialogueMemo: 'A: Wait!',
-        note: 'Check expression.',
-      );
-      const sameMetadata = CutMetadata(
-        actionMemo: 'Character enters.',
-        dialogueMemo: 'A: Wait!',
-        note: 'Check expression.',
-      );
-      const differentMetadata = CutMetadata(
-        actionMemo: 'Character exits.',
-        dialogueMemo: 'A: Wait!',
-        note: 'Check expression.',
-      );
+    test('value equality uses note', () {
+      const metadata = CutMetadata(note: 'Check expression.');
+      const sameMetadata = CutMetadata(note: 'Check expression.');
+      const differentMetadata = CutMetadata(note: 'FX-heavy cut.');
 
       expect(metadata, sameMetadata);
       expect(metadata.hashCode, sameMetadata.hashCode);
       expect(metadata, isNot(differentMetadata));
     });
 
-    test('serializes to JSON', () {
-      const metadata = CutMetadata(
-        actionMemo: 'Character enters.',
-        dialogueMemo: 'A: Wait!',
-        note: 'Check expression.',
-      );
+    test('copyWith changes note only', () {
+      const metadata = CutMetadata(note: 'Original note');
 
-      expect(metadata.toJson(), {
-        'actionMemo': 'Character enters.',
-        'dialogueMemo': 'A: Wait!',
-        'note': 'Check expression.',
-      });
-    });
-
-    test('deserializes from JSON', () {
-      final metadata = CutMetadata.fromJson({
-        'actionMemo': 'Character exits.',
-        'dialogueMemo': 'B: Too late.',
-        'note': 'Use 3D reference.',
-      });
-
-      expect(
-        metadata,
-        const CutMetadata(
-          actionMemo: 'Character exits.',
-          dialogueMemo: 'B: Too late.',
-          note: 'Use 3D reference.',
-        ),
-      );
-    });
-
-    test('copyWith changes only the requested field', () {
-      const metadata = CutMetadata(
-        actionMemo: 'Original action',
-        dialogueMemo: 'Original dialogue',
-        note: 'Original note',
-      );
-
-      expect(
-        metadata.copyWith(actionMemo: 'Updated action'),
-        const CutMetadata(
-          actionMemo: 'Updated action',
-          dialogueMemo: 'Original dialogue',
-          note: 'Original note',
-        ),
-      );
-      expect(
-        metadata.copyWith(dialogueMemo: 'Updated dialogue'),
-        const CutMetadata(
-          actionMemo: 'Original action',
-          dialogueMemo: 'Updated dialogue',
-          note: 'Original note',
-        ),
-      );
       expect(
         metadata.copyWith(note: 'Updated note'),
-        const CutMetadata(
-          actionMemo: 'Original action',
-          dialogueMemo: 'Original dialogue',
-          note: 'Updated note',
-        ),
+        const CutMetadata(note: 'Updated note'),
       );
+    });
+
+    test('toJson serializes note only', () {
+      const metadata = CutMetadata(note: 'General');
+
+      final json = metadata.toJson();
+
+      expect(json, {'note': 'General'});
+      expect(json.containsKey('actionMemo'), isFalse);
+      expect(json.containsKey('dialogueMemo'), isFalse);
+    });
+
+    test('fromJson reads note', () {
+      final metadata = CutMetadata.fromJson({'note': 'General'});
+
+      expect(metadata, const CutMetadata(note: 'General'));
+    });
+
+    test('fromJson ignores legacy actionMemo and dialogueMemo', () {
+      final metadata = CutMetadata.fromJson({
+        'actionMemo': 'Old action.',
+        'dialogueMemo': 'A: Wait!',
+        'note': 'General',
+      });
+
+      expect(metadata, const CutMetadata(note: 'General'));
+    });
+
+    test('fromJson defaults missing note to empty metadata', () {
+      final metadata = CutMetadata.fromJson({
+        'actionMemo': 'Old action.',
+        'dialogueMemo': 'A: Wait!',
+      });
+
+      expect(metadata, const CutMetadata.empty());
     });
   });
 
@@ -110,11 +76,7 @@ void main() {
 
     test('copyWith updates metadata and preserves other fields', () {
       final cut = _cut();
-      const metadata = CutMetadata(
-        actionMemo: 'Run in from screen right.',
-        dialogueMemo: 'A: Wait!',
-        note: 'FX-heavy cut.',
-      );
+      const metadata = CutMetadata(note: 'FX-heavy cut.');
 
       final updatedCut = cut.copyWith(metadata: metadata);
 
@@ -128,11 +90,7 @@ void main() {
 
     test('round-trips non-empty metadata through JSON', () {
       final cut = _cut().copyWith(
-        metadata: const CutMetadata(
-          actionMemo: 'Run in from screen right.',
-          dialogueMemo: 'A: Wait!',
-          note: 'FX-heavy cut.',
-        ),
+        metadata: const CutMetadata(note: 'FX-heavy cut.'),
       );
 
       final restoredCut = Cut.fromJson(cut.toJson());
@@ -152,16 +110,14 @@ void main() {
     test('equality includes metadata', () {
       final cut = _cut();
       final cutWithMetadata = cut.copyWith(
-        metadata: const CutMetadata(actionMemo: 'Camera shakes after impact.'),
+        metadata: const CutMetadata(note: 'Camera shakes after impact.'),
       );
 
       expect(cutWithMetadata, isNot(cut));
       expect(
         cutWithMetadata,
         _cut().copyWith(
-          metadata: const CutMetadata(
-            actionMemo: 'Camera shakes after impact.',
-          ),
+          metadata: const CutMetadata(note: 'Camera shakes after impact.'),
         ),
       );
     });

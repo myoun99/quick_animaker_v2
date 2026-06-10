@@ -74,11 +74,7 @@ void main() {
 
     test('preserves metadata through execute', () {
       final sourceCut = _sourceCut().copyWith(
-        metadata: const CutMetadata(
-          actionMemo: 'Character runs in from screen right.',
-          dialogueMemo: 'A: Wait!',
-          note: 'FX-heavy cut.',
-        ),
+        metadata: const CutMetadata(note: 'FX-heavy cut.'),
       );
       final repository = ProjectRepository(
         initialProject: _project(
