@@ -1,5 +1,6 @@
 import 'canvas_size.dart';
 import 'cut_id.dart';
+import 'cut_metadata.dart';
 import 'layer.dart';
 
 class Cut {
@@ -9,6 +10,7 @@ class Cut {
     required List<Layer> layers,
     required this.duration,
     required this.canvasSize,
+    this.metadata = const CutMetadata.empty(),
   }) : layers = List.unmodifiable(layers);
 
   final CutId id;
@@ -16,6 +18,7 @@ class Cut {
   final List<Layer> layers;
   final int duration;
   final CanvasSize canvasSize;
+  final CutMetadata metadata;
 
   Cut copyWith({
     CutId? id,
@@ -23,6 +26,7 @@ class Cut {
     List<Layer>? layers,
     int? duration,
     CanvasSize? canvasSize,
+    CutMetadata? metadata,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -30,6 +34,7 @@ class Cut {
       layers: layers ?? this.layers,
       duration: duration ?? this.duration,
       canvasSize: canvasSize ?? this.canvasSize,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -63,15 +68,22 @@ class Cut {
           other.name == name &&
           _listEquals(other.layers, layers) &&
           other.duration == duration &&
-          other.canvasSize == canvasSize;
+          other.canvasSize == canvasSize &&
+          other.metadata == metadata;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, Object.hashAll(layers), duration, canvasSize);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    Object.hashAll(layers),
+    duration,
+    canvasSize,
+    metadata,
+  );
 
   @override
   String toString() =>
-      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize)';
+      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata)';
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {
