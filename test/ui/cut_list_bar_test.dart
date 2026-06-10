@@ -289,12 +289,8 @@ void main() {
         ),
       );
 
-      final source = find.byKey(
-        const ValueKey<String>('cut-list-entry-cut-c'),
-      );
-      final target = find.byKey(
-        const ValueKey<String>('cut-list-entry-cut-a'),
-      );
+      final source = find.byKey(const ValueKey<String>('cut-list-entry-cut-c'));
+      final target = find.byKey(const ValueKey<String>('cut-list-entry-cut-a'));
       await tester.dragFrom(
         tester.getCenter(source),
         tester.getCenter(target) - tester.getCenter(source),
@@ -306,46 +302,47 @@ void main() {
       expect(capturedTargetCutIndex, 0);
     });
 
-    testWidgets('does not emit reorder or selection when dragging onto itself', (
-      tester,
-    ) async {
-      var reorderCount = 0;
-      CutId? selectedCutId;
+    testWidgets(
+      'does not emit reorder or selection when dragging onto itself',
+      (tester) async {
+        var reorderCount = 0;
+        CutId? selectedCutId;
 
-      await tester.pumpWidget(
-        _testApp(
-          CutListBar(
-            entries: [
-              _entry(id: 'cut-1', name: 'Cut 1', isActive: true, cutIndex: 0),
-              _entry(id: 'cut-2', name: 'Cut 2', cutIndex: 1),
-            ],
-            onCutSelected: (cutId) => selectedCutId = cutId,
-            onCutReordered:
-                ({
-                  required CutId draggedCutId,
-                  required TrackId targetTrackId,
-                  required int targetCutIndex,
-                }) {
-                  reorderCount += 1;
-                },
+        await tester.pumpWidget(
+          _testApp(
+            CutListBar(
+              entries: [
+                _entry(id: 'cut-1', name: 'Cut 1', isActive: true, cutIndex: 0),
+                _entry(id: 'cut-2', name: 'Cut 2', cutIndex: 1),
+              ],
+              onCutSelected: (cutId) => selectedCutId = cutId,
+              onCutReordered:
+                  ({
+                    required CutId draggedCutId,
+                    required TrackId targetTrackId,
+                    required int targetCutIndex,
+                  }) {
+                    reorderCount += 1;
+                  },
+            ),
           ),
-        ),
-      );
+        );
 
-      final chip = find.byKey(const ValueKey<String>('cut-list-entry-cut-2'));
-      final center = tester.getCenter(chip);
-      final gesture = await tester.startGesture(center);
-      await tester.pump(const Duration(milliseconds: 600));
-      await gesture.moveBy(const Offset(24, 0));
-      await tester.pump();
-      await gesture.moveBy(const Offset(-24, 0));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
+        final chip = find.byKey(const ValueKey<String>('cut-list-entry-cut-2'));
+        final center = tester.getCenter(chip);
+        final gesture = await tester.startGesture(center);
+        await tester.pump(const Duration(milliseconds: 600));
+        await gesture.moveBy(const Offset(24, 0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(-24, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
 
-      expect(reorderCount, 0);
-      expect(selectedCutId, isNull);
-    });
+        expect(reorderCount, 0);
+        expect(selectedCutId, isNull);
+      },
+    );
 
     testWidgets('calls onCutSelected with tapped cut id when provided', (
       tester,

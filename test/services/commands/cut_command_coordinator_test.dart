@@ -213,38 +213,41 @@ void main() {
       expect(fixture.historyManager.undoCount, 0);
     });
 
-    test('missing dragged Cut drag reorder plan is ignored without history', () {
-      final cutA1 = _cut(id: 'a1', name: 'A1');
-      final fixture = _fixture(
-        _project(
-          tracks: [
-            _track(id: 'track-a', name: 'Track A', cuts: [cutA1]),
-          ],
-        ),
-        activeCutId: cutA1.id,
-      );
-      const planner = CutReorderPlanner();
-
-      final plan = planner.planSameTrackDrop(
-        project: fixture.project,
-        draggedCutId: const CutId('missing-cut'),
-        targetTrackId: const TrackId('track-a'),
-        targetCutIndex: 0,
-      );
-      if (plan != null) {
-        fixture.coordinator.reorderCut(
-          trackId: plan.trackId,
-          cutId: plan.cutId,
-          newIndex: plan.newIndex,
+    test(
+      'missing dragged Cut drag reorder plan is ignored without history',
+      () {
+        final cutA1 = _cut(id: 'a1', name: 'A1');
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-a', name: 'Track A', cuts: [cutA1]),
+            ],
+          ),
+          activeCutId: cutA1.id,
         );
-      }
+        const planner = CutReorderPlanner();
 
-      expect(plan, isNull);
-      expect(fixture.cutsFor(const TrackId('track-a')), [cutA1]);
-      expect(fixture.editingSession.activeCutId, cutA1.id);
-      expect(fixture.historyManager.undoCount, 0);
-      expect(fixture.historyManager.redoCount, 0);
-    });
+        final plan = planner.planSameTrackDrop(
+          project: fixture.project,
+          draggedCutId: const CutId('missing-cut'),
+          targetTrackId: const TrackId('track-a'),
+          targetCutIndex: 0,
+        );
+        if (plan != null) {
+          fixture.coordinator.reorderCut(
+            trackId: plan.trackId,
+            cutId: plan.cutId,
+            newIndex: plan.newIndex,
+          );
+        }
+
+        expect(plan, isNull);
+        expect(fixture.cutsFor(const TrackId('track-a')), [cutA1]);
+        expect(fixture.editingSession.activeCutId, cutA1.id);
+        expect(fixture.historyManager.undoCount, 0);
+        expect(fixture.historyManager.redoCount, 0);
+      },
+    );
 
     test('same-Cut drag reorder plan is ignored without history', () {
       final cutA1 = _cut(id: 'a1', name: 'A1');
