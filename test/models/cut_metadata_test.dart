@@ -159,7 +159,9 @@ void main() {
       expect(
         cutWithMetadata,
         _cut().copyWith(
-          metadata: const CutMetadata(actionMemo: 'Camera shakes after impact.'),
+          metadata: const CutMetadata(
+            actionMemo: 'Camera shakes after impact.',
+          ),
         ),
       );
     });

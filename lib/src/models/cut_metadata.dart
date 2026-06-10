@@ -5,10 +5,7 @@ class CutMetadata {
     this.note = '',
   });
 
-  const CutMetadata.empty()
-    : actionMemo = '',
-      dialogueMemo = '',
-      note = '';
+  const CutMetadata.empty() : actionMemo = '', dialogueMemo = '', note = '';
 
   final String actionMemo;
   final String dialogueMemo;
