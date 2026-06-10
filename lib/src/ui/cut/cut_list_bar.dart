@@ -148,6 +148,10 @@ class _ReorderableCutListChip extends StatelessWidget {
     return DragTarget<CutId>(
       onWillAcceptWithDetails: (details) => details.data != entry.cutId,
       onAcceptWithDetails: (details) {
+        if (details.data == entry.cutId) {
+          return;
+        }
+
         onCutReordered?.call(
           draggedCutId: details.data,
           targetTrackId: entry.trackId,
