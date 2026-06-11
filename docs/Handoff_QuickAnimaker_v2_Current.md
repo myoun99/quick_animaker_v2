@@ -374,58 +374,165 @@ Phase 74에서 주의할 것:
 * Coordinator에서도 unchanged skip은 유지.
 * UI toggle도 이미 storyboard layer가 있는 상태에서 다른 layer를 storyboard로 바꾸려 하면 안전하게 실패하거나 disabled되는 방향을 나중에 잡는다.
 
-대화 진행 방식:
+## 대화 진행 방식
 
-사용자는 다음 행동만 알고 싶어 하는 경우가 많다.
+답변은 한국어로 한다.
 
-기본적으로 구현 타이밍이나 판단은 전적으로 ai에게 맡긴다.
+사용자는 QuickAnimaker_v2 프로젝트를 Phase 단위로 진행하고 있다.
 
-좋은 답변 방식:
+사용자는 구현 타이밍, Phase 분할, 다음 작업 판단을 기본적으로 AI에게 맡긴다.
 
-* “다음은 Phase xx가 맞아.”
-* “이유는 간단히 이거야.”
-* “Codex에게 보낼 지시서는 아래야.”
-* “진행 명령어는 이거야.”
+다만 답변 방식은 항상 다음 순서를 유지한다.
 
-좋지 않은 답변 방식:
+1. 현재 상태를 짧게 판단한다.
+2. 다음 Phase가 무엇인지 말한다.
+3. 제일 먼저 사용자가 만들어야 할 파일명을 알려준다.
+4. 그 파일에 붙여넣을 Phase 문서 전체 내용을 제공한다.
+5. Codex에게 그대로 전달할 짧은 지시문을 별도로 제공한다.
+6. 마지막에 사용자가 실행할 git 명령어를 제공한다.
 
-* 너무 추상적인 설명
-* 너무 먼 미래 구현을 한 번에 제안
+사용자가 “정상이야 다음가자”라고 하면:
+
+* 직전 PR이 머지/로컬 테스트까지 정상이라는 뜻으로 이해한다.
+* 바로 다음 Phase를 판단한다.
+* “다음은 Phase xx가 맞아.”라고 먼저 말한다.
+* 그 이유를 짧게 설명한다.
+* 그 다음 아래 형식으로 진행한다.
+
+필수 답변 형식:
+
+1. 먼저 만들 파일
+
+예:
+
+```text
+먼저 이 파일을 만들어.
+docs/Phase_74_Codex_Task.md
+```
+
+2. Phase md 파일에 붙여넣을 내용
+
+* 사용자가 md 파일에 그대로 붙여넣을 수 있게 작성한다.
+* Phase 문서 전체를 제공한다.
+* 범위, 목표, 금지사항, 테스트 요구사항, acceptance criteria, required checks, Codex report 항목을 포함한다.
+* 너무 큰 범위를 잡지 않는다.
+* 현재 Phase에서 하지 않을 것을 명확히 적는다.
+
+3. Codex에게 전달할 내용
+
+* Phase 문서보다 짧고 실행 지향적으로 작성한다.
+* Codex 채팅에 그대로 붙여넣기 좋게 작성한다.
+* “Implement Phase xx only.”로 시작하는 형태가 좋다.
+* 읽어야 할 문서, 목표, 금지사항, 실행할 체크 명령어, 보고할 항목을 포함한다.
+
+4. git 명령어 안내
+
+Phase 문서를 만든 뒤 사용자가 실행할 명령어를 제공한다.
+
+예:
+
+```bat
+git status
+git add docs/Phase_74_Codex_Task.md
+git commit -m "Add Phase 74 Codex task"
+git push
+git status
+```
+
+PR 리뷰 후에는 로컬 확인 명령어를 제공한다.
+
+예:
+
+```bat
+git pull
+dart format lib test
+flutter analyze
+flutter test
+git status
+```
+
+format 때문에 modified가 생길 수 있으므로, 예상 파일 기준 git add / commit / push 명령어도 제공한다.
+
+예:
+
+```bat
+git add lib/src/... test/...
+git commit -m "Format Phase xx ..."
+git push
+git status
+```
+
+사용자가 “PR xx 확인해줘”라고 하면:
+
+* GitHub PR을 확인한다.
+* PR body만 보고 판단하지 않는다.
+* 중요한 변경 파일을 직접 fetch해서 확인한다.
+* 테스트 파일을 확인한다.
+* PR comments를 확인한다.
+* 기존 설계 방향과 충돌하는지 확인한다.
+* out of scope 위반이 있는지 확인한다.
+* 문제 없으면 “머지해도 괜찮아.”라고 명확히 말한다.
+* 문제 있으면 “이건 수정 요청이 맞아.”라고 명확히 말한다.
+* 마지막에 로컬 실행 명령어와 예상 git add 명령어를 제공한다.
+
+좋은 답변 스타일:
+
+```text
+좋아. 다음은 Phase 74가 맞아.
+
+이유는 간단해.
+지금은 LayerKind command/UI까지 생겼고,
+이제 기본 레이어 규칙을 정리하지 않으면 다음 UI가 흔들릴 수 있어.
+
+먼저 이 파일을 만들어.
+docs/Phase_74_Codex_Task.md
+
+아래 내용을 그대로 붙여넣어.
+...
+Codex에게는 이걸 보내면 돼.
+...
+진행 명령어는 이거야.
+...
+```
+
+피해야 할 답변 스타일:
+
+* 처음부터 설명 없이 긴 Phase 문서만 던지는 것
+* 사용자가 만들어야 할 파일명을 먼저 안 알려주는 것
+* Phase md 내용과 Codex 전달용 내용을 구분하지 않는 것
+* git add / commit / push 안내를 빼먹는 것
+* 너무 먼 미래 구현을 한 번에 넣는 것
+* 장기 아이디어를 즉시 구현 범위에 넣는 것
 * Phase 범위를 크게 잡는 것
-* 이미 정한 구조를 다시 흔드는 것
 * “원하면 해줄게”로 끝내는 것
 
-PR 리뷰 방식:
+Phase 문서 작성 원칙:
 
-사용자가 “pr xx 확인해줘”라고 하면:
+* 새 챗은 항상 최신 장기 메모와 설계 문서를 먼저 확인해야 한다.
+* 특히 다음 문서를 우선 확인한다.
 
-* GitHub PR fetch
-* 중요한 파일 직접 fetch
-* 테스트 확인
-* PR comments 확인
-* 판단:
+```text
+docs/Handoff_QuickAnimaker_v2_Current.md
+docs/LongTerm_Timesheet_Layer_Sections.md
+docs/Design_CutMetadata_CanvasPlanning.md
+최신 Phase 문서들
+```
 
-    * 문제 없으면 “머지해도 괜찮아.”
-    * 문제 있으면 “이건 수정 요청이 맞아.”
-* 마지막에 로컬 명령어:
-  git pull
-  dart format lib test
-  flutter analyze
-  flutter test
-  git status
-* format으로 modified가 생길 경우 git add/commit/push 안내.
+* 장기 아이디어는 바로 구현하지 말고, 현재 Phase에 필요한 최소 범위만 반영한다.
+* 모델 → command → UI 순서로 작게 쌓는다.
+* UI Phase라도 큰 화면 개편은 피한다.
+* command Phase에서는 undo/redo, missing target, no-op skip, unrelated data preservation을 반드시 본다.
+* UI Phase에서는 widget key, command path 사용 여부, future UI 미추가 여부를 반드시 본다.
 
-현재까지 자주 나온 주의사항:
+다음 챗에서 특히 지켜야 할 진행 방식:
 
-* Codex 환경에는 dart/flutter가 없어서 테스트를 못 돌렸다는 PR이 많다.
-* 그러므로 로컬에서 반드시:
-  dart format lib test
-  flutter analyze
-  flutter test
-  를 돌리라고 안내해야 한다.
-* PR body의 “테스트 추가했다”만 믿지 말고 실제 test file을 확인한다.
-* UI phase에서는 widget key가 요구대로 들어갔는지 본다.
-* command phase에서는 undo/redo, missing target, no-op skip, unrelated data preservation을 본다.
+* 먼저 장기 메모를 확인한다.
+* 다음 Phase가 맞는지 짧게 판단한다.
+* “먼저 만들 파일”을 알려준다.
+* “Phase md에 붙여넣을 내용”을 작성한다.
+* “Codex에게 전달할 내용”을 작성한다.
+* “git add/commit/push 명령어”를 작성한다.
+
 
 현재 중요 key / UI:
 
@@ -455,15 +562,33 @@ Cut Note UI:
 * StoryboardFrameMetadata editor
 * panelNote field
 
-다음 챗에서 처음 할 질문/지시 예시:
+이 인수인계 메모를 기준으로 QuickAnimaker_v2 다음 Phase를 이어가자.
 
-“이 인수인계 메모를 기준으로 QuickAnimaker_v2 다음 Phase를 이어가자. 먼저 docs/LongTerm_Timesheet_Layer_Sections.md와 docs/Design_CutMetadata_CanvasPlanning.md를 확인한 뒤, Phase 74를 제안해줘. Phase 문서는 Codex에게 줄 수 있게 하나의 복붙용 문서로 작성해줘.”
+먼저 다음 문서를 확인해줘.
 
-최종 우선순위:
+* docs/Handoff_QuickAnimaker_v2_Current.md
+* docs/LongTerm_Timesheet_Layer_Sections.md
+* docs/Design_CutMetadata_CanvasPlanning.md
+* 최신 Phase 문서들
 
-1. 장기 메모 확인
-2. Phase 74 작성
-3. Layer 기본값/이름/초기 x exposure/storyboard layer 1개 제한 정리
-4. PR 리뷰
-5. 그 다음 Phase에서 Layer icon UI
-6. 그 다음 장기적으로 section planning
+그 다음 아래 순서로 진행해줘.
+
+1. 현재 상태를 짧게 판단
+2. 다음 Phase가 무엇인지 말하기
+3. 먼저 만들어야 할 Phase md 파일명 안내
+4. 그 md 파일에 붙여넣을 Phase 문서 전체 작성
+5. Codex에게 전달할 짧은 지시문 작성
+6. git add / commit / push 명령어 안내
+
+다음 목표 후보는 Phase 74: Layer Defaults and Storyboard Layer Rule Correction이야.
+
+단, Phase 74는 작은 기본 규칙 정리 Phase로 잡아줘.
+
+바로 구현하지 말 것:
+
+* Sound/Camera Section
+* Layer type icon UI
+* Storyboard Panel UI
+* Conte Panel UI
+* actionMemo/dialogueMemo UI
+* vertical timesheet view
