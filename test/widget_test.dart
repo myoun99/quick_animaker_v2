@@ -340,10 +340,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     _expectCellText('sample-layer-1', 0, '○');
 
     await _tapUndoButton(tester);
@@ -401,11 +398,7 @@ void main() {
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
     _expectCutOrder(tester, ['sample-cut', 'cut-1']);
 
-    await _dragCutOnto(
-      tester,
-      sourceCutId: 'cut-1',
-      targetCutId: 'sample-cut',
-    );
+    await _dragCutOnto(tester, sourceCutId: 'cut-1', targetCutId: 'sample-cut');
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
@@ -425,11 +418,7 @@ void main() {
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     _expectCutOrder(tester, ['sample-cut', 'cut-1']);
 
-    await _dragCutOnto(
-      tester,
-      sourceCutId: 'sample-cut',
-      targetCutId: 'cut-1',
-    );
+    await _dragCutOnto(tester, sourceCutId: 'sample-cut', targetCutId: 'cut-1');
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
@@ -1060,12 +1049,16 @@ Line 8''';
 
     final layerBTop = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-layer-row-sample-layer-2')),
+          find.byKey(
+            const ValueKey<String>('timeline-layer-row-sample-layer-2'),
+          ),
         )
         .dy;
     final layerATop = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-layer-row-sample-layer-1')),
+          find.byKey(
+            const ValueKey<String>('timeline-layer-row-sample-layer-1'),
+          ),
         )
         .dy;
     expect(layerBTop, lessThan(layerATop));
@@ -1138,10 +1131,7 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-layer-1-1'),
     );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     _expectCellText('layer-1', 0, 'X');
     _expectCellText('layer-1', 1, '○');
@@ -1211,10 +1201,7 @@ Line 8''';
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(find.text('Duration: 1'), findsOneWidget);
 
     await _tapToolbarButton(
@@ -1299,10 +1286,7 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-layer-1-1'),
     );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     _expectCellText('layer-1', 1, '○');
 
     await _tapUndoButton(tester);
@@ -1424,10 +1408,7 @@ Line 8''';
       isFalse,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expect(_cellActionHint(tester), contains('Drawing'));
     expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
     expect(
@@ -1871,10 +1852,7 @@ Line 8''';
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     expect(find.text('A1'), findsWidgets);
 
@@ -1895,10 +1873,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     await _createSecondAuthoredFrame(tester);
 
@@ -1945,10 +1920,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
     await _createSecondAuthoredFrame(tester);
 
@@ -2049,10 +2021,7 @@ Line 8''';
       isFalse,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     expect(find.text('Links: 1'), findsOneWidget);
     expect(
@@ -2115,10 +2084,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('new-frame-button'),
-    );
+    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('copy-frame-button'),
