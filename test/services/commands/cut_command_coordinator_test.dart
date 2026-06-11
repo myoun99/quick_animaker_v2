@@ -681,6 +681,69 @@ void main() {
       },
     );
 
+    test('updateLayerKind routes through history with undo/redo', () {
+      final layer = _layer(id: 'layer-1');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.updateLayerKind(
+        cutId: cutA.id,
+        layerId: layer.id,
+        kind: LayerKind.storyboard,
+      );
+
+      expect(_layerById(fixture.project, layer.id).kind, LayerKind.storyboard);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+
+      fixture.historyManager.undo();
+
+      expect(_layerById(fixture.project, layer.id).kind, LayerKind.animation);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 1);
+
+      fixture.historyManager.redo();
+
+      expect(_layerById(fixture.project, layer.id).kind, LayerKind.storyboard);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateLayerKind skips unchanged kind without history entry', () {
+      final layer = _layer(id: 'layer-1', kind: LayerKind.storyboard);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      fixture.coordinator.updateLayerKind(
+        cutId: cutA.id,
+        layerId: layer.id,
+        kind: LayerKind.storyboard,
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
     test('duplicateCut throws StateError when source cut is missing', () {
       final existingCut = _cut(id: 'cut-1', name: 'Existing');
       final project = _project(
@@ -841,6 +904,20 @@ Cut _cutById(Project project, CutId cutId) {
   }
 
   throw StateError('Cut not found: $cutId');
+}
+
+Layer _layerById(Project project, LayerId layerId) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        if (layer.id == layerId) {
+          return layer;
+        }
+      }
+    }
+  }
+
+  throw StateError('Layer not found: $layerId');
 }
 
 Frame _frameById(Project project, FrameId frameId) {
