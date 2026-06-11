@@ -1,4 +1,5 @@
 import 'frame_id.dart';
+import 'storyboard_frame_metadata.dart';
 import 'stroke.dart';
 
 const Object _unchangedName = Object();
@@ -9,24 +10,28 @@ class Frame {
     required this.duration,
     required List<Stroke> strokes,
     this.name,
+    this.storyboardMetadata = const StoryboardFrameMetadata.empty(),
   }) : strokes = List.unmodifiable(strokes);
 
   final FrameId id;
   final int duration;
   final List<Stroke> strokes;
   final String? name;
+  final StoryboardFrameMetadata storyboardMetadata;
 
   Frame copyWith({
     FrameId? id,
     int? duration,
     List<Stroke>? strokes,
     Object? name = _unchangedName,
+    StoryboardFrameMetadata? storyboardMetadata,
   }) {
     return Frame(
       id: id ?? this.id,
       duration: duration ?? this.duration,
       strokes: strokes ?? this.strokes,
       name: identical(name, _unchangedName) ? this.name : name as String?,
+      storyboardMetadata: storyboardMetadata ?? this.storyboardMetadata,
     );
   }
 
@@ -35,6 +40,7 @@ class Frame {
     'duration': duration,
     'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
     if (name != null) 'name': name,
+    'storyboardMetadata': storyboardMetadata.toJson(),
   };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
@@ -45,6 +51,11 @@ class Frame {
           .map((stroke) => Stroke.fromJson(stroke as Map<String, dynamic>))
           .toList(),
       name: json['name'] as String?,
+      storyboardMetadata: json['storyboardMetadata'] == null
+          ? const StoryboardFrameMetadata.empty()
+          : StoryboardFrameMetadata.fromJson(
+              json['storyboardMetadata'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -55,14 +66,21 @@ class Frame {
           other.id == id &&
           other.duration == duration &&
           other.name == name &&
+          other.storyboardMetadata == storyboardMetadata &&
           _listEquals(other.strokes, strokes);
 
   @override
-  int get hashCode => Object.hash(id, duration, name, Object.hashAll(strokes));
+  int get hashCode => Object.hash(
+    id,
+    duration,
+    name,
+    storyboardMetadata,
+    Object.hashAll(strokes),
+  );
 
   @override
   String toString() =>
-      'Frame(id: $id, duration: $duration, name: $name, strokes: $strokes)';
+      'Frame(id: $id, duration: $duration, name: $name, strokes: $strokes, storyboardMetadata: $storyboardMetadata)';
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {

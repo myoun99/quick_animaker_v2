@@ -39,6 +39,7 @@ void main() {
       expect(json, {'note': 'General'});
       expect(json.containsKey('actionMemo'), isFalse);
       expect(json.containsKey('dialogueMemo'), isFalse);
+      expect(json.keys, unorderedEquals(['note']));
     });
 
     test('fromJson reads note', () {
