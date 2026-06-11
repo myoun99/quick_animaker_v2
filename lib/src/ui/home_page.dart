@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
   late LayerController _layerController;
   late TimelineController _timelineController;
 
-  int _layerSequence = 2;
+  int _layerSequence = 1;
   int _frameSequence = 0;
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   final ScrollController _topToolbarScrollController = ScrollController();
@@ -1196,37 +1196,6 @@ class _HomePageState extends State<HomePage> {
                   name: 'A',
                   frames: const [],
                   timeline: const {0: TimelineExposure.blank()},
-                ),
-                Layer(
-                  id: const LayerId('sample-layer-2'),
-                  name: 'B',
-                  frames: const [],
-                  timeline: const {0: TimelineExposure.blank()},
-                ),
-              ],
-            ),
-            Cut(
-              id: const CutId('sample-cut-2'),
-              name: 'Cut 2',
-              duration: 1,
-              canvasSize: const CanvasSize(width: 1280, height: 720),
-              layers: [
-                Layer(
-                  id: const LayerId('sample-cut-2-layer'),
-                  name: 'Cut 2 Layer',
-                  frames: [
-                    Frame(
-                      id: const FrameId('sample-cut-2-frame'),
-                      duration: 1,
-                      name: 'C2',
-                      strokes: const [],
-                    ),
-                  ],
-                  timeline: {
-                    0: TimelineExposure.drawing(
-                      const FrameId('sample-cut-2-frame'),
-                    ),
-                  },
                 ),
               ],
             ),
