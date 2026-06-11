@@ -125,9 +125,7 @@ void main() {
     });
 
     test('preserves source storyboardLayer', () {
-      final source = _sourceCut().copyWith(
-        storyboardLayer: _storyboardLayer(),
-      );
+      final source = _sourceCut().copyWith(storyboardLayer: _storyboardLayer());
 
       final duplicate = duplicateCutAsIndependentCopy(
         source: source,

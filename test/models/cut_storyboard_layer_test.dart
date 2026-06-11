@@ -52,13 +52,16 @@ void main() {
       expect(restored.toJson(), cut.toJson());
     });
 
-    test('old JSON without storyboardLayer loads with empty storyboard layer', () {
-      final json = _cut().toJson()..remove('storyboardLayer');
+    test(
+      'old JSON without storyboardLayer loads with empty storyboard layer',
+      () {
+        final json = _cut().toJson()..remove('storyboardLayer');
 
-      final restored = Cut.fromJson(json);
+        final restored = Cut.fromJson(json);
 
-      expect(restored.storyboardLayer, const StoryboardLayer.empty());
-    });
+        expect(restored.storyboardLayer, const StoryboardLayer.empty());
+      },
+    );
   });
 }
 

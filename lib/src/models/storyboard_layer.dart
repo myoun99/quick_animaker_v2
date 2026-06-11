@@ -2,7 +2,7 @@ import 'storyboard_panel.dart';
 
 class StoryboardLayer {
   StoryboardLayer({List<StoryboardPanel> panels = const []})
-      : panels = List.unmodifiable(panels);
+    : panels = List.unmodifiable(panels);
 
   const StoryboardLayer.empty() : panels = const [];
 

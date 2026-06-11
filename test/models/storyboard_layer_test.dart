@@ -18,10 +18,7 @@ void main() {
       panels.clear();
 
       expect(layer.panels, [_panel('panel-1')]);
-      expect(
-        () => layer.panels.add(_panel('panel-2')),
-        throwsUnsupportedError,
-      );
+      expect(() => layer.panels.add(_panel('panel-2')), throwsUnsupportedError);
     });
 
     test('copyWith replaces panels', () {
