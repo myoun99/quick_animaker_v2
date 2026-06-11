@@ -23,6 +23,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
 import 'cut/cut_list_bar.dart';
+import 'cut/cut_note_dialog.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
@@ -226,6 +227,40 @@ class _HomePageState extends State<HomePage> {
       );
       _refreshAfterCutCommand();
     });
+  }
+
+  Future<void> _editActiveCutNoteFromList() async {
+    final activeCutId = _editingSession.activeCutId;
+    final initialNote = _activeCutOrNull?.metadata.note;
+    if (initialNote == null) {
+      return;
+    }
+
+    final nextNote = await showDialog<String>(
+      context: context,
+      builder: (context) => CutNoteDialog(initialNote: initialNote),
+    );
+    if (!mounted || nextNote == null) {
+      return;
+    }
+
+    setState(() {
+      _cutCommandCoordinator.updateCutNote(cutId: activeCutId, note: nextNote);
+      _refreshAfterCutCommand();
+    });
+  }
+
+  Cut? get _activeCutOrNull {
+    final project = _repository.requireProject();
+    for (final track in project.tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == _editingSession.activeCutId) {
+          return cut;
+        }
+      }
+    }
+
+    return null;
   }
 
   Cut get _activeCut {
@@ -981,6 +1016,7 @@ class _HomePageState extends State<HomePage> {
                       onCutSelected: _handleCutSelected,
                       onNewCut: _createCutFromList,
                       onRenameActiveCut: _renameActiveCutFromList,
+                      onEditActiveCutNote: _editActiveCutNoteFromList,
                       onDuplicateActiveCut: _duplicateActiveCutFromList,
                       onMoveActiveCutLeft: _canMoveActiveCutLeft
                           ? _moveActiveCutLeftFromList

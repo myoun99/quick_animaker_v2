@@ -80,6 +80,7 @@ void main() {
     ) async {
       var newCutCount = 0;
       var renameCutCount = 0;
+      var editCutNoteCount = 0;
       var duplicateCutCount = 0;
       var moveLeftCount = 0;
       var moveRightCount = 0;
@@ -91,6 +92,7 @@ void main() {
             entries: [_entry(id: 'cut-1', name: 'Cut 1', isActive: true)],
             onNewCut: () => newCutCount += 1,
             onRenameActiveCut: () => renameCutCount += 1,
+            onEditActiveCutNote: () => editCutNoteCount += 1,
             onDuplicateActiveCut: () => duplicateCutCount += 1,
             onMoveActiveCutLeft: () => moveLeftCount += 1,
             onMoveActiveCutRight: () => moveRightCount += 1,
@@ -101,6 +103,7 @@ void main() {
 
       expect(find.byTooltip('New Cut'), findsOneWidget);
       expect(find.byTooltip('Rename Cut'), findsOneWidget);
+      expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
       expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
       expect(find.byTooltip('Move Cut Left'), findsOneWidget);
       expect(find.byTooltip('Move Cut Right'), findsOneWidget);
@@ -111,6 +114,10 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey<String>('rename-cut-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('edit-cut-note-button')),
         findsOneWidget,
       );
       expect(
@@ -132,6 +139,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('new-cut-button')));
       await tester.tap(find.byKey(const ValueKey<String>('rename-cut-button')));
       await tester.tap(
+        find.byKey(const ValueKey<String>('edit-cut-note-button')),
+      );
+      await tester.tap(
         find.byKey(const ValueKey<String>('duplicate-cut-button')),
       );
       await tester.tap(
@@ -144,6 +154,7 @@ void main() {
 
       expect(newCutCount, 1);
       expect(renameCutCount, 1);
+      expect(editCutNoteCount, 1);
       expect(duplicateCutCount, 1);
       expect(moveLeftCount, 1);
       expect(moveRightCount, 1);
@@ -163,6 +174,7 @@ void main() {
             ],
             onNewCut: () {},
             onRenameActiveCut: () {},
+            onEditActiveCutNote: () {},
             onDuplicateActiveCut: () {},
             onDeleteActiveCut: () {},
           ),
@@ -177,6 +189,7 @@ void main() {
       expect(label.softWrap, isFalse);
       expect(find.byTooltip('New Cut'), findsOneWidget);
       expect(find.byTooltip('Rename Cut'), findsOneWidget);
+      expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
       expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
       expect(find.byTooltip('Delete Cut'), findsOneWidget);
     });
