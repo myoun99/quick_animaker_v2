@@ -12,6 +12,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
@@ -29,7 +30,14 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.initialProject,
+    this.onRepositoryCreated,
+  });
+
+  final Project? initialProject;
+  final void Function(ProjectRepository repository)? onRepositoryCreated;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -58,10 +66,11 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final project = _createSampleProject();
+    final project = widget.initialProject ?? _createSampleProject();
     _editingSession = EditingSessionState.forProject(project);
 
     _repository = ProjectRepository(initialProject: project);
+    widget.onRepositoryCreated?.call(_repository);
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -329,6 +338,36 @@ class _HomePageState extends State<HomePage> {
     }
 
     return _timelineController.getSelectedFrameForLayer(layer);
+  }
+
+
+  Layer? get _targetLayerForKindToggle => _activeLayer;
+
+  String get _activeLayerKindLabelText {
+    final targetLayer = _targetLayerForKindToggle;
+    return switch (targetLayer?.kind) {
+      LayerKind.animation => 'Animation Layer',
+      LayerKind.storyboard => 'Storyboard Layer',
+      null => 'No Layer',
+    };
+  }
+
+  void _toggleTargetLayerKind() {
+    final targetLayer = _targetLayerForKindToggle;
+    if (targetLayer == null) {
+      return;
+    }
+
+    final nextKind = targetLayer.kind == LayerKind.storyboard
+        ? LayerKind.animation
+        : LayerKind.storyboard;
+
+    _cutCommandCoordinator.updateLayerKind(
+      cutId: _editingSession.activeCutId,
+      layerId: targetLayer.id,
+      kind: nextKind,
+    );
+    _refreshAfterCutCommand();
   }
 
   bool get _hasActiveNonNegativeCell {
@@ -794,6 +833,22 @@ class _HomePageState extends State<HomePage> {
                   Text(
                     _currentLayerStatusText,
                     key: const ValueKey<String>('current-layer-status'),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _activeLayerKindLabelText,
+                    key: const ValueKey<String>('active-layer-kind-label'),
+                  ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>(
+                      'toggle-storyboard-layer-button',
+                    ),
+                    tooltip: 'Toggle Storyboard Layer',
+                    icon: Icons.auto_stories_outlined,
+                    onPressed: _targetLayerForKindToggle == null
+                        ? null
+                        : () => setState(_toggleTargetLayerKind),
                   ),
                   const SizedBox(width: 16),
                   Text(
