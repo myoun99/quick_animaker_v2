@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -110,6 +111,20 @@ class LayerTimelineGrid extends StatelessWidget {
   }
 }
 
+IconData _iconForLayerKind(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation => Icons.brush_outlined,
+    LayerKind.storyboard => Icons.auto_stories_outlined,
+  };
+}
+
+String _semanticLabelForLayerKind(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation => 'Animation layer',
+    LayerKind.storyboard => 'Storyboard layer',
+  };
+}
+
 class _LayerRow extends StatelessWidget {
   const _LayerRow({
     required this.layer,
@@ -167,6 +182,7 @@ class _LayerRow extends StatelessWidget {
                   : null,
               label: active ? 'selected layer' : 'layer',
               container: true,
+              explicitChildNodes: true,
               child: Row(
                 children: [
                   Expanded(
@@ -175,12 +191,32 @@ class _LayerRow extends StatelessWidget {
                       onTap: () => onSelectLayer(layer.id),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          layer.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: active ? FontWeight.bold : null,
-                          ),
+                        child: Row(
+                          children: [
+                            Semantics(
+                              label: _semanticLabelForLayerKind(layer.kind),
+                              container: true,
+                              child: ExcludeSemantics(
+                                child: Icon(
+                                  _iconForLayerKind(layer.kind),
+                                  key: ValueKey<String>(
+                                    'timeline-layer-kind-icon-${layer.id}',
+                                  ),
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                layer.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: active ? FontWeight.bold : null,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
