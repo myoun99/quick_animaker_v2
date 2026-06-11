@@ -9,12 +9,10 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_layer.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_panel.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_panel_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 
@@ -124,8 +122,8 @@ void main() {
       expect(duplicate.metadata, source.metadata);
     });
 
-    test('preserves source storyboardLayer', () {
-      final source = _sourceCut().copyWith(storyboardLayer: _storyboardLayer());
+    test('preserves source layer kinds', () {
+      final source = _sourceCut();
 
       final duplicate = duplicateCutAsIndependentCopy(
         source: source,
@@ -142,9 +140,8 @@ void main() {
         },
       );
 
-      expect(duplicate.id, const CutId('cut-copy'));
-      expect(duplicate.name, 'Cut Copy');
-      expect(duplicate.storyboardLayer, source.storyboardLayer);
+      expect(duplicate.layers[0].kind, LayerKind.animation);
+      expect(duplicate.layers[1].kind, LayerKind.storyboard);
     });
 
     test(
@@ -323,6 +320,7 @@ Cut _sourceCut() {
         timeline: {2: TimelineExposure.drawing(const FrameId('frame-c'))},
         isVisible: true,
         opacity: 0.75,
+        kind: LayerKind.storyboard,
       ),
     ],
   );
@@ -337,18 +335,5 @@ Stroke _stroke() {
       size: 8,
       opacity: 0.4,
     ),
-  );
-}
-
-StoryboardLayer _storyboardLayer() {
-  return StoryboardLayer(
-    panels: const [
-      StoryboardPanel(
-        id: StoryboardPanelId('panel-1'),
-        actionMemo: 'Run to the door.',
-        dialogueMemo: 'A: Wait!',
-        note: 'Check expression.',
-      ),
-    ],
   );
 }

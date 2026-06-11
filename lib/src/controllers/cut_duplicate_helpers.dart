@@ -30,7 +30,6 @@ Cut duplicateCutAsIndependentCopy({
     duration: source.duration,
     canvasSize: source.canvasSize,
     metadata: source.metadata,
-    storyboardLayer: source.storyboardLayer,
   );
 }
 
@@ -63,6 +62,7 @@ Layer _duplicateLayer({
     marks: layer.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
     isVisible: layer.isVisible,
     opacity: layer.opacity,
+    kind: layer.kind,
   );
 }
 
