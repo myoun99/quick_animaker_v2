@@ -1,7 +1,13 @@
 import '../../controllers/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
 import '../history_manager.dart';
 import '../project_repository.dart';
@@ -12,6 +18,7 @@ import 'duplicate_cut_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_storyboard_frame_metadata_command.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -54,6 +61,32 @@ class CutCommandCoordinator {
 
     historyManager.execute(
       UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    );
+  }
+
+  void updateStoryboardFrameMetadata({
+    required CutId cutId,
+    required LayerId layerId,
+    required FrameId frameId,
+    required StoryboardFrameMetadata metadata,
+  }) {
+    final target = _requireStoryboardFrameTarget(
+      cutId: cutId,
+      layerId: layerId,
+      frameId: frameId,
+    );
+    if (target.frame.storyboardMetadata == metadata) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateStoryboardFrameMetadataCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        frameId: frameId,
+        metadata: metadata,
+      ),
     );
   }
 
@@ -115,6 +148,43 @@ class CutCommandCoordinator {
     );
   }
 
+  _StoryboardFrameTarget _requireStoryboardFrameTarget({
+    required CutId cutId,
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    final cut = _requireCut(cutId);
+
+    Layer? targetLayer;
+    for (final layer in cut.layers) {
+      if (layer.id == layerId) {
+        targetLayer = layer;
+        break;
+      }
+    }
+
+    if (targetLayer == null) {
+      throw StateError('Layer not found in cut $cutId: $layerId');
+    }
+    if (targetLayer.kind != LayerKind.storyboard) {
+      throw StateError('Layer is not a storyboard layer: $layerId');
+    }
+
+    Frame? targetFrame;
+    for (final frame in targetLayer.frames) {
+      if (frame.id == frameId) {
+        targetFrame = frame;
+        break;
+      }
+    }
+
+    if (targetFrame == null) {
+      throw StateError('Frame not found in layer $layerId: $frameId');
+    }
+
+    return _StoryboardFrameTarget(frame: targetFrame);
+  }
+
   int _cutCount(Project project) {
     var count = 0;
     for (final track in project.tracks) {
@@ -135,4 +205,10 @@ class CutCommandCoordinator {
 
     throw StateError('Cut not found: $cutId');
   }
+}
+
+class _StoryboardFrameTarget {
+  const _StoryboardFrameTarget({required this.frame});
+
+  final Frame frame;
 }

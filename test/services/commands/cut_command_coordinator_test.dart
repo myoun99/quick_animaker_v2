@@ -8,8 +8,10 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
@@ -185,6 +187,114 @@ void main() {
             contains('Cut not found: cut-missing'),
           ),
         ),
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+
+    test('updateStoryboardFrameMetadata routes through history with undo/redo', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(
+        id: 'layer-1',
+        kind: LayerKind.storyboard,
+        frames: [frame],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
+        ),
+        activeCutId: cutA.id,
+      );
+      const metadata = StoryboardFrameMetadata(
+        actionMemo: 'Action',
+        dialogueMemo: 'Dialogue',
+        note: 'Note',
+      );
+
+      fixture.coordinator.updateStoryboardFrameMetadata(
+        cutId: cutA.id,
+        layerId: layer.id,
+        frameId: frame.id,
+        metadata: metadata,
+      );
+
+      expect(_frameById(fixture.project, frame.id).storyboardMetadata, metadata);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+
+      fixture.historyManager.undo();
+
+      expect(
+        _frameById(fixture.project, frame.id).storyboardMetadata,
+        const StoryboardFrameMetadata.empty(),
+      );
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 1);
+
+      fixture.historyManager.redo();
+
+      expect(_frameById(fixture.project, frame.id).storyboardMetadata, metadata);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateStoryboardFrameMetadata skips unchanged metadata', () {
+      const metadata = StoryboardFrameMetadata(note: 'Same');
+      final frame = _frame(id: 'frame-1', metadata: metadata);
+      final layer = _layer(
+        id: 'layer-1',
+        kind: LayerKind.storyboard,
+        frames: [frame],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      fixture.coordinator.updateStoryboardFrameMetadata(
+        cutId: cutA.id,
+        layerId: layer.id,
+        frameId: frame.id,
+        metadata: metadata,
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateStoryboardFrameMetadata rejects animation layers safely', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(id: 'layer-1', frames: [frame]);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      expect(
+        () => fixture.coordinator.updateStoryboardFrameMetadata(
+          cutId: cutA.id,
+          layerId: layer.id,
+          frameId: frame.id,
+          metadata: const StoryboardFrameMetadata(note: 'New'),
+        ),
+        throwsStateError,
       );
 
       expect(fixture.project.toJson(), beforeJson);
@@ -687,12 +797,24 @@ Cut _cut({
   );
 }
 
-Layer _layer({required String id, List<Frame> frames = const []}) {
-  return Layer(id: LayerId(id), name: id, frames: frames);
+Layer _layer({
+  required String id,
+  List<Frame> frames = const [],
+  LayerKind kind = LayerKind.animation,
+}) {
+  return Layer(id: LayerId(id), name: id, frames: frames, kind: kind);
 }
 
-Frame _frame({required String id}) {
-  return Frame(id: FrameId(id), duration: 1, strokes: const []);
+Frame _frame({
+  required String id,
+  StoryboardFrameMetadata metadata = const StoryboardFrameMetadata.empty(),
+}) {
+  return Frame(
+    id: FrameId(id),
+    duration: 1,
+    strokes: const [],
+    storyboardMetadata: metadata,
+  );
 }
 
 Cut _cutById(Project project, CutId cutId) {
@@ -705,4 +827,21 @@ Cut _cutById(Project project, CutId cutId) {
   }
 
   throw StateError('Cut not found: $cutId');
+}
+
+
+Frame _frameById(Project project, FrameId frameId) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        for (final frame in layer.frames) {
+          if (frame.id == frameId) {
+            return frame;
+          }
+        }
+      }
+    }
+  }
+
+  throw StateError('Frame not found: $frameId');
 }
