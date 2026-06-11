@@ -30,11 +30,7 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({
-    super.key,
-    this.initialProject,
-    this.onRepositoryCreated,
-  });
+  const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
 
   final Project? initialProject;
   final void Function(ProjectRepository repository)? onRepositoryCreated;
@@ -339,7 +335,6 @@ class _HomePageState extends State<HomePage> {
 
     return _timelineController.getSelectedFrameForLayer(layer);
   }
-
 
   Layer? get _targetLayerForKindToggle => _activeLayer;
 
