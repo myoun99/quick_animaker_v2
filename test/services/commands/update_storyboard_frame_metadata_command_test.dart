@@ -38,7 +38,9 @@ void main() {
         layers: [targetLayer],
         metadata: const CutMetadata(note: 'Cut note'),
       );
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
       const metadata = StoryboardFrameMetadata(
         actionMemo: 'Run to door',
         dialogueMemo: 'A: Wait!',
@@ -78,7 +80,9 @@ void main() {
         frames: [targetFrame],
       );
       final targetCut = _cut(id: 'cut-target', layers: [targetLayer]);
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
       final historyManager = HistoryManager();
 
       historyManager.execute(
@@ -93,7 +97,10 @@ void main() {
       historyManager.undo();
 
       expect(
-        _frameById(repository.requireProject(), targetFrame.id).storyboardMetadata,
+        _frameById(
+          repository.requireProject(),
+          targetFrame.id,
+        ).storyboardMetadata,
         const StoryboardFrameMetadata(note: 'Old'),
       );
     });
@@ -106,7 +113,9 @@ void main() {
         frames: [targetFrame],
       );
       final targetCut = _cut(id: 'cut-target', layers: [targetLayer]);
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
       final historyManager = HistoryManager();
       const metadata = StoryboardFrameMetadata(actionMemo: 'New action');
 
@@ -123,7 +132,10 @@ void main() {
       historyManager.redo();
 
       expect(
-        _frameById(repository.requireProject(), targetFrame.id).storyboardMetadata,
+        _frameById(
+          repository.requireProject(),
+          targetFrame.id,
+        ).storyboardMetadata,
         metadata,
       );
     });
@@ -142,7 +154,9 @@ void main() {
         frames: [targetFrame],
       );
       final targetCut = _cut(id: 'cut-target', layers: [targetLayer]);
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
       final historyManager = HistoryManager();
 
       historyManager.execute(
@@ -156,14 +170,20 @@ void main() {
       );
 
       expect(
-        _frameById(repository.requireProject(), targetFrame.id).storyboardMetadata,
+        _frameById(
+          repository.requireProject(),
+          targetFrame.id,
+        ).storyboardMetadata,
         newMetadata,
       );
 
       historyManager.undo();
 
       expect(
-        _frameById(repository.requireProject(), targetFrame.id).storyboardMetadata,
+        _frameById(
+          repository.requireProject(),
+          targetFrame.id,
+        ).storyboardMetadata,
         oldMetadata,
       );
     });
@@ -176,7 +196,9 @@ void main() {
         frames: [targetFrame],
       );
       final targetCut = _cut(id: 'cut-target', layers: [targetLayer]);
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
 
       expect(
         () => UpdateStoryboardFrameMetadataCommand(
@@ -218,7 +240,9 @@ void main() {
         frames: [targetFrame],
       );
       final targetCut = _cut(id: 'cut-target', layers: [targetLayer]);
-      final repository = ProjectRepository(initialProject: _project([targetCut]));
+      final repository = ProjectRepository(
+        initialProject: _project([targetCut]),
+      );
       final beforeJson = repository.requireProject().toJson();
 
       expect(
@@ -242,9 +266,18 @@ void main() {
         kind: LayerKind.storyboard,
         frames: [targetFrame, otherFrame],
       );
-      final otherLayer = _layer(id: 'layer-other', frames: [_frame(id: 'frame-3')]);
-      final targetCut = _cut(id: 'cut-target', layers: [targetLayer, otherLayer]);
-      final otherCut = _cut(id: 'cut-other', layers: [_layer(id: 'layer-4')]);
+      final otherLayer = _layer(
+        id: 'layer-other',
+        frames: [_frame(id: 'frame-3')],
+      );
+      final targetCut = _cut(
+        id: 'cut-target',
+        layers: [targetLayer, otherLayer],
+      );
+      final otherCut = _cut(
+        id: 'cut-other',
+        layers: [_layer(id: 'layer-4')],
+      );
       final repository = ProjectRepository(
         initialProject: _project([targetCut, otherCut]),
       );
@@ -257,7 +290,10 @@ void main() {
         metadata: const StoryboardFrameMetadata(note: 'New'),
       ).execute();
 
-      final updatedTargetCut = _cutById(repository.requireProject(), targetCut.id);
+      final updatedTargetCut = _cutById(
+        repository.requireProject(),
+        targetCut.id,
+      );
       expect(updatedTargetCut.layers[1], otherLayer);
       expect(updatedTargetCut.layers.first.frames[1], otherFrame);
       expect(_cutById(repository.requireProject(), otherCut.id), otherCut);

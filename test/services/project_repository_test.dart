@@ -703,7 +703,6 @@ void main() {
       );
     });
 
-
     test('updates frame storyboard metadata and preserves contents', () {
       final stroke = _stroke(id: 'stroke-1');
       final frame = _frame(id: 'frame-1', strokes: [stroke]);
@@ -717,7 +716,9 @@ void main() {
       final project = _project(
         id: 'project-1',
         name: 'Project',
-        tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        tracks: [
+          _track(id: 'track-1', name: 'Video', cuts: [cut]),
+        ],
       );
       final repository = ProjectRepository(initialProject: project);
       const metadata = StoryboardFrameMetadata(
@@ -748,7 +749,10 @@ void main() {
       expect(updatedFrame.name, frame.name);
       expect(updatedFrame.strokes, [stroke]);
       expect(updatedLayer.kind, LayerKind.storyboard);
-      expect(project.tracks.single.cuts.single.layers.single.frames.single, frame);
+      expect(
+        project.tracks.single.cuts.single.layers.single.frames.single,
+        frame,
+      );
     });
 
     test('updateFrameStoryboardMetadata throws for missing target', () {
@@ -759,7 +763,9 @@ void main() {
         initialProject: _project(
           id: 'project-1',
           name: 'Project',
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
         ),
       );
       final beforeJson = repository.requireProject().toJson();

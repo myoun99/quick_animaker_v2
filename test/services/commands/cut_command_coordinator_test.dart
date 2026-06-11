@@ -195,56 +195,66 @@ void main() {
       expect(fixture.historyManager.redoCount, 0);
     });
 
+    test(
+      'updateStoryboardFrameMetadata routes through history with undo/redo',
+      () {
+        final frame = _frame(id: 'frame-1');
+        final layer = _layer(
+          id: 'layer-1',
+          kind: LayerKind.storyboard,
+          frames: [frame],
+        );
+        final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+            ],
+          ),
+          activeCutId: cutA.id,
+        );
+        const metadata = StoryboardFrameMetadata(
+          actionMemo: 'Action',
+          dialogueMemo: 'Dialogue',
+          note: 'Note',
+        );
 
-    test('updateStoryboardFrameMetadata routes through history with undo/redo', () {
-      final frame = _frame(id: 'frame-1');
-      final layer = _layer(
-        id: 'layer-1',
-        kind: LayerKind.storyboard,
-        frames: [frame],
-      );
-      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
-      final fixture = _fixture(
-        _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
-        ),
-        activeCutId: cutA.id,
-      );
-      const metadata = StoryboardFrameMetadata(
-        actionMemo: 'Action',
-        dialogueMemo: 'Dialogue',
-        note: 'Note',
-      );
+        fixture.coordinator.updateStoryboardFrameMetadata(
+          cutId: cutA.id,
+          layerId: layer.id,
+          frameId: frame.id,
+          metadata: metadata,
+        );
 
-      fixture.coordinator.updateStoryboardFrameMetadata(
-        cutId: cutA.id,
-        layerId: layer.id,
-        frameId: frame.id,
-        metadata: metadata,
-      );
+        expect(
+          _frameById(fixture.project, frame.id).storyboardMetadata,
+          metadata,
+        );
+        expect(fixture.editingSession.activeCutId, cutA.id);
+        expect(fixture.historyManager.undoCount, 1);
+        expect(fixture.historyManager.redoCount, 0);
 
-      expect(_frameById(fixture.project, frame.id).storyboardMetadata, metadata);
-      expect(fixture.editingSession.activeCutId, cutA.id);
-      expect(fixture.historyManager.undoCount, 1);
-      expect(fixture.historyManager.redoCount, 0);
+        fixture.historyManager.undo();
 
-      fixture.historyManager.undo();
+        expect(
+          _frameById(fixture.project, frame.id).storyboardMetadata,
+          const StoryboardFrameMetadata.empty(),
+        );
+        expect(fixture.editingSession.activeCutId, cutA.id);
+        expect(fixture.historyManager.undoCount, 0);
+        expect(fixture.historyManager.redoCount, 1);
 
-      expect(
-        _frameById(fixture.project, frame.id).storyboardMetadata,
-        const StoryboardFrameMetadata.empty(),
-      );
-      expect(fixture.editingSession.activeCutId, cutA.id);
-      expect(fixture.historyManager.undoCount, 0);
-      expect(fixture.historyManager.redoCount, 1);
+        fixture.historyManager.redo();
 
-      fixture.historyManager.redo();
-
-      expect(_frameById(fixture.project, frame.id).storyboardMetadata, metadata);
-      expect(fixture.editingSession.activeCutId, cutA.id);
-      expect(fixture.historyManager.undoCount, 1);
-      expect(fixture.historyManager.redoCount, 0);
-    });
+        expect(
+          _frameById(fixture.project, frame.id).storyboardMetadata,
+          metadata,
+        );
+        expect(fixture.editingSession.activeCutId, cutA.id);
+        expect(fixture.historyManager.undoCount, 1);
+        expect(fixture.historyManager.redoCount, 0);
+      },
+    );
 
     test('updateStoryboardFrameMetadata skips unchanged metadata', () {
       const metadata = StoryboardFrameMetadata(note: 'Same');
@@ -257,7 +267,9 @@ void main() {
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
       final fixture = _fixture(
         _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
         ),
         activeCutId: cutA.id,
       );
@@ -281,7 +293,9 @@ void main() {
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
       final fixture = _fixture(
         _project(
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cutA])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
         ),
         activeCutId: cutA.id,
       );
@@ -828,7 +842,6 @@ Cut _cutById(Project project, CutId cutId) {
 
   throw StateError('Cut not found: $cutId');
 }
-
 
 Frame _frameById(Project project, FrameId frameId) {
   for (final track in project.tracks) {
