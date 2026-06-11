@@ -2,6 +2,7 @@ import 'canvas_size.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
+import 'storyboard_layer.dart';
 
 class Cut {
   Cut({
@@ -11,6 +12,7 @@ class Cut {
     required this.duration,
     required this.canvasSize,
     this.metadata = const CutMetadata.empty(),
+    this.storyboardLayer = const StoryboardLayer.empty(),
   }) : layers = List.unmodifiable(layers);
 
   final CutId id;
@@ -19,6 +21,7 @@ class Cut {
   final int duration;
   final CanvasSize canvasSize;
   final CutMetadata metadata;
+  final StoryboardLayer storyboardLayer;
 
   Cut copyWith({
     CutId? id,
@@ -27,6 +30,7 @@ class Cut {
     int? duration,
     CanvasSize? canvasSize,
     CutMetadata? metadata,
+    StoryboardLayer? storyboardLayer,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -35,6 +39,7 @@ class Cut {
       duration: duration ?? this.duration,
       canvasSize: canvasSize ?? this.canvasSize,
       metadata: metadata ?? this.metadata,
+      storyboardLayer: storyboardLayer ?? this.storyboardLayer,
     );
   }
 
@@ -45,6 +50,7 @@ class Cut {
     'duration': duration,
     'canvasSize': canvasSize.toJson(),
     'metadata': metadata.toJson(),
+    'storyboardLayer': storyboardLayer.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -61,6 +67,11 @@ class Cut {
       metadata: json['metadata'] == null
           ? const CutMetadata.empty()
           : CutMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
+      storyboardLayer: json['storyboardLayer'] == null
+          ? const StoryboardLayer.empty()
+          : StoryboardLayer.fromJson(
+              json['storyboardLayer'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -73,7 +84,8 @@ class Cut {
           _listEquals(other.layers, layers) &&
           other.duration == duration &&
           other.canvasSize == canvasSize &&
-          other.metadata == metadata;
+          other.metadata == metadata &&
+          other.storyboardLayer == storyboardLayer;
 
   @override
   int get hashCode => Object.hash(
@@ -83,11 +95,12 @@ class Cut {
     duration,
     canvasSize,
     metadata,
+    storyboardLayer,
   );
 
   @override
   String toString() =>
-      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata)';
+      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, storyboardLayer: $storyboardLayer)';
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {
