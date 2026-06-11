@@ -34,22 +34,25 @@ void main() {
       expect(restoredCut.toJson().containsKey('storyboardLayer'), isFalse);
     });
 
-    test('layers can represent storyboard workflow via LayerKind.storyboard', () {
-      final cut = _cut(
-        layers: [
-          Layer(
-            id: const LayerId('storyboard-layer'),
-            name: 'Storyboard',
-            frames: const [],
-            kind: LayerKind.storyboard,
-          ),
-        ],
-      );
+    test(
+      'layers can represent storyboard workflow via LayerKind.storyboard',
+      () {
+        final cut = _cut(
+          layers: [
+            Layer(
+              id: const LayerId('storyboard-layer'),
+              name: 'Storyboard',
+              frames: const [],
+              kind: LayerKind.storyboard,
+            ),
+          ],
+        );
 
-      final restoredCut = Cut.fromJson(cut.toJson());
+        final restoredCut = Cut.fromJson(cut.toJson());
 
-      expect(restoredCut.layers.single.kind, LayerKind.storyboard);
-    });
+        expect(restoredCut.layers.single.kind, LayerKind.storyboard);
+      },
+    );
   });
 
   group('CutMetadata scope', () {
