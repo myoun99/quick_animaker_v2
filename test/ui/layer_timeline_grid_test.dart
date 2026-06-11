@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -34,6 +35,45 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('renders layer kind icons before layer names', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        layers: [
+          _layer(id: 'layer-1', name: 'Layer 1'),
+          _layer(
+            id: 'layer-2',
+            name: 'Layer 2',
+            kind: LayerKind.storyboard,
+          ),
+        ],
+      ),
+    );
+
+    final animationIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-1')),
+    );
+    final storyboardIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-2')),
+    );
+    expect(animationIcon.icon, Icons.brush_outlined);
+    expect(storyboardIcon.icon, Icons.auto_stories_outlined);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('timeline-layer-name-layer-1'),
+        ),
+        matching: find.byKey(
+          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Layer 1'), findsOneWidget);
+    expect(find.text('Layer 2'), findsOneWidget);
   });
 
   testWidgets('add layer button calls callback', (tester) async {
@@ -406,6 +446,7 @@ void main() {
 Widget _grid({
   int currentFrameIndex = 0,
   int frameCount = 12,
+  List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
   ValueChanged<LayerId>? onSelectLayer,
@@ -422,7 +463,7 @@ Widget _grid({
         width: 900,
         height: 260,
         child: LayerTimelineGrid(
-          layers: _layers,
+          layers: layers ?? _layers,
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           frameCount: frameCount,
@@ -443,19 +484,29 @@ Widget _grid({
 }
 
 final _layers = [
-  Layer(
-    id: const LayerId('layer-1'),
-    name: 'Layer 1',
-    frames: [
-      Frame(id: const FrameId('frame-1'), duration: 1, strokes: const []),
-    ],
-  ),
-  Layer(
-    id: const LayerId('layer-2'),
-    name: 'Layer 2',
-    opacity: 0.5,
-    frames: [
-      Frame(id: const FrameId('frame-2'), duration: 1, strokes: const []),
-    ],
-  ),
+  _layer(id: 'layer-1', name: 'Layer 1'),
+  _layer(id: 'layer-2', name: 'Layer 2', opacity: 0.5),
 ];
+
+Layer _layer({
+  required String id,
+  required String name,
+  double opacity = 1,
+  LayerKind kind = LayerKind.animation,
+}) {
+  final layerNumber = id.split('-').last;
+
+  return Layer(
+    id: LayerId(id),
+    name: name,
+    kind: kind,
+    opacity: opacity,
+    frames: [
+      Frame(
+        id: FrameId('frame-$layerNumber'),
+        duration: 1,
+        strokes: const [],
+      ),
+    ],
+  );
+}

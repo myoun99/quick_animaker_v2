@@ -201,6 +201,13 @@ bool _isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
   return iconButton.onPressed != null;
 }
 
+IconData _layerKindIcon(WidgetTester tester, String layerId) {
+  final finder = find.byKey(
+    ValueKey<String>('timeline-layer-kind-icon-$layerId'),
+  );
+  return tester.widget<Icon>(finder).icon!;
+}
+
 void _expectCutOrder(WidgetTester tester, List<String> cutIds) {
   final centers = [
     for (final cutId in cutIds)
@@ -1020,6 +1027,120 @@ Line 8''';
       findsNothing,
     );
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+  });
+
+  testWidgets('initial timeline layer shows animation kind icon', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-layer-kind-icon-sample-layer-1',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(_layerKindIcon(tester, 'sample-layer-1'), Icons.brush_outlined);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
+    expect(find.text('A'), findsWidgets);
+  });
+
+  testWidgets('Add Layer creates an animation kind icon for active B', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _addLayer(tester);
+
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-layer-kind-icon-sample-layer-2',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(_layerKindIcon(tester, 'sample-layer-2'), Icons.brush_outlined);
+    expect(find.text('Layer: B'), findsOneWidget);
+    expect(find.bySemanticsLabel('Animation layer'), findsNWidgets(2));
+  });
+
+  testWidgets('storyboard toggle updates the active layer kind icon', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(_layerKindIcon(tester, 'sample-layer-1'), Icons.brush_outlined);
+    expect(
+      _statusText(
+        tester,
+        const ValueKey<String>('active-layer-kind-label'),
+      ),
+      'Animation Layer',
+    );
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-storyboard-layer-button'),
+    );
+
+    expect(
+      _layerKindIcon(tester, 'sample-layer-1'),
+      Icons.auto_stories_outlined,
+    );
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
+    expect(
+      _statusText(
+        tester,
+        const ValueKey<String>('active-layer-kind-label'),
+      ),
+      'Storyboard Layer',
+    );
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-storyboard-layer-button'),
+    );
+
+    expect(_layerKindIcon(tester, 'sample-layer-1'), Icons.brush_outlined);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
+  });
+
+  testWidgets('multiple layers can show different layer kind icons', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _addLayer(tester);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-storyboard-layer-button'),
+    );
+
+    expect(_layerKindIcon(tester, 'sample-layer-1'), Icons.brush_outlined);
+    expect(
+      _layerKindIcon(tester, 'sample-layer-2'),
+      Icons.auto_stories_outlined,
+    );
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
+    expect(find.text('A'), findsWidgets);
+    expect(find.text('B'), findsWidgets);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('timeline-layer-name-sample-layer-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Layer: A'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('pressing Add Layer first creates active B above A', (
