@@ -98,9 +98,7 @@ Future<void> _saveCutNote(WidgetTester tester, String note) async {
     find.byKey(const ValueKey<String>('cut-note-text-field')),
     note,
   );
-  await tester.tap(
-    find.byKey(const ValueKey<String>('save-cut-note-button')),
-  );
+  await tester.tap(find.byKey(const ValueKey<String>('save-cut-note-button')));
   await tester.pumpAndSettle();
 }
 
@@ -636,7 +634,6 @@ void main() {
     expect(find.text('Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
   });
-
 
   testWidgets('edit cut note button opens dialog with current note', (
     WidgetTester tester,
