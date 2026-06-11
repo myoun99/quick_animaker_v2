@@ -1129,11 +1129,12 @@ Line 8''';
     expect(find.text('A'), findsWidgets);
     expect(find.text('B'), findsWidgets);
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('timeline-layer-name-sample-layer-1'),
-      ),
+    final layerAName = find.byKey(
+      const ValueKey<String>('timeline-layer-name-sample-layer-1'),
     );
+    await tester.ensureVisible(layerAName);
+    await tester.pumpAndSettle();
+    await tester.tap(layerAName);
     await tester.pumpAndSettle();
 
     expect(find.text('Layer: A'), findsOneWidget);
