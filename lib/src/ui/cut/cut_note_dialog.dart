@@ -30,15 +30,20 @@ class _CutNoteDialogState extends State<CutNoteDialog> {
       title: const Text('Edit Cut Note'),
       content: SizedBox(
         width: 420,
-        child: TextField(
-          key: const ValueKey<String>('cut-note-text-field'),
-          controller: _noteController,
-          autofocus: true,
-          minLines: 4,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Cut note',
-            border: OutlineInputBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: TextField(
+            key: const ValueKey<String>('cut-note-text-field'),
+            controller: _noteController,
+            autofocus: true,
+            keyboardType: TextInputType.multiline,
+            minLines: 8,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              labelText: 'Cut note',
+              alignLabelWithHint: true,
+              border: OutlineInputBorder(),
+            ),
           ),
         ),
       ),
