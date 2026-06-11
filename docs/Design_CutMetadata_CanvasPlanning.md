@@ -47,6 +47,24 @@ A Cut may need:
 
 These concepts should be introduced gradually and safely.
 
+
+## Storyboard / Conte layer direction
+
+Storyboard / Conte drawing data should use the existing animation data structures rather than a separate Cut-owned panel list.
+
+A Storyboard Layer is represented as a normal `Layer` whose kind is `LayerKind.storyboard`. Normal animation layers use `LayerKind.animation`.
+
+The active basis for future storyboard/conte workflow is therefore:
+
+* `Cut.layers`
+* `Layer(kind: LayerKind.animation)` for regular animation work
+* `Layer(kind: LayerKind.storyboard)` for storyboard/conte work
+* existing `Layer` / `Frame` / `Stroke` structure for drawable timing and artwork
+
+`StoryboardLayer` is not a separate `Cut.storyboardLayer` panel list, and storyboard/conte data should not be modeled as `Cut.storyboardLayer.panels`.
+
+Future storyboard text fields such as `actionMemo` and `dialogueMemo` should be introduced later at the appropriate Frame-level or storyboard metadata level that follows the `Layer` / `Frame` workflow. They should not be reintroduced as Cut-level `CutMetadata` fields.
+
 ## Cut metadata direction
 
 The first metadata foundation should be text-based and low-risk.

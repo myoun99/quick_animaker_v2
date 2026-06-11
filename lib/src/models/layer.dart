@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'frame.dart';
 import 'layer_id.dart';
+import 'layer_kind.dart';
 import 'timeline_exposure.dart';
 import 'timeline_mark.dart';
 
@@ -14,6 +15,7 @@ class Layer {
     Map<int, TimelineMark>? marks,
     this.isVisible = true,
     this.opacity = 1.0,
+    this.kind = LayerKind.animation,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        marks = _immutableMarks(marks ?? const {});
@@ -25,6 +27,7 @@ class Layer {
   final SplayTreeMap<int, TimelineMark> marks;
   final bool isVisible;
   final double opacity;
+  final LayerKind kind;
 
   Layer copyWith({
     LayerId? id,
@@ -34,6 +37,7 @@ class Layer {
     Map<int, TimelineMark>? marks,
     bool? isVisible,
     double? opacity,
+    LayerKind? kind,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -44,6 +48,7 @@ class Layer {
       marks: marks ?? this.marks,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
+      kind: kind ?? this.kind,
     );
   }
 
@@ -59,6 +64,7 @@ class Layer {
         .toList(),
     'isVisible': isVisible,
     'opacity': opacity,
+    'kind': kind.toJson(),
   };
 
   factory Layer.fromJson(Map<String, dynamic> json) {
@@ -77,6 +83,9 @@ class Layer {
           : const {},
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),
+      kind: json.containsKey('kind')
+          ? LayerKind.fromJson(json['kind'])
+          : LayerKind.animation,
     );
   }
 
@@ -90,7 +99,8 @@ class Layer {
           _mapEquals(other.timeline, timeline) &&
           _mapEquals(other.marks, marks) &&
           other.isVisible == isVisible &&
-          other.opacity == opacity;
+          other.opacity == opacity &&
+          other.kind == kind;
 
   @override
   int get hashCode => Object.hash(
@@ -105,12 +115,13 @@ class Layer {
     ),
     isVisible,
     opacity,
+    kind,
   );
 
   @override
   String toString() =>
       'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, '
-      'marks: $marks, isVisible: $isVisible, opacity: $opacity)';
+      'marks: $marks, isVisible: $isVisible, opacity: $opacity, kind: $kind)';
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(
