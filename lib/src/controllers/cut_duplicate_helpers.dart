@@ -84,6 +84,7 @@ Frame _duplicateFrame({
     duration: frame.duration,
     strokes: frame.strokes.map(_duplicateStroke).toList(),
     name: frame.name,
+    storyboardMetadata: frame.storyboardMetadata,
   );
 }
 

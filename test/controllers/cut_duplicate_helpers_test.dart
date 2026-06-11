@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -142,6 +143,35 @@ void main() {
 
       expect(duplicate.layers[0].kind, LayerKind.animation);
       expect(duplicate.layers[1].kind, LayerKind.storyboard);
+    });
+
+    test('preserves source frame storyboard metadata', () {
+      final source = _sourceCut();
+
+      final duplicate = duplicateCutAsIndependentCopy(
+        source: source,
+        newCutId: const CutId('cut-copy'),
+        newName: 'Cut Copy',
+        layerIdMap: {
+          LayerId('layer-a'): LayerId('layer-copy-a'),
+          LayerId('layer-b'): LayerId('layer-copy-b'),
+        },
+        frameIdMap: {
+          FrameId('frame-a'): FrameId('frame-copy-a'),
+          FrameId('frame-b'): FrameId('frame-copy-b'),
+          FrameId('frame-c'): FrameId('frame-copy-c'),
+        },
+      );
+
+      expect(duplicate.layers[1].kind, LayerKind.storyboard);
+      expect(
+        duplicate.layers[1].frames.single.id,
+        const FrameId('frame-copy-c'),
+      );
+      expect(
+        duplicate.layers[1].frames.single.storyboardMetadata,
+        source.layers[1].frames.single.storyboardMetadata,
+      );
     });
 
     test(
@@ -315,6 +345,11 @@ Cut _sourceCut() {
             name: 'C',
             duration: 2,
             strokes: const [],
+            storyboardMetadata: const StoryboardFrameMetadata(
+              actionMemo: 'Character points at the horizon.',
+              dialogueMemo: 'A: Over there!',
+              note: 'Use as conte panel note.',
+            ),
           ),
         ],
         timeline: {2: TimelineExposure.drawing(const FrameId('frame-c'))},

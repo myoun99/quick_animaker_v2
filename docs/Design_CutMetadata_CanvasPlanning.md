@@ -63,7 +63,17 @@ The active basis for future storyboard/conte workflow is therefore:
 
 `StoryboardLayer` is not a separate `Cut.storyboardLayer` panel list, and storyboard/conte data should not be modeled as `Cut.storyboardLayer.panels`.
 
-Future storyboard text fields such as `actionMemo` and `dialogueMemo` should be introduced later at the appropriate Frame-level or storyboard metadata level that follows the `Layer` / `Frame` workflow. They should not be reintroduced as Cut-level `CutMetadata` fields.
+Storyboard Frame metadata now lives at the `Frame` level as `StoryboardFrameMetadata`.
+
+`StoryboardFrameMetadata` contains:
+
+* `actionMemo`
+* `dialogueMemo`
+* `note`
+
+This follows the normal `LayerKind.storyboard` + `Frame` workflow: a storyboard/conte layer remains a regular `Layer`, and each `Frame` in that layer can carry the per-panel storyboard text needed by future Conte workflows.
+
+Storyboard Frame metadata is not Cut-level metadata. `actionMemo`, `dialogueMemo`, and storyboard-frame `note` should not be reintroduced as fields on `CutMetadata`.
 
 ## Cut metadata direction
 
