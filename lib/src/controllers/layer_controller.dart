@@ -4,7 +4,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
-import '../models/timeline_exposure.dart';
+import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -79,21 +79,21 @@ class LayerController {
   }
 
   void addLayer({required Layer layer}) {
+    final insertionIndex = _insertionIndexAboveActiveLayer();
     _historyManager.execute(
-      AddLayerCommand(repository: _repository, cutId: _cutId, layer: layer),
+      AddLayerCommand(
+        repository: _repository,
+        cutId: _cutId,
+        layer: layer,
+        insertionIndex: insertionIndex,
+      ),
     );
     _activeLayerId = layer.id;
   }
 
-  void addLayerWithDefaults({required LayerId layerId, required String name}) {
-    addLayer(
-      layer: Layer(
-        id: layerId,
-        name: name,
-        frames: const [],
-        timeline: const {0: TimelineExposure.blank()},
-      ),
-    );
+  void addLayerWithDefaults({required LayerId layerId, String? name}) {
+    final cut = _findCut();
+    addLayer(layer: createDefaultAnimationLayer(layerId: layerId, cut: cut));
   }
 
   void toggleLayerVisibility(LayerId layerId) {
@@ -126,6 +126,16 @@ class LayerController {
 
   bool _hasLayer(LayerId layerId) {
     return layers.any((layer) => layer.id == layerId);
+  }
+
+  int _insertionIndexAboveActiveLayer() {
+    final id = _activeLayerId;
+    if (id == null) {
+      return 0;
+    }
+
+    final index = layers.indexWhere((layer) => layer.id == id);
+    return index < 0 ? 0 : index;
   }
 
   void _ensureActiveLayerExists() {

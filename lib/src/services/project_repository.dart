@@ -244,6 +244,10 @@ class ProjectRepository {
   }
 
   void addLayer({required CutId cutId, required Layer layer}) {
+    insertLayer(cutId: cutId, layer: layer);
+  }
+
+  void insertLayer({required CutId cutId, required Layer layer, int? index}) {
     updateProject((project) {
       var foundCut = false;
 
@@ -256,7 +260,13 @@ class ProjectRepository {
                   }
 
                   foundCut = true;
-                  return cut.copyWith(layers: [...cut.layers, layer]);
+                  final layers = [...cut.layers];
+                  if (index == null) {
+                    layers.add(layer);
+                  } else {
+                    layers.insert(index.clamp(0, layers.length).toInt(), layer);
+                  }
+                  return cut.copyWith(layers: layers);
                 })
                 .toList(growable: false);
 
@@ -332,15 +342,32 @@ class ProjectRepository {
                   }
 
                   foundCut = true;
-                  final layers = cut.layers
-                      .map((layer) {
-                        if (layer.id != layerId) {
-                          return layer;
-                        }
+                  Layer? targetLayer;
+                  for (final layer in cut.layers) {
+                    if (layer.id == layerId) {
+                      targetLayer = layer;
+                      break;
+                    }
+                  }
+                  if (targetLayer == null) {
+                    return cut;
+                  }
 
-                        foundLayer = true;
-                        return layer.copyWith(kind: kind);
-                      })
+                  foundLayer = true;
+                  if (kind == LayerKind.storyboard &&
+                      targetLayer.kind != LayerKind.storyboard &&
+                      cut.layers.any(
+                        (layer) => layer.kind == LayerKind.storyboard,
+                      )) {
+                    throw StateError(
+                      'Cut $cutId already has a storyboard layer.',
+                    );
+                  }
+
+                  final layers = cut.layers
+                      .map((layer) => layer.id == layerId
+                          ? layer.copyWith(kind: kind)
+                          : layer)
                       .toList(growable: false);
 
                   return cut.copyWith(layers: layers);

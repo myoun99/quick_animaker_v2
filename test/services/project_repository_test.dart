@@ -869,6 +869,65 @@ void main() {
       expect(cut.layers.single.kind, LayerKind.animation);
     });
 
+    test('insertLayer inserts at requested index', () {
+      final cut = _cut(
+        id: 'cut-1',
+        name: 'Cut 1',
+        layers: [
+          _layer(id: 'layer-a', name: 'A'),
+          _layer(id: 'layer-b', name: 'B'),
+        ],
+      );
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        ),
+      );
+
+      repository.insertLayer(
+        cutId: cut.id,
+        layer: _layer(id: 'layer-c', name: 'C'),
+        index: 1,
+      );
+
+      expect(
+        repository.requireProject().tracks.single.cuts.single.layers.map(
+          (layer) => layer.name,
+        ),
+        ['A', 'C', 'B'],
+      );
+    });
+
+    test('updateLayerKind rejects creating a second storyboard layer', () {
+      final storyboard = _layer(
+        id: 'storyboard',
+        name: 'A',
+        kind: LayerKind.storyboard,
+      );
+      final animation = _layer(id: 'animation', name: 'B');
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [storyboard, animation]);
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        ),
+      );
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => repository.updateLayerKind(
+          cutId: cut.id,
+          layerId: animation.id,
+          kind: LayerKind.storyboard,
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
     test('updateLayerKind throws for missing cut or layer', () {
       final layer = _layer(id: 'layer-1', name: 'Layer 1');
       final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);

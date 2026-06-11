@@ -30,7 +30,7 @@ void main() {
       fixture.controller.selectLayer(const LayerId('layer-2'));
 
       expect(fixture.controller.activeLayerId, const LayerId('layer-2'));
-      expect(fixture.controller.activeLayer?.name, 'Layer 2');
+      expect(fixture.controller.activeLayer?.name, 'B');
     });
 
     test('adds a layer', () {
@@ -38,18 +38,33 @@ void main() {
 
       fixture.controller.addLayerWithDefaults(
         layerId: const LayerId('layer-3'),
-        name: 'Layer 3',
       );
 
       expect(fixture.controller.layers, hasLength(3));
-      fixture.controller.selectLayer(const LayerId('layer-3'));
-      expect(fixture.controller.activeLayer?.name, 'Layer 3');
+      expect(fixture.controller.activeLayerId, const LayerId('layer-3'));
+      expect(fixture.controller.activeLayer?.name, 'C');
       expect(fixture.controller.activeLayer?.frames, isEmpty);
       expect(fixture.controller.activeLayer?.timeline, hasLength(1));
       expect(
         fixture.controller.activeLayer?.timeline[0]?.type,
         TimelineExposureType.blank,
       );
+    });
+
+    test('adds a default layer above the active layer in list order', () {
+      final fixture = _createFixture();
+      fixture.controller.selectLayer(const LayerId('layer-2'));
+
+      fixture.controller.addLayerWithDefaults(
+        layerId: const LayerId('layer-3'),
+      );
+
+      expect(fixture.controller.layers.map((layer) => layer.name), [
+        'A',
+        'C',
+        'B',
+      ]);
+      expect(fixture.controller.activeLayerId, const LayerId('layer-3'));
     });
 
     test('toggles visibility', () {
@@ -135,7 +150,7 @@ void main() {
             fixture.repository,
             const CutId('cut-a'),
           ).layers.map((layer) => layer.id),
-          [const LayerId('layer-a'), const LayerId('layer-a-added')],
+          [const LayerId('layer-a-added'), const LayerId('layer-a')],
         );
         expect(
           _findCut(
@@ -166,7 +181,7 @@ void main() {
             fixture.repository,
             const CutId('cut-b'),
           ).layers.map((layer) => layer.id),
-          [const LayerId('layer-b'), const LayerId('layer-b-added')],
+          [const LayerId('layer-b-added'), const LayerId('layer-b')],
         );
       });
     });
@@ -206,12 +221,12 @@ Project _createSampleProject() {
             layers: [
               Layer(
                 id: const LayerId('layer-1'),
-                name: 'Layer 1',
+                name: 'A',
                 frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
               ),
               Layer(
                 id: const LayerId('layer-2'),
-                name: 'Layer 2',
+                name: 'B',
                 frames: [
                   Frame(
                     id: const FrameId('frame-2'),

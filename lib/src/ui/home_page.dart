@@ -338,6 +338,20 @@ class _HomePageState extends State<HomePage> {
 
   Layer? get _targetLayerForKindToggle => _activeLayer;
 
+  bool get _canToggleTargetLayerKind {
+    final targetLayer = _targetLayerForKindToggle;
+    if (targetLayer == null) {
+      return false;
+    }
+    if (targetLayer.kind == LayerKind.storyboard) {
+      return true;
+    }
+
+    return !_layerController.layers.any(
+      (layer) => layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
+    );
+  }
+
   String get _activeLayerKindLabelText {
     final targetLayer = _targetLayerForKindToggle;
     return switch (targetLayer?.kind) {
@@ -841,9 +855,9 @@ class _HomePageState extends State<HomePage> {
                     ),
                     tooltip: 'Toggle Storyboard Layer',
                     icon: Icons.auto_stories_outlined,
-                    onPressed: _targetLayerForKindToggle == null
-                        ? null
-                        : () => setState(_toggleTargetLayerKind),
+                    onPressed: _canToggleTargetLayerKind
+                        ? () => setState(_toggleTargetLayerKind)
+                        : null,
                   ),
                   const SizedBox(width: 16),
                   Text(
@@ -1127,7 +1141,6 @@ class _HomePageState extends State<HomePage> {
                 _layerSequence += 1;
                 _layerController.addLayerWithDefaults(
                   layerId: LayerId('sample-layer-$_layerSequence'),
-                  name: 'Layer $_layerSequence',
                 );
               });
             },
@@ -1179,13 +1192,13 @@ class _HomePageState extends State<HomePage> {
               layers: [
                 Layer(
                   id: const LayerId('sample-layer-1'),
-                  name: 'Layer 1',
+                  name: 'A',
                   frames: const [],
                   timeline: const {0: TimelineExposure.blank()},
                 ),
                 Layer(
                   id: const LayerId('sample-layer-2'),
-                  name: 'Layer 2',
+                  name: 'B',
                   frames: const [],
                   timeline: const {0: TimelineExposure.blank()},
                 ),

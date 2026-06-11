@@ -139,6 +139,33 @@ void main() {
       );
     });
 
+    test('rejects animation to storyboard when another storyboard exists', () {
+      final storyboardLayer = _layer(
+        id: 'layer-storyboard',
+        kind: LayerKind.storyboard,
+      );
+      final animationLayer = _layer(
+        id: 'layer-animation',
+        frames: [_frame(id: 'frame-animation', strokes: [_stroke('stroke')])],
+        timeline: const {0: TimelineExposure.blank()},
+        marks: const {0: TimelineMark.inbetween()},
+      );
+      final cut = _cut(id: 'cut-1', layers: [storyboardLayer, animationLayer]);
+      final repository = ProjectRepository(initialProject: _project([cut]));
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => UpdateLayerKindCommand(
+          repository: repository,
+          cutId: cut.id,
+          layerId: animationLayer.id,
+          kind: LayerKind.storyboard,
+        ).execute(),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
     test('missing cut throws StateError', () {
       final layer = _layer(id: 'layer-1');
       final cut = _cut(id: 'cut-1', layers: [layer]);
