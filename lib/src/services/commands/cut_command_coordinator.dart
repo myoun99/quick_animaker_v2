@@ -11,6 +11,7 @@ import 'delete_cut_command.dart';
 import 'duplicate_cut_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
+import 'update_cut_note_command.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -42,6 +43,17 @@ class CutCommandCoordinator {
   void renameCut({required CutId cutId, required String newName}) {
     historyManager.execute(
       RenameCutCommand(repository: repository, cutId: cutId, newName: newName),
+    );
+  }
+
+  void updateCutNote({required CutId cutId, required String note}) {
+    final cut = _requireCut(cutId);
+    if (cut.metadata.note == note) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
     );
   }
 

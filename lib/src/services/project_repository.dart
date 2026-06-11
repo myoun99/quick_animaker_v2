@@ -1,5 +1,6 @@
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/cut_metadata.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -193,6 +194,38 @@ class ProjectRepository {
 
                   foundCut = true;
                   return cut.copyWith(name: name);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundCut) {
+        throw StateError('Cut not found: $cutId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
+  void updateCutMetadata({
+    required CutId cutId,
+    required CutMetadata metadata,
+  }) {
+    updateProject((project) {
+      var foundCut = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  if (cut.id != cutId) {
+                    return cut;
+                  }
+
+                  foundCut = true;
+                  return cut.copyWith(metadata: metadata);
                 })
                 .toList(growable: false);
 

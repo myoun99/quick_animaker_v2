@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -101,6 +102,96 @@ void main() {
         expect(fixture.historyManager.undoCount, 1);
       },
     );
+
+    test('updateCutNote updates note through history with undo/redo', () {
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'General note');
+
+      expect(_cutById(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+
+      fixture.historyManager.undo();
+
+      expect(_cutById(fixture.project, cutA.id).metadata.note, '');
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 1);
+
+      fixture.historyManager.redo();
+
+      expect(_cutById(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateCutNote skips unchanged note without history entry', () {
+      final cutA = _cut(
+        id: 'cut-1',
+        name: 'Cut A',
+        metadata: const CutMetadata(note: 'Same note'),
+      );
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'Same note');
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(_cutById(fixture.project, cutA.id).metadata.note, 'Same note');
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateCutNote throws StateError when target cut is missing', () {
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      expect(
+        () => fixture.coordinator.updateCutNote(
+          cutId: const CutId('cut-missing'),
+          note: 'General note',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Cut not found: cut-missing'),
+          ),
+        ),
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
 
     test(
       'reorderCut executes through history without changing activeCutId',
@@ -580,13 +671,19 @@ Track _track({
   return Track(id: TrackId(id), name: name, cuts: cuts);
 }
 
-Cut _cut({String id = 'cut-1', String name = 'Cut', List<Layer>? layers}) {
+Cut _cut({
+  String id = 'cut-1',
+  String name = 'Cut',
+  List<Layer>? layers,
+  CutMetadata metadata = const CutMetadata.empty(),
+}) {
   return Cut(
     id: CutId(id),
     name: name,
     layers: layers ?? [_layer(id: 'layer-$id')],
     duration: 1,
     canvasSize: const CanvasSize(width: 1280, height: 720),
+    metadata: metadata,
   );
 }
 
