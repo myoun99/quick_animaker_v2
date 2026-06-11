@@ -42,11 +42,7 @@ void main() {
       _grid(
         layers: [
           _layer(id: 'layer-1', name: 'Layer 1'),
-          _layer(
-            id: 'layer-2',
-            name: 'Layer 2',
-            kind: LayerKind.storyboard,
-          ),
+          _layer(id: 'layer-2', name: 'Layer 2', kind: LayerKind.storyboard),
         ],
       ),
     );
@@ -63,9 +59,7 @@ void main() {
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('timeline-layer-name-layer-1'),
-        ),
+        of: find.byKey(const ValueKey<String>('timeline-layer-name-layer-1')),
         matching: find.byKey(
           const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
         ),
@@ -502,11 +496,7 @@ Layer _layer({
     kind: kind,
     opacity: opacity,
     frames: [
-      Frame(
-        id: FrameId('frame-$layerNumber'),
-        duration: 1,
-        strokes: const [],
-      ),
+      Frame(id: FrameId('frame-$layerNumber'), duration: 1, strokes: const []),
     ],
   );
 }

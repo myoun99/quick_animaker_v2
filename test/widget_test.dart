@@ -1036,9 +1036,7 @@ Line 8''';
 
     expect(
       find.byKey(
-        const ValueKey<String>(
-          'timeline-layer-kind-icon-sample-layer-1',
-        ),
+        const ValueKey<String>('timeline-layer-kind-icon-sample-layer-1'),
       ),
       findsOneWidget,
     );
@@ -1056,9 +1054,7 @@ Line 8''';
 
     expect(
       find.byKey(
-        const ValueKey<String>(
-          'timeline-layer-kind-icon-sample-layer-2',
-        ),
+        const ValueKey<String>('timeline-layer-kind-icon-sample-layer-2'),
       ),
       findsOneWidget,
     );
@@ -1074,10 +1070,7 @@ Line 8''';
 
     expect(_layerKindIcon(tester, 'sample-layer-1'), Icons.brush_outlined);
     expect(
-      _statusText(
-        tester,
-        const ValueKey<String>('active-layer-kind-label'),
-      ),
+      _statusText(tester, const ValueKey<String>('active-layer-kind-label')),
       'Animation Layer',
     );
 
@@ -1092,10 +1085,7 @@ Line 8''';
     );
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
     expect(
-      _statusText(
-        tester,
-        const ValueKey<String>('active-layer-kind-label'),
-      ),
+      _statusText(tester, const ValueKey<String>('active-layer-kind-label')),
       'Storyboard Layer',
     );
 
