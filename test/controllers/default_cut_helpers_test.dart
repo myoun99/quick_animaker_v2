@@ -3,7 +3,9 @@ import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -25,9 +27,10 @@ void main() {
 
       final layer = cut.layers.single;
       expect(layer.id, const LayerId('layer-new'));
-      expect(layer.name, 'Layer 1');
+      expect(layer.name, 'A');
+      expect(layer.kind, LayerKind.animation);
       expect(layer.frames, isEmpty);
-      expect(layer.timeline, isEmpty);
+      expect(layer.timeline[0], const TimelineExposure.blank());
       expect(layer.marks, isEmpty);
       expect(layer.isVisible, isTrue);
       expect(layer.opacity, 1.0);

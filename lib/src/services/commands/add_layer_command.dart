@@ -9,11 +9,13 @@ class AddLayerCommand implements Command {
     required this.repository,
     required this.cutId,
     required this.layer,
+    this.insertionIndex,
   });
 
   final ProjectRepository repository;
   final CutId cutId;
   final Layer layer;
+  final int? insertionIndex;
 
   Project? _previousProject;
 
@@ -23,7 +25,11 @@ class AddLayerCommand implements Command {
   @override
   void execute() {
     _previousProject = repository.requireProject();
-    repository.addLayer(cutId: cutId, layer: layer);
+    repository.insertLayer(
+      cutId: cutId,
+      layer: layer,
+      index: insertionIndex,
+    );
   }
 
   @override

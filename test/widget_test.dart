@@ -993,9 +993,9 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
-    expect(find.text('Layer 1'), findsWidgets);
-    expect(find.text('Layer 2'), findsWidgets);
+    expect(find.text('Layer: A'), findsOneWidget);
+    expect(find.text('A'), findsWidgets);
+    expect(find.text('B'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-sample-layer-1-0')),
       findsOneWidget,
@@ -1015,7 +1015,7 @@ Line 8''';
     expect(find.text('Cut 2'), findsOneWidget);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Cut 2 Layer'), findsNothing);
     expect(
       tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
@@ -1030,8 +1030,8 @@ Line 8''';
     expect(find.byTooltip('Switch to Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active: Cut 2'), findsOneWidget);
     expect(find.text('Layer: Cut 2 Layer'), findsOneWidget);
-    expect(find.text('Layer 1'), findsNothing);
-    expect(find.text('Layer 2'), findsNothing);
+    expect(find.text('A'), findsNothing);
+    expect(find.text('B'), findsNothing);
     expect(find.text('Cut 2 Layer'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-sample-cut-2-layer-0')),
@@ -1050,7 +1050,7 @@ Line 8''';
 
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to Cut 2'), findsOneWidget);
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Cut 2 Layer'), findsNothing);
     expect(
       tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
@@ -1081,7 +1081,7 @@ Line 8''';
     await _switchToCut(tester, 'sample-cut');
 
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer: A'), findsOneWidget);
     _expectCellText('sample-layer-1', 0, 'X');
     _expectNoCellText('sample-layer-1', 1, '○');
     expect(find.text('Cut 2 Layer'), findsNothing);
@@ -1153,7 +1153,7 @@ Line 8''';
 
     await _switchToCut(tester, 'sample-cut');
 
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Cell: Blank start (X)'), findsOneWidget);
     _expectCellText('sample-layer-1', 0, 'X');
     _expectNoCellText('sample-layer-1', 1, '○');
@@ -1313,7 +1313,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('cell-action-hint')),
       findsOneWidget,
     );
-    expect(find.text('Layer: Layer 1'), findsOneWidget);
+    expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Frame: 1'), findsOneWidget);
     expect(find.text('Cell: Blank start (X)'), findsOneWidget);
     expect(_cellActionHint(tester), contains('X:'));
@@ -1449,7 +1449,7 @@ Line 8''';
         find.byKey(const ValueKey<String>('current-layer-status')),
         findsOneWidget,
       );
-      expect(find.text('Layer: Layer 1'), findsOneWidget);
+      expect(find.text('Layer: A'), findsOneWidget);
       expect(find.text('Frame: 1'), findsOneWidget);
       expect(find.text('Cell: Blank start (X)'), findsOneWidget);
 
