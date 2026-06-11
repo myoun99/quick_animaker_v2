@@ -18,6 +18,7 @@ import 'duplicate_cut_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_layer_kind_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
 class CutCommandCoordinator {
@@ -61,6 +62,26 @@ class CutCommandCoordinator {
 
     historyManager.execute(
       UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    );
+  }
+
+  void updateLayerKind({
+    required CutId cutId,
+    required LayerId layerId,
+    required LayerKind kind,
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind == kind) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerKindCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        kind: kind,
+      ),
     );
   }
 
@@ -153,19 +174,7 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required FrameId frameId,
   }) {
-    final cut = _requireCut(cutId);
-
-    Layer? targetLayer;
-    for (final layer in cut.layers) {
-      if (layer.id == layerId) {
-        targetLayer = layer;
-        break;
-      }
-    }
-
-    if (targetLayer == null) {
-      throw StateError('Layer not found in cut $cutId: $layerId');
-    }
+    final targetLayer = _requireLayer(cutId: cutId, layerId: layerId);
     if (targetLayer.kind != LayerKind.storyboard) {
       throw StateError('Layer is not a storyboard layer: $layerId');
     }
@@ -183,6 +192,17 @@ class CutCommandCoordinator {
     }
 
     return _StoryboardFrameTarget(frame: targetFrame);
+  }
+
+  Layer _requireLayer({required CutId cutId, required LayerId layerId}) {
+    final cut = _requireCut(cutId);
+    for (final layer in cut.layers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+
+    throw StateError('Layer not found in cut $cutId: $layerId');
   }
 
   int _cutCount(Project project) {

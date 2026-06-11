@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -11,6 +12,8 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -798,6 +801,96 @@ void main() {
           layerId: layer.id,
           frameId: const FrameId('missing'),
           metadata: const StoryboardFrameMetadata(note: 'New'),
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
+    test('updateLayerKind replaces only kind and preserves layer data', () {
+      const metadata = StoryboardFrameMetadata(
+        actionMemo: 'Action',
+        dialogueMemo: 'Dialogue',
+        note: 'Panel note',
+      );
+      final frame = _frame(id: 'frame-1', strokes: [_stroke(id: 'stroke-1')]);
+      final frameWithMetadata = frame.copyWith(storyboardMetadata: metadata);
+      final layer = Layer(
+        id: const LayerId('layer-1'),
+        name: 'Layer 1',
+        frames: [frameWithMetadata],
+        timeline: {
+          0: TimelineExposure.drawing(frame.id),
+          6: const TimelineExposure.blank(),
+        },
+        marks: const {6: TimelineMark.inbetween()},
+        isVisible: false,
+        opacity: 0.25,
+      );
+      final cut = Cut(
+        id: const CutId('cut-1'),
+        name: 'Cut 1',
+        layers: [layer],
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1920, height: 1080),
+        metadata: const CutMetadata(note: 'Cut note'),
+      );
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        ),
+      );
+
+      repository.updateLayerKind(
+        cutId: cut.id,
+        layerId: layer.id,
+        kind: LayerKind.storyboard,
+      );
+
+      final updatedCut = repository.requireProject().tracks.single.cuts.single;
+      final updatedLayer = updatedCut.layers.single;
+      expect(updatedLayer.kind, LayerKind.storyboard);
+      expect(updatedLayer.id, layer.id);
+      expect(updatedLayer.name, layer.name);
+      expect(updatedLayer.frames, [frameWithMetadata]);
+      expect(updatedLayer.frames.single.storyboardMetadata, metadata);
+      expect(updatedLayer.timeline, layer.timeline);
+      expect(updatedLayer.marks, layer.marks);
+      expect(updatedLayer.isVisible, isFalse);
+      expect(updatedLayer.opacity, 0.25);
+      expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
+      expect(cut.layers.single.kind, LayerKind.animation);
+    });
+
+    test('updateLayerKind throws for missing cut or layer', () {
+      final layer = _layer(id: 'layer-1', name: 'Layer 1');
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        ),
+      );
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => repository.updateLayerKind(
+          cutId: const CutId('missing'),
+          layerId: layer.id,
+          kind: LayerKind.storyboard,
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+
+      expect(
+        () => repository.updateLayerKind(
+          cutId: cut.id,
+          layerId: const LayerId('missing'),
+          kind: LayerKind.storyboard,
         ),
         throwsStateError,
       );
