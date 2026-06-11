@@ -7,8 +7,10 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -701,6 +703,101 @@ void main() {
       );
     });
 
+
+    test('updates frame storyboard metadata and preserves contents', () {
+      final stroke = _stroke(id: 'stroke-1');
+      final frame = _frame(id: 'frame-1', strokes: [stroke]);
+      final layer = _layer(
+        id: 'layer-1',
+        name: 'Storyboard',
+        kind: LayerKind.storyboard,
+        frames: [frame],
+      );
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final project = _project(
+        id: 'project-1',
+        name: 'Project',
+        tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+      );
+      final repository = ProjectRepository(initialProject: project);
+      const metadata = StoryboardFrameMetadata(
+        actionMemo: 'Action',
+        dialogueMemo: 'Dialogue',
+        note: 'Note',
+      );
+
+      repository.updateFrameStoryboardMetadata(
+        cutId: cut.id,
+        layerId: layer.id,
+        frameId: frame.id,
+        metadata: metadata,
+      );
+
+      final updatedLayer = repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .single;
+      final updatedFrame = updatedLayer.frames.single;
+      expect(updatedFrame.storyboardMetadata, metadata);
+      expect(updatedFrame.id, frame.id);
+      expect(updatedFrame.duration, frame.duration);
+      expect(updatedFrame.name, frame.name);
+      expect(updatedFrame.strokes, [stroke]);
+      expect(updatedLayer.kind, LayerKind.storyboard);
+      expect(project.tracks.single.cuts.single.layers.single.frames.single, frame);
+    });
+
+    test('updateFrameStoryboardMetadata throws for missing target', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(id: 'layer-1', name: 'Storyboard', frames: [frame]);
+      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
+      final repository = ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+        ),
+      );
+      final beforeJson = repository.requireProject().toJson();
+
+      expect(
+        () => repository.updateFrameStoryboardMetadata(
+          cutId: const CutId('missing'),
+          layerId: layer.id,
+          frameId: frame.id,
+          metadata: const StoryboardFrameMetadata(note: 'New'),
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+
+      expect(
+        () => repository.updateFrameStoryboardMetadata(
+          cutId: cut.id,
+          layerId: const LayerId('missing'),
+          frameId: frame.id,
+          metadata: const StoryboardFrameMetadata(note: 'New'),
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+
+      expect(
+        () => repository.updateFrameStoryboardMetadata(
+          cutId: cut.id,
+          layerId: layer.id,
+          frameId: const FrameId('missing'),
+          metadata: const StoryboardFrameMetadata(note: 'New'),
+        ),
+        throwsStateError,
+      );
+      expect(repository.requireProject().toJson(), beforeJson);
+    });
+
     test('clears the current project', () {
       final repository = ProjectRepository(
         initialProject: _project(id: 'project-1', name: 'Project'),
@@ -753,8 +850,9 @@ Layer _layer({
   required String id,
   required String name,
   List<Frame> frames = const [],
+  LayerKind kind = LayerKind.animation,
 }) {
-  return Layer(id: LayerId(id), name: name, frames: frames);
+  return Layer(id: LayerId(id), name: name, frames: frames, kind: kind);
 }
 
 Frame _frame({required String id, List<Stroke> strokes = const []}) {

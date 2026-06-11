@@ -5,6 +5,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/storyboard_frame_metadata.dart';
 import '../models/project.dart';
 import '../models/stroke.dart';
 import '../models/track.dart';
@@ -385,6 +386,72 @@ class ProjectRepository {
 
       if (!foundFrame) {
         throw StateError('Frame not found: $frameId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
+  void updateFrameStoryboardMetadata({
+    required CutId cutId,
+    required LayerId layerId,
+    required FrameId frameId,
+    required StoryboardFrameMetadata metadata,
+  }) {
+    updateProject((project) {
+      var foundCut = false;
+      var foundLayer = false;
+      var foundFrame = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  if (cut.id != cutId) {
+                    return cut;
+                  }
+
+                  foundCut = true;
+                  final layers = cut.layers
+                      .map((layer) {
+                        if (layer.id != layerId) {
+                          return layer;
+                        }
+
+                        foundLayer = true;
+                        final frames = layer.frames
+                            .map((frame) {
+                              if (frame.id != frameId) {
+                                return frame;
+                              }
+
+                              foundFrame = true;
+                              return frame.copyWith(
+                                storyboardMetadata: metadata,
+                              );
+                            })
+                            .toList(growable: false);
+
+                        return layer.copyWith(frames: frames);
+                      })
+                      .toList(growable: false);
+
+                  return cut.copyWith(layers: layers);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundCut) {
+        throw StateError('Cut not found: $cutId');
+      }
+      if (!foundLayer) {
+        throw StateError('Layer not found in cut $cutId: $layerId');
+      }
+      if (!foundFrame) {
+        throw StateError('Frame not found in layer $layerId: $frameId');
       }
 
       return project.copyWith(tracks: tracks);
