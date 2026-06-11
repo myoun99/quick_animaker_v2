@@ -813,7 +813,10 @@ void main() {
         dialogueMemo: 'Dialogue',
         note: 'Panel note',
       );
-      final frame = _frame(id: 'frame-1', strokes: [_stroke(id: 'stroke-1')]);
+      final frame = _frame(
+        id: 'frame-1',
+        strokes: [_stroke(id: 'stroke-1')],
+      );
       final frameWithMetadata = frame.copyWith(storyboardMetadata: metadata);
       final layer = Layer(
         id: const LayerId('layer-1'),
@@ -839,7 +842,9 @@ void main() {
         initialProject: _project(
           id: 'project-1',
           name: 'Project',
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
         ),
       );
 
@@ -871,7 +876,9 @@ void main() {
         initialProject: _project(
           id: 'project-1',
           name: 'Project',
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
         ),
       );
       final beforeJson = repository.requireProject().toJson();

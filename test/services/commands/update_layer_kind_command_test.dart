@@ -25,81 +25,87 @@ import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
   group('UpdateLayerKindCommand', () {
-    test('execute changes animation layer to storyboard and preserves data', () {
-      const metadata = StoryboardFrameMetadata(
-        actionMemo: 'Action',
-        dialogueMemo: 'Dialogue',
-        note: 'Panel note',
-      );
-      final stroke = _stroke('stroke-1');
-      final frame = _frame(
-        id: 'frame-1',
-        strokes: [stroke],
-        metadata: metadata,
-      );
-      final layer = _layer(
-        id: 'layer-1',
-        frames: [frame],
-        timeline: {
-          0: TimelineExposure.drawing(frame.id),
-          4: const TimelineExposure.blank(),
-        },
-        marks: const {4: TimelineMark.inbetween()},
-        isVisible: false,
-        opacity: 0.42,
-      );
-      final cut = _cut(
-        id: 'cut-1',
-        layers: [layer],
-        metadata: const CutMetadata(note: 'Cut note'),
-      );
-      final repository = ProjectRepository(initialProject: _project([cut]));
+    test(
+      'execute changes animation layer to storyboard and preserves data',
+      () {
+        const metadata = StoryboardFrameMetadata(
+          actionMemo: 'Action',
+          dialogueMemo: 'Dialogue',
+          note: 'Panel note',
+        );
+        final stroke = _stroke('stroke-1');
+        final frame = _frame(
+          id: 'frame-1',
+          strokes: [stroke],
+          metadata: metadata,
+        );
+        final layer = _layer(
+          id: 'layer-1',
+          frames: [frame],
+          timeline: {
+            0: TimelineExposure.drawing(frame.id),
+            4: const TimelineExposure.blank(),
+          },
+          marks: const {4: TimelineMark.inbetween()},
+          isVisible: false,
+          opacity: 0.42,
+        );
+        final cut = _cut(
+          id: 'cut-1',
+          layers: [layer],
+          metadata: const CutMetadata(note: 'Cut note'),
+        );
+        final repository = ProjectRepository(initialProject: _project([cut]));
 
-      UpdateLayerKindCommand(
-        repository: repository,
-        cutId: cut.id,
-        layerId: layer.id,
-        kind: LayerKind.storyboard,
-      ).execute();
+        UpdateLayerKindCommand(
+          repository: repository,
+          cutId: cut.id,
+          layerId: layer.id,
+          kind: LayerKind.storyboard,
+        ).execute();
 
-      final updatedCut = _cutById(repository.requireProject(), cut.id);
-      final updatedLayer = updatedCut.layers.single;
-      final updatedFrame = updatedLayer.frames.single;
-      expect(updatedLayer.kind, LayerKind.storyboard);
-      expect(updatedLayer.id, layer.id);
-      expect(updatedLayer.name, layer.name);
-      expect(updatedLayer.frames, [frame]);
-      expect(updatedLayer.timeline, layer.timeline);
-      expect(updatedLayer.marks, layer.marks);
-      expect(updatedLayer.isVisible, isFalse);
-      expect(updatedLayer.opacity, 0.42);
-      expect(updatedFrame.storyboardMetadata, metadata);
-      expect(updatedFrame.strokes, [stroke]);
-      expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
-    });
+        final updatedCut = _cutById(repository.requireProject(), cut.id);
+        final updatedLayer = updatedCut.layers.single;
+        final updatedFrame = updatedLayer.frames.single;
+        expect(updatedLayer.kind, LayerKind.storyboard);
+        expect(updatedLayer.id, layer.id);
+        expect(updatedLayer.name, layer.name);
+        expect(updatedLayer.frames, [frame]);
+        expect(updatedLayer.timeline, layer.timeline);
+        expect(updatedLayer.marks, layer.marks);
+        expect(updatedLayer.isVisible, isFalse);
+        expect(updatedLayer.opacity, 0.42);
+        expect(updatedFrame.storyboardMetadata, metadata);
+        expect(updatedFrame.strokes, [stroke]);
+        expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
+      },
+    );
 
-    test('execute changes storyboard layer back to animation without metadata loss', () {
-      const metadata = StoryboardFrameMetadata(actionMemo: 'Keep me');
-      final frame = _frame(id: 'frame-1', metadata: metadata);
-      final layer = _layer(
-        id: 'layer-1',
-        kind: LayerKind.storyboard,
-        frames: [frame],
-      );
-      final cut = _cut(id: 'cut-1', layers: [layer]);
-      final repository = ProjectRepository(initialProject: _project([cut]));
+    test(
+      'execute changes storyboard layer back to animation without metadata loss',
+      () {
+        const metadata = StoryboardFrameMetadata(actionMemo: 'Keep me');
+        final frame = _frame(id: 'frame-1', metadata: metadata);
+        final layer = _layer(
+          id: 'layer-1',
+          kind: LayerKind.storyboard,
+          frames: [frame],
+        );
+        final cut = _cut(id: 'cut-1', layers: [layer]);
+        final repository = ProjectRepository(initialProject: _project([cut]));
 
-      UpdateLayerKindCommand(
-        repository: repository,
-        cutId: cut.id,
-        layerId: layer.id,
-        kind: LayerKind.animation,
-      ).execute();
+        UpdateLayerKindCommand(
+          repository: repository,
+          cutId: cut.id,
+          layerId: layer.id,
+          kind: LayerKind.animation,
+        ).execute();
 
-      final updatedLayer = _layerById(repository.requireProject(), layer.id);
-      expect(updatedLayer.kind, LayerKind.animation);
-      expect(updatedLayer.frames.single.storyboardMetadata, metadata);
-    });
+        final updatedLayer = _layerById(repository.requireProject(), layer.id);
+        expect(updatedLayer.kind, LayerKind.animation);
+        expect(updatedLayer.frames.single.storyboardMetadata, metadata);
+      },
+    );
 
     test('undo restores previous kind and redo reapplies new kind', () {
       final layer = _layer(id: 'layer-1');
@@ -150,7 +156,10 @@ void main() {
     });
 
     test('missing layer throws StateError', () {
-      final cut = _cut(id: 'cut-1', layers: [_layer(id: 'layer-1')]);
+      final cut = _cut(
+        id: 'cut-1',
+        layers: [_layer(id: 'layer-1')],
+      );
       final repository = ProjectRepository(initialProject: _project([cut]));
 
       expect(
@@ -206,11 +215,8 @@ Project _project(List<Cut> cuts) => Project(
   createdAt: DateTime.utc(2026, 6, 11),
 );
 
-Track _track({List<Cut> cuts = const []}) => Track(
-  id: const TrackId('track-1'),
-  name: 'Video',
-  cuts: cuts,
-);
+Track _track({List<Cut> cuts = const []}) =>
+    Track(id: const TrackId('track-1'), name: 'Video', cuts: cuts);
 
 Cut _cut({
   required String id,
