@@ -58,14 +58,8 @@ void main() {
 
       expect(metadata, sameMetadata);
       expect(metadata.hashCode, sameMetadata.hashCode);
-      expect(
-        metadata,
-        isNot(metadata.copyWith(actionMemo: 'Stop.')),
-      );
-      expect(
-        metadata,
-        isNot(metadata.copyWith(dialogueMemo: 'B: Stop!')),
-      );
+      expect(metadata, isNot(metadata.copyWith(actionMemo: 'Stop.')));
+      expect(metadata, isNot(metadata.copyWith(dialogueMemo: 'B: Stop!')));
       expect(metadata, isNot(metadata.copyWith(note: 'Slow pan.')));
     });
 
