@@ -12,6 +12,9 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_layer.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_panel_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 
@@ -119,6 +122,31 @@ void main() {
       expect(duplicate.id, const CutId('cut-copy'));
       expect(duplicate.name, 'Cut Copy');
       expect(duplicate.metadata, source.metadata);
+    });
+
+    test('preserves source storyboardLayer', () {
+      final source = _sourceCut().copyWith(
+        storyboardLayer: _storyboardLayer(),
+      );
+
+      final duplicate = duplicateCutAsIndependentCopy(
+        source: source,
+        newCutId: const CutId('cut-copy'),
+        newName: 'Cut Copy',
+        layerIdMap: {
+          LayerId('layer-a'): LayerId('layer-copy-a'),
+          LayerId('layer-b'): LayerId('layer-copy-b'),
+        },
+        frameIdMap: {
+          FrameId('frame-a'): FrameId('frame-copy-a'),
+          FrameId('frame-b'): FrameId('frame-copy-b'),
+          FrameId('frame-c'): FrameId('frame-copy-c'),
+        },
+      );
+
+      expect(duplicate.id, const CutId('cut-copy'));
+      expect(duplicate.name, 'Cut Copy');
+      expect(duplicate.storyboardLayer, source.storyboardLayer);
     });
 
     test(
@@ -311,5 +339,18 @@ Stroke _stroke() {
       size: 8,
       opacity: 0.4,
     ),
+  );
+}
+
+StoryboardLayer _storyboardLayer() {
+  return StoryboardLayer(
+    panels: const [
+      StoryboardPanel(
+        id: StoryboardPanelId('panel-1'),
+        actionMemo: 'Run to the door.',
+        dialogueMemo: 'A: Wait!',
+        note: 'Check expression.',
+      ),
+    ],
   );
 }

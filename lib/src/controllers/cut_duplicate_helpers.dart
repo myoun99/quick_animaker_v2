@@ -30,6 +30,7 @@ Cut duplicateCutAsIndependentCopy({
     duration: source.duration,
     canvasSize: source.canvasSize,
     metadata: source.metadata,
+    storyboardLayer: source.storyboardLayer,
   );
 }
 
