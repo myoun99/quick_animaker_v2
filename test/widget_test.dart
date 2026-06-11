@@ -85,6 +85,45 @@ Future<void> _renameCurrentFrame(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openCutNoteDialog(WidgetTester tester) async {
+  await _tapCutCommandButton(
+    tester,
+    const ValueKey<String>('edit-cut-note-button'),
+  );
+}
+
+Future<void> _saveCutNote(WidgetTester tester, String note) async {
+  await _openCutNoteDialog(tester);
+  await tester.enterText(
+    find.byKey(const ValueKey<String>('cut-note-text-field')),
+    note,
+  );
+  await tester.tap(
+    find.byKey(const ValueKey<String>('save-cut-note-button')),
+  );
+  await tester.pumpAndSettle();
+}
+
+String _cutNoteFieldText(WidgetTester tester) {
+  return tester
+          .widget<TextField>(
+            find.byKey(const ValueKey<String>('cut-note-text-field')),
+          )
+          .controller
+          ?.text ??
+      '';
+}
+
+Future<String> _currentCutNoteFromDialog(WidgetTester tester) async {
+  await _openCutNoteDialog(tester);
+  final note = _cutNoteFieldText(tester);
+  await tester.tap(
+    find.byKey(const ValueKey<String>('cancel-cut-note-button')),
+  );
+  await tester.pumpAndSettle();
+  return note;
+}
+
 Future<void> _renameActiveCut(WidgetTester tester, String name) async {
   await _tapCutCommandButton(
     tester,
@@ -244,6 +283,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
+    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
     expect(find.byTooltip('Move Cut Right'), findsOneWidget);
@@ -269,6 +309,7 @@ void main() {
     );
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
+    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
     expect(find.byTooltip('Move Cut Right'), findsOneWidget);
@@ -315,6 +356,10 @@ void main() {
     expect(find.text('Manage Cuts'), findsNothing);
     expect(find.text('Conte Panel'), findsNothing);
     expect(find.text('Storyboard Panel'), findsNothing);
+    expect(find.text('Cut Inspector'), findsNothing);
+    expect(find.text('StoryboardLayer'), findsNothing);
+    expect(find.text('actionMemo'), findsNothing);
+    expect(find.text('dialogueMemo'), findsNothing);
     expect(find.byType(ReorderableListView), findsNothing);
   });
 
@@ -589,6 +634,131 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Cut 1'), findsOneWidget);
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+  });
+
+
+  testWidgets('edit cut note button opens dialog with current note', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('edit-cut-note-button')),
+      findsOneWidget,
+    );
+
+    await _saveCutNote(tester, 'Old note');
+    await _openCutNoteDialog(tester);
+
+    expect(find.text('Edit Cut Note'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('cut-note-text-field')),
+      findsOneWidget,
+    );
+    expect(_cutNoteFieldText(tester), 'Old note');
+    expect(
+      find.byKey(const ValueKey<String>('save-cut-note-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cancel-cut-note-button')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cancel-cut-note-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'saving cut note supports undo and redo without changing active cut',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
+
+      await _saveCutNote(tester, 'Old note');
+      expect(await _currentCutNoteFromDialog(tester), 'Old note');
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(
+        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+        const CutId('sample-cut'),
+      );
+
+      await _saveCutNote(tester, 'New note');
+
+      expect(find.text('Edit Cut Note'), findsNothing);
+      expect(await _currentCutNoteFromDialog(tester), 'New note');
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(
+        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+        const CutId('sample-cut'),
+      );
+
+      await _tapUndoButton(tester);
+
+      expect(await _currentCutNoteFromDialog(tester), 'Old note');
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(
+        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+        const CutId('sample-cut'),
+      );
+
+      await _tapRedoButton(tester);
+
+      expect(await _currentCutNoteFromDialog(tester), 'New note');
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(
+        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+        const CutId('sample-cut'),
+      );
+    },
+  );
+
+  testWidgets(
+    'canceling cut note dialog does not change note or create history',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
+
+      await _openCutNoteDialog(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('cut-note-text-field')),
+        'Canceled note',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('cancel-cut-note-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Cut Note'), findsNothing);
+      expect(await _currentCutNoteFromDialog(tester), '');
+      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      expect(
+        _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets('saving unchanged cut note skips history entry', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _openCutNoteDialog(tester);
+    expect(_cutNoteFieldText(tester), '');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('save-cut-note-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit Cut Note'), findsNothing);
+    expect(await _currentCutNoteFromDialog(tester), '');
+    expect(
+      _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
+      isFalse,
+    );
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
   });
 
