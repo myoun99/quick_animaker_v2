@@ -146,7 +146,9 @@ void main() {
       );
       final animationLayer = _layer(
         id: 'layer-animation',
-        frames: [_frame(id: 'frame-animation', strokes: [_stroke('stroke')])],
+        frames: [
+          _frame(id: 'frame-animation', strokes: [_stroke('stroke')]),
+        ],
         timeline: const {0: TimelineExposure.blank()},
         marks: const {0: TimelineMark.inbetween()},
       );

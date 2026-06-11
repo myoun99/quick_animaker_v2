@@ -75,9 +75,5 @@ Cut _cut({String id = 'cut-1', List<Layer> layers = const []}) => Cut(
   canvasSize: const CanvasSize(width: 1280, height: 720),
 );
 
-Layer _layer(String name, {LayerKind kind = LayerKind.animation}) => Layer(
-  id: LayerId('layer-$name'),
-  name: name,
-  frames: const [],
-  kind: kind,
-);
+Layer _layer(String name, {LayerKind kind = LayerKind.animation}) =>
+    Layer(id: LayerId('layer-$name'), name: name, frames: const [], kind: kind);

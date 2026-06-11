@@ -25,11 +25,7 @@ class AddLayerCommand implements Command {
   @override
   void execute() {
     _previousProject = repository.requireProject();
-    repository.insertLayer(
-      cutId: cutId,
-      layer: layer,
-      index: insertionIndex,
-    );
+    repository.insertLayer(cutId: cutId, layer: layer, index: insertionIndex);
   }
 
   @override

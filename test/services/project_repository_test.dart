@@ -882,7 +882,9 @@ void main() {
         initialProject: _project(
           id: 'project-1',
           name: 'Project',
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
         ),
       );
 
@@ -907,12 +909,18 @@ void main() {
         kind: LayerKind.storyboard,
       );
       final animation = _layer(id: 'animation', name: 'B');
-      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [storyboard, animation]);
+      final cut = _cut(
+        id: 'cut-1',
+        name: 'Cut 1',
+        layers: [storyboard, animation],
+      );
       final repository = ProjectRepository(
         initialProject: _project(
           id: 'project-1',
           name: 'Project',
-          tracks: [_track(id: 'track-1', name: 'Video', cuts: [cut])],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cut]),
+          ],
         ),
       );
       final beforeJson = repository.requireProject().toJson();

@@ -348,7 +348,8 @@ class _HomePageState extends State<HomePage> {
     }
 
     return !_layerController.layers.any(
-      (layer) => layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
+      (layer) =>
+          layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
     );
   }
 

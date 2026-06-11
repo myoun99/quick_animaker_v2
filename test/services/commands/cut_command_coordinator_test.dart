@@ -744,40 +744,43 @@ void main() {
       expect(fixture.historyManager.redoCount, 0);
     });
 
-    test('updateLayerKind rejects duplicate storyboard without history entry', () {
-      final storyboard = _layer(
-        id: 'layer-storyboard',
-        kind: LayerKind.storyboard,
-      );
-      final animation = _layer(id: 'layer-animation');
-      final cutA = _cut(
-        id: 'cut-1',
-        name: 'Cut A',
-        layers: [storyboard, animation],
-      );
-      final fixture = _fixture(
-        _project(
-          tracks: [
-            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
-          ],
-        ),
-        activeCutId: cutA.id,
-      );
-      final beforeJson = fixture.project.toJson();
-
-      expect(
-        () => fixture.coordinator.updateLayerKind(
-          cutId: cutA.id,
-          layerId: animation.id,
+    test(
+      'updateLayerKind rejects duplicate storyboard without history entry',
+      () {
+        final storyboard = _layer(
+          id: 'layer-storyboard',
           kind: LayerKind.storyboard,
-        ),
-        throwsStateError,
-      );
+        );
+        final animation = _layer(id: 'layer-animation');
+        final cutA = _cut(
+          id: 'cut-1',
+          name: 'Cut A',
+          layers: [storyboard, animation],
+        );
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+            ],
+          ),
+          activeCutId: cutA.id,
+        );
+        final beforeJson = fixture.project.toJson();
 
-      expect(fixture.project.toJson(), beforeJson);
-      expect(fixture.historyManager.undoCount, 0);
-      expect(fixture.historyManager.redoCount, 0);
-    });
+        expect(
+          () => fixture.coordinator.updateLayerKind(
+            cutId: cutA.id,
+            layerId: animation.id,
+            kind: LayerKind.storyboard,
+          ),
+          throwsStateError,
+        );
+
+        expect(fixture.project.toJson(), beforeJson);
+        expect(fixture.historyManager.undoCount, 0);
+        expect(fixture.historyManager.redoCount, 0);
+      },
+    );
 
     test('duplicateCut throws StateError when source cut is missing', () {
       final existingCut = _cut(id: 'cut-1', name: 'Existing');

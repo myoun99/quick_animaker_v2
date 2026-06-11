@@ -365,9 +365,11 @@ class ProjectRepository {
                   }
 
                   final layers = cut.layers
-                      .map((layer) => layer.id == layerId
-                          ? layer.copyWith(kind: kind)
-                          : layer)
+                      .map(
+                        (layer) => layer.id == layerId
+                            ? layer.copyWith(kind: kind)
+                            : layer,
+                      )
                       .toList(growable: false);
 
                   return cut.copyWith(layers: layers);

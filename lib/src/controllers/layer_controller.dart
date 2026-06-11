@@ -93,7 +93,9 @@ class LayerController {
 
   void addLayerWithDefaults({required LayerId layerId, String? name}) {
     final cut = _findCut();
-    addLayer(layer: createDefaultAnimationLayer(layerId: layerId, cut: cut));
+    addLayer(
+      layer: createDefaultAnimationLayer(layerId: layerId, cut: cut),
+    );
   }
 
   void toggleLayerVisibility(LayerId layerId) {

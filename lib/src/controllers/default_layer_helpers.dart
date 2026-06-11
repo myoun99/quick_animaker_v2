@@ -35,7 +35,10 @@ String nextCelLayerNameForCut(Cut cut) {
   }
 }
 
-Layer createDefaultAnimationLayer({required LayerId layerId, required Cut cut}) {
+Layer createDefaultAnimationLayer({
+  required LayerId layerId,
+  required Cut cut,
+}) {
   return Layer(
     id: layerId,
     name: nextCelLayerNameForCut(cut),
