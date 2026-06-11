@@ -102,9 +102,7 @@ Future<void> _saveCutNote(WidgetTester tester, String note) async {
 }
 
 Future<void> _tapCutNoteSaveButton(WidgetTester tester) async {
-  final saveButton = find.byKey(
-    const ValueKey<String>('save-cut-note-button'),
-  );
+  final saveButton = find.byKey(const ValueKey<String>('save-cut-note-button'));
   await tester.ensureVisible(saveButton);
   await tester.pumpAndSettle();
   await tester.tap(saveButton);
