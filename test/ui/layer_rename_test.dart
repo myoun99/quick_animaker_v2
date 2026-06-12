@@ -75,7 +75,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
     );
-    expect(_selectedLayerNameText(tester), 'BG');
+    expect(_layerNameText(tester, _layerAId).data, 'BG');
   });
 
   testWidgets('cancel changes nothing', (tester) async {
@@ -200,12 +200,15 @@ Layer _layer(ProjectRepository repository, LayerId layerId) {
       .singleWhere((layer) => layer.id == layerId);
 }
 
-String _selectedLayerNameText(WidgetTester tester) {
-  final selected = find.byKey(
-    const ValueKey<String>('timeline-selected-layer'),
+Text _layerNameText(WidgetTester tester, LayerId layerId) {
+  final nameFinder = find.byKey(
+    ValueKey<String>('timeline-layer-name-$layerId'),
   );
-  final textFinder = find.descendant(of: selected, matching: find.byType(Text));
-  return tester.widget<Text>(textFinder.last).data!;
+  final textFinder = find.descendant(
+    of: nameFinder,
+    matching: find.byType(Text),
+  );
+  return tester.widget<Text>(textFinder.first);
 }
 
 IconData _layerKindIcon(WidgetTester tester, LayerId layerId) {
