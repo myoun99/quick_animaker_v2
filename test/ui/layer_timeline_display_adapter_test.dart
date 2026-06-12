@@ -58,23 +58,23 @@ void main() {
       expect(identical(displayLayers[1], layerB), isTrue);
     });
 
-    test('mutating the returned list does not mutate the original input list', () {
-      final layerA = _layer(id: 'layer-a', name: 'A');
-      final layerB = _layer(id: 'layer-b', name: 'B');
-      final layers = [layerA, layerB];
+    test(
+      'mutating the returned list does not mutate the original input list',
+      () {
+        final layerA = _layer(id: 'layer-a', name: 'A');
+        final layerB = _layer(id: 'layer-b', name: 'B');
+        final layers = [layerA, layerB];
 
-      final displayLayers = horizontalLayerDisplayOrder(layers);
-      displayLayers.removeAt(0);
+        final displayLayers = horizontalLayerDisplayOrder(layers);
+        displayLayers.removeAt(0);
 
-      expect(layers, [same(layerA), same(layerB)]);
-      expect(displayLayers, [same(layerB)]);
-    });
+        expect(layers, [same(layerA), same(layerB)]);
+        expect(displayLayers, [same(layerB)]);
+      },
+    );
 
     test('animation and storyboard layers are both preserved', () {
-      final animation = _layer(
-        id: 'layer-animation',
-        name: 'Animation',
-      );
+      final animation = _layer(id: 'layer-animation', name: 'Animation');
       final storyboard = _layer(
         id: 'layer-storyboard',
         name: 'Storyboard',
@@ -114,10 +114,7 @@ void main() {
         name: 'Storyboard A',
         kind: LayerKind.storyboard,
       );
-      final animation = _layer(
-        id: 'layer-animation',
-        name: 'Animation',
-      );
+      final animation = _layer(id: 'layer-animation', name: 'Animation');
       final storyboardB = _layer(
         id: 'layer-storyboard-b',
         name: 'Storyboard B',
