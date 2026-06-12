@@ -25,18 +25,39 @@ void main() {
       expect(identical(displayLayers.single, layer), isTrue);
     });
 
-    test('multiple layers preserve current order', () {
-      final layerB = _layer(id: 'layer-b', name: 'B');
+    test('multiple layers reverse raw order into visual stack order', () {
       final layerA = _layer(id: 'layer-a', name: 'A');
+      final layerB = _layer(id: 'layer-b', name: 'B');
       final layerC = _layer(id: 'layer-c', name: 'C');
 
       final displayLayers = horizontalLayerDisplayOrder([
-        layerB,
         layerA,
+        layerB,
         layerC,
       ]);
 
-      expect(displayLayers, [same(layerB), same(layerA), same(layerC)]);
+      expect(displayLayers, [same(layerC), same(layerB), same(layerA)]);
+    });
+
+    test('keeps D directly above A for raw A D B C order', () {
+      final layerA = _layer(id: 'layer-a', name: 'A');
+      final layerD = _layer(id: 'layer-d', name: 'D');
+      final layerB = _layer(id: 'layer-b', name: 'B');
+      final layerC = _layer(id: 'layer-c', name: 'C');
+
+      final displayLayers = horizontalLayerDisplayOrder([
+        layerA,
+        layerD,
+        layerB,
+        layerC,
+      ]);
+
+      expect(displayLayers, [
+        same(layerC),
+        same(layerB),
+        same(layerD),
+        same(layerA),
+      ]);
     });
 
     test('returned list is not the same list instance as input', () {
@@ -54,8 +75,8 @@ void main() {
 
       final displayLayers = horizontalLayerDisplayOrder(layers);
 
-      expect(identical(displayLayers[0], layerA), isTrue);
-      expect(identical(displayLayers[1], layerB), isTrue);
+      expect(identical(displayLayers[0], layerB), isTrue);
+      expect(identical(displayLayers[1], layerA), isTrue);
     });
 
     test(
@@ -69,7 +90,7 @@ void main() {
         displayLayers.removeAt(0);
 
         expect(layers, [same(layerA), same(layerB)]);
-        expect(displayLayers, [same(layerB)]);
+        expect(displayLayers, [same(layerA)]);
       },
     );
 
@@ -86,10 +107,10 @@ void main() {
         storyboard,
       ]);
 
-      expect(displayLayers, [same(animation), same(storyboard)]);
+      expect(displayLayers, [same(storyboard), same(animation)]);
       expect(displayLayers.map((layer) => layer.kind), [
-        LayerKind.animation,
         LayerKind.storyboard,
+        LayerKind.animation,
       ]);
     });
 
@@ -104,8 +125,8 @@ void main() {
         mLayer,
       ]);
 
-      expect(displayLayers.map((layer) => layer.name), ['Z', 'A', 'M']);
-      expect(displayLayers, [same(zLayer), same(aLayer), same(mLayer)]);
+      expect(displayLayers.map((layer) => layer.name), ['M', 'A', 'Z']);
+      expect(displayLayers, [same(mLayer), same(aLayer), same(zLayer)]);
     });
 
     test('does not sort by LayerKind', () {
@@ -133,17 +154,17 @@ void main() {
         LayerKind.storyboard,
       ]);
       expect(displayLayers, [
-        same(storyboardA),
-        same(animation),
         same(storyboardB),
+        same(animation),
+        same(storyboardA),
       ]);
     });
 
-    test('existing B above A order stays B above A', () {
-      final layerB = _layer(id: 'layer-b', name: 'B');
+    test('raw A B order displays B above A', () {
       final layerA = _layer(id: 'layer-a', name: 'A');
+      final layerB = _layer(id: 'layer-b', name: 'B');
 
-      final displayLayers = horizontalLayerDisplayOrder([layerB, layerA]);
+      final displayLayers = horizontalLayerDisplayOrder([layerA, layerB]);
 
       expect(displayLayers.map((layer) => layer.name), ['B', 'A']);
       expect(displayLayers, [same(layerB), same(layerA)]);

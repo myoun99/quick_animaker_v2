@@ -133,11 +133,11 @@ class LayerController {
   int _insertionIndexAboveActiveLayer() {
     final id = _activeLayerId;
     if (id == null) {
-      return 0;
+      return layers.length;
     }
 
     final index = layers.indexWhere((layer) => layer.id == id);
-    return index < 0 ? 0 : index;
+    return index < 0 ? layers.length : index + 1;
   }
 
   void _ensureActiveLayerExists() {

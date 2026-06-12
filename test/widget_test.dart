@@ -1134,7 +1134,7 @@ Line 8''';
     );
   });
 
-  testWidgets('pressing Add Layer first creates active B above A', (
+  testWidgets('pressing Add Layer creates B then C above active layers', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -1159,14 +1159,14 @@ Line 8''';
     );
     _expectCellText('sample-layer-2', 0, 'X');
 
-    final layerBTop = tester
+    var layerBTop = tester
         .getTopLeft(
           find.byKey(
             const ValueKey<String>('timeline-layer-row-sample-layer-2'),
           ),
         )
         .dy;
-    final layerATop = tester
+    var layerATop = tester
         .getTopLeft(
           find.byKey(
             const ValueKey<String>('timeline-layer-row-sample-layer-1'),
@@ -1174,6 +1174,102 @@ Line 8''';
         )
         .dy;
     expect(layerBTop, lessThan(layerATop));
+
+    await _addLayer(tester);
+
+    expect(find.text('Layer: C'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-3-0')),
+      findsOneWidget,
+    );
+    _expectCellText('sample-layer-3', 0, 'X');
+
+    final layerCTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('timeline-layer-row-sample-layer-3'),
+          ),
+        )
+        .dy;
+    layerBTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('timeline-layer-row-sample-layer-2'),
+          ),
+        )
+        .dy;
+    layerATop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('timeline-layer-row-sample-layer-1'),
+          ),
+        )
+        .dy;
+
+    expect(layerCTop, lessThan(layerBTop));
+    expect(layerBTop, lessThan(layerATop));
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-layer-kind-icon-sample-layer-3'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('XSheet keeps raw layer order after adding B and C', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _addLayer(tester);
+    await _addLayer(tester);
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
+
+    final layerALeft = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('xsheet-layer-header-sample-layer-1'),
+          ),
+        )
+        .dx;
+    final layerBLeft = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('xsheet-layer-header-sample-layer-2'),
+          ),
+        )
+        .dx;
+    final layerCLeft = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('xsheet-layer-header-sample-layer-3'),
+          ),
+        )
+        .dx;
+
+    expect(layerALeft, lessThan(layerBLeft));
+    expect(layerBLeft, lessThan(layerCLeft));
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-2-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-3-0')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-1-0')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Layer: A'), findsOneWidget);
   });
 
   testWidgets('switches between existing sample cuts', (

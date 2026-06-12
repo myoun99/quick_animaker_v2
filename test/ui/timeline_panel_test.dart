@@ -51,6 +51,93 @@ void main() {
     );
   });
 
+  testWidgets('horizontal mode displays visual stack order C B A', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.horizontal,
+        layers: _abcLayers,
+        activeLayerId: const LayerId('layer-c'),
+      ),
+    );
+
+    final layerCTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('timeline-layer-row-layer-c')),
+        )
+        .dy;
+    final layerBTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('timeline-layer-row-layer-b')),
+        )
+        .dy;
+    final layerATop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('timeline-layer-row-layer-a')),
+        )
+        .dy;
+
+    expect(layerCTop, lessThan(layerBTop));
+    expect(layerBTop, lessThan(layerATop));
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-c-0')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('vertical mode keeps raw XSheet order A B C left-to-right', (
+    tester,
+  ) async {
+    LayerId? selectedLayerId;
+
+    await tester.pumpWidget(
+      _panel(
+        orientation: TimelineOrientation.vertical,
+        layers: _abcLayers,
+        activeLayerId: const LayerId('layer-b'),
+        onSelectLayer: (layerId) => selectedLayerId = layerId,
+      ),
+    );
+
+    final layerALeft = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-a')),
+        )
+        .dx;
+    final layerBLeft = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-b')),
+        )
+        .dx;
+    final layerCLeft = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('xsheet-layer-header-layer-c')),
+        )
+        .dx;
+
+    expect(layerALeft, lessThan(layerBLeft));
+    expect(layerBLeft, lessThan(layerCLeft));
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-a-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-b-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-c-0')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-c-0')),
+    );
+
+    expect(selectedLayerId, const LayerId('layer-c'));
+  });
+
   testWidgets('renders provided timeline action toolbar', (tester) async {
     await tester.pumpWidget(
       _panel(
@@ -256,7 +343,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _panel(orientation: TimelineOrientation.horizontal, currentFrameIndex: 3),
+      _panel(
+        orientation: TimelineOrientation.horizontal,
+        currentFrameIndex: 3,
+      ),
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-cell')),
@@ -268,7 +358,10 @@ void main() {
     );
 
     await tester.pumpWidget(
-      _panel(orientation: TimelineOrientation.vertical, currentFrameIndex: 3),
+      _panel(
+        orientation: TimelineOrientation.vertical,
+        currentFrameIndex: 3,
+      ),
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-selected-cell')),
@@ -285,6 +378,8 @@ Widget _panel({
   int currentFrameIndex = 0,
   int frameCount = 12,
   TimelineOrientation orientation = TimelineOrientation.horizontal,
+  List<Layer>? layers,
+  LayerId? activeLayerId,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
   VoidCallback? onAddLayer,
@@ -300,8 +395,8 @@ Widget _panel({
   return MaterialApp(
     home: Scaffold(
       body: TimelinePanel(
-        layers: _layers,
-        activeLayerId: const LayerId('layer-1'),
+        layers: layers ?? _layers,
+        activeLayerId: activeLayerId ?? const LayerId('layer-1'),
         currentFrameIndex: currentFrameIndex,
         frameCount: frameCount,
         exposureStateForLayer:
@@ -338,6 +433,30 @@ final _layers = [
     opacity: 0.5,
     frames: [
       Frame(id: const FrameId('frame-2'), duration: 1, strokes: const []),
+    ],
+  ),
+];
+
+final _abcLayers = [
+  Layer(
+    id: const LayerId('layer-a'),
+    name: 'A',
+    frames: [
+      Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
+    ],
+  ),
+  Layer(
+    id: const LayerId('layer-b'),
+    name: 'B',
+    frames: [
+      Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
+    ],
+  ),
+  Layer(
+    id: const LayerId('layer-c'),
+    name: 'C',
+    frames: [
+      Frame(id: const FrameId('frame-c'), duration: 1, strokes: const []),
     ],
   ),
 ];
