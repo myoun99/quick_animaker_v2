@@ -82,14 +82,18 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void _rebuildActiveCutControllers() {
+  void _rebuildActiveCutControllers({LayerId? preferredActiveLayerId}) {
     final activeCutId = _editingSession.activeCutId;
+    final initialActiveLayerId = _activeCutHasLayer(preferredActiveLayerId)
+        ? preferredActiveLayerId
+        : null;
 
     _layerController = LayerController(
       repository: _repository,
       historyManager: _historyManager,
       cutId: activeCutId,
       frameId: _frameId,
+      initialActiveLayerId: initialActiveLayerId,
     );
     _timelineController = TimelineController(
       repository: _repository,
@@ -120,9 +124,23 @@ class _HomePageState extends State<HomePage> {
     return project.tracks.first.id;
   }
 
-  void _refreshAfterCutCommand() {
+  void _refreshAfterCutCommand({LayerId? preferredActiveLayerId}) {
     _copiedFrame = null;
-    _rebuildActiveCutControllers();
+    _rebuildActiveCutControllers(
+      preferredActiveLayerId:
+          preferredActiveLayerId ?? _layerController.activeLayerId,
+    );
+  }
+
+  bool _activeCutHasLayer(LayerId? layerId) {
+    if (layerId == null) {
+      return false;
+    }
+    final cut = _activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    return cut.layers.any((layer) => layer.id == layerId);
   }
 
   void _createCutFromList() {
@@ -326,6 +344,38 @@ class _HomePageState extends State<HomePage> {
   CutId get _activeCutId => _editingSession.activeCutId;
 
   Layer? get _activeLayer => _layerController.activeLayer;
+
+  Future<void> _renameActiveLayer() async {
+    final activeLayer = _activeLayer;
+    if (activeLayer == null) {
+      return;
+    }
+
+    final activeLayerId = activeLayer.id;
+    final layerNames = _activeCut.layers
+        .where((layer) => layer.id != activeLayerId)
+        .map((layer) => layer.name)
+        .toSet();
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => _RenameLayerDialog(
+        initialName: activeLayer.name,
+        existingNames: layerNames,
+      ),
+    );
+    if (!mounted || nextName == null) {
+      return;
+    }
+
+    setState(() {
+      _cutCommandCoordinator.renameLayer(
+        cutId: _editingSession.activeCutId,
+        layerId: activeLayerId,
+        name: nextName,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    });
+  }
 
   Frame? get _selectedFrame {
     final layer = _activeLayer;
@@ -828,7 +878,9 @@ class _HomePageState extends State<HomePage> {
       key: const ValueKey<String>('timeline-action-toolbar'),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -859,6 +911,15 @@ class _HomePageState extends State<HomePage> {
                     onPressed: _canToggleTargetLayerKind
                         ? () => setState(_toggleTargetLayerKind)
                         : null,
+                  ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>('rename-layer-button'),
+                    tooltip: 'Rename Layer',
+                    icon: Icons.drive_file_rename_outline,
+                    onPressed: _activeLayer == null
+                        ? null
+                        : _renameActiveLayer,
                   ),
                   const SizedBox(width: 16),
                   Text(
@@ -1200,6 +1261,85 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _RenameLayerDialog extends StatefulWidget {
+  const _RenameLayerDialog({
+    required this.initialName,
+    required this.existingNames,
+  });
+
+  final String initialName;
+  final Set<String> existingNames;
+
+  @override
+  State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
+}
+
+class _RenameLayerDialogState extends State<_RenameLayerDialog> {
+  late final TextEditingController _textController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final trimmedName = _textController.text.trim();
+    if (trimmedName.isEmpty) {
+      setState(() => _errorText = 'Layer name cannot be empty.');
+      return;
+    }
+    if (widget.existingNames.contains(trimmedName)) {
+      setState(() => _errorText = 'Layer name already exists in this Cut.');
+      return;
+    }
+
+    Navigator.of(context).pop(trimmedName);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey<String>('rename-layer-dialog'),
+      title: const Text('Rename Layer'),
+      content: TextField(
+        key: const ValueKey<String>('rename-layer-text-field'),
+        controller: _textController,
+        autofocus: true,
+        decoration: InputDecoration(
+          labelText: 'Layer name',
+          errorText: _errorText,
+        ),
+        onChanged: (_) {
+          if (_errorText != null) {
+            setState(() => _errorText = null);
+          }
+        },
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('rename-layer-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('rename-layer-ok-button'),
+          onPressed: _submit,
+          child: const Text('OK'),
         ),
       ],
     );
