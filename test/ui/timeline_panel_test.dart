@@ -343,10 +343,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _panel(
-        orientation: TimelineOrientation.horizontal,
-        currentFrameIndex: 3,
-      ),
+      _panel(orientation: TimelineOrientation.horizontal, currentFrameIndex: 3),
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-cell')),
@@ -358,10 +355,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      _panel(
-        orientation: TimelineOrientation.vertical,
-        currentFrameIndex: 3,
-      ),
+      _panel(orientation: TimelineOrientation.vertical, currentFrameIndex: 3),
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-selected-cell')),

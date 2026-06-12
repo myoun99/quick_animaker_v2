@@ -287,9 +287,7 @@ Project _createSampleProject() {
 
 _LayerFixture _createSingleLayerFixture() {
   final repository = ProjectRepository(
-    initialProject: _projectWithLayers([
-      _testLayer(id: 'layer-a', name: 'A'),
-    ]),
+    initialProject: _projectWithLayers([_testLayer(id: 'layer-a', name: 'A')]),
   );
   final controller = LayerController(
     repository: repository,
