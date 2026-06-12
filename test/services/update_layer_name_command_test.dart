@@ -221,7 +221,7 @@ Layer _layer({
       0: TimelineExposure.drawing(_frameId),
       2: TimelineExposure.blank(),
     },
-    marks: const {1: TimelineMark.inbetween()},
+    marks: {1: TimelineMark.inbetween()},
   );
 }
 
