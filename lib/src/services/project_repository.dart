@@ -324,6 +324,54 @@ class ProjectRepository {
     });
   }
 
+  void updateLayerName({
+    required CutId cutId,
+    required LayerId layerId,
+    required String name,
+  }) {
+    updateProject((project) {
+      var foundCut = false;
+      var foundLayer = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  if (cut.id != cutId) {
+                    return cut;
+                  }
+
+                  foundCut = true;
+                  final layers = cut.layers
+                      .map((layer) {
+                        if (layer.id != layerId) {
+                          return layer;
+                        }
+
+                        foundLayer = true;
+                        return layer.copyWith(name: name);
+                      })
+                      .toList(growable: false);
+
+                  return cut.copyWith(layers: layers);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundCut) {
+        throw StateError('Cut not found: $cutId');
+      }
+      if (!foundLayer) {
+        throw StateError('Layer not found in cut $cutId: $layerId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
   void updateLayerKind({
     required CutId cutId,
     required LayerId layerId,

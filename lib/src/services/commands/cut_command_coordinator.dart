@@ -19,6 +19,7 @@ import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_layer_kind_command.dart';
+import 'update_layer_name_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
 class CutCommandCoordinator {
@@ -62,6 +63,44 @@ class CutCommandCoordinator {
 
     historyManager.execute(
       UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    );
+  }
+
+  void renameLayer({
+    required CutId cutId,
+    required LayerId layerId,
+    required String name,
+  }) {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw ArgumentError.value(name, 'name', 'Layer name cannot be empty.');
+    }
+
+    final cut = _requireCut(cutId);
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.name == trimmedName) {
+      return;
+    }
+
+    final hasDuplicateName = cut.layers.any(
+      (otherLayer) =>
+          otherLayer.id != layerId && otherLayer.name == trimmedName,
+    );
+    if (hasDuplicateName) {
+      throw ArgumentError.value(
+        trimmedName,
+        'name',
+        'Layer name already exists in this cut.',
+      );
+    }
+
+    historyManager.execute(
+      UpdateLayerNameCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        name: trimmedName,
+      ),
     );
   }
 
