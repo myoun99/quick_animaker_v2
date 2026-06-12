@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_orientation.dart';
@@ -47,6 +48,7 @@ class TimelinePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final horizontalLayers = horizontalLayerDisplayOrder(layers);
     final nextOrientation = orientation == TimelineOrientation.horizontal
         ? TimelineOrientation.vertical
         : TimelineOrientation.horizontal;
@@ -99,7 +101,7 @@ class TimelinePanel extends StatelessWidget {
             Expanded(
               child: orientation == TimelineOrientation.horizontal
                   ? LayerTimelineGrid(
-                      layers: layers,
+                      layers: horizontalLayers,
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       frameCount: frameCount,
