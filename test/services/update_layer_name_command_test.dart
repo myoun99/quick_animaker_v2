@@ -217,7 +217,7 @@ Layer _layer({
     isVisible: visible,
     opacity: opacity,
     frames: [Frame(id: _frameId, duration: 2, strokes: const [], name: 'A1')],
-    timeline: const {
+    timeline: {
       0: TimelineExposure.drawing(_frameId),
       2: TimelineExposure.blank(),
     },
