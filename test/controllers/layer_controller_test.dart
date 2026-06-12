@@ -51,7 +51,7 @@ void main() {
       );
     });
 
-    test('adds a default layer above the active layer in list order', () {
+    test('adds a default layer after the active layer in raw XSheet order', () {
       final fixture = _createFixture();
       fixture.controller.selectLayer(const LayerId('layer-2'));
 
@@ -61,10 +61,52 @@ void main() {
 
       expect(fixture.controller.layers.map((layer) => layer.name), [
         'A',
-        'C',
         'B',
+        'C',
       ]);
       expect(fixture.controller.activeLayerId, const LayerId('layer-3'));
+    });
+
+    test('keeps raw order natural while adding above active visually', () {
+      final fixture = _createSingleLayerFixture();
+
+      expect(fixture.controller.layers.map((layer) => layer.name), ['A']);
+      expect(fixture.controller.activeLayerId, const LayerId('layer-a'));
+
+      fixture.controller.addLayerWithDefaults(
+        layerId: const LayerId('layer-b'),
+      );
+
+      expect(fixture.controller.layers.map((layer) => layer.name), ['A', 'B']);
+      expect(fixture.controller.activeLayerId, const LayerId('layer-b'));
+
+      fixture.controller.addLayerWithDefaults(
+        layerId: const LayerId('layer-c'),
+      );
+
+      expect(fixture.controller.layers.map((layer) => layer.name), [
+        'A',
+        'B',
+        'C',
+      ]);
+      expect(fixture.controller.activeLayerId, const LayerId('layer-c'));
+    });
+
+    test('inserts a new raw layer immediately after active A', () {
+      final fixture = _createThreeLayerFixture();
+      fixture.controller.selectLayer(const LayerId('layer-a'));
+
+      fixture.controller.addLayerWithDefaults(
+        layerId: const LayerId('layer-d'),
+      );
+
+      expect(fixture.controller.layers.map((layer) => layer.name), [
+        'A',
+        'D',
+        'B',
+        'C',
+      ]);
+      expect(fixture.controller.activeLayerId, const LayerId('layer-d'));
     });
 
     test('toggles visibility', () {
@@ -150,7 +192,7 @@ void main() {
             fixture.repository,
             const CutId('cut-a'),
           ).layers.map((layer) => layer.id),
-          [const LayerId('layer-a-added'), const LayerId('layer-a')],
+          [const LayerId('layer-a'), const LayerId('layer-a-added')],
         );
         expect(
           _findCut(
@@ -181,7 +223,7 @@ void main() {
             fixture.repository,
             const CutId('cut-b'),
           ).layers.map((layer) => layer.id),
-          [const LayerId('layer-b-added'), const LayerId('layer-b')],
+          [const LayerId('layer-b'), const LayerId('layer-b-added')],
         );
       });
     });
@@ -240,6 +282,71 @@ Project _createSampleProject() {
         ],
       ),
     ],
+  );
+}
+
+_LayerFixture _createSingleLayerFixture() {
+  final repository = ProjectRepository(
+    initialProject: _projectWithLayers([
+      _testLayer(id: 'layer-a', name: 'A'),
+    ]),
+  );
+  final controller = LayerController(
+    repository: repository,
+    historyManager: HistoryManager(),
+    cutId: _cutId,
+    frameId: _frameId,
+  );
+
+  return _LayerFixture(repository: repository, controller: controller);
+}
+
+_LayerFixture _createThreeLayerFixture() {
+  final repository = ProjectRepository(
+    initialProject: _projectWithLayers([
+      _testLayer(id: 'layer-a', name: 'A'),
+      _testLayer(id: 'layer-b', name: 'B'),
+      _testLayer(id: 'layer-c', name: 'C'),
+    ]),
+  );
+  final controller = LayerController(
+    repository: repository,
+    historyManager: HistoryManager(),
+    cutId: _cutId,
+    frameId: _frameId,
+  );
+
+  return _LayerFixture(repository: repository, controller: controller);
+}
+
+Project _projectWithLayers(List<Layer> layers) {
+  return Project(
+    id: const ProjectId('project-layers'),
+    name: 'Layer Order Test Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('track-1'),
+        name: 'Track 1',
+        cuts: [
+          Cut(
+            id: _cutId,
+            name: 'Cut 1',
+            duration: 1,
+            canvasSize: const CanvasSize(width: 100, height: 100),
+            layers: layers,
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Layer _testLayer({required String id, required String name}) {
+  return Layer(
+    id: LayerId(id),
+    name: name,
+    frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
   );
 }
 

@@ -1,10 +1,10 @@
 import '../../models/layer.dart';
 
-/// Returns the layer order used by the horizontal timeline.
+/// Returns the visual stack order used by the horizontal timeline.
 ///
-/// This adapter intentionally preserves the current incoming order for now,
-/// while keeping the timeline UI decoupled from the raw model list so future
-/// phases can map layers into horizontal sections without changing callers.
+/// The raw cut layer list is the logical cel/XSheet order (left-to-right),
+/// so the horizontal timeline displays a defensive reversed copy to show
+/// higher layers above lower layers without mutating model order.
 List<Layer> horizontalLayerDisplayOrder(List<Layer> layers) {
-  return List<Layer>.of(layers);
+  return List<Layer>.of(layers.reversed);
 }
