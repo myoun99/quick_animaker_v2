@@ -127,8 +127,7 @@ class _HomePageState extends State<HomePage> {
   void _refreshAfterCutCommand({LayerId? preferredActiveLayerId}) {
     _copiedFrame = null;
     _rebuildActiveCutControllers(
-      preferredActiveLayerId:
-          preferredActiveLayerId ?? _layerController.activeLayerId,
+      preferredActiveLayerId: preferredActiveLayerId,
     );
   }
 
