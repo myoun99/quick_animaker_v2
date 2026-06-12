@@ -109,10 +109,7 @@ void main() {
     await _tapKey(tester, _okButtonKey);
 
     expect(find.byKey(_dialogKey), findsOneWidget);
-    expect(
-      find.text('Layer name already exists in this Cut.'),
-      findsOneWidget,
-    );
+    expect(find.text('Layer name already exists in this Cut.'), findsOneWidget);
     expect(_layer(repository, _layerAId).name, 'A');
     expect(_layer(repository, _layerBId).name, 'B');
   });
@@ -234,7 +231,8 @@ Project _project({List<Layer>? layers}) {
             name: 'Cut',
             duration: 1,
             canvasSize: const CanvasSize(width: 1280, height: 720),
-            layers: layers ??
+            layers:
+                layers ??
                 [_layerModel(_layerAId, 'A'), _layerModel(_layerBId, 'B')],
           ),
         ],

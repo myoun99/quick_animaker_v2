@@ -27,24 +27,27 @@ const _frameId = FrameId('frame-a');
 
 void main() {
   group('CutCommandCoordinator.renameLayer', () {
-    test('changes name, undo restores old name, and redo reapplies new name', () {
-      final fixture = _fixture();
+    test(
+      'changes name, undo restores old name, and redo reapplies new name',
+      () {
+        final fixture = _fixture();
 
-      fixture.coordinator.renameLayer(
-        cutId: _cutId,
-        layerId: _layerBId,
-        name: ' BG ',
-      );
+        fixture.coordinator.renameLayer(
+          cutId: _cutId,
+          layerId: _layerBId,
+          name: ' BG ',
+        );
 
-      expect(_cut(fixture.repository, _cutId).layers[1].name, 'BG');
-      expect(fixture.history.undoCount, 1);
+        expect(_cut(fixture.repository, _cutId).layers[1].name, 'BG');
+        expect(fixture.history.undoCount, 1);
 
-      fixture.history.undo();
-      expect(_cut(fixture.repository, _cutId).layers[1].name, 'B');
+        fixture.history.undo();
+        expect(_cut(fixture.repository, _cutId).layers[1].name, 'B');
 
-      fixture.history.redo();
-      expect(_cut(fixture.repository, _cutId).layers[1].name, 'BG');
-    });
+        fixture.history.redo();
+        expect(_cut(fixture.repository, _cutId).layers[1].name, 'BG');
+      },
+    );
 
     test('rejects an empty trimmed name without history', () {
       final fixture = _fixture();

@@ -877,9 +877,7 @@ class _HomePageState extends State<HomePage> {
       key: const ValueKey<String>('timeline-action-toolbar'),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -916,9 +914,7 @@ class _HomePageState extends State<HomePage> {
                     key: const ValueKey<String>('rename-layer-button'),
                     tooltip: 'Rename Layer',
                     icon: Icons.drive_file_rename_outline,
-                    onPressed: _activeLayer == null
-                        ? null
-                        : _renameActiveLayer,
+                    onPressed: _activeLayer == null ? null : _renameActiveLayer,
                   ),
                   const SizedBox(width: 16),
                   Text(
