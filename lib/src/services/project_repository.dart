@@ -247,6 +247,51 @@ class ProjectRepository {
     insertLayer(cutId: cutId, layer: layer);
   }
 
+  Layer deleteLayer({required CutId cutId, required LayerId layerId}) {
+    Layer? deletedLayer;
+
+    updateProject((project) {
+      var foundCut = false;
+
+      final tracks = project.tracks
+          .map((track) {
+            final cuts = track.cuts
+                .map((cut) {
+                  if (cut.id != cutId) {
+                    return cut;
+                  }
+
+                  foundCut = true;
+                  final index = cut.layers.indexWhere(
+                    (layer) => layer.id == layerId,
+                  );
+                  if (index == -1) {
+                    return cut;
+                  }
+
+                  deletedLayer = cut.layers[index];
+                  final layers = [...cut.layers]..removeAt(index);
+                  return cut.copyWith(layers: layers);
+                })
+                .toList(growable: false);
+
+            return track.copyWith(cuts: cuts);
+          })
+          .toList(growable: false);
+
+      if (!foundCut) {
+        throw StateError('Cut not found: $cutId');
+      }
+      if (deletedLayer == null) {
+        throw StateError('Layer not found in cut $cutId: $layerId');
+      }
+
+      return project.copyWith(tracks: tracks);
+    });
+
+    return deletedLayer!;
+  }
+
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
     updateProject((project) {
       var foundCut = false;

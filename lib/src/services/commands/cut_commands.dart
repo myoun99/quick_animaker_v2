@@ -5,6 +5,7 @@ export 'delete_cut_command.dart';
 export 'duplicate_cut_command.dart';
 export 'update_cut_note_command.dart';
 export 'update_layer_kind_command.dart';
+export 'delete_layer_command.dart';
 export 'update_storyboard_frame_metadata_command.dart';
 export 'cut_command_coordinator.dart';
 export 'cut_reorder_planner.dart';
