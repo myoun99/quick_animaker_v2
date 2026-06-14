@@ -40,23 +40,26 @@ void main() {
       expect(fixture.history.undoCount, 1);
     });
 
-    test('undo restores deleted layer at same raw index and redo deletes again', () {
-      final fixture = _fixture();
-      final beforeLayer = _cut(fixture.repository, _cutId).layers[1];
+    test(
+      'undo restores deleted layer at same raw index and redo deletes again',
+      () {
+        final fixture = _fixture();
+        final beforeLayer = _cut(fixture.repository, _cutId).layers[1];
 
-      fixture.coordinator.deleteLayer(cutId: _cutId, layerId: _layerBId);
-      fixture.history.undo();
+        fixture.coordinator.deleteLayer(cutId: _cutId, layerId: _layerBId);
+        fixture.history.undo();
 
-      expect(_layerIds(fixture.repository, _cutId), [
-        _layerAId,
-        _layerBId,
-        _layerCId,
-      ]);
-      expect(_cut(fixture.repository, _cutId).layers[1], beforeLayer);
+        expect(_layerIds(fixture.repository, _cutId), [
+          _layerAId,
+          _layerBId,
+          _layerCId,
+        ]);
+        expect(_cut(fixture.repository, _cutId).layers[1], beforeLayer);
 
-      fixture.history.redo();
-      expect(_layerIds(fixture.repository, _cutId), [_layerAId, _layerCId]);
-    });
+        fixture.history.redo();
+        expect(_layerIds(fixture.repository, _cutId), [_layerAId, _layerCId]);
+      },
+    );
 
     test('deleted layer snapshot is fully restored', () {
       final fixture = _fixture();
@@ -96,24 +99,27 @@ void main() {
       expect(fixture.history.redoCount, 0);
     });
 
-    test('deleting Storyboard Layer allows another layer to become Storyboard', () {
-      final fixture = _fixture();
+    test(
+      'deleting Storyboard Layer allows another layer to become Storyboard',
+      () {
+        final fixture = _fixture();
 
-      fixture.coordinator.deleteLayer(cutId: _cutId, layerId: _layerBId);
-      fixture.coordinator.updateLayerKind(
-        cutId: _cutId,
-        layerId: _layerCId,
-        kind: LayerKind.storyboard,
-      );
+        fixture.coordinator.deleteLayer(cutId: _cutId, layerId: _layerBId);
+        fixture.coordinator.updateLayerKind(
+          cutId: _cutId,
+          layerId: _layerCId,
+          kind: LayerKind.storyboard,
+        );
 
-      expect(
-        _cut(fixture.repository, _cutId)
-            .layers
-            .singleWhere((layer) => layer.id == _layerCId)
-            .kind,
-        LayerKind.storyboard,
-      );
-    });
+        expect(
+          _cut(
+            fixture.repository,
+            _cutId,
+          ).layers.singleWhere((layer) => layer.id == _layerCId).kind,
+          LayerKind.storyboard,
+        );
+      },
+    );
   });
 }
 

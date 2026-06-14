@@ -78,7 +78,9 @@ void main() {
     expect(_layerNames(repository), ['A', 'B', 'C']);
   });
 
-  testWidgets('confirm deletes active layer and selects stable nearby layer', (tester) async {
+  testWidgets('confirm deletes active layer and selects stable nearby layer', (
+    tester,
+  ) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
@@ -111,34 +113,57 @@ void main() {
     expect(find.text('Layer: C'), findsOneWidget);
   });
 
-  testWidgets('horizontal and XSheet display order remain correct after delete', (
+  testWidgets(
+    'horizontal and XSheet display order remain correct after delete',
+    (tester) async {
+      await _pumpHome(tester);
+      await _selectLayer(tester, _layerBId);
+      expect(find.text('Layer: B'), findsOneWidget);
+      await _deleteActiveLayer(tester);
+
+      expect(_visibleTimelineLayerNames(tester), ['C', 'A']);
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(const ValueKey<String>('timeline-layer-row-layer-c')),
+            )
+            .dy,
+        lessThan(
+          tester
+              .getTopLeft(
+                find.byKey(
+                  const ValueKey<String>('timeline-layer-row-layer-a'),
+                ),
+              )
+              .dy,
+        ),
+      );
+
+      await _tapKey(tester, _orientationToggleKey);
+
+      expect(_visibleXSheetLayerNames(tester), ['A', 'C']);
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(const ValueKey<String>('xsheet-layer-header-layer-a')),
+            )
+            .dx,
+        lessThan(
+          tester
+              .getTopLeft(
+                find.byKey(
+                  const ValueKey<String>('xsheet-layer-header-layer-c'),
+                ),
+              )
+              .dx,
+        ),
+      );
+    },
+  );
+
+  testWidgets('icons remain visible and rename still works after delete', (
     tester,
   ) async {
-    await _pumpHome(tester);
-    await _selectLayer(tester, _layerBId);
-    expect(find.text('Layer: B'), findsOneWidget);
-    await _deleteActiveLayer(tester);
-
-    expect(_visibleTimelineLayerNames(tester), ['C', 'A']);
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey<String>('timeline-layer-row-layer-c'))).dy,
-      lessThan(
-        tester.getTopLeft(find.byKey(const ValueKey<String>('timeline-layer-row-layer-a'))).dy,
-      ),
-    );
-
-    await _tapKey(tester, _orientationToggleKey);
-
-    expect(_visibleXSheetLayerNames(tester), ['A', 'C']);
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey<String>('xsheet-layer-header-layer-a'))).dx,
-      lessThan(
-        tester.getTopLeft(find.byKey(const ValueKey<String>('xsheet-layer-header-layer-c'))).dx,
-      ),
-    );
-  });
-
-  testWidgets('icons remain visible and rename still works after delete', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
@@ -224,7 +249,9 @@ Layer _layer(ProjectRepository repository, LayerId layerId) {
 }
 
 String _selectedLayerName(WidgetTester tester) {
-  final selected = find.byKey(const ValueKey<String>('timeline-selected-layer'));
+  final selected = find.byKey(
+    const ValueKey<String>('timeline-selected-layer'),
+  );
   final texts = find.descendant(of: selected, matching: find.byType(Text));
   return tester.widget<Text>(texts.first).data!;
 }
@@ -234,7 +261,10 @@ List<String> _visibleTimelineLayerNames(WidgetTester tester) {
 }
 
 List<String> _visibleXSheetLayerNames(WidgetTester tester) {
-  return [_xsheetLayerText(tester, _layerAId), _xsheetLayerText(tester, _layerCId)];
+  return [
+    _xsheetLayerText(tester, _layerAId),
+    _xsheetLayerText(tester, _layerCId),
+  ];
 }
 
 String _layerText(WidgetTester tester, LayerId layerId) {
