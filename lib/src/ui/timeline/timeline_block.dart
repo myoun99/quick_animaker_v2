@@ -37,14 +37,12 @@ class TimelineBlock extends StatelessWidget {
           width: width,
           constraints: BoxConstraints(minHeight: minHeight),
           padding: padding,
-          decoration: BoxDecoration(
-            color: isActive
+          decoration: timelineBlockDecoration(
+            backgroundColor: isActive
                 ? colorScheme.primaryContainer
                 : colorScheme.surfaceContainerHighest,
-            border: Border.all(
-              color: isActive ? colorScheme.primary : colorScheme.outline,
-              width: isActive ? 2 : 1,
-            ),
+            borderColor: isActive ? colorScheme.primary : colorScheme.outline,
+            borderWidth: isActive ? 2 : 1,
             borderRadius: borderRadius,
           ),
           child: child,
@@ -52,4 +50,17 @@ class TimelineBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+BoxDecoration timelineBlockDecoration({
+  required Color backgroundColor,
+  required Color borderColor,
+  required double borderWidth,
+  BorderRadiusGeometry? borderRadius,
+}) {
+  return BoxDecoration(
+    color: backgroundColor,
+    border: Border.all(color: borderColor, width: borderWidth),
+    borderRadius: borderRadius,
+  );
 }

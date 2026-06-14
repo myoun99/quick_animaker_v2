@@ -5,6 +5,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_block.dart';
 
 class LayerTimelineGrid extends StatelessWidget {
   const LayerTimelineGrid({
@@ -362,12 +363,10 @@ class _TimelineCell extends StatelessWidget {
         width: LayerTimelineGrid._cellWidth,
         height: LayerTimelineGrid._rowHeight,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: styleColors.background,
-          border: Border.all(
-            color: styleColors.border,
-            width: selected ? 3 : 1,
-          ),
+        decoration: timelineBlockDecoration(
+          backgroundColor: styleColors.background,
+          borderColor: styleColors.border,
+          borderWidth: selected ? 3 : 1,
         ),
         child: Semantics(
           key: selected
