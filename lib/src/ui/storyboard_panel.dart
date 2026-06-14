@@ -1,0 +1,193 @@
+import 'package:flutter/material.dart';
+
+import '../models/cut.dart';
+import '../models/layer.dart';
+import '../models/layer_kind.dart';
+import '../models/project.dart';
+import '../models/track.dart';
+
+class StoryboardPanel extends StatelessWidget {
+  const StoryboardPanel({super.key, required this.project});
+
+  static const double _frameWidth = 8;
+  static const double _minimumCutWidth = 96;
+  static const double _trackLabelWidth = 56;
+
+  final Project project;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      key: const ValueKey<String>('storyboard-panel'),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'STORYBOARD',
+              key: const ValueKey<String>('storyboard-panel-title'),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var index = 0; index < project.tracks.length; index++)
+                    _StoryboardTrackRow(
+                      track: project.tracks[index],
+                      trackLabel: 'V${index + 1}',
+                      cutWidthFor: _cutWidthFor,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static double _cutWidthFor(Cut cut) {
+    return (cut.duration * _frameWidth)
+        .clamp(_minimumCutWidth, double.infinity)
+        .toDouble();
+  }
+}
+
+class _StoryboardTrackRow extends StatelessWidget {
+  const _StoryboardTrackRow({
+    required this.track,
+    required this.trackLabel,
+    required this.cutWidthFor,
+  });
+
+  final Track track;
+  final String trackLabel;
+  final double Function(Cut cut) cutWidthFor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: StoryboardPanel._trackLabelWidth,
+            height: 72,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                trackLabel,
+                key: ValueKey<String>(
+                  'storyboard-track-label-${track.id.value}',
+                ),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (final cut in track.cuts)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: _StoryboardCutBlock(
+                    cut: cut,
+                    width: cutWidthFor(cut),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoryboardCutBlock extends StatelessWidget {
+  const _StoryboardCutBlock({required this.cut, required this.width});
+
+  final Cut cut;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final storyboardLayer = _storyboardLayerFor(cut);
+
+    return Container(
+      key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
+      width: width,
+      constraints: const BoxConstraints(minHeight: 72),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        border: Border.all(color: colorScheme.outline),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            cut.name,
+            key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${cut.duration}f',
+            key: ValueKey<String>('storyboard-cut-duration-${cut.id.value}'),
+          ),
+          const SizedBox(height: 6),
+          if (storyboardLayer == null)
+            Text(
+              'No Storyboard Layer',
+              key: ValueKey<String>('storyboard-layer-empty-${cut.id.value}'),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            )
+          else
+            Container(
+              key: ValueKey<String>('storyboard-layer-strip-${cut.id.value}'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                storyboardLayer.name,
+                key: ValueKey<String>('storyboard-layer-name-${cut.id.value}'),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colorScheme.onPrimaryContainer),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Layer? _storyboardLayerFor(Cut cut) {
+    for (final layer in cut.layers) {
+      if (layer.kind == LayerKind.storyboard) {
+        return layer;
+      }
+    }
+    return null;
+  }
+}
