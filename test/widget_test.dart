@@ -47,6 +47,29 @@ Future<void> _createSecondCut(WidgetTester tester) async {
   await _tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
 }
 
+Finder _cutListEntryLabel(String cutId) {
+  return find.byKey(ValueKey<String>('cut-list-entry-label-$cutId'));
+}
+
+void _expectCutListEntryLabelText(
+  WidgetTester tester,
+  String cutId,
+  String text,
+) {
+  expect(_cutListEntryLabel(cutId), findsOneWidget);
+  expect(tester.widget<Text>(_cutListEntryLabel(cutId)).data, text);
+}
+
+Finder _cutListEntryLabelsNamed(String name) {
+  return find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return widget is Text &&
+        key is ValueKey<String> &&
+        key.value.startsWith('cut-list-entry-label-') &&
+        widget.data == name;
+  });
+}
+
 Future<void> _dragCutOnto(
   WidgetTester tester, {
   required String sourceCutId,
@@ -327,7 +350,7 @@ void main() {
     expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
     expect(find.text('Cuts:'), findsOneWidget);
-    expect(find.text('Cut 1'), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.text('New Drawing'), findsNothing);
   });
@@ -583,14 +606,14 @@ void main() {
       const ValueKey<String>('new-cut-button'),
     );
 
-    expect(find.text('New Cut'), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsOneWidget,
     );
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('Cut 2'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
   });
 
   testWidgets('duplicates the active cut from the cut list command', (
@@ -609,9 +632,9 @@ void main() {
       const ValueKey<String>('duplicate-cut-button'),
     );
 
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('Cut 1 Copy'), findsOneWidget);
-    expect(find.text('Cut 2'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    _expectCutListEntryLabelText(tester, 'cut-1', 'Cut 1 Copy');
+    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
       findsOneWidget,
@@ -632,8 +655,8 @@ void main() {
     await _switchToCut(tester, 'sample-cut');
 
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('New Cut'), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
 
     await _tapCutCommandButton(
       tester,
@@ -644,8 +667,8 @@ void main() {
       find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
       findsNothing,
     );
-    expect(find.text('Cut 1'), findsNothing);
-    expect(find.text('New Cut'), findsOneWidget);
+    expect(_cutListEntryLabel('sample-cut'), findsNothing);
+    expect(_cutListEntryLabel('cut-1'), findsOneWidget);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
   });
 
@@ -667,7 +690,7 @@ void main() {
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsOneWidget,
     );
-    expect(find.text('Cut 1'), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'cut-1', 'Cut 1');
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
   });
 
@@ -936,8 +959,8 @@ Line 8''';
     await tester.pumpAndSettle();
 
     expect(find.text('Rename Cut'), findsNothing);
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('Canceled Cut'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    expect(_cutListEntryLabelsNamed('Canceled Cut'), findsNothing);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
   });
 
@@ -948,8 +971,8 @@ Line 8''';
 
     await _renameActiveCut(tester, 'Scene A');
 
-    expect(find.text('Scene A'), findsOneWidget);
-    expect(find.text('Cut 1'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Scene A');
+    expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
     expect(find.byTooltip('Active: Scene A'), findsOneWidget);
     expect(
       tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
@@ -958,8 +981,8 @@ Line 8''';
 
     await _tapUndoButton(tester);
 
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('Scene A'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    expect(_cutListEntryLabelsNamed('Scene A'), findsNothing);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(
       tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
@@ -968,8 +991,8 @@ Line 8''';
 
     await _tapRedoButton(tester);
 
-    expect(find.text('Scene A'), findsOneWidget);
-    expect(find.text('Cut 1'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Scene A');
+    expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
     expect(find.byTooltip('Active: Scene A'), findsOneWidget);
     expect(
       tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
@@ -982,7 +1005,7 @@ Line 8''';
 
     await _renameActiveCut(tester, '   ');
 
-    expect(find.text('Cut 1'), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     final undoButton = tester.widget<TextButton>(
       find.widgetWithText(TextButton, 'Undo'),
@@ -998,7 +1021,7 @@ Line 8''';
 
     await _renameActiveCut(tester, 'Cut 1');
 
-    expect(find.text('Cut 1'), findsNWidgets(2));
+    expect(_cutListEntryLabelsNamed('Cut 1'), findsNWidgets(2));
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
       findsOneWidget,
@@ -1018,12 +1041,12 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('Cut 2'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
     expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Layer: B'), findsNothing);
     expect(find.text('B'), findsNothing);
-    expect(find.text('New Cut'), findsNothing);
+    expect(_cutListEntryLabelsNamed('New Cut'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(find.text('X'), findsOneWidget);
     expect(
@@ -1287,9 +1310,9 @@ Line 8''';
     await _createSecondCut(tester);
     await _switchToCut(tester, 'sample-cut');
 
-    expect(find.text('Cut 1'), findsOneWidget);
-    expect(find.text('New Cut'), findsOneWidget);
-    expect(find.text('Cut 2'), findsNothing);
+    _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
+    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
+    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
     expect(find.text('Layer: A'), findsOneWidget);
