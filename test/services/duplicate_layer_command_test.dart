@@ -30,7 +30,7 @@ const _frameBId = FrameId('frame-b');
 
 void main() {
   group('CutCommandCoordinator.duplicateLayer', () {
-    test('inserts copy after source with new id and next cel name', () {
+    test('inserts copy after source with new id and source name', () {
       final fixture = _fixture();
 
       final duplicateId = fixture.coordinator.duplicateLayer(
@@ -47,20 +47,19 @@ void main() {
       ]);
       expect(layers[1].id, _layerBId);
       expect(layers[2].id, isNot(_layerBId));
-      expect(layers[2].name, 'D');
+      expect(layers[2].name, 'B');
       expect(fixture.history.undoCount, 1);
     });
 
-    test('uses smallest available cel name', () {
-      final fixture = _fixture(names: const ['A', 'C', 'D']);
+    test('duplicating B in A/B/C creates raw A/B/B/C names', () {
+      final fixture = _fixture();
 
-      final duplicateId = fixture.coordinator.duplicateLayer(
+      fixture.coordinator.duplicateLayer(
         cutId: _cutId,
-        sourceLayerId: _layerAId,
+        sourceLayerId: _layerBId,
       );
 
-      final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
-      expect(duplicate.name, 'B');
+      expect(_layerNames(fixture.repository, _cutId), ['A', 'B', 'B', 'C']);
     });
 
     test('preserves copied content without reusing frame ids', () {

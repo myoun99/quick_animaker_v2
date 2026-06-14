@@ -3,7 +3,11 @@ import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/timeline_exposure.dart';
+import '../../models/timeline_exposure_type.dart';
 import '../../models/project.dart';
+import '../clipboard/layer_copy_payload.dart';
 
 class CreateCutCommandInputPlan {
   const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
@@ -30,6 +34,20 @@ class DuplicateLayerCommandInputPlan {
 
   final LayerId newLayerId;
   final Map<FrameId, FrameId> frameIdMap;
+}
+
+class PasteLayerCommandInputPlan {
+  PasteLayerCommandInputPlan({
+    required this.newLayerId,
+    required Map<FrameId, FrameId> frameIdMap,
+    required this.layer,
+    required this.insertionIndex,
+  }) : frameIdMap = Map.unmodifiable(frameIdMap);
+
+  final LayerId newLayerId;
+  final Map<FrameId, FrameId> frameIdMap;
+  final Layer layer;
+  final int insertionIndex;
 }
 
 class DuplicateCutCommandInputPlan {
@@ -131,31 +149,106 @@ DuplicateLayerCommandInputPlan planDuplicateLayerCommandInput({
 
   final frameIdMap = <FrameId, FrameId>{};
   for (final frame in sourceLayer.frames) {
-    if (frameIdMap.containsKey(frame.id)) {
-      continue;
-    }
-    final newFrameId = FrameId(
-      _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-    );
-    ids.frameIds.add(newFrameId.value);
-    frameIdMap[frame.id] = newFrameId;
+    frameIdMap.putIfAbsent(frame.id, () {
+      final id = FrameId(
+        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+      );
+      ids.frameIds.add(id.value);
+      return id;
+    });
   }
-
   for (final exposure in sourceLayer.timeline.values) {
     final frameId = exposure.frameId;
-    if (frameId == null || frameIdMap.containsKey(frameId)) {
-      continue;
-    }
-    final newFrameId = FrameId(
-      _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-    );
-    ids.frameIds.add(newFrameId.value);
-    frameIdMap[frameId] = newFrameId;
+    if (frameId == null) continue;
+    frameIdMap.putIfAbsent(frameId, () {
+      final id = FrameId(
+        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+      );
+      ids.frameIds.add(id.value);
+      return id;
+    });
   }
 
   return DuplicateLayerCommandInputPlan(
     newLayerId: newLayerId,
     frameIdMap: frameIdMap,
+  );
+}
+
+PasteLayerCommandInputPlan planPasteLayerCommandInput({
+  required Project project,
+  required Cut targetCut,
+  required LayerCopyPayload payload,
+  required int insertionIndex,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project)..includeCut(targetCut);
+  final newLayerId = LayerId(
+    _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+  );
+  ids.layerIds.add(newLayerId.value);
+
+  final frameIdMap = <FrameId, FrameId>{};
+  for (final frame in payload.frames) {
+    frameIdMap.putIfAbsent(frame.id, () {
+      final id = FrameId(
+        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+      );
+      ids.frameIds.add(id.value);
+      return id;
+    });
+  }
+  for (final exposure in payload.timeline.values) {
+    final frameId = exposure.frameId;
+    if (frameId == null) continue;
+    frameIdMap.putIfAbsent(frameId, () {
+      final id = FrameId(
+        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+      );
+      ids.frameIds.add(id.value);
+      return id;
+    });
+  }
+
+  final hasStoryboardLayer = targetCut.layers.any(
+    (layer) => layer.kind == LayerKind.storyboard,
+  );
+  final pastedKind = payload.kind == LayerKind.storyboard && !hasStoryboardLayer
+      ? LayerKind.storyboard
+      : LayerKind.animation;
+  final layer = Layer(
+    id: newLayerId,
+    name: payload.name,
+    frames: payload.frames
+        .map((frame) => frame.copyWith(id: frameIdMap[frame.id]))
+        .toList(),
+    timeline: payload.timeline.map((index, exposure) {
+      if (exposure.type == TimelineExposureType.blank) {
+        return MapEntry(index, const TimelineExposure.blank());
+      }
+      final sourceFrameId = exposure.frameId;
+      final newFrameId = sourceFrameId == null
+          ? null
+          : frameIdMap[sourceFrameId];
+      if (sourceFrameId == null || newFrameId == null) {
+        throw ArgumentError.value(
+          frameIdMap,
+          'frameIdMap',
+          'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
+        );
+      }
+      return MapEntry(index, TimelineExposure.drawing(newFrameId));
+    }),
+    marks: payload.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
+    isVisible: payload.isVisible,
+    opacity: payload.opacity,
+    kind: pastedKind,
+  );
+
+  return PasteLayerCommandInputPlan(
+    newLayerId: newLayerId,
+    frameIdMap: frameIdMap,
+    layer: layer,
+    insertionIndex: insertionIndex,
   );
 }
 
