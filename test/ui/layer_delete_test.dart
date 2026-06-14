@@ -82,6 +82,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
+    expect(find.text('Layer: B'), findsOneWidget);
 
     await _deleteActiveLayer(tester);
 
@@ -98,6 +99,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
+    expect(find.text('Layer: B'), findsOneWidget);
     await _deleteActiveLayer(tester);
 
     await _tapKey(tester, _undoKey);
@@ -114,6 +116,7 @@ void main() {
   ) async {
     await _pumpHome(tester);
     await _selectLayer(tester, _layerBId);
+    expect(find.text('Layer: B'), findsOneWidget);
     await _deleteActiveLayer(tester);
 
     expect(_visibleTimelineLayerNames(tester), ['C', 'A']);
@@ -139,6 +142,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
+    expect(find.text('Layer: B'), findsOneWidget);
     await _deleteActiveLayer(tester);
 
     expect(
@@ -183,7 +187,8 @@ Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) async {
 }
 
 Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
-  await _tapKey(tester, ValueKey<String>('timeline-layer-row-$layerId'));
+  await _tapKey(tester, ValueKey<String>('timeline-layer-name-$layerId'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _deleteActiveLayer(WidgetTester tester) async {
