@@ -192,7 +192,6 @@ class _StoryboardCutBlock extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     '${layoutEntry.duration}f',
@@ -200,14 +199,18 @@ class _StoryboardCutBlock extends StatelessWidget {
                       'storyboard-cut-duration-${cut.id.value}',
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${layoutEntry.startFrame}f - ${layoutEntry.endFrame}f',
-                    key: ValueKey<String>(
-                      'storyboard-cut-frame-range-${cut.id.value}',
-                    ),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${layoutEntry.startFrame}f - ${layoutEntry.endFrame}f',
+                      key: ValueKey<String>(
+                        'storyboard-cut-frame-range-${cut.id.value}',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
