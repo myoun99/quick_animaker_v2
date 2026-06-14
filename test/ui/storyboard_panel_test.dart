@@ -30,8 +30,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is TimelineBlock &&
-            widget.key ==
-                const ValueKey<String>('storyboard-cut-block-cut-a'),
+            widget.key == const ValueKey<String>('storyboard-cut-block-cut-a'),
       ),
       findsOneWidget,
     );

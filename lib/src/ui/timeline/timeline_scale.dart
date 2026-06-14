@@ -2,10 +2,7 @@
 ///
 /// This is a UI helper only. It does not know about or mutate project models.
 class TimelineScale {
-  const TimelineScale({
-    this.pixelsPerFrame = 8.0,
-    this.minBlockWidth = 96.0,
-  });
+  const TimelineScale({this.pixelsPerFrame = 8.0, this.minBlockWidth = 96.0});
 
   final double pixelsPerFrame;
   final double minBlockWidth;
