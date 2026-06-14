@@ -46,7 +46,7 @@ void main() {
   testWidgets('Delete Layer button is disabled with one layer', (tester) async {
     await _pumpHome(
       tester,
-      project: _project(layers: [_layer(_layerAId, 'A')]),
+      project: _project(layers: [_layerModel(_layerAId, 'A')]),
     );
 
     expect(find.byKey(_deleteButtonKey), findsOneWidget);
@@ -266,9 +266,9 @@ Project _project({List<Layer>? layers}) {
             layers:
                 layers ??
                 [
-                  _layer(_layerAId, 'A'),
-                  _layer(_layerBId, 'B'),
-                  _layer(_layerCId, 'C'),
+                  _layerModel(_layerAId, 'A'),
+                  _layerModel(_layerBId, 'B'),
+                  _layerModel(_layerCId, 'C'),
                 ],
           ),
         ],
@@ -277,7 +277,7 @@ Project _project({List<Layer>? layers}) {
   );
 }
 
-Layer _layer(LayerId id, String name) {
+Layer _layerModel(LayerId id, String name) {
   return Layer(
     id: id,
     name: name,
