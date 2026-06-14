@@ -2343,6 +2343,103 @@ Line 8''';
     expect(find.text('Cell: Drawing start + Mark ●'), findsOneWidget);
   });
 
+  testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    const copyKey = ValueKey<String>('copy-layer-button');
+    const pasteKey = ValueKey<String>('paste-layer-button');
+
+    expect(find.byKey(copyKey), findsOneWidget);
+    expect(find.byTooltip('Copy Layer'), findsOneWidget);
+    expect(find.byKey(pasteKey), findsOneWidget);
+    expect(find.byTooltip('Paste Layer'), findsOneWidget);
+    expect(_isActionButtonEnabled(tester, copyKey), isTrue);
+    expect(_isActionButtonEnabled(tester, pasteKey), isFalse);
+    expect(find.text('Layer Clipboard: empty'), findsOneWidget);
+
+    await _tapToolbarButton(tester, copyKey);
+
+    expect(find.text('Layer Clipboard: A'), findsOneWidget);
+    expect(_isActionButtonEnabled(tester, pasteKey), isTrue);
+  });
+
+  testWidgets('Paste Layer creates another A, selects it, and undo/redo works', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(tester, const ValueKey<String>('copy-layer-button'));
+    await _tapToolbarButton(tester, const ValueKey<String>('paste-layer-button'));
+
+    expect(find.text('A'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+        matching: find.text('A'),
+      ),
+      findsOneWidget,
+    );
+
+    await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+      findsNothing,
+    );
+
+    await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+        matching: find.text('A'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('pasted layer can be renamed and deleted', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await _tapToolbarButton(tester, const ValueKey<String>('copy-layer-button'));
+    await _tapToolbarButton(tester, const ValueKey<String>('paste-layer-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('rename-layer-button'),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-layer-text-field')),
+      'Pasted',
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('rename-layer-ok-button'),
+    );
+
+    expect(find.text('Pasted'), findsWidgets);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('delete-layer-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('delete-layer-confirm-button'),
+    );
+
+    expect(find.text('Pasted'), findsNothing);
+  });
+
   testWidgets(
     'Duplicate Layer button duplicates active layer and selects copy',
     (WidgetTester tester) async {

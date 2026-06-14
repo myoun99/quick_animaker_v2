@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/clipboard/layer_copy_payload.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_reorder_planner.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -811,6 +812,49 @@ void main() {
       expect(fixture.historyManager.redoCount, 0);
       expect(fixture.cutsFor(const TrackId('track-1')), [existingCut]);
     });
+
+    test(
+      'pasteLayer inserts payload after requested raw index and is undoable',
+      () {
+        final layerA = _layer(id: 'A');
+        final layerB = _layer(id: 'B');
+        final layerC = _layer(id: 'C');
+        final cut = _cut(id: 'cut-1', layers: [layerA, layerB, layerC]);
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'Video', cuts: [cut]),
+            ],
+          ),
+          activeCutId: cut.id,
+        );
+
+        final pastedLayerId = fixture.coordinator.pasteLayer(
+          cutId: cut.id,
+          payload: copyLayerToPayload(layerA),
+          insertionIndex: 2,
+        );
+
+        expect(
+          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          ['A', 'B', 'A', 'C'],
+        );
+        expect(_layerById(fixture.project, pastedLayerId).id, pastedLayerId);
+        expect(fixture.historyManager.undoCount, 1);
+
+        fixture.historyManager.undo();
+        expect(
+          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          ['A', 'B', 'C'],
+        );
+
+        fixture.historyManager.redo();
+        expect(
+          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          ['A', 'B', 'A', 'C'],
+        );
+      },
+    );
 
     test('duplicateCut uses caller-provided duplicate name when supplied', () {
       final sourceCut = _cut(id: 'cut-1', name: 'Source');

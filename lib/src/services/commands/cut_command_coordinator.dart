@@ -114,7 +114,6 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId sourceLayerId,
   }) {
-    final project = repository.requireProject();
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
     final sourceIndex = cut.layers.indexWhere(
@@ -124,11 +123,25 @@ class CutCommandCoordinator {
       throw StateError('Layer not found in cut $cutId: $sourceLayerId');
     }
 
+    return pasteLayer(
+      cutId: cutId,
+      payload: copyLayerToPayload(sourceLayer),
+      insertionIndex: sourceIndex + 1,
+    );
+  }
+
+  LayerId pasteLayer({
+    required CutId cutId,
+    required LayerCopyPayload payload,
+    required int insertionIndex,
+  }) {
+    final project = repository.requireProject();
+    final cut = _requireCut(cutId);
     final plan = planPasteLayerCommandInput(
       project: project,
       targetCut: cut,
-      payload: copyLayerToPayload(sourceLayer),
-      insertionIndex: sourceIndex + 1,
+      payload: payload,
+      insertionIndex: insertionIndex,
     );
 
     historyManager.execute(
