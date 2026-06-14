@@ -14,8 +14,29 @@ import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_block.dart';
 
 void main() {
+  testWidgets('cut blocks use the shared timeline block primitive', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TimelineBlock &&
+            widget.key ==
+                const ValueKey<String>('storyboard-cut-block-cut-a'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows storyboard shell, V tracks, cut blocks, and empty state', (
     tester,
   ) async {

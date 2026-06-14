@@ -7,6 +7,8 @@ import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track.dart';
 import 'storyboard_timeline_layout.dart';
+import 'timeline/timeline_block.dart';
+import 'timeline/timeline_scale.dart';
 
 class StoryboardPanel extends StatelessWidget {
   const StoryboardPanel({
@@ -16,8 +18,7 @@ class StoryboardPanel extends StatelessWidget {
     required this.onCutSelected,
   });
 
-  static const double _frameWidth = 8;
-  static const double _minimumCutWidth = 96;
+  static const TimelineScale _timelineScale = TimelineScale();
   static const double _trackLabelWidth = 56;
 
   final Project project;
@@ -76,9 +77,7 @@ class StoryboardPanel extends StatelessWidget {
   }
 
   static double _cutWidthFor(Cut cut) {
-    return (cut.duration * _frameWidth)
-        .clamp(_minimumCutWidth, double.infinity)
-        .toDouble();
+    return _timelineScale.widthForDuration(cut.duration);
   }
 }
 
@@ -160,22 +159,11 @@ class _StoryboardCutBlock extends StatelessWidget {
     final cut = layoutEntry.cut;
     final storyboardLayer = _storyboardLayerFor(cut);
 
-    final borderRadius = BorderRadius.circular(8);
-    final block = Container(
+    return TimelineBlock(
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
       width: width,
-      constraints: const BoxConstraints(minHeight: 64),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: isActive
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHighest,
-        border: Border.all(
-          color: isActive ? colorScheme.primary : colorScheme.outline,
-          width: isActive ? 2 : 1,
-        ),
-        borderRadius: borderRadius,
-      ),
+      isActive: isActive,
+      onTap: isActive ? null : () => onSelected(cut.id),
       child: Stack(
         children: [
           Column(
@@ -267,16 +255,6 @@ class _StoryboardCutBlock extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: borderRadius,
-        mouseCursor: SystemMouseCursors.click,
-        onTap: isActive ? null : () => onSelected(cut.id),
-        child: block,
       ),
     );
   }
