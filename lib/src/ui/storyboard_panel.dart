@@ -34,7 +34,7 @@ class StoryboardPanel extends StatelessWidget {
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -47,7 +47,7 @@ class StoryboardPanel extends StatelessWidget {
                 letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Column(
@@ -96,13 +96,13 @@ class _StoryboardTrackRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: StoryboardPanel._trackLabelWidth,
-            height: 72,
+            height: 64,
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -156,8 +156,8 @@ class _StoryboardCutBlock extends StatelessWidget {
     final block = Container(
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
       width: width,
-      constraints: const BoxConstraints(minHeight: 72),
-      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: isActive
             ? colorScheme.primaryContainer
@@ -168,56 +168,70 @@ class _StoryboardCutBlock extends StatelessWidget {
         ),
         borderRadius: borderRadius,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
         children: [
-          if (isActive) ...[
-            Text(
-              'ACTIVE',
-              key: ValueKey<String>(
-                'storyboard-cut-active-indicator-${cut.id.value}',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(right: isActive ? 48 : 0),
+                child: Text(
+                  cut.name,
+                  key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.8,
+              const SizedBox(height: 2),
+              Text(
+                '${cut.duration}f',
+                key: ValueKey<String>('storyboard-cut-duration-${cut.id.value}'),
               ),
-            ),
-            const SizedBox(height: 2),
-          ],
-          Text(
-            cut.name,
-            key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
-            overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 4),
+              if (storyboardLayer == null)
+                Text(
+                  'No Storyboard Layer',
+                  key: ValueKey<String>('storyboard-layer-empty-${cut.id.value}'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                )
+              else
+                Container(
+                  key: ValueKey<String>('storyboard-layer-strip-${cut.id.value}'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    storyboardLayer.name,
+                    key: ValueKey<String>(
+                      'storyboard-layer-name-${cut.id.value}',
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: colorScheme.onPrimaryContainer),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            '${cut.duration}f',
-            key: ValueKey<String>('storyboard-cut-duration-${cut.id.value}'),
-          ),
-          const SizedBox(height: 6),
-          if (storyboardLayer == null)
-            Text(
-              'No Storyboard Layer',
-              key: ValueKey<String>('storyboard-layer-empty-${cut.id.value}'),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-            )
-          else
-            Container(
-              key: ValueKey<String>('storyboard-layer-strip-${cut.id.value}'),
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
+          if (isActive)
+            Positioned(
+              top: 0,
+              right: 0,
               child: Text(
-                storyboardLayer.name,
-                key: ValueKey<String>('storyboard-layer-name-${cut.id.value}'),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colorScheme.onPrimaryContainer),
+                'ACTIVE',
+                key: ValueKey<String>(
+                  'storyboard-cut-active-indicator-${cut.id.value}',
+                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                ),
               ),
             ),
         ],
