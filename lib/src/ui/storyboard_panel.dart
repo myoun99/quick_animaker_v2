@@ -185,19 +185,25 @@ class _StoryboardCutBlock extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 '${cut.duration}f',
-                key: ValueKey<String>('storyboard-cut-duration-${cut.id.value}'),
+                key: ValueKey<String>(
+                  'storyboard-cut-duration-${cut.id.value}',
+                ),
               ),
               const SizedBox(height: 4),
               if (storyboardLayer == null)
                 Text(
                   'No Storyboard Layer',
-                  key: ValueKey<String>('storyboard-layer-empty-${cut.id.value}'),
+                  key: ValueKey<String>(
+                    'storyboard-layer-empty-${cut.id.value}',
+                  ),
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 )
               else
                 Container(
-                  key: ValueKey<String>('storyboard-layer-strip-${cut.id.value}'),
+                  key: ValueKey<String>(
+                    'storyboard-layer-strip-${cut.id.value}',
+                  ),
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,

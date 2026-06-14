@@ -1355,7 +1355,6 @@ Line 8''';
     );
   });
 
-
   testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
     WidgetTester tester,
   ) async {
@@ -1363,7 +1362,10 @@ Line 8''';
     await _createSecondCut(tester);
     await _switchToCut(tester, 'sample-cut');
 
-    expect(find.byKey(const ValueKey<String>('storyboard-panel')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-panel')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-cut-active-indicator-sample-cut'),
@@ -1371,7 +1373,9 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
+      ),
       findsNothing,
     );
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
@@ -1395,7 +1399,9 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -1413,7 +1419,9 @@ Line 8''';
     await _createSecondCut(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
+      ),
       findsOneWidget,
     );
 
@@ -1427,7 +1435,9 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
+      ),
       findsNothing,
     );
   });

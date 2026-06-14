@@ -86,7 +86,6 @@ void main() {
     },
   );
 
-
   testWidgets('shows active indicator only for the active cut', (tester) async {
     await _pumpPanel(
       tester,
