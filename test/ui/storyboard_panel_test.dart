@@ -57,6 +57,11 @@ void main() {
     );
     expect(find.text('24f'), findsOneWidget);
     expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-a')),
+      findsOneWidget,
+    );
+    expect(find.text('0f - 24f'), findsOneWidget);
+    expect(
       find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
       findsOneWidget,
     );
@@ -85,6 +90,25 @@ void main() {
       expect(find.text('No Storyboard Layer'), findsNothing);
     },
   );
+
+  testWidgets('shows cumulative frame ranges for sequential cuts', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _twoCutProject());
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-frame-range-cut-short'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('0f - 12f'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-long')),
+      findsOneWidget,
+    );
+    expect(find.text('12f - 48f'), findsOneWidget);
+  });
 
   testWidgets('shows active indicator only for the active cut', (tester) async {
     await _pumpPanel(
