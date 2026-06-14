@@ -134,9 +134,11 @@ void main() {
 
   test('animation payload always pastes as animation', () {
     final animationPayload = copyLayerToPayload(_layer());
-    final targetCut = _cut(layers: [
-      _layer(id: const LayerId('layer-2'), kind: LayerKind.storyboard),
-    ]);
+    final targetCut = _cut(
+      layers: [
+        _layer(id: const LayerId('layer-2'), kind: LayerKind.storyboard),
+      ],
+    );
 
     expect(
       planPasteLayerCommandInput(
