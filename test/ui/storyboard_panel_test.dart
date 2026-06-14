@@ -86,6 +86,66 @@ void main() {
     },
   );
 
+
+  testWidgets('shows active indicator only for the active cut', (tester) async {
+    await _pumpPanel(
+      tester,
+      _twoCutProject(),
+      activeCutId: const CutId('cut-long'),
+    );
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-long'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-cut-short'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('tapping inactive cut block calls onCutSelected with cut id', (
+    tester,
+  ) async {
+    CutId? selectedCutId;
+
+    await _pumpPanel(
+      tester,
+      _twoCutProject(),
+      activeCutId: const CutId('cut-short'),
+      onCutSelected: (cutId) => selectedCutId = cutId,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(selectedCutId, const CutId('cut-long'));
+  });
+
+  testWidgets('tapping active cut block is a no-op', (tester) async {
+    var selectionCount = 0;
+
+    await _pumpPanel(
+      tester,
+      _twoCutProject(),
+      activeCutId: const CutId('cut-short'),
+      onCutSelected: (_) => selectionCount += 1,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-short')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(selectionCount, 0);
+  });
+
   testWidgets('cut block width roughly represents cut duration', (
     tester,
   ) async {
@@ -119,10 +179,21 @@ void main() {
   });
 }
 
-Future<void> _pumpPanel(WidgetTester tester, Project project) async {
+Future<void> _pumpPanel(
+  WidgetTester tester,
+  Project project, {
+  CutId activeCutId = const CutId('cut-a'),
+  ValueChanged<CutId>? onCutSelected,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: Scaffold(body: StoryboardPanel(project: project)),
+      home: Scaffold(
+        body: StoryboardPanel(
+          project: project,
+          activeCutId: activeCutId,
+          onCutSelected: onCutSelected ?? (_) {},
+        ),
+      ),
     ),
   );
 }

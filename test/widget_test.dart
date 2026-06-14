@@ -1355,6 +1355,83 @@ Line 8''';
     );
   });
 
+
+  testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _createSecondCut(tester);
+    await _switchToCut(tester, 'sample-cut');
+
+    expect(find.byKey(const ValueKey<String>('storyboard-panel')), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-sample-cut'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      findsNothing,
+    );
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('sample-cut'),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    expect(
+      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
+      const CutId('cut-1'),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-sample-cut'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('CutListBar switching updates StoryboardPanel highlight', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _createSecondCut(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      findsOneWidget,
+    );
+
+    await _switchToCut(tester, 'sample-cut');
+
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-active-indicator-sample-cut'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-active-indicator-cut-1')),
+      findsNothing,
+    );
+  });
+
   testWidgets('new frame after switching to Cut 2 stays scoped to Cut 2', (
     WidgetTester tester,
   ) async {
