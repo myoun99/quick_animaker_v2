@@ -592,3 +592,21 @@ Cut Note UI:
 * Conte Panel UI
 * actionMemo/dialogueMemo UI
 * vertical timesheet view
+
+Phase 82:
+
+* Layer system stabilization after Add/Rename/Delete/Duplicate/Copy/Paste.
+* Layer identity policy is now explicit: `LayerId` is identity; `Layer.name` is only a display label.
+* Duplicate layer names are allowed. Rename rejects empty/whitespace names only and must not reject a duplicate display label.
+* Frame rename/link behavior was intentionally unchanged; layer duplicate-name allowance must not be applied to frame naming rules.
+* Duplicate Layer is a convenience wrapper over the layer copy/paste foundation: `copyLayerToPayload(sourceLayer)` + `CutCommandCoordinator.pasteLayer(... insertionIndex: sourceIndex + 1)` + `PasteLayerCommand`.
+* Obsolete duplicate-layer-only command/planner code was removed. The retained `duplicateLayerAsIndependentCopy` helper is for Cut duplication only, where the entire Cut's layer/frame ID maps are preplanned together; it is not the Layer Duplicate command path.
+* Copy Layer stores an app-local `LayerCopyPayload` and does not mutate repository state or history.
+* Paste Layer inserts at the requested raw layer index, remaps `FrameId`s, preserves the copied layer display name, becomes undoable/redoable through history, and selects the pasted layer in UI flows.
+* Storyboard paste policy remains:
+  * Storyboard payload into a Cut with no Storyboard Layer pastes as `LayerKind.storyboard`.
+  * Storyboard payload into a Cut with an existing Storyboard Layer pastes as `LayerKind.animation`.
+  * Animation payload always pastes as `LayerKind.animation`.
+* Clipboard UI remains minimal/app-local only: Copy Layer, Paste Layer, and status label. No OS clipboard, shortcuts, context menus, or multi-layer clipboard were added.
+* Widget tests were stabilized away from generated IDs like `timeline-layer-row-layer-1`; prefer row counts, selected-layer assertions, repository-backed IDs, or discovered IDs.
+* Raw layer order / horizontal display order / future XSheet order separation remains important. No section UI, vertical timesheet redesign, new `LayerKind`, or Storyboard Panel UI was added. `docs/LongTerm_StoryboardPanel_TimelineDesign.md` remains long-term reference only.

@@ -22,6 +22,14 @@ Future<void> _addLayer(WidgetTester tester) async {
   );
 }
 
+Finder _timelineLayerRows() {
+  return find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('timeline-layer-row-');
+  });
+}
+
 Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
   final cell = find.byKey(key);
   await tester.ensureVisible(cell);
@@ -2380,10 +2388,7 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-        findsOneWidget,
-      );
+      expect(_timelineLayerRows(), findsNWidgets(2));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2393,16 +2398,10 @@ Line 8''';
       );
 
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-      expect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-        findsNothing,
-      );
+      expect(_timelineLayerRows(), findsOneWidget);
 
       await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-      expect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-        findsOneWidget,
-      );
+      expect(_timelineLayerRows(), findsNWidgets(2));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2476,10 +2475,7 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-        findsOneWidget,
-      );
+      expect(_timelineLayerRows(), findsNWidgets(2));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),

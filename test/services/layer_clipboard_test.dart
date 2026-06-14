@@ -34,6 +34,20 @@ void main() {
     expect(payload.marks, source.marks);
   });
 
+  test('copying to payload does not mutate repository state', () {
+    final repository = ProjectRepository(
+      initialProject: _project(_cut(layers: [_layer()])),
+    );
+    final before = repository.requireProject();
+
+    final payload = copyLayerToPayload(
+      before.tracks.single.cuts.single.layers.single,
+    );
+
+    expect(payload.name, 'A');
+    expect(repository.requireProject(), before);
+  });
+
   test('paste planner creates new IDs, remaps frames, and preserves name', () {
     final project = _project(_cut(layers: [_layer()]));
     final targetCut = project.tracks.single.cuts.single;
@@ -112,6 +126,23 @@ void main() {
         project: _project(withStoryboardCut),
         targetCut: withStoryboardCut,
         payload: storyboardPayload,
+        insertionIndex: 1,
+      ).layer.kind,
+      LayerKind.animation,
+    );
+  });
+
+  test('animation payload always pastes as animation', () {
+    final animationPayload = copyLayerToPayload(_layer());
+    final targetCut = _cut(layers: [
+      _layer(id: const LayerId('layer-2'), kind: LayerKind.storyboard),
+    ]);
+
+    expect(
+      planPasteLayerCommandInput(
+        project: _project(targetCut),
+        targetCut: targetCut,
+        payload: animationPayload,
         insertionIndex: 1,
       ).layer.kind,
       LayerKind.animation,
