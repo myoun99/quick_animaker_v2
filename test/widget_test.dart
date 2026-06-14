@@ -2365,54 +2365,67 @@ Line 8''';
     expect(_isActionButtonEnabled(tester, pasteKey), isTrue);
   });
 
-  testWidgets('Paste Layer creates another A, selects it, and undo/redo works', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'Paste Layer creates another A, selects it, and undo/redo works',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(tester, const ValueKey<String>('copy-layer-button'));
-    await _tapToolbarButton(tester, const ValueKey<String>('paste-layer-button'));
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('copy-layer-button'),
+      );
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('paste-layer-button'),
+      );
 
-    expect(find.text('A'), findsWidgets);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
-        matching: find.text('A'),
-      ),
-      findsOneWidget,
-    );
+      expect(find.text('A'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+          matching: find.text('A'),
+        ),
+        findsOneWidget,
+      );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-    expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-      findsNothing,
-    );
+      await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
+      expect(
+        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        findsNothing,
+      );
 
-    await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-    expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
-        matching: find.text('A'),
-      ),
-      findsOneWidget,
-    );
-  });
+      await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
+      expect(
+        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+          matching: find.text('A'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('pasted layer can be renamed and deleted', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(tester, const ValueKey<String>('copy-layer-button'));
-    await _tapToolbarButton(tester, const ValueKey<String>('paste-layer-button'));
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('copy-layer-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('paste-layer-button'),
+    );
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('rename-layer-button'),
