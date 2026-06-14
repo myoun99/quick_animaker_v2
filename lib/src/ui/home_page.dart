@@ -18,6 +18,7 @@ import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/timeline_exposure.dart';
+import '../services/clipboard/layer_copy_payload.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
@@ -58,6 +59,7 @@ class _HomePageState extends State<HomePage> {
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   final ScrollController _topToolbarScrollController = ScrollController();
   _CopiedFrameReference? _copiedFrame;
+  LayerCopyPayload? _layerClipboard;
 
   @override
   void initState() {
@@ -407,6 +409,42 @@ class _HomePageState extends State<HomePage> {
     }
 
     return previousActiveLayerId;
+  }
+
+  void _copyActiveLayer() {
+    final activeLayer = _activeLayer;
+    if (activeLayer == null) {
+      return;
+    }
+
+    setState(() {
+      _layerClipboard = copyLayerToPayload(activeLayer);
+    });
+  }
+
+  void _pasteLayerFromClipboard() {
+    final payload = _layerClipboard;
+    if (payload == null) {
+      return;
+    }
+
+    final activeLayer = _activeLayer;
+    final targetLayers = _activeCut.layers;
+    final activeLayerIndex = activeLayer == null
+        ? -1
+        : targetLayers.indexWhere((layer) => layer.id == activeLayer.id);
+    final insertionIndex = activeLayerIndex == -1
+        ? targetLayers.length
+        : activeLayerIndex + 1;
+
+    setState(() {
+      final pastedLayerId = _cutCommandCoordinator.pasteLayer(
+        cutId: _editingSession.activeCutId,
+        payload: payload,
+        insertionIndex: insertionIndex,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: pastedLayerId);
+    });
   }
 
   void _duplicateActiveLayer() {
@@ -1026,6 +1064,29 @@ class _HomePageState extends State<HomePage> {
                     onPressed: _activeLayer == null
                         ? null
                         : _duplicateActiveLayer,
+                  ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>('copy-layer-button'),
+                    tooltip: 'Copy Layer',
+                    icon: Icons.content_copy,
+                    onPressed: _activeLayer == null ? null : _copyActiveLayer,
+                  ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>('paste-layer-button'),
+                    tooltip: 'Paste Layer',
+                    icon: Icons.content_paste,
+                    onPressed: _layerClipboard == null
+                        ? null
+                        : _pasteLayerFromClipboard,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _layerClipboard == null
+                        ? 'Layer Clipboard: empty'
+                        : 'Layer Clipboard: ${_layerClipboard!.name}',
+                    key: const ValueKey<String>('layer-clipboard-status'),
                   ),
                   const SizedBox(width: 8),
                   _timelineActionIconButton(
