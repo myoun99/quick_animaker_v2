@@ -65,23 +65,20 @@ void main() {
       expect(fixture.history.undoCount, 0);
     });
 
-    test('rejects a duplicate name in the same Cut without history', () {
+    test('allows duplicate layer names in the same Cut', () {
       final fixture = _fixture();
 
-      expect(
-        () => fixture.coordinator.renameLayer(
-          cutId: _cutId,
-          layerId: _layerAId,
-          name: 'B',
-        ),
-        throwsArgumentError,
+      fixture.coordinator.renameLayer(
+        cutId: _cutId,
+        layerId: _layerAId,
+        name: 'B',
       );
 
       expect(
         _cut(fixture.repository, _cutId).layers.map((layer) => layer.name),
-        ['A', 'B', 'C'],
+        ['B', 'B', 'C'],
       );
-      expect(fixture.history.undoCount, 0);
+      expect(fixture.history.undoCount, 1);
     });
 
     test('unchanged trimmed name is a no-op without history', () {

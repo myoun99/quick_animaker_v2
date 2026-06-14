@@ -462,9 +462,7 @@ class _HomePageState extends State<HomePage> {
     final activeLayerId = activeLayer.id;
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameLayerDialog(
-        initialName: activeLayer.name,
-      ),
+      builder: (context) => _RenameLayerDialog(initialName: activeLayer.name),
     );
     if (!mounted || nextName == null) {
       return;

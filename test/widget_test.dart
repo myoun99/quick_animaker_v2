@@ -2365,7 +2365,7 @@ Line 8''';
         const ValueKey<String>('duplicate-layer-button'),
       );
 
-      expect(find.text('B'), findsWidgets);
+      expect(find.text('A'), findsWidgets);
       expect(
         find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
         findsOneWidget,
@@ -2373,7 +2373,7 @@ Line 8''';
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
-          matching: find.text('B'),
+          matching: find.text('A'),
         ),
         findsOneWidget,
       );

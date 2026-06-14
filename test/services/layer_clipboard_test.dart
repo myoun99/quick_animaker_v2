@@ -48,41 +48,55 @@ void main() {
 
     expect(plan.layer.id, isNot(targetCut.layers.single.id));
     expect(plan.layer.name, targetCut.layers.single.name);
-    expect(plan.layer.frames.first.id, isNot(targetCut.layers.single.frames.first.id));
+    expect(
+      plan.layer.frames.first.id,
+      isNot(targetCut.layers.single.frames.first.id),
+    );
     expect(plan.layer.timeline[0]!.frameId, plan.layer.frames.first.id);
     expect(plan.insertionIndex, 1);
   });
 
-  test('paste command undo removes and redo restores same layer at raw index', () {
-    final repository = ProjectRepository(initialProject: _project(_cut(layers: [_layer()])));
-    final cut = repository.requireProject().tracks.single.cuts.single;
-    final plan = planPasteLayerCommandInput(
-      project: repository.requireProject(),
-      targetCut: cut,
-      payload: copyLayerToPayload(cut.layers.single),
-      insertionIndex: 1,
-    );
-    final command = PasteLayerCommand(
-      repository: repository,
-      cutId: cut.id,
-      layer: plan.layer,
-      insertionIndex: plan.insertionIndex,
-    );
+  test(
+    'paste command undo removes and redo restores same layer at raw index',
+    () {
+      final repository = ProjectRepository(
+        initialProject: _project(_cut(layers: [_layer()])),
+      );
+      final cut = repository.requireProject().tracks.single.cuts.single;
+      final plan = planPasteLayerCommandInput(
+        project: repository.requireProject(),
+        targetCut: cut,
+        payload: copyLayerToPayload(cut.layers.single),
+        insertionIndex: 1,
+      );
+      final command = PasteLayerCommand(
+        repository: repository,
+        cutId: cut.id,
+        layer: plan.layer,
+        insertionIndex: plan.insertionIndex,
+      );
 
-    command.execute();
-    expect(_layers(repository), [cut.layers.single, plan.layer]);
-    command.undo();
-    expect(_layers(repository), [cut.layers.single]);
-    command.execute();
-    expect(_layers(repository), [cut.layers.single, plan.layer]);
-  });
+      command.execute();
+      expect(_layers(repository), [cut.layers.single, plan.layer]);
+      command.undo();
+      expect(_layers(repository), [cut.layers.single]);
+      command.execute();
+      expect(_layers(repository), [cut.layers.single, plan.layer]);
+    },
+  );
 
   test('storyboard payload pastes as storyboard only when target has none', () {
-    final storyboardPayload = copyLayerToPayload(_layer(kind: LayerKind.storyboard));
-    final emptyStoryboardCut = _cut(layers: [_layer(id: const LayerId('layer-2'))]);
-    final withStoryboardCut = _cut(layers: [
-      _layer(id: const LayerId('layer-2'), kind: LayerKind.storyboard),
-    ]);
+    final storyboardPayload = copyLayerToPayload(
+      _layer(kind: LayerKind.storyboard),
+    );
+    final emptyStoryboardCut = _cut(
+      layers: [_layer(id: const LayerId('layer-2'))],
+    );
+    final withStoryboardCut = _cut(
+      layers: [
+        _layer(id: const LayerId('layer-2'), kind: LayerKind.storyboard),
+      ],
+    );
 
     expect(
       planPasteLayerCommandInput(
@@ -105,30 +119,43 @@ void main() {
   });
 }
 
-List<Layer> _layers(ProjectRepository repository) => repository.requireProject().tracks.single.cuts.single.layers;
+List<Layer> _layers(ProjectRepository repository) =>
+    repository.requireProject().tracks.single.cuts.single.layers;
 
 Project _project(Cut cut) => Project(
-      id: const ProjectId('project'),
-      name: 'Project',
-      createdAt: DateTime.utc(2026),
-      tracks: [Track(id: const TrackId('track'), name: 'Track', cuts: [cut])],
-    );
+  id: const ProjectId('project'),
+  name: 'Project',
+  createdAt: DateTime.utc(2026),
+  tracks: [
+    Track(id: const TrackId('track'), name: 'Track', cuts: [cut]),
+  ],
+);
 
 Cut _cut({required List<Layer> layers}) => Cut(
-      id: const CutId('cut-1'),
-      name: 'Cut',
-      layers: layers,
-      duration: 3,
-      canvasSize: const CanvasSize(width: 1920, height: 1080),
-    );
+  id: const CutId('cut-1'),
+  name: 'Cut',
+  layers: layers,
+  duration: 3,
+  canvasSize: const CanvasSize(width: 1920, height: 1080),
+);
 
-Layer _layer({LayerId id = const LayerId('layer-1'), LayerKind kind = LayerKind.animation}) => Layer(
-      id: id,
-      name: 'A',
-      kind: kind,
-      isVisible: false,
-      opacity: 0.5,
-      frames: [Frame(id: const FrameId('frame-1'), duration: 1, strokes: const [], name: 'A1')],
-      timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
-      marks: const {0: TimelineMark(type: TimelineMarkType.inbetween)},
-    );
+Layer _layer({
+  LayerId id = const LayerId('layer-1'),
+  LayerKind kind = LayerKind.animation,
+}) => Layer(
+  id: id,
+  name: 'A',
+  kind: kind,
+  isVisible: false,
+  opacity: 0.5,
+  frames: [
+    Frame(
+      id: const FrameId('frame-1'),
+      duration: 1,
+      strokes: const [],
+      name: 'A1',
+    ),
+  ],
+  timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
+  marks: const {0: TimelineMark(type: TimelineMarkType.inbetween)},
+);

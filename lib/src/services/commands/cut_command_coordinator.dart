@@ -1,6 +1,7 @@
 import '../../controllers/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
