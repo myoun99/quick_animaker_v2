@@ -61,9 +61,7 @@ void main() {
     await _pumpPanel(tester, _twoCutProject());
 
     expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-positioned-cut-short'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-short')),
       findsOneWidget,
     );
     expect(
