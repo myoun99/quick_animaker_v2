@@ -36,6 +36,73 @@ void main() {
     );
   });
 
+  testWidgets('track rows expose timeline areas for cut positioning', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-track-b'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('cuts are wrapped in positioned timeline entries', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _twoCutProject());
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-positioned-cut-short'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-long')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-short')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('second cut is positioned to the right of the first cut', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _twoCutProject());
+
+    final firstLeft = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-cut-positioned-cut-short'),
+          ),
+        )
+        .dx;
+    final secondLeft = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-cut-positioned-cut-long'),
+          ),
+        )
+        .dx;
+
+    expect(secondLeft, greaterThan(firstLeft));
+  });
+
   testWidgets('shows storyboard shell, V tracks, cut blocks, and empty state', (
     tester,
   ) async {
