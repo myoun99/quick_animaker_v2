@@ -91,7 +91,7 @@ void main() {
     expect(find.byKey(_dialogKey), findsNothing);
   });
 
-  testWidgets('empty and duplicate names keep dialog open and do not rename', (
+  testWidgets('empty name keeps dialog open and duplicate name is allowed', (
     tester,
   ) async {
     late ProjectRepository repository;
@@ -108,9 +108,8 @@ void main() {
     await tester.enterText(find.byKey(_textFieldKey), 'B');
     await _tapKey(tester, _okButtonKey);
 
-    expect(find.byKey(_dialogKey), findsOneWidget);
-    expect(find.text('Layer name already exists in this Cut.'), findsOneWidget);
-    expect(_layer(repository, _layerAId).name, 'A');
+    expect(find.byKey(_dialogKey), findsNothing);
+    expect(_layer(repository, _layerAId).name, 'B');
     expect(_layer(repository, _layerBId).name, 'B');
   });
 

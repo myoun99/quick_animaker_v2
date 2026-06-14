@@ -1,9 +1,6 @@
-import '../../controllers/cut_duplicate_helpers.dart';
-import '../../controllers/default_layer_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -11,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
+import '../clipboard/layer_copy_payload.dart';
 import '../history_manager.dart';
 import '../project_repository.dart';
 import 'cut_command_input_planner.dart';
@@ -18,7 +16,7 @@ import 'create_cut_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
-import 'duplicate_layer_command.dart';
+import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'update_cut_note_command.dart';
@@ -80,22 +78,9 @@ class CutCommandCoordinator {
       throw ArgumentError.value(name, 'name', 'Layer name cannot be empty.');
     }
 
-    final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (layer.name == trimmedName) {
       return;
-    }
-
-    final hasDuplicateName = cut.layers.any(
-      (otherLayer) =>
-          otherLayer.id != layerId && otherLayer.name == trimmedName,
-    );
-    if (hasDuplicateName) {
-      throw ArgumentError.value(
-        trimmedName,
-        'name',
-        'Layer name already exists in this cut.',
-      );
     }
 
     historyManager.execute(
@@ -138,30 +123,23 @@ class CutCommandCoordinator {
       throw StateError('Layer not found in cut $cutId: $sourceLayerId');
     }
 
-    final plan = planDuplicateLayerCommandInput(
+    final plan = planPasteLayerCommandInput(
       project: project,
-      sourceLayer: sourceLayer,
-    );
-    final duplicatedLayer = duplicateLayerAsIndependentCopy(
-      source: sourceLayer,
-      newLayerId: plan.newLayerId,
-      newName: nextCelLayerNameForCut(cut),
-      frameIdMap: plan.frameIdMap,
-      kind: sourceLayer.kind == LayerKind.storyboard
-          ? LayerKind.animation
-          : sourceLayer.kind,
+      targetCut: cut,
+      payload: copyLayerToPayload(sourceLayer),
+      insertionIndex: sourceIndex + 1,
     );
 
     historyManager.execute(
-      DuplicateLayerCommand(
+      PasteLayerCommand(
         repository: repository,
         cutId: cutId,
-        layer: duplicatedLayer,
-        insertionIndex: sourceIndex + 1,
+        layer: plan.layer,
+        insertionIndex: plan.insertionIndex,
       ),
     );
 
-    return duplicatedLayer.id;
+    return plan.layer.id;
   }
 
   void updateLayerKind({

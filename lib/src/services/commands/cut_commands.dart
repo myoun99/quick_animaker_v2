@@ -4,6 +4,7 @@ export 'reorder_cut_command.dart';
 export 'delete_cut_command.dart';
 export 'duplicate_cut_command.dart';
 export 'duplicate_layer_command.dart';
+export 'paste_layer_command.dart';
 export 'update_cut_note_command.dart';
 export 'update_layer_kind_command.dart';
 export 'delete_layer_command.dart';

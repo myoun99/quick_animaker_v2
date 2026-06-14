@@ -460,15 +460,10 @@ class _HomePageState extends State<HomePage> {
     }
 
     final activeLayerId = activeLayer.id;
-    final layerNames = _activeCut.layers
-        .where((layer) => layer.id != activeLayerId)
-        .map((layer) => layer.name)
-        .toSet();
     final nextName = await showDialog<String>(
       context: context,
       builder: (context) => _RenameLayerDialog(
         initialName: activeLayer.name,
-        existingNames: layerNames,
       ),
     );
     if (!mounted || nextName == null) {
@@ -1417,13 +1412,8 @@ class _DeleteLayerDialog extends StatelessWidget {
 }
 
 class _RenameLayerDialog extends StatefulWidget {
-  const _RenameLayerDialog({
-    required this.initialName,
-    required this.existingNames,
-  });
-
+  const _RenameLayerDialog({required this.initialName});
   final String initialName;
-  final Set<String> existingNames;
 
   @override
   State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
@@ -1451,11 +1441,6 @@ class _RenameLayerDialogState extends State<_RenameLayerDialog> {
       setState(() => _errorText = 'Layer name cannot be empty.');
       return;
     }
-    if (widget.existingNames.contains(trimmedName)) {
-      setState(() => _errorText = 'Layer name already exists in this Cut.');
-      return;
-    }
-
     Navigator.of(context).pop(trimmedName);
   }
 
