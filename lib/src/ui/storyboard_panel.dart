@@ -6,6 +6,7 @@ import '../models/layer.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track.dart';
+import 'storyboard_timeline_layout.dart';
 
 class StoryboardPanel extends StatelessWidget {
   const StoryboardPanel({
@@ -26,6 +27,7 @@ class StoryboardPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final layoutEntries = buildStoryboardTimelineLayout(project);
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -56,6 +58,9 @@ class StoryboardPanel extends StatelessWidget {
                   for (var index = 0; index < project.tracks.length; index++)
                     _StoryboardTrackRow(
                       track: project.tracks[index],
+                      layoutEntries: layoutEntries
+                          .where((entry) => entry.trackIndex == index)
+                          .toList(growable: false),
                       trackLabel: 'V${index + 1}',
                       activeCutId: activeCutId,
                       onCutSelected: onCutSelected,
@@ -80,6 +85,7 @@ class StoryboardPanel extends StatelessWidget {
 class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
+    required this.layoutEntries,
     required this.trackLabel,
     required this.activeCutId,
     required this.onCutSelected,
@@ -87,6 +93,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   });
 
   final Track track;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final String trackLabel;
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
@@ -116,13 +123,13 @@ class _StoryboardTrackRow extends StatelessWidget {
           ),
           Row(
             children: [
-              for (final cut in track.cuts)
+              for (final entry in layoutEntries)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: _StoryboardCutBlock(
-                    cut: cut,
-                    width: cutWidthFor(cut),
-                    isActive: cut.id == activeCutId,
+                    layoutEntry: entry,
+                    width: cutWidthFor(entry.cut),
+                    isActive: entry.cutId == activeCutId,
                     onSelected: onCutSelected,
                   ),
                 ),
@@ -136,13 +143,13 @@ class _StoryboardTrackRow extends StatelessWidget {
 
 class _StoryboardCutBlock extends StatelessWidget {
   const _StoryboardCutBlock({
-    required this.cut,
+    required this.layoutEntry,
     required this.width,
     required this.isActive,
     required this.onSelected,
   });
 
-  final Cut cut;
+  final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
   final ValueChanged<CutId> onSelected;
@@ -150,6 +157,7 @@ class _StoryboardCutBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final cut = layoutEntry.cut;
     final storyboardLayer = _storyboardLayerFor(cut);
 
     final borderRadius = BorderRadius.circular(8);
@@ -183,11 +191,26 @@ class _StoryboardCutBlock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                '${cut.duration}f',
-                key: ValueKey<String>(
-                  'storyboard-cut-duration-${cut.id.value}',
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${layoutEntry.duration}f',
+                    key: ValueKey<String>(
+                      'storyboard-cut-duration-${cut.id.value}',
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${layoutEntry.startFrame}f - ${layoutEntry.endFrame}f',
+                    key: ValueKey<String>(
+                      'storyboard-cut-frame-range-${cut.id.value}',
+                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               if (storyboardLayer == null)
