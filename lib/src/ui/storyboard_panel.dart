@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track.dart';
 
 class StoryboardPanel extends StatelessWidget {
-  const StoryboardPanel({super.key, required this.project});
+  const StoryboardPanel({
+    super.key,
+    required this.project,
+    required this.activeCutId,
+    required this.onCutSelected,
+  });
 
   static const double _frameWidth = 8;
   static const double _minimumCutWidth = 96;
   static const double _trackLabelWidth = 56;
 
   final Project project;
+  final CutId activeCutId;
+  final ValueChanged<CutId> onCutSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +57,8 @@ class StoryboardPanel extends StatelessWidget {
                     _StoryboardTrackRow(
                       track: project.tracks[index],
                       trackLabel: 'V${index + 1}',
+                      activeCutId: activeCutId,
+                      onCutSelected: onCutSelected,
                       cutWidthFor: _cutWidthFor,
                     ),
                 ],
@@ -71,11 +81,15 @@ class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
     required this.trackLabel,
+    required this.activeCutId,
+    required this.onCutSelected,
     required this.cutWidthFor,
   });
 
   final Track track;
   final String trackLabel;
+  final CutId activeCutId;
+  final ValueChanged<CutId> onCutSelected;
   final double Function(Cut cut) cutWidthFor;
 
   @override
@@ -105,7 +119,12 @@ class _StoryboardTrackRow extends StatelessWidget {
               for (final cut in track.cuts)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: _StoryboardCutBlock(cut: cut, width: cutWidthFor(cut)),
+                  child: _StoryboardCutBlock(
+                    cut: cut,
+                    width: cutWidthFor(cut),
+                    isActive: cut.id == activeCutId,
+                    onSelected: onCutSelected,
+                  ),
                 ),
             ],
           ),
@@ -116,30 +135,57 @@ class _StoryboardTrackRow extends StatelessWidget {
 }
 
 class _StoryboardCutBlock extends StatelessWidget {
-  const _StoryboardCutBlock({required this.cut, required this.width});
+  const _StoryboardCutBlock({
+    required this.cut,
+    required this.width,
+    required this.isActive,
+    required this.onSelected,
+  });
 
   final Cut cut;
   final double width;
+  final bool isActive;
+  final ValueChanged<CutId> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final storyboardLayer = _storyboardLayerFor(cut);
 
-    return Container(
+    final borderRadius = BorderRadius.circular(8);
+    final block = Container(
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
       width: width,
       constraints: const BoxConstraints(minHeight: 72),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        border: Border.all(color: colorScheme.outline),
-        borderRadius: BorderRadius.circular(8),
+        color: isActive
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest,
+        border: Border.all(
+          color: isActive ? colorScheme.primary : colorScheme.outline,
+          width: isActive ? 2 : 1,
+        ),
+        borderRadius: borderRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (isActive) ...[
+            Text(
+              'ACTIVE',
+              key: ValueKey<String>(
+                'storyboard-cut-active-indicator-${cut.id.value}',
+              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
           Text(
             cut.name,
             key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
@@ -175,6 +221,16 @@ class _StoryboardCutBlock extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: borderRadius,
+        mouseCursor: SystemMouseCursors.click,
+        onTap: isActive ? null : () => onSelected(cut.id),
+        child: block,
       ),
     );
   }

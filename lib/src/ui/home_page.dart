@@ -1361,7 +1361,11 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          StoryboardPanel(project: _repository.requireProject()),
+          StoryboardPanel(
+            project: _repository.requireProject(),
+            activeCutId: _editingSession.activeCutId,
+            onCutSelected: _handleCutSelected,
+          ),
           const SizedBox(height: 8),
           TimelinePanel(
             layers: _layerController.layers,
