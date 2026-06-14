@@ -14,6 +14,7 @@ import '../project_repository.dart';
 import 'cut_command_input_planner.dart';
 import 'create_cut_command.dart';
 import 'delete_cut_command.dart';
+import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
@@ -100,6 +101,22 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         name: trimmedName,
+      ),
+    );
+  }
+
+  void deleteLayer({required CutId cutId, required LayerId layerId}) {
+    final cut = _requireCut(cutId);
+    _requireLayer(cutId: cutId, layerId: layerId);
+    if (cut.layers.length <= 1) {
+      return;
+    }
+
+    historyManager.execute(
+      DeleteLayerCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
       ),
     );
   }

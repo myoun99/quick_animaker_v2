@@ -315,16 +315,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _undo() {
+    final beforeLayers = List<Layer>.of(_activeCut.layers);
+    final previousActiveLayerId = _layerController.activeLayerId;
     setState(() {
       _canvasController.undo();
-      _refreshAfterCutCommand();
+      final preferredLayerId = _preferredLayerAfterLayerListChange(
+        beforeLayers: beforeLayers,
+        afterLayers: _activeCut.layers,
+        previousActiveLayerId: previousActiveLayerId,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: preferredLayerId);
     });
   }
 
   void _redo() {
+    final beforeLayers = List<Layer>.of(_activeCut.layers);
+    final previousActiveLayerId = _layerController.activeLayerId;
     setState(() {
       _canvasController.redo();
-      _refreshAfterCutCommand();
+      final preferredLayerId = _preferredLayerAfterLayerListChange(
+        beforeLayers: beforeLayers,
+        afterLayers: _activeCut.layers,
+        previousActiveLayerId: previousActiveLayerId,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: preferredLayerId);
     });
   }
 
@@ -343,6 +357,86 @@ class _HomePageState extends State<HomePage> {
   CutId get _activeCutId => _editingSession.activeCutId;
 
   Layer? get _activeLayer => _layerController.activeLayer;
+
+  bool get _canDeleteActiveLayer =>
+      _activeLayer != null && _activeCut.layers.length >= 2;
+
+  LayerId? _stableLayerIdAfterDeleting({
+    required List<Layer> beforeLayers,
+    required LayerId deletedLayerId,
+  }) {
+    final deletedIndex = beforeLayers.indexWhere(
+      (layer) => layer.id == deletedLayerId,
+    );
+    if (deletedIndex == -1) {
+      return null;
+    }
+
+    final remainingLayers = beforeLayers
+        .where((layer) => layer.id != deletedLayerId)
+        .toList(growable: false);
+    if (remainingLayers.isEmpty) {
+      return null;
+    }
+    if (deletedIndex < remainingLayers.length) {
+      return remainingLayers[deletedIndex].id;
+    }
+    return remainingLayers[deletedIndex - 1].id;
+  }
+
+  LayerId? _preferredLayerAfterLayerListChange({
+    required List<Layer> beforeLayers,
+    required List<Layer> afterLayers,
+    required LayerId? previousActiveLayerId,
+  }) {
+    final afterIds = afterLayers.map((layer) => layer.id).toSet();
+    final beforeIds = beforeLayers.map((layer) => layer.id).toSet();
+    final insertedLayers = afterLayers
+        .where((layer) => !beforeIds.contains(layer.id))
+        .toList(growable: false);
+    if (insertedLayers.isNotEmpty) {
+      return insertedLayers.first.id;
+    }
+
+    if (previousActiveLayerId != null &&
+        !afterIds.contains(previousActiveLayerId)) {
+      return _stableLayerIdAfterDeleting(
+        beforeLayers: beforeLayers,
+        deletedLayerId: previousActiveLayerId,
+      );
+    }
+
+    return previousActiveLayerId;
+  }
+
+  Future<void> _deleteActiveLayer() async {
+    final activeLayer = _activeLayer;
+    if (activeLayer == null || !_canDeleteActiveLayer) {
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => _DeleteLayerDialog(layerName: activeLayer.name),
+    );
+    if (!mounted || shouldDelete != true) {
+      return;
+    }
+
+    final beforeLayers = List<Layer>.of(_activeCut.layers);
+    final nextActiveLayerId = _stableLayerIdAfterDeleting(
+      beforeLayers: beforeLayers,
+      deletedLayerId: activeLayer.id,
+    );
+
+    setState(() {
+      _cutCommandCoordinator.deleteLayer(
+        cutId: _editingSession.activeCutId,
+        layerId: activeLayer.id,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    });
+  }
 
   Future<void> _renameActiveLayer() async {
     final activeLayer = _activeLayer;
@@ -916,6 +1010,15 @@ class _HomePageState extends State<HomePage> {
                     icon: Icons.drive_file_rename_outline,
                     onPressed: _activeLayer == null ? null : _renameActiveLayer,
                   ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>('delete-layer-button'),
+                    tooltip: 'Delete Layer',
+                    icon: Icons.delete_outline,
+                    onPressed: _canDeleteActiveLayer
+                        ? _deleteActiveLayer
+                        : null,
+                  ),
                   const SizedBox(width: 16),
                   Text(
                     _currentFrameStatusText,
@@ -1256,6 +1359,33 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DeleteLayerDialog extends StatelessWidget {
+  const _DeleteLayerDialog({required this.layerName});
+
+  final String layerName;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey<String>('delete-layer-dialog'),
+      title: const Text('Delete Layer'),
+      content: Text('Delete layer "$layerName"?'),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('delete-layer-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey<String>('delete-layer-confirm-button'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
         ),
       ],
     );
