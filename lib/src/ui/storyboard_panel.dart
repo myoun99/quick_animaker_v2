@@ -52,6 +52,9 @@ class StoryboardPanel extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             SingleChildScrollView(
+              key: const ValueKey<String>(
+                'storyboard-timeline-horizontal-viewport',
+              ),
               scrollDirection: Axis.horizontal,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,6 +157,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     List<StoryboardTimelineLayoutEntry> entries,
     TimelineScale scale,
   ) {
+    const trailingPadding = 12.0;
+
     if (entries.isEmpty) {
       return 0;
     }
@@ -164,7 +169,8 @@ class _StoryboardTrackRow extends StatelessWidget {
               scale.leftForFrame(entry.startFrame) +
               scale.widthForDuration(entry.duration),
         )
-        .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth);
+        .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth) +
+        trailingPadding;
   }
 }
 
