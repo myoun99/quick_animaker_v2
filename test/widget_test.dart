@@ -2342,4 +2342,71 @@ Line 8''';
     );
     expect(find.text('Cell: Drawing start + Mark ●'), findsOneWidget);
   });
+
+testWidgets('Duplicate Layer button duplicates active layer and selects copy', (
+  WidgetTester tester,
+) async {
+  await tester.pumpWidget(const QuickAnimakerApp());
+
+  final duplicateButton = find.byKey(
+    const ValueKey<String>('duplicate-layer-button'),
+  );
+  expect(duplicateButton, findsOneWidget);
+  expect(
+    _isActionButtonEnabled(
+      tester,
+      const ValueKey<String>('duplicate-layer-button'),
+    ),
+    isTrue,
+  );
+
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('duplicate-layer-button'),
+  );
+
+  expect(find.text('B'), findsWidgets);
+  expect(
+    find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      matching: find.text('B'),
+    ),
+    findsOneWidget,
+  );
+});
+
+testWidgets('duplicated layer can be renamed and deleted', (
+  WidgetTester tester,
+) async {
+  await tester.pumpWidget(const QuickAnimakerApp());
+
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('duplicate-layer-button'),
+  );
+  await _tapToolbarButton(tester, const ValueKey<String>('rename-layer-button'));
+  await tester.enterText(
+    find.byKey(const ValueKey<String>('rename-layer-text-field')),
+    'Dup',
+  );
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('rename-layer-ok-button'),
+  );
+
+  expect(find.text('Dup'), findsWidgets);
+
+  await _tapToolbarButton(tester, const ValueKey<String>('delete-layer-button'));
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('delete-layer-confirm-button'),
+  );
+
+  expect(find.text('Dup'), findsNothing);
+});
+
 }

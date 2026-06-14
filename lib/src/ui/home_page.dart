@@ -409,6 +409,21 @@ class _HomePageState extends State<HomePage> {
     return previousActiveLayerId;
   }
 
+  void _duplicateActiveLayer() {
+    final activeLayer = _activeLayer;
+    if (activeLayer == null) {
+      return;
+    }
+
+    setState(() {
+      final duplicatedLayerId = _cutCommandCoordinator.duplicateLayer(
+        cutId: _editingSession.activeCutId,
+        sourceLayerId: activeLayer.id,
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
+    });
+  }
+
   Future<void> _deleteActiveLayer() async {
     final activeLayer = _activeLayer;
     if (activeLayer == null || !_canDeleteActiveLayer) {
@@ -1009,6 +1024,15 @@ class _HomePageState extends State<HomePage> {
                     tooltip: 'Rename Layer',
                     icon: Icons.drive_file_rename_outline,
                     onPressed: _activeLayer == null ? null : _renameActiveLayer,
+                  ),
+                  const SizedBox(width: 8),
+                  _timelineActionIconButton(
+                    key: const ValueKey<String>('duplicate-layer-button'),
+                    tooltip: 'Duplicate Layer',
+                    icon: Icons.copy_outlined,
+                    onPressed: _activeLayer == null
+                        ? null
+                        : _duplicateActiveLayer,
                   ),
                   const SizedBox(width: 8),
                   _timelineActionIconButton(

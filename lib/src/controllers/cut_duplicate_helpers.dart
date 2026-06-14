@@ -4,6 +4,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
 import '../models/stroke.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_exposure_type.dart';
@@ -47,22 +48,37 @@ Layer _duplicateLayer({
     );
   }
 
+  return duplicateLayerAsIndependentCopy(
+    source: layer,
+    newLayerId: newLayerId,
+    newName: layer.name,
+    frameIdMap: frameIdMap,
+  );
+}
+
+Layer duplicateLayerAsIndependentCopy({
+  required Layer source,
+  required LayerId newLayerId,
+  required String newName,
+  required Map<FrameId, FrameId> frameIdMap,
+  LayerKind? kind,
+}) {
   return Layer(
     id: newLayerId,
-    name: layer.name,
-    frames: layer.frames
+    name: newName,
+    frames: source.frames
         .map((frame) => _duplicateFrame(frame: frame, frameIdMap: frameIdMap))
         .toList(),
-    timeline: layer.timeline.map(
+    timeline: source.timeline.map(
       (index, exposure) => MapEntry(
         index,
         _duplicateTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
       ),
     ),
-    marks: layer.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
-    isVisible: layer.isVisible,
-    opacity: layer.opacity,
-    kind: layer.kind,
+    marks: source.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
+    isVisible: source.isVisible,
+    opacity: source.opacity,
+    kind: kind ?? source.kind,
   );
 }
 

@@ -1,3 +1,5 @@
+import '../../controllers/cut_duplicate_helpers.dart';
+import '../../controllers/default_layer_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -16,6 +18,7 @@ import 'create_cut_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
+import 'duplicate_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'update_cut_note_command.dart';
@@ -119,6 +122,46 @@ class CutCommandCoordinator {
         layerId: layerId,
       ),
     );
+  }
+
+  LayerId duplicateLayer({
+    required CutId cutId,
+    required LayerId sourceLayerId,
+  }) {
+    final project = repository.requireProject();
+    final cut = _requireCut(cutId);
+    final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
+    final sourceIndex = cut.layers.indexWhere(
+      (layer) => layer.id == sourceLayerId,
+    );
+    if (sourceIndex == -1) {
+      throw StateError('Layer not found in cut $cutId: $sourceLayerId');
+    }
+
+    final plan = planDuplicateLayerCommandInput(
+      project: project,
+      sourceLayer: sourceLayer,
+    );
+    final duplicatedLayer = duplicateLayerAsIndependentCopy(
+      source: sourceLayer,
+      newLayerId: plan.newLayerId,
+      newName: nextCelLayerNameForCut(cut),
+      frameIdMap: plan.frameIdMap,
+      kind: sourceLayer.kind == LayerKind.storyboard
+          ? LayerKind.animation
+          : sourceLayer.kind,
+    );
+
+    historyManager.execute(
+      DuplicateLayerCommand(
+        repository: repository,
+        cutId: cutId,
+        layer: duplicatedLayer,
+        insertionIndex: sourceIndex + 1,
+      ),
+    );
+
+    return duplicatedLayer.id;
   }
 
   void updateLayerKind({
