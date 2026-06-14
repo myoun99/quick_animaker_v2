@@ -26,16 +26,6 @@ class DeleteLastCutReplacementInputPlan {
   final LayerId replacementLayerId;
 }
 
-class DuplicateLayerCommandInputPlan {
-  DuplicateLayerCommandInputPlan({
-    required this.newLayerId,
-    required Map<FrameId, FrameId> frameIdMap,
-  }) : frameIdMap = Map.unmodifiable(frameIdMap);
-
-  final LayerId newLayerId;
-  final Map<FrameId, FrameId> frameIdMap;
-}
-
 class PasteLayerCommandInputPlan {
   PasteLayerCommandInputPlan({
     required this.newLayerId,
@@ -132,45 +122,6 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   return DuplicateCutCommandInputPlan(
     newCutId: newCutId,
     layerIdMap: layerIdMap,
-    frameIdMap: frameIdMap,
-  );
-}
-
-DuplicateLayerCommandInputPlan planDuplicateLayerCommandInput({
-  required Project project,
-  required Layer sourceLayer,
-}) {
-  final ids = _ProjectIdSnapshot.fromProject(project);
-
-  final newLayerId = LayerId(
-    _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-  );
-  ids.layerIds.add(newLayerId.value);
-
-  final frameIdMap = <FrameId, FrameId>{};
-  for (final frame in sourceLayer.frames) {
-    frameIdMap.putIfAbsent(frame.id, () {
-      final id = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(id.value);
-      return id;
-    });
-  }
-  for (final exposure in sourceLayer.timeline.values) {
-    final frameId = exposure.frameId;
-    if (frameId == null) continue;
-    frameIdMap.putIfAbsent(frameId, () {
-      final id = FrameId(
-        _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
-      );
-      ids.frameIds.add(id.value);
-      return id;
-    });
-  }
-
-  return DuplicateLayerCommandInputPlan(
-    newLayerId: newLayerId,
     frameIdMap: frameIdMap,
   );
 }
