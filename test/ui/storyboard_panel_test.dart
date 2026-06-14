@@ -271,6 +271,42 @@ void main() {
     expect(longSize.width, greaterThan(shortSize.width));
   });
 
+  testWidgets('compact cut blocks keep content vertically overflow-safe', (
+    tester,
+  ) async {
+    await _pumpPanel(
+      tester,
+      _project(
+        storyboardLayer: _layer(
+          kind: LayerKind.storyboard,
+          name: 'Storyboard Layer With A Long Name',
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-title-cut-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('building the panel does not mutate the project', (tester) async {
     final project = _project(
       storyboardLayer: _layer(kind: LayerKind.storyboard, name: 'Storyboard'),

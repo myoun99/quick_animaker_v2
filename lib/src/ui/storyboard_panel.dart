@@ -191,22 +191,27 @@ class _StoryboardCutBlock extends StatelessWidget {
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
       width: width,
       isActive: isActive,
+      minHeight: 0,
+      padding: const EdgeInsets.all(4),
       onTap: isActive ? null : () => onSelected(cut.id),
       child: Stack(
         children: [
           Column(
+            mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
                 padding: EdgeInsets.only(right: isActive ? 48 : 0),
                 child: Text(
                   cut.name,
                   key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Row(
                 children: [
                   Text(
@@ -217,6 +222,7 @@ class _StoryboardCutBlock extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     softWrap: false,
+                    style: Theme.of(context).textTheme.labelSmall,
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -235,39 +241,53 @@ class _StoryboardCutBlock extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              if (storyboardLayer == null)
-                Text(
-                  'No Storyboard Layer',
-                  key: ValueKey<String>(
-                    'storyboard-layer-empty-${cut.id.value}',
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                )
-              else
-                Container(
-                  key: ValueKey<String>(
-                    'storyboard-layer-strip-${cut.id.value}',
-                  ),
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    storyboardLayer.name,
-                    key: ValueKey<String>(
-                      'storyboard-layer-name-${cut.id.value}',
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: colorScheme.onPrimaryContainer),
-                  ),
-                ),
+              const SizedBox(height: 1),
+              Expanded(
+                child: storyboardLayer == null
+                    ? ClipRect(
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            'No Storyboard Layer',
+                            key: ValueKey<String>(
+                              'storyboard-layer-empty-${cut.id.value}',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      )
+                    : Container(
+                        key: ValueKey<String>(
+                          'storyboard-layer-strip-${cut.id.value}',
+                        ),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        alignment: Alignment.centerLeft,
+                        child: ClipRect(
+                          child: Text(
+                            storyboardLayer.name,
+                            key: ValueKey<String>(
+                              'storyboard-layer-name-${cut.id.value}',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                          ),
+                        ),
+                      ),
+              ),
             ],
           ),
           if (isActive)
