@@ -273,6 +273,305 @@ Do not implement these in the first Storyboard Panel phases:
 * section UI
 * vertical timesheet redesign
 * action/dialogue editor before basic panel shell exists
+## Storyboard export flattening policy
+
+The Storyboard Panel and Storyboard Export should be treated as related but separate concepts.
+
+The Storyboard Panel is a multi-track editing view.
+
+Storyboard Export is a flattened ordered output for storyboard sheets, PDF export, image export, or print.
+
+In other words:
+
+```text
+Storyboard Panel
+= multi-track editing timeline
+
+Storyboard Export
+= ordered storyboard sheet output
+```
+
+## Why export needs flattening
+
+The Storyboard Panel may show multiple project-level tracks such as:
+
+```text
+V1
+V2
+V3
+```
+
+These tracks are useful for editing, alternatives, references, revisions, temporary cuts, and future professional video-editing workflows.
+
+However, a storyboard sheet is usually read in a single ordered sequence:
+
+```text
+Cut 001
+Cut 002
+Cut 003
+Cut 004
+...
+```
+
+Therefore, export should not simply print every timeline track as-is.
+
+Export needs a flattening policy that converts the multi-track project timeline into an ordered storyboard output list.
+
+## Default export mode: Primary Track
+
+The default and safest storyboard export mode should be Primary Track export.
+
+For the initial implementation:
+
+```text
+V1 = Primary storyboard output track
+```
+
+Only V1 should be exported by default.
+
+Example:
+
+```text
+V1: Cut A -> Cut B -> Cut C
+V2: Alt Cut B2 / reference / temporary idea
+V3: notes / other experiment
+```
+
+Default storyboard export result:
+
+```text
+001 Cut A
+002 Cut B
+003 Cut C
+```
+
+This matches the traditional storyboard sheet expectation.
+
+V2, V3, and later tracks should be treated as auxiliary tracks unless the user explicitly chooses another export mode.
+
+## Meaning of non-primary tracks
+
+In the early design, non-primary tracks should be considered optional/supporting tracks.
+
+They may be used for:
+
+* alternative cuts
+* revision candidates
+* reference timing
+* temporary editing ideas
+* comparison versions
+* director notes or planning material in future phases
+
+They should not automatically appear in the standard storyboard sheet export.
+
+This avoids accidental export of work-in-progress or alternate material.
+
+## Future export mode: Selected Tracks
+
+A future export option may allow selected tracks to be included.
+
+Example:
+
+```text
+Export tracks: V1 + V2
+```
+
+In this mode, the export plan should collect Cuts from the selected tracks and sort them into one ordered list.
+
+Recommended ordering rule:
+
+```text
+1. Earlier timeline start frame comes first.
+2. If two Cuts start at the same frame, lower track number comes first.
+   Example: V1 before V2, V2 before V3.
+3. If still tied, preserve original project order.
+```
+
+Example:
+
+```text
+V1: Cut A at 0f, Cut B at 24f
+V2: Cut X at 12f
+```
+
+Selected Tracks export result:
+
+```text
+001 Cut A
+002 Cut X
+003 Cut B
+```
+
+This mode should not be implemented until timeline placement, Cut timing, and project-level track behavior are stable.
+
+## Future export mode: Composite Output
+
+A later export mode may follow professional video-editing compositing behavior.
+
+In a composite-style output:
+
+```text
+higher video tracks override lower video tracks
+```
+
+Example:
+
+```text
+V2 appears above V1 at the same time range
+=> V2 has output priority
+```
+
+This may be useful for preview/movie-style output, but it is not the safest default for storyboard sheets.
+
+Storyboard sheets are usually about readable Cut order, not only final visible composited output.
+
+Therefore:
+
+```text
+Composite Output should be a later optional export mode.
+It should not be the default storyboard sheet export mode.
+```
+
+## StoryboardExportPlan
+
+Long term, export should be generated through a separate planning layer.
+
+Suggested concept:
+
+```text
+Project
+  -> StoryboardExportPlan
+    -> pages / rows / panels / PDF / image export
+```
+
+`StoryboardExportPlan` should be derived from the current Project data.
+
+It should not mutate the Project.
+
+It should not rewrite Project.tracks or Cut order.
+
+It should not create a new storyboard data model.
+
+The Project remains the editing state.
+
+The export plan is only a temporary output plan.
+
+Conceptually:
+
+```text
+Project.tracks
+= editing structure
+
+StoryboardExportPlan
+= output structure
+```
+
+## Recommended initial export behavior
+
+The first storyboard export implementation should use:
+
+```text
+Export mode: Primary Track
+Primary track: V1
+Output order: Cut order in V1
+```
+
+It should ignore V2/V3 by default.
+
+It should be simple, predictable, and close to traditional storyboard sheet behavior.
+
+## Cut numbering in export
+
+Export numbering should be calculated at export time.
+
+It should not require changing Cut names.
+
+Example project data:
+
+```text
+V1: Opening, Action, Reaction
+```
+
+Export result:
+
+```text
+001 Opening
+002 Action
+003 Reaction
+```
+
+If a future Selected Tracks export includes V2:
+
+```text
+V1: Opening at 0f, Reaction at 48f
+V2: Insert at 24f
+```
+
+Export result:
+
+```text
+001 Opening
+002 Insert
+003 Reaction
+```
+
+The numbering belongs to the export plan, not necessarily to the underlying Cut model.
+
+## Relationship with Storyboard Panel
+
+The Storyboard Panel should remain a multi-track timeline view.
+
+It may show:
+
+```text
+V1
+V2
+V3
+```
+
+with Cut blocks placed on each track.
+
+Storyboard Export should flatten that view into a readable sequence according to the selected export mode.
+
+Do not force the Storyboard Panel itself to become a single-track view just because storyboard sheets are single-order output.
+
+The panel and export serve different purposes:
+
+```text
+Panel:
+  editing, planning, comparing, arranging
+
+Export:
+  readable storyboard sheet output
+```
+
+## Early implementation warning
+
+Do not implement export logic during the first Storyboard Panel shell phases.
+
+The early Storyboard Panel phases should focus on:
+
+* showing the panel
+* showing V-style tracks
+* showing Cut blocks
+* showing Storyboard Layer presence inside Cut blocks
+
+Export should come later, after the panel model and timeline behavior are stable.
+
+## Policy summary
+
+Long-term policy:
+
+```text
+1. Storyboard Panel is multi-track.
+2. Storyboard Export is flattened.
+3. Default export uses V1 / Primary Track only.
+4. Selected Tracks export may be added later.
+5. Composite Output may be added much later as an optional mode.
+6. Export order should be calculated in StoryboardExportPlan.
+7. Export should not mutate Project data.
+8. Cut numbering for export should be generated at export time.
+```
 
 ## Design target
 
