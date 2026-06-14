@@ -63,27 +63,32 @@ void main() {
     expect(find.text('No Storyboard Layer'), findsOneWidget);
   });
 
-  testWidgets('shows storyboard strip and name when a storyboard layer exists', (
+  testWidgets(
+    'shows storyboard strip and name when a storyboard layer exists',
+    (tester) async {
+      await _pumpPanel(
+        tester,
+        _project(
+          storyboardLayer: _layer(kind: LayerKind.storyboard, name: 'SB'),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
+        findsOneWidget,
+      );
+      expect(find.text('SB'), findsOneWidget);
+      expect(find.text('No Storyboard Layer'), findsNothing);
+    },
+  );
+
+  testWidgets('cut block width roughly represents cut duration', (
     tester,
   ) async {
-    await _pumpPanel(
-      tester,
-      _project(storyboardLayer: _layer(kind: LayerKind.storyboard, name: 'SB')),
-    );
-
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
-      findsOneWidget,
-    );
-    expect(find.text('SB'), findsOneWidget);
-    expect(find.text('No Storyboard Layer'), findsNothing);
-  });
-
-  testWidgets('cut block width roughly represents cut duration', (tester) async {
     await _pumpPanel(tester, _twoCutProject());
 
     final shortSize = tester.getSize(
@@ -139,16 +144,12 @@ Project _project({required Layer? storyboardLayer}) {
             canvasSize: const CanvasSize(width: 1280, height: 720),
             layers: [
               _layer(kind: LayerKind.animation, name: 'A'),
-              if (storyboardLayer != null) storyboardLayer,
+              ?storyboardLayer,
             ],
           ),
         ],
       ),
-      Track(
-        id: const TrackId('track-b'),
-        name: 'Track B',
-        cuts: const [],
-      ),
+      Track(id: const TrackId('track-b'), name: 'Track B', cuts: const []),
     ],
   );
 }
@@ -193,7 +194,9 @@ Layer _layer({required LayerKind kind, required String name}) {
         id: FrameId('frame-$name'),
         duration: 1,
         strokes: const [],
-        storyboardMetadata: const StoryboardFrameMetadata(note: 'metadata kept'),
+        storyboardMetadata: const StoryboardFrameMetadata(
+          note: 'metadata kept',
+        ),
       ),
     ],
   );

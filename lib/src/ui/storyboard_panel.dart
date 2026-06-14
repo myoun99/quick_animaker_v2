@@ -105,10 +105,7 @@ class _StoryboardTrackRow extends StatelessWidget {
               for (final cut in track.cuts)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: _StoryboardCutBlock(
-                    cut: cut,
-                    width: cutWidthFor(cut),
-                  ),
+                  child: _StoryboardCutBlock(cut: cut, width: cutWidthFor(cut)),
                 ),
             ],
           ),
