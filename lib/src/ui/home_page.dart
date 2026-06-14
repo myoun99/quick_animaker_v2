@@ -26,6 +26,7 @@ import '../services/project_repository.dart';
 import 'canvas/canvas_view.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
+import 'storyboard_panel.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
@@ -1360,6 +1361,8 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          StoryboardPanel(project: _repository.requireProject()),
+          const SizedBox(height: 8),
           TimelinePanel(
             layers: _layerController.layers,
             activeLayerId: _layerController.activeLayerId,
