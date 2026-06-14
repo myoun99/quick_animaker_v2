@@ -85,34 +85,40 @@ void main() {
       );
       expect(duplicate.timeline.keys, source.timeline.keys);
       expect(duplicate.timeline[0]!.frameId, duplicate.frames.first.id);
-      expect(duplicate.timeline[0]!.frameId, isNot(source.timeline[0]!.frameId));
-    });
-
-    test('undo removes duplicate and redo restores same layer at same index', () {
-      final fixture = _fixture();
-      final duplicateId = fixture.coordinator.duplicateLayer(
-        cutId: _cutId,
-        sourceLayerId: _layerBId,
+      expect(
+        duplicate.timeline[0]!.frameId,
+        isNot(source.timeline[0]!.frameId),
       );
-      final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
-
-      fixture.history.undo();
-      expect(_layerIds(fixture.repository, _cutId), [
-        _layerAId,
-        _layerBId,
-        _layerCId,
-      ]);
-
-      fixture.history.redo();
-      final layers = _cut(fixture.repository, _cutId).layers;
-      expect(layers.map((layer) => layer.id), [
-        _layerAId,
-        _layerBId,
-        duplicateId,
-        _layerCId,
-      ]);
-      expect(layers[2], duplicate);
     });
+
+    test(
+      'undo removes duplicate and redo restores same layer at same index',
+      () {
+        final fixture = _fixture();
+        final duplicateId = fixture.coordinator.duplicateLayer(
+          cutId: _cutId,
+          sourceLayerId: _layerBId,
+        );
+        final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
+
+        fixture.history.undo();
+        expect(_layerIds(fixture.repository, _cutId), [
+          _layerAId,
+          _layerBId,
+          _layerCId,
+        ]);
+
+        fixture.history.redo();
+        final layers = _cut(fixture.repository, _cutId).layers;
+        expect(layers.map((layer) => layer.id), [
+          _layerAId,
+          _layerBId,
+          duplicateId,
+          _layerCId,
+        ]);
+        expect(layers[2], duplicate);
+      },
+    );
 
     test('duplicating one Cut does not affect another Cut', () {
       final fixture = _fixture();
@@ -125,34 +131,37 @@ void main() {
       expect(_layerNames(fixture.repository, _otherCutId), ['Other A']);
     });
 
-    test('Animation duplicates as Animation and Storyboard duplicates as Animation', () {
-      final fixture = _fixture();
+    test(
+      'Animation duplicates as Animation and Storyboard duplicates as Animation',
+      () {
+        final fixture = _fixture();
 
-      final animationDuplicateId = fixture.coordinator.duplicateLayer(
-        cutId: _cutId,
-        sourceLayerId: _layerAId,
-      );
-      final storyboardDuplicateId = fixture.coordinator.duplicateLayer(
-        cutId: _cutId,
-        sourceLayerId: _layerBId,
-      );
+        final animationDuplicateId = fixture.coordinator.duplicateLayer(
+          cutId: _cutId,
+          sourceLayerId: _layerAId,
+        );
+        final storyboardDuplicateId = fixture.coordinator.duplicateLayer(
+          cutId: _cutId,
+          sourceLayerId: _layerBId,
+        );
 
-      expect(
-        _layerById(fixture.repository, _cutId, animationDuplicateId).kind,
-        LayerKind.animation,
-      );
-      expect(
-        _layerById(fixture.repository, _cutId, storyboardDuplicateId).kind,
-        LayerKind.animation,
-      );
-      expect(
-        _cut(fixture.repository, _cutId)
-            .layers
-            .where((layer) => layer.kind == LayerKind.storyboard)
-            .length,
-        1,
-      );
-    });
+        expect(
+          _layerById(fixture.repository, _cutId, animationDuplicateId).kind,
+          LayerKind.animation,
+        );
+        expect(
+          _layerById(fixture.repository, _cutId, storyboardDuplicateId).kind,
+          LayerKind.animation,
+        );
+        expect(
+          _cut(
+            fixture.repository,
+            _cutId,
+          ).layers.where((layer) => layer.kind == LayerKind.storyboard).length,
+          1,
+        );
+      },
+    );
   });
 }
 
