@@ -1,6 +1,7 @@
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 
@@ -19,6 +20,16 @@ class DeleteLastCutReplacementInputPlan {
 
   final CutId replacementCutId;
   final LayerId replacementLayerId;
+}
+
+class DuplicateLayerCommandInputPlan {
+  DuplicateLayerCommandInputPlan({
+    required this.newLayerId,
+    required Map<FrameId, FrameId> frameIdMap,
+  }) : frameIdMap = Map.unmodifiable(frameIdMap);
+
+  final LayerId newLayerId;
+  final Map<FrameId, FrameId> frameIdMap;
 }
 
 class DuplicateCutCommandInputPlan {
@@ -103,6 +114,47 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   return DuplicateCutCommandInputPlan(
     newCutId: newCutId,
     layerIdMap: layerIdMap,
+    frameIdMap: frameIdMap,
+  );
+}
+
+DuplicateLayerCommandInputPlan planDuplicateLayerCommandInput({
+  required Project project,
+  required Layer sourceLayer,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+
+  final newLayerId = LayerId(
+    _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+  );
+  ids.layerIds.add(newLayerId.value);
+
+  final frameIdMap = <FrameId, FrameId>{};
+  for (final frame in sourceLayer.frames) {
+    if (frameIdMap.containsKey(frame.id)) {
+      continue;
+    }
+    final newFrameId = FrameId(
+      _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+    );
+    ids.frameIds.add(newFrameId.value);
+    frameIdMap[frame.id] = newFrameId;
+  }
+
+  for (final exposure in sourceLayer.timeline.values) {
+    final frameId = exposure.frameId;
+    if (frameId == null || frameIdMap.containsKey(frameId)) {
+      continue;
+    }
+    final newFrameId = FrameId(
+      _firstAvailableId(prefix: 'frame', usedIds: ids.frameIds),
+    );
+    ids.frameIds.add(newFrameId.value);
+    frameIdMap[frameId] = newFrameId;
+  }
+
+  return DuplicateLayerCommandInputPlan(
+    newLayerId: newLayerId,
     frameIdMap: frameIdMap,
   );
 }
