@@ -214,9 +214,12 @@ class _StoryboardCutBlock extends StatelessWidget {
                     key: ValueKey<String>(
                       'storyboard-cut-duration-${cut.id.value}',
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
                   ),
                   const SizedBox(width: 4),
-                  Flexible(
+                  Expanded(
                     child: Text(
                       '${layoutEntry.startFrame}f - ${layoutEntry.endFrame}f',
                       key: ValueKey<String>(
@@ -224,6 +227,7 @@ class _StoryboardCutBlock extends StatelessWidget {
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      softWrap: false,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
