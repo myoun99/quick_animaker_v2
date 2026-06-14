@@ -65,7 +65,7 @@ class StoryboardPanel extends StatelessWidget {
                       trackLabel: 'V${index + 1}',
                       activeCutId: activeCutId,
                       onCutSelected: onCutSelected,
-                      cutWidthFor: _cutWidthFor,
+                      timelineScale: _timelineScale,
                     ),
                 ],
               ),
@@ -74,10 +74,6 @@ class StoryboardPanel extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static double _cutWidthFor(Cut cut) {
-    return _timelineScale.widthForDuration(cut.duration);
   }
 }
 
@@ -88,7 +84,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.trackLabel,
     required this.activeCutId,
     required this.onCutSelected,
-    required this.cutWidthFor,
+    required this.timelineScale,
   });
 
   final Track track;
@@ -96,10 +92,12 @@ class _StoryboardTrackRow extends StatelessWidget {
   final String trackLabel;
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
-  final double Function(Cut cut) cutWidthFor;
+  final TimelineScale timelineScale;
 
   @override
   Widget build(BuildContext context) {
+    final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
+
     return Padding(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
       padding: const EdgeInsets.only(bottom: 4),
@@ -120,23 +118,53 @@ class _StoryboardTrackRow extends StatelessWidget {
               ),
             ),
           ),
-          Row(
-            children: [
-              for (final entry in layoutEntries)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: _StoryboardCutBlock(
-                    layoutEntry: entry,
-                    width: cutWidthFor(entry.cut),
-                    isActive: entry.cutId == activeCutId,
-                    onSelected: onCutSelected,
+          SizedBox(
+            key: ValueKey<String>(
+              'storyboard-track-timeline-area-${track.id.value}',
+            ),
+            width: timelineWidth,
+            height: 64,
+            child: Stack(
+              children: [
+                for (final entry in layoutEntries)
+                  Positioned(
+                    key: ValueKey<String>(
+                      'storyboard-cut-positioned-${entry.cutId.value}',
+                    ),
+                    left: timelineScale.leftForFrame(entry.startFrame),
+                    width: timelineScale.widthForDuration(entry.duration),
+                    top: 0,
+                    bottom: 0,
+                    child: _StoryboardCutBlock(
+                      layoutEntry: entry,
+                      width: timelineScale.widthForDuration(entry.duration),
+                      isActive: entry.cutId == activeCutId,
+                      onSelected: onCutSelected,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  double _timelineWidthFor(
+    List<StoryboardTimelineLayoutEntry> entries,
+    TimelineScale scale,
+  ) {
+    if (entries.isEmpty) {
+      return 0;
+    }
+
+    return entries
+        .map(
+          (entry) =>
+              scale.leftForFrame(entry.startFrame) +
+              scale.widthForDuration(entry.duration),
+        )
+        .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth);
   }
 }
 
