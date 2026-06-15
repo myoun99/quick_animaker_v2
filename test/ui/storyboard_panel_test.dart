@@ -109,33 +109,42 @@ void main() {
   ) async {
     await _pumpPanel(tester, _project(storyboardLayer: null));
 
-    final trackALabelTop = tester
-        .getTopLeft(
-          find.byKey(const ValueKey<String>('storyboard-track-label-track-a')),
-        )
-        .dy;
-    final trackAAreaTop = tester
-        .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('storyboard-track-timeline-area-track-a'),
-          ),
-        )
-        .dy;
-    final trackBLabelTop = tester
-        .getTopLeft(
-          find.byKey(const ValueKey<String>('storyboard-track-label-track-b')),
-        )
-        .dy;
-    final trackBAreaTop = tester
-        .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('storyboard-track-timeline-area-track-b'),
-          ),
-        )
-        .dy;
+    final trackALabelRowFinder = find.byKey(
+      const ValueKey<String>('storyboard-track-label-row-track-a'),
+    );
+    final trackAAreaFinder = find.byKey(
+      const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+    );
+    final trackBLabelRowFinder = find.byKey(
+      const ValueKey<String>('storyboard-track-label-row-track-b'),
+    );
+    final trackBAreaFinder = find.byKey(
+      const ValueKey<String>('storyboard-track-timeline-area-track-b'),
+    );
 
-    expect(trackALabelTop, trackAAreaTop);
-    expect(trackBLabelTop, trackBAreaTop);
+    final trackALabelRowTop = tester
+        .getTopLeft(
+          trackALabelRowFinder,
+        )
+        .dy;
+    final trackAAreaTop = tester.getTopLeft(trackAAreaFinder).dy;
+    final trackBLabelRowTop = tester
+        .getTopLeft(
+          trackBLabelRowFinder,
+        )
+        .dy;
+    final trackBAreaTop = tester.getTopLeft(trackBAreaFinder).dy;
+
+    expect(trackALabelRowTop, trackAAreaTop);
+    expect(trackBLabelRowTop, trackBAreaTop);
+    expect(
+      tester.getSize(trackALabelRowFinder).height,
+      tester.getSize(trackAAreaFinder).height,
+    );
+    expect(
+      tester.getSize(trackBLabelRowFinder).height,
+      tester.getSize(trackBAreaFinder).height,
+    );
   });
 
   testWidgets('cuts are wrapped in positioned timeline entries', (
