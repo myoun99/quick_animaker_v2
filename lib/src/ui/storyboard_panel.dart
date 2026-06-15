@@ -164,12 +164,14 @@ class _StoryboardTrackRow extends StatelessWidget {
     }
 
     return entries
-        .map(
-          (entry) =>
-              scale.leftForFrame(entry.startFrame) +
-              scale.widthForDuration(entry.duration),
-        )
-        .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth) +
+            .map(
+              (entry) =>
+                  scale.leftForFrame(entry.startFrame) +
+                  scale.widthForDuration(entry.duration),
+            )
+            .reduce(
+              (width, nextWidth) => width > nextWidth ? width : nextWidth,
+            ) +
         trailingPadding;
   }
 }
