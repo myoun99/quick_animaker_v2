@@ -43,6 +43,12 @@ void main() {
 
     expect(
       find.byKey(
+        const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
         const ValueKey<String>('storyboard-track-timeline-area-track-a'),
       ),
       findsOneWidget,
@@ -74,6 +80,42 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('long sequential cut timeline pumps inside horizontal viewport', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _longSequentialCutProject());
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-track-long'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-01')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-01')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-08')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-08')),
       findsOneWidget,
     );
   });
@@ -393,6 +435,30 @@ Project _twoCutProject() {
             canvasSize: const CanvasSize(width: 1280, height: 720),
             layers: [_layer(kind: LayerKind.animation, name: 'A')],
           ),
+        ],
+      ),
+    ],
+  );
+}
+
+Project _longSequentialCutProject() {
+  return Project(
+    id: const ProjectId('project-long'),
+    name: 'Project Long',
+    createdAt: DateTime.utc(2026, 6, 14),
+    tracks: [
+      Track(
+        id: const TrackId('track-long'),
+        name: 'Track Long',
+        cuts: [
+          for (var index = 1; index <= 8; index++)
+            Cut(
+              id: CutId('cut-${index.toString().padLeft(2, '0')}'),
+              name: 'Cut ${index.toString().padLeft(2, '0')}',
+              duration: 48,
+              canvasSize: const CanvasSize(width: 1280, height: 720),
+              layers: [_layer(kind: LayerKind.animation, name: 'A$index')],
+            ),
         ],
       ),
     ],
