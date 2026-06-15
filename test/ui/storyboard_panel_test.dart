@@ -42,9 +42,27 @@ void main() {
     await _pumpPanel(tester, _project(storyboardLayer: null));
 
     expect(
+      find.byKey(const ValueKey<String>('storyboard-track-label-rail')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(
         const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
       ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-timeline-scroll-content'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-track-row-track-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-track-row-track-b')),
       findsOneWidget,
     );
     expect(
@@ -59,6 +77,65 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('track labels stay outside horizontal scroll content', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+
+    final trackLabel = find.byKey(
+      const ValueKey<String>('storyboard-track-label-track-a'),
+    );
+    final labelRail = find.byKey(
+      const ValueKey<String>('storyboard-track-label-rail'),
+    );
+    final scrollContent = find.byKey(
+      const ValueKey<String>('storyboard-timeline-scroll-content'),
+    );
+
+    expect(
+      find.descendant(of: labelRail, matching: trackLabel),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: scrollContent, matching: trackLabel),
+      findsNothing,
+    );
+  });
+
+  testWidgets('track labels and timeline lanes stay vertically aligned', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+
+    final trackALabelTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('storyboard-track-label-track-a')),
+        )
+        .dy;
+    final trackAAreaTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+          ),
+        )
+        .dy;
+    final trackBLabelTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('storyboard-track-label-track-b')),
+        )
+        .dy;
+    final trackBAreaTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-track-timeline-area-track-b'),
+          ),
+        )
+        .dy;
+
+    expect(trackALabelTop, trackAAreaTop);
+    expect(trackBLabelTop, trackBAreaTop);
   });
 
   testWidgets('cuts are wrapped in positioned timeline entries', (

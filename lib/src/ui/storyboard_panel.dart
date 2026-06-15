@@ -20,6 +20,8 @@ class StoryboardPanel extends StatelessWidget {
 
   static const TimelineScale _timelineScale = TimelineScale();
   static const double _trackLabelWidth = 56;
+  static const double _trackLaneHeight = 64;
+  static const double _trackRowBottomPadding = 4;
 
   final Project project;
   final CutId activeCutId;
@@ -51,29 +53,91 @@ class StoryboardPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            SingleChildScrollView(
-              key: const ValueKey<String>(
-                'storyboard-timeline-horizontal-viewport',
-              ),
-              scrollDirection: Axis.horizontal,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var index = 0; index < project.tracks.length; index++)
-                    _StoryboardTrackRow(
-                      track: project.tracks[index],
-                      layoutEntries: layoutEntries
-                          .where((entry) => entry.trackIndex == index)
-                          .toList(growable: false),
-                      trackLabel: 'V${index + 1}',
-                      activeCutId: activeCutId,
-                      onCutSelected: onCutSelected,
-                      timelineScale: _timelineScale,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  key: const ValueKey<String>('storyboard-track-label-rail'),
+                  width: _trackLabelWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (
+                        var index = 0;
+                        index < project.tracks.length;
+                        index++
+                      )
+                        _StoryboardTrackLabel(
+                          track: project.tracks[index],
+                          trackLabel: 'V${index + 1}',
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    key: const ValueKey<String>(
+                      'storyboard-timeline-horizontal-viewport',
                     ),
-                ],
-              ),
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      key: const ValueKey<String>(
+                        'storyboard-timeline-scroll-content',
+                      ),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (
+                          var index = 0;
+                          index < project.tracks.length;
+                          index++
+                        )
+                          _StoryboardTrackRow(
+                            track: project.tracks[index],
+                            layoutEntries: layoutEntries
+                                .where((entry) => entry.trackIndex == index)
+                                .toList(growable: false),
+                            activeCutId: activeCutId,
+                            onCutSelected: onCutSelected,
+                            timelineScale: _timelineScale,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StoryboardTrackLabel extends StatelessWidget {
+  const _StoryboardTrackLabel({required this.track, required this.trackLabel});
+
+  final Track track;
+  final String trackLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: StoryboardPanel._trackRowBottomPadding,
+      ),
+      child: SizedBox(
+        width: StoryboardPanel._trackLabelWidth,
+        height: StoryboardPanel._trackLaneHeight,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            trackLabel,
+            key: ValueKey<String>('storyboard-track-label-${track.id.value}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
@@ -84,7 +148,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
     required this.layoutEntries,
-    required this.trackLabel,
     required this.activeCutId,
     required this.onCutSelected,
     required this.timelineScale,
@@ -92,7 +155,6 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
-  final String trackLabel;
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
   final TimelineScale timelineScale;
@@ -103,52 +165,35 @@ class _StoryboardTrackRow extends StatelessWidget {
 
     return Padding(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: StoryboardPanel._trackLabelWidth,
-            height: 64,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                trackLabel,
+      padding: const EdgeInsets.only(
+        bottom: StoryboardPanel._trackRowBottomPadding,
+      ),
+      child: SizedBox(
+        key: ValueKey<String>(
+          'storyboard-track-timeline-area-${track.id.value}',
+        ),
+        width: timelineWidth,
+        height: StoryboardPanel._trackLaneHeight,
+        child: Stack(
+          children: [
+            for (final entry in layoutEntries)
+              Positioned(
                 key: ValueKey<String>(
-                  'storyboard-track-label-${track.id.value}',
+                  'storyboard-cut-positioned-${entry.cutId.value}',
                 ),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                left: timelineScale.leftForFrame(entry.startFrame),
+                width: timelineScale.widthForDuration(entry.duration),
+                top: 0,
+                bottom: 0,
+                child: _StoryboardCutBlock(
+                  layoutEntry: entry,
+                  width: timelineScale.widthForDuration(entry.duration),
+                  isActive: entry.cutId == activeCutId,
+                  onSelected: onCutSelected,
+                ),
               ),
-            ),
-          ),
-          SizedBox(
-            key: ValueKey<String>(
-              'storyboard-track-timeline-area-${track.id.value}',
-            ),
-            width: timelineWidth,
-            height: 64,
-            child: Stack(
-              children: [
-                for (final entry in layoutEntries)
-                  Positioned(
-                    key: ValueKey<String>(
-                      'storyboard-cut-positioned-${entry.cutId.value}',
-                    ),
-                    left: timelineScale.leftForFrame(entry.startFrame),
-                    width: timelineScale.widthForDuration(entry.duration),
-                    top: 0,
-                    bottom: 0,
-                    child: _StoryboardCutBlock(
-                      layoutEntry: entry,
-                      width: timelineScale.widthForDuration(entry.duration),
-                      isActive: entry.cutId == activeCutId,
-                      onSelected: onCutSelected,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
