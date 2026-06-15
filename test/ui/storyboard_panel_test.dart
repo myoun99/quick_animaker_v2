@@ -52,9 +52,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-timeline-scroll-content'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-timeline-scroll-content')),
       findsOneWidget,
     );
     expect(
@@ -122,17 +120,9 @@ void main() {
       const ValueKey<String>('storyboard-track-timeline-area-track-b'),
     );
 
-    final trackALabelRowTop = tester
-        .getTopLeft(
-          trackALabelRowFinder,
-        )
-        .dy;
+    final trackALabelRowTop = tester.getTopLeft(trackALabelRowFinder).dy;
     final trackAAreaTop = tester.getTopLeft(trackAAreaFinder).dy;
-    final trackBLabelRowTop = tester
-        .getTopLeft(
-          trackBLabelRowFinder,
-        )
-        .dy;
+    final trackBLabelRowTop = tester.getTopLeft(trackBLabelRowFinder).dy;
     final trackBAreaTop = tester.getTopLeft(trackBAreaFinder).dy;
 
     expect(trackALabelRowTop, trackAAreaTop);

@@ -126,9 +126,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
         bottom: StoryboardPanel._trackRowBottomPadding,
       ),
       child: SizedBox(
-        key: ValueKey<String>(
-          'storyboard-track-label-row-${track.id.value}',
-        ),
+        key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
         width: StoryboardPanel._trackLabelWidth,
         height: StoryboardPanel._trackLaneHeight,
         child: Align(
