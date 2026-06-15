@@ -34,6 +34,9 @@ myoun99/quick_animaker_v2
 기본 브랜치:
 master
 
+퍼포먼스 확인:
+Long-term performance and virtualization policy is documented in docs/LongTerm_Performance_Architecture.md. Future timeline-related phases must follow it.
+
 현재까지 진행 요약:
 
 Phase 69:
