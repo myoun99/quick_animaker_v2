@@ -7,12 +7,13 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_panel_virtualization_adapter.dart';
-import 'timeline_playhead.dart';
 import 'timeline_block.dart';
+import 'timeline_playhead.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -1127,6 +1128,13 @@ class _FrameCellsRow extends StatelessWidget {
             selected: active && frameIndex == currentFrameIndex,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
             exposureState: exposureStateForLayer(layer, frameIndex),
+            exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
+              previous: frameIndex == 0
+                  ? null
+                  : exposureStateForLayer(layer, frameIndex - 1),
+              current: exposureStateForLayer(layer, frameIndex),
+              next: exposureStateForLayer(layer, frameIndex + 1),
+            ),
             hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
             frameName: frameNameForLayer?.call(layer, frameIndex),
             onSelectLayer: onSelectLayer,
@@ -1152,6 +1160,7 @@ class _TimelineCell extends StatelessWidget {
     required this.selected,
     required this.outsidePlaybackRange,
     required this.exposureState,
+    required this.exposureBlockSegment,
     required this.hasMark,
     this.frameName,
     required this.onSelectLayer,
@@ -1164,6 +1173,7 @@ class _TimelineCell extends StatelessWidget {
   final bool selected;
   final bool outsidePlaybackRange;
   final TimelineCellExposureState exposureState;
+  final TimelineExposureBlockVisualSegment exposureBlockSegment;
   final bool hasMark;
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
@@ -1189,7 +1199,7 @@ class _TimelineCell extends StatelessWidget {
         width: LayerTimelineGrid._metrics.frameCellWidth,
         height: LayerTimelineGrid._metrics.layerRowHeight,
         alignment: Alignment.center,
-        decoration: timelineBlockDecoration(
+        decoration: _timelineCellDecoration(
           backgroundColor: outsidePlaybackRange
               ? Color.alphaBlend(
                   colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
@@ -1205,6 +1215,8 @@ class _TimelineCell extends StatelessWidget {
                 )
               : styleColors.border,
           borderWidth: selected ? 3 : 1,
+          exposureBlockSegment: exposureBlockSegment,
+          selected: selected,
         ),
         child: Semantics(
           key: selected
@@ -1237,6 +1249,48 @@ class _TimelineCell extends StatelessWidget {
       ),
     );
   }
+}
+
+BoxDecoration _timelineCellDecoration({
+  required Color backgroundColor,
+  required Color borderColor,
+  required double borderWidth,
+  required TimelineExposureBlockVisualSegment exposureBlockSegment,
+  required bool selected,
+}) {
+  const blockRadius = Radius.circular(6);
+  final isBlock = exposureBlockSegment.isBlock;
+  final borderSide = BorderSide(color: borderColor, width: borderWidth);
+  final hiddenInternalSide = BorderSide(
+    color: backgroundColor,
+    width: borderWidth,
+  );
+
+  return BoxDecoration(
+    color: backgroundColor,
+    border: selected
+        ? Border.all(color: borderColor, width: borderWidth)
+        : Border(
+            top: borderSide,
+            bottom: borderSide,
+            left: isBlock && exposureBlockSegment.continuesFromPrevious
+                ? hiddenInternalSide
+                : borderSide,
+            right: isBlock && exposureBlockSegment.continuesToNext
+                ? hiddenInternalSide
+                : borderSide,
+          ),
+    borderRadius: isBlock
+        ? BorderRadius.horizontal(
+            left: exposureBlockSegment.continuesFromPrevious
+                ? Radius.zero
+                : blockRadius,
+            right: exposureBlockSegment.continuesToNext
+                ? Radius.zero
+                : blockRadius,
+          )
+        : null,
+  );
 }
 
 String _markerForCell({

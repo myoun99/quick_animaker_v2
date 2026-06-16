@@ -612,9 +612,9 @@ void main() {
           _layer(id: 'layer-2', name: 'Layer 2', kind: LayerKind.storyboard),
         ],
       ),
-    );
+      );
 
-    final animationIcon = tester.widget<Icon>(
+      final animationIcon = tester.widget<Icon>(
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-1')),
     );
     final storyboardIcon = tester.widget<Icon>(
@@ -1429,6 +1429,104 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
   });
 
+  testWidgets(
+    'drawing exposure cells render as one connected visual block',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
+            0 => TimelineCellExposureState.drawingStart,
+            1 || 2 => TimelineCellExposureState.heldExposure,
+            _ => TimelineCellExposureState.empty,
+          },
+        ),
+      );
+
+      final startDecoration = _cellDecoration(
+        tester,
+        'timeline-cell-layer-1-0',
+      );
+      final middleDecoration = _cellDecoration(
+        tester,
+        'timeline-cell-layer-1-1',
+      );
+      final endDecoration = _cellDecoration(tester, 'timeline-cell-layer-1-2');
+      final emptyDecoration = _cellDecoration(
+        tester,
+        'timeline-cell-layer-1-3',
+      );
+
+      expect(
+        startDecoration.borderRadius,
+        const BorderRadius.horizontal(left: Radius.circular(6)),
+      );
+      expect(middleDecoration.borderRadius, BorderRadius.zero);
+      expect(
+        endDecoration.borderRadius,
+        const BorderRadius.horizontal(right: Radius.circular(6)),
+      );
+      expect(emptyDecoration.borderRadius, isNull);
+    },
+  );
+
+  testWidgets(
+    'blank exposure cells render as one connected visual block',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
+            4 => TimelineCellExposureState.blankStart,
+            5 || 6 => TimelineCellExposureState.blankHeld,
+            _ => TimelineCellExposureState.empty,
+          },
+        ),
+      );
+
+      expect(
+        _cellDecoration(tester, 'timeline-cell-layer-1-4').borderRadius,
+        const BorderRadius.horizontal(left: Radius.circular(6)),
+      );
+      expect(
+        _cellDecoration(tester, 'timeline-cell-layer-1-5').borderRadius,
+        BorderRadius.zero,
+      );
+      expect(
+        _cellDecoration(tester, 'timeline-cell-layer-1-6').borderRadius,
+        const BorderRadius.horizontal(right: Radius.circular(6)),
+      );
+    },
+  );
+
+  testWidgets(
+    'visible authored data outside playback still renders as a block',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          playbackFrameCount: 24,
+          exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
+            45 => TimelineCellExposureState.drawingStart,
+            46 => TimelineCellExposureState.heldExposure,
+            _ => TimelineCellExposureState.empty,
+          },
+        ),
+      );
+
+      await _scrollFrameGridUntilKeyVisible(
+        tester,
+        const ValueKey<String>('timeline-cell-layer-1-45'),
+      );
+
+      expect(
+        _cellDecoration(tester, 'timeline-cell-layer-1-45').borderRadius,
+        const BorderRadius.horizontal(left: Radius.circular(6)),
+      );
+      expect(
+        _cellDecoration(tester, 'timeline-cell-layer-1-46').borderRadius,
+        const BorderRadius.horizontal(right: Radius.circular(6)),
+      );
+    },
+  );
+
   test('cell style keeps drawing cells neutral and blank cells muted', () {
     const colorScheme = ColorScheme.light();
 
@@ -1476,6 +1574,12 @@ void main() {
     expect(selectedDrawing.border, Colors.red);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
+}
+
+BoxDecoration _cellDecoration(WidgetTester tester, String key) {
+  final inkWell = tester.widget<InkWell>(find.byKey(ValueKey<String>(key)));
+  final container = inkWell.child! as Container;
+  return container.decoration! as BoxDecoration;
 }
 
 Widget _grid({
