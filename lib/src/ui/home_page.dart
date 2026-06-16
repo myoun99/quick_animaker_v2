@@ -1432,7 +1432,7 @@ class _HomePageState extends State<HomePage> {
             Cut(
               id: _sampleCutId,
               name: 'Cut 1',
-              duration: 1,
+              duration: 24,
               canvasSize: const CanvasSize(width: 1280, height: 720),
               layers: [
                 Layer(
