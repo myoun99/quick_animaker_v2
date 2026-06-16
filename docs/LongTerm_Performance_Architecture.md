@@ -292,3 +292,5 @@ This foundation computes clamped visible frame and layer index ranges from scrol
 
 Phase 92 introduced a pure Dart `TimelineVirtualizationPlan` render plan foundation. It converts visible frame/layer ranges into leading/trailing spacer dimensions and total virtual content dimensions so future TimelinePanel virtualization can preserve scroll geometry while rendering only visible cells.
 
+
+Phase 94 separated `LayerTimelineGrid` into a fixed layer controls rail and a horizontal frame scroll area. This prepares the TimelinePanel for future horizontal frame virtualization by ensuring frame scroll geometry is independent from the layer controls column while frame headers and cells still render eagerly for now.

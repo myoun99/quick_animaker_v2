@@ -49,12 +49,13 @@ class LayerTimelineGrid extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          KeyedSubtree(
+            key: const ValueKey<String>('timeline-layer-controls-rail'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _HeaderCell(
                   width: _metrics.layerControlsWidth,
@@ -66,45 +67,76 @@ class LayerTimelineGrid extends StatelessWidget {
                     label: const Text('Layer'),
                   ),
                 ),
-                for (
-                  var frameIndex = 0;
-                  frameIndex < visibleFrameCount;
-                  frameIndex += 1
-                )
-                  _FrameHeader(
-                    frameIndex: frameIndex,
-                    selected: frameIndex == currentFrameIndex,
-                    onSelectFrame: onSelectFrame,
+                for (final layer in layers)
+                  _LayerControlsRow(
+                    layer: layer,
+                    active: layer.id == activeLayerId,
+                    onSelectLayer: onSelectLayer,
+                    onToggleLayerVisibility: onToggleLayerVisibility,
+                    onLayerOpacityChanged: onLayerOpacityChanged,
+                  ),
+                if (layers.isEmpty)
+                  SizedBox(
+                    width: _metrics.layerControlsWidth,
+                    height: _metrics.layerRowHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text(
+                        'No layers',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
                   ),
               ],
             ),
-            for (final layer in layers)
-              _LayerRow(
-                layer: layer,
-                active: layer.id == activeLayerId,
-                currentFrameIndex: currentFrameIndex,
-                visibleFrameCount: visibleFrameCount,
-                exposureStateForLayer: exposureStateForLayer,
-                hasMarkForLayer: hasMarkForLayer,
-                frameNameForLayer: frameNameForLayer,
-                onSelectLayer: onSelectLayer,
-                onSelectFrame: onSelectFrame,
-                onToggleLayerVisibility: onToggleLayerVisibility,
-                onLayerOpacityChanged: onLayerOpacityChanged,
-              ),
-            if (layers.isEmpty)
-              SizedBox(
-                height: _metrics.layerRowHeight,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    'No layers',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const ValueKey<String>('timeline-frame-scroll-viewport'),
+              scrollDirection: Axis.horizontal,
+              child: KeyedSubtree(
+                key: const ValueKey<String>('timeline-frame-scroll-content'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      key: const ValueKey<String>('timeline-frame-header-row'),
+                      children: [
+                        for (
+                          var frameIndex = 0;
+                          frameIndex < visibleFrameCount;
+                          frameIndex += 1
+                        )
+                          _FrameHeader(
+                            frameIndex: frameIndex,
+                            selected: frameIndex == currentFrameIndex,
+                            onSelectFrame: onSelectFrame,
+                          ),
+                      ],
+                    ),
+                    for (final layer in layers)
+                      _FrameCellsRow(
+                        layer: layer,
+                        active: layer.id == activeLayerId,
+                        currentFrameIndex: currentFrameIndex,
+                        visibleFrameCount: visibleFrameCount,
+                        exposureStateForLayer: exposureStateForLayer,
+                        hasMarkForLayer: hasMarkForLayer,
+                        frameNameForLayer: frameNameForLayer,
+                        onSelectLayer: onSelectLayer,
+                        onSelectFrame: onSelectFrame,
+                      ),
+                    if (layers.isEmpty)
+                      SizedBox(
+                        width: visibleFrameCount * _metrics.frameCellWidth,
+                        height: _metrics.layerRowHeight,
+                      ),
+                  ],
                 ),
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -124,8 +156,126 @@ String _semanticLabelForLayerKind(LayerKind kind) {
   };
 }
 
-class _LayerRow extends StatelessWidget {
-  const _LayerRow({
+class _LayerControlsRow extends StatelessWidget {
+  const _LayerControlsRow({
+    required this.layer,
+    required this.active,
+    required this.onSelectLayer,
+    required this.onToggleLayerVisibility,
+    required this.onLayerOpacityChanged,
+  });
+
+  final Layer layer;
+  final bool active;
+  final ValueChanged<LayerId> onSelectLayer;
+  final ValueChanged<LayerId> onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
+
+    return InkWell(
+      key: ValueKey<String>('timeline-layer-row-${layer.id}'),
+      onTap: () => onSelectLayer(layer.id),
+      child: Container(
+        width: LayerTimelineGrid._metrics.layerControlsWidth,
+        height: LayerTimelineGrid._metrics.layerRowHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: active ? activeColor : colorScheme.surface,
+          border: Border.all(
+            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Semantics(
+          key: active ? const ValueKey<String>('timeline-selected-layer') : null,
+          label: active ? 'selected layer' : 'layer',
+          container: true,
+          explicitChildNodes: true,
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                  onTap: () => onSelectLayer(layer.id),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Semantics(
+                          label: _semanticLabelForLayerKind(layer.kind),
+                          container: true,
+                          child: ExcludeSemantics(
+                            child: Icon(
+                              _iconForLayerKind(layer.kind),
+                              key: ValueKey<String>(
+                                'timeline-layer-kind-icon-${layer.id}',
+                              ),
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            layer.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: active ? FontWeight.bold : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
+                tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 32,
+                  height: 32,
+                ),
+                icon: Icon(
+                  layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                  size: 18,
+                ),
+                onPressed: () => onToggleLayerVisibility(layer.id),
+              ),
+              SizedBox(
+                width: 64,
+                child: Slider(
+                  key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
+                  min: 0,
+                  max: 1,
+                  value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                  onChanged: (opacity) =>
+                      onLayerOpacityChanged(layer.id, opacity),
+                ),
+              ),
+              SizedBox(
+                width: 34,
+                child: Text(
+                  '${(layer.opacity * 100).round()}%',
+                  textAlign: TextAlign.right,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FrameCellsRow extends StatelessWidget {
+  const _FrameCellsRow({
     required this.layer,
     required this.active,
     required this.currentFrameIndex,
@@ -135,8 +285,6 @@ class _LayerRow extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
-    required this.onToggleLayerVisibility,
-    required this.onLayerOpacityChanged,
   });
 
   final Layer layer;
@@ -149,119 +297,12 @@ class _LayerRow extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
-  final ValueChanged<LayerId> onToggleLayerVisibility;
-  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
-
     return Row(
+      key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
-        InkWell(
-          key: ValueKey<String>('timeline-layer-row-${layer.id}'),
-          onTap: () => onSelectLayer(layer.id),
-          child: Container(
-            width: LayerTimelineGrid._metrics.layerControlsWidth,
-            height: LayerTimelineGrid._metrics.layerRowHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: active ? activeColor : colorScheme.surface,
-              border: Border.all(
-                color: active
-                    ? colorScheme.secondary
-                    : colorScheme.outlineVariant,
-                width: active ? 2 : 1,
-              ),
-            ),
-            child: Semantics(
-              key: active
-                  ? const ValueKey<String>('timeline-selected-layer')
-                  : null,
-              label: active ? 'selected layer' : 'layer',
-              container: true,
-              explicitChildNodes: true,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                      onTap: () => onSelectLayer(layer.id),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          children: [
-                            Semantics(
-                              label: _semanticLabelForLayerKind(layer.kind),
-                              container: true,
-                              child: ExcludeSemantics(
-                                child: Icon(
-                                  _iconForLayerKind(layer.kind),
-                                  key: ValueKey<String>(
-                                    'timeline-layer-kind-icon-${layer.id}',
-                                  ),
-                                  size: 18,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                layer.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontWeight: active ? FontWeight.bold : null,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    key: ValueKey<String>(
-                      'timeline-layer-visibility-${layer.id}',
-                    ),
-                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 32,
-                      height: 32,
-                    ),
-                    icon: Icon(
-                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                      size: 18,
-                    ),
-                    onPressed: () => onToggleLayerVisibility(layer.id),
-                  ),
-                  SizedBox(
-                    width: 64,
-                    child: Slider(
-                      key: ValueKey<String>(
-                        'timeline-layer-opacity-${layer.id}',
-                      ),
-                      min: 0,
-                      max: 1,
-                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                      onChanged: (opacity) =>
-                          onLayerOpacityChanged(layer.id, opacity),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 34,
-                    child: Text(
-                      '${(layer.opacity * 100).round()}%',
-                      textAlign: TextAlign.right,
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
         for (
           var frameIndex = 0;
           frameIndex < visibleFrameCount;
