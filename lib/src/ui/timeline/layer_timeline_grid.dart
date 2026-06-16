@@ -208,69 +208,71 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         );
                                     final frameRange = plan.frameRange;
 
-                                    return GestureDetector(
+                                    return Listener(
                                       key: const ValueKey<String>(
                                         'timeline-frame-ruler-scrub-area',
                                       ),
                                       behavior: HitTestBehavior.translucent,
-                                      onTapDown: (details) {
+                                      onPointerDown: (event) {
                                         _resetRulerScrubTracking();
                                         _selectFrameFromRulerLocalX(
-                                          details.localPosition.dx,
+                                          event.localPosition.dx,
                                         );
                                       },
-                                      onHorizontalDragStart: (details) {
-                                        _resetRulerScrubTracking();
-                                        _selectFrameFromRulerLocalX(
-                                          details.localPosition.dx,
-                                        );
-                                      },
-                                      onHorizontalDragUpdate: (details) {
-                                        _selectFrameFromRulerLocalX(
-                                          details.localPosition.dx,
-                                        );
-                                      },
-                                      onHorizontalDragEnd: (_) =>
-                                          _resetRulerScrubTracking(),
-                                      onHorizontalDragCancel:
-                                          _resetRulerScrubTracking,
-                                      child: SizedBox(
-                                        width: viewportWidth,
-                                        height: headerHeight,
-                                        child: ClipRect(
-                                          child: OverflowBox(
-                                            alignment: Alignment.topLeft,
-                                            minWidth:
-                                                plan.totalFrameContentWidth,
-                                            maxWidth:
-                                                plan.totalFrameContentWidth,
-                                            minHeight: headerHeight,
-                                            maxHeight: headerHeight,
-                                            child: Transform.translate(
-                                              offset: Offset(
-                                                -_horizontalScrollOffset,
-                                                0,
-                                              ),
-                                              child: SizedBox(
-                                                width:
-                                                    plan.totalFrameContentWidth,
-                                                height: headerHeight,
-                                                child: TimelineFrameRuler(
-                                                  frameStartIndex:
-                                                      frameRange.startIndex,
-                                                  frameEndIndexExclusive:
-                                                      frameRange
-                                                          .endIndexExclusive,
-                                                  currentFrameIndex:
-                                                      widget.currentFrameIndex,
-                                                  leadingFrameSpacerWidth: plan
-                                                      .leadingFrameSpacerWidth,
-                                                  trailingFrameSpacerWidth: plan
-                                                      .trailingFrameSpacerWidth,
-                                                  metrics:
-                                                      LayerTimelineGrid._metrics,
-                                                  onSelectFrame:
-                                                      _selectClampedFrameFromRuler,
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.translucent,
+                                        onHorizontalDragStart: (details) {
+                                          _selectFrameFromRulerLocalX(
+                                            details.localPosition.dx,
+                                          );
+                                        },
+                                        onHorizontalDragUpdate: (details) {
+                                          _selectFrameFromRulerLocalX(
+                                            details.localPosition.dx,
+                                          );
+                                        },
+                                        onHorizontalDragEnd: (_) =>
+                                            _resetRulerScrubTracking(),
+                                        onHorizontalDragCancel:
+                                            _resetRulerScrubTracking,
+                                        child: SizedBox(
+                                          width: viewportWidth,
+                                          height: headerHeight,
+                                          child: ClipRect(
+                                            child: OverflowBox(
+                                              alignment: Alignment.topLeft,
+                                              minWidth:
+                                                  plan.totalFrameContentWidth,
+                                              maxWidth:
+                                                  plan.totalFrameContentWidth,
+                                              minHeight: headerHeight,
+                                              maxHeight: headerHeight,
+                                              child: Transform.translate(
+                                                offset: Offset(
+                                                  -_horizontalScrollOffset,
+                                                  0,
+                                                ),
+                                                child: SizedBox(
+                                                  width:
+                                                      plan.totalFrameContentWidth,
+                                                  height: headerHeight,
+                                                  child: TimelineFrameRuler(
+                                                    frameStartIndex:
+                                                        frameRange.startIndex,
+                                                    frameEndIndexExclusive:
+                                                        frameRange
+                                                            .endIndexExclusive,
+                                                    currentFrameIndex:
+                                                        widget.currentFrameIndex,
+                                                    leadingFrameSpacerWidth: plan
+                                                        .leadingFrameSpacerWidth,
+                                                    trailingFrameSpacerWidth: plan
+                                                        .trailingFrameSpacerWidth,
+                                                    metrics:
+                                                        LayerTimelineGrid._metrics,
+                                                    onSelectFrame:
+                                                        _selectClampedFrameFromRuler,
+                                                  ),
                                                 ),
                                               ),
                                             ),
