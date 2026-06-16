@@ -68,10 +68,7 @@ void main() {
       ),
       findsNothing,
     );
-    expect(
-      find.descendant(of: scrollbarArea, matching: rail),
-      findsNothing,
-    );
+    expect(find.descendant(of: scrollbarArea, matching: rail), findsNothing);
     expect(
       find.descendant(of: horizontalScrollbar, matching: viewport),
       findsOneWidget,

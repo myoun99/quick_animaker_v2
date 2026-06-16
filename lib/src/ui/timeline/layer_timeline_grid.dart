@@ -146,7 +146,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   final frameRange = plan.frameRange;
 
                   return Scrollbar(
-                    key: const ValueKey<String>('timeline-horizontal-scrollbar'),
+                    key: const ValueKey<String>(
+                      'timeline-horizontal-scrollbar',
+                    ),
                     controller: _horizontalScrollController,
                     thumbVisibility: true,
                     trackVisibility: true,
@@ -177,8 +179,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       'timeline-frame-header-leading-spacer',
                                     ),
                                     width: plan.leadingFrameSpacerWidth,
-                                    height:
-                                        LayerTimelineGrid._metrics.layerRowHeight,
+                                    height: LayerTimelineGrid
+                                        ._metrics
+                                        .layerRowHeight,
                                   ),
                                   for (
                                     var frameIndex = frameRange.startIndex;
@@ -187,7 +190,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                   )
                                     _FrameHeader(
                                       frameIndex: frameIndex,
-                                      selected: frameIndex ==
+                                      selected:
+                                          frameIndex ==
                                           widget.currentFrameIndex,
                                       onSelectFrame: widget.onSelectFrame,
                                     ),
@@ -196,8 +200,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       'timeline-frame-header-trailing-spacer',
                                     ),
                                     width: plan.trailingFrameSpacerWidth,
-                                    height:
-                                        LayerTimelineGrid._metrics.layerRowHeight,
+                                    height: LayerTimelineGrid
+                                        ._metrics
+                                        .layerRowHeight,
                                   ),
                                 ],
                               ),
@@ -236,7 +241,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               ),
             ),
           ),
-
         ],
       ),
     );
