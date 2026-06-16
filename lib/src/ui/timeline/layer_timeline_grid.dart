@@ -414,7 +414,8 @@ class _VerticalScrollbarRailState extends State<_VerticalScrollbarRail> {
   static const double _minimumThumbHeight = 32;
 
   double get _maxScrollExtent {
-    if (widget.controller.hasClients) {
+    if (widget.controller.hasClients &&
+        widget.controller.position.hasContentDimensions) {
       return widget.controller.position.maxScrollExtent;
     }
     return math.max(0, widget.contentHeight - widget.viewportHeight);
@@ -552,7 +553,8 @@ class _BottomHorizontalScrollbarRailState
   static const double _minimumThumbWidth = 32;
 
   double get _maxScrollExtent {
-    if (widget.controller.hasClients) {
+    if (widget.controller.hasClients &&
+        widget.controller.position.hasContentDimensions) {
       return widget.controller.position.maxScrollExtent;
     }
     return math.max(0, widget.contentWidth - widget.viewportWidth);
