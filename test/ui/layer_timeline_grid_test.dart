@@ -191,7 +191,7 @@ void main() {
       find.descendant(of: frameGridArea, matching: content),
       findsOneWidget,
     );
-    expect(find.descendant(of: content, matching: frameRuler), findsOneWidget);
+    expect(find.descendant(of: content, matching: frameRuler), findsNothing);
     expect(
       find.descendant(of: frameRuler, matching: frameHeaderRow),
       findsOneWidget,
@@ -253,10 +253,7 @@ void main() {
     );
 
     expect(
-      find.descendant(
-        of: content,
-        matching: find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      ),
+      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
       findsOneWidget,
     );
     expect(
@@ -266,6 +263,55 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('keeps header and add-layer cell sticky during vertical scroll', (
+    tester,
+  ) async {
+    final manyLayers = List<Layer>.generate(
+      30,
+      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+    );
+
+    await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
+
+    final addLayer = find.byKey(
+      const ValueKey<String>('timeline-add-layer-button'),
+    );
+    final frameHeader = find.byKey(
+      const ValueKey<String>('timeline-frame-header-0'),
+    );
+    final firstLayerRow = find.byKey(
+      const ValueKey<String>('timeline-layer-row-layer-1'),
+    );
+    final firstFrameRow = find.byKey(
+      const ValueKey<String>('timeline-frame-row-area-layer-1'),
+    );
+
+    final initialAddLayerTop = tester.getTopLeft(addLayer).dy;
+    final initialFrameHeaderTop = tester.getTopLeft(frameHeader).dy;
+    final initialLayerRowTop = tester.getTopLeft(firstLayerRow).dy;
+    final initialFrameRowTop = tester.getTopLeft(firstFrameRow).dy;
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(addLayer).dy, moreOrLessEquals(initialAddLayerTop));
+    expect(
+      tester.getTopLeft(frameHeader).dy,
+      moreOrLessEquals(initialFrameHeaderTop),
+    );
+    expect(tester.getTopLeft(firstLayerRow).dy, lessThan(initialLayerRowTop));
+    expect(tester.getTopLeft(firstFrameRow).dy, lessThan(initialFrameRowTop));
+    expect(
+      (tester.getTopLeft(firstLayerRow).dy -
+              tester.getTopLeft(firstFrameRow).dy)
+          .abs(),
+      lessThan(0.1),
     );
   });
 
@@ -781,10 +827,9 @@ void main() {
     expect(column, findsOneWidget);
     expect(tester.getSize(column), const Size(48, 104));
 
-    final decoration =
-        tester.widget<Container>(column).decoration! as BoxDecoration;
-    expect(decoration.color, Colors.red.withValues(alpha: 0.18));
-    expect(decoration.border, isNotNull);
+    final container = tester.widget<Container>(column);
+    expect(container.color, Colors.red.withValues(alpha: 0.18));
+    expect(container.decoration, isNull);
   });
 
   testWidgets('playhead does not affect frame header tap', (tester) async {
@@ -1006,7 +1051,7 @@ void main() {
     expect(blankStart.background, blankHeld.background);
     expect(blankStart.background, isNot(heldDrawing.background));
     expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
-    expect(selectedDrawing.border, colorScheme.primary);
+    expect(selectedDrawing.border, Colors.red);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }

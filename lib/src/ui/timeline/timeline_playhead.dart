@@ -54,13 +54,7 @@ class TimelinePlayhead extends StatelessWidget {
               child: Container(
                 key: const ValueKey<String>('timeline-playhead-column'),
                 width: metrics.frameCellWidth,
-                decoration: BoxDecoration(
-                  color: playheadColor.withValues(alpha: 0.18),
-                  border: Border.all(
-                    color: playheadColor.withValues(alpha: 0.72),
-                    width: 1.5,
-                  ),
-                ),
+                color: playheadColor.withValues(alpha: 0.18),
               ),
             ),
           ],

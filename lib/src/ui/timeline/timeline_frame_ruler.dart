@@ -78,9 +78,14 @@ class _FrameHeader extends StatelessWidget {
         height: metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? colorScheme.primaryContainer : colorScheme.surface,
+          color: selected
+              ? Color.alphaBlend(
+                  Colors.red.withValues(alpha: 0.12),
+                  colorScheme.surface,
+                )
+              : colorScheme.surface,
           border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+            color: selected ? Colors.red : colorScheme.outlineVariant,
             width: selected ? 2 : 1,
           ),
         ),

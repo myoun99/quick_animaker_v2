@@ -53,9 +53,9 @@ TimelineCellStyleColors timelineCellStyleColors({
 
   return TimelineCellStyleColors(
     background: Color.alphaBlend(
-      colorScheme.primary.withValues(alpha: 0.18),
+      Colors.red.withValues(alpha: 0.12),
       exposureColor,
     ),
-    border: colorScheme.primary,
+    border: Colors.red,
   );
 }
