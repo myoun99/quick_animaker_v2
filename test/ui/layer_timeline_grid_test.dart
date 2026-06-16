@@ -145,10 +145,12 @@ void main() {
       lessThan(0.1),
     );
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-frame-grid-area')),
-      const Offset(0, -520),
+    final frameGridArea = find.byKey(
+      const ValueKey<String>('timeline-frame-grid-area'),
     );
+    final dragStart = tester.getTopLeft(frameGridArea) + const Offset(20, 20);
+
+    await tester.dragFrom(dragStart, const Offset(0, -520));
     await tester.pumpAndSettle();
 
     expect(layerRow, findsOneWidget);
@@ -442,7 +444,7 @@ void main() {
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('selects layer from full layer row', (tester) async {
+  testWidgets('selects layer from layer row label area', (tester) async {
     LayerId? selectedLayerId;
 
     await tester.pumpWidget(
@@ -450,7 +452,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')),
+      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
