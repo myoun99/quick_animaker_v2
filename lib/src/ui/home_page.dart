@@ -1376,7 +1376,7 @@ class _HomePageState extends State<HomePage> {
             layers: _layerController.layers,
             activeLayerId: _layerController.activeLayerId,
             currentFrameIndex: _timelineController.currentFrameIndex,
-            frameCount: _activeCutPlaybackFrameCount,
+            playbackFrameCount: _activeCutPlaybackFrameCount,
             exposureStateForLayer: _exposureStateForLayer,
             hasMarkForLayer: _hasMarkForLayer,
             frameNameForLayer: _frameNameForLayer,

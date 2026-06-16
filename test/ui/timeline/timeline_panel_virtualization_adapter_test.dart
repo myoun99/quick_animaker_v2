@@ -8,14 +8,14 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_visible_range.dart';
 void main() {
   group('calculateLayerTimelineGridVirtualizationPlan', () {
     test(
-      'uses minimumVisibleFrameCells when frameCount is smaller than 24',
+      'uses minimumVisibleFrameCells when visibleFrameCount is smaller than 24',
       () {
         final plan = calculateLayerTimelineGridVirtualizationPlan(
           horizontalScrollOffset: 0,
           verticalScrollOffset: 0,
           viewportWidth: 96,
           viewportHeight: 104,
-          frameCount: 5,
+          visibleFrameCount: 5,
           layerCount: 3,
           frameOverscanBefore: 0,
           frameOverscanAfter: 0,
@@ -32,23 +32,26 @@ void main() {
       },
     );
 
-    test('uses actual frameCount when frameCount is larger than 24', () {
-      final plan = calculateLayerTimelineGridVirtualizationPlan(
-        horizontalScrollOffset: 0,
-        verticalScrollOffset: 0,
-        viewportWidth: 96,
-        viewportHeight: 104,
-        frameCount: 40,
-        layerCount: 3,
-        frameOverscanBefore: 0,
-        frameOverscanAfter: 0,
-        layerOverscanBefore: 0,
-        layerOverscanAfter: 0,
-      );
+    test(
+      'uses actual visibleFrameCount when visibleFrameCount is larger than 24',
+      () {
+        final plan = calculateLayerTimelineGridVirtualizationPlan(
+          horizontalScrollOffset: 0,
+          verticalScrollOffset: 0,
+          viewportWidth: 96,
+          viewportHeight: 104,
+          visibleFrameCount: 40,
+          layerCount: 3,
+          frameOverscanBefore: 0,
+          frameOverscanAfter: 0,
+          layerOverscanBefore: 0,
+          layerOverscanAfter: 0,
+        );
 
-      expect(plan.totalFrameContentWidth, 40 * 48);
-      expect(plan.trailingFrameSpacerWidth, 38 * 48);
-    });
+        expect(plan.totalFrameContentWidth, 40 * 48);
+        expect(plan.trailingFrameSpacerWidth, 38 * 48);
+      },
+    );
 
     test('uses metrics.frameCellWidth for total width and spacers', () {
       final plan = calculateLayerTimelineGridVirtualizationPlan(
@@ -56,7 +59,7 @@ void main() {
         verticalScrollOffset: 0,
         viewportWidth: 90,
         viewportHeight: 60,
-        frameCount: 30,
+        visibleFrameCount: 30,
         layerCount: 2,
         metrics: const TimelineGridMetrics(frameCellWidth: 30),
         frameOverscanBefore: 1,
@@ -78,7 +81,7 @@ void main() {
         verticalScrollOffset: 80,
         viewportWidth: 96,
         viewportHeight: 80,
-        frameCount: 30,
+        visibleFrameCount: 30,
         layerCount: 10,
         metrics: const TimelineGridMetrics(layerRowHeight: 40),
         frameOverscanBefore: 0,
@@ -103,7 +106,7 @@ void main() {
         verticalScrollOffset: 0,
         viewportWidth: 96,
         viewportHeight: 104,
-        frameCount: 50,
+        visibleFrameCount: 50,
         layerCount: 3,
         frameOverscanBefore: 0,
         frameOverscanAfter: 0,
@@ -113,7 +116,7 @@ void main() {
         verticalScrollOffset: 0,
         viewportWidth: 96,
         viewportHeight: 104,
-        frameCount: 50,
+        visibleFrameCount: 50,
         layerCount: 3,
         frameOverscanBefore: 0,
         frameOverscanAfter: 0,
@@ -129,7 +132,7 @@ void main() {
         verticalScrollOffset: 0,
         viewportWidth: 96,
         viewportHeight: 104,
-        frameCount: 50,
+        visibleFrameCount: 50,
         layerCount: 20,
         layerOverscanBefore: 0,
         layerOverscanAfter: 0,
@@ -139,7 +142,7 @@ void main() {
         verticalScrollOffset: 156,
         viewportWidth: 96,
         viewportHeight: 104,
-        frameCount: 50,
+        visibleFrameCount: 50,
         layerCount: 20,
         layerOverscanBefore: 0,
         layerOverscanAfter: 0,
@@ -158,13 +161,13 @@ void main() {
       expect(source, isNot(contains('widgets.dart')));
     });
 
-    test('100000 frameCount works by calculation only', () {
+    test('100000 visibleFrameCount works by calculation only', () {
       final plan = calculateLayerTimelineGridVirtualizationPlan(
         horizontalScrollOffset: 480000,
         verticalScrollOffset: 0,
         viewportWidth: 480,
         viewportHeight: 104,
-        frameCount: 100000,
+        visibleFrameCount: 100000,
         layerCount: 4,
         frameOverscanBefore: 2,
         frameOverscanAfter: 2,
