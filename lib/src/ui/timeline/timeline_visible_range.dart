@@ -42,10 +42,7 @@ class TimelineVisibleRange {
 
 /// Visible timeline ranges for both timeline axes.
 class TimelineVisibleRanges {
-  const TimelineVisibleRanges({
-    required this.frames,
-    required this.layers,
-  });
+  const TimelineVisibleRanges({required this.frames, required this.layers});
 
   /// Visible frame index range calculated from the horizontal viewport.
   final TimelineVisibleRange frames;
@@ -105,7 +102,7 @@ TimelineVisibleRange calculateVisibleIndexRange({
       (safeScrollOffset / itemExtent).floor() - safeOverscanBefore;
   final rawEndIndexExclusive =
       ((safeScrollOffset + safeViewportExtent) / itemExtent).ceil() +
-          safeOverscanAfter;
+      safeOverscanAfter;
 
   final startIndex = math.min(math.max(rawStartIndex, 0), itemCount);
   final endIndexExclusive = math.min(
