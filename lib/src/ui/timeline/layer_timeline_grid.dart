@@ -6,9 +6,10 @@ import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_block.dart';
 
-class LayerTimelineGrid extends StatelessWidget {
+class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
     super.key,
     required this.layers,
@@ -42,10 +43,42 @@ class LayerTimelineGrid extends StatelessWidget {
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
   @override
+  State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
+}
+
+class _LayerTimelineGridState extends State<LayerTimelineGrid> {
+  late final ScrollController _horizontalScrollController;
+  double _horizontalScrollOffset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _horizontalScrollController = ScrollController();
+    _horizontalScrollController.addListener(_handleHorizontalScroll);
+  }
+
+  @override
+  void dispose() {
+    _horizontalScrollController
+      ..removeListener(_handleHorizontalScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleHorizontalScroll() {
+    final offset = _horizontalScrollController.hasClients
+        ? _horizontalScrollController.offset
+        : 0.0;
+    if (offset == _horizontalScrollOffset) {
+      return;
+    }
+    setState(() {
+      _horizontalScrollOffset = offset;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final visibleFrameCount = frameCount < _metrics.minimumVisibleFrameCells
-        ? _metrics.minimumVisibleFrameCells
-        : frameCount;
     final colorScheme = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
@@ -62,20 +95,20 @@ class LayerTimelineGrid extends StatelessWidget {
                   height: _metrics.layerRowHeight,
                   child: TextButton.icon(
                     key: const ValueKey<String>('timeline-add-layer-button'),
-                    onPressed: onAddLayer,
+                    onPressed: widget.onAddLayer,
                     icon: const Icon(Icons.add),
                     label: const Text('Layer'),
                   ),
                 ),
-                for (final layer in layers)
+                for (final layer in widget.layers)
                   _LayerControlsRow(
                     layer: layer,
-                    active: layer.id == activeLayerId,
-                    onSelectLayer: onSelectLayer,
-                    onToggleLayerVisibility: onToggleLayerVisibility,
-                    onLayerOpacityChanged: onLayerOpacityChanged,
+                    active: layer.id == widget.activeLayerId,
+                    onSelectLayer: widget.onSelectLayer,
+                    onToggleLayerVisibility: widget.onToggleLayerVisibility,
+                    onLayerOpacityChanged: widget.onLayerOpacityChanged,
                   ),
-                if (layers.isEmpty)
+                if (widget.layers.isEmpty)
                   SizedBox(
                     width: _metrics.layerControlsWidth,
                     height: _metrics.layerRowHeight,
@@ -91,49 +124,99 @@ class LayerTimelineGrid extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: SingleChildScrollView(
-              key: const ValueKey<String>('timeline-frame-scroll-viewport'),
-              scrollDirection: Axis.horizontal,
-              child: KeyedSubtree(
-                key: const ValueKey<String>('timeline-frame-scroll-content'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      key: const ValueKey<String>('timeline-frame-header-row'),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final viewportWidth = constraints.hasBoundedWidth
+                    ? constraints.maxWidth
+                    : 0.0;
+                final viewportHeight = constraints.hasBoundedHeight
+                    ? constraints.maxHeight
+                    : 0.0;
+                final plan = calculateLayerTimelineGridVirtualizationPlan(
+                  horizontalScrollOffset: _horizontalScrollOffset,
+                  verticalScrollOffset: 0,
+                  viewportWidth: viewportWidth,
+                  viewportHeight: viewportHeight,
+                  frameCount: widget.frameCount,
+                  layerCount: widget.layers.length,
+                  metrics: LayerTimelineGrid._metrics,
+                );
+                final frameRange = plan.frameRange;
+
+                return SingleChildScrollView(
+                  key: const ValueKey<String>(
+                    'timeline-frame-scroll-viewport',
+                  ),
+                  controller: _horizontalScrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: KeyedSubtree(
+                    key: const ValueKey<String>(
+                      'timeline-frame-scroll-content',
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (
-                          var frameIndex = 0;
-                          frameIndex < visibleFrameCount;
-                          frameIndex += 1
-                        )
-                          _FrameHeader(
-                            frameIndex: frameIndex,
-                            selected: frameIndex == currentFrameIndex,
-                            onSelectFrame: onSelectFrame,
+                        Row(
+                          key: const ValueKey<String>(
+                            'timeline-frame-header-row',
+                          ),
+                          children: [
+                            SizedBox(
+                              key: const ValueKey<String>(
+                                'timeline-frame-header-leading-spacer',
+                              ),
+                              width: plan.leadingFrameSpacerWidth,
+                              height: LayerTimelineGrid._metrics.layerRowHeight,
+                            ),
+                            for (
+                              var frameIndex = frameRange.startIndex;
+                              frameIndex < frameRange.endIndexExclusive;
+                              frameIndex += 1
+                            )
+                              _FrameHeader(
+                                frameIndex: frameIndex,
+                                selected:
+                                    frameIndex == widget.currentFrameIndex,
+                                onSelectFrame: widget.onSelectFrame,
+                              ),
+                            SizedBox(
+                              key: const ValueKey<String>(
+                                'timeline-frame-header-trailing-spacer',
+                              ),
+                              width: plan.trailingFrameSpacerWidth,
+                              height: LayerTimelineGrid._metrics.layerRowHeight,
+                            ),
+                          ],
+                        ),
+                        for (final layer in widget.layers)
+                          _FrameCellsRow(
+                            layer: layer,
+                            active: layer.id == widget.activeLayerId,
+                            currentFrameIndex: widget.currentFrameIndex,
+                            frameStartIndex: frameRange.startIndex,
+                            frameEndIndexExclusive:
+                                frameRange.endIndexExclusive,
+                            leadingFrameSpacerWidth:
+                                plan.leadingFrameSpacerWidth,
+                            trailingFrameSpacerWidth:
+                                plan.trailingFrameSpacerWidth,
+                            exposureStateForLayer:
+                                widget.exposureStateForLayer,
+                            hasMarkForLayer: widget.hasMarkForLayer,
+                            frameNameForLayer: widget.frameNameForLayer,
+                            onSelectLayer: widget.onSelectLayer,
+                            onSelectFrame: widget.onSelectFrame,
+                          ),
+                        if (widget.layers.isEmpty)
+                          SizedBox(
+                            width: plan.totalFrameContentWidth,
+                            height: LayerTimelineGrid._metrics.layerRowHeight,
                           ),
                       ],
                     ),
-                    for (final layer in layers)
-                      _FrameCellsRow(
-                        layer: layer,
-                        active: layer.id == activeLayerId,
-                        currentFrameIndex: currentFrameIndex,
-                        visibleFrameCount: visibleFrameCount,
-                        exposureStateForLayer: exposureStateForLayer,
-                        hasMarkForLayer: hasMarkForLayer,
-                        frameNameForLayer: frameNameForLayer,
-                        onSelectLayer: onSelectLayer,
-                        onSelectFrame: onSelectFrame,
-                      ),
-                    if (layers.isEmpty)
-                      SizedBox(
-                        width: visibleFrameCount * _metrics.frameCellWidth,
-                        height: _metrics.layerRowHeight,
-                      ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -281,7 +364,10 @@ class _FrameCellsRow extends StatelessWidget {
     required this.layer,
     required this.active,
     required this.currentFrameIndex,
-    required this.visibleFrameCount,
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.leadingFrameSpacerWidth,
+    required this.trailingFrameSpacerWidth,
     required this.exposureStateForLayer,
     this.hasMarkForLayer,
     this.frameNameForLayer,
@@ -292,7 +378,10 @@ class _FrameCellsRow extends StatelessWidget {
   final Layer layer;
   final bool active;
   final int currentFrameIndex;
-  final int visibleFrameCount;
+  final int frameStartIndex;
+  final int frameEndIndexExclusive;
+  final double leadingFrameSpacerWidth;
+  final double trailingFrameSpacerWidth;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
@@ -305,9 +394,16 @@ class _FrameCellsRow extends StatelessWidget {
     return Row(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
+        SizedBox(
+          key: ValueKey<String>(
+            'timeline-frame-row-leading-spacer-${layer.id}',
+          ),
+          width: leadingFrameSpacerWidth,
+          height: LayerTimelineGrid._metrics.layerRowHeight,
+        ),
         for (
-          var frameIndex = 0;
-          frameIndex < visibleFrameCount;
+          var frameIndex = frameStartIndex;
+          frameIndex < frameEndIndexExclusive;
           frameIndex += 1
         )
           _TimelineCell(
@@ -321,6 +417,13 @@ class _FrameCellsRow extends StatelessWidget {
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
           ),
+        SizedBox(
+          key: ValueKey<String>(
+            'timeline-frame-row-trailing-spacer-${layer.id}',
+          ),
+          width: trailingFrameSpacerWidth,
+          height: LayerTimelineGrid._metrics.layerRowHeight,
+        ),
       ],
     );
   }
