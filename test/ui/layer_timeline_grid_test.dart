@@ -18,13 +18,51 @@ bool _isGray(Color color) {
 }
 
 void main() {
-  testWidgets('renders integrated layer controls', (tester) async {
+  testWidgets('renders fixed layer controls rail and frame scroll structure', (
+    tester,
+  ) async {
     await tester.pumpWidget(_grid());
 
+    final rail = find.byKey(
+      const ValueKey<String>('timeline-layer-controls-rail'),
+    );
+    final viewport = find.byKey(
+      const ValueKey<String>('timeline-frame-scroll-viewport'),
+    );
+    final content = find.byKey(
+      const ValueKey<String>('timeline-frame-scroll-content'),
+    );
+
+    expect(rail, findsOneWidget);
+    expect(viewport, findsOneWidget);
+    expect(content, findsOneWidget);
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      find.descendant(
+        of: rail,
+        matching: find.byKey(
+          const ValueKey<String>('timeline-add-layer-button'),
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: viewport,
+        matching: find.byKey(
+          const ValueKey<String>('timeline-add-layer-button'),
+        ),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: content,
+        matching: find.byKey(
+          const ValueKey<String>('timeline-frame-header-0'),
+        ),
+      ),
       findsOneWidget,
     );
     expect(
@@ -33,6 +71,31 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('horizontal scrolling keeps layer controls rail mounted', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 48));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-400, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-controls-rail')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
       findsOneWidget,
     );
   });
