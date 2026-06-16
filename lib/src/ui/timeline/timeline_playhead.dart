@@ -40,7 +40,7 @@ class TimelinePlayhead extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final colorScheme = Theme.of(context).colorScheme;
+    const playheadColor = Colors.red;
 
     return IgnorePointer(
       child: SizedBox(
@@ -52,9 +52,15 @@ class TimelinePlayhead extends StatelessWidget {
               top: 0,
               bottom: 0,
               child: Container(
-                key: const ValueKey<String>('timeline-playhead-line'),
-                width: 2,
-                color: colorScheme.primary,
+                key: const ValueKey<String>('timeline-playhead-column'),
+                width: metrics.frameCellWidth,
+                decoration: BoxDecoration(
+                  color: playheadColor.withValues(alpha: 0.18),
+                  border: Border.all(
+                    color: playheadColor.withValues(alpha: 0.72),
+                    width: 1.5,
+                  ),
+                ),
               ),
             ),
           ],
