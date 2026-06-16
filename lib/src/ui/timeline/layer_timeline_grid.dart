@@ -95,231 +95,222 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           child: Column(
             children: [
               Expanded(
-                  child: SingleChildScrollView(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        KeyedSubtree(
-                          key: const ValueKey<String>(
-                            'timeline-layer-controls-rail',
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _HeaderCell(
+                child: SingleChildScrollView(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      KeyedSubtree(
+                        key: const ValueKey<String>(
+                          'timeline-layer-controls-rail',
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _HeaderCell(
+                              width:
+                                  LayerTimelineGrid._metrics.layerControlsWidth,
+                              height: LayerTimelineGrid._metrics.layerRowHeight,
+                              child: TextButton.icon(
+                                key: const ValueKey<String>(
+                                  'timeline-add-layer-button',
+                                ),
+                                onPressed: widget.onAddLayer,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Layer'),
+                              ),
+                            ),
+                            for (final layer in widget.layers)
+                              _LayerControlsRow(
+                                layer: layer,
+                                active: layer.id == widget.activeLayerId,
+                                onSelectLayer: widget.onSelectLayer,
+                                onToggleLayerVisibility:
+                                    widget.onToggleLayerVisibility,
+                                onLayerOpacityChanged:
+                                    widget.onLayerOpacityChanged,
+                              ),
+                            if (widget.layers.isEmpty)
+                              SizedBox(
                                 width: LayerTimelineGrid
                                     ._metrics
                                     .layerControlsWidth,
                                 height:
                                     LayerTimelineGrid._metrics.layerRowHeight,
-                                child: TextButton.icon(
-                                  key: const ValueKey<String>(
-                                    'timeline-add-layer-button',
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    'No layers',
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
-                                  onPressed: widget.onAddLayer,
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Layer'),
                                 ),
                               ),
-                              for (final layer in widget.layers)
-                                _LayerControlsRow(
-                                  layer: layer,
-                                  active: layer.id == widget.activeLayerId,
-                                  onSelectLayer: widget.onSelectLayer,
-                                  onToggleLayerVisibility:
-                                      widget.onToggleLayerVisibility,
-                                  onLayerOpacityChanged:
-                                      widget.onLayerOpacityChanged,
-                                ),
-                              if (widget.layers.isEmpty)
-                                SizedBox(
-                                  width: LayerTimelineGrid
-                                      ._metrics
-                                      .layerControlsWidth,
-                                  height:
-                                      LayerTimelineGrid._metrics.layerRowHeight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Text(
-                                      'No layers',
-                                      style: TextStyle(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
-                        Expanded(
-                          child: KeyedSubtree(
-                            key: const ValueKey<String>(
-                              'timeline-frame-grid-area',
-                            ),
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final viewportWidth =
-                                    constraints.hasBoundedWidth
-                                    ? constraints.maxWidth
-                                    : 0.0;
-                                final plan =
-                                    calculateLayerTimelineGridVirtualizationPlan(
-                                      horizontalScrollOffset:
-                                          _horizontalScrollOffset,
-                                      verticalScrollOffset: 0,
-                                      viewportWidth: viewportWidth,
-                                      viewportHeight: viewportHeight,
-                                      frameCount: widget.frameCount,
-                                      layerCount: widget.layers.length,
-                                      metrics: LayerTimelineGrid._metrics,
-                                    );
-                                final frameRange = plan.frameRange;
+                      ),
+                      Expanded(
+                        child: KeyedSubtree(
+                          key: const ValueKey<String>(
+                            'timeline-frame-grid-area',
+                          ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final viewportWidth = constraints.hasBoundedWidth
+                                  ? constraints.maxWidth
+                                  : 0.0;
+                              final plan =
+                                  calculateLayerTimelineGridVirtualizationPlan(
+                                    horizontalScrollOffset:
+                                        _horizontalScrollOffset,
+                                    verticalScrollOffset: 0,
+                                    viewportWidth: viewportWidth,
+                                    viewportHeight: viewportHeight,
+                                    frameCount: widget.frameCount,
+                                    layerCount: widget.layers.length,
+                                    metrics: LayerTimelineGrid._metrics,
+                                  );
+                              final frameRange = plan.frameRange;
 
-                                return KeyedSubtree(
+                              return KeyedSubtree(
+                                key: const ValueKey<String>(
+                                  'timeline-horizontal-scrollbar-viewport',
+                                ),
+                                child: SingleChildScrollView(
                                   key: const ValueKey<String>(
-                                    'timeline-horizontal-scrollbar-viewport',
+                                    'timeline-frame-scroll-viewport',
                                   ),
-                                  child: SingleChildScrollView(
+                                  controller: _horizontalScrollController,
+                                  scrollDirection: Axis.horizontal,
+                                  child: KeyedSubtree(
                                     key: const ValueKey<String>(
-                                      'timeline-frame-scroll-viewport',
+                                      'timeline-frame-scroll-content',
                                     ),
-                                    controller: _horizontalScrollController,
-                                    scrollDirection: Axis.horizontal,
-                                    child: KeyedSubtree(
-                                      key: const ValueKey<String>(
-                                        'timeline-frame-scroll-content',
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            key: const ValueKey<String>(
-                                              'timeline-frame-header-row',
-                                            ),
-                                            children: [
-                                              SizedBox(
-                                                key: const ValueKey<String>(
-                                                  'timeline-frame-header-leading-spacer',
-                                                ),
-                                                width: plan
-                                                    .leadingFrameSpacerWidth,
-                                                height: LayerTimelineGrid
-                                                    ._metrics
-                                                    .layerRowHeight,
-                                              ),
-                                              for (
-                                                var frameIndex =
-                                                    frameRange.startIndex;
-                                                frameIndex <
-                                                    frameRange
-                                                        .endIndexExclusive;
-                                                frameIndex += 1
-                                              )
-                                                _FrameHeader(
-                                                  frameIndex: frameIndex,
-                                                  selected:
-                                                      frameIndex ==
-                                                      widget.currentFrameIndex,
-                                                  onSelectFrame:
-                                                      widget.onSelectFrame,
-                                                ),
-                                              SizedBox(
-                                                key: const ValueKey<String>(
-                                                  'timeline-frame-header-trailing-spacer',
-                                                ),
-                                                width: plan
-                                                    .trailingFrameSpacerWidth,
-                                                height: LayerTimelineGrid
-                                                    ._metrics
-                                                    .layerRowHeight,
-                                              ),
-                                            ],
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          key: const ValueKey<String>(
+                                            'timeline-frame-header-row',
                                           ),
-                                          for (final layer in widget.layers)
-                                            _FrameCellsRow(
-                                              layer: layer,
-                                              active:
-                                                  layer.id ==
-                                                  widget.activeLayerId,
-                                              currentFrameIndex:
-                                                  widget.currentFrameIndex,
-                                              frameStartIndex:
-                                                  frameRange.startIndex,
-                                              frameEndIndexExclusive:
-                                                  frameRange.endIndexExclusive,
-                                              leadingFrameSpacerWidth:
-                                                  plan.leadingFrameSpacerWidth,
-                                              trailingFrameSpacerWidth:
-                                                  plan.trailingFrameSpacerWidth,
-                                              exposureStateForLayer:
-                                                  widget.exposureStateForLayer,
-                                              hasMarkForLayer:
-                                                  widget.hasMarkForLayer,
-                                              frameNameForLayer:
-                                                  widget.frameNameForLayer,
-                                              onSelectLayer:
-                                                  widget.onSelectLayer,
-                                              onSelectFrame:
-                                                  widget.onSelectFrame,
-                                            ),
-                                          if (widget.layers.isEmpty)
+                                          children: [
                                             SizedBox(
+                                              key: const ValueKey<String>(
+                                                'timeline-frame-header-leading-spacer',
+                                              ),
                                               width:
-                                                  plan.totalFrameContentWidth,
+                                                  plan.leadingFrameSpacerWidth,
                                               height: LayerTimelineGrid
                                                   ._metrics
                                                   .layerRowHeight,
                                             ),
-                                        ],
-                                      ),
+                                            for (
+                                              var frameIndex =
+                                                  frameRange.startIndex;
+                                              frameIndex <
+                                                  frameRange.endIndexExclusive;
+                                              frameIndex += 1
+                                            )
+                                              _FrameHeader(
+                                                frameIndex: frameIndex,
+                                                selected:
+                                                    frameIndex ==
+                                                    widget.currentFrameIndex,
+                                                onSelectFrame:
+                                                    widget.onSelectFrame,
+                                              ),
+                                            SizedBox(
+                                              key: const ValueKey<String>(
+                                                'timeline-frame-header-trailing-spacer',
+                                              ),
+                                              width:
+                                                  plan.trailingFrameSpacerWidth,
+                                              height: LayerTimelineGrid
+                                                  ._metrics
+                                                  .layerRowHeight,
+                                            ),
+                                          ],
+                                        ),
+                                        for (final layer in widget.layers)
+                                          _FrameCellsRow(
+                                            layer: layer,
+                                            active:
+                                                layer.id ==
+                                                widget.activeLayerId,
+                                            currentFrameIndex:
+                                                widget.currentFrameIndex,
+                                            frameStartIndex:
+                                                frameRange.startIndex,
+                                            frameEndIndexExclusive:
+                                                frameRange.endIndexExclusive,
+                                            leadingFrameSpacerWidth:
+                                                plan.leadingFrameSpacerWidth,
+                                            trailingFrameSpacerWidth:
+                                                plan.trailingFrameSpacerWidth,
+                                            exposureStateForLayer:
+                                                widget.exposureStateForLayer,
+                                            hasMarkForLayer:
+                                                widget.hasMarkForLayer,
+                                            frameNameForLayer:
+                                                widget.frameNameForLayer,
+                                            onSelectLayer: widget.onSelectLayer,
+                                            onSelectFrame: widget.onSelectFrame,
+                                          ),
+                                        if (widget.layers.isEmpty)
+                                          SizedBox(
+                                            width: plan.totalFrameContentWidth,
+                                            height: LayerTimelineGrid
+                                                ._metrics
+                                                .layerRowHeight,
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
               Row(
                 children: [
-                    SizedBox(
+                  SizedBox(
+                    key: const ValueKey<String>(
+                      'timeline-bottom-scrollbar-left-spacer',
+                    ),
+                    width: LayerTimelineGrid._metrics.layerControlsWidth,
+                    height: bottomScrollbarRailHeight,
+                  ),
+                  Expanded(
+                    child: Scrollbar(
                       key: const ValueKey<String>(
-                        'timeline-bottom-scrollbar-left-spacer',
+                        'timeline-horizontal-scrollbar',
                       ),
-                      width: LayerTimelineGrid._metrics.layerControlsWidth,
-                      height: bottomScrollbarRailHeight,
-                    ),
-                    Expanded(
-                      child: Scrollbar(
+                      controller: _horizontalScrollController,
+                      thumbVisibility: true,
+                      trackVisibility: true,
+                      notificationPredicate: (notification) =>
+                          notification.metrics.axis == Axis.horizontal,
+                      child: Container(
                         key: const ValueKey<String>(
-                          'timeline-horizontal-scrollbar',
+                          'timeline-bottom-scrollbar-rail',
                         ),
-                        controller: _horizontalScrollController,
-                        thumbVisibility: true,
-                        trackVisibility: true,
-                        notificationPredicate: (notification) =>
-                            notification.metrics.axis == Axis.horizontal,
-                        child: Container(
-                          key: const ValueKey<String>(
-                            'timeline-bottom-scrollbar-rail',
-                          ),
-                          height: bottomScrollbarRailHeight,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            border: Border(
-                              top: BorderSide(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
+                        height: bottomScrollbarRailHeight,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest,
+                          border: Border(
+                            top: BorderSide(color: colorScheme.outlineVariant),
                           ),
                         ),
                       ),
                     ),
-                  ],
+                  ),
+                ],
               ),
             ],
           ),
