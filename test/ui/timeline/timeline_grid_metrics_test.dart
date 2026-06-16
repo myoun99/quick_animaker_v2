@@ -10,6 +10,7 @@ void main() {
       expect(metrics.layerControlsWidth, 220);
       expect(metrics.frameCellWidth, 48);
       expect(metrics.layerRowHeight, 52);
+      expect(metrics.verticalScrollbarWidth, 14);
     });
 
     test('custom metrics can be created', () {
@@ -18,12 +19,14 @@ void main() {
         layerControlsWidth: 180,
         frameCellWidth: 32,
         layerRowHeight: 44,
+        verticalScrollbarWidth: 12,
       );
 
       expect(metrics.minimumVisibleFrameCells, 12);
       expect(metrics.layerControlsWidth, 180);
       expect(metrics.frameCellWidth, 32);
       expect(metrics.layerRowHeight, 44);
+      expect(metrics.verticalScrollbarWidth, 12);
     });
   });
 }

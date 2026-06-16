@@ -307,3 +307,26 @@ Phase 96 added a visible horizontal scrollbar foundation for LayerTimelineGrid s
 ## Phase 97 update
 
 Phase 97 moved the horizontal scrollbar into a stable bottom rail so timeline scrolling remains visible and discoverable regardless of layer count. This keeps the frame grid above the scrollbar and preserves the fixed layer controls rail / frame viewport separation required for long-term TVPaint-style timeline ergonomics.
+
+## 9. Phase 98 timeline vertical scrollbar slot foundation
+
+Phase 98 adds a visible TVPaint-style vertical scrollbar slot between the fixed layer controls rail and the horizontal frame grid area.
+
+Current Phase 98 rules:
+
+* The layer controls rail and frame rows still use one shared vertical scroll viewport.
+* Do not split layer controls and frame rows into independent vertical scroll views.
+* The vertical scrollbar rail is reserved between the layer controls rail and the frame grid area, not at the far right of the timeline.
+* The bottom horizontal scrollbar remains aligned with the frame grid area only.
+* The bottom rail reserves both the layer controls width and the vertical scrollbar slot width before the horizontal scrollbar begins.
+* Vertical layer virtualization is still deferred.
+* The vertical scrollbar thumb may drive the shared vertical scroll controller, but this is UI scroll state only and must not be stored in Project / Cut / Layer / Frame models.
+
+Stable keys introduced for this structure:
+
+* `timeline-vertical-scrollbar-slot`
+* `timeline-vertical-scrollbar`
+* `timeline-vertical-scrollbar-track`
+* `timeline-vertical-scrollbar-thumb`
+* `timeline-vertical-scrollbar-bottom-spacer`
+* `timeline-vertical-scroll-viewport`

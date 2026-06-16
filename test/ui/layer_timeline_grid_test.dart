@@ -56,6 +56,24 @@ void main() {
     final horizontalScrollbarThumb = find.byKey(
       const ValueKey<String>('timeline-horizontal-scrollbar-thumb'),
     );
+    final verticalScrollbarSlot = find.byKey(
+      const ValueKey<String>('timeline-vertical-scrollbar-slot'),
+    );
+    final verticalScrollbar = find.byKey(
+      const ValueKey<String>('timeline-vertical-scrollbar'),
+    );
+    final verticalScrollbarTrack = find.byKey(
+      const ValueKey<String>('timeline-vertical-scrollbar-track'),
+    );
+    final verticalScrollbarThumb = find.byKey(
+      const ValueKey<String>('timeline-vertical-scrollbar-thumb'),
+    );
+    final verticalScrollbarBottomSpacer = find.byKey(
+      const ValueKey<String>('timeline-vertical-scrollbar-bottom-spacer'),
+    );
+    final verticalScrollViewport = find.byKey(
+      const ValueKey<String>('timeline-vertical-scroll-viewport'),
+    );
 
     expect(rail, findsOneWidget);
     expect(scrollbarArea, findsOneWidget);
@@ -68,6 +86,12 @@ void main() {
     expect(bottomScrollbarLeftSpacer, findsOneWidget);
     expect(horizontalScrollbarTrack, findsOneWidget);
     expect(horizontalScrollbarThumb, findsOneWidget);
+    expect(verticalScrollbarSlot, findsOneWidget);
+    expect(verticalScrollbar, findsOneWidget);
+    expect(verticalScrollbarTrack, findsOneWidget);
+    expect(verticalScrollbarThumb, findsOneWidget);
+    expect(verticalScrollbarBottomSpacer, findsOneWidget);
+    expect(verticalScrollViewport, findsOneWidget);
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
@@ -91,6 +115,14 @@ void main() {
     expect(find.descendant(of: viewport, matching: rail), findsNothing);
     expect(
       find.descendant(of: scrollbarViewport, matching: viewport),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: verticalScrollViewport, matching: rail),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: verticalScrollViewport, matching: frameGridArea),
       findsOneWidget,
     );
     expect(
@@ -143,11 +175,32 @@ void main() {
     final leftSpacerRect = tester.getRect(bottomScrollbarLeftSpacer);
     final bottomRailRect = tester.getRect(bottomScrollbarRail);
     final horizontalScrollbarRect = tester.getRect(horizontalScrollbar);
+    final verticalSlotRect = tester.getRect(verticalScrollbarSlot);
+    final verticalScrollbarRect = tester.getRect(verticalScrollbar);
+    final verticalBottomSpacerRect = tester.getRect(
+      verticalScrollbarBottomSpacer,
+    );
 
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
     expect(leftSpacerRect.width, moreOrLessEquals(220));
+    expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
+    expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
+    expect(verticalSlotRect.width, moreOrLessEquals(14));
+    expect(verticalScrollbarRect.left, moreOrLessEquals(verticalSlotRect.left));
+    expect(
+      verticalScrollbarRect.width,
+      moreOrLessEquals(verticalSlotRect.width),
+    );
+    expect(
+      verticalBottomSpacerRect.left,
+      moreOrLessEquals(leftSpacerRect.right),
+    );
+    expect(
+      verticalBottomSpacerRect.width,
+      moreOrLessEquals(verticalSlotRect.width),
+    );
     expect(bottomRailRect.left, moreOrLessEquals(frameGridAreaRect.left));
     expect(bottomRailRect.width, moreOrLessEquals(frameGridAreaRect.width));
     expect(
