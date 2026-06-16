@@ -26,6 +26,15 @@ void main() {
     final rail = find.byKey(
       const ValueKey<String>('timeline-layer-controls-rail'),
     );
+    final scrollbarArea = find.byKey(
+      const ValueKey<String>('timeline-scrollbar-area'),
+    );
+    final horizontalScrollbar = find.byKey(
+      const ValueKey<String>('timeline-horizontal-scrollbar'),
+    );
+    final scrollbarViewport = find.byKey(
+      const ValueKey<String>('timeline-horizontal-scrollbar-viewport'),
+    );
     final viewport = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-viewport'),
     );
@@ -34,6 +43,9 @@ void main() {
     );
 
     expect(rail, findsOneWidget);
+    expect(scrollbarArea, findsOneWidget);
+    expect(horizontalScrollbar, findsOneWidget);
+    expect(scrollbarViewport, findsOneWidget);
     expect(viewport, findsOneWidget);
     expect(content, findsOneWidget);
     expect(find.text('Layer 1'), findsOneWidget);
@@ -55,6 +67,18 @@ void main() {
         ),
       ),
       findsNothing,
+    );
+    expect(
+      find.descendant(of: scrollbarArea, matching: rail),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: horizontalScrollbar, matching: viewport),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: scrollbarViewport, matching: viewport),
+      findsOneWidget,
     );
     expect(
       find.descendant(
