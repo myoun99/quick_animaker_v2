@@ -754,7 +754,11 @@ void main() {
     final boundary = find.byKey(
       const ValueKey<String>('timeline-cut-end-boundary'),
     );
+    final rulerBoundary = find.byKey(
+      const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+    );
     expect(boundary, findsOneWidget);
+    expect(rulerBoundary, findsOneWidget);
 
     final contentLeft = tester
         .getTopLeft(
@@ -763,6 +767,32 @@ void main() {
         .dx;
     final boundaryLeft = tester.getTopLeft(boundary).dx;
     expect(boundaryLeft - contentLeft, 24 * 48);
+    expect(tester.getTopLeft(rulerBoundary).dx, boundaryLeft);
+  });
+
+  testWidgets('keeps ruler and body cut boundaries aligned after horizontal scroll', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 24));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-900, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final bodyBoundary = find.byKey(
+      const ValueKey<String>('timeline-cut-end-boundary'),
+    );
+    final rulerBoundary = find.byKey(
+      const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+    );
+    expect(bodyBoundary, findsOneWidget);
+    expect(rulerBoundary, findsOneWidget);
+    expect(
+      tester.getTopLeft(rulerBoundary).dx,
+      moreOrLessEquals(tester.getTopLeft(bodyBoundary).dx),
+    );
   });
 
   testWidgets(

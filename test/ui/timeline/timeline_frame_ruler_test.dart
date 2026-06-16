@@ -34,6 +34,19 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-row')),
       findsOneWidget,
     );
+    final rulerBoundary = find.byKey(
+      const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+    );
+    expect(rulerBoundary, findsOneWidget);
+    expect(
+      tester.getTopLeft(rulerBoundary).dx -
+          tester
+              .getTopLeft(
+                find.byKey(const ValueKey<String>('timeline-frame-ruler')),
+              )
+              .dx,
+      5 * TimelineGridMetrics.defaults.frameCellWidth,
+    );
     expect(
       find.byKey(
         const ValueKey<String>('timeline-frame-header-leading-spacer'),

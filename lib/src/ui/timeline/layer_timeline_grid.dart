@@ -508,21 +508,25 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               >(
                                                                 'timeline-cut-end-boundary',
                                                               ),
-                                                          left:
-                                                              widget
-                                                                  .frameCount *
-                                                              LayerTimelineGrid
-                                                                  ._metrics
-                                                                  .frameCellWidth,
+                                                          left: timelineCutEndBoundaryX(
+                                                            playbackFrameCount:
+                                                                widget
+                                                                    .frameCount,
+                                                            metrics:
+                                                                LayerTimelineGrid
+                                                                    ._metrics,
+                                                          ),
                                                           top: 0,
                                                           bottom: 0,
                                                           width: 2,
-                                                          child: DecoratedBox(
-                                                            decoration:
-                                                                const BoxDecoration(
-                                                                  color: Colors
-                                                                      .red,
-                                                                ),
+                                                          child:
+                                                              const IgnorePointer(
+                                                            child: DecoratedBox(
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                    color: Colors.red,
+                                                                  ),
+                                                            ),
                                                           ),
                                                         ),
                                                         if (widget.currentFrameIndex >=

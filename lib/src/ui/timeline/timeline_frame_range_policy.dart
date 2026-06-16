@@ -38,3 +38,10 @@ class TimelineFrameRange {
   bool isOutsidePlaybackRange(int frameIndex) =>
       frameIndex >= playbackEndFrameIndexExclusive;
 }
+
+double timelineCutEndBoundaryX({
+  required int playbackFrameCount,
+  required TimelineGridMetrics metrics,
+}) {
+  return playbackFrameCount * metrics.frameCellWidth;
+}
