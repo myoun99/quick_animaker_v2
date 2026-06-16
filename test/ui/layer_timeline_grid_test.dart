@@ -392,7 +392,9 @@ void main() {
         (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
       );
 
-      await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
+      await tester.pumpWidget(
+        _grid(layers: manyLayers, playbackFrameCount: 48),
+      );
 
       final layerRow = find.byKey(
         const ValueKey<String>('timeline-layer-row-layer-24'),
@@ -998,7 +1000,10 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 100000),
+      _grid(
+        onSelectFrame: selectedFrameIndices.add,
+        playbackFrameCount: 100000,
+      ),
     );
 
     await tester.drag(
@@ -1183,7 +1188,9 @@ void main() {
   testWidgets('playhead does not appear for non-visible current frame', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(currentFrameIndex: 5000, playbackFrameCount: 100000));
+    await tester.pumpWidget(
+      _grid(currentFrameIndex: 5000, playbackFrameCount: 100000),
+    );
 
     expect(
       find.byKey(const ValueKey<String>('timeline-playhead')),
@@ -1196,7 +1203,9 @@ void main() {
   });
 
   testWidgets('playhead follows horizontal scroll range', (tester) async {
-    await tester.pumpWidget(_grid(currentFrameIndex: 100, playbackFrameCount: 100000));
+    await tester.pumpWidget(
+      _grid(currentFrameIndex: 100, playbackFrameCount: 100000),
+    );
 
     expect(
       find.byKey(const ValueKey<String>('timeline-playhead')),

@@ -291,8 +291,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .endIndexExclusive,
                                                     currentFrameIndex: widget
                                                         .currentFrameIndex,
-                                                    playbackFrameCount:
-                                                        widget.playbackFrameCount,
+                                                    playbackFrameCount: widget
+                                                        .playbackFrameCount,
                                                     leadingFrameSpacerWidth: plan
                                                         .leadingFrameSpacerWidth,
                                                     trailingFrameSpacerWidth: plan
