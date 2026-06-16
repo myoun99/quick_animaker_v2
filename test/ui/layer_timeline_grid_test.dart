@@ -63,6 +63,12 @@ void main() {
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
     );
+    final frameRuler = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler'),
+    );
+    final frameHeaderRow = find.byKey(
+      const ValueKey<String>('timeline-frame-header-row'),
+    );
     final frameGridArea = find.byKey(
       const ValueKey<String>('timeline-frame-grid-area'),
     );
@@ -103,6 +109,8 @@ void main() {
     expect(scrollbarViewport, findsOneWidget);
     expect(viewport, findsOneWidget);
     expect(content, findsOneWidget);
+    expect(frameRuler, findsOneWidget);
+    expect(frameHeaderRow, findsOneWidget);
     expect(frameGridArea, findsOneWidget);
     expect(bottomScrollbarRail, findsOneWidget);
     expect(bottomScrollbarLeftSpacer, findsOneWidget);
@@ -181,6 +189,14 @@ void main() {
     );
     expect(
       find.descendant(of: frameGridArea, matching: content),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: content, matching: frameRuler),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: frameRuler, matching: frameHeaderRow),
       findsOneWidget,
     );
     expect(
@@ -545,6 +561,22 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-layer-2-0')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('tapping frame ruler header selects zero-based frame index', (
+    tester,
+  ) async {
+    int? selectedFrameIndex;
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+    );
+
+    expect(selectedFrameIndex, 3);
   });
 
   testWidgets('selecting a cell selects layer and frame', (tester) async {

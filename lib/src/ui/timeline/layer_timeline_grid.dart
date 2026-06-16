@@ -7,6 +7,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_block.dart';
@@ -227,49 +228,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                Row(
-                                                  key: const ValueKey<String>(
-                                                    'timeline-frame-header-row',
-                                                  ),
-                                                  children: [
-                                                    SizedBox(
-                                                      key: const ValueKey<String>(
-                                                        'timeline-frame-header-leading-spacer',
-                                                      ),
-                                                      width: plan
-                                                          .leadingFrameSpacerWidth,
-                                                      height: LayerTimelineGrid
-                                                          ._metrics
-                                                          .layerRowHeight,
-                                                    ),
-                                                    for (
-                                                      var frameIndex =
-                                                          frameRange.startIndex;
-                                                      frameIndex <
-                                                          frameRange
-                                                              .endIndexExclusive;
-                                                      frameIndex += 1
-                                                    )
-                                                      _FrameHeader(
-                                                        frameIndex: frameIndex,
-                                                        selected:
-                                                            frameIndex ==
-                                                            widget
-                                                                .currentFrameIndex,
-                                                        onSelectFrame: widget
-                                                            .onSelectFrame,
-                                                      ),
-                                                    SizedBox(
-                                                      key: const ValueKey<String>(
-                                                        'timeline-frame-header-trailing-spacer',
-                                                      ),
-                                                      width: plan
-                                                          .trailingFrameSpacerWidth,
-                                                      height: LayerTimelineGrid
-                                                          ._metrics
-                                                          .layerRowHeight,
-                                                    ),
-                                                  ],
+                                                TimelineFrameRuler(
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  currentFrameIndex:
+                                                      widget.currentFrameIndex,
+                                                  leadingFrameSpacerWidth: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  trailingFrameSpacerWidth: plan
+                                                      .trailingFrameSpacerWidth,
+                                                  metrics:
+                                                      LayerTimelineGrid._metrics,
+                                                  onSelectFrame:
+                                                      widget.onSelectFrame,
                                                 ),
                                                 for (final layer
                                                     in widget.layers)
@@ -881,41 +855,6 @@ class _FrameCellsRow extends StatelessWidget {
           height: LayerTimelineGrid._metrics.layerRowHeight,
         ),
       ],
-    );
-  }
-}
-
-class _FrameHeader extends StatelessWidget {
-  const _FrameHeader({
-    required this.frameIndex,
-    required this.selected,
-    required this.onSelectFrame,
-  });
-
-  final int frameIndex;
-  final bool selected;
-  final ValueChanged<int> onSelectFrame;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return InkWell(
-      key: ValueKey<String>('timeline-frame-header-$frameIndex'),
-      onTap: () => onSelectFrame(frameIndex),
-      child: Container(
-        width: LayerTimelineGrid._metrics.frameCellWidth,
-        height: LayerTimelineGrid._metrics.layerRowHeight,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? colorScheme.primaryContainer : colorScheme.surface,
-          border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Text('${frameIndex + 1}'),
-      ),
     );
   }
 }
