@@ -299,3 +299,7 @@ Phase 94 separated `LayerTimelineGrid` into a fixed layer controls rail and a ho
 ## Phase 95 update
 
 Phase 95 applied the first horizontal frame virtualization slice to LayerTimelineGrid. The fixed layer controls rail remains eager and stable, while frame headers and frame cells are now built only for the visible/overscanned horizontal frame range with leading/trailing spacers preserving full scroll geometry.
+
+## Phase 96 update
+
+Phase 96 added a visible horizontal scrollbar foundation for LayerTimelineGrid so horizontal frame virtualization is discoverable and controllable. The scrollbar is tied to the frame scroll viewport, not the fixed layer controls rail, preserving the long-term TVPaint-style direction where scroll controls are stable and visible.
