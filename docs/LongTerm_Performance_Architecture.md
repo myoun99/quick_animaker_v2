@@ -79,6 +79,8 @@ It is not acceptable for the long-term target of large projects such as:
 
 Do not assume the current eager Row / Column frame grid is production-ready.
 
+Phase 93 introduced TimelineGridMetrics and a TimelinePanel virtualization adapter so future TimelinePanel virtualization calculations use the same dimensions as the current LayerTimelineGrid instead of duplicating hardcoded values.
+
 ## 4. Required long-term TimelinePanel direction
 
 TimelinePanel must eventually use viewport-based virtualization.
