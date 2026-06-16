@@ -708,6 +708,99 @@ void main() {
     expect(find.bySemanticsLabel('held exposure'), findsNothing);
   });
 
+  testWidgets('playhead appears for visible current frame', (tester) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 3));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('playhead does not appear for non-visible current frame', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 5000, frameCount: 100000));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('playhead follows horizontal scroll range', (tester) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 100, frameCount: 100000));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead')),
+      findsNothing,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-4800, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('playhead does not affect frame header tap', (tester) async {
+    int? selectedFrameIndex;
+
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 3,
+        onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+    );
+
+    expect(selectedFrameIndex, 3);
+  });
+
+  testWidgets('playhead does not affect frame cell selection', (tester) async {
+    LayerId? selectedLayerId;
+    int? selectedFrameIndex;
+
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 3,
+        onSelectLayer: (layerId) => selectedLayerId = layerId,
+        onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
+    );
+
+    expect(selectedLayerId, const LayerId('layer-1'));
+    expect(selectedFrameIndex, 3);
+  });
+
   testWidgets('current frame header uses plain text', (tester) async {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
