@@ -553,7 +553,7 @@ void main() {
     );
   });
 
-  testWidgets('padded frame header tap clamps to last valid frame', (
+  testWidgets('work-area frame header tap selects visible outside-playback frame', (
     tester,
   ) async {
     final selectedFrameIndices = <int>[];
@@ -571,13 +571,7 @@ void main() {
     );
 
     expect(selectedFrameIndices, isNotEmpty);
-    expect(selectedFrameIndices.last, 2);
-    expect(
-      selectedFrameIndices.every(
-        (frameIndex) => frameIndex >= 0 && frameIndex < 3,
-      ),
-      isTrue,
-    );
+    expect(selectedFrameIndices.last, 3);
   });
 
   testWidgets('renders layer kind icons before layer names', (tester) async {
@@ -691,7 +685,7 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
-  testWidgets('displays actual cut frames plus post-cut tail frames', (
+  testWidgets('displays playback frames plus safety work-area frames', (
     tester,
   ) async {
     await tester.pumpWidget(_grid(frameCount: 24));
@@ -726,7 +720,7 @@ void main() {
     );
   });
 
-  testWidgets('renders cut end boundary after actual cut frames', (
+  testWidgets('renders cut end boundary after playback frames', (
     tester,
   ) async {
     await tester.pumpWidget(_grid(frameCount: 24));
@@ -745,7 +739,81 @@ void main() {
     expect(boundaryLeft - contentLeft, 24 * 48);
   });
 
-  testWidgets('post-cut tail cell taps clamp to last actual frame', (
+  testWidgets('authored data outside playback is visible inside visible range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 24,
+        exposureStateForLayer: (_, frameIndex) => frameIndex == 45
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+        frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-1400, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
+      findsOneWidget,
+    );
+    expect(find.text('A45'), findsOneWidget);
+  });
+
+  testWidgets(
+    'authored data outside visible range is hidden until visible range includes it',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          frameCount: 5,
+          exposureStateForLayer: (_, frameIndex) => frameIndex == 45
+              ? TimelineCellExposureState.drawingStart
+              : TimelineCellExposureState.empty,
+          frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-2400, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
+        findsNothing,
+      );
+      expect(find.text('A45'), findsNothing);
+
+      await tester.pumpWidget(
+        _grid(
+          frameCount: 24,
+          exposureStateForLayer: (_, frameIndex) => frameIndex == 45
+              ? TimelineCellExposureState.drawingStart
+              : TimelineCellExposureState.empty,
+          frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
+        ),
+      );
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1400, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
+        findsOneWidget,
+      );
+      expect(find.text('A45'), findsOneWidget);
+    },
+  );
+
+  testWidgets('outside-playback visible cell and header taps select their real frames', (
     tester,
   ) async {
     final selectedFrameIndices = <int>[];
@@ -760,12 +828,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final postCutCell = find.byKey(
+    final outsidePlaybackCell = find.byKey(
       const ValueKey<String>('timeline-cell-layer-1-24'),
     );
-    expect(postCutCell, findsOneWidget);
-    expect(tester.getRect(postCutCell), _isInsideTestRoot);
-    await tester.tap(postCutCell);
+    expect(outsidePlaybackCell, findsOneWidget);
+    expect(tester.getRect(outsidePlaybackCell), _isInsideTestRoot);
+    await tester.tap(outsidePlaybackCell);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -773,16 +841,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final postCutHeader = find.byKey(
+    final outsidePlaybackHeader = find.byKey(
       const ValueKey<String>('timeline-frame-header-40'),
     );
-    expect(postCutHeader, findsOneWidget);
-    expect(tester.getRect(postCutHeader), _isInsideTestRoot);
-    await tester.tap(postCutHeader);
+    expect(outsidePlaybackHeader, findsOneWidget);
+    expect(tester.getRect(outsidePlaybackHeader), _isInsideTestRoot);
+    await tester.tap(outsidePlaybackHeader);
 
     expect(selectedFrameIndices, isNotEmpty);
-    expect(selectedFrameIndices.every((frameIndex) => frameIndex < 24), isTrue);
-    expect(selectedFrameIndices.last, 23);
+    expect(selectedFrameIndices, contains(24));
+    expect(selectedFrameIndices.last, 40);
   });
 
   testWidgets('clicking different ruler positions selects different frames', (
@@ -892,7 +960,7 @@ void main() {
     expect(selectedFrameIndices.last, greaterThanOrEqualTo(99));
   });
 
-  testWidgets('frame ruler scrub clamps selected frame to frame count', (
+  testWidgets('frame ruler scrub clamps selected frame to visible range', (
     tester,
   ) async {
     final selectedFrameIndices = <int>[];
@@ -908,13 +976,8 @@ void main() {
 
     await tester.tapAt(scrubAreaRect.centerRight - const Offset(1, 0));
 
-    expect(selectedFrameIndices.last, 2);
-    expect(
-      selectedFrameIndices.every(
-        (frameIndex) => frameIndex >= 0 && frameIndex < 3,
-      ),
-      isTrue,
-    );
+    expect(selectedFrameIndices.last, greaterThanOrEqualTo(3));
+    expect(selectedFrameIndices.last, lessThan(27));
   });
 
   testWidgets('selecting a cell selects layer and frame', (tester) async {

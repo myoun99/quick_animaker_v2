@@ -45,7 +45,7 @@ class TimelineController {
     _currentFrameIndex = frameIndex;
   }
 
-  int get totalFrameCount {
+  int get authoredTimelineExtentFrameCount {
     final cut = _findCutOrNull();
     if (cut == null || cut.layers.isEmpty) {
       return 0;
@@ -63,6 +63,11 @@ class TimelineController {
 
     return maxLength;
   }
+
+  @Deprecated(
+    'Use authoredTimelineExtentFrameCount to avoid confusing authored data extent with Cut duration or visible timeline range.',
+  )
+  int get totalFrameCount => authoredTimelineExtentFrameCount;
 
   Frame? resolveFrameForLayer({required Layer layer, int? frameIndex}) {
     final exposure = resolveExposureEntryForLayer(
@@ -885,7 +890,7 @@ class TimelineController {
       return nextEntry.startIndex;
     }
 
-    final visibleTimelineEnd = totalFrameCount;
+    final visibleTimelineEnd = authoredTimelineExtentFrameCount;
     if (visibleTimelineEnd > entry.startIndex) {
       return visibleTimelineEnd;
     }
