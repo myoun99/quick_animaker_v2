@@ -685,7 +685,7 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
-  testWidgets('clicking frame ruler scrub area selects frame under pointer', (
+  testWidgets('clicking different ruler positions selects different frames', (
     tester,
   ) async {
     final selectedFrameIndices = <int>[];
@@ -699,9 +699,51 @@ void main() {
     );
     final scrubAreaTopLeft = tester.getTopLeft(scrubArea);
 
-    await tester.tapAt(scrubAreaTopLeft + const Offset(48 * 3 + 12, 20));
+    await tester.tapAt(scrubAreaTopLeft + const Offset(12, 20));
+    await tester.tapAt(scrubAreaTopLeft + const Offset(48 * 4 + 12, 20));
+    await tester.tapAt(scrubAreaTopLeft + const Offset(48 * 9 + 12, 20));
 
-    expect(selectedFrameIndices, contains(3));
+    expect(selectedFrameIndices, containsAllInOrder(<int>[0, 4, 9]));
+    expect(selectedFrameIndices.toSet(), containsAll(<int>{0, 4, 9}));
+  });
+
+  testWidgets('ruler tap updates stateful current frame selection', (
+    tester,
+  ) async {
+    var currentFrameIndex = 0;
+
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          return _grid(
+            currentFrameIndex: currentFrameIndex,
+            frameCount: 20,
+            onSelectFrame: (frameIndex) {
+              setState(() => currentFrameIndex = frameIndex);
+            },
+          );
+        },
+      ),
+    );
+
+    final scrubArea = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+    );
+    await tester.tapAt(
+      tester.getTopLeft(scrubArea) + const Offset(48 * 9 + 12, 20),
+    );
+    await tester.pump();
+
+    expect(currentFrameIndex, 9);
+    final selectedHeader = tester.widget<Container>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-frame-header-9')),
+        matching: find.byType(Container),
+      ),
+    );
+    final decoration = selectedHeader.decoration as BoxDecoration;
+    final border = decoration.border as Border;
+    expect(border.top.color, Colors.red);
   });
 
   testWidgets('dragging frame ruler scrub area scrubs changed frames', (

@@ -54,6 +54,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
   double _horizontalScrollOffset = 0;
+  final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
   @override
@@ -112,7 +113,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     widget.onSelectFrame(clampedFrameIndex);
   }
 
-  void _selectFrameFromRulerLocalX(double localX) {
+  double? _rulerViewportLocalXFromGlobal(Offset globalPosition) {
+    final renderObject = _rulerScrubViewportKey.currentContext
+        ?.findRenderObject();
+    if (renderObject is! RenderBox) {
+      return null;
+    }
+
+    return renderObject.globalToLocal(globalPosition).dx;
+  }
+
+  void _selectFrameFromRulerGlobalPosition(Offset globalPosition) {
+    final localX = _rulerViewportLocalXFromGlobal(globalPosition);
+    if (localX == null) {
+      return;
+    }
+
     final frameIndex = _frameIndexForRulerLocalX(localX);
     if (frameIndex == null) {
       return;
@@ -215,20 +231,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       behavior: HitTestBehavior.translucent,
                                       onPointerDown: (event) {
                                         _resetRulerScrubTracking();
-                                        _selectFrameFromRulerLocalX(
-                                          event.localPosition.dx,
+                                        _selectFrameFromRulerGlobalPosition(
+                                          event.position,
                                         );
                                       },
                                       child: GestureDetector(
                                         behavior: HitTestBehavior.translucent,
                                         onHorizontalDragStart: (details) {
-                                          _selectFrameFromRulerLocalX(
-                                            details.localPosition.dx,
+                                          _selectFrameFromRulerGlobalPosition(
+                                            details.globalPosition,
                                           );
                                         },
                                         onHorizontalDragUpdate: (details) {
-                                          _selectFrameFromRulerLocalX(
-                                            details.localPosition.dx,
+                                          _selectFrameFromRulerGlobalPosition(
+                                            details.globalPosition,
                                           );
                                         },
                                         onHorizontalDragEnd: (_) =>
@@ -236,6 +252,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         onHorizontalDragCancel:
                                             _resetRulerScrubTracking,
                                         child: SizedBox(
+                                          key: _rulerScrubViewportKey,
                                           width: viewportWidth,
                                           height: headerHeight,
                                           child: ClipRect(
