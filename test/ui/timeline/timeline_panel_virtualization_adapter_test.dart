@@ -7,27 +7,30 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_visible_range.dart';
 
 void main() {
   group('calculateLayerTimelineGridVirtualizationPlan', () {
-    test('uses minimumVisibleFrameCells when frameCount is smaller than 24', () {
-      final plan = calculateLayerTimelineGridVirtualizationPlan(
-        horizontalScrollOffset: 0,
-        verticalScrollOffset: 0,
-        viewportWidth: 96,
-        viewportHeight: 104,
-        frameCount: 5,
-        layerCount: 3,
-        frameOverscanBefore: 0,
-        frameOverscanAfter: 0,
-        layerOverscanBefore: 0,
-        layerOverscanAfter: 0,
-      );
+    test(
+      'uses minimumVisibleFrameCells when frameCount is smaller than 24',
+      () {
+        final plan = calculateLayerTimelineGridVirtualizationPlan(
+          horizontalScrollOffset: 0,
+          verticalScrollOffset: 0,
+          viewportWidth: 96,
+          viewportHeight: 104,
+          frameCount: 5,
+          layerCount: 3,
+          frameOverscanBefore: 0,
+          frameOverscanAfter: 0,
+          layerOverscanBefore: 0,
+          layerOverscanAfter: 0,
+        );
 
-      expect(plan.totalFrameContentWidth, 24 * 48);
-      expect(
-        plan.frameRange,
-        const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 2),
-      );
-      expect(plan.trailingFrameSpacerWidth, 22 * 48);
-    });
+        expect(plan.totalFrameContentWidth, 24 * 48);
+        expect(
+          plan.frameRange,
+          const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 2),
+        );
+        expect(plan.trailingFrameSpacerWidth, 22 * 48);
+      },
+    );
 
     test('uses actual frameCount when frameCount is larger than 24', () {
       final plan = calculateLayerTimelineGridVirtualizationPlan(
