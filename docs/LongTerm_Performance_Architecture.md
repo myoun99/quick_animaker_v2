@@ -281,3 +281,9 @@ The current implementation is not yet ListView.builder-based or fully virtualize
 The current eager Row / Column implementation is acceptable for the early MVP phase, but it must not be treated as the final performance architecture.
 
 For the user's goal of a lightweight, low-lag animation program, TimelinePanel virtualization must become a major architectural priority before heavy timeline features are added.
+
+## 10. Phase 91 Timeline visible range foundation
+
+Phase 91 introduced a pure Dart `TimelineVisibleRange` calculation layer as the first concrete foundation for future TimelinePanel 2D virtualization.
+
+This foundation computes clamped visible frame and layer index ranges from scroll offsets, viewport extents, item extents, item counts, and overscan margins without building timeline widgets or storing viewport state in domain models.
