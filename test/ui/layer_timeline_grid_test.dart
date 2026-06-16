@@ -98,6 +98,134 @@ void main() {
     );
   });
 
+  testWidgets('virtualizes large frame counts with spacer geometry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 100000));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-leading-spacer')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-frame-header-trailing-spacer'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-frame-row-trailing-spacer-layer-1'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-99999')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-99999')),
+      findsNothing,
+    );
+
+    final builtHeaderCount = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              ((widget.key as ValueKey<String>).value).startsWith(
+                'timeline-frame-header-',
+              ) &&
+              !((widget.key as ValueKey<String>).value).contains('spacer'),
+        )
+        .evaluate()
+        .length;
+    final builtLayerOneCellCount = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              ((widget.key as ValueKey<String>).value).startsWith(
+                'timeline-cell-layer-1-',
+              ),
+        )
+        .evaluate()
+        .length;
+
+    expect(builtHeaderCount, lessThan(100));
+    expect(builtLayerOneCellCount, lessThan(100));
+  });
+
+  testWidgets('horizontal scroll changes virtualized frame range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 100000));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-100')),
+      findsNothing,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-4800, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-controls-rail')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-100')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('minimum visible frame cells still extends small frame counts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 3,
+        layers: [_layer(id: 'layer-1', name: 'Layer 1')],
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('renders layer kind icons before layer names', (tester) async {
     await tester.pumpWidget(
       _grid(

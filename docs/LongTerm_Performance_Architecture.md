@@ -294,3 +294,8 @@ Phase 92 introduced a pure Dart `TimelineVirtualizationPlan` render plan foundat
 
 
 Phase 94 separated `LayerTimelineGrid` into a fixed layer controls rail and a horizontal frame scroll area. This prepares the TimelinePanel for future horizontal frame virtualization by ensuring frame scroll geometry is independent from the layer controls column while frame headers and cells still render eagerly for now.
+
+
+## Phase 95 update
+
+Phase 95 applied the first horizontal frame virtualization slice to LayerTimelineGrid. The fixed layer controls rail remains eager and stable, while frame headers and frame cells are now built only for the visible/overscanned horizontal frame range with leading/trailing spacers preserving full scroll geometry.
