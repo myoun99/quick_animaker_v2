@@ -17,6 +17,12 @@ bool _isGray(Color color) {
   return red == green && green == blue;
 }
 
+final Matcher _isInsideTestRoot = isA<Rect>()
+    .having((rect) => rect.left, 'left', greaterThanOrEqualTo(0))
+    .having((rect) => rect.top, 'top', greaterThanOrEqualTo(0))
+    .having((rect) => rect.right, 'right', lessThanOrEqualTo(800))
+    .having((rect) => rect.bottom, 'bottom', lessThanOrEqualTo(600));
+
 void main() {
   testWidgets(
     'vertical scrollbar does not read unsettled scroll metrics on first pump',
@@ -735,22 +741,29 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-520, 0),
+      const Offset(-900, 0),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-24')),
+    final postCutCell = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-1-24'),
     );
+    expect(postCutCell, findsOneWidget);
+    expect(tester.getRect(postCutCell), _isInsideTestRoot);
+    await tester.tap(postCutCell);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-1200, 0),
+      const Offset(-900, 0),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-47')),
+
+    final postCutHeader = find.byKey(
+      const ValueKey<String>('timeline-frame-header-40'),
     );
+    expect(postCutHeader, findsOneWidget);
+    expect(tester.getRect(postCutHeader), _isInsideTestRoot);
+    await tester.tap(postCutHeader);
 
     expect(selectedFrameIndices, isNotEmpty);
     expect(selectedFrameIndices.every((frameIndex) => frameIndex < 24), isTrue);
