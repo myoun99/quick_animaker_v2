@@ -5,6 +5,7 @@ import '../models/layer_id.dart';
 import 'default_layer_helpers.dart';
 
 const defaultCutCanvasSize = CanvasSize(width: 1280, height: 720);
+const defaultCutDuration = 24;
 
 Cut createDefaultCut({
   required CutId cutId,
@@ -22,12 +23,12 @@ Cut createDefaultCut({
           id: cutId,
           name: name,
           layers: const [],
-          duration: 1,
+          duration: defaultCutDuration,
           canvasSize: canvasSize,
         ),
       ),
     ],
-    duration: 1,
+    duration: defaultCutDuration,
     canvasSize: canvasSize,
   );
 }
