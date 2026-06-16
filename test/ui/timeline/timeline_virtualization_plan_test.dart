@@ -203,28 +203,34 @@ void main() {
       );
     });
 
-    test('100000 frameCount produces correct total width and visible-only range', () {
-      final plan = calculateTimelineVirtualizationPlan(
-        horizontalScrollOffset: 500000,
-        verticalScrollOffset: 0,
-        viewportWidth: 1000,
-        viewportHeight: 100,
-        frameCellWidth: 10,
-        layerRowHeight: 20,
-        frameCount: 100000,
-        layerCount: 10,
-        frameOverscanBefore: 3,
-        frameOverscanAfter: 4,
-      );
+    test(
+      '100000 frameCount produces correct total width and visible-only range',
+      () {
+        final plan = calculateTimelineVirtualizationPlan(
+          horizontalScrollOffset: 500000,
+          verticalScrollOffset: 0,
+          viewportWidth: 1000,
+          viewportHeight: 100,
+          frameCellWidth: 10,
+          layerRowHeight: 20,
+          frameCount: 100000,
+          layerCount: 10,
+          frameOverscanBefore: 3,
+          frameOverscanAfter: 4,
+        );
 
-      expect(plan.totalFrameContentWidth, 1000000);
-      expect(
-        plan.frameRange,
-        const TimelineVisibleRange(startIndex: 49997, endIndexExclusive: 50104),
-      );
-      expect(plan.visibleFrameContentWidth, 1070);
-      expect(plan.leadingFrameSpacerWidth, 499970);
-      expect(plan.trailingFrameSpacerWidth, 498960);
-    });
+        expect(plan.totalFrameContentWidth, 1000000);
+        expect(
+          plan.frameRange,
+          const TimelineVisibleRange(
+            startIndex: 49997,
+            endIndexExclusive: 50104,
+          ),
+        );
+        expect(plan.visibleFrameContentWidth, 1070);
+        expect(plan.leadingFrameSpacerWidth, 499970);
+        expect(plan.trailingFrameSpacerWidth, 498960);
+      },
+    );
   });
 }
