@@ -241,8 +241,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           .currentFrameIndex,
                                                       leadingFrameSpacerWidth: plan
                                                           .leadingFrameSpacerWidth,
-                                                      trailingFrameSpacerWidth: plan
-                                                          .trailingFrameSpacerWidth,
+                                                      trailingFrameSpacerWidth:
+                                                          plan.trailingFrameSpacerWidth,
                                                       metrics: LayerTimelineGrid
                                                           ._metrics,
                                                       onSelectFrame:
@@ -264,21 +264,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         frameEndIndexExclusive:
                                                             frameRange
                                                                 .endIndexExclusive,
-                                                        leadingFrameSpacerWidth: plan
-                                                            .leadingFrameSpacerWidth,
-                                                        trailingFrameSpacerWidth: plan
-                                                            .trailingFrameSpacerWidth,
-                                                        exposureStateForLayer: widget
-                                                            .exposureStateForLayer,
+                                                        leadingFrameSpacerWidth:
+                                                            plan.leadingFrameSpacerWidth,
+                                                        trailingFrameSpacerWidth:
+                                                            plan.trailingFrameSpacerWidth,
+                                                        exposureStateForLayer:
+                                                            widget
+                                                                .exposureStateForLayer,
                                                         hasMarkForLayer: widget
                                                             .hasMarkForLayer,
                                                         frameNameForLayer: widget
                                                             .frameNameForLayer,
-                                                        onSelectLayer:
-                                                            widget.onSelectLayer,
-                                                        onSelectFrame:
-                                                            widget
-                                                                .onSelectFrame,
+                                                        onSelectLayer: widget
+                                                            .onSelectLayer,
+                                                        onSelectFrame: widget
+                                                            .onSelectFrame,
                                                       ),
                                                     if (widget.layers.isEmpty)
                                                       SizedBox(
@@ -291,8 +291,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       ),
                                                   ],
                                                 ),
-                                                if (widget
-                                                            .currentFrameIndex >=
+                                                if (widget.currentFrameIndex >=
                                                         frameRange.startIndex &&
                                                     widget.currentFrameIndex <
                                                         frameRange
