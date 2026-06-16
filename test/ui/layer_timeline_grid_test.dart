@@ -580,26 +580,27 @@ void main() {
     );
   });
 
-  testWidgets('work-area frame header tap selects visible outside-playback frame', (
-    tester,
-  ) async {
-    final selectedFrameIndices = <int>[];
+  testWidgets(
+    'work-area frame header tap selects visible outside-playback frame',
+    (tester) async {
+      final selectedFrameIndices = <int>[];
 
-    await tester.pumpWidget(
-      _grid(
-        frameCount: 3,
-        layers: [_layer(id: 'layer-1', name: 'Layer 1')],
-        onSelectFrame: selectedFrameIndices.add,
-      ),
-    );
+      await tester.pumpWidget(
+        _grid(
+          frameCount: 3,
+          layers: [_layer(id: 'layer-1', name: 'Layer 1')],
+          onSelectFrame: selectedFrameIndices.add,
+        ),
+      );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-    );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+      );
 
-    expect(selectedFrameIndices, isNotEmpty);
-    expect(selectedFrameIndices.last, 3);
-  });
+      expect(selectedFrameIndices, isNotEmpty);
+      expect(selectedFrameIndices.last, 3);
+    },
+  );
 
   testWidgets('renders layer kind icons before layer names', (tester) async {
     await tester.pumpWidget(
@@ -747,9 +748,7 @@ void main() {
     );
   });
 
-  testWidgets('renders cut end boundary after playback frames', (
-    tester,
-  ) async {
+  testWidgets('renders cut end boundary after playback frames', (tester) async {
     await tester.pumpWidget(_grid(frameCount: 24));
 
     final boundary = find.byKey(
@@ -766,29 +765,30 @@ void main() {
     expect(boundaryLeft - contentLeft, 24 * 48);
   });
 
-  testWidgets('authored data outside playback is visible inside visible range', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _grid(
-        frameCount: 24,
-        exposureStateForLayer: (_, frameIndex) => frameIndex == 45
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
-      ),
-    );
+  testWidgets(
+    'authored data outside playback is visible inside visible range',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          frameCount: 24,
+          exposureStateForLayer: (_, frameIndex) => frameIndex == 45
+              ? TimelineCellExposureState.drawingStart
+              : TimelineCellExposureState.empty,
+          frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
+        ),
+      );
 
-    const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
-    await _scrollFrameGridUntilKeyVisible(tester, cellKey);
+      const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
+      await _scrollFrameGridUntilKeyVisible(tester, cellKey);
 
-    final cell = find.byKey(cellKey);
-    expect(cell, findsOneWidget);
-    expect(
-      find.descendant(of: cell, matching: find.text('A45')),
-      findsOneWidget,
-    );
-  });
+      final cell = find.byKey(cellKey);
+      expect(cell, findsOneWidget);
+      expect(
+        find.descendant(of: cell, matching: find.text('A45')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets(
     'authored data outside visible range is hidden until visible range includes it',
@@ -836,45 +836,46 @@ void main() {
     },
   );
 
-  testWidgets('outside-playback visible cell and header taps select their real frames', (
-    tester,
-  ) async {
-    final selectedFrameIndices = <int>[];
+  testWidgets(
+    'outside-playback visible cell and header taps select their real frames',
+    (tester) async {
+      final selectedFrameIndices = <int>[];
 
-    await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 24),
-    );
+      await tester.pumpWidget(
+        _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 24),
+      );
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-900, 0),
-    );
-    await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-900, 0),
+      );
+      await tester.pumpAndSettle();
 
-    final outsidePlaybackCell = find.byKey(
-      const ValueKey<String>('timeline-cell-layer-1-24'),
-    );
-    expect(outsidePlaybackCell, findsOneWidget);
-    expect(tester.getRect(outsidePlaybackCell), _isInsideTestRoot);
-    await tester.tap(outsidePlaybackCell);
+      final outsidePlaybackCell = find.byKey(
+        const ValueKey<String>('timeline-cell-layer-1-24'),
+      );
+      expect(outsidePlaybackCell, findsOneWidget);
+      expect(tester.getRect(outsidePlaybackCell), _isInsideTestRoot);
+      await tester.tap(outsidePlaybackCell);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-900, 0),
-    );
-    await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-900, 0),
+      );
+      await tester.pumpAndSettle();
 
-    final outsidePlaybackHeader = find.byKey(
-      const ValueKey<String>('timeline-frame-header-40'),
-    );
-    expect(outsidePlaybackHeader, findsOneWidget);
-    expect(tester.getRect(outsidePlaybackHeader), _isInsideTestRoot);
-    await tester.tap(outsidePlaybackHeader);
+      final outsidePlaybackHeader = find.byKey(
+        const ValueKey<String>('timeline-frame-header-40'),
+      );
+      expect(outsidePlaybackHeader, findsOneWidget);
+      expect(tester.getRect(outsidePlaybackHeader), _isInsideTestRoot);
+      await tester.tap(outsidePlaybackHeader);
 
-    expect(selectedFrameIndices, isNotEmpty);
-    expect(selectedFrameIndices, contains(24));
-    expect(selectedFrameIndices.last, 40);
-  });
+      expect(selectedFrameIndices, isNotEmpty);
+      expect(selectedFrameIndices, contains(24));
+      expect(selectedFrameIndices.last, 40);
+    },
+  );
 
   testWidgets('clicking different ruler positions selects different frames', (
     tester,

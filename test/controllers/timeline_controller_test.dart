@@ -42,35 +42,38 @@ void main() {
       );
     });
 
-    test('creating drawing outside cut duration stores data without extending duration', () {
-      final fixture = _createFixture();
+    test(
+      'creating drawing outside cut duration stores data without extending duration',
+      () {
+        final fixture = _createFixture();
 
-      fixture.controller.selectFrameIndex(45);
-      fixture.controller.createDrawingFrameForLayer(
-        layerId: const LayerId('empty-layer'),
-        frameId: const FrameId('outside-duration-frame'),
-      );
+        fixture.controller.selectFrameIndex(45);
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('empty-layer'),
+          frameId: const FrameId('outside-duration-frame'),
+        );
 
-      final project = fixture.repository.requireProject();
-      final cut = project.tracks.single.cuts.single;
-      final layer = _findLayer(
-        fixture.repository,
-        const LayerId('empty-layer'),
-      );
+        final project = fixture.repository.requireProject();
+        final cut = project.tracks.single.cuts.single;
+        final layer = _findLayer(
+          fixture.repository,
+          const LayerId('empty-layer'),
+        );
 
-      expect(cut.duration, 1);
-      expect(
-        layer.timeline[45]?.frameId,
-        const FrameId('outside-duration-frame'),
-      );
-      expect(
-        fixture.controller.resolveFrameIdForLayer(
-          layer: layer,
-          frameIndex: 45,
-        ),
-        const FrameId('outside-duration-frame'),
-      );
-    });
+        expect(cut.duration, 1);
+        expect(
+          layer.timeline[45]?.frameId,
+          const FrameId('outside-duration-frame'),
+        );
+        expect(
+          fixture.controller.resolveFrameIdForLayer(
+            layer: layer,
+            frameIndex: 45,
+          ),
+          const FrameId('outside-duration-frame'),
+        );
+      },
+    );
 
     test('last frame holds to visible timeline end', () {
       final fixture = _createFixture();

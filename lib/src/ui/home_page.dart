@@ -291,10 +291,7 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  int get _activeCutPlaybackFrameCount => math.max(
-    1,
-    _activeCut.duration,
-  );
+  int get _activeCutPlaybackFrameCount => math.max(1, _activeCut.duration);
 
   Cut get _activeCut {
     final project = _repository.requireProject();
