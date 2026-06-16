@@ -85,10 +85,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportHeight = constraints.hasBoundedHeight
-            ? (constraints.maxHeight - bottomScrollbarRailHeight).clamp(
-                0.0,
-                double.infinity,
-              ).toDouble()
+            ? (constraints.maxHeight - bottomScrollbarRailHeight)
+                  .clamp(0.0, double.infinity)
+                  .toDouble()
             : 0.0;
 
         return KeyedSubtree(
@@ -254,12 +253,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   widget.currentFrameIndex,
                                               frameStartIndex:
                                                   frameRange.startIndex,
-                                              frameEndIndexExclusive: frameRange
-                                                  .endIndexExclusive,
-                                              leadingFrameSpacerWidth: plan
-                                                  .leadingFrameSpacerWidth,
-                                              trailingFrameSpacerWidth: plan
-                                                  .trailingFrameSpacerWidth,
+                                              frameEndIndexExclusive:
+                                                  frameRange.endIndexExclusive,
+                                              leadingFrameSpacerWidth:
+                                                  plan.leadingFrameSpacerWidth,
+                                              trailingFrameSpacerWidth:
+                                                  plan.trailingFrameSpacerWidth,
                                               exposureStateForLayer:
                                                   widget.exposureStateForLayer,
                                               hasMarkForLayer:
@@ -273,7 +272,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             ),
                                           if (widget.layers.isEmpty)
                                             SizedBox(
-                                              width: plan.totalFrameContentWidth,
+                                              width:
+                                                  plan.totalFrameContentWidth,
                                               height: LayerTimelineGrid
                                                   ._metrics
                                                   .layerRowHeight,

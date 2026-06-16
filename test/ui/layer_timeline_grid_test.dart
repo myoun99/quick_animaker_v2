@@ -80,10 +80,7 @@ void main() {
       ),
       findsNothing,
     );
-    expect(
-      find.descendant(of: viewport, matching: rail),
-      findsNothing,
-    );
+    expect(find.descendant(of: viewport, matching: rail), findsNothing);
     expect(
       find.descendant(of: horizontalScrollbar, matching: viewport),
       findsOneWidget,
@@ -121,45 +118,46 @@ void main() {
     );
   });
 
-  testWidgets('keeps layer controls and frame rows vertically aligned for many layers', (
-    tester,
-  ) async {
-    final manyLayers = List<Layer>.generate(
-      30,
-      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
-    );
+  testWidgets(
+    'keeps layer controls and frame rows vertically aligned for many layers',
+    (tester) async {
+      final manyLayers = List<Layer>.generate(
+        30,
+        (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+      );
 
-    await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
+      await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
 
-    final layerRow = find.byKey(
-      const ValueKey<String>('timeline-layer-row-layer-24'),
-    );
-    final frameRow = find.byKey(
-      const ValueKey<String>('timeline-frame-row-area-layer-24'),
-    );
+      final layerRow = find.byKey(
+        const ValueKey<String>('timeline-layer-row-layer-24'),
+      );
+      final frameRow = find.byKey(
+        const ValueKey<String>('timeline-frame-row-area-layer-24'),
+      );
 
-    expect(layerRow, findsOneWidget);
-    expect(frameRow, findsOneWidget);
-    expect(
-      (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
-      lessThan(0.1),
-    );
+      expect(layerRow, findsOneWidget);
+      expect(frameRow, findsOneWidget);
+      expect(
+        (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
+        lessThan(0.1),
+      );
 
-    final frameGridArea = find.byKey(
-      const ValueKey<String>('timeline-frame-grid-area'),
-    );
-    final dragStart = tester.getTopLeft(frameGridArea) + const Offset(20, 20);
+      final frameGridArea = find.byKey(
+        const ValueKey<String>('timeline-frame-grid-area'),
+      );
+      final dragStart = tester.getTopLeft(frameGridArea) + const Offset(20, 20);
 
-    await tester.dragFrom(dragStart, const Offset(0, -520));
-    await tester.pumpAndSettle();
+      await tester.dragFrom(dragStart, const Offset(0, -520));
+      await tester.pumpAndSettle();
 
-    expect(layerRow, findsOneWidget);
-    expect(frameRow, findsOneWidget);
-    expect(
-      (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
-      lessThan(0.1),
-    );
-  });
+      expect(layerRow, findsOneWidget);
+      expect(frameRow, findsOneWidget);
+      expect(
+        (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
+        lessThan(0.1),
+      );
+    },
+  );
 
   testWidgets('horizontal scrolling keeps layer controls rail mounted', (
     tester,
