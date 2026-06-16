@@ -3,8 +3,10 @@
 /// These values mirror the current [LayerTimelineGrid] layout so calculation-
 /// only virtualization helpers can use the same geometry as the rendered UI.
 class TimelineGridMetrics {
+  static const int defaultMinimumVisibleFrameCells = 24;
+
   const TimelineGridMetrics({
-    this.minimumVisibleFrameCells = 24,
+    this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
     this.layerControlsWidth = 220,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../core/timeline/timeline_defaults.dart';
 import '../controllers/canvas_controller.dart';
 import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
@@ -290,9 +291,9 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  int get _activeCutFrameCount => math.max(
+  int get _activeCutPlaybackFrameCount => math.max(
     1,
-    math.max(_activeCut.duration, _timelineController.totalFrameCount),
+    _activeCut.duration,
   );
 
   Cut get _activeCut {
@@ -1378,7 +1379,7 @@ class _HomePageState extends State<HomePage> {
             layers: _layerController.layers,
             activeLayerId: _layerController.activeLayerId,
             currentFrameIndex: _timelineController.currentFrameIndex,
-            frameCount: _activeCutFrameCount,
+            frameCount: _activeCutPlaybackFrameCount,
             exposureStateForLayer: _exposureStateForLayer,
             hasMarkForLayer: _hasMarkForLayer,
             frameNameForLayer: _frameNameForLayer,
@@ -1439,7 +1440,7 @@ class _HomePageState extends State<HomePage> {
             Cut(
               id: _sampleCutId,
               name: 'Cut 1',
-              duration: 24,
+              duration: defaultCutDurationFrames,
               canvasSize: const CanvasSize(width: 1280, height: 720),
               layers: [
                 Layer(
