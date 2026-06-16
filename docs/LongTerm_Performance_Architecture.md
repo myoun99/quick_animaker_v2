@@ -330,3 +330,11 @@ Stable keys introduced for this structure:
 * `timeline-vertical-scrollbar-thumb`
 * `timeline-vertical-scrollbar-bottom-spacer`
 * `timeline-vertical-scroll-viewport`
+
+## 10. Phase 99 timeline frame ruler foundation
+
+Phase 99 extracts the TimelinePanel frame header row into a dedicated `TimelineFrameRuler` foundation. The ruler uses the existing horizontal visible frame range and spacer geometry rather than calculating a separate range. This prepares future playhead, ruler tick, and zoom work without changing domain models, renderer/cache, persistence, StoryboardPanel, or vertical layer virtualization.
+
+Stable key added for this boundary:
+
+* `timeline-frame-ruler`
