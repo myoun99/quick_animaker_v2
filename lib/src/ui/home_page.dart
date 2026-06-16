@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../controllers/canvas_controller.dart';
@@ -287,6 +289,11 @@ class _HomePageState extends State<HomePage> {
 
     return null;
   }
+
+  int get _activeCutFrameCount => math.max(
+    1,
+    math.max(_activeCut.duration, _timelineController.totalFrameCount),
+  );
 
   Cut get _activeCut {
     final project = _repository.requireProject();
@@ -1371,7 +1378,7 @@ class _HomePageState extends State<HomePage> {
             layers: _layerController.layers,
             activeLayerId: _layerController.activeLayerId,
             currentFrameIndex: _timelineController.currentFrameIndex,
-            frameCount: _timelineController.totalFrameCount,
+            frameCount: _activeCutFrameCount,
             exposureStateForLayer: _exposureStateForLayer,
             hasMarkForLayer: _hasMarkForLayer,
             frameNameForLayer: _frameNameForLayer,
