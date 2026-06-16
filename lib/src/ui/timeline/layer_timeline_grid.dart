@@ -167,27 +167,41 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         );
                                     final frameRange = plan.frameRange;
 
-                                    return ClipRect(
-                                      child: Transform.translate(
-                                        offset: Offset(
-                                          -_horizontalScrollOffset,
-                                          0,
-                                        ),
-                                        child: SizedBox(
-                                          width: plan.totalFrameContentWidth,
-                                          child: TimelineFrameRuler(
-                                            frameStartIndex:
-                                                frameRange.startIndex,
-                                            frameEndIndexExclusive:
-                                                frameRange.endIndexExclusive,
-                                            currentFrameIndex:
-                                                widget.currentFrameIndex,
-                                            leadingFrameSpacerWidth: plan
-                                                .leadingFrameSpacerWidth,
-                                            trailingFrameSpacerWidth: plan
-                                                .trailingFrameSpacerWidth,
-                                            metrics: LayerTimelineGrid._metrics,
-                                            onSelectFrame: widget.onSelectFrame,
+                                    return SizedBox(
+                                      width: viewportWidth,
+                                      height: headerHeight,
+                                      child: ClipRect(
+                                        child: OverflowBox(
+                                          alignment: Alignment.topLeft,
+                                          minWidth: plan.totalFrameContentWidth,
+                                          maxWidth: plan.totalFrameContentWidth,
+                                          minHeight: headerHeight,
+                                          maxHeight: headerHeight,
+                                          child: Transform.translate(
+                                            offset: Offset(
+                                              -_horizontalScrollOffset,
+                                              0,
+                                            ),
+                                            child: SizedBox(
+                                              width: plan.totalFrameContentWidth,
+                                              height: headerHeight,
+                                              child: TimelineFrameRuler(
+                                                frameStartIndex:
+                                                    frameRange.startIndex,
+                                                frameEndIndexExclusive:
+                                                    frameRange.endIndexExclusive,
+                                                currentFrameIndex:
+                                                    widget.currentFrameIndex,
+                                                leadingFrameSpacerWidth: plan
+                                                    .leadingFrameSpacerWidth,
+                                                trailingFrameSpacerWidth: plan
+                                                    .trailingFrameSpacerWidth,
+                                                metrics:
+                                                    LayerTimelineGrid._metrics,
+                                                onSelectFrame:
+                                                    widget.onSelectFrame,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
