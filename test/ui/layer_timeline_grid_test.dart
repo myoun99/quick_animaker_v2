@@ -40,24 +40,25 @@ void main() {
     },
   );
 
-  testWidgets('sticky frame ruler lays out full content width without overflow', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(360, 260));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'sticky frame ruler lays out full content width without overflow',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 260));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_grid(frameCount: 96));
+      await tester.pumpWidget(_grid(frameCount: 96));
 
-    expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-ruler')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-row')),
-      findsOneWidget,
-    );
-  });
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('timeline-frame-ruler')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('timeline-frame-header-row')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('renders fixed layer controls rail and frame scroll structure', (
     tester,
@@ -332,7 +333,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(addLayer).dy, moreOrLessEquals(initialAddLayerTop));
+    expect(
+      tester.getTopLeft(addLayer).dy,
+      moreOrLessEquals(initialAddLayerTop),
+    );
     expect(
       tester.getTopLeft(frameHeader).dy,
       moreOrLessEquals(initialFrameHeaderTop),
