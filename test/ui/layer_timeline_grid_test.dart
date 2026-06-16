@@ -104,7 +104,9 @@ void main() {
     await tester.pumpWidget(_grid(frameCount: 100000));
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-leading-spacer')),
+      find.byKey(
+        const ValueKey<String>('timeline-frame-header-leading-spacer'),
+      ),
       findsOneWidget,
     );
     expect(

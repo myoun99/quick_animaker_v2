@@ -91,8 +91,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _HeaderCell(
-                  width: _metrics.layerControlsWidth,
-                  height: _metrics.layerRowHeight,
+                  width: LayerTimelineGrid._metrics.layerControlsWidth,
+                  height: LayerTimelineGrid._metrics.layerRowHeight,
                   child: TextButton.icon(
                     key: const ValueKey<String>('timeline-add-layer-button'),
                     onPressed: widget.onAddLayer,
@@ -110,8 +110,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   ),
                 if (widget.layers.isEmpty)
                   SizedBox(
-                    width: _metrics.layerControlsWidth,
-                    height: _metrics.layerRowHeight,
+                    width: LayerTimelineGrid._metrics.layerControlsWidth,
+                    height: LayerTimelineGrid._metrics.layerRowHeight,
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: Text(
@@ -144,9 +144,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 final frameRange = plan.frameRange;
 
                 return SingleChildScrollView(
-                  key: const ValueKey<String>(
-                    'timeline-frame-scroll-viewport',
-                  ),
+                  key: const ValueKey<String>('timeline-frame-scroll-viewport'),
                   controller: _horizontalScrollController,
                   scrollDirection: Axis.horizontal,
                   child: KeyedSubtree(
@@ -200,8 +198,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 plan.leadingFrameSpacerWidth,
                             trailingFrameSpacerWidth:
                                 plan.trailingFrameSpacerWidth,
-                            exposureStateForLayer:
-                                widget.exposureStateForLayer,
+                            exposureStateForLayer: widget.exposureStateForLayer,
                             hasMarkForLayer: widget.hasMarkForLayer,
                             frameNameForLayer: widget.frameNameForLayer,
                             onSelectLayer: widget.onSelectLayer,
