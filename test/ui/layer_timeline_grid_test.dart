@@ -50,6 +50,12 @@ void main() {
     final bottomScrollbarLeftSpacer = find.byKey(
       const ValueKey<String>('timeline-bottom-scrollbar-left-spacer'),
     );
+    final horizontalScrollbarTrack = find.byKey(
+      const ValueKey<String>('timeline-horizontal-scrollbar-track'),
+    );
+    final horizontalScrollbarThumb = find.byKey(
+      const ValueKey<String>('timeline-horizontal-scrollbar-thumb'),
+    );
 
     expect(rail, findsOneWidget);
     expect(scrollbarArea, findsOneWidget);
@@ -60,6 +66,8 @@ void main() {
     expect(frameGridArea, findsOneWidget);
     expect(bottomScrollbarRail, findsOneWidget);
     expect(bottomScrollbarLeftSpacer, findsOneWidget);
+    expect(horizontalScrollbarTrack, findsOneWidget);
+    expect(horizontalScrollbarThumb, findsOneWidget);
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
@@ -88,6 +96,28 @@ void main() {
     expect(
       find.descendant(of: horizontalScrollbar, matching: bottomScrollbarRail),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(of: bottomScrollbarRail, matching: horizontalScrollbarTrack),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: bottomScrollbarRail, matching: horizontalScrollbarThumb),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: bottomScrollbarLeftSpacer,
+        matching: horizontalScrollbarTrack,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: bottomScrollbarLeftSpacer,
+        matching: horizontalScrollbarThumb,
+      ),
+      findsNothing,
     );
     expect(
       find.descendant(of: frameGridArea, matching: content),
@@ -121,6 +151,10 @@ void main() {
     expect(horizontalScrollbarRect.left, moreOrLessEquals(bottomRailRect.left));
     expect(
       horizontalScrollbarRect.width,
+      moreOrLessEquals(bottomRailRect.width),
+    );
+    expect(
+      tester.getRect(horizontalScrollbarTrack).width,
       moreOrLessEquals(bottomRailRect.width),
     );
 

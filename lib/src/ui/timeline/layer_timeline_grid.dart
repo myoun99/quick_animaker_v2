@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -287,27 +289,29 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                     height: bottomScrollbarRailHeight,
                   ),
                   Expanded(
-                    child: Scrollbar(
-                      key: const ValueKey<String>(
-                        'timeline-horizontal-scrollbar',
-                      ),
-                      controller: _horizontalScrollController,
-                      thumbVisibility: true,
-                      trackVisibility: true,
-                      notificationPredicate: (notification) =>
-                          notification.metrics.axis == Axis.horizontal,
-                      child: Container(
-                        key: const ValueKey<String>(
-                          'timeline-bottom-scrollbar-rail',
-                        ),
-                        height: bottomScrollbarRailHeight,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          border: Border(
-                            top: BorderSide(color: colorScheme.outlineVariant),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final viewportWidth = constraints.hasBoundedWidth
+                            ? constraints.maxWidth
+                            : 0.0;
+                        final effectiveFrameCount = math.max(
+                          widget.frameCount,
+                          LayerTimelineGrid._metrics.minimumVisibleFrameCells,
+                        );
+                        final contentWidth =
+                            effectiveFrameCount *
+                            LayerTimelineGrid._metrics.frameCellWidth;
+
+                        return _BottomHorizontalScrollbarRail(
+                          key: const ValueKey<String>(
+                            'timeline-horizontal-scrollbar',
                           ),
-                        ),
-                      ),
+                          controller: _horizontalScrollController,
+                          viewportWidth: viewportWidth,
+                          contentWidth: contentWidth,
+                          height: bottomScrollbarRailHeight,
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -316,6 +320,154 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ),
         );
       },
+    );
+  }
+}
+
+class _BottomHorizontalScrollbarRail extends StatefulWidget {
+  const _BottomHorizontalScrollbarRail({
+    super.key,
+    required this.controller,
+    required this.viewportWidth,
+    required this.contentWidth,
+    required this.height,
+  });
+
+  final ScrollController controller;
+  final double viewportWidth;
+  final double contentWidth;
+  final double height;
+
+  @override
+  State<_BottomHorizontalScrollbarRail> createState() =>
+      _BottomHorizontalScrollbarRailState();
+}
+
+class _BottomHorizontalScrollbarRailState
+    extends State<_BottomHorizontalScrollbarRail> {
+  static const double _minimumThumbWidth = 32;
+
+  double get _maxScrollExtent {
+    if (widget.controller.hasClients) {
+      return widget.controller.position.maxScrollExtent;
+    }
+    return math.max(0, widget.contentWidth - widget.viewportWidth);
+  }
+
+  double get _scrollOffset {
+    if (!widget.controller.hasClients) {
+      return 0;
+    }
+    return widget.controller.offset.clamp(0.0, _maxScrollExtent).toDouble();
+  }
+
+  double get _thumbWidth {
+    if (widget.viewportWidth <= 0 || widget.contentWidth <= 0) {
+      return 0;
+    }
+    if (widget.contentWidth <= widget.viewportWidth) {
+      return widget.viewportWidth;
+    }
+    return (widget.viewportWidth * widget.viewportWidth / widget.contentWidth)
+        .clamp(_minimumThumbWidth, widget.viewportWidth)
+        .toDouble();
+  }
+
+  double get _thumbLeft {
+    final maxThumbLeft = math.max(0.0, widget.viewportWidth - _thumbWidth);
+    final maxScrollExtent = _maxScrollExtent;
+    if (maxScrollExtent <= 0 || maxThumbLeft <= 0) {
+      return 0;
+    }
+    return (_scrollOffset / maxScrollExtent * maxThumbLeft)
+        .clamp(0.0, maxThumbLeft)
+        .toDouble();
+  }
+
+  void _jumpToThumbLeft(double thumbLeft) {
+    if (!widget.controller.hasClients) {
+      return;
+    }
+    final maxThumbLeft = math.max(0.0, widget.viewportWidth - _thumbWidth);
+    final maxScrollExtent = _maxScrollExtent;
+    if (maxThumbLeft <= 0 || maxScrollExtent <= 0) {
+      widget.controller.jumpTo(0);
+      return;
+    }
+    final offset = (thumbLeft.clamp(0.0, maxThumbLeft) / maxThumbLeft) *
+        maxScrollExtent;
+    widget.controller.jumpTo(offset.clamp(0.0, maxScrollExtent).toDouble());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      key: const ValueKey<String>('timeline-bottom-scrollbar-rail'),
+      height: widget.height,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      alignment: Alignment.center,
+      child: AnimatedBuilder(
+        animation: widget.controller,
+        builder: (context, child) {
+          final thumbWidth = _thumbWidth;
+          final thumbLeft = _thumbLeft;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: (widget.height - math.max(4, widget.height / 3)) / 2,
+                height: math.max(4, widget.height / 3),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) {
+                    _jumpToThumbLeft(details.localPosition.dx - thumbWidth / 2);
+                  },
+                  child: Container(
+                    key: const ValueKey<String>(
+                      'timeline-horizontal-scrollbar-track',
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(widget.height),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: thumbLeft,
+                top: 2,
+                bottom: 2,
+                width: thumbWidth,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (details) {
+                    _jumpToThumbLeft(
+                      _thumbLeft + (details.primaryDelta ?? 0),
+                    );
+                  },
+                  child: Container(
+                    key: const ValueKey<String>(
+                      'timeline-horizontal-scrollbar-thumb',
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(widget.height),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
