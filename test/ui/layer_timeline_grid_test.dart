@@ -191,10 +191,7 @@ void main() {
       find.descendant(of: frameGridArea, matching: content),
       findsOneWidget,
     );
-    expect(
-      find.descendant(of: content, matching: frameRuler),
-      findsOneWidget,
-    );
+    expect(find.descendant(of: content, matching: frameRuler), findsOneWidget);
     expect(
       find.descendant(of: frameRuler, matching: frameHeaderRow),
       findsOneWidget,

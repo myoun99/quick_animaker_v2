@@ -240,8 +240,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       .leadingFrameSpacerWidth,
                                                   trailingFrameSpacerWidth: plan
                                                       .trailingFrameSpacerWidth,
-                                                  metrics:
-                                                      LayerTimelineGrid._metrics,
+                                                  metrics: LayerTimelineGrid
+                                                      ._metrics,
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
                                                 ),
