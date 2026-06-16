@@ -92,16 +92,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
         return KeyedSubtree(
           key: const ValueKey<String>('timeline-scrollbar-area'),
-          child: Scrollbar(
-            key: const ValueKey<String>('timeline-horizontal-scrollbar'),
-            controller: _horizontalScrollController,
-            thumbVisibility: true,
-            trackVisibility: true,
-            notificationPredicate: (notification) =>
-                notification.metrics.axis == Axis.horizontal,
-            child: Column(
-              children: [
-                Expanded(
+          child: Column(
+            children: [
+              Expanded(
                   child: SingleChildScrollView(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,8 +284,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                     ),
                   ),
                 ),
-                Row(
-                  children: [
+              Row(
+                children: [
                     SizedBox(
                       key: const ValueKey<String>(
                         'timeline-bottom-scrollbar-left-spacer',
@@ -301,23 +294,34 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                       height: bottomScrollbarRailHeight,
                     ),
                     Expanded(
-                      child: Container(
+                      child: Scrollbar(
                         key: const ValueKey<String>(
-                          'timeline-bottom-scrollbar-rail',
+                          'timeline-horizontal-scrollbar',
                         ),
-                        height: bottomScrollbarRailHeight,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          border: Border(
-                            top: BorderSide(color: colorScheme.outlineVariant),
+                        controller: _horizontalScrollController,
+                        thumbVisibility: true,
+                        trackVisibility: true,
+                        notificationPredicate: (notification) =>
+                            notification.metrics.axis == Axis.horizontal,
+                        child: Container(
+                          key: const ValueKey<String>(
+                            'timeline-bottom-scrollbar-rail',
+                          ),
+                          height: bottomScrollbarRailHeight,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            border: Border(
+                              top: BorderSide(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
