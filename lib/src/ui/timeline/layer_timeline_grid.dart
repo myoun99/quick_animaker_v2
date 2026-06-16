@@ -322,6 +322,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       },
     );
   }
+}
 
 IconData _iconForLayerKind(LayerKind kind) {
   return switch (kind) {
