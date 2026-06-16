@@ -18,26 +18,27 @@ bool _isGray(Color color) {
 }
 
 void main() {
-  testWidgets('vertical scrollbar does not read unsettled scroll metrics on first pump', (
-    tester,
-  ) async {
-    final layers = List<Layer>.generate(
-      12,
-      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
-    );
+  testWidgets(
+    'vertical scrollbar does not read unsettled scroll metrics on first pump',
+    (tester) async {
+      final layers = List<Layer>.generate(
+        12,
+        (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+      );
 
-    await tester.pumpWidget(_grid(layers: layers, frameCount: 40));
+      await tester.pumpWidget(_grid(layers: layers, frameCount: 40));
 
-    expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-vertical-scrollbar')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-vertical-scrollbar-thumb')),
-      findsOneWidget,
-    );
-  });
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('timeline-vertical-scrollbar')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('timeline-vertical-scrollbar-thumb')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('renders fixed layer controls rail and frame scroll structure', (
     tester,

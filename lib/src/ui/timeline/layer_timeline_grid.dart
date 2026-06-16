@@ -145,7 +145,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     for (final layer in widget.layers)
                                       _LayerControlsRow(
                                         layer: layer,
-                                        active: layer.id == widget.activeLayerId,
+                                        active:
+                                            layer.id == widget.activeLayerId,
                                         onSelectLayer: widget.onSelectLayer,
                                         onToggleLayerVisibility:
                                             widget.onToggleLayerVisibility,
@@ -165,8 +166,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           child: Text(
                                             'No layers',
                                             style: TextStyle(
-                                              color: colorScheme
-                                                  .onSurfaceVariant,
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                         ),
@@ -242,8 +243,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           .layerRowHeight,
                                                     ),
                                                     for (
-                                                      var frameIndex = frameRange
-                                                          .startIndex;
+                                                      var frameIndex =
+                                                          frameRange.startIndex;
                                                       frameIndex <
                                                           frameRange
                                                               .endIndexExclusive;
@@ -270,7 +271,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     ),
                                                   ],
                                                 ),
-                                                for (final layer in widget.layers)
+                                                for (final layer
+                                                    in widget.layers)
                                                   _FrameCellsRow(
                                                     layer: layer,
                                                     active:
@@ -278,8 +280,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         widget.activeLayerId,
                                                     currentFrameIndex: widget
                                                         .currentFrameIndex,
-                                                    frameStartIndex: frameRange
-                                                        .startIndex,
+                                                    frameStartIndex:
+                                                        frameRange.startIndex,
                                                     frameEndIndexExclusive:
                                                         frameRange
                                                             .endIndexExclusive,
@@ -291,8 +293,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         .exposureStateForLayer,
                                                     hasMarkForLayer:
                                                         widget.hasMarkForLayer,
-                                                    frameNameForLayer:
-                                                        widget.frameNameForLayer,
+                                                    frameNameForLayer: widget
+                                                        .frameNameForLayer,
                                                     onSelectLayer:
                                                         widget.onSelectLayer,
                                                     onSelectFrame:
@@ -322,7 +324,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                           left: LayerTimelineGrid._metrics.layerControlsWidth,
                           top: 0,
                           bottom: 0,
-                          width: LayerTimelineGrid._metrics.verticalScrollbarWidth,
+                          width:
+                              LayerTimelineGrid._metrics.verticalScrollbarWidth,
                           child: _VerticalScrollbarRail(
                             key: const ValueKey<String>(
                               'timeline-vertical-scrollbar',
@@ -435,7 +438,9 @@ class _VerticalScrollbarRailState extends State<_VerticalScrollbarRail> {
     if (widget.contentHeight <= widget.viewportHeight) {
       return widget.viewportHeight;
     }
-    return (widget.viewportHeight * widget.viewportHeight / widget.contentHeight)
+    return (widget.viewportHeight *
+            widget.viewportHeight /
+            widget.contentHeight)
         .clamp(_minimumThumbHeight, widget.viewportHeight)
         .toDouble();
   }
