@@ -54,6 +54,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
   double _horizontalScrollOffset = 0;
+  int? _lastRulerScrubbedFrameIndex;
 
   @override
   void initState() {
@@ -82,6 +83,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     setState(() {
       _horizontalScrollOffset = offset;
     });
+  }
+
+  int? _frameIndexForRulerLocalX(double localX) {
+    if (widget.frameCount <= 0) {
+      return null;
+    }
+
+    final unclampedFrameIndex =
+        ((localX + _horizontalScrollOffset) /
+                LayerTimelineGrid._metrics.frameCellWidth)
+            .floor();
+    return unclampedFrameIndex.clamp(0, widget.frameCount - 1).toInt();
+  }
+
+  void _selectFrameFromRulerLocalX(double localX) {
+    final frameIndex = _frameIndexForRulerLocalX(localX);
+    if (frameIndex == null || frameIndex == _lastRulerScrubbedFrameIndex) {
+      return;
+    }
+
+    _lastRulerScrubbedFrameIndex = frameIndex;
+    widget.onSelectFrame(frameIndex);
+  }
+
+  void _resetRulerScrubTracking() {
+    _lastRulerScrubbedFrameIndex = null;
   }
 
   @override
@@ -167,41 +194,70 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         );
                                     final frameRange = plan.frameRange;
 
-                                    return SizedBox(
-                                      width: viewportWidth,
-                                      height: headerHeight,
-                                      child: ClipRect(
-                                        child: OverflowBox(
-                                          alignment: Alignment.topLeft,
-                                          minWidth: plan.totalFrameContentWidth,
-                                          maxWidth: plan.totalFrameContentWidth,
-                                          minHeight: headerHeight,
-                                          maxHeight: headerHeight,
-                                          child: Transform.translate(
-                                            offset: Offset(
-                                              -_horizontalScrollOffset,
-                                              0,
-                                            ),
-                                            child: SizedBox(
-                                              width:
-                                                  plan.totalFrameContentWidth,
-                                              height: headerHeight,
-                                              child: TimelineFrameRuler(
-                                                frameStartIndex:
-                                                    frameRange.startIndex,
-                                                frameEndIndexExclusive:
-                                                    frameRange
-                                                        .endIndexExclusive,
-                                                currentFrameIndex:
-                                                    widget.currentFrameIndex,
-                                                leadingFrameSpacerWidth: plan
-                                                    .leadingFrameSpacerWidth,
-                                                trailingFrameSpacerWidth: plan
-                                                    .trailingFrameSpacerWidth,
-                                                metrics:
-                                                    LayerTimelineGrid._metrics,
-                                                onSelectFrame:
-                                                    widget.onSelectFrame,
+                                    return GestureDetector(
+                                      key: const ValueKey<String>(
+                                        'timeline-frame-ruler-scrub-area',
+                                      ),
+                                      behavior: HitTestBehavior.translucent,
+                                      onTapDown: (details) {
+                                        _resetRulerScrubTracking();
+                                        _selectFrameFromRulerLocalX(
+                                          details.localPosition.dx,
+                                        );
+                                      },
+                                      onHorizontalDragStart: (details) {
+                                        _resetRulerScrubTracking();
+                                        _selectFrameFromRulerLocalX(
+                                          details.localPosition.dx,
+                                        );
+                                      },
+                                      onHorizontalDragUpdate: (details) {
+                                        _selectFrameFromRulerLocalX(
+                                          details.localPosition.dx,
+                                        );
+                                      },
+                                      onHorizontalDragEnd: (_) =>
+                                          _resetRulerScrubTracking(),
+                                      onHorizontalDragCancel:
+                                          _resetRulerScrubTracking,
+                                      child: SizedBox(
+                                        width: viewportWidth,
+                                        height: headerHeight,
+                                        child: ClipRect(
+                                          child: OverflowBox(
+                                            alignment: Alignment.topLeft,
+                                            minWidth:
+                                                plan.totalFrameContentWidth,
+                                            maxWidth:
+                                                plan.totalFrameContentWidth,
+                                            minHeight: headerHeight,
+                                            maxHeight: headerHeight,
+                                            child: Transform.translate(
+                                              offset: Offset(
+                                                -_horizontalScrollOffset,
+                                                0,
+                                              ),
+                                              child: SizedBox(
+                                                width:
+                                                    plan.totalFrameContentWidth,
+                                                height: headerHeight,
+                                                child: TimelineFrameRuler(
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  currentFrameIndex:
+                                                      widget.currentFrameIndex,
+                                                  leadingFrameSpacerWidth: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  trailingFrameSpacerWidth: plan
+                                                      .trailingFrameSpacerWidth,
+                                                  metrics:
+                                                      LayerTimelineGrid._metrics,
+                                                  onSelectFrame:
+                                                      widget.onSelectFrame,
+                                                ),
                                               ),
                                             ),
                                           ),
