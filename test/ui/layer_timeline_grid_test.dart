@@ -80,7 +80,10 @@ void main() {
       ),
       findsNothing,
     );
-    expect(find.descendant(of: scrollbarArea, matching: rail), findsNothing);
+    expect(
+      find.descendant(of: viewport, matching: rail),
+      findsNothing,
+    );
     expect(
       find.descendant(of: horizontalScrollbar, matching: viewport),
       findsOneWidget,
@@ -115,6 +118,44 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('keeps layer controls and frame rows vertically aligned for many layers', (
+    tester,
+  ) async {
+    final manyLayers = List<Layer>.generate(
+      30,
+      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+    );
+
+    await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
+
+    final layerRow = find.byKey(
+      const ValueKey<String>('timeline-layer-row-layer-24'),
+    );
+    final frameRow = find.byKey(
+      const ValueKey<String>('timeline-frame-row-area-layer-24'),
+    );
+
+    expect(layerRow, findsOneWidget);
+    expect(frameRow, findsOneWidget);
+    expect(
+      (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
+      lessThan(0.1),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-grid-area')),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
+
+    expect(layerRow, findsOneWidget);
+    expect(frameRow, findsOneWidget);
+    expect(
+      (tester.getTopLeft(layerRow).dy - tester.getTopLeft(frameRow).dy).abs(),
+      lessThan(0.1),
     );
   });
 
