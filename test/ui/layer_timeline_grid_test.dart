@@ -82,11 +82,11 @@ void main() {
     );
     expect(find.descendant(of: viewport, matching: rail), findsNothing);
     expect(
-      find.descendant(of: horizontalScrollbar, matching: viewport),
+      find.descendant(of: scrollbarViewport, matching: viewport),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: scrollbarViewport, matching: viewport),
+      find.descendant(of: horizontalScrollbar, matching: bottomScrollbarRail),
       findsOneWidget,
     );
     expect(
@@ -101,6 +101,29 @@ void main() {
       tester.getTopLeft(bottomScrollbarRail).dy,
       greaterThan(tester.getTopLeft(frameGridArea).dy),
     );
+
+    final railRect = tester.getRect(rail);
+    final frameGridAreaRect = tester.getRect(frameGridArea);
+    final leftSpacerRect = tester.getRect(bottomScrollbarLeftSpacer);
+    final bottomRailRect = tester.getRect(bottomScrollbarRail);
+    final horizontalScrollbarRect = tester.getRect(horizontalScrollbar);
+
+    expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
+    expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
+    expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
+    expect(leftSpacerRect.width, moreOrLessEquals(220));
+    expect(bottomRailRect.left, moreOrLessEquals(frameGridAreaRect.left));
+    expect(bottomRailRect.width, moreOrLessEquals(frameGridAreaRect.width));
+    expect(
+      horizontalScrollbarRect.left,
+      greaterThanOrEqualTo(leftSpacerRect.right),
+    );
+    expect(horizontalScrollbarRect.left, moreOrLessEquals(bottomRailRect.left));
+    expect(
+      horizontalScrollbarRect.width,
+      moreOrLessEquals(bottomRailRect.width),
+    );
+
     expect(
       find.descendant(
         of: content,
