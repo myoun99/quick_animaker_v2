@@ -5,6 +5,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_grid_metrics.dart';
 import 'timeline_block.dart';
 
 class LayerTimelineGrid extends StatelessWidget {
@@ -38,15 +39,12 @@ class LayerTimelineGrid extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
-  static const int _minimumVisibleCells = 24;
-  static const double _layerControlsWidth = 220;
-  static const double _cellWidth = 48;
-  static const double _rowHeight = 52;
+  static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
   @override
   Widget build(BuildContext context) {
-    final visibleFrameCount = frameCount < _minimumVisibleCells
-        ? _minimumVisibleCells
+    final visibleFrameCount = frameCount < _metrics.minimumVisibleFrameCells
+        ? _metrics.minimumVisibleFrameCells
         : frameCount;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -59,8 +57,8 @@ class LayerTimelineGrid extends StatelessWidget {
             Row(
               children: [
                 _HeaderCell(
-                  width: _layerControlsWidth,
-                  height: _rowHeight,
+                  width: _metrics.layerControlsWidth,
+                  height: _metrics.layerRowHeight,
                   child: TextButton.icon(
                     key: const ValueKey<String>('timeline-add-layer-button'),
                     onPressed: onAddLayer,
@@ -96,7 +94,7 @@ class LayerTimelineGrid extends StatelessWidget {
               ),
             if (layers.isEmpty)
               SizedBox(
-                height: _rowHeight,
+                height: _metrics.layerRowHeight,
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(
@@ -165,8 +163,8 @@ class _LayerRow extends StatelessWidget {
           key: ValueKey<String>('timeline-layer-row-${layer.id}'),
           onTap: () => onSelectLayer(layer.id),
           child: Container(
-            width: LayerTimelineGrid._layerControlsWidth,
-            height: LayerTimelineGrid._rowHeight,
+            width: LayerTimelineGrid._metrics.layerControlsWidth,
+            height: LayerTimelineGrid._metrics.layerRowHeight,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
               color: active ? activeColor : colorScheme.surface,
@@ -304,8 +302,8 @@ class _FrameHeader extends StatelessWidget {
       key: ValueKey<String>('timeline-frame-header-$frameIndex'),
       onTap: () => onSelectFrame(frameIndex),
       child: Container(
-        width: LayerTimelineGrid._cellWidth,
-        height: LayerTimelineGrid._rowHeight,
+        width: LayerTimelineGrid._metrics.frameCellWidth,
+        height: LayerTimelineGrid._metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? colorScheme.primaryContainer : colorScheme.surface,
@@ -360,8 +358,8 @@ class _TimelineCell extends StatelessWidget {
         onSelectFrame(frameIndex);
       },
       child: Container(
-        width: LayerTimelineGrid._cellWidth,
-        height: LayerTimelineGrid._rowHeight,
+        width: LayerTimelineGrid._metrics.frameCellWidth,
+        height: LayerTimelineGrid._metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: timelineBlockDecoration(
           backgroundColor: styleColors.background,
