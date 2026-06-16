@@ -519,12 +519,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           top: 0,
                                                           bottom: 0,
                                                           width: 2,
-                                                          child:
-                                                              const IgnorePointer(
+                                                          child: const IgnorePointer(
                                                             child: DecoratedBox(
                                                               decoration:
                                                                   BoxDecoration(
-                                                                    color: Colors.red,
+                                                                    color: Colors
+                                                                        .red,
                                                                   ),
                                                             ),
                                                           ),

@@ -770,30 +770,31 @@ void main() {
     expect(tester.getTopLeft(rulerBoundary).dx, boundaryLeft);
   });
 
-  testWidgets('keeps ruler and body cut boundaries aligned after horizontal scroll', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_grid(frameCount: 24));
+  testWidgets(
+    'keeps ruler and body cut boundaries aligned after horizontal scroll',
+    (tester) async {
+      await tester.pumpWidget(_grid(frameCount: 24));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-900, 0),
-    );
-    await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-900, 0),
+      );
+      await tester.pumpAndSettle();
 
-    final bodyBoundary = find.byKey(
-      const ValueKey<String>('timeline-cut-end-boundary'),
-    );
-    final rulerBoundary = find.byKey(
-      const ValueKey<String>('timeline-cut-end-boundary-ruler'),
-    );
-    expect(bodyBoundary, findsOneWidget);
-    expect(rulerBoundary, findsOneWidget);
-    expect(
-      tester.getTopLeft(rulerBoundary).dx,
-      moreOrLessEquals(tester.getTopLeft(bodyBoundary).dx),
-    );
-  });
+      final bodyBoundary = find.byKey(
+        const ValueKey<String>('timeline-cut-end-boundary'),
+      );
+      final rulerBoundary = find.byKey(
+        const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+      );
+      expect(bodyBoundary, findsOneWidget);
+      expect(rulerBoundary, findsOneWidget);
+      expect(
+        tester.getTopLeft(rulerBoundary).dx,
+        moreOrLessEquals(tester.getTopLeft(bodyBoundary).dx),
+      );
+    },
+  );
 
   testWidgets(
     'authored data outside playback is visible inside visible range',
