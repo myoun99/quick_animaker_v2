@@ -340,3 +340,13 @@ Phase 99 extracts the TimelinePanel frame header row into a dedicated `TimelineF
 Stable key added for this boundary:
 
 * `timeline-frame-ruler`
+
+## 11. Phase 103 frame ruler scrub foundation
+
+Phase 103 adds basic click/drag scrubbing on the TimelinePanel frame ruler. The scrub calculation uses the existing frame cell width plus the current horizontal scroll offset, then clamps the selected frame into the valid frame count before calling the existing frame selection callback.
+
+This is an interaction-only foundation. It keeps the sticky ruler layout and horizontal frame-row synchronization from Phase 102 / PR 145, and it does not add playback, zoom, snapping, auto-scroll, vertical layer virtualization, model changes, renderer/cache changes, persistence changes, or StoryboardPanel changes.
+
+Stable key added for this interaction boundary:
+
+* `timeline-frame-ruler-scrub-area`

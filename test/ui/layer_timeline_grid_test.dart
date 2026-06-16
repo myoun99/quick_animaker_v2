@@ -547,6 +547,33 @@ void main() {
     );
   });
 
+  testWidgets('padded frame header tap clamps to last valid frame', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 3,
+        layers: [_layer(id: 'layer-1', name: 'Layer 1')],
+        onSelectFrame: selectedFrameIndices.add,
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+    );
+
+    expect(selectedFrameIndices, isNotEmpty);
+    expect(selectedFrameIndices.last, 2);
+    expect(
+      selectedFrameIndices.every(
+        (frameIndex) => frameIndex >= 0 && frameIndex < 3,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('renders layer kind icons before layer names', (tester) async {
     await tester.pumpWidget(
       _grid(
@@ -656,6 +683,96 @@ void main() {
     );
 
     expect(selectedFrameIndex, 3);
+  });
+
+  testWidgets('clicking frame ruler scrub area selects frame under pointer', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 20),
+    );
+
+    final scrubArea = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+    );
+    final scrubAreaTopLeft = tester.getTopLeft(scrubArea);
+
+    await tester.tapAt(scrubAreaTopLeft + const Offset(48 * 3 + 12, 20));
+
+    expect(selectedFrameIndices, contains(3));
+  });
+
+  testWidgets('dragging frame ruler scrub area scrubs changed frames', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 20),
+    );
+
+    final scrubArea = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+    );
+    final start = tester.getTopLeft(scrubArea) + const Offset(48 + 8, 20);
+    final gesture = await tester.startGesture(start);
+
+    await gesture.moveBy(const Offset(48 * 4, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(selectedFrameIndices, containsAllInOrder(<int>[1, 5]));
+    expect(selectedFrameIndices.last, 5);
+  });
+
+  testWidgets('frame ruler scrub respects horizontal scroll offset', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 100000),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-4800, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final scrubArea = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+    );
+    await tester.tapAt(tester.getTopLeft(scrubArea) + const Offset(10, 20));
+
+    expect(selectedFrameIndices.last, greaterThanOrEqualTo(99));
+  });
+
+  testWidgets('frame ruler scrub clamps selected frame to frame count', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 3),
+    );
+
+    final scrubArea = find.byKey(
+      const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+    );
+    final scrubAreaRect = tester.getRect(scrubArea);
+
+    await tester.tapAt(scrubAreaRect.centerRight - const Offset(1, 0));
+
+    expect(selectedFrameIndices.last, 2);
+    expect(
+      selectedFrameIndices.every(
+        (frameIndex) => frameIndex >= 0 && frameIndex < 3,
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('selecting a cell selects layer and frame', (tester) async {
