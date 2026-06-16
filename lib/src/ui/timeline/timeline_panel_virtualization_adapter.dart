@@ -13,7 +13,7 @@ TimelineVirtualizationPlan calculateLayerTimelineGridVirtualizationPlan({
   required double verticalScrollOffset,
   required double viewportWidth,
   required double viewportHeight,
-  required int frameCount,
+  required int visibleFrameCount,
   required int layerCount,
   TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
   int frameOverscanBefore = 2,
@@ -22,7 +22,7 @@ TimelineVirtualizationPlan calculateLayerTimelineGridVirtualizationPlan({
   int layerOverscanAfter = 2,
 }) {
   final effectiveFrameCount = math.max(
-    frameCount,
+    visibleFrameCount,
     metrics.minimumVisibleFrameCells,
   );
 

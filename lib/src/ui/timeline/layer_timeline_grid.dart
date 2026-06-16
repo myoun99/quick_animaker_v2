@@ -20,7 +20,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.currentFrameIndex,
-    required this.frameCount,
+    required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.hasMarkForLayer,
     this.frameNameForLayer,
@@ -34,7 +34,7 @@ class LayerTimelineGrid extends StatefulWidget {
   final List<Layer> layers;
   final LayerId? activeLayerId;
   final int currentFrameIndex;
-  final int frameCount;
+  final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
@@ -89,7 +89,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
-        playbackFrameCount: widget.frameCount,
+        playbackFrameCount: widget.playbackFrameCount,
         minimumVisibleFrameCells:
             LayerTimelineGrid._metrics.minimumVisibleFrameCells,
       );
@@ -228,7 +228,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           verticalScrollOffset: 0,
                                           viewportWidth: viewportWidth,
                                           viewportHeight: viewportHeight,
-                                          frameCount: _visibleFrameCount,
+                                          visibleFrameCount: _visibleFrameCount,
                                           layerCount: widget.layers.length,
                                           metrics: LayerTimelineGrid._metrics,
                                         );
@@ -292,7 +292,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     currentFrameIndex: widget
                                                         .currentFrameIndex,
                                                     playbackFrameCount:
-                                                        widget.frameCount,
+                                                        widget.playbackFrameCount,
                                                     leadingFrameSpacerWidth: plan
                                                         .leadingFrameSpacerWidth,
                                                     trailingFrameSpacerWidth: plan
@@ -406,7 +406,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         viewportWidth,
                                                     viewportHeight:
                                                         viewportHeight,
-                                                    frameCount:
+                                                    visibleFrameCount:
                                                         _visibleFrameCount,
                                                     layerCount:
                                                         widget.layers.length,
@@ -461,7 +461,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                           .currentFrameIndex,
                                                                   playbackFrameCount:
                                                                       widget
-                                                                          .frameCount,
+                                                                          .playbackFrameCount,
                                                                   frameStartIndex:
                                                                       frameRange
                                                                           .startIndex,
@@ -511,7 +511,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           left: timelineCutEndBoundaryX(
                                                             playbackFrameCount:
                                                                 widget
-                                                                    .frameCount,
+                                                                    .playbackFrameCount,
                                                             metrics:
                                                                 LayerTimelineGrid
                                                                     ._metrics,

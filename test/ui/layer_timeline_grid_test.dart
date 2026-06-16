@@ -59,7 +59,7 @@ void main() {
         (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
       );
 
-      await tester.pumpWidget(_grid(layers: layers, frameCount: 40));
+      await tester.pumpWidget(_grid(layers: layers, playbackFrameCount: 40));
 
       expect(tester.takeException(), isNull);
       expect(
@@ -79,7 +79,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(360, 260));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(_grid(frameCount: 96));
+      await tester.pumpWidget(_grid(playbackFrameCount: 96));
 
       expect(tester.takeException(), isNull);
       expect(
@@ -340,7 +340,7 @@ void main() {
       (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
     );
 
-    await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
+    await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
     final addLayer = find.byKey(
       const ValueKey<String>('timeline-add-layer-button'),
@@ -392,7 +392,7 @@ void main() {
         (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
       );
 
-      await tester.pumpWidget(_grid(layers: manyLayers, frameCount: 48));
+      await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
       final layerRow = find.byKey(
         const ValueKey<String>('timeline-layer-row-layer-24'),
@@ -428,7 +428,7 @@ void main() {
   testWidgets('horizontal scrolling keeps layer controls rail mounted', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(frameCount: 48));
+    await tester.pumpWidget(_grid(playbackFrameCount: 48));
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -453,7 +453,7 @@ void main() {
   testWidgets('virtualizes large frame counts with spacer geometry', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(frameCount: 100000));
+    await tester.pumpWidget(_grid(playbackFrameCount: 100000));
 
     expect(
       find.byKey(
@@ -525,7 +525,7 @@ void main() {
   testWidgets('horizontal scroll changes virtualized frame range', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(frameCount: 100000));
+    await tester.pumpWidget(_grid(playbackFrameCount: 100000));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-100')),
@@ -565,7 +565,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       _grid(
-        frameCount: 3,
+        playbackFrameCount: 3,
         layers: [_layer(id: 'layer-1', name: 'Layer 1')],
       ),
     );
@@ -587,7 +587,7 @@ void main() {
 
       await tester.pumpWidget(
         _grid(
-          frameCount: 3,
+          playbackFrameCount: 3,
           layers: [_layer(id: 'layer-1', name: 'Layer 1')],
           onSelectFrame: selectedFrameIndices.add,
         ),
@@ -716,7 +716,7 @@ void main() {
   testWidgets('displays playback frames plus safety work-area frames', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(frameCount: 24));
+    await tester.pumpWidget(_grid(playbackFrameCount: 24));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-0')),
@@ -749,7 +749,7 @@ void main() {
   });
 
   testWidgets('renders cut end boundary after playback frames', (tester) async {
-    await tester.pumpWidget(_grid(frameCount: 24));
+    await tester.pumpWidget(_grid(playbackFrameCount: 24));
 
     final boundary = find.byKey(
       const ValueKey<String>('timeline-cut-end-boundary'),
@@ -773,7 +773,7 @@ void main() {
   testWidgets(
     'keeps ruler and body cut boundaries aligned after horizontal scroll',
     (tester) async {
-      await tester.pumpWidget(_grid(frameCount: 24));
+      await tester.pumpWidget(_grid(playbackFrameCount: 24));
 
       await tester.drag(
         find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -801,7 +801,7 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         _grid(
-          frameCount: 24,
+          playbackFrameCount: 24,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
               : TimelineCellExposureState.empty,
@@ -826,7 +826,7 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         _grid(
-          frameCount: 5,
+          playbackFrameCount: 5,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
               : TimelineCellExposureState.empty,
@@ -848,7 +848,7 @@ void main() {
 
       await tester.pumpWidget(
         _grid(
-          frameCount: 24,
+          playbackFrameCount: 24,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
               : TimelineCellExposureState.empty,
@@ -873,7 +873,7 @@ void main() {
       final selectedFrameIndices = <int>[];
 
       await tester.pumpWidget(
-        _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 24),
+        _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 24),
       );
 
       await tester.drag(
@@ -914,7 +914,7 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 20),
+      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 20),
     );
 
     final scrubArea = find.byKey(
@@ -940,7 +940,7 @@ void main() {
         builder: (context, setState) {
           return _grid(
             currentFrameIndex: currentFrameIndex,
-            frameCount: 20,
+            playbackFrameCount: 20,
             onSelectFrame: (frameIndex) {
               setState(() => currentFrameIndex = frameIndex);
             },
@@ -975,7 +975,7 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 20),
+      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 20),
     );
 
     final scrubArea = find.byKey(
@@ -998,7 +998,7 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 100000),
+      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 100000),
     );
 
     await tester.drag(
@@ -1021,7 +1021,7 @@ void main() {
     final selectedFrameIndices = <int>[];
 
     await tester.pumpWidget(
-      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 3),
+      _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 3),
     );
 
     final scrubArea = find.byKey(
@@ -1183,7 +1183,7 @@ void main() {
   testWidgets('playhead does not appear for non-visible current frame', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(currentFrameIndex: 5000, frameCount: 100000));
+    await tester.pumpWidget(_grid(currentFrameIndex: 5000, playbackFrameCount: 100000));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-playhead')),
@@ -1196,7 +1196,7 @@ void main() {
   });
 
   testWidgets('playhead follows horizontal scroll range', (tester) async {
-    await tester.pumpWidget(_grid(currentFrameIndex: 100, frameCount: 100000));
+    await tester.pumpWidget(_grid(currentFrameIndex: 100, playbackFrameCount: 100000));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-playhead')),
@@ -1471,7 +1471,7 @@ void main() {
 
 Widget _grid({
   int currentFrameIndex = 0,
-  int frameCount = 12,
+  int playbackFrameCount = 12,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
@@ -1492,7 +1492,7 @@ Widget _grid({
           layers: layers ?? _layers,
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
-          frameCount: frameCount,
+          playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
               (_, _) => TimelineCellExposureState.empty,

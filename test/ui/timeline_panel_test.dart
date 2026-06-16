@@ -370,7 +370,7 @@ void main() {
 
 Widget _panel({
   int currentFrameIndex = 0,
-  int frameCount = 12,
+  int playbackFrameCount = 12,
   TimelineOrientation orientation = TimelineOrientation.horizontal,
   List<Layer>? layers,
   LayerId? activeLayerId,
@@ -392,7 +392,7 @@ Widget _panel({
         layers: layers ?? _layers,
         activeLayerId: activeLayerId ?? const LayerId('layer-1'),
         currentFrameIndex: currentFrameIndex,
-        frameCount: frameCount,
+        playbackFrameCount: playbackFrameCount,
         exposureStateForLayer:
             exposureStateForLayer ??
             (layer, frameIndex) => frameIndex == 0

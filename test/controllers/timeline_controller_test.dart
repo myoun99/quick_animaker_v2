@@ -183,11 +183,11 @@ void main() {
     });
 
     test(
-      'total frame count uses max authored exposure length across layers',
+      'authored timeline extent uses max authored exposure length across layers',
       () {
         final fixture = _createFixture();
 
-        expect(fixture.controller.totalFrameCount, 7);
+        expect(fixture.controller.authoredTimelineExtentFrameCount, 7);
       },
     );
 
@@ -1096,7 +1096,7 @@ void main() {
           const LayerId('layer-a'),
         );
 
-        expect(fixture.controller.totalFrameCount, 4);
+        expect(fixture.controller.authoredTimelineExtentFrameCount, 4);
         expect(
           fixture.controller.resolveFrameIdForLayer(
             layer: layerA,
@@ -1120,7 +1120,7 @@ void main() {
           const LayerId('layer-b'),
         );
 
-        expect(fixture.controller.totalFrameCount, 2);
+        expect(fixture.controller.authoredTimelineExtentFrameCount, 2);
         expect(
           fixture.controller.resolveFrameIdForLayer(
             layer: layerB,
