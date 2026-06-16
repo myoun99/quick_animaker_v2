@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'timeline_frame_range_policy.dart';
 import 'timeline_grid_metrics.dart';
 
 class TimelineFrameRuler extends StatelessWidget {
@@ -26,30 +27,51 @@ class TimelineFrameRuler extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      key: const ValueKey<String>('timeline-frame-header-row'),
+    return Stack(
       children: [
-        SizedBox(
-          key: const ValueKey<String>('timeline-frame-header-leading-spacer'),
-          width: leadingFrameSpacerWidth,
-          height: metrics.layerRowHeight,
+        Row(
+          key: const ValueKey<String>('timeline-frame-header-row'),
+          children: [
+            SizedBox(
+              key: const ValueKey<String>(
+                'timeline-frame-header-leading-spacer',
+              ),
+              width: leadingFrameSpacerWidth,
+              height: metrics.layerRowHeight,
+            ),
+            for (
+              var frameIndex = frameStartIndex;
+              frameIndex < frameEndIndexExclusive;
+              frameIndex += 1
+            )
+              _FrameHeader(
+                frameIndex: frameIndex,
+                selected: frameIndex == currentFrameIndex,
+                outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                metrics: metrics,
+                onSelectFrame: onSelectFrame,
+              ),
+            SizedBox(
+              key: const ValueKey<String>(
+                'timeline-frame-header-trailing-spacer',
+              ),
+              width: trailingFrameSpacerWidth,
+              height: metrics.layerRowHeight,
+            ),
+          ],
         ),
-        for (
-          var frameIndex = frameStartIndex;
-          frameIndex < frameEndIndexExclusive;
-          frameIndex += 1
-        )
-          _FrameHeader(
-            frameIndex: frameIndex,
-            selected: frameIndex == currentFrameIndex,
-            outsidePlaybackRange: frameIndex >= playbackFrameCount,
+        Positioned(
+          key: const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+          left: timelineCutEndBoundaryX(
+            playbackFrameCount: playbackFrameCount,
             metrics: metrics,
-            onSelectFrame: onSelectFrame,
           ),
-        SizedBox(
-          key: const ValueKey<String>('timeline-frame-header-trailing-spacer'),
-          width: trailingFrameSpacerWidth,
-          height: metrics.layerRowHeight,
+          top: 0,
+          bottom: 0,
+          width: 2,
+          child: const IgnorePointer(
+            child: DecoratedBox(decoration: BoxDecoration(color: Colors.red)),
+          ),
         ),
       ],
     );
