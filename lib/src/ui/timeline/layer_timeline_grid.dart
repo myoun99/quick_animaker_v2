@@ -253,8 +253,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   0,
                                                 ),
                                                 child: SizedBox(
-                                                  width:
-                                                      plan.totalFrameContentWidth,
+                                                  width: plan
+                                                      .totalFrameContentWidth,
                                                   height: headerHeight,
                                                   child: TimelineFrameRuler(
                                                     frameStartIndex:
@@ -262,14 +262,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     frameEndIndexExclusive:
                                                         frameRange
                                                             .endIndexExclusive,
-                                                    currentFrameIndex:
-                                                        widget.currentFrameIndex,
+                                                    currentFrameIndex: widget
+                                                        .currentFrameIndex,
                                                     leadingFrameSpacerWidth: plan
                                                         .leadingFrameSpacerWidth,
                                                     trailingFrameSpacerWidth: plan
                                                         .trailingFrameSpacerWidth,
-                                                    metrics:
-                                                        LayerTimelineGrid._metrics,
+                                                    metrics: LayerTimelineGrid
+                                                        ._metrics,
                                                     onSelectFrame:
                                                         _selectClampedFrameFromRuler,
                                                   ),
