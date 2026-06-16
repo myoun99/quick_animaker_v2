@@ -87,7 +87,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     });
   }
 
-  int get _displayFrameCount => math.max(0, widget.frameCount) + LayerTimelineGrid.postCutTailFrameCount;
+  int get _displayFrameCount =>
+      math.max(0, widget.frameCount) + LayerTimelineGrid.postCutTailFrameCount;
 
   int? _clampedRulerFrameIndex(int frameIndex) {
     if (widget.frameCount <= 0) {
@@ -453,7 +454,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       widget
                                                                           .currentFrameIndex,
                                                                   actualFrameCount:
-                                                                      widget.frameCount,
+                                                                      widget
+                                                                          .frameCount,
                                                                   frameStartIndex:
                                                                       frameRange
                                                                           .startIndex,
@@ -494,12 +496,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           ),
                                                         ),
                                                         Positioned(
-                                                          key: const ValueKey<
-                                                            String
-                                                          >(
-                                                            'timeline-cut-end-boundary',
-                                                          ),
-                                                          left: widget.frameCount *
+                                                          key:
+                                                              const ValueKey<
+                                                                String
+                                                              >(
+                                                                'timeline-cut-end-boundary',
+                                                              ),
+                                                          left:
+                                                              widget
+                                                                  .frameCount *
                                                               LayerTimelineGrid
                                                                   ._metrics
                                                                   .frameCellWidth,
@@ -1183,9 +1188,7 @@ class _TimelineCell extends StatelessWidget {
         if (postCutTail && actualFrameCount <= 0) {
           return;
         }
-        onSelectFrame(
-          postCutTail ? actualFrameCount - 1 : frameIndex,
-        );
+        onSelectFrame(postCutTail ? actualFrameCount - 1 : frameIndex);
       },
       child: Container(
         width: LayerTimelineGrid._metrics.frameCellWidth,

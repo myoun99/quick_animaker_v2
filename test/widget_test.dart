@@ -355,7 +355,6 @@ void main() {
     expect(find.text('New Drawing'), findsNothing);
   });
 
-
   testWidgets('default sample cut duration is 24 frames', (
     WidgetTester tester,
   ) async {

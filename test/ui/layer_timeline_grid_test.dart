@@ -691,28 +691,39 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
-
   testWidgets('displays actual cut frames plus post-cut tail frames', (
     tester,
   ) async {
     await tester.pumpWidget(_grid(frameCount: 24));
 
-    expect(find.byKey(const ValueKey<String>('timeline-frame-header-0')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
+      findsOneWidget,
+    );
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
       const Offset(-520, 0),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('timeline-frame-header-23')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('timeline-frame-header-24')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-23')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-24')),
+      findsOneWidget,
+    );
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
       const Offset(-1200, 0),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('timeline-frame-header-47')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-47')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('renders cut end boundary after actual cut frames', (
@@ -720,11 +731,15 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid(frameCount: 24));
 
-    final boundary = find.byKey(const ValueKey<String>('timeline-cut-end-boundary'));
+    final boundary = find.byKey(
+      const ValueKey<String>('timeline-cut-end-boundary'),
+    );
     expect(boundary, findsOneWidget);
 
     final contentLeft = tester
-        .getTopLeft(find.byKey(const ValueKey<String>('timeline-frame-scroll-content')))
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('timeline-frame-scroll-content')),
+        )
         .dx;
     final boundaryLeft = tester.getTopLeft(boundary).dx;
     expect(boundaryLeft - contentLeft, 24 * 48);
