@@ -716,7 +716,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      find.byKey(const ValueKey<String>('timeline-playhead-column')),
       findsOneWidget,
     );
   });
@@ -731,7 +731,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      find.byKey(const ValueKey<String>('timeline-playhead-column')),
       findsNothing,
     );
   });
@@ -759,9 +759,32 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-playhead-line')),
+      find.byKey(const ValueKey<String>('timeline-playhead-column')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('playhead column keeps full frame width with one layer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 3,
+        layers: [_layer(id: 'layer-1', name: 'Layer 1')],
+      ),
+    );
+
+    final column = find.byKey(
+      const ValueKey<String>('timeline-playhead-column'),
+    );
+
+    expect(column, findsOneWidget);
+    expect(tester.getSize(column), const Size(48, 104));
+
+    final decoration =
+        tester.widget<Container>(column).decoration! as BoxDecoration;
+    expect(decoration.color, Colors.red.withValues(alpha: 0.18));
+    expect(decoration.border, isNotNull);
   });
 
   testWidgets('playhead does not affect frame header tap', (tester) async {

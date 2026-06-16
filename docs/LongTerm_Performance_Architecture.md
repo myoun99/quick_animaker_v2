@@ -81,6 +81,8 @@ Do not assume the current eager Row / Column frame grid is production-ready.
 
 Phase 93 introduced TimelineGridMetrics and a TimelinePanel virtualization adapter so future TimelinePanel virtualization calculations use the same dimensions as the current LayerTimelineGrid instead of duplicating hardcoded values.
 
+Phase 101 polished the TimelinePanel visual playhead into a red current-frame column highlight. It remains UI-only, uses the existing horizontal frame geometry, and does not add dragging, playback, zoom, or vertical layer virtualization.
+
 ## 4. Required long-term TimelinePanel direction
 
 TimelinePanel must eventually use viewport-based virtualization.
