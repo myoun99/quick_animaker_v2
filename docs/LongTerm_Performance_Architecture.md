@@ -287,3 +287,6 @@ For the user's goal of a lightweight, low-lag animation program, TimelinePanel v
 Phase 91 introduced a pure Dart `TimelineVisibleRange` calculation layer as the first concrete foundation for future TimelinePanel 2D virtualization.
 
 This foundation computes clamped visible frame and layer index ranges from scroll offsets, viewport extents, item extents, item counts, and overscan margins without building timeline widgets or storing viewport state in domain models.
+
+Phase 92 introduced a pure Dart `TimelineVirtualizationPlan` render plan foundation. It converts visible frame/layer ranges into leading/trailing spacer dimensions and total virtual content dimensions so future TimelinePanel virtualization can preserve scroll geometry while rendering only visible cells.
+
