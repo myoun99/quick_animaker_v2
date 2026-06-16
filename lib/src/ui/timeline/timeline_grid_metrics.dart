@@ -8,10 +8,12 @@ class TimelineGridMetrics {
     this.layerControlsWidth = 220,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,
+    this.verticalScrollbarWidth = 14,
   }) : assert(minimumVisibleFrameCells >= 0),
        assert(layerControlsWidth >= 0),
        assert(frameCellWidth > 0),
-       assert(layerRowHeight > 0);
+       assert(layerRowHeight > 0),
+       assert(verticalScrollbarWidth >= 0);
 
   /// Default metrics matching the current [LayerTimelineGrid] behavior.
   static const TimelineGridMetrics defaults = TimelineGridMetrics();
@@ -28,13 +30,18 @@ class TimelineGridMetrics {
   /// Height of each layer row and the frame header row.
   final double layerRowHeight;
 
+  /// Width reserved for the visible vertical scrollbar between the layer rail
+  /// and frame grid area.
+  final double verticalScrollbarWidth;
+
   @override
   bool operator ==(Object other) {
     return other is TimelineGridMetrics &&
         other.minimumVisibleFrameCells == minimumVisibleFrameCells &&
         other.layerControlsWidth == layerControlsWidth &&
         other.frameCellWidth == frameCellWidth &&
-        other.layerRowHeight == layerRowHeight;
+        other.layerRowHeight == layerRowHeight &&
+        other.verticalScrollbarWidth == verticalScrollbarWidth;
   }
 
   @override
@@ -43,6 +50,7 @@ class TimelineGridMetrics {
     layerControlsWidth,
     frameCellWidth,
     layerRowHeight,
+    verticalScrollbarWidth,
   );
 
   @override
@@ -51,6 +59,7 @@ class TimelineGridMetrics {
         'minimumVisibleFrameCells: $minimumVisibleFrameCells, '
         'layerControlsWidth: $layerControlsWidth, '
         'frameCellWidth: $frameCellWidth, '
-        'layerRowHeight: $layerRowHeight)';
+        'layerRowHeight: $layerRowHeight, '
+        'verticalScrollbarWidth: $verticalScrollbarWidth)';
   }
 }
