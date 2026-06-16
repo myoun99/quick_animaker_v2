@@ -394,8 +394,8 @@ class _BottomHorizontalScrollbarRailState
       widget.controller.jumpTo(0);
       return;
     }
-    final offset = (thumbLeft.clamp(0.0, maxThumbLeft) / maxThumbLeft) *
-        maxScrollExtent;
+    final offset =
+        (thumbLeft.clamp(0.0, maxThumbLeft) / maxThumbLeft) * maxScrollExtent;
     widget.controller.jumpTo(offset.clamp(0.0, maxScrollExtent).toDouble());
   }
 
@@ -449,9 +449,7 @@ class _BottomHorizontalScrollbarRailState
                 width: thumbWidth,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
-                    _jumpToThumbLeft(
-                      _thumbLeft + (details.primaryDelta ?? 0),
-                    );
+                    _jumpToThumbLeft(_thumbLeft + (details.primaryDelta ?? 0));
                   },
                   child: Container(
                     key: const ValueKey<String>(

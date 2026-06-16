@@ -98,11 +98,17 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: bottomScrollbarRail, matching: horizontalScrollbarTrack),
+      find.descendant(
+        of: bottomScrollbarRail,
+        matching: horizontalScrollbarTrack,
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: bottomScrollbarRail, matching: horizontalScrollbarThumb),
+      find.descendant(
+        of: bottomScrollbarRail,
+        matching: horizontalScrollbarThumb,
+      ),
       findsOneWidget,
     );
     expect(
