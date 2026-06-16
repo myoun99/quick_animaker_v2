@@ -85,26 +85,40 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     });
   }
 
-  int? _frameIndexForRulerLocalX(double localX) {
+  int? _clampedRulerFrameIndex(int frameIndex) {
     if (widget.frameCount <= 0) {
       return null;
     }
 
-    final unclampedFrameIndex =
+    return frameIndex.clamp(0, widget.frameCount - 1).toInt();
+  }
+
+  int? _frameIndexForRulerLocalX(double localX) {
+    final frameIndex =
         ((localX + _horizontalScrollOffset) /
                 LayerTimelineGrid._metrics.frameCellWidth)
             .floor();
-    return unclampedFrameIndex.clamp(0, widget.frameCount - 1).toInt();
+    return _clampedRulerFrameIndex(frameIndex);
+  }
+
+  void _selectClampedFrameFromRuler(int frameIndex) {
+    final clampedFrameIndex = _clampedRulerFrameIndex(frameIndex);
+    if (clampedFrameIndex == null ||
+        clampedFrameIndex == _lastRulerScrubbedFrameIndex) {
+      return;
+    }
+
+    _lastRulerScrubbedFrameIndex = clampedFrameIndex;
+    widget.onSelectFrame(clampedFrameIndex);
   }
 
   void _selectFrameFromRulerLocalX(double localX) {
     final frameIndex = _frameIndexForRulerLocalX(localX);
-    if (frameIndex == null || frameIndex == _lastRulerScrubbedFrameIndex) {
+    if (frameIndex == null) {
       return;
     }
 
-    _lastRulerScrubbedFrameIndex = frameIndex;
-    widget.onSelectFrame(frameIndex);
+    _selectClampedFrameFromRuler(frameIndex);
   }
 
   void _resetRulerScrubTracking() {
@@ -256,7 +270,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   metrics:
                                                       LayerTimelineGrid._metrics,
                                                   onSelectFrame:
-                                                      widget.onSelectFrame,
+                                                      _selectClampedFrameFromRuler,
                                                 ),
                                               ),
                                             ),

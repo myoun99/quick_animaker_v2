@@ -547,6 +547,33 @@ void main() {
     );
   });
 
+  testWidgets('padded frame header tap clamps to last valid frame', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 3,
+        layers: [_layer(id: 'layer-1', name: 'Layer 1')],
+        onSelectFrame: selectedFrameIndices.add,
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+    );
+
+    expect(selectedFrameIndices, isNotEmpty);
+    expect(selectedFrameIndices.last, 2);
+    expect(
+      selectedFrameIndices.every(
+        (frameIndex) => frameIndex >= 0 && frameIndex < 3,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('renders layer kind icons before layer names', (tester) async {
     await tester.pumpWidget(
       _grid(
