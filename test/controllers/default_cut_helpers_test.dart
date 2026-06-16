@@ -21,7 +21,7 @@ void main() {
 
       expect(cut.id, const CutId('cut-new'));
       expect(cut.name, 'Opening Cut');
-      expect(cut.duration, 1);
+      expect(cut.duration, defaultCutDuration);
       expect(cut.canvasSize, const CanvasSize(width: 1280, height: 720));
       expect(cut.layers, hasLength(1));
 
@@ -34,6 +34,17 @@ void main() {
       expect(layer.marks, isEmpty);
       expect(layer.isVisible, isTrue);
       expect(layer.opacity, 1.0);
+    });
+
+    test('uses the Phase 104 default duration for newly created cuts', () {
+      final cut = createDefaultCut(
+        cutId: const CutId('cut-new'),
+        name: 'New Cut',
+        layerId: const LayerId('layer-new'),
+      );
+
+      expect(defaultCutDuration, 24);
+      expect(cut.duration, 24);
     });
 
     test('uses a caller-provided canvas size', () {
