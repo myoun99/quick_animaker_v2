@@ -40,11 +40,33 @@ void main() {
     },
   );
 
+  testWidgets('sticky frame ruler lays out full content width without overflow', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 260));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_grid(frameCount: 96));
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-ruler')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-row')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('renders fixed layer controls rail and frame scroll structure', (
     tester,
   ) async {
     await tester.pumpWidget(_grid());
 
+    final stickyHeader = find.byKey(
+      const ValueKey<String>('timeline-sticky-header-row'),
+    );
     final rail = find.byKey(
       const ValueKey<String>('timeline-layer-controls-rail'),
     );
@@ -103,6 +125,7 @@ void main() {
       const ValueKey<String>('timeline-vertical-scroll-viewport'),
     );
 
+    expect(stickyHeader, findsOneWidget);
     expect(rail, findsOneWidget);
     expect(scrollbarArea, findsOneWidget);
     expect(horizontalScrollbar, findsOneWidget);
@@ -126,12 +149,21 @@ void main() {
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
       find.descendant(
-        of: rail,
+        of: stickyHeader,
         matching: find.byKey(
           const ValueKey<String>('timeline-add-layer-button'),
         ),
       ),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: rail,
+        matching: find.byKey(
+          const ValueKey<String>('timeline-add-layer-button'),
+        ),
+      ),
+      findsNothing,
     );
     expect(
       find.descendant(

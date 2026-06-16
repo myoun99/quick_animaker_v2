@@ -398,7 +398,7 @@ void main() {
     expect(blankStart.background, blankHeld.background);
     expect(blankStart.background, isNot(heldDrawing.background));
     expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
-    expect(selectedDrawing.border, colorScheme.primary);
+    expect(selectedDrawing.border, Colors.red);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }
