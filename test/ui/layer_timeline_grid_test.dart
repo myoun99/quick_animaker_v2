@@ -23,6 +23,33 @@ final Matcher _isInsideTestRoot = isA<Rect>()
     .having((rect) => rect.right, 'right', lessThanOrEqualTo(800))
     .having((rect) => rect.bottom, 'bottom', lessThanOrEqualTo(600));
 
+Future<void> _scrollFrameGridUntilKeyVisible(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  final finder = find.byKey(key);
+  final viewport = find.byKey(
+    const ValueKey<String>('timeline-frame-scroll-viewport'),
+  );
+  final testRootSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+  final testRootRect = Offset.zero & testRootSize;
+
+  for (var attempt = 0; attempt < 20; attempt += 1) {
+    if (finder.evaluate().isNotEmpty) {
+      final targetRect = tester.getRect(finder);
+      if (testRootRect.contains(targetRect.topLeft) &&
+          testRootRect.contains(targetRect.bottomRight)) {
+        return;
+      }
+    }
+
+    await tester.drag(viewport, const Offset(-240, 0));
+    await tester.pump();
+  }
+
+  fail('Expected $key to be rendered inside the test root after scrolling.');
+}
+
 void main() {
   testWidgets(
     'vertical scrollbar does not read unsettled scroll metrics on first pump',
@@ -752,17 +779,15 @@ void main() {
       ),
     );
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-1400, 0),
-    );
-    await tester.pumpAndSettle();
+    const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
+    await _scrollFrameGridUntilKeyVisible(tester, cellKey);
 
+    final cell = find.byKey(cellKey);
+    expect(cell, findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
+      find.descendant(of: cell, matching: find.text('A45')),
       findsOneWidget,
     );
-    expect(find.text('A45'), findsOneWidget);
   });
 
   testWidgets(
@@ -799,17 +824,15 @@ void main() {
           frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
         ),
       );
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-1400, 0),
-      );
-      await tester.pumpAndSettle();
+      const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
+      await _scrollFrameGridUntilKeyVisible(tester, cellKey);
 
+      final cell = find.byKey(cellKey);
+      expect(cell, findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
+        find.descendant(of: cell, matching: find.text('A45')),
         findsOneWidget,
       );
-      expect(find.text('A45'), findsOneWidget);
     },
   );
 
