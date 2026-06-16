@@ -1,32 +1,30 @@
 # QuickAnimaker_v2 다음 챗 인수인계 메모
 
-이 대화는 QuickAnimaker_v2 Flutter/Dart 프로젝트의 Phase 진행용 대화다.
+이 문서는 QuickAnimaker_v2 Flutter/Dart 프로젝트의 다음 ChatGPT 대화용 최신 인수인계 문서다.
 
-목표는 TVPaint 스타일의 2D 비트맵 애니메이션 제작 툴을 만드는 것이다.
+현재 기준:
 
-사용자는 2D 애니메이터이고, 실제 일본 애니메이션 작업 흐름에 맞는 타임라인/타임시트/레이어 구조를 원한다.
+* Phase 98 완료
+* PR 139 merged
+* PR 140 merged
+* 사용자가 PR 140 이후 앱 정상 작동을 확인함
+* 다음 새 챗은 Phase 100부터 시작하는 것을 권장
 
-답변은 한국어로 한다.
+목표:
+QuickAnimaker v2는 TVPaint 스타일의 2D 비트맵 애니메이션 제작 툴이다.
+사용자는 실제 2D 애니메이터이며, 일본 애니메이션 작업 흐름에 맞는 컷/레이어/프레임/타임라인/타임시트 구조를 원한다.
 
-사용자는 너무 먼 미래 설명보다 “지금 다음에 할 것”을 선호한다.
+대화 언어:
+한국어로 답한다.
 
-Phase 문서나 Codex 지시서는 복붙하기 쉽게 작성한다.
+사용자 선호:
 
-사용자가 “정상이야 다음가자”라고 하면:
-
-* 직전 PR이 머지/로컬 테스트까지 정상이라는 뜻으로 이해한다.
-* 다음 Phase를 제안하고, Codex에게 줄 작업 지시서를 작성한다.
-* 너무 큰 범위를 한 번에 넣지 말고 작은 Phase로 나눈다.
-
-사용자가 “PR xx 확인해줘”라고 하면:
-
-* GitHub PR을 확인한다.
-* 변경 파일과 테스트를 본다.
-* 머지 가능 여부를 판단한다.
-* 문제 있으면 “수정 요청”을 명확히 말한다.
-* 문제 없으면 “머지해도 괜찮아”라고 말한다.
-* 마지막에 로컬에서 실행할 명령어를 준다.
-* 포맷으로 인해 스테이터스 확인 시 git add 작업이 예상되니 그에 대한 cmd 명령어도 제공한다.
+* 너무 먼 미래 설명보다 “지금 다음에 할 것”을 선호한다.
+* Phase 문서와 Codex 지시서는 복붙하기 쉽게 작성한다.
+* 장기 설계는 중요하다. 임시 땜빵보다 오래 유지되는 구조를 선호한다.
+* 더 어려운 작업이어도 장기적으로 맞는 구조를 원한다.
+* PR 리뷰 때는 반드시 로컬 실행 명령어, add 할 파일, 수동 확인 사항을 포함한다.
+* 이전에 pull 전에 로컬 format 변경 때문에 문제가 난 적이 있으므로, PR 머지 후 안내에는 필요할 때 git restore 명령도 포함한다.
 
 GitHub repo:
 myoun99/quick_animaker_v2
@@ -34,582 +32,584 @@ myoun99/quick_animaker_v2
 기본 브랜치:
 master
 
-퍼포먼스 확인:
-Long-term performance and virtualization policy is documented in docs/LongTerm_Performance_Architecture.md. Future timeline-related phases must follow it.
+로컬 경로:
+C:\Users\gunoo\Documents\quick_animaker_v2
 
-현재까지 진행 요약:
-
-Phase 69:
-
-* 잘못된 Cut.storyboardLayer.panels 방향을 수정.
-* Storyboard Layer는 별도 Cut.storyboardLayer가 아니라 일반 Layer에 LayerKind.storyboard를 붙이는 방식으로 정리.
-* LayerKind.animation / LayerKind.storyboard 추가.
-* Cut.storyboardLayer 제거.
-* old Cut JSON의 storyboardLayer는 무시.
-* Layer.kind 기본값은 animation.
-* old Layer JSON에 kind가 없으면 animation으로 로드.
-
-Phase 70:
-
-* StoryboardFrameMetadata 모델 추가.
-* Frame.storyboardMetadata 추가.
-* actionMemo / dialogueMemo / note는 Frame-level StoryboardFrameMetadata에 둔다.
-* CutMetadata에는 넣지 않는다.
-* old Frame JSON에 storyboardMetadata가 없으면 empty metadata로 로드.
-* Cut duplicate 시 Frame.storyboardMetadata 보존.
-
-Phase 71:
-
-* UpdateStoryboardFrameMetadataCommand 추가.
-* Storyboard Frame metadata를 undo/redo 가능한 command로 수정 가능.
-* target Layer가 LayerKind.storyboard일 때만 허용.
-* CutCommandCoordinator.updateStoryboardFrameMetadata 추가.
-* unchanged metadata는 history entry 없이 skip.
-* UI는 아직 없음.
-
-Phase 72:
-
-* UpdateLayerKindCommand 추가.
-* Layer.kind를 undo/redo 가능하게 변경.
-* animation ↔ storyboard 전환 가능.
-* Frame.storyboardMetadata는 지우지 않는다.
-* CutCommandCoordinator.updateLayerKind 추가.
-* unchanged kind는 history entry 없이 skip.
-* UI는 아직 없음.
-
-Phase 73:
-
-* HomePage timeline action toolbar에 Storyboard Layer toggle UI 추가.
-* 버튼 key:
-  ValueKey('toggle-storyboard-layer-button')
-* tooltip:
-  Toggle Storyboard Layer
-* 상태 label key:
-  ValueKey('active-layer-kind-label')
-* UI는 ProjectRepository를 직접 건드리지 않고 CutCommandCoordinator.updateLayerKind를 호출한다.
-* active layer를 target으로 사용한다.
-* active layer가 없으면 disabled.
-* Animation Layer ↔ Storyboard Layer 토글 가능.
-* Undo/Redo 작동.
-* Storyboard Panel UI, Conte Panel UI, actionMemo/dialogueMemo UI는 아직 없음.
-
-중요한 현재 설계 결정:
-
-1. Storyboard Layer 방향
-
-Storyboard Layer는 별도 Cut.storyboardLayer가 아니다.
-
-정답:
-
-Cut
-layers
-Layer(kind: animation)
-frames
-Frame
-strokes
-
-```
-Layer(kind: storyboard)
-  frames
-    Frame
-      strokes
-      storyboardMetadata
-```
-
-오답:
-
-Cut
-storyboardLayer
-panels
-
-Cut당 Storyboard Layer는 앞으로 최대 1개만 허용하는 방향이다.
-
-2. CutMetadata 방향
-
-CutMetadata는 Cut-level note만 가진다.
-
-CutMetadata에는 actionMemo/dialogueMemo를 절대 넣지 않는다.
-
-현재 올바른 구조:
-
-CutMetadata
-note
-
-StoryboardFrameMetadata
-actionMemo
-dialogueMemo
-note
-
-3. 장기 타임시트 구조
-
-사용자는 첨부한 A1/Toei식 타임시트를 참고해서, 세로 타임시트 모드에서 다음 구조에 가까운 형태를 원한다.
-
-전통 타임시트 감각:
-
-* ACTION / 원화 지시
-* SOUND / 대사 / SE
-* CELL / 셀 / 동화
-* CAMERA / 카메라 지시
-
-QuickAnimaker 장기 방향:
-가로 타임라인에서 위에서 아래로:
-
-Camera Section
-Sound Section
-Main Section
-
-아래에서 위로 보면:
-
-Main Section
-Sound Section
-Camera Section
-
-이 순서가 매우 중요하다.
-
-절대 Main / Camera / Sound 순서로 이해하지 말 것.
-
-Main Section:
-
-* Animation Layer
-* Storyboard Layer
-* Rough Layer
-* Guide Layer
-* 일반 그림을 그리는 레이어 영역
-* Storyboard Layer도 여기 안에 둔다.
-* 사용자가 Storyboard Layer 위아래에 Animation Layer를 둘 수 있어야 한다.
-
-Sound Section:
-
-* Dialogue Layer
-* SE Layer
-* Sound Note Layer
-* 장기적으로 SOUND 영역에 대응.
-* SE는 여러 개 가능하게 열어두되, 지금 당장 구현하지 않는다.
-
-Camera Section:
-
-* Camera Control Layer
-* Camera Direction Layer
-
-Camera Control Layer:
-
-* 실제 렌더 카메라 조작용.
-* pan / zoom / follow / shake / camera keyframe 등.
-
-Camera Direction Layer:
-
-* 시트에 적는 카메라 지시문용.
-* PAN, BOOK, BG, TU, TB 같은 이름을 가질 수 있다.
-* 이름이 시트의 헤더/컬럼명으로 표시될 수 있다.
-* 여러 개 존재할 수 있다.
-* 실제 카메라를 직접 조작하는 레이어와 구분한다.
-
-4. 데이터 order와 표시 order는 다르다
-
-반드시 구분해야 한다.
-
-* data model order
-* compositing order
-* horizontal timeline display order
-* vertical timesheet display order
-* new layer insertion order
-
-이걸 같은 것으로 취급하면 안 된다.
-
-가로 타임라인에서 새 레이어가 아래로 append되는 현재/기존 동작은 사용자가 원하지 않는다.
-
-사용자는 새 레이어가 현재 레이어의 위 또는 섹션 최상단에 쌓이는 것을 원한다.
-
-세로 타임시트에서는 적절히 왼쪽→오른쪽 컬럼 배치가 되어야 한다.
-
-따라서 향후 구현할 때:
-
-* 내부 logical order를 명확히 정의한다.
-* 가로 표시용 adapter
-* 세로 타임시트 표시용 adapter
-  를 분리해서 생각한다.
-
-5. Layer naming 방향
-
-현재 “Layer 1, Layer 2…” 식 이름은 바꾸고 싶어 한다.
-
-앞으로 Main Section의 animation layer 기본 이름은 일본 셀 애니메이션식으로:
-
-A
-B
-C
-...
-Z
-AA
-AB
-AC
-...
-
-이렇게 간다.
-
-중요:
-레이어 이름 생성은 Project 전체 기준이 아니라 Cut별 기준이다.
-
-예:
-
-Cut 1:
-A
-B
-C
-
-Cut 2:
-A
-B
-C
-
-Cut 1에서 E까지 만들었다고 해서 Cut 2가 F부터 시작하면 안 된다.
-
-또한 가능한 경우 가장 작은 빈 셀 이름을 사용한다.
-
-예:
-
-기존:
-A
-B
-D
-
-새 레이어:
-C
-
-6. Initial exposure 방향
-
-새 Cut / 새 Layer는 무조건 1번 인덱스에 x로 시작해야 한다.
-
-x 의미:
-blank exposure / no drawing / empty cell
-
-사용자가 싫어하는 것:
-
-* 새 Cut에 아무 exposure도 없는 상태
-* C2 같은 자동 Frame 이름이 생기는 상태
-* Cut 2에서 1번 인덱스에 C2가 들어가는 상태
-
-원하는 기본:
-
-New Cut
-Layer A
-index 1 = x
-
-New Layer
-index 1 = x
-
-7. Layer type icon 방향
-
-나중에 레이어 라벨 왼쪽에 타입 아이콘을 표시하고 싶어 한다.
-
-초기 아이콘:
-
-* animation: 셀/붓/그림 아이콘
-* storyboard: 콘티/책/패널 아이콘
-
-장기 아이콘:
-
-* sound: 음표/소리 아이콘
-* cameraControl: 카메라 아이콘
-* cameraDirection: 카메라 지시/메모 아이콘
-
-이건 아직 다음 Phase에서 하지 말고, 기본 규칙 정리 후 별도 UI Phase에서 한다.
-
-반드시 확인해야 할 문서:
-
-다음 챗은 먼저 docs 폴더를 확인해야 한다.
-
-특히 아래 문서들을 우선 확인:
-
-* docs/LongTerm_Timesheet_Layer_Sections.md
-* docs/Design_CutMetadata_CanvasPlanning.md
-* docs/Phase_69_Codex_Task.md
-* docs/Phase_70_Codex_Task.md
-* docs/Phase_71_Codex_Task.md
-* docs/Phase_72_Codex_Task.md
-* docs/Phase_73_Codex_Task.md
-
-추가로 있으면 확인할 문서:
-
-* docs/Architecture.md
-* docs/ImplementationPlan.md
-* docs/Cut_Structure_Audit.md
-* docs/Phase_*.md
-* README.md
-
-다음 챗에서 먼저 할 일:
-
-1. docs/LongTerm_Timesheet_Layer_Sections.md를 읽고 장기 방향을 확인한다.
-2. docs/Design_CutMetadata_CanvasPlanning.md를 읽고 CutMetadata / StoryboardFrameMetadata 방향을 확인한다.
-3. 최신 머지 상태에서 Phase 74를 제안한다.
-4. Phase 74는 작고 안전하게 잡는다.
-
-다음 Phase 추천:
-
-Phase 74 - Layer Defaults and Storyboard Layer Rule Correction
-
-목표:
-
-* Cut당 Storyboard Layer는 최대 1개만 허용.
-* Layer 이름 생성 방식을 Cut별 A/B/C... AA/AB 방식으로 변경.
-* 새 Cut의 기본 Layer 이름은 A.
-* 새 Layer 생성 시 해당 Cut 안에서 다음 셀 이름 사용.
-* 새 Cut / 새 Layer는 1번 인덱스에 x(blank exposure)로 시작.
-* C2 같은 자동 frame name 생성 제거.
-* 새 레이어가 가로 타임라인에서 아래로 append되지 않고 현재 target layer 위 또는 Main Section 최상단에 들어가는 방향을 정의.
-* 아직 Sound/Camera Section은 구현하지 않는다.
-* 아직 Layer type icon UI는 구현하지 않는다.
-* 아직 Storyboard Panel UI / Conte Panel UI / actionMemo UI / dialogueMemo UI는 구현하지 않는다.
-
-Phase 74에서 주의할 것:
-
-* 너무 큰 UI 개편 금지.
-* Sound/Camera LayerKind 추가 금지.
-* Camera Section 구현 금지.
-* Sound Section 구현 금지.
-* Timesheet vertical view 구현 금지.
-* Layer icon UI 구현 금지.
-* StoryboardFrameMetadata editor 구현 금지.
-* actionMemo/dialogueMemo UI 구현 금지.
-* CutMetadata는 note-only 유지.
-* Storyboard Layer는 Cut당 1개로 제한하되, 기존 프로젝트에 storyboard layer가 여러 개 있는 legacy 상태를 어떻게 처리할지는 신중히 정한다.
-* UpdateLayerKindCommand가 animation → storyboard로 바꿀 때 같은 Cut 안에 이미 storyboard layer가 있으면 StateError로 거부하는 방향이 좋다.
-* Coordinator에서도 unchanged skip은 유지.
-* UI toggle도 이미 storyboard layer가 있는 상태에서 다른 layer를 storyboard로 바꾸려 하면 안전하게 실패하거나 disabled되는 방향을 나중에 잡는다.
-
-## 대화 진행 방식
-
-답변은 한국어로 한다.
-
-사용자는 QuickAnimaker_v2 프로젝트를 Phase 단위로 진행하고 있다.
-
-사용자는 구현 타이밍, Phase 분할, 다음 작업 판단을 기본적으로 AI에게 맡긴다.
-
-다만 답변 방식은 항상 다음 순서를 유지한다.
-
-1. 현재 상태를 짧게 판단한다.
-2. 다음 Phase가 무엇인지 말한다.
-3. 제일 먼저 사용자가 만들어야 할 파일명을 알려준다.
-4. 그 파일에 붙여넣을 Phase 문서 전체 내용을 제공한다.
-5. Codex에게 그대로 전달할 짧은 지시문을 별도로 제공한다.
-6. 마지막에 사용자가 실행할 git 명령어를 제공한다.
-
-사용자가 “정상이야 다음가자”라고 하면:
-
-* 직전 PR이 머지/로컬 테스트까지 정상이라는 뜻으로 이해한다.
-* 바로 다음 Phase를 판단한다.
-* “다음은 Phase xx가 맞아.”라고 먼저 말한다.
-* 그 이유를 짧게 설명한다.
-* 그 다음 아래 형식으로 진행한다.
-
-필수 답변 형식:
-
-1. 먼저 만들 파일
-
-예:
-
-```text
-먼저 이 파일을 만들어.
-docs/Phase_74_Codex_Task.md
-```
-
-2. Phase md 파일에 붙여넣을 내용
-
-* 사용자가 md 파일에 그대로 붙여넣을 수 있게 작성한다.
-* Phase 문서 전체를 제공한다.
-* 범위, 목표, 금지사항, 테스트 요구사항, acceptance criteria, required checks, Codex report 항목을 포함한다.
-* 너무 큰 범위를 잡지 않는다.
-* 현재 Phase에서 하지 않을 것을 명확히 적는다.
-
-3. Codex에게 전달할 내용
-
-* Phase 문서보다 짧고 실행 지향적으로 작성한다.
-* Codex 채팅에 그대로 붙여넣기 좋게 작성한다.
-* “Implement Phase xx only.”로 시작하는 형태가 좋다.
-* 읽어야 할 문서, 목표, 금지사항, 실행할 체크 명령어, 보고할 항목을 포함한다.
-
-4. git 명령어 안내
-
-Phase 문서를 만든 뒤 사용자가 실행할 명령어를 제공한다.
-
-예:
-
-```bat
+기본 PR 머지 후 로컬 확인 명령:
 git status
-git add docs/Phase_74_Codex_Task.md
-git commit -m "Add Phase 74 Codex task"
-git push
-git status
-```
-
-PR 리뷰 후에는 로컬 확인 명령어를 제공한다.
-
-예:
-
-```bat
 git pull
 dart format lib test
 flutter analyze
 flutter test
 git status
-```
 
-format 때문에 modified가 생길 수 있으므로, 예상 파일 기준 git add / commit / push 명령어도 제공한다.
-
-예:
-
-```bat
-git add lib/src/... test/...
-git commit -m "Format Phase xx ..."
-git push
+로컬 변경이 남아 있을 가능성이 있으면 안전형:
 git status
-```
+git restore <format으로 바뀌었을 가능성이 있는 파일들>
+git pull
+dart format lib test
+flutter analyze
+flutter test
+git status
 
-사용자가 “PR xx 확인해줘”라고 하면:
+restore는 로컬 변경을 버리는 명령이다.
+사용자가 이미 format 변경을 커밋해야 하는 상황이면 restore를 시키면 안 된다.
+그때는 add/commit/push를 안내한다.
 
-* GitHub PR을 확인한다.
-* PR body만 보고 판단하지 않는다.
-* 중요한 변경 파일을 직접 fetch해서 확인한다.
-* 테스트 파일을 확인한다.
-* PR comments를 확인한다.
-* 기존 설계 방향과 충돌하는지 확인한다.
-* out of scope 위반이 있는지 확인한다.
-* 문제 없으면 “머지해도 괜찮아.”라고 명확히 말한다.
-* 문제 있으면 “이건 수정 요청이 맞아.”라고 명확히 말한다.
-* 마지막에 로컬 실행 명령어와 예상 git add 명령어를 제공한다.
+PR 리뷰 응답 형식:
+항상 아래 항목을 포함한다.
 
-좋은 답변 스타일:
+1. 결론: 머지 OK / 보류 / 수정 필요
+2. 변경 파일
+3. Phase 범위 적합 여부
+4. 장기 설계 관점 문제 여부
+5. 로컬에서 실행할 명령어
+6. 포맷 등으로 바뀌면 git add 할 파일
+7. 수동 확인할 사항
 
-```text
-좋아. 다음은 Phase 74가 맞아.
+PR 리뷰 시 주의:
 
-이유는 간단해.
-지금은 LayerKind command/UI까지 생겼고,
-이제 기본 레이어 규칙을 정리하지 않으면 다음 UI가 흔들릴 수 있어.
+* GitHub PR 정보를 확인한다.
+* 변경 파일과 diff를 본다.
+* Codex가 dart/flutter를 실행하지 못했다고 적는 경우가 많으므로, 최종 판단은 사용자의 로컬 `flutter analyze`, `flutter test` 결과를 기준으로 한다.
+* 테스트 실패가 발생하면 에러가 코드 문제인지 테스트 문제인지 구분한다.
+* 많은 테스트가 터져도 공통 원인 하나일 수 있으므로 stack trace의 최초 원인을 확인한다.
 
-먼저 이 파일을 만들어.
-docs/Phase_74_Codex_Task.md
+핵심 도메인 모델:
+Project -> Track -> Cut -> Layer -> Frame -> Stroke
 
-아래 내용을 그대로 붙여넣어.
-...
-Codex에게는 이걸 보내면 돼.
-...
-진행 명령어는 이거야.
-...
-```
+기본 ID/value 객체:
+ProjectId
+TrackId
+CutId
+LayerId
+FrameId
+StrokeId
+CanvasSize
+BrushSettings
 
-피해야 할 답변 스타일:
+핵심 모델 불변식:
 
-* 처음부터 설명 없이 긴 Phase 문서만 던지는 것
-* 사용자가 만들어야 할 파일명을 먼저 안 알려주는 것
-* Phase md 내용과 Codex 전달용 내용을 구분하지 않는 것
-* git add / commit / push 안내를 빼먹는 것
-* 너무 먼 미래 구현을 한 번에 넣는 것
-* 장기 아이디어를 즉시 구현 범위에 넣는 것
-* Phase 범위를 크게 잡는 것
-* “원하면 해줄게”로 끝내는 것
+* Project는 tracks를 가진다.
+* Track은 cuts를 가진다.
+* Cut은 layers를 가진다.
+* Layer는 frames를 가진다.
+* Frame은 strokes를 가진다.
+* Storyboard는 별도 Cut.storyboardLayer가 아니라 일반 Layer(kind: storyboard)다.
+* Cut.storyboardLayer.panels 같은 구조는 사용하지 않는다.
+* Cut당 Storyboard Layer는 최대 1개만 허용한다.
+* Layer.name은 표시용 라벨이다.
+* Layer.name 중복은 허용한다.
+* LayerId가 진짜 identity다.
+* Frame name은 기존 unique/link 정책을 유지한다.
 
-Phase 문서 작성 원칙:
+Storyboard 관련 불변식:
 
-* 새 챗은 항상 최신 장기 메모와 설계 문서를 먼저 확인해야 한다.
-* 특히 다음 문서를 우선 확인한다.
+* LayerKind.animation
+* LayerKind.storyboard
+* StoryboardFrameMetadata는 Frame에 붙는다.
+* Frame.storyboardMetadata 필드가 있다.
+* StoryboardFrameMetadata 필드:
 
-```text
-docs/Handoff_QuickAnimaker_v2_Current.md
-docs/LongTerm_Timesheet_Layer_Sections.md
-docs/Design_CutMetadata_CanvasPlanning.md
-최신 Phase 문서들
-```
+    * actionMemo
+    * dialogueMemo
+    * note
+* CutMetadata에는 Cut-level note만 둔다.
+* CutMetadata에 actionMemo/dialogueMemo를 넣지 않는다.
+* Storyboard metadata UI는 아직 구현하지 않았다.
+* Storyboard thumbnail/edit/export/renderer/cache 변경은 명시된 Phase 전까지 하지 않는다.
 
-* 장기 아이디어는 바로 구현하지 말고, 현재 Phase에 필요한 최소 범위만 반영한다.
-* 모델 → command → UI 순서로 작게 쌓는다.
-* UI Phase라도 큰 화면 개편은 피한다.
-* command Phase에서는 undo/redo, missing target, no-op skip, unrelated data preservation을 반드시 본다.
-* UI Phase에서는 widget key, command path 사용 여부, future UI 미추가 여부를 반드시 본다.
+레이어 표시 순서:
+내부 raw order와 UI 표시 order는 구분한다.
 
-다음 챗에서 특히 지켜야 할 진행 방식:
+Cut.layers raw logical/XSheet/cel order:
+[A, B, C]
 
-* 먼저 장기 메모를 확인한다.
-* 다음 Phase가 맞는지 짧게 판단한다.
-* “먼저 만들 파일”을 알려준다.
-* “Phase md에 붙여넣을 내용”을 작성한다.
-* “Codex에게 전달할 내용”을 작성한다.
-* “git add/commit/push 명령어”를 작성한다.
+Horizontal timeline display:
+[C, B, A]
 
+Vertical XSheet/timesheet display:
+[A, B, C]
 
-현재 중요 key / UI:
+새 레이어 추가 규칙:
 
-Phase 73 toggle button:
-ValueKey('toggle-storyboard-layer-button')
+* horizontal timeline에서 active layer 위에 보이게 추가해야 한다.
+* raw order 기준으로 active layer 뒤에 insert한다.
+* sourceIndex + 1
+* “append to bottom”으로 생각하면 안 된다.
 
-Layer kind label:
-ValueKey('active-layer-kind-label')
+스토리보드 레이어 위치:
 
-Undo:
-ValueKey('undo-button')
+* Storyboard Layer도 Main Section 안의 일반 layer다.
+* Storyboard Layer 위아래에 Animation Layer가 올 수 있어야 한다.
 
-Redo:
-ValueKey('redo-button')
+기본 레이어 이름:
+새 Cut / 새 Layer 기본 이름은 A, B, C... 스타일을 사용한다.
+Cut별 기준이다.
+Cut 1이 E까지 있다고 해서 Cut 2가 F부터 시작하면 안 된다.
 
-Cut Note UI:
-이미 존재하며 계속 유지되어야 한다.
+Initial exposure:
 
-아직 없어야 하는 UI:
+* 새 Cut / 새 Layer는 visible frame 1에 blank exposure `x`가 있어야 한다.
+* 사용자는 새 Cut이 아무 exposure도 없는 상태를 원하지 않는다.
+* C2 같은 자동 frame name이 새 Cut index 1에 들어가는 것을 원하지 않는다.
 
-* Storyboard Panel
-* Conte Panel
-* Layer Inspector
-* Cut Inspector
-* actionMemo field
-* dialogueMemo field
-* StoryboardFrameMetadata editor
-* panelNote field
+Layer icon:
+현재 horizontal timeline row에 LayerKind icon이 있다.
+기본 의미:
 
-이 인수인계 메모를 기준으로 QuickAnimaker_v2 다음 Phase를 이어가자.
+* animation: Animation layer
+* storyboard: Storyboard layer
 
-먼저 다음 문서를 확인해줘.
+StoryboardPanel 장기 방향:
+StoryboardPanel은 단순 리스트가 아니라 장기적으로 Premiere Pro / DaVinci Resolve 같은 multi-track timeline 감각을 목표로 한다.
 
-* docs/Handoff_QuickAnimaker_v2_Current.md
-* docs/LongTerm_Timesheet_Layer_Sections.md
-* docs/Design_CutMetadata_CanvasPlanning.md
-* 최신 Phase 문서들
+장기 구조:
+Project.tracks = V1, V2...
+Track 안에 Cut blocks
+Cut 안에 Storyboard Layer 표시
 
-그 다음 아래 순서로 진행해줘.
+개념:
+V1  [Cut 001--------][Cut 002----][Cut 003----------]
+V2        [Alt Cut-----]       [Reference---]
+V3  [Memo/Temp/Revision---------------------]
 
-1. 현재 상태를 짧게 판단
-2. 다음 Phase가 무엇인지 말하기
-3. 먼저 만들어야 할 Phase md 파일명 안내
-4. 그 md 파일에 붙여넣을 Phase 문서 전체 작성
-5. Codex에게 전달할 짧은 지시문 작성
-6. git add / commit / push 명령어 안내
+StoryboardPanel 원칙:
 
-다음 목표 후보는 Phase 74: Layer Defaults and Storyboard Layer Rule Correction이야.
+* Cut block은 Cut duration을 가진다.
+* Cut에 Storyboard Layer가 있으면 Cut block 안에 그 layer의 head/exposure strip을 보여준다.
+* StoryboardPanel은 Project 기준으로 읽는다.
+* StoryboardExportPlan은 Project에서 derive한다.
+* Project를 mutate하지 않는다.
+* 기본 storyboard export는 Primary Track only, 즉 V1만 대상으로 한다.
+* selected tracks export나 composite output은 미래 기능이다.
+* Composite Output은 optional이며 default가 아니다.
 
-단, Phase 74는 작은 기본 규칙 정리 Phase로 잡아줘.
+성능/가상화 장기 정책:
+반드시 docs/LongTerm_Performance_Architecture.md를 따른다.
 
-바로 구현하지 말 것:
+핵심 원칙:
 
-* Sound/Camera Section
-* Layer type icon UI
-* Storyboard Panel UI
-* Conte Panel UI
-* actionMemo/dialogueMemo UI
-* vertical timesheet view
+* 장기적으로 100k frames, 많은 layers, 많은 cuts를 고려한다.
+* Timeline은 eager build하면 안 된다.
+* ListView.builder만으로 2D timeline 문제를 해결했다고 보면 안 된다.
+* 명시적인 visible range / virtualization plan을 계산해야 한다.
+* horizontal virtualization과 vertical virtualization은 분리해서 단계적으로 접근한다.
+* 현재 vertical layer virtualization은 아직 구현하지 않았다.
+* 구조적 해결을 우선한다.
+* overflow를 fixed size 증가로 숨기는 식의 임시 해결을 피한다.
+* 안정적인 semantic key를 사용하고 fragile text-position test를 피한다.
+
+완료된 주요 Phase 요약:
+
+Phase 69:
+
+* Storyboard model correction
+* Cut.storyboardLayer.panels 제거 방향 확정
+* Storyboard는 Layer(kind: storyboard)로 표현
+
+Phase 70:
+
+* StoryboardFrameMetadata 추가
+* Frame.storyboardMetadata 추가
+
+Phase 71:
+
+* UpdateStoryboardFrameMetadataCommand 추가
+
+Phase 72:
+
+* UpdateLayerKindCommand 추가
+
+Phase 73:
+
+* minimal Storyboard Layer toggle UI 추가
+* key:
+
+    * toggle-storyboard-layer-button
+    * active-layer-kind-label
+
+Phase 74:
+
+* Storyboard Layer 최대 1개 규칙
+* 기본 layer name A/B/C
+* 새 Cut/new Layer blank exposure frame 1
+* 새 layer가 horizontal timeline에서 active 위에 보이도록 추가
+
+Phase 75:
+
+* horizontal timeline row에 LayerKind icon 추가
+* keys:
+
+    * timeline-layer-kind-icon-<layerId>
+
+Phase 76:
+
+* horizontal layer display adapter foundation
+
+Phase 77:
+
+* undoable active layer rename
+
+Phase 78:
+
+* delete layer command/UI
+
+Phase 79:
+
+* duplicate layer command/UI
+
+Phase 80:
+
+* layer clipboard foundation
+* copy/paste layer payload
+* duplicate layer를 copy/paste 기반으로 refactor
+* duplicate layer name 보존
+* Layer.name 중복 허용
+
+Phase 81:
+
+* minimal layer copy/paste UI
+* keys:
+
+    * copy-layer-button
+    * paste-layer-button
+    * layer-clipboard-status
 
 Phase 82:
 
-* Layer system stabilization after Add/Rename/Delete/Duplicate/Copy/Paste.
-* Layer identity policy is now explicit: `LayerId` is identity; `Layer.name` is only a display label.
-* Duplicate layer names are allowed. Rename rejects empty/whitespace names only and must not reject a duplicate display label.
-* Frame rename/link behavior was intentionally unchanged; layer duplicate-name allowance must not be applied to frame naming rules.
-* Duplicate Layer is a convenience wrapper over the layer copy/paste foundation: `copyLayerToPayload(sourceLayer)` + `CutCommandCoordinator.pasteLayer(... insertionIndex: sourceIndex + 1)` + `PasteLayerCommand`.
-* Obsolete duplicate-layer-only command/planner code was removed. The retained `duplicateLayerAsIndependentCopy` helper is for Cut duplication only, where the entire Cut's layer/frame ID maps are preplanned together; it is not the Layer Duplicate command path.
-* Copy Layer stores an app-local `LayerCopyPayload` and does not mutate repository state or history.
-* Paste Layer inserts at the requested raw layer index, remaps `FrameId`s, preserves the copied layer display name, becomes undoable/redoable through history, and selects the pasted layer in UI flows.
-* Storyboard paste policy remains:
-  * Storyboard payload into a Cut with no Storyboard Layer pastes as `LayerKind.storyboard`.
-  * Storyboard payload into a Cut with an existing Storyboard Layer pastes as `LayerKind.animation`.
-  * Animation payload always pastes as `LayerKind.animation`.
-* Clipboard UI remains minimal/app-local only: Copy Layer, Paste Layer, and status label. No OS clipboard, shortcuts, context menus, or multi-layer clipboard were added.
-* Widget tests were stabilized away from generated IDs like `timeline-layer-row-layer-1`; prefer row counts, selected-layer assertions, repository-backed IDs, or discovered IDs.
-* Raw layer order / horizontal display order / future XSheet order separation remains important. No section UI, vertical timesheet redesign, new `LayerKind`, or Storyboard Panel UI was added. `docs/LongTerm_StoryboardPanel_TimelineDesign.md` remains long-term reference only.
+* layer system stabilization/cleanup
+
+Phase 83:
+
+* read-only StoryboardPanel shell
+* keys:
+
+    * storyboard-panel
+    * storyboard-panel-title
+    * storyboard-track-row-<trackId>
+    * storyboard-track-label-<trackId>
+    * storyboard-cut-block-<cutId>
+    * storyboard-cut-title-<cutId>
+    * storyboard-cut-duration-<cutId>
+    * storyboard-layer-strip-<cutId>
+    * storyboard-layer-name-<cutId>
+    * storyboard-layer-empty-<cutId>
+
+Phase 84:
+
+* StoryboardPanel active cut sync/cut block selection
+* active indicator key:
+
+    * storyboard-cut-active-indicator-<cutId>
+
+Phase 85:
+
+* StoryboardTimelineLayout foundation
+* file:
+
+    * lib/src/ui/storyboard_timeline_layout.dart
+* key:
+
+    * storyboard-cut-frame-range-<cutId>
+
+Phase 86:
+
+* shared timeline block foundation
+* files:
+
+    * lib/src/ui/timeline/timeline_block.dart
+    * lib/src/ui/timeline/timeline_scale.dart
+
+Phase 87:
+
+* TimelinePanel cells use shared timeline block style
+
+Phase 88:
+
+* StoryboardPanel shared timeline positioning
+* keys:
+
+    * storyboard-track-timeline-area-<trackId>
+    * storyboard-cut-positioned-<cutId>
+
+Phase 89:
+
+* StoryboardPanel horizontal timeline viewport foundation
+* key:
+
+    * storyboard-timeline-horizontal-viewport
+
+Phase 90:
+
+* StoryboardPanel fixed track label rail
+* keys:
+
+    * storyboard-track-label-rail
+    * storyboard-timeline-scroll-content
+    * storyboard-track-label-row-<trackId>
+
+Phase 91:
+
+* timeline visible range calculator foundation
+* file:
+
+    * lib/src/ui/timeline/timeline_visible_range.dart
+* tests cover empty/overscan/clamping/negative offset/invalid extent/two-axis/100k count
+
+Phase 92:
+
+* timeline virtualization render plan foundation
+* file:
+
+    * lib/src/ui/timeline/timeline_virtualization_plan.dart
+
+Phase 93:
+
+* LayerTimelineGrid virtualization adapter foundation
+* files:
+
+    * lib/src/ui/timeline/layer_timeline_grid.dart
+    * lib/src/ui/timeline/timeline_grid_metrics.dart
+    * lib/src/ui/timeline/timeline_panel_virtualization_adapter.dart
+* TimelineGridMetrics.defaults:
+
+    * minimumVisibleFrameCells = 24
+    * layerControlsWidth = 220
+    * frameCellWidth = 48
+    * layerRowHeight = 52
+
+Phase 94:
+
+* fixed layer controls rail foundation
+* keys:
+
+    * timeline-layer-controls-rail
+    * timeline-frame-scroll-viewport
+    * timeline-frame-scroll-content
+
+Phase 95:
+
+* horizontal frame virtualization first slice
+* LayerTimelineGrid became StatefulWidget
+* horizontal ScrollController/listener added
+* visible horizontal frame range and leading/trailing spacers added
+* keys:
+
+    * timeline-frame-header-leading-spacer
+    * timeline-frame-header-trailing-spacer
+    * timeline-frame-row-leading-spacer-<layerId>
+    * timeline-frame-row-trailing-spacer-<layerId>
+
+Phase 96:
+
+* visible horizontal scrollbar foundation
+* keys:
+
+    * timeline-scrollbar-area
+    * timeline-horizontal-scrollbar
+    * timeline-horizontal-scrollbar-viewport
+
+Phase 97:
+
+* bottom horizontal scrollbar rail placement
+* goal:
+
+    * layer controls rail 아래 reserved area
+    * frame grid 아래 horizontal scrollbar
+* key additions:
+
+    * timeline-bottom-scrollbar-rail
+    * timeline-bottom-scrollbar-left-spacer
+    * timeline-frame-grid-area
+* PR 135 had a vertical desync risk at one point, but final fixed structure uses shared vertical scroll.
+* Later PR 136 fixed test tap/drag target issues.
+
+PR 137:
+
+* bottom horizontal scrollbar alignment fix
+* left reserved area kept empty
+* horizontal scrollbar scoped to frame grid bottom rail
+* built-in Flutter Scrollbar moved into right rail but thumb was not visible because it was detached from actual scrollable.
+
+PR 138:
+
+* replaced detached built-in Scrollbar with custom visible bottom horizontal scrollbar rail
+* reuses existing horizontal ScrollController
+* no second horizontal controller
+* keys:
+
+    * timeline-horizontal-scrollbar-track
+    * timeline-horizontal-scrollbar-thumb
+* thumb/track became visible and user confirmed normal operation.
+
+Phase 98 / PR 139:
+
+* added visible TVPaint-style vertical scrollbar slot between layer controls rail and frame grid
+* added shared vertical ScrollController
+* added timeline vertical scroll viewport
+* added vertical scrollbar rail with visible track/thumb
+* vertical layer virtualization explicitly deferred
+* added TimelineGridMetrics.verticalScrollbarWidth default 14
+* new keys:
+
+    * timeline-vertical-scrollbar-slot
+    * timeline-vertical-scrollbar
+    * timeline-vertical-scrollbar-track
+    * timeline-vertical-scrollbar-thumb
+    * timeline-vertical-scrollbar-bottom-spacer
+    * timeline-vertical-scroll-viewport
+
+PR 140:
+
+* fixed PR 139 runtime failure
+* problem:
+
+    * controller.hasClients can be true before position.hasContentDimensions is true
+    * reading position.maxScrollExtent too early caused null-check error
+* fix:
+
+    * only read maxScrollExtent when hasClients && hasContentDimensions
+    * fallback to content size / viewport size calculation otherwise
+* applied to both:
+
+    * _VerticalScrollbarRailState._maxScrollExtent
+    * _BottomHorizontalScrollbarRailState._maxScrollExtent
+* user confirmed app works normally after this.
+
+Current TimelinePanel / LayerTimelineGrid important structure:
+
+* one shared vertical scroll viewport controls layer controls and frame rows together
+* vertical scrollbar slot is between layer controls rail and frame grid
+* horizontal frame scroll is inside frame grid area
+* bottom horizontal scrollbar is under frame grid only
+* bottom row reserves:
+
+    * layer controls width
+    * vertical scrollbar slot width
+    * horizontal scrollbar rail under frame grid area
+
+Important current keys:
+
+* timeline-scrollbar-area
+* timeline-layer-controls-rail
+* timeline-vertical-scroll-viewport
+* timeline-vertical-scrollbar-slot
+* timeline-vertical-scrollbar
+* timeline-vertical-scrollbar-track
+* timeline-vertical-scrollbar-thumb
+* timeline-vertical-scrollbar-bottom-spacer
+* timeline-frame-grid-area
+* timeline-horizontal-scrollbar
+* timeline-horizontal-scrollbar-track
+* timeline-horizontal-scrollbar-thumb
+* timeline-horizontal-scrollbar-viewport
+* timeline-frame-scroll-viewport
+* timeline-frame-scroll-content
+* timeline-bottom-scrollbar-rail
+* timeline-bottom-scrollbar-left-spacer
+* timeline-frame-header-row
+* timeline-frame-header-<frameIndex>
+* timeline-cell-<layerId>-<frameIndex>
+* timeline-frame-header-leading-spacer
+* timeline-frame-header-trailing-spacer
+* timeline-frame-row-leading-spacer-<layerId>
+* timeline-frame-row-trailing-spacer-<layerId>
+* timeline-layer-row-<layerId>
+* timeline-layer-kind-icon-<layerId>
+* timeline-layer-name-<layerId>
+* timeline-add-layer-button
+
+Current out of scope:
+
+* vertical layer virtualization
+* playhead/ruler/zoom
+* layer reorder
+* layer folder
+* layer lock
+* layer merge
+* sound section
+* camera section
+* rough/guide layer type
+* storyboard metadata editing UI
+* storyboard thumbnail/edit/export
+* renderer/cache/persistence changes
+* Provider/Riverpod/Bloc/ChangeNotifier introduction
+* full custom renderer
+* custom bitmap brush engine expansion
+
+Important long-term documents to read first:
+
+* docs/Handoff_QuickAnimaker_v2_Current.md
+* docs/LongTerm_Performance_Architecture.md
+* docs/LongTerm_StoryboardPanel_TimelineDesign.md
+* docs/LongTerm_Timesheet_Layer_Sections.md
+* docs/Design_CutMetadata_CanvasPlanning.md
+* docs/Architecture.md
+* docs/ImplementationPlan.md
+
+Recent Phase documents to read if working on timeline:
+
+* docs/Phase_91_Codex_Task.md
+* docs/Phase_92_Codex_Task.md
+* docs/Phase_93_Codex_Task.md
+* docs/Phase_94_Codex_Task.md
+* docs/Phase_95_Codex_Task.md
+* docs/Phase_96_Codex_Task.md
+* docs/Phase_97_Codex_Task.md
+* docs/Phase_98_Codex_Task.md
+
+Next chat instructions:
+Start from Phase 100.
+
+Recommended first reply in next chat:
+
+* Acknowledge that Phase 98 / PR 140 is complete.
+* Do not re-check PR 139/140 unless user asks.
+* Ask or infer the next phase.
+* Propose Phase 100 based on current code and long-term plan.
+
+Suggested Phase 100 candidates:
+
+1. Timeline scrollbar stabilization polish
+
+    * verify custom vertical/horizontal scrollbar behavior
+    * add minimal tests if any manual issue remains
+    * no new features
+
+2. Timeline playhead/ruler foundation
+
+    * add top frame ruler/playhead visual structure
+    * must not break horizontal virtualization
+    * should use visible frame range
+
+3. Vertical layer virtualization planning phase
+
+    * only planning/calculator foundation, not UI replacement
+    * should follow docs/LongTerm_Performance_Architecture.md
+
+Best recommended Phase 100:
+Timeline playhead/ruler foundation, if the current scrollbars remain stable.
+If any scrollbar issue remains, do a small stabilization phase first.
+
+Next chat should not:
+
+* assume outdated Phase 74 state
+* reintroduce Cut.storyboardLayer
+* split vertical scrolling into independent left/right scroll views
+* move vertical scrollbar to far right
+* make horizontal scrollbar span under layer controls
+* implement vertical virtualization before a clear foundation phase
+* change models without explicit instruction
+
+User workflow:
+When the user says “정상작동해 다음가자”, treat the latest PR as locally verified and propose the next small phase.
+
+When the user says “PR xxx 확인해줘”, check GitHub PR xxx and respond using the standard PR review format.
+
+When a test fails after merge:
+
+* parse the first real error
+* identify if many failures share one root cause
+* do not assume restore/pull problem unless logs show local changes blocking pull
+* if pull is blocked by local format changes, then advise restore or commit depending on whether the changes should be kept.
