@@ -303,3 +303,7 @@ Phase 95 applied the first horizontal frame virtualization slice to LayerTimelin
 ## Phase 96 update
 
 Phase 96 added a visible horizontal scrollbar foundation for LayerTimelineGrid so horizontal frame virtualization is discoverable and controllable. The scrollbar is tied to the frame scroll viewport, not the fixed layer controls rail, preserving the long-term TVPaint-style direction where scroll controls are stable and visible.
+
+## Phase 97 update
+
+Phase 97 moved the horizontal scrollbar into a stable bottom rail so timeline scrolling remains visible and discoverable regardless of layer count. This keeps the frame grid above the scrollbar and preserves the fixed layer controls rail / frame viewport separation required for long-term TVPaint-style timeline ergonomics.

@@ -41,6 +41,15 @@ void main() {
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
     );
+    final frameGridArea = find.byKey(
+      const ValueKey<String>('timeline-frame-grid-area'),
+    );
+    final bottomScrollbarRail = find.byKey(
+      const ValueKey<String>('timeline-bottom-scrollbar-rail'),
+    );
+    final bottomScrollbarLeftSpacer = find.byKey(
+      const ValueKey<String>('timeline-bottom-scrollbar-left-spacer'),
+    );
 
     expect(rail, findsOneWidget);
     expect(scrollbarArea, findsOneWidget);
@@ -48,6 +57,9 @@ void main() {
     expect(scrollbarViewport, findsOneWidget);
     expect(viewport, findsOneWidget);
     expect(content, findsOneWidget);
+    expect(frameGridArea, findsOneWidget);
+    expect(bottomScrollbarRail, findsOneWidget);
+    expect(bottomScrollbarLeftSpacer, findsOneWidget);
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);
     expect(
@@ -76,6 +88,18 @@ void main() {
     expect(
       find.descendant(of: scrollbarViewport, matching: viewport),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(of: frameGridArea, matching: content),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: content, matching: bottomScrollbarRail),
+      findsNothing,
+    );
+    expect(
+      tester.getTopLeft(bottomScrollbarRail).dy,
+      greaterThan(tester.getTopLeft(frameGridArea).dy),
     );
     expect(
       find.descendant(
@@ -372,6 +396,20 @@ void main() {
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
+    );
+
+    expect(selectedLayerId, const LayerId('layer-2'));
+  });
+
+  testWidgets('selects layer from full layer row', (tester) async {
+    LayerId? selectedLayerId;
+
+    await tester.pumpWidget(
+      _grid(onSelectLayer: (layerId) => selectedLayerId = layerId),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-row-layer-2')),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
