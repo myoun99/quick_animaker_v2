@@ -790,8 +790,8 @@ git status
 
 format 후 modified가 뜨면 예상 파일은 이쪽이야.
 
-git add lib/src/services/commands/update_layer_kind_command.dart lib/src/services/project_repository.dart lib/src/services/commands/cut_command_coordinator.dart lib/src/services/commands/cut_commands.dart test/services/commands/update_layer_kind_command_test.dart test/services/project_repository_test.dart test/services/commands/cut_command_coordinator_test.dart test/services/commands/cut_commands_export_test.dart
-git commit -m "Format Phase 72 layer kind command foundation"
+git add lib test
+git commit -m "Format Phase 72"
 git push
 git status
 
