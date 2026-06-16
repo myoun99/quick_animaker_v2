@@ -16,6 +16,7 @@ void main() {
             frameStartIndex: 2,
             frameEndIndexExclusive: 5,
             currentFrameIndex: 3,
+            actualFrameCount: 5,
             leadingFrameSpacerWidth: 96,
             trailingFrameSpacerWidth: 144,
             metrics: TimelineGridMetrics.defaults,

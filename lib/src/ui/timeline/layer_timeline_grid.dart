@@ -45,6 +45,7 @@ class LayerTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
+  static const int postCutTailFrameCount = 24;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -85,6 +86,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       _horizontalScrollOffset = offset;
     });
   }
+
+  int get _displayFrameCount => math.max(0, widget.frameCount) + LayerTimelineGrid.postCutTailFrameCount;
 
   int? _clampedRulerFrameIndex(int frameIndex) {
     if (widget.frameCount <= 0) {
@@ -218,7 +221,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           verticalScrollOffset: 0,
                                           viewportWidth: viewportWidth,
                                           viewportHeight: viewportHeight,
-                                          frameCount: widget.frameCount,
+                                          frameCount: _displayFrameCount,
                                           layerCount: widget.layers.length,
                                           metrics: LayerTimelineGrid._metrics,
                                         );
@@ -281,6 +284,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .endIndexExclusive,
                                                     currentFrameIndex: widget
                                                         .currentFrameIndex,
+                                                    actualFrameCount:
+                                                        widget.frameCount,
                                                     leadingFrameSpacerWidth: plan
                                                         .leadingFrameSpacerWidth,
                                                     trailingFrameSpacerWidth: plan
@@ -395,7 +400,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     viewportHeight:
                                                         viewportHeight,
                                                     frameCount:
-                                                        widget.frameCount,
+                                                        _displayFrameCount,
                                                     layerCount:
                                                         widget.layers.length,
                                                     metrics: LayerTimelineGrid
@@ -447,6 +452,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   currentFrameIndex:
                                                                       widget
                                                                           .currentFrameIndex,
+                                                                  actualFrameCount:
+                                                                      widget.frameCount,
                                                                   frameStartIndex:
                                                                       frameRange
                                                                           .startIndex,
@@ -484,6 +491,27 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       .layerRowHeight,
                                                                 ),
                                                             ],
+                                                          ),
+                                                        ),
+                                                        Positioned(
+                                                          key: const ValueKey<
+                                                            String
+                                                          >(
+                                                            'timeline-cut-end-boundary',
+                                                          ),
+                                                          left: widget.frameCount *
+                                                              LayerTimelineGrid
+                                                                  ._metrics
+                                                                  .frameCellWidth,
+                                                          top: 0,
+                                                          bottom: 0,
+                                                          width: 2,
+                                                          child: DecoratedBox(
+                                                            decoration:
+                                                                const BoxDecoration(
+                                                                  color: Colors
+                                                                      .red,
+                                                                ),
                                                           ),
                                                         ),
                                                         if (widget.currentFrameIndex >=
@@ -582,7 +610,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                             ? constraints.maxWidth
                             : 0.0;
                         final effectiveFrameCount = math.max(
-                          widget.frameCount,
+                          _displayFrameCount,
                           LayerTimelineGrid._metrics.minimumVisibleFrameCells,
                         );
                         final contentWidth =
@@ -1036,6 +1064,7 @@ class _FrameCellsRow extends StatelessWidget {
     required this.layer,
     required this.active,
     required this.currentFrameIndex,
+    required this.actualFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.leadingFrameSpacerWidth,
@@ -1050,6 +1079,7 @@ class _FrameCellsRow extends StatelessWidget {
   final Layer layer;
   final bool active;
   final int currentFrameIndex;
+  final int actualFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -1083,9 +1113,17 @@ class _FrameCellsRow extends StatelessWidget {
             frameIndex: frameIndex,
             active: active,
             selected: active && frameIndex == currentFrameIndex,
-            exposureState: exposureStateForLayer(layer, frameIndex),
-            hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
-            frameName: frameNameForLayer?.call(layer, frameIndex),
+            actualFrameCount: actualFrameCount,
+            postCutTail: frameIndex >= actualFrameCount,
+            exposureState: frameIndex >= actualFrameCount
+                ? TimelineCellExposureState.empty
+                : exposureStateForLayer(layer, frameIndex),
+            hasMark: frameIndex >= actualFrameCount
+                ? false
+                : hasMarkForLayer?.call(layer, frameIndex) ?? false,
+            frameName: frameIndex >= actualFrameCount
+                ? null
+                : frameNameForLayer?.call(layer, frameIndex),
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
           ),
@@ -1107,6 +1145,8 @@ class _TimelineCell extends StatelessWidget {
     required this.frameIndex,
     required this.active,
     required this.selected,
+    required this.actualFrameCount,
+    required this.postCutTail,
     required this.exposureState,
     required this.hasMark,
     this.frameName,
@@ -1118,6 +1158,8 @@ class _TimelineCell extends StatelessWidget {
   final int frameIndex;
   final bool active;
   final bool selected;
+  final int actualFrameCount;
+  final bool postCutTail;
   final TimelineCellExposureState exposureState;
   final bool hasMark;
   final String? frameName;
@@ -1138,15 +1180,24 @@ class _TimelineCell extends StatelessWidget {
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
       onTap: () {
         onSelectLayer(layer.id);
-        onSelectFrame(frameIndex);
+        if (postCutTail && actualFrameCount <= 0) {
+          return;
+        }
+        onSelectFrame(
+          postCutTail ? actualFrameCount - 1 : frameIndex,
+        );
       },
       child: Container(
         width: LayerTimelineGrid._metrics.frameCellWidth,
         height: LayerTimelineGrid._metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: timelineBlockDecoration(
-          backgroundColor: styleColors.background,
-          borderColor: styleColors.border,
+          backgroundColor: postCutTail
+              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.54)
+              : styleColors.background,
+          borderColor: postCutTail
+              ? colorScheme.outlineVariant.withValues(alpha: 0.55)
+              : styleColors.border,
           borderWidth: selected ? 3 : 1,
         ),
         child: Semantics(
@@ -1165,7 +1216,9 @@ class _TimelineCell extends StatelessWidget {
               frameName: frameName,
             ),
             style: TextStyle(
-              color: selected
+              color: postCutTail
+                  ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
+                  : selected
                   ? colorScheme.onPrimaryContainer
                   : colorScheme.onSurface,
               fontWeight:

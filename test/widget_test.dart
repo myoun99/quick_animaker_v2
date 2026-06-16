@@ -355,6 +355,24 @@ void main() {
     expect(find.text('New Drawing'), findsNothing);
   });
 
+
+  testWidgets('default sample cut duration is 24 frames', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-520, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-23')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('top row keeps cut actions and undo redo reachable', (
     WidgetTester tester,
   ) async {

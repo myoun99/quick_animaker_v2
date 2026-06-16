@@ -685,6 +685,78 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
+
+  testWidgets('displays actual cut frames plus post-cut tail frames', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 24));
+
+    expect(find.byKey(const ValueKey<String>('timeline-frame-header-0')), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-520, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('timeline-frame-header-23')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('timeline-frame-header-24')), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-1200, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('timeline-frame-header-47')), findsOneWidget);
+  });
+
+  testWidgets('renders cut end boundary after actual cut frames', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 24));
+
+    final boundary = find.byKey(const ValueKey<String>('timeline-cut-end-boundary'));
+    expect(boundary, findsOneWidget);
+
+    final contentLeft = tester
+        .getTopLeft(find.byKey(const ValueKey<String>('timeline-frame-scroll-content')))
+        .dx;
+    final boundaryLeft = tester.getTopLeft(boundary).dx;
+    expect(boundaryLeft - contentLeft, 24 * 48);
+  });
+
+  testWidgets('post-cut tail cell taps clamp to last actual frame', (
+    tester,
+  ) async {
+    final selectedFrameIndices = <int>[];
+
+    await tester.pumpWidget(
+      _grid(onSelectFrame: selectedFrameIndices.add, frameCount: 24),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-520, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-24')),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-1200, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-frame-header-47')),
+    );
+
+    expect(selectedFrameIndices, isNotEmpty);
+    expect(selectedFrameIndices.every((frameIndex) => frameIndex < 24), isTrue);
+    expect(selectedFrameIndices.last, 23);
+  });
+
   testWidgets('clicking different ruler positions selects different frames', (
     tester,
   ) async {
