@@ -59,9 +59,7 @@ void main() {
     expect(
       find.descendant(
         of: content,
-        matching: find.byKey(
-          const ValueKey<String>('timeline-frame-header-0'),
-        ),
+        matching: find.byKey(const ValueKey<String>('timeline-frame-header-0')),
       ),
       findsOneWidget,
     );

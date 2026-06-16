@@ -191,7 +191,9 @@ class _LayerControlsRow extends StatelessWidget {
           ),
         ),
         child: Semantics(
-          key: active ? const ValueKey<String>('timeline-selected-layer') : null,
+          key: active
+              ? const ValueKey<String>('timeline-selected-layer')
+              : null,
           label: active ? 'selected layer' : 'layer',
           container: true,
           explicitChildNodes: true,
