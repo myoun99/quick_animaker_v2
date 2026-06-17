@@ -1212,6 +1212,27 @@ class _TimelineCell extends StatelessWidget {
         frameIndex >= selectedExposureRange.startFrameIndex &&
         frameIndex < selectedExposureRange.endFrameIndexExclusive;
 
+    final baseBackgroundColor = outsidePlaybackRange
+        ? Color.alphaBlend(
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+            styleColors.background,
+          )
+        : styleColors.background;
+    final backgroundColor = selectedExposureRangeSegment
+        ? Color.alphaBlend(
+            colorScheme.tertiaryContainer.withValues(alpha: 0.28),
+            baseBackgroundColor,
+          )
+        : baseBackgroundColor;
+    final borderColor = selected
+        ? styleColors.border
+        : outsidePlaybackRange
+        ? Color.alphaBlend(
+            colorScheme.outlineVariant.withValues(alpha: 0.55),
+            styleColors.border,
+          )
+        : styleColors.border;
+
     return InkWell(
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
       onTap: () {
@@ -1223,84 +1244,38 @@ class _TimelineCell extends StatelessWidget {
         height: LayerTimelineGrid._metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: _timelineCellDecoration(
-          backgroundColor: outsidePlaybackRange
-              ? Color.alphaBlend(
-                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-                  styleColors.background,
-                )
-              : styleColors.background,
+          backgroundColor: backgroundColor,
+          borderColor: borderColor,
+          borderWidth: selected ? 3 : 1,
           exposureBlockSegment: exposureBlockSegment,
         ),
-        child: CustomPaint(
-          foregroundPainter: _TimelineCellBorderPainter(
-            backgroundColor: outsidePlaybackRange
-                ? Color.alphaBlend(
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-                    styleColors.background,
-                  )
-                : styleColors.background,
-            borderColor: selected
-                ? styleColors.border
-                : outsidePlaybackRange
-                ? Color.alphaBlend(
-                    colorScheme.outlineVariant.withValues(alpha: 0.55),
-                    styleColors.border,
-                  )
-                : styleColors.border,
-            borderWidth: selected ? 3 : 1,
-            exposureBlockSegment: exposureBlockSegment,
-            selected: selected,
-          ),
-          child: SizedBox.expand(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (selectedExposureRangeSegment)
-                  IgnorePointer(
-                    child: DecoratedBox(
-                      key: ValueKey<String>(
-                        'timeline-selected-exposure-range-cell-${layer.id}-$frameIndex',
-                      ),
-                      decoration: _selectedExposureRangeDecoration(
-                        colorScheme: colorScheme,
-                        exposureBlockSegment: exposureBlockSegment,
-                      ),
-                    ),
-                  ),
-                Center(
-                  child: Semantics(
-                    key: selected
-                        ? const ValueKey<String>('timeline-selected-cell')
-                        : null,
-                    child: Text(
-                      _markerForCell(
-                        exposureState: exposureState,
-                        hasMark: hasMark,
-                        frameName: frameName,
-                      ),
-                      semanticsLabel: _semanticsLabelForCell(
-                        exposureState: exposureState,
-                        hasMark: hasMark,
-                        frameName: frameName,
-                      ),
-                      style: TextStyle(
-                        color: outsidePlaybackRange
-                            ? colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.45,
-                              )
-                            : selected
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSurface,
-                        fontWeight:
-                            hasMark ||
-                                exposureState != TimelineCellExposureState.empty
-                            ? FontWeight.bold
-                            : null,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+        child: Center(
+          child: Semantics(
+            key: selected
+                ? const ValueKey<String>('timeline-selected-cell')
+                : null,
+            child: Text(
+              _markerForCell(
+                exposureState: exposureState,
+                hasMark: hasMark,
+                frameName: frameName,
+              ),
+              semanticsLabel: _semanticsLabelForCell(
+                exposureState: exposureState,
+                hasMark: hasMark,
+                frameName: frameName,
+              ),
+              style: TextStyle(
+                color: outsidePlaybackRange
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
+                    : selected
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurface,
+                fontWeight:
+                    hasMark || exposureState != TimelineCellExposureState.empty
+                    ? FontWeight.bold
+                    : null,
+              ),
             ),
           ),
         ),
@@ -1309,28 +1284,15 @@ class _TimelineCell extends StatelessWidget {
   }
 }
 
-BoxDecoration _selectedExposureRangeDecoration({
-  required ColorScheme colorScheme,
-  required TimelineExposureBlockVisualSegment exposureBlockSegment,
-}) {
-  return BoxDecoration(
-    color: colorScheme.tertiaryContainer.withValues(alpha: 0.28),
-    border: Border.all(
-      color: colorScheme.tertiary.withValues(alpha: 0.72),
-      width: 2,
-    ),
-    borderRadius:
-        _timelineCellBorderRadius(exposureBlockSegment) ??
-        BorderRadius.circular(3),
-  );
-}
-
 BoxDecoration _timelineCellDecoration({
   required Color backgroundColor,
+  required Color borderColor,
+  required double borderWidth,
   required TimelineExposureBlockVisualSegment exposureBlockSegment,
 }) {
   return BoxDecoration(
     color: backgroundColor,
+    border: Border.all(color: borderColor, width: borderWidth),
     borderRadius: _timelineCellBorderRadius(exposureBlockSegment),
   );
 }
@@ -1349,76 +1311,6 @@ BorderRadius? _timelineCellBorderRadius(
         : blockRadius,
     right: exposureBlockSegment.continuesToNext ? Radius.zero : blockRadius,
   );
-}
-
-class _TimelineCellBorderPainter extends CustomPainter {
-  const _TimelineCellBorderPainter({
-    required this.backgroundColor,
-    required this.borderColor,
-    required this.borderWidth,
-    required this.exposureBlockSegment,
-    required this.selected,
-  });
-
-  final Color backgroundColor;
-  final Color borderColor;
-  final double borderWidth;
-  final TimelineExposureBlockVisualSegment exposureBlockSegment;
-  final bool selected;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final borderRadius = _timelineCellBorderRadius(exposureBlockSegment);
-    final strokeInset = borderWidth / 2;
-    final rect =
-        Offset(strokeInset, strokeInset) &
-        Size(size.width - borderWidth, size.height - borderWidth);
-    final borderPaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth;
-
-    if (selected) {
-      final selectedRadius = borderRadius ?? BorderRadius.circular(2);
-      canvas.drawRRect(selectedRadius.toRRect(rect), borderPaint);
-      return;
-    }
-
-    if (borderRadius != null) {
-      canvas.drawRRect(borderRadius.toRRect(rect), borderPaint);
-
-      final internalPaint = Paint()
-        ..color = backgroundColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = borderWidth + 1;
-      if (exposureBlockSegment.continuesFromPrevious) {
-        canvas.drawLine(
-          Offset(strokeInset, strokeInset),
-          Offset(strokeInset, size.height - strokeInset),
-          internalPaint,
-        );
-      }
-      if (exposureBlockSegment.continuesToNext) {
-        canvas.drawLine(
-          Offset(size.width - strokeInset, strokeInset),
-          Offset(size.width - strokeInset, size.height - strokeInset),
-          internalPaint,
-        );
-      }
-      return;
-    }
-
-    canvas.drawRect(rect, borderPaint);
-  }
-
-  @override
-  bool shouldRepaint(_TimelineCellBorderPainter oldDelegate) {
-    return backgroundColor != oldDelegate.backgroundColor ||
-        borderColor != oldDelegate.borderColor ||
-        borderWidth != oldDelegate.borderWidth ||
-        exposureBlockSegment != oldDelegate.exposureBlockSegment ||
-        selected != oldDelegate.selected;
-  }
 }
 
 String _markerForCell({
