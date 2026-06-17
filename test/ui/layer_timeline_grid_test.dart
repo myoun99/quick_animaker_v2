@@ -1351,6 +1351,9 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-selected-cell')),
       findsOneWidget,
     );
+    final selectedBorder =
+        _cellDecoration(tester, 'timeline-cell-layer-1-2').border as Border;
+    expect(selectedBorder.top.width, 3);
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
@@ -1429,7 +1432,7 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
   });
 
-  testWidgets('drawing exposure cells render as one connected visual block', (
+  testWidgets('drawing exposure cells keep divider-safe block radius rules', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1456,10 +1459,19 @@ void main() {
       endDecoration.borderRadius,
       const BorderRadius.horizontal(right: Radius.circular(6)),
     );
-    expect(emptyDecoration.borderRadius, isNull);
+    expect(startDecoration.border, isA<Border>());
+    expect(middleDecoration.border, isA<Border>());
+    expect(endDecoration.border, isA<Border>());
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-cell-layer-1-1')),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNothing,
+    );
   });
 
-  testWidgets('blank exposure cells render as one connected visual block', (
+  testWidgets('blank exposure cells keep divider-safe block radius rules', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1484,6 +1496,11 @@ void main() {
       _cellDecoration(tester, 'timeline-cell-layer-1-6').borderRadius,
       const BorderRadius.horizontal(right: Radius.circular(6)),
     );
+    final startBorder =
+        _cellDecoration(tester, 'timeline-cell-layer-1-4').border as Border;
+    expect(startBorder.top.color, startBorder.right.color);
+    expect(startBorder.top.color, startBorder.bottom.color);
+    expect(startBorder.top.color, startBorder.left.color);
   });
 
   testWidgets(
@@ -1505,8 +1522,8 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells('layer-1', const [0, 1, 2]);
-      _expectNoSelectedExposureRangeCell('layer-1', 3);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
+      _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-3');
     },
   );
 
@@ -1529,7 +1546,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells('layer-1', const [0, 1, 2]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
     },
   );
 
@@ -1552,8 +1569,8 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells('layer-1', const [4, 5, 6]);
-      _expectNoSelectedExposureRangeCell('layer-1', 3);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
+      _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-3');
     },
   );
 
@@ -1576,7 +1593,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells('layer-1', const [4, 5, 6]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
     },
   );
 
@@ -1593,7 +1610,7 @@ void main() {
       ),
     );
 
-    expect(_selectedExposureRangeCellFinder(), findsNothing);
+    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-0');
   });
 
   testWidgets('inactive layers do not show selected exposure range highlight', (
@@ -1615,10 +1632,9 @@ void main() {
       ),
     );
 
-    expect(_selectedExposureRangeCellFinder(), findsNothing);
-    _expectNoSelectedExposureRangeCell('layer-2', 1);
-    _expectNoSelectedExposureRangeCell('layer-2', 2);
-    _expectNoSelectedExposureRangeCell('layer-2', 3);
+    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-1');
+    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-2');
+    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-3');
   });
 
   testWidgets(
@@ -1646,7 +1662,7 @@ void main() {
         const ValueKey<String>('timeline-cell-layer-1-45'),
       );
 
-      _expectSelectedExposureRangeCells('layer-1', const [45, 46]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [45, 46]);
     },
   );
 
@@ -1735,39 +1751,31 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
   return container.decoration! as BoxDecoration;
 }
 
-void _expectSelectedExposureRangeCells(String layerId, List<int> frameIndices) {
+void _expectSelectedExposureRangeCells(
+  WidgetTester tester,
+  String layerId,
+  List<int> frameIndices,
+) {
   for (final frameIndex in frameIndices) {
-    expect(
-      find.byKey(
-        ValueKey<String>(
-          'timeline-selected-exposure-range-cell-$layerId-$frameIndex',
-        ),
-      ),
-      findsOneWidget,
+    final decoration = _cellDecoration(
+      tester,
+      'timeline-cell-$layerId-$frameIndex',
     );
+    expect(decoration.color, isNot(_untintedExposureCellColors));
   }
 }
 
-void _expectNoSelectedExposureRangeCell(String layerId, int frameIndex) {
-  expect(
-    find.byKey(
-      ValueKey<String>(
-        'timeline-selected-exposure-range-cell-$layerId-$frameIndex',
-      ),
-    ),
-    findsNothing,
-  );
+void _expectNoSelectedExposureRangeTint(WidgetTester tester, String key) {
+  final decoration = _cellDecoration(tester, key);
+  expect(decoration.color, _untintedExposureCellColors);
 }
 
-Finder _selectedExposureRangeCellFinder() {
-  return find.byWidgetPredicate(
-    (widget) =>
-        widget.key is ValueKey<String> &&
-        ((widget.key as ValueKey<String>).value).startsWith(
-          'timeline-selected-exposure-range-cell-',
-        ),
-  );
-}
+Matcher get _untintedExposureCellColors => anyOf(
+  timelineDrawingStartColor,
+  timelineHeldDrawingColor,
+  timelineBlankStartColor,
+  timelineBlankHeldColor,
+);
 
 Widget _grid({
   int currentFrameIndex = 0,
