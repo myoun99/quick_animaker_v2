@@ -1251,7 +1251,8 @@ class _TimelineCell extends StatelessWidget {
                         ? colorScheme.onPrimaryContainer
                         : colorScheme.onSurface,
                     fontWeight:
-                        hasMark || exposureState != TimelineCellExposureState.empty
+                        hasMark ||
+                            exposureState != TimelineCellExposureState.empty
                         ? FontWeight.bold
                         : null,
                   ),
@@ -1310,7 +1311,8 @@ class _TimelineCellBorderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final borderRadius = _timelineCellBorderRadius(exposureBlockSegment);
     final strokeInset = borderWidth / 2;
-    final rect = Offset(strokeInset, strokeInset) &
+    final rect =
+        Offset(strokeInset, strokeInset) &
         Size(size.width - borderWidth, size.height - borderWidth);
     final borderPaint = Paint()
       ..color = borderColor

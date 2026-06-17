@@ -33,7 +33,9 @@ TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
   return TimelineExposureBlockVisualSegment(
     kind: kind,
     continuesFromPrevious: switch (current) {
-      TimelineCellExposureState.heldExposure => _isDrawingContinuation(previous),
+      TimelineCellExposureState.heldExposure => _isDrawingContinuation(
+        previous,
+      ),
       TimelineCellExposureState.blankHeld => _isBlankContinuation(previous),
       TimelineCellExposureState.drawingStart ||
       TimelineCellExposureState.blankStart ||
