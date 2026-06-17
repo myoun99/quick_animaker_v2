@@ -1448,7 +1448,6 @@ void main() {
     final startDecoration = _cellDecoration(tester, 'timeline-cell-layer-1-0');
     final middleDecoration = _cellDecoration(tester, 'timeline-cell-layer-1-1');
     final endDecoration = _cellDecoration(tester, 'timeline-cell-layer-1-2');
-    final emptyDecoration = _cellDecoration(tester, 'timeline-cell-layer-1-3');
 
     expect(
       startDecoration.borderRadius,
@@ -1757,25 +1756,33 @@ void _expectSelectedExposureRangeCells(
   List<int> frameIndices,
 ) {
   for (final frameIndex in frameIndices) {
-    final decoration = _cellDecoration(
-      tester,
-      'timeline-cell-$layerId-$frameIndex',
-    );
-    expect(decoration.color, isNot(_untintedExposureCellColors));
+    final key = 'timeline-cell-$layerId-$frameIndex';
+    final decoration = _cellDecoration(tester, key);
+
+    expect(decoration.color, isNot(_untintedCellColors(tester, key)));
   }
 }
 
 void _expectNoSelectedExposureRangeTint(WidgetTester tester, String key) {
   final decoration = _cellDecoration(tester, key);
-  expect(decoration.color, _untintedExposureCellColors);
+
+  expect(decoration.color, _untintedCellColors(tester, key));
 }
 
-Matcher get _untintedExposureCellColors => anyOf(
-  timelineDrawingStartColor,
-  timelineHeldDrawingColor,
-  timelineBlankStartColor,
-  timelineBlankHeldColor,
-);
+Matcher _untintedCellColors(WidgetTester tester, String key) {
+  final colorScheme = Theme.of(
+    tester.element(find.byKey(ValueKey<String>(key))),
+  ).colorScheme;
+
+  return anyOf(
+    timelineDrawingStartColor,
+    timelineDrawingHeldColor,
+    timelineBlankStartColor,
+    timelineBlankHeldColor,
+    colorScheme.secondaryContainer.withValues(alpha: 0.35), // active empty
+    colorScheme.surface, // inactive empty
+  );
+}
 
 Widget _grid({
   int currentFrameIndex = 0,
