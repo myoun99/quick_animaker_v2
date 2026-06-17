@@ -1218,20 +1218,22 @@ class _TimelineCell extends StatelessWidget {
             styleColors.background,
           )
         : styleColors.background;
-    final backgroundColor = selectedExposureRangeSegment
-        ? Color.alphaBlend(
-            colorScheme.tertiaryContainer.withValues(alpha: 0.28),
-            baseBackgroundColor,
-          )
-        : baseBackgroundColor;
+    final backgroundColor = baseBackgroundColor;
     final borderColor = selected
         ? styleColors.border
+        : selectedExposureRangeSegment
+        ? colorScheme.tertiary
         : outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
             styleColors.border,
           )
         : styleColors.border;
+    final borderWidth = selected
+        ? 3.0
+        : selectedExposureRangeSegment
+        ? 2.0
+        : 1.0;
 
     return InkWell(
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
@@ -1246,7 +1248,7 @@ class _TimelineCell extends StatelessWidget {
         decoration: _timelineCellDecoration(
           backgroundColor: backgroundColor,
           borderColor: borderColor,
-          borderWidth: selected ? 3 : 1,
+          borderWidth: borderWidth,
           exposureBlockSegment: exposureBlockSegment,
         ),
         child: Center(

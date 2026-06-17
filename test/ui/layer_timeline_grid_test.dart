@@ -1521,8 +1521,13 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
-      _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-3');
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [0, 1, 2],
+        selectedFrameIndex: 0,
+      );
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
 
@@ -1545,7 +1550,12 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [0, 1, 2],
+        selectedFrameIndex: 2,
+      );
     },
   );
 
@@ -1568,8 +1578,13 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
-      _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-3');
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [4, 5, 6],
+        selectedFrameIndex: 4,
+      );
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
 
@@ -1592,7 +1607,12 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [4, 5, 6],
+        selectedFrameIndex: 6,
+      );
     },
   );
 
@@ -1609,7 +1629,7 @@ void main() {
       ),
     );
 
-    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-1-0');
+    _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-0');
   });
 
   testWidgets('inactive layers do not show selected exposure range highlight', (
@@ -1631,9 +1651,9 @@ void main() {
       ),
     );
 
-    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-1');
-    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-2');
-    _expectNoSelectedExposureRangeTint(tester, 'timeline-cell-layer-2-3');
+    _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-1');
+    _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-2');
+    _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-3');
   });
 
   testWidgets(
@@ -1661,9 +1681,77 @@ void main() {
         const ValueKey<String>('timeline-cell-layer-1-45'),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [45, 46]);
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [45, 46],
+        selectedFrameIndex: 45,
+      );
     },
   );
+
+  testWidgets(
+    'selecting frame 10 drawingStart does not highlight previous drawing block',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 10,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              6 => TimelineCellExposureState.drawingStart,
+              7 || 8 || 9 => TimelineCellExposureState.heldExposure,
+              10 => TimelineCellExposureState.drawingStart,
+              11 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-6');
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-7');
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-8');
+      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-9');
+      _expectSelectedExposureRangeCells(
+        tester,
+        'layer-1',
+        const [10, 11],
+        selectedFrameIndex: 10,
+      );
+    },
+  );
+
+  testWidgets('previous block end before a new drawingStart gets right radius', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.empty;
+          }
+          return switch (frameIndex) {
+            6 => TimelineCellExposureState.drawingStart,
+            7 || 8 || 9 => TimelineCellExposureState.heldExposure,
+            10 => TimelineCellExposureState.drawingStart,
+            _ => TimelineCellExposureState.empty,
+          };
+        },
+      ),
+    );
+
+    expect(
+      _cellDecoration(tester, 'timeline-cell-layer-1-9').borderRadius,
+      const BorderRadius.horizontal(right: Radius.circular(6)),
+    );
+    expect(
+      _cellDecoration(tester, 'timeline-cell-layer-1-10').borderRadius,
+      const BorderRadius.all(Radius.circular(6)),
+    );
+  });
 
   testWidgets(
     'visible authored data outside playback still renders as a block',
@@ -1753,20 +1841,25 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
 void _expectSelectedExposureRangeCells(
   WidgetTester tester,
   String layerId,
-  List<int> frameIndices,
-) {
+  List<int> frameIndices, {
+  int? selectedFrameIndex,
+}) {
   for (final frameIndex in frameIndices) {
     final key = 'timeline-cell-$layerId-$frameIndex';
     final decoration = _cellDecoration(tester, key);
+    final border = decoration.border! as Border;
 
-    expect(decoration.color, isNot(_untintedCellColors(tester, key)));
+    expect(decoration.color, _untintedCellColors(tester, key));
+    expect(border.top.width, frameIndex == selectedFrameIndex ? 3 : 2);
   }
 }
 
-void _expectNoSelectedExposureRangeTint(WidgetTester tester, String key) {
+void _expectNoSelectedExposureRangeBorder(WidgetTester tester, String key) {
   final decoration = _cellDecoration(tester, key);
+  final border = decoration.border! as Border;
 
   expect(decoration.color, _untintedCellColors(tester, key));
+  expect(border.top.width, 1);
 }
 
 Matcher _untintedCellColors(WidgetTester tester, String key) {
@@ -1779,8 +1872,21 @@ Matcher _untintedCellColors(WidgetTester tester, String key) {
     timelineDrawingHeldColor,
     timelineBlankStartColor,
     timelineBlankHeldColor,
+    colorScheme.primaryContainer, // selected exposure
     colorScheme.secondaryContainer.withValues(alpha: 0.35), // active empty
     colorScheme.surface, // inactive empty
+    Color.alphaBlend(
+      colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+      timelineDrawingStartColor,
+    ),
+    Color.alphaBlend(
+      colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+      colorScheme.primaryContainer,
+    ),
+    Color.alphaBlend(
+      colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+      timelineDrawingHeldColor,
+    ),
   );
 }
 

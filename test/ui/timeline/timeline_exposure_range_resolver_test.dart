@@ -196,6 +196,84 @@ void main() {
     });
 
     test(
+      'selected drawingStart does not resolve backward into previous heldExposure',
+      () {
+
+      final range = _resolve(
+        selectedFrameIndex: 10,
+        maxFrameIndexExclusive: 14,
+        states: {
+          6: TimelineCellExposureState.drawingStart,
+          7: TimelineCellExposureState.heldExposure,
+          8: TimelineCellExposureState.heldExposure,
+          9: TimelineCellExposureState.heldExposure,
+          10: TimelineCellExposureState.drawingStart,
+          11: TimelineCellExposureState.heldExposure,
+        },
+      );
+
+      expect(range.kind, TimelineExposureRangeKind.drawing);
+      expect(range.startFrameIndex, 10);
+      expect(range.endFrameIndexExclusive, 12);
+    });
+
+    test(
+      'selected blankStart does not resolve backward into previous blankHeld',
+      () {
+
+      final range = _resolve(
+        selectedFrameIndex: 10,
+        maxFrameIndexExclusive: 14,
+        states: {
+          6: TimelineCellExposureState.blankStart,
+          7: TimelineCellExposureState.blankHeld,
+          8: TimelineCellExposureState.blankHeld,
+          9: TimelineCellExposureState.blankHeld,
+          10: TimelineCellExposureState.blankStart,
+          11: TimelineCellExposureState.blankHeld,
+        },
+      );
+
+      expect(range.kind, TimelineExposureRangeKind.blank);
+      expect(range.startFrameIndex, 10);
+      expect(range.endFrameIndexExclusive, 12);
+    });
+
+    test('resolver does not cross a new drawingStart', () {
+      final range = _resolve(
+        selectedFrameIndex: 7,
+        maxFrameIndexExclusive: 12,
+        states: {
+          6: TimelineCellExposureState.drawingStart,
+          7: TimelineCellExposureState.heldExposure,
+          8: TimelineCellExposureState.heldExposure,
+          9: TimelineCellExposureState.drawingStart,
+          10: TimelineCellExposureState.heldExposure,
+        },
+      );
+
+      expect(range.startFrameIndex, 6);
+      expect(range.endFrameIndexExclusive, 9);
+    });
+
+    test('resolver does not cross a new blankStart', () {
+      final range = _resolve(
+        selectedFrameIndex: 7,
+        maxFrameIndexExclusive: 12,
+        states: {
+          6: TimelineCellExposureState.blankStart,
+          7: TimelineCellExposureState.blankHeld,
+          8: TimelineCellExposureState.blankHeld,
+          9: TimelineCellExposureState.blankStart,
+          10: TimelineCellExposureState.blankHeld,
+        },
+      );
+
+      expect(range.startFrameIndex, 6);
+      expect(range.endFrameIndexExclusive, 9);
+    });
+
+    test(
       'outside-bounds selection returns safe none and performs no reads',
       () {
         var queryCount = 0;

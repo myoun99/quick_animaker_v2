@@ -67,31 +67,45 @@ TimelineExposureRange resolveTimelineExposureRange({
       endFrameIndexExclusive: selectedFrameIndex,
       selectedFrameIndex: selectedFrameIndex,
     ),
-    TimelineCellExposureState.drawingStart ||
+    TimelineCellExposureState.drawingStart => _resolveConnectedRange(
+      kind: TimelineExposureRangeKind.drawing,
+      selectedFrameIndex: selectedFrameIndex,
+      minFrameIndex: minFrameIndex,
+      maxFrameIndexExclusive: maxFrameIndexExclusive,
+      exposureStateAt: exposureStateAt,
+      searchBackward: false,
+      continuationState: TimelineCellExposureState.heldExposure,
+      blockStartState: TimelineCellExposureState.drawingStart,
+    ),
     TimelineCellExposureState.heldExposure => _resolveConnectedRange(
       kind: TimelineExposureRangeKind.drawing,
       selectedFrameIndex: selectedFrameIndex,
       minFrameIndex: minFrameIndex,
       maxFrameIndexExclusive: maxFrameIndexExclusive,
       exposureStateAt: exposureStateAt,
-      canContinueBackward: (state) =>
-          state == TimelineCellExposureState.heldExposure,
-      canContinueForward: (state) =>
-          state == TimelineCellExposureState.heldExposure,
-      isBlockStart: (state) => state == TimelineCellExposureState.drawingStart,
+      searchBackward: true,
+      continuationState: TimelineCellExposureState.heldExposure,
+      blockStartState: TimelineCellExposureState.drawingStart,
     ),
-    TimelineCellExposureState.blankStart ||
+    TimelineCellExposureState.blankStart => _resolveConnectedRange(
+      kind: TimelineExposureRangeKind.blank,
+      selectedFrameIndex: selectedFrameIndex,
+      minFrameIndex: minFrameIndex,
+      maxFrameIndexExclusive: maxFrameIndexExclusive,
+      exposureStateAt: exposureStateAt,
+      searchBackward: false,
+      continuationState: TimelineCellExposureState.blankHeld,
+      blockStartState: TimelineCellExposureState.blankStart,
+    ),
     TimelineCellExposureState.blankHeld => _resolveConnectedRange(
       kind: TimelineExposureRangeKind.blank,
       selectedFrameIndex: selectedFrameIndex,
       minFrameIndex: minFrameIndex,
       maxFrameIndexExclusive: maxFrameIndexExclusive,
       exposureStateAt: exposureStateAt,
-      canContinueBackward: (state) =>
-          state == TimelineCellExposureState.blankHeld,
-      canContinueForward: (state) =>
-          state == TimelineCellExposureState.blankHeld,
-      isBlockStart: (state) => state == TimelineCellExposureState.blankStart,
+      searchBackward: true,
+      continuationState: TimelineCellExposureState.blankHeld,
+      blockStartState: TimelineCellExposureState.blankStart,
     ),
   };
 }
@@ -102,28 +116,30 @@ TimelineExposureRange _resolveConnectedRange({
   required int minFrameIndex,
   required int maxFrameIndexExclusive,
   required TimelineCellExposureState Function(int frameIndex) exposureStateAt,
-  required bool Function(TimelineCellExposureState state) canContinueBackward,
-  required bool Function(TimelineCellExposureState state) canContinueForward,
-  required bool Function(TimelineCellExposureState state) isBlockStart,
+  required bool searchBackward,
+  required TimelineCellExposureState continuationState,
+  required TimelineCellExposureState blockStartState,
 }) {
   var startFrameIndex = selectedFrameIndex;
-  while (startFrameIndex > minFrameIndex) {
-    final previousFrameIndex = startFrameIndex - 1;
-    final previousState = exposureStateAt(previousFrameIndex);
-    if (isBlockStart(previousState)) {
+  if (searchBackward) {
+    while (startFrameIndex > minFrameIndex) {
+      final previousFrameIndex = startFrameIndex - 1;
+      final previousState = exposureStateAt(previousFrameIndex);
+      if (previousState == blockStartState) {
+        startFrameIndex = previousFrameIndex;
+        break;
+      }
+      if (previousState != continuationState) {
+        break;
+      }
       startFrameIndex = previousFrameIndex;
-      break;
     }
-    if (!canContinueBackward(previousState)) {
-      break;
-    }
-    startFrameIndex = previousFrameIndex;
   }
 
   var endFrameIndexExclusive = selectedFrameIndex + 1;
   while (endFrameIndexExclusive < maxFrameIndexExclusive) {
     final nextState = exposureStateAt(endFrameIndexExclusive);
-    if (!canContinueForward(nextState)) {
+    if (nextState != continuationState) {
       break;
     }
     endFrameIndexExclusive += 1;
