@@ -34,21 +34,24 @@ void main() {
       expect(range.isMiddleFrame, isFalse);
     });
 
-    test('drawingStart with heldExposure cells resolves full drawing range', () {
-      final range = _resolve(
-        selectedFrameIndex: 0,
-        states: {
-          0: TimelineCellExposureState.drawingStart,
-          1: TimelineCellExposureState.heldExposure,
-          2: TimelineCellExposureState.heldExposure,
-        },
-      );
+    test(
+      'drawingStart with heldExposure cells resolves full drawing range',
+      () {
+        final range = _resolve(
+          selectedFrameIndex: 0,
+          states: {
+            0: TimelineCellExposureState.drawingStart,
+            1: TimelineCellExposureState.heldExposure,
+            2: TimelineCellExposureState.heldExposure,
+          },
+        );
 
-      expect(range.kind, TimelineExposureRangeKind.drawing);
-      expect(range.startFrameIndex, 0);
-      expect(range.endFrameIndexExclusive, 3);
-      expect(range.isStartFrame, isTrue);
-    });
+        expect(range.kind, TimelineExposureRangeKind.drawing);
+        expect(range.startFrameIndex, 0);
+        expect(range.endFrameIndexExclusive, 3);
+        expect(range.isStartFrame, isTrue);
+      },
+    );
 
     test('heldExposure selection resolves back to drawing block start', () {
       final range = _resolve(
@@ -192,23 +195,26 @@ void main() {
       expect(queried, isNot(contains(9)));
     });
 
-    test('outside-bounds selection returns safe none and performs no reads', () {
-      var queryCount = 0;
-      final range = resolveTimelineExposureRange(
-        selectedFrameIndex: 12,
-        minFrameIndex: 0,
-        maxFrameIndexExclusive: 10,
-        exposureStateAt: (_) {
-          queryCount += 1;
-          return TimelineCellExposureState.drawingStart;
-        },
-      );
+    test(
+      'outside-bounds selection returns safe none and performs no reads',
+      () {
+        var queryCount = 0;
+        final range = resolveTimelineExposureRange(
+          selectedFrameIndex: 12,
+          minFrameIndex: 0,
+          maxFrameIndexExclusive: 10,
+          exposureStateAt: (_) {
+            queryCount += 1;
+            return TimelineCellExposureState.drawingStart;
+          },
+        );
 
-      expect(range.kind, TimelineExposureRangeKind.none);
-      expect(range.startFrameIndex, 12);
-      expect(range.endFrameIndexExclusive, 12);
-      expect(queryCount, 0);
-    });
+        expect(range.kind, TimelineExposureRangeKind.none);
+        expect(range.startFrameIndex, 12);
+        expect(range.endFrameIndexExclusive, 12);
+        expect(queryCount, 0);
+      },
+    );
 
     test('empty bounds selection returns safe none and performs no reads', () {
       var queryCount = 0;

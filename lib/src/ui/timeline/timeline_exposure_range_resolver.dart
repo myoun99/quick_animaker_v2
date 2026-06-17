@@ -74,21 +74,25 @@ TimelineExposureRange resolveTimelineExposureRange({
       minFrameIndex: minFrameIndex,
       maxFrameIndexExclusive: maxFrameIndexExclusive,
       exposureStateAt: exposureStateAt,
-      canContinueBackward: (state) => state == TimelineCellExposureState.heldExposure,
-      canContinueForward: (state) => state == TimelineCellExposureState.heldExposure,
+      canContinueBackward: (state) =>
+          state == TimelineCellExposureState.heldExposure,
+      canContinueForward: (state) =>
+          state == TimelineCellExposureState.heldExposure,
       isBlockStart: (state) => state == TimelineCellExposureState.drawingStart,
     ),
-    TimelineCellExposureState.blankStart || TimelineCellExposureState.blankHeld =>
-      _resolveConnectedRange(
-        kind: TimelineExposureRangeKind.blank,
-        selectedFrameIndex: selectedFrameIndex,
-        minFrameIndex: minFrameIndex,
-        maxFrameIndexExclusive: maxFrameIndexExclusive,
-        exposureStateAt: exposureStateAt,
-        canContinueBackward: (state) => state == TimelineCellExposureState.blankHeld,
-        canContinueForward: (state) => state == TimelineCellExposureState.blankHeld,
-        isBlockStart: (state) => state == TimelineCellExposureState.blankStart,
-      ),
+    TimelineCellExposureState.blankStart ||
+    TimelineCellExposureState.blankHeld => _resolveConnectedRange(
+      kind: TimelineExposureRangeKind.blank,
+      selectedFrameIndex: selectedFrameIndex,
+      minFrameIndex: minFrameIndex,
+      maxFrameIndexExclusive: maxFrameIndexExclusive,
+      exposureStateAt: exposureStateAt,
+      canContinueBackward: (state) =>
+          state == TimelineCellExposureState.blankHeld,
+      canContinueForward: (state) =>
+          state == TimelineCellExposureState.blankHeld,
+      isBlockStart: (state) => state == TimelineCellExposureState.blankStart,
+    ),
   };
 }
 
