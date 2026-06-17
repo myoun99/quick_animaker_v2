@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_exposure_range_resolver.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
@@ -1105,6 +1106,21 @@ class _FrameCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedExposureRange = active
+        ? resolveTimelineExposureRange(
+            selectedFrameIndex: currentFrameIndex,
+            minFrameIndex: frameStartIndex,
+            maxFrameIndexExclusive: frameEndIndexExclusive,
+            exposureStateAt: (frameIndex) =>
+                exposureStateForLayer(layer, frameIndex),
+          )
+        : const TimelineExposureRange(
+            kind: TimelineExposureRangeKind.none,
+            startFrameIndex: 0,
+            endFrameIndexExclusive: 0,
+            selectedFrameIndex: 0,
+          );
+
     return Row(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
@@ -1127,6 +1143,7 @@ class _FrameCellsRow extends StatelessWidget {
             selected: active && frameIndex == currentFrameIndex,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
             exposureState: exposureStateForLayer(layer, frameIndex),
+            selectedExposureRange: selectedExposureRange,
             exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
               previous: frameIndex == 0
                   ? null
@@ -1159,6 +1176,7 @@ class _TimelineCell extends StatelessWidget {
     required this.selected,
     required this.outsidePlaybackRange,
     required this.exposureState,
+    required this.selectedExposureRange,
     required this.exposureBlockSegment,
     required this.hasMark,
     this.frameName,
@@ -1172,6 +1190,7 @@ class _TimelineCell extends StatelessWidget {
   final bool selected;
   final bool outsidePlaybackRange;
   final TimelineCellExposureState exposureState;
+  final TimelineExposureRange selectedExposureRange;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
   final bool hasMark;
   final String? frameName;
@@ -1187,6 +1206,11 @@ class _TimelineCell extends StatelessWidget {
       active: active,
       selected: selected,
     );
+    final selectedExposureRangeSegment =
+        active &&
+        selectedExposureRange.isBlock &&
+        frameIndex >= selectedExposureRange.startFrameIndex &&
+        frameIndex < selectedExposureRange.endFrameIndexExclusive;
 
     return InkWell(
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
@@ -1228,42 +1252,77 @@ class _TimelineCell extends StatelessWidget {
             selected: selected,
           ),
           child: SizedBox.expand(
-            child: Center(
-              child: Semantics(
-                key: selected
-                    ? const ValueKey<String>('timeline-selected-cell')
-                    : null,
-                child: Text(
-                  _markerForCell(
-                    exposureState: exposureState,
-                    hasMark: hasMark,
-                    frameName: frameName,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (selectedExposureRangeSegment)
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      key: ValueKey<String>(
+                        'timeline-selected-exposure-range-cell-${layer.id}-$frameIndex',
+                      ),
+                      decoration: _selectedExposureRangeDecoration(
+                        colorScheme: colorScheme,
+                        exposureBlockSegment: exposureBlockSegment,
+                      ),
+                    ),
                   ),
-                  semanticsLabel: _semanticsLabelForCell(
-                    exposureState: exposureState,
-                    hasMark: hasMark,
-                    frameName: frameName,
-                  ),
-                  style: TextStyle(
-                    color: outsidePlaybackRange
-                        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
-                        : selected
-                        ? colorScheme.onPrimaryContainer
-                        : colorScheme.onSurface,
-                    fontWeight:
-                        hasMark ||
-                            exposureState != TimelineCellExposureState.empty
-                        ? FontWeight.bold
+                Center(
+                  child: Semantics(
+                    key: selected
+                        ? const ValueKey<String>('timeline-selected-cell')
                         : null,
+                    child: Text(
+                      _markerForCell(
+                        exposureState: exposureState,
+                        hasMark: hasMark,
+                        frameName: frameName,
+                      ),
+                      semanticsLabel: _semanticsLabelForCell(
+                        exposureState: exposureState,
+                        hasMark: hasMark,
+                        frameName: frameName,
+                      ),
+                      style: TextStyle(
+                        color: outsidePlaybackRange
+                            ? colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.45,
+                              )
+                            : selected
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.onSurface,
+                        fontWeight:
+                            hasMark ||
+                                exposureState != TimelineCellExposureState.empty
+                            ? FontWeight.bold
+                            : null,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+BoxDecoration _selectedExposureRangeDecoration({
+  required ColorScheme colorScheme,
+  required TimelineExposureBlockVisualSegment exposureBlockSegment,
+}) {
+  return BoxDecoration(
+    color: colorScheme.tertiaryContainer.withValues(alpha: 0.28),
+    border: Border.all(
+      color: colorScheme.tertiary.withValues(alpha: 0.72),
+      width: 2,
+    ),
+    borderRadius:
+        _timelineCellBorderRadius(exposureBlockSegment) ??
+        BorderRadius.circular(3),
+  );
 }
 
 BoxDecoration _timelineCellDecoration({
