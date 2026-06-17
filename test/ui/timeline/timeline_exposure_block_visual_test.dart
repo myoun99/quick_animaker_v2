@@ -76,5 +76,75 @@ void main() {
       expect(segment.continuesFromPrevious, isFalse);
       expect(segment.continuesToNext, isFalse);
     });
+
+    test('heldExposure followed by drawingStart does not connect forward', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.drawingStart,
+        current: TimelineCellExposureState.heldExposure,
+        next: TimelineCellExposureState.drawingStart,
+      );
+
+      expect(segment.kind, TimelineExposureBlockKind.drawing);
+      expect(segment.continuesFromPrevious, isTrue);
+      expect(segment.continuesToNext, isFalse);
+    });
+
+    test('drawingStart preceded by heldExposure does not connect backward', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.heldExposure,
+        current: TimelineCellExposureState.drawingStart,
+        next: TimelineCellExposureState.empty,
+      );
+
+      expect(segment.kind, TimelineExposureBlockKind.drawing);
+      expect(segment.continuesFromPrevious, isFalse);
+      expect(segment.continuesToNext, isFalse);
+    });
+
+    test('blankHeld followed by blankStart does not connect forward', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.blankStart,
+        current: TimelineCellExposureState.blankHeld,
+        next: TimelineCellExposureState.blankStart,
+      );
+
+      expect(segment.kind, TimelineExposureBlockKind.blank);
+      expect(segment.continuesFromPrevious, isTrue);
+      expect(segment.continuesToNext, isFalse);
+    });
+
+    test('blankStart preceded by blankHeld does not connect backward', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.blankHeld,
+        current: TimelineCellExposureState.blankStart,
+        next: TimelineCellExposureState.empty,
+      );
+
+      expect(segment.kind, TimelineExposureBlockKind.blank);
+      expect(segment.continuesFromPrevious, isFalse);
+      expect(segment.continuesToNext, isFalse);
+    });
+
+    test('single drawingStart has both sides rounded', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.empty,
+        current: TimelineCellExposureState.drawingStart,
+        next: TimelineCellExposureState.empty,
+      );
+
+      expect(segment.continuesFromPrevious, isFalse);
+      expect(segment.continuesToNext, isFalse);
+    });
+
+    test('single blankStart has both sides rounded', () {
+      final segment = calculateTimelineExposureBlockVisualSegment(
+        previous: TimelineCellExposureState.empty,
+        current: TimelineCellExposureState.blankStart,
+        next: TimelineCellExposureState.empty,
+      );
+
+      expect(segment.continuesFromPrevious, isFalse);
+      expect(segment.continuesToNext, isFalse);
+    });
   });
 }

@@ -43,9 +43,11 @@ TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
     },
     continuesToNext: switch (current) {
       TimelineCellExposureState.drawingStart ||
-      TimelineCellExposureState.heldExposure => _isDrawingContinuation(next),
+      TimelineCellExposureState.heldExposure =>
+        next == TimelineCellExposureState.heldExposure,
       TimelineCellExposureState.blankStart ||
-      TimelineCellExposureState.blankHeld => _isBlankContinuation(next),
+      TimelineCellExposureState.blankHeld =>
+        next == TimelineCellExposureState.blankHeld,
       TimelineCellExposureState.empty => false,
     },
   );
