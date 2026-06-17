@@ -1487,6 +1487,170 @@ void main() {
   });
 
   testWidgets(
+    'selecting drawingStart highlights the active drawing exposure range',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 0,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              0 => TimelineCellExposureState.drawingStart,
+              1 || 2 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeCells('layer-1', const [0, 1, 2]);
+      _expectNoSelectedExposureRangeCell('layer-1', 3);
+    },
+  );
+
+  testWidgets(
+    'selecting heldExposure resolves back to the active drawing start range',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 2,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              0 => TimelineCellExposureState.drawingStart,
+              1 || 2 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeCells('layer-1', const [0, 1, 2]);
+    },
+  );
+
+  testWidgets(
+    'selecting blankStart highlights the active blank exposure range',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 4,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              4 => TimelineCellExposureState.blankStart,
+              5 || 6 => TimelineCellExposureState.blankHeld,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeCells('layer-1', const [4, 5, 6]);
+      _expectNoSelectedExposureRangeCell('layer-1', 3);
+    },
+  );
+
+  testWidgets(
+    'selecting blankHeld resolves back to the active blank start range',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 6,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              4 => TimelineCellExposureState.blankStart,
+              5 || 6 => TimelineCellExposureState.blankHeld,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeCells('layer-1', const [4, 5, 6]);
+    },
+  );
+
+  testWidgets('empty selected cells do not highlight an exposure range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 3,
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(_selectedExposureRangeCellFinder(), findsNothing);
+  });
+
+  testWidgets('inactive layers do not show selected exposure range highlight', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 2,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id == const LayerId('layer-2')) {
+            return switch (frameIndex) {
+              1 => TimelineCellExposureState.drawingStart,
+              2 || 3 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          }
+          return TimelineCellExposureState.empty;
+        },
+      ),
+    );
+
+    expect(_selectedExposureRangeCellFinder(), findsNothing);
+    _expectNoSelectedExposureRangeCell('layer-2', 1);
+    _expectNoSelectedExposureRangeCell('layer-2', 2);
+    _expectNoSelectedExposureRangeCell('layer-2', 3);
+  });
+
+  testWidgets(
+    'outside-playback visible authored range can show selected highlight',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 45,
+          playbackFrameCount: 24,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              45 => TimelineCellExposureState.drawingStart,
+              46 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await _scrollFrameGridUntilKeyVisible(
+        tester,
+        const ValueKey<String>('timeline-cell-layer-1-45'),
+      );
+
+      _expectSelectedExposureRangeCells('layer-1', const [45, 46]);
+    },
+  );
+
+  testWidgets(
     'visible authored data outside playback still renders as a block',
     (tester) async {
       await tester.pumpWidget(
@@ -1569,6 +1733,40 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
   final inkWell = tester.widget<InkWell>(find.byKey(ValueKey<String>(key)));
   final container = inkWell.child! as Container;
   return container.decoration! as BoxDecoration;
+}
+
+void _expectSelectedExposureRangeCells(String layerId, List<int> frameIndices) {
+  for (final frameIndex in frameIndices) {
+    expect(
+      find.byKey(
+        ValueKey<String>(
+          'timeline-selected-exposure-range-cell-$layerId-$frameIndex',
+        ),
+      ),
+      findsOneWidget,
+    );
+  }
+}
+
+void _expectNoSelectedExposureRangeCell(String layerId, int frameIndex) {
+  expect(
+    find.byKey(
+      ValueKey<String>(
+        'timeline-selected-exposure-range-cell-$layerId-$frameIndex',
+      ),
+    ),
+    findsNothing,
+  );
+}
+
+Finder _selectedExposureRangeCellFinder() {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        ((widget.key as ValueKey<String>).value).startsWith(
+          'timeline-selected-exposure-range-cell-',
+        ),
+  );
 }
 
 Widget _grid({
