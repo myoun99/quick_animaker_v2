@@ -22,7 +22,6 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.activeLayerId,
     required this.currentFrameIndex,
     required this.playbackFrameCount,
-    this.authoredTimelineExtentFrameCount,
     required this.exposureStateForLayer,
     this.hasMarkForLayer,
     this.frameNameForLayer,
@@ -37,7 +36,6 @@ class LayerTimelineGrid extends StatefulWidget {
   final LayerId? activeLayerId;
   final int currentFrameIndex;
   final int playbackFrameCount;
-  final int? authoredTimelineExtentFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
@@ -534,9 +532,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                     playbackFrameCount:
                                                                         widget
                                                                             .playbackFrameCount,
-                                                                    authoredTimelineExtentFrameCount:
-                                                                        widget
-                                                                            .authoredTimelineExtentFrameCount,
                                                                     frameStartIndex:
                                                                         frameRange
                                                                             .startIndex,
@@ -1154,7 +1149,6 @@ class _FrameCellsRow extends StatelessWidget {
     required this.active,
     required this.currentFrameIndex,
     required this.playbackFrameCount,
-    this.authoredTimelineExtentFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.leadingFrameSpacerWidth,
@@ -1170,7 +1164,6 @@ class _FrameCellsRow extends StatelessWidget {
   final bool active;
   final int currentFrameIndex;
   final int playbackFrameCount;
-  final int? authoredTimelineExtentFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -1184,16 +1177,14 @@ class _FrameCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveAuthoredTimelineExtentFrameCount = math.max(
-      authoredTimelineExtentFrameCount ?? 0,
-      math.max(playbackFrameCount, currentFrameIndex + 1),
-    );
-
     final selectedExposureRange = active
         ? resolveTimelineExposureRange(
             selectedFrameIndex: currentFrameIndex,
             minFrameIndex: 0,
-            maxFrameIndexExclusive: effectiveAuthoredTimelineExtentFrameCount,
+            maxFrameIndexExclusive: math.max(
+              frameEndIndexExclusive,
+              currentFrameIndex + 1,
+            ),
             exposureStateAt: (frameIndex) =>
                 exposureStateForLayer(layer, frameIndex),
           )
