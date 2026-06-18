@@ -614,3 +614,25 @@ When a test fails after merge:
 * identify if many failures share one root cause
 * do not assume restore/pull problem unless logs show local changes blocking pull
 * if pull is blocked by local format changes, then advise restore or commit depending on whether the changes should be kept.
+
+## Required reference for timeline work
+
+Before reviewing or modifying timeline code, read:
+
+- `docs/LongTerm_Timeline_Range_Semantics.md`
+
+This document defines the long-term separation between playback range, visible/display range, virtualized frame window, authored/data extent, selected exposure visual range, effective horizontal scroll offset, and frame coordinate conversion.
+
+Do not use `Cut.duration` as a data/edit/selection limit.
+Do not use `authoredTimelineExtentFrameCount` to bound selected exposure outline rendering.
+Do not use raw horizontal scroll offset for layout/hit testing after resize; use the effective clamped offset.
+Selected exposure outline is a display-range visual effect, not a data extent.
+
+## Recent timeline stabilization phases
+
+- PR165: clamped effective horizontal offset after viewport resize to prevent ruler/body/frame tearing.
+- PR166: restored selected exposure outline as a display-range visual effect.
+- PR167: extracted selected exposure display-range policy.
+- PR168: extracted horizontal offset clamp policy.
+- PR169: extracted frame coordinate conversion policy.
+- PR170: documented long-term timeline range semantics and policy invariants.
