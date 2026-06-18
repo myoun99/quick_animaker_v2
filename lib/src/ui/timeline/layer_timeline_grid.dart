@@ -11,6 +11,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
+import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
@@ -231,19 +232,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _HeaderCell(
-                                width: LayerTimelineGrid
-                                    ._metrics
-                                    .layerControlsWidth,
-                                height: headerHeight,
-                                child: TextButton.icon(
-                                  key: const ValueKey<String>(
-                                    'timeline-add-layer-button',
-                                  ),
-                                  onPressed: widget.onAddLayer,
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Layer'),
-                                ),
+                              TimelineLayerControlsHeader(
+                                metrics: LayerTimelineGrid._metrics,
+                                onAddLayer: widget.onAddLayer,
                               ),
                               SizedBox(
                                 key: const ValueKey<String>(
@@ -1009,34 +1000,6 @@ class _BottomHorizontalScrollbarRailState
           );
         },
       ),
-    );
-  }
-}
-
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.width,
-    required this.height,
-    required this.child,
-  });
-
-  final double width;
-  final double height;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      width: width,
-      height: height,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: child,
     );
   }
 }
