@@ -96,37 +96,22 @@ void main() {
 
   group('clampFrameIndex', () {
     test('clamps below zero', () {
-      expect(
-        clampFrameIndex(frameIndex: -1, visibleFrameCount: 10),
-        0,
-      );
+      expect(clampFrameIndex(frameIndex: -1, visibleFrameCount: 10), 0);
     });
 
     test('clamps above visible count', () {
-      expect(
-        clampFrameIndex(frameIndex: 99, visibleFrameCount: 10),
-        9,
-      );
+      expect(clampFrameIndex(frameIndex: 99, visibleFrameCount: 10), 9);
     });
 
     test('returns null for empty visible frame count', () {
-      expect(
-        clampFrameIndex(frameIndex: 0, visibleFrameCount: 0),
-        isNull,
-      );
+      expect(clampFrameIndex(frameIndex: 0, visibleFrameCount: 0), isNull);
     });
   });
 
   group('frameContentX', () {
     test('converts frame index to content x position', () {
-      expect(
-        frameContentX(frameIndex: 0, frameCellWidth: 48),
-        0,
-      );
-      expect(
-        frameContentX(frameIndex: 5, frameCellWidth: 48),
-        240,
-      );
+      expect(frameContentX(frameIndex: 0, frameCellWidth: 48), 0);
+      expect(frameContentX(frameIndex: 5, frameCellWidth: 48), 240);
     });
   });
 

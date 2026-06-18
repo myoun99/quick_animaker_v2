@@ -52,6 +52,5 @@ double frameRangeVisibleWidth({
   required int endFrameIndexExclusive,
   required double frameCellWidth,
 }) {
-  return math.max(0, endFrameIndexExclusive - startFrameIndex) *
-      frameCellWidth;
+  return math.max(0, endFrameIndexExclusive - startFrameIndex) * frameCellWidth;
 }
