@@ -9,11 +9,11 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'selected_exposure_display_range_policy.dart';
-import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
+import 'timeline_selected_exposure_outline.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
 
@@ -1186,9 +1186,6 @@ class _FrameCellsRow extends StatelessWidget {
       exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
-    final showSelectedExposureRangeOutline =
-        selectedExposureDisplayRange.hasVisibleIntersection;
-
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
@@ -1238,39 +1235,16 @@ class _FrameCellsRow extends StatelessWidget {
             ),
           ],
         ),
-        if (showSelectedExposureRangeOutline)
-          Positioned(
-            key: ValueKey<String>(
-              'timeline-selected-exposure-range-outline-${layer.id}',
-            ),
-            left: frameVisibleX(
-              frameIndex: selectedExposureDisplayRange.visibleStartFrameIndex,
-              frameStartIndex: frameStartIndex,
-              frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
-              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            ),
-            top: 0,
-            width: frameRangeVisibleWidth(
-              startFrameIndex:
-                  selectedExposureDisplayRange.visibleStartFrameIndex,
-              endFrameIndexExclusive:
-                  selectedExposureDisplayRange.visibleEndFrameIndexExclusive,
-              frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
-            ),
-            height: LayerTimelineGrid._metrics.layerRowHeight,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  border: Border.all(
-                    color: timelineSelectedFrameBorderColor,
-                    width: 2,
-                  ),
-                  borderRadius: const BorderRadius.all(Radius.circular(6)),
-                ),
-              ),
-            ),
-          ),
+        TimelineSelectedExposureOutline(
+          layerId: layer.id,
+          displayRange: selectedExposureDisplayRange,
+          frameStartIndex: frameStartIndex,
+          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+          frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
+          rowHeight: LayerTimelineGrid._metrics.layerRowHeight,
+          borderColor: timelineSelectedFrameBorderColor,
+          borderRadius: const BorderRadius.all(Radius.circular(6)),
+        ),
       ],
     );
   }
