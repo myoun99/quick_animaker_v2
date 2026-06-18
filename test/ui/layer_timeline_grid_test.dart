@@ -1703,6 +1703,193 @@ void main() {
   );
 
   testWidgets(
+    'selected drawing exposure outline survives horizontal virtualization',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 6,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              6 => TimelineCellExposureState.drawingStart,
+              >= 7 && <= 20 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-960, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-6')),
+        findsNothing,
+      );
+      _expectSelectedExposureRangeOutline(
+        tester,
+        'layer-1',
+        const [18, 19, 20],
+      );
+    },
+  );
+
+  testWidgets(
+    'selected held and blank held exposure outlines survive horizontal virtualization',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 16,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              12 => TimelineCellExposureState.drawingStart,
+              >= 13 && <= 24 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1200, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
+        findsNothing,
+      );
+      _expectSelectedExposureRangeOutline(
+        tester,
+        'layer-1',
+        const [23, 24],
+      );
+
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 16,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              12 => TimelineCellExposureState.blankStart,
+              >= 13 && <= 24 => TimelineCellExposureState.blankHeld,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
+        findsNothing,
+      );
+      _expectSelectedExposureRangeOutline(
+        tester,
+        'layer-1',
+        const [23, 24],
+      );
+    },
+  );
+
+  testWidgets(
+    'selected exposure outline is hidden when range has no visible intersection',
+    (tester) async {
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 6,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              6 => TimelineCellExposureState.drawingStart,
+              >= 7 && <= 10 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1440, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-selected-exposure-range-outline-layer-1',
+          ),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('body frame content width stays aligned with ruler width', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _grid(
+        width: 1600,
+        playbackFrameCount: 12,
+        currentFrameIndex: 2,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.empty;
+          }
+          return switch (frameIndex) {
+            2 => TimelineCellExposureState.drawingStart,
+            3 || 4 => TimelineCellExposureState.heldExposure,
+            _ => TimelineCellExposureState.empty,
+          };
+        },
+      ),
+    );
+
+    const expectedContentWidth =
+        TimelineGridMetrics.defaults.minimumVisibleFrameCells *
+        TimelineGridMetrics.defaults.frameCellWidth;
+    final content = find.byKey(
+      const ValueKey<String>('timeline-frame-scroll-content'),
+    );
+    final headerZero = find.byKey(
+      const ValueKey<String>('timeline-frame-header-0'),
+    );
+    final cellZero = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-1-0'),
+    );
+
+    expect(tester.getSize(content).width, closeTo(expectedContentWidth, 1.0));
+    expect(
+      tester.getTopLeft(cellZero).dx,
+      closeTo(tester.getTopLeft(headerZero).dx, 1.0),
+    );
+    _expectSelectedExposureRangeOutline(tester, 'layer-1', const [2, 3, 4]);
+  });
+
+  testWidgets(
     'selecting frame 10 drawingStart does not highlight previous drawing block',
     (tester) async {
       await tester.pumpWidget(
@@ -1925,6 +2112,7 @@ void _expectSelectedExposureRangeOutline(
 Widget _grid({
   int currentFrameIndex = 0,
   int playbackFrameCount = 12,
+  double width = 900,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
@@ -1939,7 +2127,7 @@ Widget _grid({
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
-        width: 900,
+        width: width,
         height: 260,
         child: LayerTimelineGrid(
           layers: layers ?? _layers,

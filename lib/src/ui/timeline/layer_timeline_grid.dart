@@ -433,9 +433,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     key: const ValueKey<String>(
                                                       'timeline-frame-scroll-content',
                                                     ),
-                                                    child: Stack(
-                                                      children: [
-                                                        KeyedSubtree(
+                                                    child: SizedBox(
+                                                      width: plan
+                                                          .totalFrameContentWidth,
+                                                      height:
+                                                          verticalContentHeight,
+                                                      child: Stack(
+                                                        children: [
+                                                          KeyedSubtree(
                                                           key:
                                                               const ValueKey<
                                                                 String
@@ -502,7 +507,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             ],
                                                           ),
                                                         ),
-                                                        Positioned(
+                                                          Positioned(
                                                           key:
                                                               const ValueKey<
                                                                 String
@@ -530,13 +535,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             ),
                                                           ),
                                                         ),
-                                                        if (widget.currentFrameIndex >=
-                                                                frameRange
-                                                                    .startIndex &&
-                                                            widget.currentFrameIndex <
-                                                                frameRange
-                                                                    .endIndexExclusive)
-                                                          Positioned(
+                                                          if (widget.currentFrameIndex >=
+                                                                  frameRange
+                                                                      .startIndex &&
+                                                              widget.currentFrameIndex <
+                                                                  frameRange
+                                                                      .endIndexExclusive)
+                                                            Positioned(
                                                             left: 0,
                                                             top: 0,
                                                             width: plan
@@ -561,7 +566,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   .length,
                                                             ),
                                                           ),
-                                                      ],
+                                                        ],
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
@@ -1109,8 +1115,13 @@ class _FrameCellsRow extends StatelessWidget {
     final selectedExposureRange = active
         ? resolveTimelineExposureRange(
             selectedFrameIndex: currentFrameIndex,
-            minFrameIndex: frameStartIndex,
-            maxFrameIndexExclusive: frameEndIndexExclusive,
+            minFrameIndex: 0,
+            maxFrameIndexExclusive: math.max(
+              math.max(frameEndIndexExclusive, playbackFrameCount),
+              currentFrameIndex +
+                  1 +
+                  LayerTimelineGrid._metrics.minimumVisibleFrameCells,
+            ),
             exposureStateAt: (frameIndex) =>
                 exposureStateForLayer(layer, frameIndex),
           )
