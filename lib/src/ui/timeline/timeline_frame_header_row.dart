@@ -5,7 +5,7 @@ import 'timeline_grid_metrics.dart';
 
 class TimelineFrameHeaderRow extends StatelessWidget {
   const TimelineFrameHeaderRow({
-    super.key = const ValueKey<String>('timeline-frame-header-row'),
+    super.key,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.currentFrameIndex,
@@ -28,7 +28,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      key: key,
+      key: const ValueKey<String>('timeline-frame-header-row'),
       children: [
         SizedBox(
           key: const ValueKey<String>('timeline-frame-header-leading-spacer'),
