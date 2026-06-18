@@ -1121,48 +1121,95 @@ class _FrameCellsRow extends StatelessWidget {
             selectedFrameIndex: 0,
           );
 
-    return Row(
+    final clampedRangeStart = math.max(
+      selectedExposureRange.startFrameIndex,
+      frameStartIndex,
+    );
+    final clampedRangeEnd = math.min(
+      selectedExposureRange.endFrameIndexExclusive,
+      frameEndIndexExclusive,
+    );
+    final showSelectedExposureRangeOutline =
+        active &&
+        selectedExposureRange.isBlock &&
+        clampedRangeStart < clampedRangeEnd;
+
+    return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
-        SizedBox(
-          key: ValueKey<String>(
-            'timeline-frame-row-leading-spacer-${layer.id}',
-          ),
-          width: leadingFrameSpacerWidth,
-          height: LayerTimelineGrid._metrics.layerRowHeight,
-        ),
-        for (
-          var frameIndex = frameStartIndex;
-          frameIndex < frameEndIndexExclusive;
-          frameIndex += 1
-        )
-          _TimelineCell(
-            layer: layer,
-            frameIndex: frameIndex,
-            active: active,
-            selected: active && frameIndex == currentFrameIndex,
-            outsidePlaybackRange: frameIndex >= playbackFrameCount,
-            exposureState: exposureStateForLayer(layer, frameIndex),
-            selectedExposureRange: selectedExposureRange,
-            exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
-              previous: frameIndex == 0
-                  ? null
-                  : exposureStateForLayer(layer, frameIndex - 1),
-              current: exposureStateForLayer(layer, frameIndex),
-              next: exposureStateForLayer(layer, frameIndex + 1),
+        Row(
+          children: [
+            SizedBox(
+              key: ValueKey<String>(
+                'timeline-frame-row-leading-spacer-${layer.id}',
+              ),
+              width: leadingFrameSpacerWidth,
+              height: LayerTimelineGrid._metrics.layerRowHeight,
             ),
-            hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
-            frameName: frameNameForLayer?.call(layer, frameIndex),
-            onSelectLayer: onSelectLayer,
-            onSelectFrame: onSelectFrame,
-          ),
-        SizedBox(
-          key: ValueKey<String>(
-            'timeline-frame-row-trailing-spacer-${layer.id}',
-          ),
-          width: trailingFrameSpacerWidth,
-          height: LayerTimelineGrid._metrics.layerRowHeight,
+            for (
+              var frameIndex = frameStartIndex;
+              frameIndex < frameEndIndexExclusive;
+              frameIndex += 1
+            )
+              _TimelineCell(
+                layer: layer,
+                frameIndex: frameIndex,
+                active: active,
+                selected: active && frameIndex == currentFrameIndex,
+                outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                exposureState: exposureStateForLayer(layer, frameIndex),
+                selectedExposureRangeSegment:
+                    frameIndex >= selectedExposureRange.startFrameIndex &&
+                    frameIndex < selectedExposureRange.endFrameIndexExclusive,
+                exposureBlockSegment:
+                    calculateTimelineExposureBlockVisualSegment(
+                      previous: frameIndex == 0
+                          ? null
+                          : exposureStateForLayer(layer, frameIndex - 1),
+                      current: exposureStateForLayer(layer, frameIndex),
+                      next: exposureStateForLayer(layer, frameIndex + 1),
+                    ),
+                hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
+                frameName: frameNameForLayer?.call(layer, frameIndex),
+                onSelectLayer: onSelectLayer,
+                onSelectFrame: onSelectFrame,
+              ),
+            SizedBox(
+              key: ValueKey<String>(
+                'timeline-frame-row-trailing-spacer-${layer.id}',
+              ),
+              width: trailingFrameSpacerWidth,
+              height: LayerTimelineGrid._metrics.layerRowHeight,
+            ),
+          ],
         ),
+        if (showSelectedExposureRangeOutline)
+          Positioned(
+            key: ValueKey<String>(
+              'timeline-selected-exposure-range-outline-${layer.id}',
+            ),
+            left:
+                leadingFrameSpacerWidth +
+                (clampedRangeStart - frameStartIndex) *
+                    LayerTimelineGrid._metrics.frameCellWidth,
+            top: 0,
+            width:
+                (clampedRangeEnd - clampedRangeStart) *
+                LayerTimelineGrid._metrics.frameCellWidth,
+            height: LayerTimelineGrid._metrics.layerRowHeight,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  border: Border.all(
+                    color: timelineSelectedFrameBorderColor,
+                    width: 2,
+                  ),
+                  borderRadius: const BorderRadius.all(Radius.circular(6)),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1176,7 +1223,7 @@ class _TimelineCell extends StatelessWidget {
     required this.selected,
     required this.outsidePlaybackRange,
     required this.exposureState,
-    required this.selectedExposureRange,
+    required this.selectedExposureRangeSegment,
     required this.exposureBlockSegment,
     required this.hasMark,
     this.frameName,
@@ -1190,7 +1237,7 @@ class _TimelineCell extends StatelessWidget {
   final bool selected;
   final bool outsidePlaybackRange;
   final TimelineCellExposureState exposureState;
-  final TimelineExposureRange selectedExposureRange;
+  final bool selectedExposureRangeSegment;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
   final bool hasMark;
   final String? frameName;
@@ -1206,12 +1253,12 @@ class _TimelineCell extends StatelessWidget {
       active: active,
       selected: selected,
     );
-    final selectedExposureRangeSegment =
-        active &&
-        selectedExposureRange.isBlock &&
-        frameIndex >= selectedExposureRange.startFrameIndex &&
-        frameIndex < selectedExposureRange.endFrameIndexExclusive;
-
+    final normalStyleColors = timelineCellStyleColors(
+      colorScheme: colorScheme,
+      exposureState: exposureState,
+      active: active,
+      selected: false,
+    );
     final baseBackgroundColor = outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
@@ -1219,20 +1266,17 @@ class _TimelineCell extends StatelessWidget {
           )
         : styleColors.background;
     final backgroundColor = baseBackgroundColor;
-    final borderColor = selected
-        ? styleColors.border
-        : selectedExposureRangeSegment
-        ? colorScheme.tertiary
-        : outsidePlaybackRange
+    final cellBorderColor = selected && selectedExposureRangeSegment
+        ? normalStyleColors.border
+        : styleColors.border;
+    final borderColor = outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
-            styleColors.border,
+            cellBorderColor,
           )
-        : styleColors.border;
-    final borderWidth = selected
+        : cellBorderColor;
+    final borderWidth = selected && !selectedExposureRangeSegment
         ? 3.0
-        : selectedExposureRangeSegment
-        ? 2.0
         : 1.0;
 
     return InkWell(

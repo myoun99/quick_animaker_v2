@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'timeline_cell_style.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -107,19 +108,16 @@ class _FrameHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? Color.alphaBlend(
-                  Colors.red.withValues(alpha: 0.12),
+                  timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
                   colorScheme.surface,
                 )
               : outsidePlaybackRange
               ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
               : colorScheme.surface,
           border: Border.all(
-            color: selected
-                ? Colors.red
-                : outsidePlaybackRange
+            color: outsidePlaybackRange
                 ? colorScheme.outlineVariant.withValues(alpha: 0.55)
                 : colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
           ),
         ),
         child: Text(

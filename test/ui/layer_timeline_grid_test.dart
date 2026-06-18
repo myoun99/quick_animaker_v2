@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
 bool _isGray(Color color) {
   final value = color.toARGB32();
@@ -1302,6 +1303,23 @@ void main() {
     expect(find.text('▶ 4'), findsNothing);
   });
 
+  testWidgets('current frame header keeps tint without red outline', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 3));
+
+    final decoration = _headerDecoration(tester, 3);
+    final border = decoration.border! as Border;
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
+      findsOneWidget,
+    );
+    expect(decoration.color, isNotNull);
+    expect(border.top.color, isNot(timelineSelectedFrameBorderColor));
+    expect(border.top.width, 1);
+  });
+
   testWidgets('named drawing start displays name and mark has priority', (
     tester,
   ) async {
@@ -1525,7 +1543,7 @@ void main() {
         0,
         1,
         2,
-      ], selectedFrameIndex: 0);
+      ]);
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
@@ -1553,7 +1571,7 @@ void main() {
         0,
         1,
         2,
-      ], selectedFrameIndex: 2);
+      ]);
     },
   );
 
@@ -1580,7 +1598,7 @@ void main() {
         4,
         5,
         6,
-      ], selectedFrameIndex: 4);
+      ]);
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
@@ -1608,7 +1626,7 @@ void main() {
         4,
         5,
         6,
-      ], selectedFrameIndex: 6);
+      ]);
     },
   );
 
@@ -1626,6 +1644,14 @@ void main() {
     );
 
     _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-0');
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-selected-exposure-range-outline-layer-1',
+        ),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('inactive layers do not show selected exposure range highlight', (
@@ -1650,6 +1676,14 @@ void main() {
     _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-1');
     _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-2');
     _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-2-3');
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-selected-exposure-range-outline-layer-2',
+        ),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -1680,7 +1714,7 @@ void main() {
       _expectSelectedExposureRangeCells(tester, 'layer-1', const [
         45,
         46,
-      ], selectedFrameIndex: 45);
+      ]);
     },
   );
 
@@ -1712,7 +1746,7 @@ void main() {
       _expectSelectedExposureRangeCells(tester, 'layer-1', const [
         10,
         11,
-      ], selectedFrameIndex: 10);
+      ]);
     },
   );
 
@@ -1834,20 +1868,19 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
 void _expectSelectedExposureRangeCells(
   WidgetTester tester,
   String layerId,
-  List<int> frameIndices, {
-  int? selectedFrameIndex,
-}) {
+  List<int> frameIndices,
+) {
+  _expectSelectedExposureRangeOutline(tester, layerId, frameIndices);
+
   for (final frameIndex in frameIndices) {
     final key = 'timeline-cell-$layerId-$frameIndex';
     final decoration = _cellDecoration(tester, key);
     final border = decoration.border! as Border;
 
-    final expectedWidth = frameIndex == selectedFrameIndex ? 3.0 : 2.0;
-
-    expect(border.top.width, expectedWidth);
-    expect(border.right.width, expectedWidth);
-    expect(border.bottom.width, expectedWidth);
-    expect(border.left.width, expectedWidth);
+    expect(border.top.width, 1.0);
+    expect(border.right.width, 1.0);
+    expect(border.bottom.width, 1.0);
+    expect(border.left.width, 1.0);
   }
 }
 
@@ -1859,6 +1892,53 @@ void _expectNoSelectedExposureRangeBorder(WidgetTester tester, String key) {
   expect(border.right.width, 1.0);
   expect(border.bottom.width, 1.0);
   expect(border.left.width, 1.0);
+}
+
+BoxDecoration _headerDecoration(WidgetTester tester, int frameIndex) {
+  final inkWell = tester.widget<InkWell>(
+    find.byKey(ValueKey<String>('timeline-frame-header-$frameIndex')),
+  );
+  final container = inkWell.child! as Container;
+  return container.decoration! as BoxDecoration;
+}
+
+void _expectSelectedExposureRangeOutline(
+  WidgetTester tester,
+  String layerId,
+  List<int> frameIndices,
+) {
+  final outlineFinder = find.byKey(
+    ValueKey<String>('timeline-selected-exposure-range-outline-$layerId'),
+  );
+  expect(outlineFinder, findsOneWidget);
+
+  final positioned = tester.widget<Positioned>(outlineFinder);
+  final expectedWidth =
+      frameIndices.length * TimelineGridMetrics.defaults.frameCellWidth;
+  expect(positioned.width, expectedWidth);
+
+  final firstCellRect = tester.getRect(
+    find.byKey(
+      ValueKey<String>('timeline-cell-$layerId-${frameIndices.first}'),
+    ),
+  );
+  final outlineRect = tester.getRect(outlineFinder);
+  expect(outlineRect.left, firstCellRect.left);
+  expect(outlineRect.width, expectedWidth);
+
+  final decoratedBox = tester.widget<DecoratedBox>(
+    find.descendant(of: outlineFinder, matching: find.byType(DecoratedBox)),
+  );
+  final decoration = decoratedBox.decoration as BoxDecoration;
+  final border = decoration.border! as Border;
+  expect(decoration.color, Colors.transparent);
+  expect(border.top.color, timelineSelectedFrameBorderColor);
+  expect(border.top.width, 2);
+  expect(decoration.borderRadius, const BorderRadius.all(Radius.circular(6)));
+  expect(
+    find.descendant(of: outlineFinder, matching: find.byType(CustomPaint)),
+    findsNothing,
+  );
 }
 
 Widget _grid({
