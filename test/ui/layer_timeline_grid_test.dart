@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
 
 bool _isGray(Color color) {
   final value = color.toARGB32();
@@ -1732,11 +1733,12 @@ void main() {
         find.byKey(const ValueKey<String>('timeline-cell-layer-1-6')),
         findsNothing,
       );
-      _expectSelectedExposureRangeOutline(
-        tester,
-        'layer-1',
-        const [18, 19, 20],
-      );
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
+        17,
+        18,
+        19,
+        20,
+      ]);
     },
   );
 
@@ -1770,11 +1772,11 @@ void main() {
         find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
         findsNothing,
       );
-      _expectSelectedExposureRangeOutline(
-        tester,
-        'layer-1',
-        const [23, 24],
-      );
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
+        22,
+        23,
+        24,
+      ]);
 
       await tester.pumpWidget(
         _grid(
@@ -1799,11 +1801,11 @@ void main() {
         find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
         findsNothing,
       );
-      _expectSelectedExposureRangeOutline(
-        tester,
-        'layer-1',
-        const [23, 24],
-      );
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
+        22,
+        23,
+        24,
+      ]);
     },
   );
 
@@ -1868,8 +1870,14 @@ void main() {
       ),
     );
 
-    const expectedContentWidth =
-        TimelineGridMetrics.defaults.minimumVisibleFrameCells *
+    final expectedFrameRange = TimelineFrameRange.fromPlaybackDuration(
+      playbackFrameCount: 12,
+      minimumVisibleFrameCells:
+          TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+    );
+
+    final expectedContentWidth =
+        expectedFrameRange.visibleFrameCount *
         TimelineGridMetrics.defaults.frameCellWidth;
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
