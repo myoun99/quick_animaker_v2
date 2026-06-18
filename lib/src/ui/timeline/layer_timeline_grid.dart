@@ -1250,7 +1250,7 @@ class _FrameCellsRow extends StatelessWidget {
             top: 0,
             width:
                 (selectedExposureDisplayRange.visibleEndFrameIndexExclusive -
-                        selectedExposureDisplayRange.visibleStartFrameIndex) *
+                    selectedExposureDisplayRange.visibleStartFrameIndex) *
                 LayerTimelineGrid._metrics.frameCellWidth,
             height: LayerTimelineGrid._metrics.layerRowHeight,
             child: IgnorePointer(
