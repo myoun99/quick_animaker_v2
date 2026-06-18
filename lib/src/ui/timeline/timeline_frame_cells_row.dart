@@ -12,6 +12,7 @@ import 'timeline_selected_exposure_outline.dart';
 
 class TimelineFrameCellsRow extends StatelessWidget {
   const TimelineFrameCellsRow({
+    super.key,
     required this.layer,
     required this.active,
     required this.currentFrameIndex,
@@ -38,7 +39,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
-      exposureStateForLayer;
+  exposureStateForLayer;
   final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
@@ -51,8 +52,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       currentFrameIndex: currentFrameIndex,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      exposureStateAt: (frameIndex) =>
-          exposureStateForLayer(layer, frameIndex),
+      exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
     return Stack(
