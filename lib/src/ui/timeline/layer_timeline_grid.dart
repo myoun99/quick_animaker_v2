@@ -8,7 +8,7 @@ import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
-import 'timeline_exposure_range_resolver.dart';
+import 'selected_exposure_display_range_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
@@ -1177,36 +1177,16 @@ class _FrameCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedExposureRange = active
-        ? resolveTimelineExposureRange(
-            selectedFrameIndex: currentFrameIndex,
-            minFrameIndex: 0,
-            maxFrameIndexExclusive: math.max(
-              frameEndIndexExclusive,
-              currentFrameIndex + 1,
-            ),
-            exposureStateAt: (frameIndex) =>
-                exposureStateForLayer(layer, frameIndex),
-          )
-        : const TimelineExposureRange(
-            kind: TimelineExposureRangeKind.none,
-            startFrameIndex: 0,
-            endFrameIndexExclusive: 0,
-            selectedFrameIndex: 0,
-          );
-
-    final clampedRangeStart = math.max(
-      selectedExposureRange.startFrameIndex,
-      frameStartIndex,
+    final selectedExposureDisplayRange = resolveSelectedExposureDisplayRange(
+      active: active,
+      currentFrameIndex: currentFrameIndex,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+      exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
-    final clampedRangeEnd = math.min(
-      selectedExposureRange.endFrameIndexExclusive,
-      frameEndIndexExclusive,
-    );
+    final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
     final showSelectedExposureRangeOutline =
-        active &&
-        selectedExposureRange.isBlock &&
-        clampedRangeStart < clampedRangeEnd;
+        selectedExposureDisplayRange.hasVisibleIntersection;
 
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
@@ -1264,11 +1244,13 @@ class _FrameCellsRow extends StatelessWidget {
             ),
             left:
                 leadingFrameSpacerWidth +
-                (clampedRangeStart - frameStartIndex) *
+                (selectedExposureDisplayRange.visibleStartFrameIndex -
+                        frameStartIndex) *
                     LayerTimelineGrid._metrics.frameCellWidth,
             top: 0,
             width:
-                (clampedRangeEnd - clampedRangeStart) *
+                (selectedExposureDisplayRange.visibleEndFrameIndexExclusive -
+                        selectedExposureDisplayRange.visibleStartFrameIndex) *
                 LayerTimelineGrid._metrics.frameCellWidth,
             height: LayerTimelineGrid._metrics.layerRowHeight,
             child: IgnorePointer(
