@@ -12,6 +12,7 @@ import 'selected_exposure_display_range_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
 
@@ -105,9 +106,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }) {
     final totalFrameContentWidth =
         _visibleFrameCount * LayerTimelineGrid._metrics.frameCellWidth;
-    final maxOffset = math.max(0.0, totalFrameContentWidth - viewportWidth);
 
-    return requestedOffset.clamp(0.0, maxOffset).toDouble();
+    return resolveTimelineHorizontalOffset(
+      requestedOffset: requestedOffset,
+      totalContentWidth: totalFrameContentWidth,
+      viewportWidth: viewportWidth,
+    ).effectiveOffset;
   }
 
   void _synchronizeHorizontalScrollController(double effectiveOffset) {
