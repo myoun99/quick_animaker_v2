@@ -15,7 +15,7 @@ void main() {
   ) async {
     const displayRange = SelectedExposureDisplayRange(
       resolvedRange: TimelineExposureRange(
-        kind: TimelineExposureRangeKind.block,
+        kind: TimelineExposureRangeKind.drawing,
         startFrameIndex: 10,
         endFrameIndexExclusive: 13,
         selectedFrameIndex: 10,
@@ -29,36 +29,40 @@ void main() {
     expect(find.byKey(outlineKey), findsNothing);
   });
 
-  testWidgets('renders outline with stable key when visible intersection exists', (
-    tester,
-  ) async {
-    const displayRange = SelectedExposureDisplayRange(
-      resolvedRange: TimelineExposureRange(
-        kind: TimelineExposureRangeKind.block,
-        startFrameIndex: 10,
-        endFrameIndexExclusive: 13,
-        selectedFrameIndex: 10,
-      ),
-      visibleStartFrameIndex: 10,
-      visibleEndFrameIndexExclusive: 13,
-    );
+  testWidgets(
+    'renders outline with stable key when visible intersection exists',
+    (tester) async {
+      const displayRange = SelectedExposureDisplayRange(
+        resolvedRange: TimelineExposureRange(
+          kind: TimelineExposureRangeKind.drawing,
+          startFrameIndex: 10,
+          endFrameIndexExclusive: 13,
+          selectedFrameIndex: 10,
+        ),
+        visibleStartFrameIndex: 10,
+        visibleEndFrameIndexExclusive: 13,
+      );
 
-    await tester.pumpWidget(_TestStack(displayRange: displayRange));
+      await tester.pumpWidget(_TestStack(displayRange: displayRange));
 
-    final outlineFinder = find.byKey(outlineKey);
-    expect(outlineFinder, findsOneWidget);
-    expect(
-      find.descendant(of: outlineFinder, matching: find.byType(IgnorePointer)),
-      findsOneWidget,
-    );
-  });
+      final outlineFinder = find.byKey(outlineKey);
+      expect(outlineFinder, findsOneWidget);
+      expect(
+        find.descendant(
+          of: outlineFinder,
+          matching: find.byType(IgnorePointer),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('computes outline left and width with coordinate policy', (
     tester,
   ) async {
     const displayRange = SelectedExposureDisplayRange(
       resolvedRange: TimelineExposureRange(
-        kind: TimelineExposureRangeKind.block,
+        kind: TimelineExposureRangeKind.drawing,
         startFrameIndex: 10,
         endFrameIndexExclusive: 13,
         selectedFrameIndex: 10,

@@ -33,7 +33,9 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
     }
 
     return Positioned(
-      key: ValueKey<String>('timeline-selected-exposure-range-outline-$layerId'),
+      key: ValueKey<String>(
+        'timeline-selected-exposure-range-outline-$layerId',
+      ),
       left: frameVisibleX(
         frameIndex: displayRange.visibleStartFrameIndex,
         frameStartIndex: frameStartIndex,
