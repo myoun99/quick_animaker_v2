@@ -9,6 +9,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'selected_exposure_display_range_policy.dart';
+import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
@@ -141,24 +142,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     });
   }
 
-  int? _clampedRulerFrameIndex(int frameIndex) {
-    if (_visibleFrameCount <= 0) {
-      return null;
-    }
-
-    return frameIndex.clamp(0, _visibleFrameCount - 1).toInt();
-  }
-
   int? _frameIndexForRulerLocalX(double localX) {
-    final frameIndex =
-        ((localX + _lastEffectiveHorizontalScrollOffset) /
-                LayerTimelineGrid._metrics.frameCellWidth)
-            .floor();
-    return _clampedRulerFrameIndex(frameIndex);
+    return frameIndexFromLocalX(
+      localX: localX,
+      horizontalScrollOffset: _lastEffectiveHorizontalScrollOffset,
+      frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
+      visibleFrameCount: _visibleFrameCount,
+    );
   }
 
   void _selectClampedFrameFromRuler(int frameIndex) {
-    final clampedFrameIndex = _clampedRulerFrameIndex(frameIndex);
+    final clampedFrameIndex = clampFrameIndex(
+      frameIndex: frameIndex,
+      visibleFrameCount: _visibleFrameCount,
+    );
     if (clampedFrameIndex == null ||
         clampedFrameIndex == _lastRulerScrubbedFrameIndex) {
       return;
@@ -1246,16 +1243,20 @@ class _FrameCellsRow extends StatelessWidget {
             key: ValueKey<String>(
               'timeline-selected-exposure-range-outline-${layer.id}',
             ),
-            left:
-                leadingFrameSpacerWidth +
-                (selectedExposureDisplayRange.visibleStartFrameIndex -
-                        frameStartIndex) *
-                    LayerTimelineGrid._metrics.frameCellWidth,
+            left: frameVisibleX(
+              frameIndex: selectedExposureDisplayRange.visibleStartFrameIndex,
+              frameStartIndex: frameStartIndex,
+              frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
+              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            ),
             top: 0,
-            width:
-                (selectedExposureDisplayRange.visibleEndFrameIndexExclusive -
-                    selectedExposureDisplayRange.visibleStartFrameIndex) *
-                LayerTimelineGrid._metrics.frameCellWidth,
+            width: frameRangeVisibleWidth(
+              startFrameIndex:
+                  selectedExposureDisplayRange.visibleStartFrameIndex,
+              endFrameIndexExclusive:
+                  selectedExposureDisplayRange.visibleEndFrameIndexExclusive,
+              frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
+            ),
             height: LayerTimelineGrid._metrics.layerRowHeight,
             child: IgnorePointer(
               child: DecoratedBox(
