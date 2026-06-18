@@ -1,3 +1,14 @@
+/// Resolves pure horizontal offset clamp math for timeline rendering.
+///
+/// This policy preserves ruler, body, selected exposure outline, and hit-test
+/// alignment after viewport resize by producing the effective horizontal offset
+/// that layout and hit testing should share.
+///
+/// It has no `ScrollController` side effects. Widget-side correction scheduling
+/// must remain in `LayerTimelineGrid`.
+
+library;
+
 import 'dart:math' as math;
 
 class TimelineHorizontalOffsetResolution {

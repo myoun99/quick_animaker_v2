@@ -1,3 +1,14 @@
+/// Resolves pure frame index / x-position conversion for timeline UI code.
+///
+/// Local x to frame index conversion must use the effective horizontal offset,
+/// not a raw out-of-bounds scroll offset. These helpers are shared by ruler hit
+/// testing and timeline overlay positioning.
+///
+/// This policy must not know about playback duration, authored extent, or
+/// `Cut.duration` semantics.
+
+library;
+
 import 'dart:math' as math;
 
 int? frameIndexFromLocalX({
