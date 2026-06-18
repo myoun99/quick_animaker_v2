@@ -17,6 +17,7 @@ const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = Color(0xFFBDBDBD);
 const Color timelineBlankStartColor = Color(0xFFD0D0D0);
 const Color timelineBlankHeldColor = timelineBlankStartColor;
+const Color timelineSelectedFrameBorderColor = Colors.red;
 
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
@@ -53,9 +54,9 @@ TimelineCellStyleColors timelineCellStyleColors({
 
   return TimelineCellStyleColors(
     background: Color.alphaBlend(
-      Colors.red.withValues(alpha: 0.12),
+      timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
       exposureColor,
     ),
-    border: Colors.red,
+    border: timelineSelectedFrameBorderColor,
   );
 }
