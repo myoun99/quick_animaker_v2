@@ -809,3 +809,6 @@ actionMemo/dialogueMemo UI 없음
 Conte Panel / Storyboard Panel 없음
 
 ## 이후 정상이라고 사용자가 알리면 다음 페이즈로 진행
+## Timeline-related tasks
+
+For timeline-related tasks, first read `docs/LongTerm_Timeline_Range_Semantics.md` before proposing architecture changes, Codex tasks, or PR reviews.
