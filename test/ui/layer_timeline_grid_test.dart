@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -833,7 +835,6 @@ void main() {
           width: 500,
           currentFrameIndex: 10,
           playbackFrameCount: 12,
-          authoredTimelineExtentFrameCount: 13,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -858,7 +859,6 @@ void main() {
           width: 4600,
           currentFrameIndex: 10,
           playbackFrameCount: 12,
-          authoredTimelineExtentFrameCount: 13,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1807,7 +1807,6 @@ void main() {
         _grid(
           currentFrameIndex: 45,
           playbackFrameCount: 24,
-          authoredTimelineExtentFrameCount: 47,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1831,7 +1830,7 @@ void main() {
   );
 
   testWidgets(
-    'selected Blank held does not outline safety tail when viewport is widened',
+    'selected outline can continue beyond playback duration to visible range',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 320));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1839,36 +1838,60 @@ void main() {
       await tester.pumpWidget(
         _grid(
           width: 1800,
-          currentFrameIndex: 4,
+          currentFrameIndex: 26,
           playbackFrameCount: 24,
-          authoredTimelineExtentFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
             }
             return switch (frameIndex) {
               2 => TimelineCellExposureState.blankStart,
-              >= 3 && <= 8 => TimelineCellExposureState.blankHeld,
+              >= 3 && <= 47 => TimelineCellExposureState.blankHeld,
               _ => TimelineCellExposureState.empty,
             };
           },
         ),
       );
 
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-1700, 0),
-      );
-      await tester.pumpAndSettle();
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', [
+        for (var frameIndex = 2; frameIndex <= 47; frameIndex += 1)
+          frameIndex,
+      ]);
+    },
+  );
 
+  testWidgets(
+    'selected outline visual range is not bounded by authored extent plumbing',
+    (tester) async {
+      final layerGridSource = await File(
+        'lib/src/ui/timeline/layer_timeline_grid.dart',
+      ).readAsString();
       expect(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-selected-exposure-range-outline-layer-1',
-          ),
-        ),
-        findsNothing,
+        layerGridSource,
+        isNot(contains('authoredTimelineExtentFrameCount')),
       );
+
+      await tester.pumpWidget(
+        _grid(
+          currentFrameIndex: 26,
+          playbackFrameCount: 24,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              26 => TimelineCellExposureState.drawingStart,
+              >= 27 && <= 47 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', [
+        for (var frameIndex = 26; frameIndex <= 47; frameIndex += 1)
+          frameIndex,
+      ]);
     },
   );
 
@@ -1879,7 +1902,6 @@ void main() {
         _grid(
           currentFrameIndex: 6,
           playbackFrameCount: 100,
-          authoredTimelineExtentFrameCount: 21,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1986,7 +2008,6 @@ void main() {
         _grid(
           currentFrameIndex: 6,
           playbackFrameCount: 100,
-          authoredTimelineExtentFrameCount: 11,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -2024,7 +2045,6 @@ void main() {
       _grid(
         currentFrameIndex: 28,
         playbackFrameCount: 24,
-        authoredTimelineExtentFrameCount: 33,
         exposureStateForLayer: (layer, frameIndex) {
           if (layer.id != const LayerId('layer-1')) {
             return TimelineCellExposureState.empty;
@@ -2326,7 +2346,6 @@ void _expectSelectedExposureRangeOutline(
 Widget _grid({
   int currentFrameIndex = 0,
   int playbackFrameCount = 12,
-  int? authoredTimelineExtentFrameCount,
   double width = 900,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
@@ -2349,7 +2368,6 @@ Widget _grid({
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,
-          authoredTimelineExtentFrameCount: authoredTimelineExtentFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
               (_, _) => TimelineCellExposureState.empty,
