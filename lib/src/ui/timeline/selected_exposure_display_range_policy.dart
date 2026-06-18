@@ -1,3 +1,17 @@
+/// Resolves the selected exposure outline visual range for timeline rendering.
+///
+/// This policy is display-range based: it intentionally does not accept
+/// `playbackFrameCount`, `Cut.duration`, or
+/// `authoredTimelineExtentFrameCount`. It resolves the selected exposure block
+/// and clamps only the visible intersection needed for rendering in the current
+/// virtualized frame window.
+///
+/// Do not use this policy as a timeline data extent. Its result is a visual
+/// display effect only and must not imply that timeline data exists, or should
+/// be created, deleted, or resized, across the outlined span.
+
+library;
+
 import 'dart:math' as math;
 
 import 'timeline_cell_exposure_state.dart';
