@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_frame_cells_row.dart';
@@ -12,6 +11,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
+import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
 
@@ -395,11 +395,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               for (final layer in widget.layers)
-                                                _LayerControlsRow(
+                                                TimelineLayerControlsRow(
                                                   layer: layer,
                                                   active:
                                                       layer.id ==
                                                       widget.activeLayerId,
+                                                  metrics: LayerTimelineGrid
+                                                      ._metrics,
                                                   onSelectLayer:
                                                       widget.onSelectLayer,
                                                   onToggleLayerVisibility: widget
@@ -1006,140 +1008,6 @@ class _BottomHorizontalScrollbarRailState
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-IconData _iconForLayerKind(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation => Icons.brush_outlined,
-    LayerKind.storyboard => Icons.auto_stories_outlined,
-  };
-}
-
-String _semanticLabelForLayerKind(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation => 'Animation layer',
-    LayerKind.storyboard => 'Storyboard layer',
-  };
-}
-
-class _LayerControlsRow extends StatelessWidget {
-  const _LayerControlsRow({
-    required this.layer,
-    required this.active,
-    required this.onSelectLayer,
-    required this.onToggleLayerVisibility,
-    required this.onLayerOpacityChanged,
-  });
-
-  final Layer layer;
-  final bool active;
-  final ValueChanged<LayerId> onSelectLayer;
-  final ValueChanged<LayerId> onToggleLayerVisibility;
-  final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
-
-    return InkWell(
-      key: ValueKey<String>('timeline-layer-row-${layer.id}'),
-      onTap: () => onSelectLayer(layer.id),
-      child: Container(
-        width: LayerTimelineGrid._metrics.layerControlsWidth,
-        height: LayerTimelineGrid._metrics.layerRowHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: active ? activeColor : colorScheme.surface,
-          border: Border.all(
-            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
-            width: active ? 2 : 1,
-          ),
-        ),
-        child: Semantics(
-          key: active
-              ? const ValueKey<String>('timeline-selected-layer')
-              : null,
-          label: active ? 'selected layer' : 'layer',
-          container: true,
-          explicitChildNodes: true,
-          child: Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                  onTap: () => onSelectLayer(layer.id),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Semantics(
-                          label: _semanticLabelForLayerKind(layer.kind),
-                          container: true,
-                          child: ExcludeSemantics(
-                            child: Icon(
-                              _iconForLayerKind(layer.kind),
-                              key: ValueKey<String>(
-                                'timeline-layer-kind-icon-${layer.id}',
-                              ),
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            layer.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: active ? FontWeight.bold : null,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
-                tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 32,
-                  height: 32,
-                ),
-                icon: Icon(
-                  layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                  size: 18,
-                ),
-                onPressed: () => onToggleLayerVisibility(layer.id),
-              ),
-              SizedBox(
-                width: 64,
-                child: Slider(
-                  key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-                  min: 0,
-                  max: 1,
-                  value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                  onChanged: (opacity) =>
-                      onLayerOpacityChanged(layer.id, opacity),
-                ),
-              ),
-              SizedBox(
-                width: 34,
-                child: Text(
-                  '${(layer.opacity * 100).round()}%',
-                  textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
