@@ -780,7 +780,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(500, 320));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(_grid(width: 500, playbackFrameCount: 100));
+      await tester.pumpWidget(_grid(width: 500, playbackFrameCount: 12));
       await tester.drag(
         find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
         const Offset(-2400, 0),
@@ -788,7 +788,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.binding.setSurfaceSize(const Size(4600, 320));
-      await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 100));
+      await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 12));
       await tester.pump();
       await tester.pump();
 
@@ -832,7 +832,8 @@ void main() {
         _grid(
           width: 500,
           currentFrameIndex: 10,
-          playbackFrameCount: 100,
+          playbackFrameCount: 12,
+          authoredTimelineExtentFrameCount: 13,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -856,7 +857,8 @@ void main() {
         _grid(
           width: 4600,
           currentFrameIndex: 10,
-          playbackFrameCount: 100,
+          playbackFrameCount: 12,
+          authoredTimelineExtentFrameCount: 13,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
