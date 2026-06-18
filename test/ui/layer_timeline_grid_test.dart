@@ -1681,6 +1681,7 @@ void main() {
         _grid(
           currentFrameIndex: 45,
           playbackFrameCount: 24,
+          authoredTimelineExtentFrameCount: 47,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1704,12 +1705,55 @@ void main() {
   );
 
   testWidgets(
+    'selected Blank held does not outline safety tail when viewport is widened',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _grid(
+          width: 1800,
+          currentFrameIndex: 4,
+          playbackFrameCount: 24,
+          authoredTimelineExtentFrameCount: 24,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              2 => TimelineCellExposureState.blankStart,
+              >= 3 && <= 8 => TimelineCellExposureState.blankHeld,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1700, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-selected-exposure-range-outline-layer-1',
+          ),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
     'selected drawing exposure outline survives horizontal virtualization',
     (tester) async {
       await tester.pumpWidget(
         _grid(
           currentFrameIndex: 6,
           playbackFrameCount: 100,
+          authoredTimelineExtentFrameCount: 21,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1816,6 +1860,7 @@ void main() {
         _grid(
           currentFrameIndex: 6,
           playbackFrameCount: 100,
+          authoredTimelineExtentFrameCount: 11,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
               return TimelineCellExposureState.empty;
@@ -1845,6 +1890,41 @@ void main() {
       );
     },
   );
+
+  testWidgets('authored outside-playback selected range remains outlined', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 28,
+        playbackFrameCount: 24,
+        authoredTimelineExtentFrameCount: 33,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.empty;
+          }
+          return switch (frameIndex) {
+            28 => TimelineCellExposureState.drawingStart,
+            >= 29 && <= 32 => TimelineCellExposureState.heldExposure,
+            _ => TimelineCellExposureState.empty,
+          };
+        },
+      ),
+    );
+
+    await _scrollFrameGridUntilKeyVisible(
+      tester,
+      const ValueKey<String>('timeline-cell-layer-1-28'),
+    );
+
+    _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
+      28,
+      29,
+      30,
+      31,
+      32,
+    ]);
+  });
 
   testWidgets('body frame content width stays aligned with ruler width', (
     tester,
@@ -2120,6 +2200,7 @@ void _expectSelectedExposureRangeOutline(
 Widget _grid({
   int currentFrameIndex = 0,
   int playbackFrameCount = 12,
+  int? authoredTimelineExtentFrameCount,
   double width = 900,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
@@ -2142,6 +2223,7 @@ Widget _grid({
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,
+          authoredTimelineExtentFrameCount: authoredTimelineExtentFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
               (_, _) => TimelineCellExposureState.empty,
