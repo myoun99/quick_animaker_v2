@@ -775,6 +775,130 @@ void main() {
   });
 
   testWidgets(
+    'clamps horizontal offset after viewport widens and keeps ruler/body aligned',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(500, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(_grid(width: 500, playbackFrameCount: 100));
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-2400, 0),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.binding.setSurfaceSize(const Size(4600, 320));
+      await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 100));
+      await tester.pump();
+      await tester.pump();
+
+      final frameGridArea = find.byKey(
+        const ValueKey<String>('timeline-frame-grid-area'),
+      );
+      final header = find.byKey(
+        const ValueKey<String>('timeline-frame-header-10'),
+      );
+      final cell = find.byKey(
+        const ValueKey<String>('timeline-cell-layer-1-10'),
+      );
+      final leadingSpacer = find.byKey(
+        const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
+      );
+
+      expect(header, findsOneWidget);
+      expect(cell, findsOneWidget);
+      expect(
+        tester.getTopLeft(cell).dx,
+        moreOrLessEquals(tester.getTopLeft(header).dx, epsilon: 1),
+      );
+      expect(
+        tester.getTopLeft(leadingSpacer).dx,
+        lessThanOrEqualTo(tester.getTopLeft(frameGridArea).dx + 1),
+      );
+      expect(
+        tester.getTopLeft(cell).dx,
+        lessThan(tester.getTopRight(frameGridArea).dx),
+      );
+    },
+  );
+
+  testWidgets(
+    'selected exposure outline follows body cells after viewport widens',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(500, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _grid(
+          width: 500,
+          currentFrameIndex: 10,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              10 => TimelineCellExposureState.drawingStart,
+              11 || 12 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-2400, 0),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.binding.setSurfaceSize(const Size(4600, 320));
+      await tester.pumpWidget(
+        _grid(
+          width: 4600,
+          currentFrameIndex: 10,
+          playbackFrameCount: 100,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              10 => TimelineCellExposureState.drawingStart,
+              11 || 12 => TimelineCellExposureState.heldExposure,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final outline = find.byKey(
+        const ValueKey<String>(
+          'timeline-selected-exposure-range-outline-layer-1',
+        ),
+      );
+      final firstCell = find.byKey(
+        const ValueKey<String>('timeline-cell-layer-1-10'),
+      );
+      final lastCell = find.byKey(
+        const ValueKey<String>('timeline-cell-layer-1-12'),
+      );
+
+      expect(outline, findsOneWidget);
+      expect(firstCell, findsOneWidget);
+      expect(lastCell, findsOneWidget);
+      expect(
+        tester.getTopLeft(outline).dx,
+        moreOrLessEquals(tester.getTopLeft(firstCell).dx, epsilon: 1),
+      );
+      expect(
+        tester.getTopRight(outline).dx,
+        moreOrLessEquals(tester.getTopRight(lastCell).dx, epsilon: 1),
+      );
+    },
+  );
+
+  testWidgets(
     'keeps ruler and body cut boundaries aligned after horizontal scroll',
     (tester) async {
       await tester.pumpWidget(_grid(playbackFrameCount: 24));

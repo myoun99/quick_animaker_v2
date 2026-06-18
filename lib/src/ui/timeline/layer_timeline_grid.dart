@@ -58,6 +58,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
   double _horizontalScrollOffset = 0;
+  double _lastEffectiveHorizontalScrollOffset = 0;
+  double? _scheduledHorizontalOffsetCorrection;
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
@@ -99,6 +101,44 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
 
+  double _effectiveHorizontalScrollOffset({
+    required double requestedOffset,
+    required double viewportWidth,
+  }) {
+    final totalFrameContentWidth =
+        _visibleFrameCount * LayerTimelineGrid._metrics.frameCellWidth;
+    final maxOffset = math.max(0.0, totalFrameContentWidth - viewportWidth);
+
+    return requestedOffset.clamp(0.0, maxOffset).toDouble();
+  }
+
+  void _synchronizeHorizontalScrollController(double effectiveOffset) {
+    if (!_horizontalScrollController.hasClients ||
+        _horizontalScrollController.offset == effectiveOffset ||
+        _scheduledHorizontalOffsetCorrection == effectiveOffset) {
+      return;
+    }
+
+    _scheduledHorizontalOffsetCorrection = effectiveOffset;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_horizontalScrollController.hasClients) {
+        _scheduledHorizontalOffsetCorrection = null;
+        return;
+      }
+
+      final maxScrollExtent =
+          _horizontalScrollController.position.maxScrollExtent;
+      final targetOffset = effectiveOffset
+          .clamp(0.0, maxScrollExtent)
+          .toDouble();
+
+      _scheduledHorizontalOffsetCorrection = null;
+      if (_horizontalScrollController.offset != targetOffset) {
+        _horizontalScrollController.jumpTo(targetOffset);
+      }
+    });
+  }
+
   int? _clampedRulerFrameIndex(int frameIndex) {
     if (_visibleFrameCount <= 0) {
       return null;
@@ -109,7 +149,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   int? _frameIndexForRulerLocalX(double localX) {
     final frameIndex =
-        ((localX + _horizontalScrollOffset) /
+        ((localX + _lastEffectiveHorizontalScrollOffset) /
                 LayerTimelineGrid._metrics.frameCellWidth)
             .floor();
     return _clampedRulerFrameIndex(frameIndex);
@@ -224,10 +264,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         constraints.hasBoundedWidth
                                         ? constraints.maxWidth
                                         : 0.0;
+                                    final effectiveHorizontalScrollOffset =
+                                        _effectiveHorizontalScrollOffset(
+                                          requestedOffset:
+                                              _horizontalScrollOffset,
+                                          viewportWidth: viewportWidth,
+                                        );
+                                    _lastEffectiveHorizontalScrollOffset =
+                                        effectiveHorizontalScrollOffset;
+                                    _synchronizeHorizontalScrollController(
+                                      effectiveHorizontalScrollOffset,
+                                    );
                                     final plan =
                                         calculateLayerTimelineGridVirtualizationPlan(
                                           horizontalScrollOffset:
-                                              _horizontalScrollOffset,
+                                              effectiveHorizontalScrollOffset,
                                           verticalScrollOffset: 0,
                                           viewportWidth: viewportWidth,
                                           viewportHeight: viewportHeight,
@@ -279,7 +330,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               maxHeight: headerHeight,
                                               child: Transform.translate(
                                                 offset: Offset(
-                                                  -_horizontalScrollOffset,
+                                                  -effectiveHorizontalScrollOffset,
                                                   0,
                                                 ),
                                                 child: SizedBox(
@@ -400,10 +451,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   constraints.hasBoundedWidth
                                                   ? constraints.maxWidth
                                                   : 0.0;
+                                              final effectiveHorizontalScrollOffset =
+                                                  _effectiveHorizontalScrollOffset(
+                                                    requestedOffset:
+                                                        _horizontalScrollOffset,
+                                                    viewportWidth:
+                                                        viewportWidth,
+                                                  );
+                                              _lastEffectiveHorizontalScrollOffset =
+                                                  effectiveHorizontalScrollOffset;
+                                              _synchronizeHorizontalScrollController(
+                                                effectiveHorizontalScrollOffset,
+                                              );
                                               final plan =
                                                   calculateLayerTimelineGridVirtualizationPlan(
                                                     horizontalScrollOffset:
-                                                        _horizontalScrollOffset,
+                                                        effectiveHorizontalScrollOffset,
                                                     verticalScrollOffset: 0,
                                                     viewportWidth:
                                                         viewportWidth,
