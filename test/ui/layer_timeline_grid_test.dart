@@ -1862,8 +1862,7 @@ void main() {
       );
 
       _expectSelectedExposureRangeOutline(tester, 'layer-1', [
-        for (var frameIndex = 26; frameIndex <= 47; frameIndex += 1)
-          frameIndex,
+        for (var frameIndex = 26; frameIndex <= 47; frameIndex += 1) frameIndex,
       ]);
     },
   );
@@ -1903,8 +1902,7 @@ void main() {
       );
 
       _expectSelectedExposureRangeOutline(tester, 'layer-1', [
-        for (var frameIndex = 2; frameIndex <= 47; frameIndex += 1)
-          frameIndex,
+        for (var frameIndex = 2; frameIndex <= 47; frameIndex += 1) frameIndex,
       ]);
     },
   );
