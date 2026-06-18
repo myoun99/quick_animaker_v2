@@ -1275,9 +1275,7 @@ class _TimelineCell extends StatelessWidget {
             cellBorderColor,
           )
         : cellBorderColor;
-    final borderWidth = selected && !selectedExposureRangeSegment
-        ? 3.0
-        : 1.0;
+    final borderWidth = selected && !selectedExposureRangeSegment ? 3.0 : 1.0;
 
     return InkWell(
       key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),

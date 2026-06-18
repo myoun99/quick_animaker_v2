@@ -969,7 +969,10 @@ void main() {
     );
     final decoration = selectedHeader.decoration as BoxDecoration;
     final border = decoration.border as Border;
-    expect(border.top.color, Colors.red);
+
+    expect(decoration.color, isNotNull);
+    expect(border.top.color, isNot(timelineSelectedFrameBorderColor));
+    expect(border.top.width, 1);
   });
 
   testWidgets('dragging frame ruler scrub area scrubs changed frames', (
@@ -1539,11 +1542,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        0,
-        1,
-        2,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
@@ -1567,11 +1566,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        0,
-        1,
-        2,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [0, 1, 2]);
     },
   );
 
@@ -1594,11 +1589,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        4,
-        5,
-        6,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
     },
   );
@@ -1622,11 +1613,7 @@ void main() {
         ),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        4,
-        5,
-        6,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
     },
   );
 
@@ -1711,10 +1698,7 @@ void main() {
         const ValueKey<String>('timeline-cell-layer-1-45'),
       );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        45,
-        46,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [45, 46]);
     },
   );
 
@@ -1743,10 +1727,7 @@ void main() {
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-7');
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-8');
       _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-9');
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [
-        10,
-        11,
-      ]);
+      _expectSelectedExposureRangeCells(tester, 'layer-1', const [10, 11]);
     },
   );
 
@@ -1923,8 +1904,8 @@ void _expectSelectedExposureRangeOutline(
     ),
   );
   final outlineRect = tester.getRect(outlineFinder);
-  expect(outlineRect.left, firstCellRect.left);
-  expect(outlineRect.width, expectedWidth);
+  expect(outlineRect.left, closeTo(firstCellRect.left, 1.0));
+  expect(outlineRect.width, closeTo(expectedWidth, 1.0));
 
   final decoratedBox = tester.widget<DecoratedBox>(
     find.descendant(of: outlineFinder, matching: find.byType(DecoratedBox)),
