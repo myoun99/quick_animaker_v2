@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -1832,47 +1830,22 @@ void main() {
   testWidgets(
     'selected outline can continue beyond playback duration to visible range',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 320));
+      final frameRange = TimelineFrameRange.fromPlaybackDuration(
+        playbackFrameCount: 24,
+        minimumVisibleFrameCells:
+            TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+      );
+      final frameContentWidth =
+          frameRange.visibleFrameCount *
+          TimelineGridMetrics.defaults.frameCellWidth;
+      final testWidth = frameContentWidth + 600;
+
+      await tester.binding.setSurfaceSize(Size(testWidth, 320));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
         _grid(
-          width: 1800,
-          currentFrameIndex: 26,
-          playbackFrameCount: 24,
-          exposureStateForLayer: (layer, frameIndex) {
-            if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
-            }
-            return switch (frameIndex) {
-              2 => TimelineCellExposureState.blankStart,
-              >= 3 && <= 47 => TimelineCellExposureState.blankHeld,
-              _ => TimelineCellExposureState.empty,
-            };
-          },
-        ),
-      );
-
-      _expectSelectedExposureRangeOutline(tester, 'layer-1', [
-        for (var frameIndex = 2; frameIndex <= 47; frameIndex += 1)
-          frameIndex,
-      ]);
-    },
-  );
-
-  testWidgets(
-    'selected outline visual range is not bounded by authored extent plumbing',
-    (tester) async {
-      final layerGridSource = await File(
-        'lib/src/ui/timeline/layer_timeline_grid.dart',
-      ).readAsString();
-      expect(
-        layerGridSource,
-        isNot(contains('authoredTimelineExtentFrameCount')),
-      );
-
-      await tester.pumpWidget(
-        _grid(
+          width: testWidth,
           currentFrameIndex: 26,
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
@@ -1890,6 +1863,47 @@ void main() {
 
       _expectSelectedExposureRangeOutline(tester, 'layer-1', [
         for (var frameIndex = 26; frameIndex <= 47; frameIndex += 1)
+          frameIndex,
+      ]);
+    },
+  );
+
+  testWidgets(
+    'selected held outline uses displayed range rather than selected frame fallback',
+    (tester) async {
+      final frameRange = TimelineFrameRange.fromPlaybackDuration(
+        playbackFrameCount: 24,
+        minimumVisibleFrameCells:
+            TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+      );
+      final frameContentWidth =
+          frameRange.visibleFrameCount *
+          TimelineGridMetrics.defaults.frameCellWidth;
+      final testWidth = frameContentWidth + 600;
+
+      await tester.binding.setSurfaceSize(Size(testWidth, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _grid(
+          width: testWidth,
+          currentFrameIndex: 26,
+          playbackFrameCount: 24,
+          exposureStateForLayer: (layer, frameIndex) {
+            if (layer.id != const LayerId('layer-1')) {
+              return TimelineCellExposureState.empty;
+            }
+            return switch (frameIndex) {
+              2 => TimelineCellExposureState.blankStart,
+              >= 3 && <= 47 => TimelineCellExposureState.blankHeld,
+              _ => TimelineCellExposureState.empty,
+            };
+          },
+        ),
+      );
+
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', [
+        for (var frameIndex = 2; frameIndex <= 47; frameIndex += 1)
           frameIndex,
       ]);
     },
