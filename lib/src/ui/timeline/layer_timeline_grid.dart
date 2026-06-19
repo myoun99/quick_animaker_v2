@@ -16,6 +16,7 @@ import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
+import 'timeline_vertical_scrollbar_rail.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -237,10 +238,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 metrics: LayerTimelineGrid._metrics,
                                 onAddLayer: widget.onAddLayer,
                               ),
-                              SizedBox(
-                                key: const ValueKey<String>(
-                                  'timeline-vertical-scrollbar-slot',
-                                ),
+                              TimelineVerticalScrollbarSlot(
                                 width: LayerTimelineGrid
                                     ._metrics
                                     .verticalScrollbarWidth,
@@ -632,10 +630,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 width: LayerTimelineGrid
                                     ._metrics
                                     .verticalScrollbarWidth,
-                                child: _VerticalScrollbarRail(
-                                  key: const ValueKey<String>(
-                                    'timeline-vertical-scrollbar',
-                                  ),
+                                child: TimelineVerticalScrollbarRail(
                                   controller: _verticalScrollController,
                                   viewportHeight: bodyViewportHeight,
                                   contentHeight: verticalContentHeight,
@@ -697,145 +692,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ),
         );
       },
-    );
-  }
-}
-
-class _VerticalScrollbarRail extends StatefulWidget {
-  const _VerticalScrollbarRail({
-    super.key,
-    required this.controller,
-    required this.viewportHeight,
-    required this.contentHeight,
-    required this.width,
-  });
-
-  final ScrollController controller;
-  final double viewportHeight;
-  final double contentHeight;
-  final double width;
-
-  @override
-  State<_VerticalScrollbarRail> createState() => _VerticalScrollbarRailState();
-}
-
-class _VerticalScrollbarRailState extends State<_VerticalScrollbarRail> {
-  static const double _minimumThumbHeight = 32;
-
-  double get _maxScrollExtent {
-    if (widget.controller.hasClients &&
-        widget.controller.position.hasContentDimensions) {
-      return widget.controller.position.maxScrollExtent;
-    }
-    return math.max(0, widget.contentHeight - widget.viewportHeight);
-  }
-
-  double get _scrollOffset {
-    if (!widget.controller.hasClients) {
-      return 0;
-    }
-    return widget.controller.offset.clamp(0.0, _maxScrollExtent).toDouble();
-  }
-
-  double get _thumbHeight {
-    if (widget.viewportHeight <= 0 || widget.contentHeight <= 0) {
-      return 0;
-    }
-    if (widget.contentHeight <= widget.viewportHeight) {
-      return widget.viewportHeight;
-    }
-    return (widget.viewportHeight *
-            widget.viewportHeight /
-            widget.contentHeight)
-        .clamp(_minimumThumbHeight, widget.viewportHeight)
-        .toDouble();
-  }
-
-  double get _thumbTop {
-    final maxThumbTop = math.max(0.0, widget.viewportHeight - _thumbHeight);
-    final maxScrollExtent = _maxScrollExtent;
-    if (maxScrollExtent <= 0 || maxThumbTop <= 0) {
-      return 0;
-    }
-    return (_scrollOffset / maxScrollExtent * maxThumbTop)
-        .clamp(0.0, maxThumbTop)
-        .toDouble();
-  }
-
-  void _jumpToThumbTop(double thumbTop) {
-    if (!widget.controller.hasClients) {
-      return;
-    }
-    final maxThumbTop = math.max(0.0, widget.viewportHeight - _thumbHeight);
-    final maxScrollExtent = _maxScrollExtent;
-    if (maxThumbTop <= 0 || maxScrollExtent <= 0) {
-      widget.controller.jumpTo(0);
-      return;
-    }
-    final offset =
-        (thumbTop.clamp(0.0, maxThumbTop) / maxThumbTop) * maxScrollExtent;
-    widget.controller.jumpTo(offset.clamp(0.0, maxScrollExtent).toDouble());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      color: colorScheme.surfaceContainerHighest,
-      child: AnimatedBuilder(
-        animation: widget.controller,
-        builder: (context, child) {
-          final thumbHeight = _thumbHeight;
-          final thumbTop = _thumbTop;
-
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (details) {
-                    _jumpToThumbTop(details.localPosition.dy - thumbHeight / 2);
-                  },
-                  child: Container(
-                    key: const ValueKey<String>(
-                      'timeline-vertical-scrollbar-track',
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      border: Border(
-                        left: BorderSide(color: colorScheme.outlineVariant),
-                        right: BorderSide(color: colorScheme.outlineVariant),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 2,
-                right: 2,
-                top: thumbTop,
-                height: thumbHeight,
-                child: GestureDetector(
-                  onVerticalDragUpdate: (details) {
-                    _jumpToThumbTop(_thumbTop + (details.primaryDelta ?? 0));
-                  },
-                  child: Container(
-                    key: const ValueKey<String>(
-                      'timeline-vertical-scrollbar-thumb',
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.75),
-                      borderRadius: BorderRadius.circular(widget.width),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 }
