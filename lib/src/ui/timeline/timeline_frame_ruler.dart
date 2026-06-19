@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'timeline_frame_header_row.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_ruler_cut_end_boundary.dart';
 
 class TimelineFrameRuler extends StatelessWidget {
   const TimelineFrameRuler({
@@ -40,17 +41,10 @@ class TimelineFrameRuler extends StatelessWidget {
           metrics: metrics,
           onSelectFrame: onSelectFrame,
         ),
-        Positioned(
-          key: const ValueKey<String>('timeline-cut-end-boundary-ruler'),
+        TimelineRulerCutEndBoundary(
           left: timelineCutEndBoundaryX(
             playbackFrameCount: playbackFrameCount,
             metrics: metrics,
-          ),
-          top: 0,
-          bottom: 0,
-          width: 2,
-          child: const IgnorePointer(
-            child: DecoratedBox(decoration: BoxDecoration(color: Colors.red)),
           ),
         ),
       ],
