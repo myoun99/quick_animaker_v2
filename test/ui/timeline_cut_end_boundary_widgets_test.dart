@@ -4,18 +4,15 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_body_cut_end_boundary
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_ruler_cut_end_boundary.dart';
 
 void main() {
-  const rulerBoundaryKey = ValueKey<String>(
-    'timeline-cut-end-boundary-ruler',
-  );
+  const rulerBoundaryKey = ValueKey<String>('timeline-cut-end-boundary-ruler');
   const bodyBoundaryKey = ValueKey<String>('timeline-cut-end-boundary');
 
   testWidgets('ruler cut-end boundary stable key exists exactly once', (
     tester,
   ) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineRulerCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineRulerCutEndBoundary(left: 48),
+    ]);
 
     expect(find.byKey(rulerBoundaryKey), findsOneWidget);
   });
@@ -23,22 +20,18 @@ void main() {
   testWidgets('body cut-end boundary stable key exists exactly once', (
     tester,
   ) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineBodyCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineBodyCutEndBoundary(left: 48),
+    ]);
 
     expect(find.byKey(bodyBoundaryKey), findsOneWidget);
   });
 
   testWidgets('ruler and body boundary keys are not confused', (tester) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [
-        TimelineRulerCutEndBoundary(left: 48),
-        TimelineBodyCutEndBoundary(left: 96),
-      ],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineRulerCutEndBoundary(left: 48),
+      TimelineBodyCutEndBoundary(left: 96),
+    ]);
 
     expect(find.byKey(rulerBoundaryKey), findsOneWidget);
     expect(find.byKey(bodyBoundaryKey), findsOneWidget);
@@ -47,10 +40,9 @@ void main() {
   testWidgets('ruler boundary width remains 2 and left is passed through', (
     tester,
   ) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineRulerCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineRulerCutEndBoundary(left: 48),
+    ]);
 
     final positioned = _positionedUnderBoundary(rulerBoundaryKey, tester);
     expect(positioned.width, 2);
@@ -60,10 +52,9 @@ void main() {
   testWidgets('body boundary width remains 2 and left is passed through', (
     tester,
   ) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineBodyCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineBodyCutEndBoundary(left: 48),
+    ]);
 
     final positioned = _positionedUnderBoundary(bodyBoundaryKey, tester);
     expect(positioned.width, 2);
@@ -71,19 +62,17 @@ void main() {
   });
 
   testWidgets('ruler boundary marker keeps IgnorePointer', (tester) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineRulerCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineRulerCutEndBoundary(left: 48),
+    ]);
 
     expect(_ignorePointerUnderBoundary(rulerBoundaryKey), findsOneWidget);
   });
 
   testWidgets('body boundary marker keeps IgnorePointer', (tester) async {
-    await _pumpBoundaryStack(
-      tester,
-      const [TimelineBodyCutEndBoundary(left: 48)],
-    );
+    await _pumpBoundaryStack(tester, const [
+      TimelineBodyCutEndBoundary(left: 48),
+    ]);
 
     expect(_ignorePointerUnderBoundary(bodyBoundaryKey), findsOneWidget);
   });
@@ -106,10 +95,7 @@ Future<void> _pumpBoundaryStack(
   );
 }
 
-Positioned _positionedUnderBoundary(
-  Key boundaryKey,
-  WidgetTester tester,
-) {
+Positioned _positionedUnderBoundary(Key boundaryKey, WidgetTester tester) {
   return tester.widget<Positioned>(
     find.descendant(
       of: find.byKey(boundaryKey),
