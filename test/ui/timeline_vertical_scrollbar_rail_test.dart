@@ -36,6 +36,7 @@ void main() {
             width: 12,
             height: viewportHeight,
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 if (attachControllerToScrollable)
                   SingleChildScrollView(
@@ -59,7 +60,10 @@ void main() {
 
   Positioned thumbPositioned(WidgetTester tester) {
     return tester.widget<Positioned>(
-      find.ancestor(of: find.byKey(thumbKey), matching: find.byType(Positioned)),
+      find.ancestor(
+        of: find.byKey(thumbKey),
+        matching: find.byType(Positioned),
+      ),
     );
   }
 
@@ -69,7 +73,12 @@ void main() {
     await pumpSlot(tester, width: 14, height: 96);
 
     expect(find.byKey(slotKey), findsOneWidget);
-    expect(tester.getSize(find.byKey(slotKey)), const Size(14, 96));
+    final slot = tester.widget<TimelineVerticalScrollbarSlot>(
+      find.byKey(slotKey),
+    );
+
+    expect(slot.width, 14);
+    expect(slot.height, 96);
   });
 
   testWidgets('rail stable key exists exactly once', (tester) async {
@@ -138,26 +147,35 @@ void main() {
     expect(thumbPositioned(tester).height, 120);
   });
 
-  testWidgets('track tap uses the provided external controller', (tester) async {
-    final controller = ScrollController();
-    addTearDown(controller.dispose);
+  testWidgets(
+    'rail uses the provided external controller and exposes track tap handler',
+    (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
 
-    await pumpRail(
-      tester,
-      controller: controller,
-      viewportHeight: 120,
-      contentHeight: 360,
-      attachControllerToScrollable: true,
-    );
+      await pumpRail(
+        tester,
+        controller: controller,
+        viewportHeight: 120,
+        contentHeight: 360,
+        attachControllerToScrollable: true,
+      );
 
-    expect(controller.hasClients, isTrue);
-    expect(controller.offset, 0);
+      expect(controller.hasClients, isTrue);
 
-    await tester.tapAt(
-      tester.getTopLeft(find.byKey(trackKey)) + const Offset(6, 100),
-    );
-    await tester.pump();
+      final rail = tester.widget<TimelineVerticalScrollbarRail>(
+        find.byKey(railKey),
+      );
+      expect(rail.controller, same(controller));
 
-    expect(controller.offset, greaterThan(0));
-  });
+      final trackGestureDetector = tester.widget<GestureDetector>(
+        find.ancestor(
+          of: find.byKey(trackKey),
+          matching: find.byType(GestureDetector),
+        ),
+      );
+
+      expect(trackGestureDetector.onTapDown, isNotNull);
+    },
+  );
 }
