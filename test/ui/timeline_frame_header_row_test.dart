@@ -32,7 +32,9 @@ void main() {
     );
   }
 
-  testWidgets('renders stable row and spacer keys exactly once', (tester) async {
+  testWidgets('renders stable row and spacer keys exactly once', (
+    tester,
+  ) async {
     await pumpHeaderRow(
       tester,
       frameStartIndex: 3,
