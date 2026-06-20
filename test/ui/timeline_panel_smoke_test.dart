@@ -91,7 +91,7 @@ void main() {
       expect(selectedFrameIndex, 3);
     });
 
-    testWidgets('forwards layer-selection callback from a layer row', (
+    testWidgets('forwards layer-selection callback from a layer name', (
       tester,
     ) async {
       LayerId? selectedLayerId;
@@ -99,7 +99,7 @@ void main() {
       await tester.pumpWidget(
         _panel(onSelectLayer: (layerId) => selectedLayerId = layerId),
       );
-      await tester.tap(_key('timeline-layer-row-layer-1'));
+      await tester.tap(_key('timeline-layer-name-layer-1'));
 
       expect(selectedLayerId, const LayerId('layer-1'));
     });
