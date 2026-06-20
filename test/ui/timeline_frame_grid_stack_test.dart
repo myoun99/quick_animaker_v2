@@ -54,11 +54,7 @@ void main() {
     testWidgets('passes playhead overlay position and width through', (
       tester,
     ) async {
-      await _pumpFrameGridStack(
-        tester,
-        showPlayhead: true,
-        playheadWidth: 480,
-      );
+      await _pumpFrameGridStack(tester, showPlayhead: true, playheadWidth: 480);
 
       final positioned = tester.widget<Positioned>(
         find.ancestor(
