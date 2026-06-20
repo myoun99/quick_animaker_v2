@@ -32,11 +32,7 @@ void main() {
               controller: controller,
               contentWidth: contentWidth,
               contentHeight: contentHeight,
-              child: const SizedBox(
-                key: childKey,
-                width: 720,
-                height: 120,
-              ),
+              child: const SizedBox(key: childKey, width: 720, height: 120),
             ),
           ),
         ),
