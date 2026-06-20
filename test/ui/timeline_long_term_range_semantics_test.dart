@@ -68,9 +68,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(
-            const ValueKey<String>('timeline-cut-end-boundary-ruler'),
-          ),
+          find.byKey(const ValueKey<String>('timeline-cut-end-boundary-ruler')),
           findsOneWidget,
         );
         expect(
@@ -153,7 +151,9 @@ _TimelineRangeFixture _fixture({required int cutDuration, Layer? layer}) {
   final project = Project(
     id: const ProjectId('project-a'),
     name: 'Project A',
-    tracks: [Track(id: const TrackId('track-a'), name: 'V1', cuts: [cut])],
+    tracks: [
+      Track(id: const TrackId('track-a'), name: 'V1', cuts: [cut]),
+    ],
     createdAt: DateTime.utc(2026),
   );
 
@@ -164,15 +164,15 @@ Layer _layer({Map<int, TimelineExposure>? timeline}) {
   return Layer(
     id: const LayerId('layer-a'),
     name: 'Layer A',
-    frames: const [
-      Frame(id: FrameId('head'), duration: 1, strokes: []),
-      Frame(id: FrameId('late'), duration: 3, strokes: []),
+    frames: [
+      Frame(id: const FrameId('head'), duration: 1, strokes: const []),
+      Frame(id: const FrameId('late'), duration: 3, strokes: const []),
     ],
     timeline:
         timeline ??
-        const {
-          0: TimelineExposure.drawing(FrameId('head')),
-          10: TimelineExposure.drawing(FrameId('late')),
+        {
+          0: TimelineExposure.drawing(const FrameId('head')),
+          10: TimelineExposure.drawing(const FrameId('late')),
         },
   );
 }
@@ -227,10 +227,7 @@ class _TimelineRangeFixture {
     return extent;
   }
 
-  TimelineCellExposureState exposureStateForLayer(
-    Layer layer,
-    int frameIndex,
-  ) {
+  TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
     final exposure = layer.timeline[frameIndex];
     if (exposure != null) {
       return TimelineCellExposureState.drawingStart;
