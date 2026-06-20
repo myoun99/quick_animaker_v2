@@ -70,9 +70,7 @@ void main() {
     ) async {
       var addLayerCallCount = 0;
 
-      await tester.pumpWidget(
-        _panel(onAddLayer: () => addLayerCallCount += 1),
-      );
+      await tester.pumpWidget(_panel(onAddLayer: () => addLayerCallCount += 1));
       await tester.tap(_key('timeline-add-layer-button'));
 
       expect(addLayerCallCount, 1);
