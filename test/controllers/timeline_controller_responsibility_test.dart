@@ -28,63 +28,75 @@ void main() {
       expect(fixture.cut, beforeCut);
     });
 
-    test('current frame selects resolved exposure without editing authored data', () {
-      final fixture = _createResponsibilityFixture();
-      final layer = fixture.layer(const LayerId('animation-a'));
-      final beforeLayer = layer;
+    test(
+      'current frame selects resolved exposure without editing authored data',
+      () {
+        final fixture = _createResponsibilityFixture();
+        final layer = fixture.layer(const LayerId('animation-a'));
+        final beforeLayer = layer;
 
-      fixture.controller.selectFrameIndex(4);
+        fixture.controller.selectFrameIndex(4);
 
-      expect(
-        fixture.controller.resolveFrameIdForLayer(layer: layer),
-        const FrameId('a-1'),
-      );
-      expect(fixture.layer(const LayerId('animation-a')), beforeLayer);
-    });
+        expect(
+          fixture.controller.resolveFrameIdForLayer(layer: layer),
+          const FrameId('a-1'),
+        );
+        expect(fixture.layer(const LayerId('animation-a')), beforeLayer);
+      },
+    );
 
-    test('authored extent is calculated from authored data, not Cut.duration', () {
-      final fixture = _createResponsibilityFixture(cutDuration: 24);
+    test(
+      'authored extent is calculated from authored data, not Cut.duration',
+      () {
+        final fixture = _createResponsibilityFixture(cutDuration: 24);
 
-      expect(fixture.cut.duration, 24);
-      expect(fixture.controller.authoredTimelineExtentFrameCount, 13);
-      expect(
-        fixture.controller.authoredTimelineExtentFrameCount,
-        isNot(fixture.cut.duration),
-      );
-    });
+        expect(fixture.cut.duration, 24);
+        expect(fixture.controller.authoredTimelineExtentFrameCount, 13);
+        expect(
+          fixture.controller.authoredTimelineExtentFrameCount,
+          isNot(fixture.cut.duration),
+        );
+      },
+    );
 
-    test('Cut.duration remains playback/export duration during timeline edits', () {
-      final fixture = _createResponsibilityFixture(cutDuration: 3);
+    test(
+      'Cut.duration remains playback/export duration during timeline edits',
+      () {
+        final fixture = _createResponsibilityFixture(cutDuration: 3);
 
-      fixture.controller.selectFrameIndex(10);
-      fixture.controller.createDrawingFrameForLayer(
-        layerId: const LayerId('empty-layer'),
-        frameId: const FrameId('outside-playback'),
-        duration: 4,
-      );
+        fixture.controller.selectFrameIndex(10);
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: const LayerId('empty-layer'),
+          frameId: const FrameId('outside-playback'),
+          duration: 4,
+        );
 
-      final cut = fixture.cut;
-      final editedLayer = fixture.layer(const LayerId('empty-layer'));
+        final cut = fixture.cut;
+        final editedLayer = fixture.layer(const LayerId('empty-layer'));
 
-      expect(cut.duration, 3);
-      expect(
-        editedLayer.timeline[10]?.frameId,
-        const FrameId('outside-playback'),
-      );
-      expect(fixture.controller.authoredTimelineExtentFrameCount, 14);
-    });
+        expect(cut.duration, 3);
+        expect(
+          editedLayer.timeline[10]?.frameId,
+          const FrameId('outside-playback'),
+        );
+        expect(fixture.controller.authoredTimelineExtentFrameCount, 14);
+      },
+    );
 
-    test('ordinary selection and read-only queries do not mutate Cut.duration', () {
-      final fixture = _createResponsibilityFixture(cutDuration: 8);
-      final layer = fixture.layer(const LayerId('animation-b'));
+    test(
+      'ordinary selection and read-only queries do not mutate Cut.duration',
+      () {
+        final fixture = _createResponsibilityFixture(cutDuration: 8);
+        final layer = fixture.layer(const LayerId('animation-b'));
 
-      fixture.controller.selectFrameIndex(12);
-      fixture.controller.resolveFrameForLayer(layer: layer);
-      fixture.controller.hasDrawingAtCurrentFrame(layer: layer);
-      fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 12);
+        fixture.controller.selectFrameIndex(12);
+        fixture.controller.resolveFrameForLayer(layer: layer);
+        fixture.controller.hasDrawingAtCurrentFrame(layer: layer);
+        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 12);
 
-      expect(fixture.cut.duration, 8);
-    });
+        expect(fixture.cut.duration, 8);
+      },
+    );
 
     test('empty repository state is safe for cursor and authored extent', () {
       final repository = ProjectRepository();
@@ -143,11 +155,7 @@ _ResponsibilityFixture _createResponsibilityFixture({
     id: const ProjectId('project-a'),
     name: 'Project A',
     tracks: [
-      Track(
-        id: const TrackId('track-a'),
-        name: 'Track A',
-        cuts: [cut],
-      ),
+      Track(id: const TrackId('track-a'), name: 'Track A', cuts: [cut]),
     ],
     createdAt: DateTime.utc(2026),
   );
@@ -168,18 +176,16 @@ List<Layer> _defaultLayers() => [
       Frame(id: const FrameId('a-1'), duration: 4, strokes: const []),
       Frame(id: const FrameId('a-2'), duration: 2, strokes: const []),
     ],
-    timeline: const {
-      0: TimelineExposure.drawing(FrameId('a-1')),
-      7: TimelineExposure.drawing(FrameId('a-2')),
+    timeline: {
+      0: TimelineExposure.drawing(const FrameId('a-1')),
+      7: TimelineExposure.drawing(const FrameId('a-2')),
     },
   ),
   Layer(
     id: const LayerId('animation-b'),
     name: 'Animation B',
-    frames: [
-      Frame(id: const FrameId('b-1'), duration: 3, strokes: const []),
-    ],
-    timeline: const {10: TimelineExposure.drawing(FrameId('b-1'))},
+    frames: [Frame(id: const FrameId('b-1'), duration: 3, strokes: const [])],
+    timeline: {10: TimelineExposure.drawing(const FrameId('b-1'))},
   ),
   Layer(
     id: const LayerId('empty-layer'),
