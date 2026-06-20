@@ -497,16 +497,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               .endIndexExclusive,
                                                       leadingFrameSpacerWidth: plan
                                                           .leadingFrameSpacerWidth,
-                                                      trailingFrameSpacerWidth: plan
-                                                          .trailingFrameSpacerWidth,
+                                                      trailingFrameSpacerWidth:
+                                                          plan.trailingFrameSpacerWidth,
                                                       totalFrameContentWidth: plan
                                                           .totalFrameContentWidth,
                                                       metrics: LayerTimelineGrid
                                                           ._metrics,
                                                       exposureStateForLayer: widget
                                                           .exposureStateForLayer,
-                                                      hasMarkForLayer:
-                                                          widget.hasMarkForLayer,
+                                                      hasMarkForLayer: widget
+                                                          .hasMarkForLayer,
                                                       frameNameForLayer: widget
                                                           .frameNameForLayer,
                                                       onSelectLayer:
