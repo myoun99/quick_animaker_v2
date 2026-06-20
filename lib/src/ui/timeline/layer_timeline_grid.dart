@@ -481,41 +481,38 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 contentHeight:
                                                     verticalContentHeight,
                                                 child: TimelineFrameGridStack(
-                                                  rowsBody:
-                                                      TimelineFrameRowsScrollBody(
-                                                        layers: widget.layers,
-                                                        activeLayerId: widget
-                                                            .activeLayerId,
-                                                        currentFrameIndex: widget
-                                                            .currentFrameIndex,
-                                                        playbackFrameCount: widget
-                                                            .playbackFrameCount,
-                                                        frameStartIndex:
-                                                            frameRange
-                                                                .startIndex,
-                                                        frameEndIndexExclusive:
-                                                            frameRange
-                                                                .endIndexExclusive,
-                                                        leadingFrameSpacerWidth: plan
-                                                            .leadingFrameSpacerWidth,
-                                                        trailingFrameSpacerWidth:
-                                                            plan.trailingFrameSpacerWidth,
-                                                        totalFrameContentWidth: plan
-                                                            .totalFrameContentWidth,
-                                                        metrics:
-                                                            LayerTimelineGrid
-                                                                ._metrics,
-                                                        exposureStateForLayer: widget
-                                                            .exposureStateForLayer,
-                                                        hasMarkForLayer: widget
-                                                            .hasMarkForLayer,
-                                                        frameNameForLayer: widget
-                                                            .frameNameForLayer,
-                                                        onSelectLayer: widget
-                                                            .onSelectLayer,
-                                                        onSelectFrame: widget
-                                                            .onSelectFrame,
-                                                      ),
+                                                  rowsBody: TimelineFrameRowsScrollBody(
+                                                    layers: widget.layers,
+                                                    activeLayerId:
+                                                        widget.activeLayerId,
+                                                    currentFrameIndex: widget
+                                                        .currentFrameIndex,
+                                                    playbackFrameCount: widget
+                                                        .playbackFrameCount,
+                                                    frameStartIndex:
+                                                        frameRange.startIndex,
+                                                    frameEndIndexExclusive:
+                                                        frameRange
+                                                            .endIndexExclusive,
+                                                    leadingFrameSpacerWidth: plan
+                                                        .leadingFrameSpacerWidth,
+                                                    trailingFrameSpacerWidth: plan
+                                                        .trailingFrameSpacerWidth,
+                                                    totalFrameContentWidth: plan
+                                                        .totalFrameContentWidth,
+                                                    metrics: LayerTimelineGrid
+                                                        ._metrics,
+                                                    exposureStateForLayer: widget
+                                                        .exposureStateForLayer,
+                                                    hasMarkForLayer:
+                                                        widget.hasMarkForLayer,
+                                                    frameNameForLayer: widget
+                                                        .frameNameForLayer,
+                                                    onSelectLayer:
+                                                        widget.onSelectLayer,
+                                                    onSelectFrame:
+                                                        widget.onSelectFrame,
+                                                  ),
                                                   cutEndBoundaryLeft:
                                                       timelineCutEndBoundaryX(
                                                         playbackFrameCount: widget
