@@ -636,3 +636,11 @@ Selected exposure outline is a display-range visual effect, not a data extent.
 - PR168: extracted horizontal offset clamp policy.
 - PR169: extracted frame coordinate conversion policy.
 - PR170: documented long-term timeline range semantics and policy invariants.
+
+## Phase 145 timeline stabilization checkpoint
+
+Phase 145 closes the current timeline refactoring / stabilization line. Before starting the next major area, read:
+
+- `docs/Timeline_Stabilization_Checkpoint.md`
+
+Use that checkpoint as the concise handoff source for stabilized timeline architecture, stable keys, long-term range semantics, layer ordering semantics, storyboard semantics relevant to timeline, protected tests, manual verification, and recommended next phases.
