@@ -15,6 +15,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_layer_controls_header.dart';
+import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
@@ -370,20 +371,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                   key: const ValueKey<String>(
                                     'timeline-scrollable-body',
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      KeyedSubtree(
+                                  child: TimelineLayerFrameBodyLayout(
+                                    layerControlsRail: KeyedSubtree(
+                                      key: const ValueKey<String>(
+                                        'timeline-layer-controls-rail',
+                                      ),
+                                      child: KeyedSubtree(
                                         key: const ValueKey<String>(
-                                          'timeline-layer-controls-rail',
+                                          'timeline-layer-rows-scroll-body',
                                         ),
-                                        child: KeyedSubtree(
-                                          key: const ValueKey<String>(
-                                            'timeline-layer-rows-scroll-body',
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
+                                        child: Column(
+                                          crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
                                               for (final layer in widget.layers)
@@ -425,19 +423,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           ),
                                         ),
                                       ),
-                                      SizedBox(
-                                        width: LayerTimelineGrid
-                                            ._metrics
-                                            .verticalScrollbarWidth,
-                                        height: verticalContentHeight,
-                                      ),
-                                      Expanded(
-                                        child: KeyedSubtree(
-                                          key: const ValueKey<String>(
-                                            'timeline-frame-grid-area',
-                                          ),
-                                          child: LayoutBuilder(
-                                            builder: (context, constraints) {
+                                    verticalScrollbarSlot: SizedBox(
+                                      width: LayerTimelineGrid
+                                          ._metrics
+                                          .verticalScrollbarWidth,
+                                      height: verticalContentHeight,
+                                    ),
+                                    frameGridArea: Expanded(
+                                      child: KeyedSubtree(
+                                        key: const ValueKey<String>(
+                                          'timeline-frame-grid-area',
+                                        ),
+                                        child: LayoutBuilder(
+                                          builder: (context, constraints) {
                                               final viewportWidth =
                                                   constraints.hasBoundedWidth
                                                   ? constraints.maxWidth
@@ -547,11 +545,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   ),
                                                 ),
                                               );
-                                            },
-                                          ),
+                                          },
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
