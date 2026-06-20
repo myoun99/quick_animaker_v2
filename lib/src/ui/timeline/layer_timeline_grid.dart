@@ -476,16 +476,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               return TimelineFrameScrollViewport(
                                                 controller:
                                                     _horizontalScrollController,
-                                                contentWidth: plan
-                                                    .totalFrameContentWidth,
+                                                contentWidth:
+                                                    plan.totalFrameContentWidth,
                                                 contentHeight:
                                                     verticalContentHeight,
                                                 child: Stack(
                                                   children: [
                                                     KeyedSubtree(
-                                                      key: const ValueKey<
-                                                        String
-                                                      >(
+                                                      key: const ValueKey<String>(
                                                         'timeline-frame-rows-scroll-body',
                                                       ),
                                                       child: Column(
@@ -529,12 +527,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               frameNameForLayer:
                                                                   widget
                                                                       .frameNameForLayer,
-                                                              onSelectLayer:
-                                                                  widget
-                                                                      .onSelectLayer,
-                                                              onSelectFrame:
-                                                                  widget
-                                                                      .onSelectFrame,
+                                                              onSelectLayer: widget
+                                                                  .onSelectLayer,
+                                                              onSelectFrame: widget
+                                                                  .onSelectFrame,
                                                             ),
                                                           if (widget
                                                               .layers
@@ -542,10 +538,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             SizedBox(
                                                               width: plan
                                                                   .totalFrameContentWidth,
-                                                              height:
-                                                                  LayerTimelineGrid
-                                                                      ._metrics
-                                                                      .layerRowHeight,
+                                                              height: LayerTimelineGrid
+                                                                  ._metrics
+                                                                  .layerRowHeight,
                                                             ),
                                                         ],
                                                       ),
@@ -585,7 +580,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               LayerTimelineGrid
                                                                   ._metrics,
                                                           layerCount: widget
-                                                              .layers.length,
+                                                              .layers
+                                                              .length,
                                                         ),
                                                       ),
                                                   ],
