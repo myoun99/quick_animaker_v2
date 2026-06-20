@@ -382,47 +382,48 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         ),
                                         child: Column(
                                           crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              for (final layer in widget.layers)
-                                                TimelineLayerControlsRow(
-                                                  layer: layer,
-                                                  active:
-                                                      layer.id ==
-                                                      widget.activeLayerId,
-                                                  metrics: LayerTimelineGrid
-                                                      ._metrics,
-                                                  onSelectLayer:
-                                                      widget.onSelectLayer,
-                                                  onToggleLayerVisibility: widget
-                                                      .onToggleLayerVisibility,
-                                                  onLayerOpacityChanged: widget
-                                                      .onLayerOpacityChanged,
-                                                ),
-                                              if (widget.layers.isEmpty)
-                                                SizedBox(
-                                                  width: LayerTimelineGrid
-                                                      ._metrics
-                                                      .layerControlsWidth,
-                                                  height: LayerTimelineGrid
-                                                      ._metrics
-                                                      .layerRowHeight,
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(8),
-                                                    child: Text(
-                                                      'No layers',
-                                                      style: TextStyle(
-                                                        color: colorScheme
-                                                            .onSurfaceVariant,
-                                                      ),
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            for (final layer in widget.layers)
+                                              TimelineLayerControlsRow(
+                                                layer: layer,
+                                                active:
+                                                    layer.id ==
+                                                    widget.activeLayerId,
+                                                metrics:
+                                                    LayerTimelineGrid._metrics,
+                                                onSelectLayer:
+                                                    widget.onSelectLayer,
+                                                onToggleLayerVisibility: widget
+                                                    .onToggleLayerVisibility,
+                                                onLayerOpacityChanged: widget
+                                                    .onLayerOpacityChanged,
+                                              ),
+                                            if (widget.layers.isEmpty)
+                                              SizedBox(
+                                                width: LayerTimelineGrid
+                                                    ._metrics
+                                                    .layerControlsWidth,
+                                                height: LayerTimelineGrid
+                                                    ._metrics
+                                                    .layerRowHeight,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    8,
+                                                  ),
+                                                  child: Text(
+                                                    'No layers',
+                                                    style: TextStyle(
+                                                      color: colorScheme
+                                                          .onSurfaceVariant,
                                                     ),
                                                   ),
                                                 ),
-                                            ],
-                                          ),
+                                              ),
+                                          ],
                                         ),
                                       ),
+                                    ),
                                     verticalScrollbarSlot: SizedBox(
                                       width: LayerTimelineGrid
                                           ._metrics
@@ -436,115 +437,110 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         ),
                                         child: LayoutBuilder(
                                           builder: (context, constraints) {
-                                              final viewportWidth =
-                                                  constraints.hasBoundedWidth
-                                                  ? constraints.maxWidth
-                                                  : 0.0;
-                                              final effectiveHorizontalScrollOffset =
-                                                  _effectiveHorizontalScrollOffset(
-                                                    requestedOffset:
-                                                        _horizontalScrollOffset,
-                                                    viewportWidth:
-                                                        viewportWidth,
-                                                  );
-                                              _lastEffectiveHorizontalScrollOffset =
-                                                  effectiveHorizontalScrollOffset;
-                                              _synchronizeHorizontalScrollController(
-                                                effectiveHorizontalScrollOffset,
-                                              );
-                                              final plan =
-                                                  calculateLayerTimelineGridVirtualizationPlan(
-                                                    horizontalScrollOffset:
-                                                        effectiveHorizontalScrollOffset,
-                                                    verticalScrollOffset: 0,
-                                                    viewportWidth:
-                                                        viewportWidth,
-                                                    viewportHeight:
-                                                        viewportHeight,
-                                                    visibleFrameCount:
-                                                        _visibleFrameCount,
-                                                    layerCount:
-                                                        widget.layers.length,
-                                                    metrics: LayerTimelineGrid
-                                                        ._metrics,
-                                                  );
-                                              final frameRange =
-                                                  plan.frameRange;
+                                            final viewportWidth =
+                                                constraints.hasBoundedWidth
+                                                ? constraints.maxWidth
+                                                : 0.0;
+                                            final effectiveHorizontalScrollOffset =
+                                                _effectiveHorizontalScrollOffset(
+                                                  requestedOffset:
+                                                      _horizontalScrollOffset,
+                                                  viewportWidth: viewportWidth,
+                                                );
+                                            _lastEffectiveHorizontalScrollOffset =
+                                                effectiveHorizontalScrollOffset;
+                                            _synchronizeHorizontalScrollController(
+                                              effectiveHorizontalScrollOffset,
+                                            );
+                                            final plan =
+                                                calculateLayerTimelineGridVirtualizationPlan(
+                                                  horizontalScrollOffset:
+                                                      effectiveHorizontalScrollOffset,
+                                                  verticalScrollOffset: 0,
+                                                  viewportWidth: viewportWidth,
+                                                  viewportHeight:
+                                                      viewportHeight,
+                                                  visibleFrameCount:
+                                                      _visibleFrameCount,
+                                                  layerCount:
+                                                      widget.layers.length,
+                                                  metrics: LayerTimelineGrid
+                                                      ._metrics,
+                                                );
+                                            final frameRange = plan.frameRange;
 
-                                              return TimelineFrameScrollViewport(
-                                                controller:
-                                                    _horizontalScrollController,
-                                                contentWidth:
-                                                    plan.totalFrameContentWidth,
-                                                contentHeight:
-                                                    verticalContentHeight,
-                                                child: TimelineFrameGridStack(
-                                                  rowsBody: TimelineFrameRowsScrollBody(
-                                                    layers: widget.layers,
-                                                    activeLayerId:
-                                                        widget.activeLayerId,
-                                                    currentFrameIndex: widget
-                                                        .currentFrameIndex,
-                                                    playbackFrameCount: widget
-                                                        .playbackFrameCount,
-                                                    frameStartIndex:
-                                                        frameRange.startIndex,
-                                                    frameEndIndexExclusive:
-                                                        frameRange
-                                                            .endIndexExclusive,
-                                                    leadingFrameSpacerWidth: plan
-                                                        .leadingFrameSpacerWidth,
-                                                    trailingFrameSpacerWidth: plan
-                                                        .trailingFrameSpacerWidth,
-                                                    totalFrameContentWidth: plan
-                                                        .totalFrameContentWidth,
-                                                    metrics: LayerTimelineGrid
-                                                        ._metrics,
-                                                    exposureStateForLayer: widget
-                                                        .exposureStateForLayer,
-                                                    hasMarkForLayer:
-                                                        widget.hasMarkForLayer,
-                                                    frameNameForLayer: widget
-                                                        .frameNameForLayer,
-                                                    onSelectLayer:
-                                                        widget.onSelectLayer,
-                                                    onSelectFrame:
-                                                        widget.onSelectFrame,
-                                                  ),
-                                                  cutEndBoundaryLeft:
-                                                      timelineCutEndBoundaryX(
-                                                        playbackFrameCount: widget
-                                                            .playbackFrameCount,
-                                                        metrics:
-                                                            LayerTimelineGrid
-                                                                ._metrics,
-                                                      ),
-                                                  showPlayhead:
-                                                      widget.currentFrameIndex >=
-                                                          frameRange
-                                                              .startIndex &&
-                                                      widget.currentFrameIndex <
-                                                          frameRange
-                                                              .endIndexExclusive,
-                                                  playheadWidth: plan
+                                            return TimelineFrameScrollViewport(
+                                              controller:
+                                                  _horizontalScrollController,
+                                              contentWidth:
+                                                  plan.totalFrameContentWidth,
+                                              contentHeight:
+                                                  verticalContentHeight,
+                                              child: TimelineFrameGridStack(
+                                                rowsBody: TimelineFrameRowsScrollBody(
+                                                  layers: widget.layers,
+                                                  activeLayerId:
+                                                      widget.activeLayerId,
+                                                  currentFrameIndex:
+                                                      widget.currentFrameIndex,
+                                                  playbackFrameCount:
+                                                      widget.playbackFrameCount,
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  leadingFrameSpacerWidth: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  trailingFrameSpacerWidth: plan
+                                                      .trailingFrameSpacerWidth,
+                                                  totalFrameContentWidth: plan
                                                       .totalFrameContentWidth,
-                                                  playhead: TimelinePlayhead(
-                                                    currentFrameIndex: widget
-                                                        .currentFrameIndex,
-                                                    frameStartIndex:
-                                                        frameRange.startIndex,
-                                                    frameEndIndexExclusive:
+                                                  metrics: LayerTimelineGrid
+                                                      ._metrics,
+                                                  exposureStateForLayer: widget
+                                                      .exposureStateForLayer,
+                                                  hasMarkForLayer:
+                                                      widget.hasMarkForLayer,
+                                                  frameNameForLayer:
+                                                      widget.frameNameForLayer,
+                                                  onSelectLayer:
+                                                      widget.onSelectLayer,
+                                                  onSelectFrame:
+                                                      widget.onSelectFrame,
+                                                ),
+                                                cutEndBoundaryLeft:
+                                                    timelineCutEndBoundaryX(
+                                                      playbackFrameCount: widget
+                                                          .playbackFrameCount,
+                                                      metrics: LayerTimelineGrid
+                                                          ._metrics,
+                                                    ),
+                                                showPlayhead:
+                                                    widget.currentFrameIndex >=
+                                                        frameRange.startIndex &&
+                                                    widget.currentFrameIndex <
                                                         frameRange
                                                             .endIndexExclusive,
-                                                    leadingFrameSpacerWidth: plan
-                                                        .leadingFrameSpacerWidth,
-                                                    metrics: LayerTimelineGrid
-                                                        ._metrics,
-                                                    layerCount:
-                                                        widget.layers.length,
-                                                  ),
+                                                playheadWidth:
+                                                    plan.totalFrameContentWidth,
+                                                playhead: TimelinePlayhead(
+                                                  currentFrameIndex:
+                                                      widget.currentFrameIndex,
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  leadingFrameSpacerWidth: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  metrics: LayerTimelineGrid
+                                                      ._metrics,
+                                                  layerCount:
+                                                      widget.layers.length,
                                                 ),
-                                              );
+                                              ),
+                                            );
                                           },
                                         ),
                                       ),

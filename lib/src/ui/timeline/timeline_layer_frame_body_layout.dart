@@ -16,11 +16,7 @@ class TimelineLayerFrameBodyLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        layerControlsRail,
-        verticalScrollbarSlot,
-        frameGridArea,
-      ],
+      children: [layerControlsRail, verticalScrollbarSlot, frameGridArea],
     );
   }
 }
