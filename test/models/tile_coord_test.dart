@@ -9,8 +9,14 @@ void main() {
       expect(coord.y, 1);
     });
 
-    test('negative x throws', () => expect(() => TileCoord(x: -1, y: 0), throwsArgumentError));
-    test('negative y throws', () => expect(() => TileCoord(x: 0, y: -1), throwsArgumentError));
+    test(
+      'negative x throws',
+      () => expect(() => TileCoord(x: -1, y: 0), throwsArgumentError),
+    );
+    test(
+      'negative y throws',
+      () => expect(() => TileCoord(x: 0, y: -1), throwsArgumentError),
+    );
 
     test('copyWith updates x', () {
       final coord = TileCoord(x: 1, y: 2);
@@ -37,18 +43,54 @@ void main() {
     });
 
     test('fromPixel maps pixel coordinate to tile coordinate', () {
-      expect(TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 256), TileCoord(x: 0, y: 0));
-      expect(TileCoord.fromPixel(pixelX: 255, pixelY: 255, tileSize: 256), TileCoord(x: 0, y: 0));
-      expect(TileCoord.fromPixel(pixelX: 511, pixelY: 10, tileSize: 256), TileCoord(x: 1, y: 0));
+      expect(
+        TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 256),
+        TileCoord(x: 0, y: 0),
+      );
+      expect(
+        TileCoord.fromPixel(pixelX: 255, pixelY: 255, tileSize: 256),
+        TileCoord(x: 0, y: 0),
+      );
+      expect(
+        TileCoord.fromPixel(pixelX: 511, pixelY: 10, tileSize: 256),
+        TileCoord(x: 1, y: 0),
+      );
     });
 
     test('fromPixel handles boundary exactly at tile size', () {
-      expect(TileCoord.fromPixel(pixelX: 256, pixelY: 256, tileSize: 256), TileCoord(x: 1, y: 1));
+      expect(
+        TileCoord.fromPixel(pixelX: 256, pixelY: 256, tileSize: 256),
+        TileCoord(x: 1, y: 1),
+      );
     });
 
-    test('fromPixel rejects negative pixelX', () => expect(() => TileCoord.fromPixel(pixelX: -1, pixelY: 0, tileSize: 256), throwsArgumentError));
-    test('fromPixel rejects negative pixelY', () => expect(() => TileCoord.fromPixel(pixelX: 0, pixelY: -1, tileSize: 256), throwsArgumentError));
-    test('fromPixel rejects zero tileSize', () => expect(() => TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 0), throwsArgumentError));
-    test('fromPixel rejects negative tileSize', () => expect(() => TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: -1), throwsArgumentError));
+    test(
+      'fromPixel rejects negative pixelX',
+      () => expect(
+        () => TileCoord.fromPixel(pixelX: -1, pixelY: 0, tileSize: 256),
+        throwsArgumentError,
+      ),
+    );
+    test(
+      'fromPixel rejects negative pixelY',
+      () => expect(
+        () => TileCoord.fromPixel(pixelX: 0, pixelY: -1, tileSize: 256),
+        throwsArgumentError,
+      ),
+    );
+    test(
+      'fromPixel rejects zero tileSize',
+      () => expect(
+        () => TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: 0),
+        throwsArgumentError,
+      ),
+    );
+    test(
+      'fromPixel rejects negative tileSize',
+      () => expect(
+        () => TileCoord.fromPixel(pixelX: 0, pixelY: 0, tileSize: -1),
+        throwsArgumentError,
+      ),
+    );
   });
 }

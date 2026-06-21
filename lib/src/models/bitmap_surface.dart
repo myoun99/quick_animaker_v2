@@ -84,7 +84,9 @@ class BitmapSurface {
       tiles[tile.coord] = tile;
     }
     return BitmapSurface(
-      canvasSize: CanvasSize.fromJson(json['canvasSize'] as Map<String, dynamic>),
+      canvasSize: CanvasSize.fromJson(
+        json['canvasSize'] as Map<String, dynamic>,
+      ),
       tileSize: json['tileSize'] as int? ?? 256,
       tiles: tiles,
     );
