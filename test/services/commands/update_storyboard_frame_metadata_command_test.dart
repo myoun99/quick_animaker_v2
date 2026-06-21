@@ -355,7 +355,7 @@ Frame _frame({
 Stroke _stroke(String id) => Stroke(
   id: StrokeId(id),
   points: const [StrokePoint(x: 1, y: 2)],
-  brushSettings: const BrushSettings(),
+  brushSettings: BrushSettings(),
 );
 
 Cut _cutById(Project project, CutId cutId) {

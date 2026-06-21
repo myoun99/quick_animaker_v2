@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -18,7 +19,7 @@ void main() {
     test(
       'BrushSettings creates with defaults and round-trips through JSON',
       () {
-        const brush = BrushSettings();
+        final brush = BrushSettings();
 
         expect(brush.color, 0xFF000000);
         expect(brush.size, 4.0);
@@ -26,6 +27,20 @@ void main() {
         expect(BrushSettings.fromJson(brush.toJson()), brush);
       },
     );
+
+    test('BrushPresetId equality works', () {
+      expect(const BrushPresetId('brush-a'), const BrushPresetId('brush-a'));
+      expect(
+        const BrushPresetId('brush-a'),
+        isNot(const BrushPresetId('brush-b')),
+      );
+    });
+
+    test('BrushPresetId toJson/fromJson round-trips', () {
+      const id = BrushPresetId('brush-a');
+
+      expect(BrushPresetId.fromJson(id.toJson()), id);
+    });
 
     test('StrokePoint creates and round-trips through JSON', () {
       const point = StrokePoint(x: 12.5, y: 24.75);

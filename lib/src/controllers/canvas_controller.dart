@@ -22,14 +22,14 @@ class CanvasController {
     FrameId Function()? getCurrentFrameId,
     LayerController? layerController,
     TimelineController? timelineController,
-    BrushSettings brushSettings = const BrushSettings(),
+    BrushSettings? brushSettings,
   }) : _repository = repository,
        _historyManager = historyManager,
        _frameId = frameId,
        _getCurrentFrameId = getCurrentFrameId,
        _layerController = layerController,
        _timelineController = timelineController,
-       _brushSettings = brushSettings;
+       _brushSettings = brushSettings ?? BrushSettings();
 
   final ProjectRepository _repository;
   final HistoryManager _historyManager;

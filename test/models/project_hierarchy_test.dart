@@ -22,7 +22,7 @@ void main() {
       final stroke = Stroke(
         id: const StrokeId('stroke-1'),
         points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-        brushSettings: const BrushSettings(size: 8),
+        brushSettings: BrushSettings(size: 8),
       );
       final frame = Frame(
         id: const FrameId('frame-1'),
@@ -82,7 +82,7 @@ void main() {
       Stroke(
         id: const StrokeId('stroke-1'),
         points: const [StrokePoint(x: 1, y: 2)],
-        brushSettings: const BrushSettings(),
+        brushSettings: BrushSettings(),
       ),
     ];
     final frame = Frame(

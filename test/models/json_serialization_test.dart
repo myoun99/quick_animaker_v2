@@ -45,7 +45,7 @@ void main() {
                             StrokePoint(x: 10.5, y: 20.25),
                             StrokePoint(x: 30.5, y: 40.25),
                           ],
-                          brushSettings: const BrushSettings(
+                          brushSettings: BrushSettings(
                             color: 0xFFFFFFFF,
                             size: 6,
                             opacity: 0.5,

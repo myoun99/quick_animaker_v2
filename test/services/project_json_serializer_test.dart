@@ -163,7 +163,7 @@ Stroke _sampleStroke() {
   return Stroke(
     id: const StrokeId('stroke-1'),
     points: const [StrokePoint(x: 1.5, y: 2.5), StrokePoint(x: 3.5, y: 4.5)],
-    brushSettings: const BrushSettings(
+    brushSettings: BrushSettings(
       color: 0xFF336699,
       size: 8,
       opacity: 0.5,
