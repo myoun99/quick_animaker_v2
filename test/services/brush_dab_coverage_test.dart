@@ -111,12 +111,16 @@ void main() {
       expect(nearEdge.coverage, lessThan(nearCenter.coverage));
     });
 
-    test('fractional center uses pixel center convention', () {
+    test('fractional center includes pixels exactly on radius boundary', () {
       final values = brushPixelCoveragesForDab(
         dab(x: 10.5, y: 10.5, size: 2, hardness: 1),
       );
       expect(values.map((value) => (value.x, value.y)), [
+        (10, 9),
+        (9, 10),
         (10, 10),
+        (11, 10),
+        (10, 11),
       ]);
     });
 
