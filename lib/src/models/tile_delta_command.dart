@@ -59,12 +59,11 @@ class TileDeltaCommand {
   }
 
   List<TileDelta> get _sortedDeltas {
-    return _deltasByCoord.values.toList()
-      ..sort((a, b) {
-        final yComparison = a.coord.y.compareTo(b.coord.y);
-        if (yComparison != 0) return yComparison;
-        return a.coord.x.compareTo(b.coord.x);
-      });
+    return _deltasByCoord.values.toList()..sort((a, b) {
+      final yComparison = a.coord.y.compareTo(b.coord.y);
+      if (yComparison != 0) return yComparison;
+      return a.coord.x.compareTo(b.coord.x);
+    });
   }
 
   BitmapSurface _apply(
