@@ -1,0 +1,187 @@
+import 'tile_coord.dart';
+
+class DirtyRegion {
+  DirtyRegion({
+    required this.left,
+    required this.top,
+    required this.rightExclusive,
+    required this.bottomExclusive,
+  }) {
+    _validateBounds(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+    );
+  }
+
+  factory DirtyRegion.fromLTBR({
+    required int left,
+    required int top,
+    required int rightExclusive,
+    required int bottomExclusive,
+  }) {
+    return DirtyRegion(
+      left: left,
+      top: top,
+      rightExclusive: rightExclusive,
+      bottomExclusive: bottomExclusive,
+    );
+  }
+
+  factory DirtyRegion.fromXYWH({
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) {
+    _validateNonNegative(x, 'x');
+    _validateNonNegative(y, 'y');
+    _validatePositive(width, 'width');
+    _validatePositive(height, 'height');
+    return DirtyRegion(
+      left: x,
+      top: y,
+      rightExclusive: x + width,
+      bottomExclusive: y + height,
+    );
+  }
+
+  final int left;
+  final int top;
+  final int rightExclusive;
+  final int bottomExclusive;
+
+  int get width => rightExclusive - left;
+
+  int get height => bottomExclusive - top;
+
+  DirtyRegion copyWith({
+    int? left,
+    int? top,
+    int? rightExclusive,
+    int? bottomExclusive,
+  }) {
+    return DirtyRegion(
+      left: left ?? this.left,
+      top: top ?? this.top,
+      rightExclusive: rightExclusive ?? this.rightExclusive,
+      bottomExclusive: bottomExclusive ?? this.bottomExclusive,
+    );
+  }
+
+  bool containsPixel({required int x, required int y}) {
+    return left <= x && x < rightExclusive && top <= y && y < bottomExclusive;
+  }
+
+  bool intersects(DirtyRegion other) {
+    return left < other.rightExclusive &&
+        rightExclusive > other.left &&
+        top < other.bottomExclusive &&
+        bottomExclusive > other.top;
+  }
+
+  DirtyRegion union(DirtyRegion other) {
+    return DirtyRegion(
+      left: _min(left, other.left),
+      top: _min(top, other.top),
+      rightExclusive: _max(rightExclusive, other.rightExclusive),
+      bottomExclusive: _max(bottomExclusive, other.bottomExclusive),
+    );
+  }
+
+  Set<TileCoord> toTileCoords({required int tileSize}) {
+    _validatePositive(tileSize, 'tileSize');
+
+    final startTileX = left ~/ tileSize;
+    final endTileX = (rightExclusive - 1) ~/ tileSize;
+    final startTileY = top ~/ tileSize;
+    final endTileY = (bottomExclusive - 1) ~/ tileSize;
+
+    return {
+      for (var y = startTileY; y <= endTileY; y++)
+        for (var x = startTileX; x <= endTileX; x++) TileCoord(x: x, y: y),
+    };
+  }
+
+  Map<String, dynamic> toJson() => {
+    'left': left,
+    'top': top,
+    'rightExclusive': rightExclusive,
+    'bottomExclusive': bottomExclusive,
+  };
+
+  factory DirtyRegion.fromJson(Map<String, dynamic> json) {
+    return DirtyRegion(
+      left: json['left'] as int,
+      top: json['top'] as int,
+      rightExclusive: json['rightExclusive'] as int,
+      bottomExclusive: json['bottomExclusive'] as int,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DirtyRegion &&
+          other.left == left &&
+          other.top == top &&
+          other.rightExclusive == rightExclusive &&
+          other.bottomExclusive == bottomExclusive;
+
+  @override
+  int get hashCode => Object.hash(left, top, rightExclusive, bottomExclusive);
+
+  @override
+  String toString() =>
+      'DirtyRegion(left: $left, top: $top, '
+      'rightExclusive: $rightExclusive, bottomExclusive: $bottomExclusive)';
+}
+
+void _validateBounds({
+  required int left,
+  required int top,
+  required int rightExclusive,
+  required int bottomExclusive,
+}) {
+  _validateNonNegative(left, 'left');
+  _validateNonNegative(top, 'top');
+  if (rightExclusive <= left) {
+    throw ArgumentError.value(
+      rightExclusive,
+      'rightExclusive',
+      'DirtyRegion.rightExclusive must be greater than left.',
+    );
+  }
+  if (bottomExclusive <= top) {
+    throw ArgumentError.value(
+      bottomExclusive,
+      'bottomExclusive',
+      'DirtyRegion.bottomExclusive must be greater than top.',
+    );
+  }
+}
+
+void _validateNonNegative(int value, String fieldName) {
+  if (value < 0) {
+    throw ArgumentError.value(
+      value,
+      fieldName,
+      'DirtyRegion.$fieldName must be greater than or equal to 0.',
+    );
+  }
+}
+
+void _validatePositive(int value, String fieldName) {
+  if (value <= 0) {
+    throw ArgumentError.value(
+      value,
+      fieldName,
+      'DirtyRegion.$fieldName must be greater than 0.',
+    );
+  }
+}
+
+int _min(int a, int b) => a < b ? a : b;
+
+int _max(int a, int b) => a > b ? a : b;
