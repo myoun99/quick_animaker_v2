@@ -20,7 +20,7 @@ void main() {
   frameNameCopyWithTests();
   test('copyWith changes only specified value object fields', () {
     const size = CanvasSize(width: 100, height: 200);
-    const brush = BrushSettings(size: 4);
+    final brush = BrushSettings(size: 4);
     const point = StrokePoint(x: 1, y: 2);
 
     expect(
@@ -29,7 +29,7 @@ void main() {
     );
     expect(
       brush.copyWith(opacity: 0.25),
-      const BrushSettings(size: 4, opacity: 0.25),
+      BrushSettings(size: 4, opacity: 0.25),
     );
     expect(point.copyWith(y: 3), const StrokePoint(x: 1, y: 3));
   });
@@ -67,7 +67,7 @@ void main() {
       final stroke = Stroke(
         id: const StrokeId('stroke-1'),
         points: const [StrokePoint(x: 1, y: 2)],
-        brushSettings: const BrushSettings(),
+        brushSettings: BrushSettings(),
       );
       final frame = Frame(
         id: const FrameId('frame-1'),
@@ -103,7 +103,7 @@ void main() {
       final hiddenLayer = layer.copyWith(isVisible: false);
       final longerFrame = frame.copyWith(duration: 2);
       final recoloredStroke = stroke.copyWith(
-        brushSettings: const BrushSettings(color: 0xFFFFFFFF),
+        brushSettings: BrushSettings(color: 0xFFFFFFFF),
       );
 
       expect(renamedProject.name, 'Renamed');
@@ -116,7 +116,7 @@ void main() {
       expect(longerFrame.strokes, frame.strokes);
       expect(frame.duration, 1);
       expect(recoloredStroke.points, stroke.points);
-      expect(stroke.brushSettings, const BrushSettings());
+      expect(stroke.brushSettings, BrushSettings());
     },
   );
 }

@@ -53,7 +53,7 @@ class StrokePainter extends CustomPainter {
       }
     }
 
-    _paintPoints(canvas, activePoints, const BrushSettings(opacity: 0.6));
+    _paintPoints(canvas, activePoints, BrushSettings(opacity: 0.6));
 
     final borderPaint = Paint()
       ..color = const Color(0xFFE0E0E0)

@@ -309,6 +309,6 @@ Stroke _stroke({required String id}) {
   return Stroke(
     id: StrokeId(id),
     points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-    brushSettings: const BrushSettings(),
+    brushSettings: BrushSettings(),
   );
 }

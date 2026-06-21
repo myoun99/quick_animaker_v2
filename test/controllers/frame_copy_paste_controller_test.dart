@@ -325,7 +325,7 @@ final _sampleStrokes = [
   Stroke(
     id: const StrokeId('stroke-a'),
     points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-    brushSettings: const BrushSettings(size: 8),
+    brushSettings: BrushSettings(size: 8),
   ),
 ];
 

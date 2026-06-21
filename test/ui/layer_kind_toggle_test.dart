@@ -104,7 +104,7 @@ Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
                           StrokePoint(x: 1, y: 2),
                           StrokePoint(x: 3, y: 4),
                         ],
-                        brushSettings: const BrushSettings(
+                        brushSettings: BrushSettings(
                           color: 0xFF112233,
                           size: 7,
                           opacity: 0.75,

@@ -208,7 +208,7 @@ Cut _cut({
               Stroke(
                 id: StrokeId('stroke-$id'),
                 points: const [StrokePoint(x: 1, y: 2)],
-                brushSettings: const BrushSettings(size: 6),
+                brushSettings: BrushSettings(size: 6),
               ),
             ],
           ),
