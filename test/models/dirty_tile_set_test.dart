@@ -67,7 +67,11 @@ void main() {
     });
 
     test('union combines two sets', () {
-      expect(DirtyTileSet([a, b]).union(DirtyTileSet([b, c])).coords, {a, b, c});
+      expect(DirtyTileSet([a, b]).union(DirtyTileSet([b, c])).coords, {
+        a,
+        b,
+        c,
+      });
     });
 
     test('intersect keeps shared coords', () {
@@ -81,7 +85,12 @@ void main() {
     test('fromRegion derives touched tiles', () {
       expect(
         DirtyTileSet.fromRegion(
-          region: DirtyRegion(left: 255, top: 0, rightExclusive: 257, bottomExclusive: 1),
+          region: DirtyRegion(
+            left: 255,
+            top: 0,
+            rightExclusive: 257,
+            bottomExclusive: 1,
+          ),
           tileSize: 256,
         ).coords,
         {a, b},
@@ -93,7 +102,12 @@ void main() {
         DirtyTileSet.fromRegions(
           regions: [
             DirtyRegion(left: 0, top: 0, rightExclusive: 1, bottomExclusive: 1),
-            DirtyRegion(left: 0, top: 255, rightExclusive: 1, bottomExclusive: 257),
+            DirtyRegion(
+              left: 0,
+              top: 255,
+              rightExclusive: 1,
+              bottomExclusive: 257,
+            ),
           ],
           tileSize: 256,
         ).coords,
