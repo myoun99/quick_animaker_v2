@@ -1,3 +1,10 @@
+> Note:
+> This document contains older phase-number references from the timeline performance planning period.
+> The performance principles remain valid, but phase ordering after Phase 150 is now superseded by:
+>
+> - docs/LongTerm_Roadmap_After_Phase_150.md
+> - docs/Bitmap_Canvas_Brush_Architecture.md
+
 # QuickAnimaker v2 Long-Term Priority / Performance Handoff Update
 
 ## 1. Global development priority
