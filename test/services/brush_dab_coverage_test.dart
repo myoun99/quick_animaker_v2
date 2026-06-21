@@ -87,8 +87,12 @@ void main() {
       final values = brushPixelCoveragesForDab(
         dab(x: 10, y: 10, size: 4, hardness: 0.5),
       );
-      final nearCenter = values.firstWhere((value) => value.x == 9 && value.y == 9);
-      final nearEdge = values.firstWhere((value) => value.x == 8 && value.y == 9);
+      final nearCenter = values.firstWhere(
+        (value) => value.x == 9 && value.y == 9,
+      );
+      final nearEdge = values.firstWhere(
+        (value) => value.x == 8 && value.y == 9,
+      );
       expect(nearCenter.coverage, 1);
       expect(nearEdge.coverage, allOf(greaterThan(0), lessThan(1)));
     });
@@ -105,8 +109,12 @@ void main() {
       final values = brushPixelCoveragesForDab(
         dab(x: 10, y: 10, size: 4, hardness: 0),
       );
-      final nearCenter = values.firstWhere((value) => value.x == 9 && value.y == 9);
-      final nearEdge = values.firstWhere((value) => value.x == 8 && value.y == 9);
+      final nearCenter = values.firstWhere(
+        (value) => value.x == 9 && value.y == 9,
+      );
+      final nearEdge = values.firstWhere(
+        (value) => value.x == 8 && value.y == 9,
+      );
       expect(nearCenter.coverage, closeTo(1 - (0.70710678 / 2), 0.000001));
       expect(nearEdge.coverage, lessThan(nearCenter.coverage));
     });
