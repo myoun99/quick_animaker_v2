@@ -64,7 +64,12 @@ void main() {
     });
 
     test('toRgbaBytes returns [r, g, b, a]', () {
-      expect(RgbaColor.fromArgbInt(0x80FF3366).toRgbaBytes(), [255, 51, 102, 128]);
+      expect(RgbaColor.fromArgbInt(0x80FF3366).toRgbaBytes(), [
+        255,
+        51,
+        102,
+        128,
+      ]);
     });
 
     test('copyWith updates r', () {
