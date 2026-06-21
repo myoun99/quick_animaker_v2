@@ -48,7 +48,8 @@ List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
   for (final dab in sequence.dabs) {
     for (final coverage in brushPixelCoveragesForDab(dab)) {
       final key = _PixelKey(coverage.x, coverage.y);
-      final before = currentColors[key] ?? destinationAt(coverage.x, coverage.y);
+      final before =
+          currentColors[key] ?? destinationAt(coverage.x, coverage.y);
       final after = blendBrushDabPixelCoverage(
         dab: dab,
         coverage: coverage,

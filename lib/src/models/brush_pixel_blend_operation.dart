@@ -74,7 +74,10 @@ void _validateNonNegative(int value, String fieldName) {
   }
 }
 
-void _validateColorChange({required RgbaColor before, required RgbaColor after}) {
+void _validateColorChange({
+  required RgbaColor before,
+  required RgbaColor after,
+}) {
   if (before == after) {
     throw ArgumentError.value(
       after,

@@ -7,12 +7,8 @@ void main() {
   final after = RgbaColor(r: 255, g: 0, b: 0, a: 255);
   final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
 
-  BrushPixelBlendOperation operation() => BrushPixelBlendOperation(
-    x: 1,
-    y: 2,
-    before: before,
-    after: after,
-  );
+  BrushPixelBlendOperation operation() =>
+      BrushPixelBlendOperation(x: 1, y: 2, before: before, after: after);
 
   group('BrushPixelBlendOperation', () {
     test('creates with valid values', () {
@@ -25,36 +21,24 @@ void main() {
 
     test('rejects negative x', () {
       expect(
-        () => BrushPixelBlendOperation(
-          x: -1,
-          y: 0,
-          before: before,
-          after: after,
-        ),
+        () =>
+            BrushPixelBlendOperation(x: -1, y: 0, before: before, after: after),
         throwsArgumentError,
       );
     });
 
     test('rejects negative y', () {
       expect(
-        () => BrushPixelBlendOperation(
-          x: 0,
-          y: -1,
-          before: before,
-          after: after,
-        ),
+        () =>
+            BrushPixelBlendOperation(x: 0, y: -1, before: before, after: after),
         throwsArgumentError,
       );
     });
 
     test('rejects before equal to after', () {
       expect(
-        () => BrushPixelBlendOperation(
-          x: 0,
-          y: 0,
-          before: before,
-          after: before,
-        ),
+        () =>
+            BrushPixelBlendOperation(x: 0, y: 0, before: before, after: before),
         throwsArgumentError,
       );
     });

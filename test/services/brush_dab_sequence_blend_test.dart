@@ -56,15 +56,25 @@ void main() {
       );
     });
 
-    test('returns one operation for one-pixel dab over transparent destination', () {
-      expect(
-        brushPixelBlendOperationsForDab(
-          dab: onePixelDab(),
-          destinationAt: (_, _) => transparent,
-        ),
-        [BrushPixelBlendOperation(x: 10, y: 10, before: transparent, after: red)],
-      );
-    });
+    test(
+      'returns one operation for one-pixel dab over transparent destination',
+      () {
+        expect(
+          brushPixelBlendOperationsForDab(
+            dab: onePixelDab(),
+            destinationAt: (_, _) => transparent,
+          ),
+          [
+            BrushPixelBlendOperation(
+              x: 10,
+              y: 10,
+              before: transparent,
+              after: red,
+            ),
+          ],
+        );
+      },
+    );
 
     test('skips no-op transparent source alpha', () {
       expect(
@@ -134,19 +144,22 @@ void main() {
       ]);
     });
 
-    test('accumulates before color from earlier operations on the same pixel', () {
-      final values = brushPixelBlendOperationsForDabSequence(
-        sequence: BrushDabSequence([
-          onePixelDab(color: 0xFFFF0000, sequence: 0),
-          onePixelDab(color: 0xFF0000FF, opacity: 0.5, sequence: 1),
-        ]),
-        destinationAt: (_, _) => transparent,
-      );
-      expect(values[0].before, transparent);
-      expect(values[0].after, red);
-      expect(values[1].before, red);
-      expect(values[1].after, RgbaColor(r: 128, g: 0, b: 128, a: 255));
-    });
+    test(
+      'accumulates before color from earlier operations on the same pixel',
+      () {
+        final values = brushPixelBlendOperationsForDabSequence(
+          sequence: BrushDabSequence([
+            onePixelDab(color: 0xFFFF0000, sequence: 0),
+            onePixelDab(color: 0xFF0000FF, opacity: 0.5, sequence: 1),
+          ]),
+          destinationAt: (_, _) => transparent,
+        );
+        expect(values[0].before, transparent);
+        expect(values[0].after, red);
+        expect(values[1].before, red);
+        expect(values[1].after, RgbaColor(r: 128, g: 0, b: 128, a: 255));
+      },
+    );
 
     test('does not re-read destinationAt after a pixel was changed', () {
       var reads = 0;
