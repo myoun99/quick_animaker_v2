@@ -1,4 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
+import 'package:quick_animaker_v2/src/models/brush_preset.dart';
+import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
@@ -58,6 +61,27 @@ void main() {
         expect(stroke.brushSettings.tipShape, BrushTipShape.round);
       },
     );
+
+    test('Stroke stores StrokePoint data and BrushSettings directly', () {
+      final brushSettings = BrushSettings(size: 5);
+      final stroke = Stroke(
+        id: const StrokeId('stroke-direct-storage'),
+        points: const [StrokePoint(x: 1, y: 2)],
+        brushSettings: brushSettings,
+      );
+      final preset = BrushPreset(
+        id: const BrushPresetId('preset-1'),
+        name: 'Preset 1',
+        settings: brushSettings.copyWith(size: 9),
+      );
+      final inputSample = BrushInputSample(x: 1, y: 2);
+
+      expect(stroke.points, isA<List<StrokePoint>>());
+      expect(stroke.points.single, isA<StrokePoint>());
+      expect(stroke.brushSettings, same(brushSettings));
+      expect(stroke.brushSettings, isNot(preset));
+      expect(stroke.points.single, isNot(inputSample));
+    });
 
     test('Stroke keeps BrushSettings as a value snapshot', () {
       final presetSettings = BrushSettings(size: 4, flow: 0.5);
