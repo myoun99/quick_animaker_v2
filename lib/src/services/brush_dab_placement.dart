@@ -46,8 +46,7 @@ BrushDabSequence brushInputSamplesToBrushDabs({
         BrushInputSample(
           x: previous.x + dx * t,
           y: previous.y + dy * t,
-          pressure:
-              previous.pressure + (next.pressure - previous.pressure) * t,
+          pressure: previous.pressure + (next.pressure - previous.pressure) * t,
         ),
       );
       distanceIntoSegment += spacingDistance;
@@ -59,8 +58,7 @@ BrushDabSequence brushInputSamplesToBrushDabs({
 
   final finalSample = input.last;
   final lastDab = dabs.last;
-  if (lastDab.center.x != finalSample.x ||
-      lastDab.center.y != finalSample.y) {
+  if (lastDab.center.x != finalSample.x || lastDab.center.y != finalSample.y) {
     emit(finalSample);
   }
 

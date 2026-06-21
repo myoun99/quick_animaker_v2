@@ -33,7 +33,10 @@ void main() {
     });
 
     test('dabs getter is unmodifiable', () {
-      expect(() => BrushDabSequence([dab(0)]).dabs.add(dab(1)), throwsUnsupportedError);
+      expect(
+        () => BrushDabSequence([dab(0)]).dabs.add(dab(1)),
+        throwsUnsupportedError,
+      );
     });
 
     test('isEmpty is true for empty sequence', () {
@@ -71,16 +74,29 @@ void main() {
     });
 
     test('addAll returns new sequence with dabs appended', () {
-      expect(BrushDabSequence([dab(0)]).addAll([dab(1), dab(2)]).dabs, [dab(0), dab(1), dab(2)]);
+      expect(BrushDabSequence([dab(0)]).addAll([dab(1), dab(2)]).dabs, [
+        dab(0),
+        dab(1),
+        dab(2),
+      ]);
     });
 
     test('equality is order-sensitive', () {
-      expect(BrushDabSequence([dab(0), dab(1)]), BrushDabSequence([dab(0), dab(1)]));
-      expect(BrushDabSequence([dab(0), dab(1)]), isNot(BrushDabSequence([dab(1), dab(0)])));
+      expect(
+        BrushDabSequence([dab(0), dab(1)]),
+        BrushDabSequence([dab(0), dab(1)]),
+      );
+      expect(
+        BrushDabSequence([dab(0), dab(1)]),
+        isNot(BrushDabSequence([dab(1), dab(0)])),
+      );
     });
 
     test('hashCode is order-sensitive', () {
-      expect(BrushDabSequence([dab(0), dab(1)]).hashCode, isNot(BrushDabSequence([dab(1), dab(0)]).hashCode));
+      expect(
+        BrushDabSequence([dab(0), dab(1)]).hashCode,
+        isNot(BrushDabSequence([dab(1), dab(0)]).hashCode),
+      );
     });
 
     test('toJson/fromJson round-trips', () {

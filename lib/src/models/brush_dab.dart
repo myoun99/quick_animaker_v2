@@ -29,7 +29,9 @@ class BrushDab {
   }) {
     return BrushDab(
       center: CanvasPoint(x: sample.x, y: sample.y),
-      size: settings.pressureSize ? settings.size * sample.pressure : settings.size,
+      size: settings.pressureSize
+          ? settings.size * sample.pressure
+          : settings.size,
       opacity: settings.pressureOpacity
           ? settings.opacity * sample.pressure
           : settings.opacity,

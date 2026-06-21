@@ -88,7 +88,10 @@ void main() {
     });
 
     test('copyWith updates center', () {
-      expect(dab().copyWith(center: CanvasPoint(x: 3, y: 4)).center, CanvasPoint(x: 3, y: 4));
+      expect(
+        dab().copyWith(center: CanvasPoint(x: 3, y: 4)).center,
+        CanvasPoint(x: 3, y: 4),
+      );
     });
 
     test('copyWith updates size', () {
@@ -108,7 +111,10 @@ void main() {
     });
 
     test('copyWith updates tipShape', () {
-      expect(dab().copyWith(tipShape: BrushTipShape.square).tipShape, BrushTipShape.square);
+      expect(
+        dab().copyWith(tipShape: BrushTipShape.square).tipShape,
+        BrushTipShape.square,
+      );
     });
 
     test('copyWith updates pressure', () {
@@ -120,8 +126,25 @@ void main() {
     });
 
     test('equality includes all fields', () {
-      final base = dab(size: 5, opacity: 0.6, flow: 0.7, hardness: 0.8, pressure: 0.9, sequence: 1);
-      expect(base, dab(size: 5, opacity: 0.6, flow: 0.7, hardness: 0.8, pressure: 0.9, sequence: 1));
+      final base = dab(
+        size: 5,
+        opacity: 0.6,
+        flow: 0.7,
+        hardness: 0.8,
+        pressure: 0.9,
+        sequence: 1,
+      );
+      expect(
+        base,
+        dab(
+          size: 5,
+          opacity: 0.6,
+          flow: 0.7,
+          hardness: 0.8,
+          pressure: 0.9,
+          sequence: 1,
+        ),
+      );
       expect(base.copyWith(center: CanvasPoint(x: 9, y: 2)), isNot(base));
       expect(base.copyWith(size: 9), isNot(base));
       expect(base.copyWith(opacity: 0.9), isNot(base));
@@ -137,27 +160,51 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      final value = dab(tipShape: BrushTipShape.square, pressure: 0.4, sequence: 2);
+      final value = dab(
+        tipShape: BrushTipShape.square,
+        pressure: 0.4,
+        sequence: 2,
+      );
       expect(BrushDab.fromJson(value.toJson()), value);
     });
 
     test('fromInputSample uses sample position as CanvasPoint', () {
-      final value = BrushDab.fromInputSample(sample: BrushInputSample(x: 3, y: 4), settings: BrushSettings(), sequence: 0);
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 3, y: 4),
+        settings: BrushSettings(),
+        sequence: 0,
+      );
       expect(value.center, CanvasPoint(x: 3, y: 4));
     });
 
     test('fromInputSample applies pressureSize', () {
-      final value = BrushDab.fromInputSample(sample: BrushInputSample(x: 0, y: 0, pressure: 0.25), settings: BrushSettings(size: 20, pressureSize: true), sequence: 0);
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
+        settings: BrushSettings(size: 20, pressureSize: true),
+        sequence: 0,
+      );
       expect(value.size, 5);
     });
 
     test('fromInputSample applies pressureOpacity', () {
-      final value = BrushDab.fromInputSample(sample: BrushInputSample(x: 0, y: 0, pressure: 0.25), settings: BrushSettings(opacity: 0.8, pressureOpacity: true), sequence: 0);
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
+        settings: BrushSettings(opacity: 0.8, pressureOpacity: true),
+        sequence: 0,
+      );
       expect(value.opacity, 0.2);
     });
 
     test('fromInputSample preserves flow/hardness/tipShape', () {
-      final value = BrushDab.fromInputSample(sample: BrushInputSample(x: 0, y: 0), settings: BrushSettings(flow: 0.3, hardness: 0.4, tipShape: BrushTipShape.square), sequence: 0);
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0),
+        settings: BrushSettings(
+          flow: 0.3,
+          hardness: 0.4,
+          tipShape: BrushTipShape.square,
+        ),
+        sequence: 0,
+      );
       expect(value.flow, 0.3);
       expect(value.hardness, 0.4);
       expect(value.tipShape, BrushTipShape.square);
