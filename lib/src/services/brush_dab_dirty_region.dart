@@ -28,13 +28,9 @@ DirtyRegion? dirtyRegionForBrushDab(BrushDab dab) {
   );
 }
 
-List<DirtyRegion> dirtyRegionsForBrushDabSequence(
-  BrushDabSequence sequence,
-) {
+List<DirtyRegion> dirtyRegionsForBrushDabSequence(BrushDabSequence sequence) {
   return List<DirtyRegion>.unmodifiable(
-    sequence.dabs
-        .map(dirtyRegionForBrushDab)
-        .whereType<DirtyRegion>(),
+    sequence.dabs.map(dirtyRegionForBrushDab).whereType<DirtyRegion>(),
   );
 }
 
@@ -44,7 +40,7 @@ DirtyRegion? dirtyRegionForBrushDabSequence(BrushDabSequence sequence) {
     return null;
   }
 
-  return regions.skip(1).fold(regions.first, (union, region) {
+  return regions.skip(1).fold<DirtyRegion>(regions.first, (union, region) {
     return union.union(region);
   });
 }
