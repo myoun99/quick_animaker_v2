@@ -49,7 +49,9 @@ class CacheInvalidationPlan {
       Set.unmodifiable(_playbackPreviews);
 
   bool get isEmpty =>
-      _layerTiles.isEmpty && _frameComposites.isEmpty && _playbackPreviews.isEmpty;
+      _layerTiles.isEmpty &&
+      _frameComposites.isEmpty &&
+      _playbackPreviews.isEmpty;
 
   bool get isNotEmpty => !isEmpty;
 

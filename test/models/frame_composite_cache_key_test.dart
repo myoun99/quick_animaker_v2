@@ -4,7 +4,10 @@ import 'package:quick_animaker_v2/src/models/frame_composite_cache_key.dart';
 
 void main() {
   group('FrameCompositeCacheKey', () {
-    final key = FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: 3);
+    final key = FrameCompositeCacheKey(
+      cutId: const CutId('cut-a'),
+      frameIndex: 3,
+    );
 
     test('creates with cutId and frameIndex', () {
       expect(key.cutId, const CutId('cut-a'));
@@ -12,7 +15,11 @@ void main() {
     });
 
     test('rejects negative frameIndex', () {
-      expect(() => FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: -1), throwsArgumentError);
+      expect(
+        () =>
+            FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: -1),
+        throwsArgumentError,
+      );
     });
 
     test('copyWith updates cutId', () {
@@ -24,13 +31,22 @@ void main() {
     });
 
     test('equality includes all fields', () {
-      expect(key, FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: 3));
+      expect(
+        key,
+        FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: 3),
+      );
       expect(key, isNot(key.copyWith(cutId: const CutId('other'))));
       expect(key, isNot(key.copyWith(frameIndex: 4)));
     });
 
     test('hashCode is value-based', () {
-      expect(key.hashCode, FrameCompositeCacheKey(cutId: const CutId('cut-a'), frameIndex: 3).hashCode);
+      expect(
+        key.hashCode,
+        FrameCompositeCacheKey(
+          cutId: const CutId('cut-a'),
+          frameIndex: 3,
+        ).hashCode,
+      );
     });
 
     test('toJson/fromJson round-trips', () {

@@ -18,7 +18,14 @@ void main() {
     });
 
     test('rejects negative frameIndex', () {
-      expect(() => PlaybackPreviewCacheKey(cutId: const CutId('cut-a'), frameIndex: -1, previewSize: const CanvasSize(width: 1, height: 1)), throwsArgumentError);
+      expect(
+        () => PlaybackPreviewCacheKey(
+          cutId: const CutId('cut-a'),
+          frameIndex: -1,
+          previewSize: const CanvasSize(width: 1, height: 1),
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('copyWith updates cutId', () {
@@ -30,18 +37,40 @@ void main() {
     });
 
     test('copyWith updates previewSize', () {
-      expect(key.copyWith(previewSize: const CanvasSize(width: 640, height: 360)).previewSize, const CanvasSize(width: 640, height: 360));
+      expect(
+        key
+            .copyWith(previewSize: const CanvasSize(width: 640, height: 360))
+            .previewSize,
+        const CanvasSize(width: 640, height: 360),
+      );
     });
 
     test('equality includes all fields', () {
-      expect(key, PlaybackPreviewCacheKey(cutId: const CutId('cut-a'), frameIndex: 3, previewSize: const CanvasSize(width: 320, height: 180)));
+      expect(
+        key,
+        PlaybackPreviewCacheKey(
+          cutId: const CutId('cut-a'),
+          frameIndex: 3,
+          previewSize: const CanvasSize(width: 320, height: 180),
+        ),
+      );
       expect(key, isNot(key.copyWith(cutId: const CutId('other'))));
       expect(key, isNot(key.copyWith(frameIndex: 4)));
-      expect(key, isNot(key.copyWith(previewSize: const CanvasSize(width: 1, height: 1))));
+      expect(
+        key,
+        isNot(key.copyWith(previewSize: const CanvasSize(width: 1, height: 1))),
+      );
     });
 
     test('hashCode is value-based', () {
-      expect(key.hashCode, PlaybackPreviewCacheKey(cutId: const CutId('cut-a'), frameIndex: 3, previewSize: const CanvasSize(width: 320, height: 180)).hashCode);
+      expect(
+        key.hashCode,
+        PlaybackPreviewCacheKey(
+          cutId: const CutId('cut-a'),
+          frameIndex: 3,
+          previewSize: const CanvasSize(width: 320, height: 180),
+        ).hashCode,
+      );
     });
 
     test('toJson/fromJson round-trips', () {
@@ -49,7 +78,12 @@ void main() {
     });
 
     test('different previewSize creates different key', () {
-      expect(key, isNot(key.copyWith(previewSize: const CanvasSize(width: 320, height: 181))));
+      expect(
+        key,
+        isNot(
+          key.copyWith(previewSize: const CanvasSize(width: 320, height: 181)),
+        ),
+      );
     });
 
     test('toString includes useful identifying data', () {
