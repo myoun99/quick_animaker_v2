@@ -50,8 +50,7 @@ class CanvasViewport {
   int get hashCode => Object.hash(zoom, panX, panY);
 
   @override
-  String toString() =>
-      'CanvasViewport(zoom: $zoom, panX: $panX, panY: $panY)';
+  String toString() => 'CanvasViewport(zoom: $zoom, panX: $panX, panY: $panY)';
 }
 
 void _validateZoom(double value) {

@@ -47,11 +47,17 @@ void main() {
     });
 
     test('infinite x throws', () {
-      expect(() => ViewportPoint(x: double.infinity, y: 2), throwsArgumentError);
+      expect(
+        () => ViewportPoint(x: double.infinity, y: 2),
+        throwsArgumentError,
+      );
     });
 
     test('infinite y throws', () {
-      expect(() => ViewportPoint(x: 1, y: double.infinity), throwsArgumentError);
+      expect(
+        () => ViewportPoint(x: 1, y: double.infinity),
+        throwsArgumentError,
+      );
     });
   });
 }
