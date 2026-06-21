@@ -15,7 +15,10 @@ void main() {
   final rgbaOrderColor = RgbaColor(r: 1, g: 2, b: 3, a: 4);
 
   BitmapTile blankTile({int tileX = 0, int tileY = 0, int size = 2}) {
-    return BitmapTile.blank(coord: TileCoord(x: tileX, y: tileY), size: size);
+    return BitmapTile.blank(
+      coord: TileCoord(x: tileX, y: tileY),
+      size: size,
+    );
   }
 
   BrushPixelBlendOperation op({
@@ -24,12 +27,7 @@ void main() {
     required RgbaColor before,
     required RgbaColor after,
   }) {
-    return BrushPixelBlendOperation(
-      x: x,
-      y: y,
-      before: before,
-      after: after,
-    );
+    return BrushPixelBlendOperation(x: x, y: y, before: before, after: after);
   }
 
   group('applyBrushPixelBlendOperationsToBitmapTile', () {
@@ -65,10 +63,7 @@ void main() {
 
       expect(identical(result, tile), isFalse);
       expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0), red);
-      expect(
-        readRgbaColorFromBitmapTile(tile: tile, x: 1, y: 0),
-        transparent,
-      );
+      expect(readRgbaColorFromBitmapTile(tile: tile, x: 1, y: 0), transparent);
     });
 
     test('maps global coordinates to local tile coordinates', () {
@@ -108,9 +103,18 @@ void main() {
       );
 
       expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 1), blue);
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 0, y: 0), transparent);
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0), transparent);
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 0, y: 1), transparent);
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 0, y: 0),
+        transparent,
+      );
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0),
+        transparent,
+      );
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 0, y: 1),
+        transparent,
+      );
     });
 
     test('applies multiple operations in provided order', () {
@@ -144,17 +148,20 @@ void main() {
       expect(readRgbaColorFromBitmapTile(tile: result, x: 0, y: 0), blue);
     });
 
-    test('throws StateError when operation.before does not match current tile pixel', () {
-      final tile = blankTile();
+    test(
+      'throws StateError when operation.before does not match current tile pixel',
+      () {
+        final tile = blankTile();
 
-      expect(
-        () => applyBrushPixelBlendOperationsToBitmapTile(
-          tile: tile,
-          operations: [op(x: 0, y: 0, before: red, after: blue)],
-        ),
-        throwsA(isA<StateError>()),
-      );
-    });
+        expect(
+          () => applyBrushPixelBlendOperationsToBitmapTile(
+            tile: tile,
+            operations: [op(x: 0, y: 0, before: red, after: blue)],
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
 
     test('does not mutate original tile', () {
       final tile = blankTile();
@@ -201,10 +208,19 @@ void main() {
         operations: [op(x: 1, y: 0, before: transparent, after: green)],
       );
 
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 0, y: 0), transparent);
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 0, y: 0),
+        transparent,
+      );
       expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0), green);
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 0, y: 1), transparent);
-      expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 1), transparent);
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 0, y: 1),
+        transparent,
+      );
+      expect(
+        readRgbaColorFromBitmapTile(tile: result, x: 1, y: 1),
+        transparent,
+      );
     });
 
     test('uses RGBA byte order through RgbaColor', () {
