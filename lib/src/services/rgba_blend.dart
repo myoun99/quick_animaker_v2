@@ -64,4 +64,4 @@ void _validateUnitIntervalFinite(double value, String fieldName) {
   }
 }
 
-int _roundAndClampByte(double value) => value.round().clamp(0, 255) as int;
+int _roundAndClampByte(double value) => value.round().clamp(0, 255);
