@@ -160,6 +160,57 @@ void main() {
       );
       expect(find.text('No Storyboard Layer'), findsOneWidget);
     });
+
+    testWidgets(
+      'renders storyboard layer between animation layers in raw order',
+      (tester) async {
+        await _pumpStoryboardPanel(tester, _projectWithLayerStack());
+
+        expect(
+          find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
+          findsOneWidget,
+        );
+        expect(find.text('Middle Storyboard'), findsOneWidget);
+      },
+    );
+
+    testWidgets('does not select storyboard layer by name', (tester) async {
+      await _pumpStoryboardPanel(tester, _projectWithMisleadingLayerNames());
+
+      expect(find.text('Animation Named Layer'), findsOneWidget);
+      expect(find.text('Storyboard'), findsNothing);
+    });
+
+    testWidgets('surfaces multiple storyboard layers with StateError', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(tester, _projectWithMultipleStoryboardLayers());
+
+      expect(tester.takeException(), isA<StateError>());
+    });
+
+    testWidgets('renders multi-track rows as storyboard overview', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(tester, _multiTrackProject());
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-track-row-track-a')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-track-row-track-b')),
+        findsOneWidget,
+      );
+      expect(find.text('V1'), findsOneWidget);
+      expect(find.text('V2'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }
 
@@ -239,6 +290,88 @@ Project _twoCutProject() {
             duration: 12,
             canvasSize: const CanvasSize(width: 1280, height: 720),
             layers: [_layer(LayerKind.animation, 'Animation B')],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Project _projectWithLayerStack() {
+  return _projectWithLayers([
+    _layer(LayerKind.animation, 'Below Animation'),
+    _layer(LayerKind.storyboard, 'Middle Storyboard'),
+    _layer(LayerKind.animation, 'Above Animation'),
+  ]);
+}
+
+Project _projectWithMisleadingLayerNames() {
+  return _projectWithLayers([
+    _layer(LayerKind.animation, 'Storyboard'),
+    _layer(LayerKind.storyboard, 'Animation Named Layer'),
+  ]);
+}
+
+Project _projectWithMultipleStoryboardLayers() {
+  return _projectWithLayers([
+    _layer(LayerKind.storyboard, 'Storyboard A'),
+    _layer(LayerKind.animation, 'Animation'),
+    _layer(LayerKind.storyboard, 'Storyboard B'),
+  ]);
+}
+
+Project _projectWithLayers(List<Layer> layers) {
+  return Project(
+    id: const ProjectId('project-layer-stack'),
+    name: 'Project Layer Stack',
+    createdAt: DateTime.utc(2026, 6, 20),
+    tracks: [
+      Track(
+        id: const TrackId('track-a'),
+        name: 'Track A',
+        cuts: [
+          Cut(
+            id: const CutId('cut-a'),
+            name: 'Cut A',
+            duration: 24,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            layers: layers,
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Project _multiTrackProject() {
+  return Project(
+    id: const ProjectId('project-multi-track'),
+    name: 'Project Multi Track',
+    createdAt: DateTime.utc(2026, 6, 20),
+    tracks: [
+      Track(
+        id: const TrackId('track-a'),
+        name: 'Track A',
+        cuts: [
+          Cut(
+            id: const CutId('cut-a'),
+            name: 'Cut A',
+            duration: 24,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            layers: [_layer(LayerKind.storyboard, 'Storyboard A')],
+          ),
+        ],
+      ),
+      Track(
+        id: const TrackId('track-b'),
+        name: 'Track B',
+        cuts: [
+          Cut(
+            id: const CutId('cut-b'),
+            name: 'Cut B',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            layers: [_layer(LayerKind.storyboard, 'Storyboard B')],
           ),
         ],
       ),

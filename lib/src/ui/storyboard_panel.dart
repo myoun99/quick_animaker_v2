@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
-import '../models/layer.dart';
-import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track.dart';
+import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_scale.dart';
@@ -239,7 +238,7 @@ class _StoryboardCutBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final cut = layoutEntry.cut;
-    final storyboardLayer = _storyboardLayerFor(cut);
+    final storyboardLayer = storyboardLayerForCut(cut);
 
     return TimelineBlock(
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
@@ -365,12 +364,4 @@ class _StoryboardCutBlock extends StatelessWidget {
     );
   }
 
-  Layer? _storyboardLayerFor(Cut cut) {
-    for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.storyboard) {
-        return layer;
-      }
-    }
-    return null;
-  }
 }
