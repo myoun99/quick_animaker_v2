@@ -52,6 +52,5 @@ class BrushPreset {
   int get hashCode => Object.hash(id, name, settings);
 
   @override
-  String toString() =>
-      'BrushPreset(id: $id, name: $name, settings: $settings)';
+  String toString() => 'BrushPreset(id: $id, name: $name, settings: $settings)';
 }

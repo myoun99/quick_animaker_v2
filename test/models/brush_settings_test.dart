@@ -50,17 +50,20 @@ void main() {
     test('toJson includes new fields', () {
       final json = BrushSettings().toJson();
 
-      expect(json.keys, containsAll(<String>[
-        'color',
-        'size',
-        'opacity',
-        'flow',
-        'hardness',
-        'spacing',
-        'tipShape',
-        'pressureSize',
-        'pressureOpacity',
-      ]));
+      expect(
+        json.keys,
+        containsAll(<String>[
+          'color',
+          'size',
+          'opacity',
+          'flow',
+          'hardness',
+          'spacing',
+          'tipShape',
+          'pressureSize',
+          'pressureOpacity',
+        ]),
+      );
     });
 
     test('fromJson round-trips new fields', () {

@@ -41,16 +41,19 @@ void main() {
       expect(preset.copyWith(settings: BrushSettings(size: 6)), isNot(preset));
     });
 
-    test('duplicate preset names are allowed because BrushPresetId is identity', () {
-      final duplicateName = BrushPreset(
-        id: const BrushPresetId('preset-2'),
-        name: preset.name,
-        settings: preset.settings,
-      );
+    test(
+      'duplicate preset names are allowed because BrushPresetId is identity',
+      () {
+        final duplicateName = BrushPreset(
+          id: const BrushPresetId('preset-2'),
+          name: preset.name,
+          settings: preset.settings,
+        );
 
-      expect(duplicateName.name, preset.name);
-      expect(duplicateName.id, isNot(preset.id));
-      expect(duplicateName, isNot(preset));
-    });
+        expect(duplicateName.name, preset.name);
+        expect(duplicateName.id, isNot(preset.id));
+        expect(duplicateName, isNot(preset));
+      },
+    );
   });
 }

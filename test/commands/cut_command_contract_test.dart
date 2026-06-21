@@ -647,11 +647,7 @@ Stroke _sourceStroke() {
   return Stroke(
     id: const StrokeId('stroke-line-a'),
     points: [const StrokePoint(x: 1, y: 2)],
-    brushSettings: BrushSettings(
-      color: 0xFF112233,
-      size: 7,
-      opacity: 0.6,
-    ),
+    brushSettings: BrushSettings(color: 0xFF112233, size: 7, opacity: 0.6),
   );
 }
 
@@ -659,11 +655,7 @@ Stroke _editedStroke() {
   return Stroke(
     id: const StrokeId('stroke-edited'),
     points: [const StrokePoint(x: 10, y: 20)],
-    brushSettings: BrushSettings(
-      color: 0xFF445566,
-      size: 3,
-      opacity: 0.8,
-    ),
+    brushSettings: BrushSettings(color: 0xFF445566, size: 3, opacity: 0.8),
   );
 }
 

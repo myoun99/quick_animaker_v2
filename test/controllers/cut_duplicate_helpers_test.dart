@@ -365,10 +365,6 @@ Stroke _stroke() {
   return Stroke(
     id: const StrokeId('stroke-a'),
     points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-    brushSettings: BrushSettings(
-      color: 0xFF123456,
-      size: 8,
-      opacity: 0.4,
-    ),
+    brushSettings: BrushSettings(color: 0xFF123456, size: 8, opacity: 0.4),
   );
 }

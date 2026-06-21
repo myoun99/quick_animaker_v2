@@ -35,26 +35,29 @@ void main() {
       expect(brushJson['pressureOpacity'], isTrue);
     });
 
-    test('Stroke deserializes legacy BrushSettings nested in old stroke JSON', () {
-      final stroke = Stroke.fromJson({
-        'id': const StrokeId('stroke-legacy').toJson(),
-        'points': const [
-          {'x': 1, 'y': 2},
-        ],
-        'brushSettings': const {
-          'color': 0xFFFFFFFF,
-          'size': 6,
-          'opacity': 0.5,
-        },
-      });
+    test(
+      'Stroke deserializes legacy BrushSettings nested in old stroke JSON',
+      () {
+        final stroke = Stroke.fromJson({
+          'id': const StrokeId('stroke-legacy').toJson(),
+          'points': const [
+            {'x': 1, 'y': 2},
+          ],
+          'brushSettings': const {
+            'color': 0xFFFFFFFF,
+            'size': 6,
+            'opacity': 0.5,
+          },
+        });
 
-      expect(
-        stroke.brushSettings,
-        BrushSettings(color: 0xFFFFFFFF, size: 6, opacity: 0.5),
-      );
-      expect(stroke.brushSettings.flow, 1.0);
-      expect(stroke.brushSettings.tipShape, BrushTipShape.round);
-    });
+        expect(
+          stroke.brushSettings,
+          BrushSettings(color: 0xFFFFFFFF, size: 6, opacity: 0.5),
+        );
+        expect(stroke.brushSettings.flow, 1.0);
+        expect(stroke.brushSettings.tipShape, BrushTipShape.round);
+      },
+    );
 
     test('Stroke keeps BrushSettings as a value snapshot', () {
       final presetSettings = BrushSettings(size: 4, flow: 0.5);
