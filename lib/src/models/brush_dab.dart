@@ -6,6 +6,7 @@ import 'canvas_point.dart';
 class BrushDab {
   BrushDab({
     required this.center,
+    required this.color,
     required this.size,
     required this.opacity,
     required this.flow,
@@ -14,6 +15,7 @@ class BrushDab {
     required this.pressure,
     required this.sequence,
   }) {
+    _validateColor(color);
     _validateNonNegativeFinite(size, 'size');
     _validateUnitIntervalFinite(opacity, 'opacity');
     _validateUnitIntervalFinite(flow, 'flow');
@@ -29,6 +31,7 @@ class BrushDab {
   }) {
     return BrushDab(
       center: CanvasPoint(x: sample.x, y: sample.y),
+      color: settings.color,
       size: settings.pressureSize
           ? settings.size * sample.pressure
           : settings.size,
@@ -44,6 +47,7 @@ class BrushDab {
   }
 
   final CanvasPoint center;
+  final int color;
   final double size;
   final double opacity;
   final double flow;
@@ -54,6 +58,7 @@ class BrushDab {
 
   BrushDab copyWith({
     CanvasPoint? center,
+    int? color,
     double? size,
     double? opacity,
     double? flow,
@@ -64,6 +69,7 @@ class BrushDab {
   }) {
     return BrushDab(
       center: center ?? this.center,
+      color: color ?? this.color,
       size: size ?? this.size,
       opacity: opacity ?? this.opacity,
       flow: flow ?? this.flow,
@@ -76,6 +82,7 @@ class BrushDab {
 
   Map<String, dynamic> toJson() => {
     'center': center.toJson(),
+    'color': color,
     'size': size,
     'opacity': opacity,
     'flow': flow,
@@ -88,6 +95,7 @@ class BrushDab {
   factory BrushDab.fromJson(Map<String, dynamic> json) {
     return BrushDab(
       center: CanvasPoint.fromJson(json['center'] as Map<String, dynamic>),
+      color: json['color'] as int? ?? 0xFF000000,
       size: (json['size'] as num).toDouble(),
       opacity: (json['opacity'] as num).toDouble(),
       flow: (json['flow'] as num).toDouble(),
@@ -103,6 +111,7 @@ class BrushDab {
       identical(this, other) ||
       other is BrushDab &&
           other.center == center &&
+          other.color == color &&
           other.size == size &&
           other.opacity == opacity &&
           other.flow == flow &&
@@ -114,6 +123,7 @@ class BrushDab {
   @override
   int get hashCode => Object.hash(
     center,
+    color,
     size,
     opacity,
     flow,
@@ -125,9 +135,19 @@ class BrushDab {
 
   @override
   String toString() =>
-      'BrushDab(center: $center, size: $size, opacity: $opacity, '
-      'flow: $flow, hardness: $hardness, tipShape: $tipShape, '
-      'pressure: $pressure, sequence: $sequence)';
+      'BrushDab(center: $center, color: $color, size: $size, '
+      'opacity: $opacity, flow: $flow, hardness: $hardness, '
+      'tipShape: $tipShape, pressure: $pressure, sequence: $sequence)';
+}
+
+void _validateColor(int value) {
+  if (value < 0 || value > 0xFFFFFFFF) {
+    throw ArgumentError.value(
+      value,
+      'color',
+      'BrushDab.color must be between 0 and 0xFFFFFFFF inclusive.',
+    );
+  }
 }
 
 void _validateNonNegativeFinite(double value, String fieldName) {

@@ -19,6 +19,7 @@ void main() {
   }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
+      color: 0xFF000000,
       size: size,
       opacity: opacity,
       flow: flow,

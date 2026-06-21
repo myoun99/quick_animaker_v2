@@ -6,8 +6,9 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 
 void main() {
   group('BrushDabSequence', () {
-    BrushDab dab(int sequence) => BrushDab(
+    BrushDab dab(int sequence, {int color = 0xFF000000}) => BrushDab(
       center: CanvasPoint(x: sequence.toDouble(), y: sequence.toDouble()),
+      color: color,
       size: 4,
       opacity: 1,
       flow: 1,
@@ -102,6 +103,14 @@ void main() {
     test('toJson/fromJson round-trips', () {
       final sequence = BrushDabSequence([dab(0), dab(1)]);
       expect(BrushDabSequence.fromJson(sequence.toJson()), sequence);
+    });
+
+    test('toJson/fromJson preserves dab color', () {
+      final sequence = BrushDabSequence([dab(0, color: 0x80FF3366)]);
+      expect(
+        BrushDabSequence.fromJson(sequence.toJson()).dabs.single.color,
+        0x80FF3366,
+      );
     });
   });
 }

@@ -109,6 +109,14 @@ void main() {
       expect(sequence.dabs.single.opacity, 0.4);
     });
 
+    test('preserves BrushSettings color into every emitted dab', () {
+      final sequence = brushInputSamplesToBrushDabs(
+        samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 12, y: 0)],
+        settings: settings.copyWith(color: 0x80FF3366),
+      );
+      expect(sequence.dabs.map((dab) => dab.color), everyElement(0x80FF3366));
+    });
+
     test('sequence numbers start at 0 and increase by 1', () {
       final sequence = brushInputSamplesToBrushDabs(
         samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 12, y: 0)],

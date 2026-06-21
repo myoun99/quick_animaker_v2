@@ -9,6 +9,7 @@ void main() {
   group('BrushDab', () {
     BrushDab dab({
       CanvasPoint? center,
+      int color = 0xFF000000,
       double size = 4,
       double opacity = 1,
       double flow = 1,
@@ -19,6 +20,7 @@ void main() {
     }) {
       return BrushDab(
         center: center ?? CanvasPoint(x: 1, y: 2),
+        color: color,
         size: size,
         opacity: opacity,
         flow: flow,
@@ -31,6 +33,15 @@ void main() {
 
     test('creates with valid values', () {
       expect(dab().center, CanvasPoint(x: 1, y: 2));
+      expect(dab(color: 0x80FF3366).color, 0x80FF3366);
+    });
+
+    test('rejects negative color', () {
+      expect(() => dab(color: -1), throwsArgumentError);
+    });
+
+    test('rejects color greater than 0xFFFFFFFF', () {
+      expect(() => dab(color: 0x100000000), throwsArgumentError);
     });
 
     test('rejects negative size', () {
@@ -94,6 +105,10 @@ void main() {
       );
     });
 
+    test('copyWith updates color', () {
+      expect(dab().copyWith(color: 0x80FF3366).color, 0x80FF3366);
+    });
+
     test('copyWith updates size', () {
       expect(dab().copyWith(size: 5).size, 5);
     });
@@ -146,6 +161,7 @@ void main() {
         ),
       );
       expect(base.copyWith(center: CanvasPoint(x: 9, y: 2)), isNot(base));
+      expect(base.copyWith(color: 0x80FF3366), isNot(base));
       expect(base.copyWith(size: 9), isNot(base));
       expect(base.copyWith(opacity: 0.9), isNot(base));
       expect(base.copyWith(flow: 0.9), isNot(base));
@@ -161,11 +177,17 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final value = dab(
+        color: 0x80FF3366,
         tipShape: BrushTipShape.square,
         pressure: 0.4,
         sequence: 2,
       );
       expect(BrushDab.fromJson(value.toJson()), value);
+    });
+
+    test('fromJson without color uses default black', () {
+      final json = dab(color: 0x80FF3366).toJson()..remove('color');
+      expect(BrushDab.fromJson(json).color, 0xFF000000);
     });
 
     test('fromInputSample uses sample position as CanvasPoint', () {
@@ -175,6 +197,15 @@ void main() {
         sequence: 0,
       );
       expect(value.center, CanvasPoint(x: 3, y: 4));
+    });
+
+    test('fromInputSample copies BrushSettings color', () {
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0),
+        settings: BrushSettings(color: 0x80FF3366),
+        sequence: 0,
+      );
+      expect(value.color, 0x80FF3366);
     });
 
     test('fromInputSample applies pressureSize', () {
