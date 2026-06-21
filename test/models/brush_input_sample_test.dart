@@ -41,17 +41,9 @@ void main() {
     });
 
     test('equality includes x, y, pressure, and sequence', () {
-      final sample = BrushInputSample(
-        x: 1,
-        y: 2,
-        pressure: 0.5,
-        sequence: 3,
-      );
+      final sample = BrushInputSample(x: 1, y: 2, pressure: 0.5, sequence: 3);
 
-      expect(
-        sample,
-        BrushInputSample(x: 1, y: 2, pressure: 0.5, sequence: 3),
-      );
+      expect(sample, BrushInputSample(x: 1, y: 2, pressure: 0.5, sequence: 3));
       expect(sample.copyWith(x: 9), isNot(sample));
       expect(sample.copyWith(y: 9), isNot(sample));
       expect(sample.copyWith(pressure: 0.75), isNot(sample));
@@ -84,17 +76,11 @@ void main() {
     });
 
     test('NaN x throws', () {
-      expect(
-        () => BrushInputSample(x: double.nan, y: 2),
-        throwsArgumentError,
-      );
+      expect(() => BrushInputSample(x: double.nan, y: 2), throwsArgumentError);
     });
 
     test('NaN y throws', () {
-      expect(
-        () => BrushInputSample(x: 1, y: double.nan),
-        throwsArgumentError,
-      );
+      expect(() => BrushInputSample(x: 1, y: double.nan), throwsArgumentError);
     });
 
     test('infinite x throws', () {

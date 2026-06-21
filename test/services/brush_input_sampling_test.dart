@@ -30,14 +30,11 @@ void main() {
         BrushInputSample(x: 5, y: 6, sequence: 2),
       ];
 
-      expect(
-        brushInputSamplesToStrokePoints(samples),
-        const [
-          StrokePoint(x: 1, y: 2),
-          StrokePoint(x: 3, y: 4),
-          StrokePoint(x: 5, y: 6),
-        ],
-      );
+      expect(brushInputSamplesToStrokePoints(samples), const [
+        StrokePoint(x: 1, y: 2),
+        StrokePoint(x: 3, y: 4),
+        StrokePoint(x: 5, y: 6),
+      ]);
     });
 
     test(
