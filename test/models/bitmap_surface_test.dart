@@ -67,6 +67,23 @@ void main() {
       expect(() => surface(tiles: {TileCoord(x: 8, y: 0): BitmapTile.blank(coord: TileCoord(x: 8, y: 0), size: 256)}), throwsArgumentError);
     });
 
+    test('same tiles in different insertion orders are equal and share hashCode', () {
+      final firstCoord = TileCoord(x: 0, y: 0);
+      final secondCoord = TileCoord(x: 1, y: 0);
+      final firstTile = BitmapTile.blank(coord: firstCoord, size: 256);
+      final secondTile = BitmapTile(
+        coord: secondCoord,
+        size: 256,
+        pixels: Uint8List(256 * 256 * 4)..[0] = 3,
+      );
+
+      final firstSurface = surface().putTile(firstTile).putTile(secondTile);
+      final secondSurface = surface().putTile(secondTile).putTile(firstTile);
+
+      expect(firstSurface, secondSurface);
+      expect(firstSurface.hashCode, secondSurface.hashCode);
+    });
+
     test('toJson/fromJson round-trips', () {
       final tile = BitmapTile(coord: TileCoord(x: 1, y: 2), size: 256, pixels: Uint8List(256 * 256 * 4)..[0] = 7);
       final original = surface().putTile(tile);

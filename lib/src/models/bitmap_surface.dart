@@ -102,7 +102,9 @@ class BitmapSurface {
   int get hashCode => Object.hash(
     canvasSize,
     tileSize,
-    Object.hashAll(_tiles.entries.map((entry) => Object.hash(entry.key, entry.value))),
+    Object.hashAllUnordered(
+      _tiles.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
   );
 
   @override
