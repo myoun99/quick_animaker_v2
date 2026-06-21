@@ -184,7 +184,10 @@ void main() {
     testWidgets('surfaces multiple storyboard layers with StateError', (
       tester,
     ) async {
-      await _pumpStoryboardPanel(tester, _projectWithMultipleStoryboardLayers());
+      await _pumpStoryboardPanel(
+        tester,
+        _projectWithMultipleStoryboardLayers(),
+      );
 
       expect(tester.takeException(), isA<StateError>());
     });

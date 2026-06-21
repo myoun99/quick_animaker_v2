@@ -105,8 +105,6 @@ Layer _layer(String id, LayerKind kind, {String? name}) {
     id: LayerId(id),
     name: name ?? id,
     kind: kind,
-    frames: [
-      Frame(id: FrameId('frame-$id'), duration: 1, strokes: const []),
-    ],
+    frames: [Frame(id: FrameId('frame-$id'), duration: 1, strokes: const [])],
   );
 }

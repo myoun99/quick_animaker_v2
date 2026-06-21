@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
@@ -363,5 +362,4 @@ class _StoryboardCutBlock extends StatelessWidget {
       ),
     );
   }
-
 }
