@@ -7,11 +7,7 @@ import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/services/brush_pixel_blend.dart';
 
 void main() {
-  BrushDab dab({
-    int color = 0xFFFF0000,
-    double opacity = 1,
-    double flow = 1,
-  }) {
+  BrushDab dab({int color = 0xFFFF0000, double opacity = 1, double flow = 1}) {
     return BrushDab(
       center: CanvasPoint(x: 0, y: 0),
       color: color,
@@ -185,7 +181,7 @@ void main() {
           coverage: pixelCoverage(coverage: 0.5),
           destination: RgbaColor(r: 0, g: 0, b: 255, a: 255),
         ),
-        RgbaColor(r: 128, g: 0, b: 127, a: 255),
+        RgbaColor(r: 128, g: 0, b: 128, a: 255),
       );
     });
 
