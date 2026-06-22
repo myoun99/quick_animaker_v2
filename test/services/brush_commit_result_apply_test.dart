@@ -245,10 +245,7 @@ void main() {
         cacheInvalidationPlan: plan,
       );
 
-      applyBrushCommitResultToBitmapSurface(
-        surface: surface(),
-        result: result,
-      );
+      applyBrushCommitResultToBitmapSurface(surface: surface(), result: result);
 
       expect(result.cacheInvalidationPlan, plan);
     });
