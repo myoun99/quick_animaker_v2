@@ -14,7 +14,10 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapTile tile(int x, int y) {
-      return BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2);
+      return BitmapTile.blank(
+        coord: TileCoord(x: x, y: y),
+        size: 2,
+      );
     }
 
     test('returns empty plan when command is null', () {
@@ -66,10 +69,10 @@ void main() {
       expect(plan.layerTiles.length, 2);
       expect(plan.frameComposites, isEmpty);
       expect(plan.playbackPreviews, isEmpty);
-      expect(
-        plan.layerTiles.map((key) => key.tileCoord).toSet(),
-        {TileCoord(x: 1, y: 0), TileCoord(x: 0, y: 1)},
-      );
+      expect(plan.layerTiles.map((key) => key.tileCoord).toSet(), {
+        TileCoord(x: 1, y: 0),
+        TileCoord(x: 0, y: 1),
+      });
       expect(plan.layerTiles.every((key) => key.layerId == layerId), isTrue);
       expect(plan.layerTiles.every((key) => key.frameId == frameId), isTrue);
     });
