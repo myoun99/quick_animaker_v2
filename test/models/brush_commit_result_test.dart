@@ -14,7 +14,10 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapTile tile(int x, int y) {
-      return BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2);
+      return BitmapTile.blank(
+        coord: TileCoord(x: x, y: y),
+        size: 2,
+      );
     }
 
     TileDeltaCommand commandForCoords(List<TileCoord> coords) {
@@ -161,13 +164,14 @@ void main() {
       'copyWith can produce noOp when command is explicitly null and plan is empty',
       () {
         final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-        final result = BrushCommitResult.changed(
-          command: command,
-          cacheInvalidationPlan: planForCommand(command),
-        ).copyWith(
-          command: null,
-          cacheInvalidationPlan: CacheInvalidationPlan.empty(),
-        );
+        final result =
+            BrushCommitResult.changed(
+              command: command,
+              cacheInvalidationPlan: planForCommand(command),
+            ).copyWith(
+              command: null,
+              cacheInvalidationPlan: CacheInvalidationPlan.empty(),
+            );
 
         expect(result, BrushCommitResult.noOp());
       },

@@ -7,10 +7,7 @@ class BrushCommitResult {
     required this.command,
     required this.cacheInvalidationPlan,
   }) {
-    _validate(
-      command: command,
-      cacheInvalidationPlan: cacheInvalidationPlan,
-    );
+    _validate(command: command, cacheInvalidationPlan: cacheInvalidationPlan);
   }
 
   factory BrushCommitResult.noOp() {
