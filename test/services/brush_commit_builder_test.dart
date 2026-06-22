@@ -99,7 +99,10 @@ void main() {
     }
 
     test('returns BrushCommitResult.noOp for empty BrushDabSequence', () {
-      final result = resultFor(surface: surface(), sequence: BrushDabSequence());
+      final result = resultFor(
+        surface: surface(),
+        sequence: BrushDabSequence(),
+      );
 
       expect(result, BrushCommitResult.noOp());
       expect(result.command, isNull);
@@ -128,20 +131,23 @@ void main() {
       expect(result.dirtyTiles.isEmpty, isTrue);
     });
 
-    test('returns BrushCommitResult.noOp when dab affects only pixels outside surface', () {
-      final result = resultFor(
-        surface: surface(width: 2, height: 2, tileSize: 2),
-        sequence: BrushDabSequence([onePixelDab(globalX: 3, globalY: 0)]),
-      );
+    test(
+      'returns BrushCommitResult.noOp when dab affects only pixels outside surface',
+      () {
+        final result = resultFor(
+          surface: surface(width: 2, height: 2, tileSize: 2),
+          sequence: BrushDabSequence([onePixelDab(globalX: 3, globalY: 0)]),
+        );
 
-      expect(result, BrushCommitResult.noOp());
-      expect(result.command, isNull);
-      expect(result.cacheInvalidationPlan.isEmpty, isTrue);
-      expect(result.hasChanges, isFalse);
-      expect(result.isNoOp, isTrue);
-      expect(result.changedTileCount, 0);
-      expect(result.dirtyTiles.isEmpty, isTrue);
-    });
+        expect(result, BrushCommitResult.noOp());
+        expect(result.command, isNull);
+        expect(result.cacheInvalidationPlan.isEmpty, isTrue);
+        expect(result.hasChanges, isFalse);
+        expect(result.isNoOp, isTrue);
+        expect(result.changedTileCount, 0);
+        expect(result.dirtyTiles.isEmpty, isTrue);
+      },
+    );
 
     test('returns changed BrushCommitResult for dab on missing tile', () {
       final result = resultFor(
@@ -356,10 +362,7 @@ void main() {
       final dab = onePixelDab(globalX: 0, globalY: 0);
       final before = BrushDab.fromJson(dab.toJson());
 
-      resultFor(
-        surface: surface(),
-        sequence: BrushDabSequence([dab]),
-      );
+      resultFor(surface: surface(), sequence: BrushDabSequence([dab]));
 
       expect(dab, before);
     });
