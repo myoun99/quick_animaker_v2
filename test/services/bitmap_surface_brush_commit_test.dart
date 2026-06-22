@@ -31,7 +31,10 @@ void main() {
   }
 
   BitmapTile blankTile({required int tileX, required int tileY, int size = 2}) {
-    return BitmapTile.blank(coord: TileCoord(x: tileX, y: tileY), size: size);
+    return BitmapTile.blank(
+      coord: TileCoord(x: tileX, y: tileY),
+      size: size,
+    );
   }
 
   BrushDab onePixelDab({
@@ -127,10 +130,7 @@ void main() {
       expect(delta.isCreation, isTrue);
       expect(delta.before, isNull);
       expect(delta.after!.coord, TileCoord(x: 1, y: 0));
-      expect(
-        readRgbaColorFromBitmapTile(tile: delta.after!, x: 0, y: 0),
-        red,
-      );
+      expect(readRgbaColorFromBitmapTile(tile: delta.after!, x: 0, y: 0), red);
     });
 
     test(
@@ -206,13 +206,15 @@ void main() {
     test('ignores pixels outside canvas bounds', () {
       final command = tileDeltaCommandForBrushDabSequenceOnBitmapSurface(
         surface: surface(width: 2, height: 2, tileSize: 2),
-        sequence: BrushDabSequence([squareDab(centerX: 1.5, centerY: 0.5)]),
+        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 0.5)]),
       )!;
 
       expect(command.length, 1);
       final after = command.deltas.single.after!;
       expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 0), red);
+      expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 1), red);
       expect(readRgbaColorFromBitmapTile(tile: after, x: 0, y: 0), transparent);
+      expect(readRgbaColorFromBitmapTile(tile: after, x: 0, y: 1), transparent);
     });
 
     test('does not mutate original BitmapSurface', () {
