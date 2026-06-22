@@ -92,21 +92,27 @@ void main() {
       expect(command, isNull);
     });
 
-    test('returns TileDeltaCommand for one-pixel dab over transparent tile', () {
-      final tile = blankTile();
+    test(
+      'returns TileDeltaCommand for one-pixel dab over transparent tile',
+      () {
+        final tile = blankTile();
 
-      final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
-        tile: tile,
-        sequence: BrushDabSequence([onePixelDab(globalX: 1, globalY: 0)]),
-      );
+        final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
+          tile: tile,
+          sequence: BrushDabSequence([onePixelDab(globalX: 1, globalY: 0)]),
+        );
 
-      expect(command, isNotNull);
-      expect(command!.length, 1);
-      final delta = command.deltas.single;
-      expect(delta.isReplacement, isTrue);
-      expect(delta.before, tile);
-      expect(readRgbaColorFromBitmapTile(tile: delta.after!, x: 1, y: 0), red);
-    });
+        expect(command, isNotNull);
+        expect(command!.length, 1);
+        final delta = command.deltas.single;
+        expect(delta.isReplacement, isTrue);
+        expect(delta.before, tile);
+        expect(
+          readRgbaColorFromBitmapTile(tile: delta.after!, x: 1, y: 0),
+          red,
+        );
+      },
+    );
 
     test('does not mutate original tile', () {
       final tile = blankTile();
@@ -191,43 +197,55 @@ void main() {
       );
     });
 
-    test('handles repeated same-pixel dabs using accumulated operation colors', () {
-      final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
-        tile: blankTile(),
-        sequence: BrushDabSequence([
-          onePixelDab(globalX: 0, globalY: 0, color: 0xFFFF0000, sequence: 0),
-          onePixelDab(
-            globalX: 0,
-            globalY: 0,
-            color: 0xFF0000FF,
-            opacity: 0.5,
-            sequence: 1,
+    test(
+      'handles repeated same-pixel dabs using accumulated operation colors',
+      () {
+        final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
+          tile: blankTile(),
+          sequence: BrushDabSequence([
+            onePixelDab(globalX: 0, globalY: 0, color: 0xFFFF0000, sequence: 0),
+            onePixelDab(
+              globalX: 0,
+              globalY: 0,
+              color: 0xFF0000FF,
+              opacity: 0.5,
+              sequence: 1,
+            ),
+          ]),
+        )!;
+
+        expect(
+          readRgbaColorFromBitmapTile(
+            tile: command.deltas.single.after!,
+            x: 0,
+            y: 0,
           ),
-        ]),
-      )!;
+          purple,
+        );
+      },
+    );
 
-      expect(
-        readRgbaColorFromBitmapTile(
-          tile: command.deltas.single.after!,
-          x: 0,
-          y: 0,
-        ),
-        purple,
-      );
-    });
+    test(
+      'handles dab crossing tile boundary by applying only in-tile pixel changes',
+      () {
+        final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
+          tile: blankTile(size: 2),
+          sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 0.5)]),
+        )!;
+        final after = command.deltas.single.after!;
 
-    test('handles dab crossing tile boundary by applying only in-tile pixel changes', () {
-      final command = tileDeltaCommandForBrushDabSequenceOnBitmapTile(
-        tile: blankTile(size: 2),
-        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 0.5)]),
-      )!;
-      final after = command.deltas.single.after!;
-
-      expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 0), red);
-      expect(readRgbaColorFromBitmapTile(tile: after, x: 0, y: 0), transparent);
-      expect(readRgbaColorFromBitmapTile(tile: after, x: 0, y: 1), transparent);
-      expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 1), transparent);
-    });
+        expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 0), red);
+        expect(
+          readRgbaColorFromBitmapTile(tile: after, x: 0, y: 0),
+          transparent,
+        );
+        expect(
+          readRgbaColorFromBitmapTile(tile: after, x: 0, y: 1),
+          transparent,
+        );
+        expect(readRgbaColorFromBitmapTile(tile: after, x: 1, y: 1), red);
+      },
+    );
 
     test('preserves updated tile coord', () {
       final tile = blankTile(tileX: 3, tileY: 4, size: 2);
