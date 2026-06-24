@@ -221,12 +221,8 @@ void main() {
         overrideFrameId: customFrameId,
       );
 
-      final invalidatedLayerTile = result
-          .lastEdit!
-          .commitResult
-          .cacheInvalidationPlan
-          .layerTiles
-          .single;
+      final invalidatedLayerTile =
+          result.lastEdit!.commitResult.cacheInvalidationPlan.layerTiles.single;
       expect(invalidatedLayerTile.layerId, customLayerId);
       expect(invalidatedLayerTile.frameId, customFrameId);
     });
