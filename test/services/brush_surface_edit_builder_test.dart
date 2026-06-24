@@ -34,8 +34,15 @@ void main() {
       );
     }
 
-    BitmapTile blankTile({required int tileX, required int tileY, int size = 2}) {
-      return BitmapTile.blank(coord: TileCoord(x: tileX, y: tileY), size: size);
+    BitmapTile blankTile({
+      required int tileX,
+      required int tileY,
+      int size = 2,
+    }) {
+      return BitmapTile.blank(
+        coord: TileCoord(x: tileX, y: tileY),
+        size: size,
+      );
     }
 
     BrushDab onePixelDab({
@@ -147,8 +154,8 @@ void main() {
         sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
       );
 
-      expect(edit.beforeSurface.tileAt(const TileCoord(x: 0, y: 0)), isNull);
-      expect(edit.afterSurface.tileAt(const TileCoord(x: 0, y: 0)), isNotNull);
+      expect(edit.beforeSurface.tileAt(TileCoord(x: 0, y: 0)), isNull);
+      expect(edit.afterSurface.tileAt(TileCoord(x: 0, y: 0)), isNotNull);
     });
 
     test('changed edit commitResult has changes', () {
@@ -180,46 +187,55 @@ void main() {
       expect(edit.commitResult.command!.deltas.single.isReplacement, isTrue);
     });
 
-    test('changed edit afterSurface equals applyBrushCommitResultToBitmapSurface manual result', () {
-      final original = surface();
-      final edit = editFor(
-        surface: original,
-        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
-      );
+    test(
+      'changed edit afterSurface equals applyBrushCommitResultToBitmapSurface manual result',
+      () {
+        final original = surface();
+        final edit = editFor(
+          surface: original,
+          sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+        );
 
-      final manual = applyBrushCommitResultToBitmapSurface(
-        surface: original,
-        result: edit.commitResult,
-      );
+        final manual = applyBrushCommitResultToBitmapSurface(
+          surface: original,
+          result: edit.commitResult,
+        );
 
-      expect(edit.afterSurface, manual);
-    });
+        expect(edit.afterSurface, manual);
+      },
+    );
 
-    test('changed edit can be reverted with revertBrushCommitResultOnBitmapSurface back to beforeSurface', () {
-      final edit = editFor(
-        surface: surface(),
-        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
-      );
+    test(
+      'changed edit can be reverted with revertBrushCommitResultOnBitmapSurface back to beforeSurface',
+      () {
+        final edit = editFor(
+          surface: surface(),
+          sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+        );
 
-      final reverted = revertBrushCommitResultOnBitmapSurface(
-        surface: edit.afterSurface,
-        result: edit.commitResult,
-      );
+        final reverted = revertBrushCommitResultOnBitmapSurface(
+          surface: edit.afterSurface,
+          result: edit.commitResult,
+        );
 
-      expect(reverted, edit.beforeSurface);
-    });
+        expect(reverted, edit.beforeSurface);
+      },
+    );
 
-    test('multi-tile dab produces afterSurface with multiple changed tiles', () {
-      final edit = editFor(
-        surface: surface(width: 4, height: 4, tileSize: 2),
-        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
-      );
+    test(
+      'multi-tile dab produces afterSurface with multiple changed tiles',
+      () {
+        final edit = editFor(
+          surface: surface(width: 4, height: 4, tileSize: 2),
+          sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
+        );
 
-      expect(edit.commitResult.changedTileCount, greaterThan(1));
-      for (final coord in edit.commitResult.dirtyTiles.coords) {
-        expect(edit.afterSurface.tileAt(coord), isNotNull);
-      }
-    });
+        expect(edit.commitResult.changedTileCount, greaterThan(1));
+        for (final coord in edit.commitResult.dirtyTiles.coords) {
+          expect(edit.afterSurface.tileAt(coord), isNotNull);
+        }
+      },
+    );
 
     test('builder result matches manual composition', () {
       final original = surface();
@@ -283,7 +299,7 @@ void main() {
       );
 
       expect(original, before);
-      expect(original.tileAt(const TileCoord(x: 0, y: 0)), isNull);
+      expect(original.tileAt(TileCoord(x: 0, y: 0)), isNull);
     });
 
     test('does not mutate existing BitmapTile', () {
@@ -324,7 +340,7 @@ void main() {
       );
 
       expect(edit.commitResult.cacheInvalidationPlan.isNotEmpty, isTrue);
-      expect(edit.afterSurface.tileAt(const TileCoord(x: 0, y: 0)), isNotNull);
+      expect(edit.afterSurface.tileAt(TileCoord(x: 0, y: 0)), isNotNull);
     });
 
     test('does not add undo stack behavior', () {

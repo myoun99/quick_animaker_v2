@@ -20,7 +20,7 @@ void main() {
 
     BitmapSurface surface({Map<TileCoord, BitmapTile> tiles = const {}}) {
       return BitmapSurface(
-        canvasSize: const CanvasSize(width: 4, height: 4),
+        canvasSize: CanvasSize(width: 4, height: 4),
         tileSize: 2,
         tiles: tiles,
       );
@@ -28,7 +28,7 @@ void main() {
 
     BitmapTile tile({required int firstByte}) {
       return BitmapTile(
-        coord: const TileCoord(x: 0, y: 0),
+        coord: TileCoord(x: 0, y: 0),
         size: 2,
         pixels: Uint8List(2 * 2 * BitmapTile.bytesPerPixel)..[0] = firstByte,
       );
@@ -101,31 +101,37 @@ void main() {
       expect(identical(edit.effectiveSurface, edit.afterSurface), isTrue);
     });
 
-    test('constructor accepts no-op edit when beforeSurface equals afterSurface', () {
-      final original = surface();
+    test(
+      'constructor accepts no-op edit when beforeSurface equals afterSurface',
+      () {
+        final original = surface();
 
-      expect(
-        () => BrushSurfaceEdit(
-          beforeSurface: original,
-          afterSurface: original.copyWith(),
-          commitResult: BrushCommitResult.noOp(),
-        ),
-        returnsNormally,
-      );
-    });
+        expect(
+          () => BrushSurfaceEdit(
+            beforeSurface: original,
+            afterSurface: original.copyWith(),
+            commitResult: BrushCommitResult.noOp(),
+          ),
+          returnsNormally,
+        );
+      },
+    );
 
-    test('constructor rejects no-op edit when beforeSurface differs from afterSurface', () {
-      final afterTile = tile(firstByte: 1);
+    test(
+      'constructor rejects no-op edit when beforeSurface differs from afterSurface',
+      () {
+        final afterTile = tile(firstByte: 1);
 
-      expect(
-        () => BrushSurfaceEdit(
-          beforeSurface: surface(),
-          afterSurface: surface(tiles: {afterTile.coord: afterTile}),
-          commitResult: BrushCommitResult.noOp(),
-        ),
-        throwsArgumentError,
-      );
-    });
+        expect(
+          () => BrushSurfaceEdit(
+            beforeSurface: surface(),
+            afterSurface: surface(tiles: {afterTile.coord: afterTile}),
+            commitResult: BrushCommitResult.noOp(),
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
 
     test('constructor accepts changed edit', () {
       final before = surface();
