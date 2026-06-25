@@ -44,29 +44,26 @@ void main() {
       historyState: BrushEditHistoryState(),
     );
 
-    test(
-      'commit facade returns same result as '
-      'commitBrushDabSequenceToBrushEditSession',
-      () {
-        final sessionState = emptySession();
-        final sequence = changedSequence();
-        final direct = commitBrushDabSequenceToBrushEditSession(
-          canvasState: sessionState.canvasState,
-          historyState: sessionState.historyState,
-          sequence: sequence,
-          layerId: layerId,
-          frameId: frameId,
-        );
-        final facade = commitBrushDabSequenceToBrushEditSessionState(
-          sessionState: sessionState,
-          sequence: sequence,
-          layerId: layerId,
-          frameId: frameId,
-        );
+    test('commit facade returns same result as '
+        'commitBrushDabSequenceToBrushEditSession', () {
+      final sessionState = emptySession();
+      final sequence = changedSequence();
+      final direct = commitBrushDabSequenceToBrushEditSession(
+        canvasState: sessionState.canvasState,
+        historyState: sessionState.historyState,
+        sequence: sequence,
+        layerId: layerId,
+        frameId: frameId,
+      );
+      final facade = commitBrushDabSequenceToBrushEditSessionState(
+        sessionState: sessionState,
+        sequence: sequence,
+        layerId: layerId,
+        frameId: frameId,
+      );
 
-        expect(facade, direct);
-      },
-    );
+      expect(facade, direct);
+    });
 
     test('commit facade no-op behavior matches existing commit service', () {
       final sessionState = emptySession();
