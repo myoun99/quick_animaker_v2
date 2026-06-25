@@ -39,11 +39,8 @@ class CacheInvalidationExecutionResult {
           other.playbackPreviewCount == playbackPreviewCount;
 
   @override
-  int get hashCode => Object.hash(
-    layerTileCount,
-    frameCompositeCount,
-    playbackPreviewCount,
-  );
+  int get hashCode =>
+      Object.hash(layerTileCount, frameCompositeCount, playbackPreviewCount);
 
   @override
   String toString() =>

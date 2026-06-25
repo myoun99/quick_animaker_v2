@@ -46,11 +46,12 @@ void main() {
       cutId: const CutId('cut-a'),
       frameIndex: frameIndex,
     );
-    PlaybackPreviewCacheKey previewKey(int frameIndex) => PlaybackPreviewCacheKey(
-      cutId: const CutId('cut-a'),
-      frameIndex: frameIndex,
-      previewSize: const CanvasSize(width: 320, height: 180),
-    );
+    PlaybackPreviewCacheKey previewKey(int frameIndex) =>
+        PlaybackPreviewCacheKey(
+          cutId: const CutId('cut-a'),
+          frameIndex: frameIndex,
+          previewSize: const CanvasSize(width: 320, height: 180),
+        );
 
     test('empty plan calls nothing and returns zero counts', () {
       final sink = FakeCacheInvalidationSink();
