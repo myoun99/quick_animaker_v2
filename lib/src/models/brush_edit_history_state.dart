@@ -48,10 +48,8 @@ class BrushEditHistoryState {
           _listEquals(other._redoEntries, _redoEntries);
 
   @override
-  int get hashCode => Object.hash(
-    Object.hashAll(_undoEntries),
-    Object.hashAll(_redoEntries),
-  );
+  int get hashCode =>
+      Object.hash(Object.hashAll(_undoEntries), Object.hashAll(_redoEntries));
 
   @override
   String toString() =>

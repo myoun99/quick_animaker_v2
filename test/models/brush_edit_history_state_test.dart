@@ -218,9 +218,7 @@ void main() {
         ),
       );
       expect(
-        BrushEditHistoryState(
-          undoEntries: [entry(tileX: 1), entry(tileX: 0)],
-        ),
+        BrushEditHistoryState(undoEntries: [entry(tileX: 1), entry(tileX: 0)]),
         isNot(
           BrushEditHistoryState(
             undoEntries: [entry(tileX: 0), entry(tileX: 1)],
