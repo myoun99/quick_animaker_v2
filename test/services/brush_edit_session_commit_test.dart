@@ -28,7 +28,7 @@ void main() {
     );
 
     BrushDab dab({int sequence = 0}) => BrushDab(
-      center: const CanvasPoint(x: 0.5, y: 0.5),
+      center: CanvasPoint(x: 0.5, y: 0.5),
       color: 0xFFFF0000,
       size: 1,
       opacity: 1,
