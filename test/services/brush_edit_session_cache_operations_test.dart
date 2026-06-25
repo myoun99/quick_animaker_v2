@@ -49,7 +49,7 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapSurface surface() => BitmapSurface(
-      canvasSize: const CanvasSize(width: 4, height: 4),
+      canvasSize: CanvasSize(width: 4, height: 4),
       tileSize: 2,
     );
 

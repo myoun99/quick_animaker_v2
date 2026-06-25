@@ -24,7 +24,7 @@ void main() {
     BrushEditSessionState session() => BrushEditSessionState(
       canvasState: CanvasSurfaceState(
         currentSurface: BitmapSurface(
-          canvasSize: const CanvasSize(width: 4, height: 4),
+          canvasSize: CanvasSize(width: 4, height: 4),
           tileSize: 2,
         ),
       ),
