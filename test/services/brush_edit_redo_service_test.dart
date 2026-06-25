@@ -103,27 +103,30 @@ void main() {
       expect(result.canvasState.currentSurface, afterSurface);
     });
 
-    test('redo sets CanvasSurfaceState.lastEdit from previous and updated surfaces', () {
-      final beforeTile = tile(firstByte: 1);
-      final afterTile = tile(firstByte: 2);
-      final beforeSurface = surface(tiles: {beforeTile.coord: beforeTile});
-      final entry = entryForDelta(
-        TileDelta.replaced(before: beforeTile, after: afterTile),
-      );
+    test(
+      'redo sets CanvasSurfaceState.lastEdit from previous and updated surfaces',
+      () {
+        final beforeTile = tile(firstByte: 1);
+        final afterTile = tile(firstByte: 2);
+        final beforeSurface = surface(tiles: {beforeTile.coord: beforeTile});
+        final entry = entryForDelta(
+          TileDelta.replaced(before: beforeTile, after: afterTile),
+        );
 
-      final result = redoLatestBrushEdit(
-        canvasState: CanvasSurfaceState(currentSurface: beforeSurface),
-        historyState: BrushEditHistoryState(redoEntries: [entry]),
-      );
+        final result = redoLatestBrushEdit(
+          canvasState: CanvasSurfaceState(currentSurface: beforeSurface),
+          historyState: BrushEditHistoryState(redoEntries: [entry]),
+        );
 
-      expect(result.canvasState.lastEdit, isA<BrushSurfaceEdit>());
-      expect(result.canvasState.lastEdit!.beforeSurface, beforeSurface);
-      expect(
-        result.canvasState.lastEdit!.afterSurface,
-        result.canvasState.currentSurface,
-      );
-      expect(result.canvasState.lastEdit!.commitResult, entry.commitResult);
-    });
+        expect(result.canvasState.lastEdit, isA<BrushSurfaceEdit>());
+        expect(result.canvasState.lastEdit!.beforeSurface, beforeSurface);
+        expect(
+          result.canvasState.lastEdit!.afterSurface,
+          result.canvasState.currentSurface,
+        );
+        expect(result.canvasState.lastEdit!.commitResult, entry.commitResult);
+      },
+    );
 
     test('redo removes latest redo entry and appends it to undo entries', () {
       final first = entryForDelta(TileDelta.created(tile(firstByte: 3)));
