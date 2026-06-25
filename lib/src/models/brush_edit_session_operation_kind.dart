@@ -1,5 +1,1 @@
-enum BrushEditSessionOperationKind {
-  commit,
-  undo,
-  redo,
-}
+enum BrushEditSessionOperationKind { commit, undo, redo }

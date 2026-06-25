@@ -84,22 +84,25 @@ void main() {
       );
     }
 
-    test('stores kind, sessionState, affectedEntry, cacheInvalidationResult', () {
-      final sessionState = session();
-      final affectedEntry = entry();
-      final cacheResult = nonZeroResult();
-      final value = result(
-        kind: BrushEditSessionOperationKind.undo,
-        sessionState: sessionState,
-        affectedEntry: affectedEntry,
-        cacheInvalidationResult: cacheResult,
-      );
+    test(
+      'stores kind, sessionState, affectedEntry, cacheInvalidationResult',
+      () {
+        final sessionState = session();
+        final affectedEntry = entry();
+        final cacheResult = nonZeroResult();
+        final value = result(
+          kind: BrushEditSessionOperationKind.undo,
+          sessionState: sessionState,
+          affectedEntry: affectedEntry,
+          cacheInvalidationResult: cacheResult,
+        );
 
-      expect(value.kind, BrushEditSessionOperationKind.undo);
-      expect(value.sessionState, sessionState);
-      expect(value.affectedEntry, affectedEntry);
-      expect(value.cacheInvalidationResult, cacheResult);
-    });
+        expect(value.kind, BrushEditSessionOperationKind.undo);
+        expect(value.sessionState, sessionState);
+        expect(value.affectedEntry, affectedEntry);
+        expect(value.cacheInvalidationResult, cacheResult);
+      },
+    );
 
     test('didAffectHistory false when affectedEntry is null', () {
       expect(result().didAffectHistory, isFalse);
@@ -109,41 +112,72 @@ void main() {
       expect(result(affectedEntry: entry()).didAffectHistory, isTrue);
     });
 
-    test('didInvalidateCache delegates to cacheInvalidationResult.didInvalidate', () {
-      expect(result(cacheInvalidationResult: zeroResult()).didInvalidateCache, isFalse);
-      expect(result(cacheInvalidationResult: nonZeroResult()).didInvalidateCache, isTrue);
-    });
+    test(
+      'didInvalidateCache delegates to cacheInvalidationResult.didInvalidate',
+      () {
+        expect(
+          result(cacheInvalidationResult: zeroResult()).didInvalidateCache,
+          isFalse,
+        );
+        expect(
+          result(cacheInvalidationResult: nonZeroResult()).didInvalidateCache,
+          isTrue,
+        );
+      },
+    );
 
     test('copyWith preserves omitted values', () {
-      final value = result(affectedEntry: entry(), cacheInvalidationResult: nonZeroResult());
+      final value = result(
+        affectedEntry: entry(),
+        cacheInvalidationResult: nonZeroResult(),
+      );
 
       expect(value.copyWith(), value);
     });
 
     test('copyWith updates kind', () {
-      expect(result().copyWith(kind: BrushEditSessionOperationKind.redo).kind, BrushEditSessionOperationKind.redo);
+      expect(
+        result().copyWith(kind: BrushEditSessionOperationKind.redo).kind,
+        BrushEditSessionOperationKind.redo,
+      );
     });
 
     test('copyWith updates sessionState', () {
       final newSession = session();
 
-      expect(result().copyWith(sessionState: newSession).sessionState, newSession);
+      expect(
+        result().copyWith(sessionState: newSession).sessionState,
+        newSession,
+      );
     });
 
     test('copyWith can set affectedEntry', () {
       final affectedEntry = entry();
 
-      expect(result().copyWith(affectedEntry: affectedEntry).affectedEntry, affectedEntry);
+      expect(
+        result().copyWith(affectedEntry: affectedEntry).affectedEntry,
+        affectedEntry,
+      );
     });
 
     test('copyWith can clear affectedEntry with null', () {
-      expect(result(affectedEntry: entry()).copyWith(affectedEntry: null).affectedEntry, isNull);
+      expect(
+        result(
+          affectedEntry: entry(),
+        ).copyWith(affectedEntry: null).affectedEntry,
+        isNull,
+      );
     });
 
     test('copyWith updates cacheInvalidationResult', () {
       final cacheResult = nonZeroResult();
 
-      expect(result().copyWith(cacheInvalidationResult: cacheResult).cacheInvalidationResult, cacheResult);
+      expect(
+        result()
+            .copyWith(cacheInvalidationResult: cacheResult)
+            .cacheInvalidationResult,
+        cacheResult,
+      );
     });
 
     test('equality / hashCode / toString', () {

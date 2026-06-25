@@ -48,10 +48,8 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapSurface surface() => BitmapSurface(
-      canvasSize: CanvasSize(width: 4, height: 4),
-      tileSize: 2,
-    );
+    BitmapSurface surface() =>
+        BitmapSurface(canvasSize: CanvasSize(width: 4, height: 4), tileSize: 2);
 
     BrushEditSessionState emptySession() => BrushEditSessionState(
       canvasState: CanvasSurfaceState(currentSurface: surface()),
@@ -100,13 +98,14 @@ void main() {
     });
 
     test('commit no-op returns zero cache invalidation result', () {
-      final result = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-        sessionState: emptySession(),
-        sequence: BrushDabSequence(),
-        layerId: layerId,
-        frameId: frameId,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final result =
+          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+            sessionState: emptySession(),
+            sequence: BrushDabSequence(),
+            layerId: layerId,
+            frameId: frameId,
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
 
       expect(result.cacheInvalidationResult.totalCount, 0);
       expect(result.cacheInvalidationResult.didInvalidate, isFalse);
@@ -116,33 +115,43 @@ void main() {
       final sink = FakeCacheInvalidationSink();
       final result = commitChanged(emptySession(), sink);
 
-      expect(sink.totalCalls, result.affectedEntry!.cacheInvalidationPlan.totalKeyCount);
+      expect(
+        sink.totalCalls,
+        result.affectedEntry!.cacheInvalidationPlan.totalKeyCount,
+      );
       expect(sink.totalCalls, greaterThan(0));
     });
 
     test('commit changed result kind is commit', () {
-      expect(commitChanged(emptySession(), FakeCacheInvalidationSink()).kind, BrushEditSessionOperationKind.commit);
+      expect(
+        commitChanged(emptySession(), FakeCacheInvalidationSink()).kind,
+        BrushEditSessionOperationKind.commit,
+      );
     });
 
-    test('commit changed result sessionState matches normal session commit conversion', () {
-      final sessionState = emptySession();
-      final sequence = changedSequence();
-      final normal = commitBrushDabSequenceToBrushEditSessionState(
-        sessionState: sessionState,
-        sequence: sequence,
-        layerId: layerId,
-        frameId: frameId,
-      );
-      final cacheAware = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-        sessionState: sessionState,
-        sequence: sequence,
-        layerId: layerId,
-        frameId: frameId,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+    test(
+      'commit changed result sessionState matches normal session commit conversion',
+      () {
+        final sessionState = emptySession();
+        final sequence = changedSequence();
+        final normal = commitBrushDabSequenceToBrushEditSessionState(
+          sessionState: sessionState,
+          sequence: sequence,
+          layerId: layerId,
+          frameId: frameId,
+        );
+        final cacheAware =
+            commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+              sessionState: sessionState,
+              sequence: sequence,
+              layerId: layerId,
+              frameId: frameId,
+              cacheInvalidationSink: FakeCacheInvalidationSink(),
+            );
 
-      expect(cacheAware.sessionState, sessionStateFromCommitResult(normal));
-    });
+        expect(cacheAware.sessionState, sessionStateFromCommitResult(normal));
+      },
+    );
 
     test('commit changed affectedEntry equals normal commit historyEntry', () {
       final sessionState = emptySession();
@@ -153,13 +162,14 @@ void main() {
         layerId: layerId,
         frameId: frameId,
       );
-      final cacheAware = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-        sessionState: sessionState,
-        sequence: sequence,
-        layerId: layerId,
-        frameId: frameId,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final cacheAware =
+          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+            sessionState: sessionState,
+            sequence: sequence,
+            layerId: layerId,
+            frameId: frameId,
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
 
       expect(cacheAware.affectedEntry, normal.historyEntry);
     });
@@ -185,34 +195,46 @@ void main() {
     });
 
     test('undo changed calls cache sink', () {
-      final committed = commitChanged(emptySession(), FakeCacheInvalidationSink());
+      final committed = commitChanged(
+        emptySession(),
+        FakeCacheInvalidationSink(),
+      );
       final sink = FakeCacheInvalidationSink();
       final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: sink,
       );
 
-      expect(sink.totalCalls, result.affectedEntry!.cacheInvalidationPlan.totalKeyCount);
+      expect(
+        sink.totalCalls,
+        result.affectedEntry!.cacheInvalidationPlan.totalKeyCount,
+      );
     });
 
-    test('undo changed result kind/sessionState/affectedEntry match normal undo', () {
-      final committed = commitBrushDabSequenceToBrushEditSessionState(
-        sessionState: emptySession(),
-        sequence: changedSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
-      final sessionState = sessionStateFromCommitResult(committed);
-      final normal = undoLatestBrushEditInSessionState(sessionState: sessionState);
-      final cacheAware = undoLatestBrushEditInSessionStateWithCacheInvalidation(
-        sessionState: sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+    test(
+      'undo changed result kind/sessionState/affectedEntry match normal undo',
+      () {
+        final committed = commitBrushDabSequenceToBrushEditSessionState(
+          sessionState: emptySession(),
+          sequence: changedSequence(),
+          layerId: layerId,
+          frameId: frameId,
+        );
+        final sessionState = sessionStateFromCommitResult(committed);
+        final normal = undoLatestBrushEditInSessionState(
+          sessionState: sessionState,
+        );
+        final cacheAware =
+            undoLatestBrushEditInSessionStateWithCacheInvalidation(
+              sessionState: sessionState,
+              cacheInvalidationSink: FakeCacheInvalidationSink(),
+            );
 
-      expect(cacheAware.kind, BrushEditSessionOperationKind.undo);
-      expect(cacheAware.sessionState, sessionStateFromUndoResult(normal));
-      expect(cacheAware.affectedEntry, normal.undoneEntry);
-    });
+        expect(cacheAware.kind, BrushEditSessionOperationKind.undo);
+        expect(cacheAware.sessionState, sessionStateFromUndoResult(normal));
+        expect(cacheAware.affectedEntry, normal.undoneEntry);
+      },
+    );
 
     test('redo no-op does not call cache sink', () {
       final sink = FakeCacheInvalidationSink();
@@ -235,7 +257,10 @@ void main() {
     });
 
     test('redo changed calls cache sink', () {
-      final committed = commitChanged(emptySession(), FakeCacheInvalidationSink());
+      final committed = commitChanged(
+        emptySession(),
+        FakeCacheInvalidationSink(),
+      );
       final undone = undoLatestBrushEditInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
@@ -246,43 +271,64 @@ void main() {
         cacheInvalidationSink: sink,
       );
 
-      expect(sink.totalCalls, result.affectedEntry!.cacheInvalidationPlan.totalKeyCount);
+      expect(
+        sink.totalCalls,
+        result.affectedEntry!.cacheInvalidationPlan.totalKeyCount,
+      );
     });
 
-    test('redo changed result kind/sessionState/affectedEntry match normal redo', () {
-      final committed = commitBrushDabSequenceToBrushEditSessionState(
-        sessionState: emptySession(),
-        sequence: changedSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
-      final undone = undoLatestBrushEditInSessionState(
-        sessionState: sessionStateFromCommitResult(committed),
-      );
-      final sessionState = sessionStateFromUndoResult(undone);
-      final normal = redoLatestBrushEditInSessionState(sessionState: sessionState);
-      final cacheAware = redoLatestBrushEditInSessionStateWithCacheInvalidation(
-        sessionState: sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+    test(
+      'redo changed result kind/sessionState/affectedEntry match normal redo',
+      () {
+        final committed = commitBrushDabSequenceToBrushEditSessionState(
+          sessionState: emptySession(),
+          sequence: changedSequence(),
+          layerId: layerId,
+          frameId: frameId,
+        );
+        final undone = undoLatestBrushEditInSessionState(
+          sessionState: sessionStateFromCommitResult(committed),
+        );
+        final sessionState = sessionStateFromUndoResult(undone);
+        final normal = redoLatestBrushEditInSessionState(
+          sessionState: sessionState,
+        );
+        final cacheAware =
+            redoLatestBrushEditInSessionStateWithCacheInvalidation(
+              sessionState: sessionState,
+              cacheInvalidationSink: FakeCacheInvalidationSink(),
+            );
 
-      expect(cacheAware.kind, BrushEditSessionOperationKind.redo);
-      expect(cacheAware.sessionState, sessionStateFromRedoResult(normal));
-      expect(cacheAware.affectedEntry, normal.redoneEntry);
-    });
+        expect(cacheAware.kind, BrushEditSessionOperationKind.redo);
+        expect(cacheAware.sessionState, sessionStateFromRedoResult(normal));
+        expect(cacheAware.affectedEntry, normal.redoneEntry);
+      },
+    );
 
     test('cache invalidation counts match executed plan counts', () {
       final result = commitChanged(emptySession(), FakeCacheInvalidationSink());
       final plan = result.affectedEntry!.cacheInvalidationPlan;
 
-      expect(result.cacheInvalidationResult.layerTileCount, plan.layerTiles.length);
-      expect(result.cacheInvalidationResult.frameCompositeCount, plan.frameComposites.length);
-      expect(result.cacheInvalidationResult.playbackPreviewCount, plan.playbackPreviews.length);
+      expect(
+        result.cacheInvalidationResult.layerTileCount,
+        plan.layerTiles.length,
+      );
+      expect(
+        result.cacheInvalidationResult.frameCompositeCount,
+        plan.frameComposites.length,
+      );
+      expect(
+        result.cacheInvalidationResult.playbackPreviewCount,
+        plan.playbackPreviews.length,
+      );
       expect(result.cacheInvalidationResult.totalCount, plan.totalKeyCount);
     });
 
     test('commit -> undo -> redo with cache-aware facade works', () {
-      final committed = commitChanged(emptySession(), FakeCacheInvalidationSink());
+      final committed = commitChanged(
+        emptySession(),
+        FakeCacheInvalidationSink(),
+      );
       final undone = undoLatestBrushEditInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
@@ -330,7 +376,10 @@ void main() {
     });
 
     test('CacheInvalidationPlan is not mutated', () {
-      final committed = commitChanged(emptySession(), FakeCacheInvalidationSink());
+      final committed = commitChanged(
+        emptySession(),
+        FakeCacheInvalidationSink(),
+      );
       final plan = committed.affectedEntry!.cacheInvalidationPlan;
       final before = plan.toJson();
 
@@ -354,9 +403,18 @@ void main() {
     });
 
     test('no UI/state management/timeline/storyboard changes', () {
-      expect(commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation, isA<Function>());
-      expect(undoLatestBrushEditInSessionStateWithCacheInvalidation, isA<Function>());
-      expect(redoLatestBrushEditInSessionStateWithCacheInvalidation, isA<Function>());
+      expect(
+        commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation,
+        isA<Function>(),
+      );
+      expect(
+        undoLatestBrushEditInSessionStateWithCacheInvalidation,
+        isA<Function>(),
+      );
+      expect(
+        redoLatestBrushEditInSessionStateWithCacheInvalidation,
+        isA<Function>(),
+      );
     });
   });
 }

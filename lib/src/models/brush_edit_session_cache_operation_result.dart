@@ -49,12 +49,8 @@ class BrushEditSessionCacheOperationResult {
           other.cacheInvalidationResult == cacheInvalidationResult;
 
   @override
-  int get hashCode => Object.hash(
-    kind,
-    sessionState,
-    affectedEntry,
-    cacheInvalidationResult,
-  );
+  int get hashCode =>
+      Object.hash(kind, sessionState, affectedEntry, cacheInvalidationResult);
 
   @override
   String toString() =>
