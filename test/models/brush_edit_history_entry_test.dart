@@ -15,7 +15,10 @@ void main() {
     const frameId = FrameId('frame-a');
 
     BitmapTile tile(int x, int y) {
-      return BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2);
+      return BitmapTile.blank(
+        coord: TileCoord(x: x, y: y),
+        size: 2,
+      );
     }
 
     BrushCommitResult resultForCoords(List<TileCoord> coords) {

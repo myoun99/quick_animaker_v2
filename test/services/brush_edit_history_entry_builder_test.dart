@@ -143,41 +143,47 @@ void main() {
       },
     );
 
-    test('does not mutate BrushSurfaceEdit, BrushCommitResult, or surfaces', () {
-      final edit = changedEdit(source: surface());
-      final beforeEdit = edit.copyWith();
-      final beforeResult = edit.commitResult.copyWith();
-      final beforeSurface = edit.beforeSurface.copyWith();
-      final afterSurface = edit.afterSurface.copyWith();
+    test(
+      'does not mutate BrushSurfaceEdit, BrushCommitResult, or surfaces',
+      () {
+        final edit = changedEdit(source: surface());
+        final beforeEdit = edit.copyWith();
+        final beforeResult = edit.commitResult.copyWith();
+        final beforeSurface = edit.beforeSurface.copyWith();
+        final afterSurface = edit.afterSurface.copyWith();
 
-      brushEditHistoryEntryFromBrushSurfaceEdit(
-        edit: edit,
-        layerId: layerId,
-        frameId: frameId,
-      );
+        brushEditHistoryEntryFromBrushSurfaceEdit(
+          edit: edit,
+          layerId: layerId,
+          frameId: frameId,
+        );
 
-      expect(edit, beforeEdit);
-      expect(edit.commitResult, beforeResult);
-      expect(edit.beforeSurface, beforeSurface);
-      expect(edit.afterSurface, afterSurface);
-    });
+        expect(edit, beforeEdit);
+        expect(edit.commitResult, beforeResult);
+        expect(edit.beforeSurface, beforeSurface);
+        expect(edit.afterSurface, afterSurface);
+      },
+    );
 
-    test('does not execute CacheInvalidationPlan or add undo stack behavior', () {
-      final edit = changedEdit(source: surface());
-      final keyCount = edit.commitResult.cacheInvalidationPlan.totalKeyCount;
-      final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
-        edit: edit,
-        layerId: layerId,
-        frameId: frameId,
-      )!;
+    test(
+      'does not execute CacheInvalidationPlan or add undo stack behavior',
+      () {
+        final edit = changedEdit(source: surface());
+        final keyCount = edit.commitResult.cacheInvalidationPlan.totalKeyCount;
+        final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+          edit: edit,
+          layerId: layerId,
+          frameId: frameId,
+        )!;
 
-      expect(
-        entry.cacheInvalidationPlan,
-        edit.commitResult.cacheInvalidationPlan,
-      );
-      expect(entry.cacheInvalidationPlan.totalKeyCount, keyCount);
-      expect(entry.toString(), isNot(contains('UndoStack')));
-      expect(entry.toString(), isNot(contains('RedoStack')));
-    });
+        expect(
+          entry.cacheInvalidationPlan,
+          edit.commitResult.cacheInvalidationPlan,
+        );
+        expect(entry.cacheInvalidationPlan.totalKeyCount, keyCount);
+        expect(entry.toString(), isNot(contains('UndoStack')));
+        expect(entry.toString(), isNot(contains('RedoStack')));
+      },
+    );
   });
 }
