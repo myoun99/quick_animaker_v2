@@ -21,10 +21,8 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapSurface surface() => BitmapSurface(
-      canvasSize: CanvasSize(width: 2, height: 2),
-      tileSize: 2,
-    );
+    BitmapSurface surface() =>
+        BitmapSurface(canvasSize: CanvasSize(width: 2, height: 2), tileSize: 2);
 
     BrushEditHistoryEntry entry({int firstByte = 1}) {
       final tile = BitmapTile(
