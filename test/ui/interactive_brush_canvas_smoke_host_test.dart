@@ -143,6 +143,88 @@ void main() {
       expect(originalHistoryState.toString(), originalHistorySnapshot);
     });
 
+
+    testWidgets('changing initialSessionState by identity updates child view', (
+      tester,
+    ) async {
+      final firstState = _sessionState();
+      final secondState = _sessionState(width: 10, height: 10);
+      final sink = FakeCacheInvalidationSink();
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: firstState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+          ),
+        ),
+      );
+      expect(identical(_view(tester).sessionState, firstState), isTrue);
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: secondState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+          ),
+        ),
+      );
+
+      expect(identical(_view(tester).sessionState, secondState), isTrue);
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.canvasSize,
+        CanvasSize(width: 10, height: 10),
+      );
+    });
+
+    testWidgets('same initialSessionState identity does not reset local stroke', (
+      tester,
+    ) async {
+      final sessionState = _sessionState();
+      final sink = FakeCacheInvalidationSink();
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: sessionState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+          ),
+        ),
+      );
+
+      await _tap(tester, const Offset(1.5, 1.5));
+      final strokedState = _view(tester).sessionState;
+      expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: sessionState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+          ),
+        ),
+      );
+
+      expect(identical(_view(tester).sessionState, strokedState), isTrue);
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+      expect(sessionState.canvasState.currentSurface.tiles, isEmpty);
+    });
+
     testWidgets('does not add GestureDetector outside interactive canvas', (
       tester,
     ) async {
@@ -200,11 +282,11 @@ void main() {
   });
 }
 
-BrushEditSessionState _sessionState() {
+BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
   return BrushEditSessionState(
     canvasState: CanvasSurfaceState(
       currentSurface: BitmapSurface(
-        canvasSize: CanvasSize(width: 8, height: 8),
+        canvasSize: CanvasSize(width: width, height: height),
         tileSize: 2,
       ),
     ),
@@ -224,5 +306,11 @@ Widget _app(Widget child) {
     home: Scaffold(
       body: Align(alignment: Alignment.topLeft, child: child),
     ),
+  );
+}
+
+InteractiveBrushEditCanvasView _view(WidgetTester tester) {
+  return tester.widget<InteractiveBrushEditCanvasView>(
+    find.byType(InteractiveBrushEditCanvasView),
   );
 }

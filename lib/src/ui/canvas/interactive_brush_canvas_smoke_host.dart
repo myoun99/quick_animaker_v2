@@ -81,6 +81,15 @@ class _InteractiveBrushCanvasSmokeHostState
   }
 
   @override
+  void didUpdateWidget(covariant InteractiveBrushCanvasSmokeHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!identical(widget.initialSessionState, oldWidget.initialSessionState)) {
+      _sessionState = widget.initialSessionState;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return InteractiveBrushEditCanvasView(
       key: const ValueKey<String>('interactive-brush-canvas-smoke-host-view'),
