@@ -136,8 +136,10 @@ void main() {
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
 
-      final gesture = await tester.createGesture(pointer: 1);
-      await gesture.addPointer(location: const Offset(1.5, 1.5));
+      final gesture = await tester.startGesture(
+        const Offset(1.5, 1.5),
+        pointer: 1,
+      );
       await tester.pump();
       await gesture.cancel();
       await tester.pump();
@@ -172,10 +174,14 @@ void main() {
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
 
-      final first = await tester.createGesture(pointer: 1);
-      final second = await tester.createGesture(pointer: 2);
-      await first.addPointer(location: const Offset(1.5, 1.5));
-      await second.addPointer(location: const Offset(2.5, 2.5));
+      final first = await tester.startGesture(
+        const Offset(1.5, 1.5),
+        pointer: 1,
+      );
+      final second = await tester.startGesture(
+        const Offset(2.5, 2.5),
+        pointer: 2,
+      );
       await second.up();
       await first.up();
       await tester.pump();
@@ -189,8 +195,10 @@ void main() {
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
 
-      final gesture = await tester.createGesture(pointer: 1);
-      await gesture.addPointer(location: const Offset(1.5, 1.5));
+      final gesture = await tester.startGesture(
+        const Offset(1.5, 1.5),
+        pointer: 1,
+      );
       await gesture.moveTo(const Offset(2.5, 2.5));
       await gesture.moveTo(const Offset(20, 20));
       await gesture.up();
@@ -270,8 +278,7 @@ InteractiveBrushEditCanvasView _view(
 }
 
 Future<void> _tap(WidgetTester tester, Offset offset) async {
-  final gesture = await tester.createGesture(pointer: 1);
-  await gesture.addPointer(location: offset);
+  final gesture = await tester.startGesture(offset, pointer: 1);
   await tester.pump();
   await gesture.up();
   await tester.pump();
