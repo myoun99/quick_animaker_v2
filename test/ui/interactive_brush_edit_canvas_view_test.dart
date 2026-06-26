@@ -21,6 +21,8 @@ import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_vi
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
+import 'brush_canvas_test_helpers.dart';
+
 class FakeCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
@@ -105,7 +107,7 @@ void main() {
       },
     );
 
-    testWidgets('pointer down/up inside surface emits changed commit result', (
+    testWidgets('tap commit creates exactly one operation result', (
       tester,
     ) async {
       final sessionState = _sessionState();
@@ -113,13 +115,92 @@ void main() {
       final results = <BrushEditSessionCacheOperationResult>[];
 
       await tester.pumpWidget(_app(_view(sessionState, sink, results.add)));
-      await _tap(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
       expect(results.single.kind, BrushEditSessionOperationKind.commit);
       expect(results.single.didAffectHistory, isTrue);
       expect(sink.totalCalls, greaterThan(0));
       expect(identical(results.single.sessionState, sessionState), isFalse);
+    });
+
+    testWidgets('drag commit creates exactly one operation result', (
+      tester,
+    ) async {
+      final results = <BrushEditSessionCacheOperationResult>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+      );
+
+      await dragCanvas(tester, const [
+        Offset(1.5, 1.5),
+        Offset(2.5, 1.5),
+        Offset(3.5, 2.5),
+      ]);
+
+      expect(results, hasLength(1));
+      expect(results.single.kind, BrushEditSessionOperationKind.commit);
+      expect(
+        results.single.sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+    });
+
+    testWidgets('repeated tap strokes produce repeated operation results', (
+      tester,
+    ) async {
+      var sessionState = _sessionState();
+      final sink = FakeCacheInvalidationSink();
+      final results = <BrushEditSessionCacheOperationResult>[];
+
+      await tester.pumpWidget(_app(_view(sessionState, sink, (result) {
+        results.add(result);
+        sessionState = result.sessionState;
+      })));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      await tester.pumpWidget(_app(_view(sessionState, sink, (result) {
+        results.add(result);
+        sessionState = result.sessionState;
+      })));
+      await tapCanvas(tester, const Offset(2.5, 1.5));
+
+      expect(results, hasLength(2));
+      expect(
+        results.map((result) => result.kind),
+        everyElement(BrushEditSessionOperationKind.commit),
+      );
+      expect(
+        results.last.sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+    });
+
+    testWidgets('coordinates are interpreted relative to the canvas view', (
+      tester,
+    ) async {
+      final results = <BrushEditSessionCacheOperationResult>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.only(top: 48, left: 24),
+              child: _view(
+                _sessionState(),
+                FakeCacheInvalidationSink(),
+                results.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+
+      expect(results, hasLength(1));
+      expect(
+        results.single.sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
     });
 
     testWidgets('pointer outside surface does not emit a result', (
@@ -130,7 +211,7 @@ void main() {
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
 
-      await _tap(tester, const Offset(9, 9));
+      await tapCanvas(tester, const Offset(9, 9));
 
       expect(results, isEmpty);
     });
@@ -142,7 +223,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        const Offset(1.5, 1.5),
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
         pointer: 1,
       );
       await tester.pump();
@@ -180,11 +261,11 @@ void main() {
       );
 
       final first = await tester.startGesture(
-        const Offset(1.5, 1.5),
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
         pointer: 1,
       );
       final second = await tester.startGesture(
-        const Offset(2.5, 2.5),
+        canvasGlobalOffset(tester, const Offset(2.5, 1.5)),
         pointer: 2,
       );
       await second.up();
@@ -201,11 +282,11 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        const Offset(1.5, 1.5),
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
         pointer: 1,
       );
-      await gesture.moveTo(const Offset(2.5, 2.5));
-      await gesture.moveTo(const Offset(20, 20));
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(2.5, 1.5)));
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(20, 20)));
       await gesture.up();
       await tester.pump();
 
@@ -224,7 +305,7 @@ void main() {
       await tester.pumpWidget(
         _app(_view(sessionState, FakeCacheInvalidationSink(), results.add)),
       );
-      await _tap(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
@@ -288,13 +369,6 @@ InteractiveBrushEditCanvasView _view(
     cacheInvalidationSink: sink,
     onOperationResult: onResult,
   );
-}
-
-Future<void> _tap(WidgetTester tester, Offset offset) async {
-  final gesture = await tester.startGesture(offset, pointer: 1);
-  await tester.pump();
-  await gesture.up();
-  await tester.pump();
 }
 
 Widget _app(Widget child) {
