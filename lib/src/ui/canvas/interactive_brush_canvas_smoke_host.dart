@@ -30,17 +30,19 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     required FrameId frameId,
     required BrushEditCanvasInputSettings inputSettings,
     required CacheInvalidationSink cacheInvalidationSink,
-    CanvasSize canvasSize = const CanvasSize(width: 64, height: 64),
+    CanvasSize? canvasSize,
     int tileSize = 16,
     bool showTransparentBackground = true,
     ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult,
   }) {
+    final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
+
     return InteractiveBrushCanvasSmokeHost(
       key: key,
       initialSessionState: BrushEditSessionState(
         canvasState: CanvasSurfaceState(
           currentSurface: BitmapSurface(
-            canvasSize: canvasSize,
+            canvasSize: resolvedCanvasSize,
             tileSize: tileSize,
           ),
         ),

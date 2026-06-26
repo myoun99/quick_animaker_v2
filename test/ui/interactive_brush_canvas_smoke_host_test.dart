@@ -204,7 +204,7 @@ BrushEditSessionState _sessionState() {
   return BrushEditSessionState(
     canvasState: CanvasSurfaceState(
       currentSurface: BitmapSurface(
-        canvasSize: const CanvasSize(width: 8, height: 8),
+        canvasSize: CanvasSize(width: 8, height: 8),
         tileSize: 2,
       ),
     ),
