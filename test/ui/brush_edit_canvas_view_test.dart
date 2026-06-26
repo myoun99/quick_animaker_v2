@@ -14,7 +14,7 @@ void main() {
       tester,
     ) async {
       final sessionState = _sessionState(
-        BitmapSurface(canvasSize: const CanvasSize(width: 12, height: 8)),
+        BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
       );
 
       await tester.pumpWidget(
@@ -37,7 +37,7 @@ void main() {
 
     testWidgets('sizes itself from current surface canvasSize', (tester) async {
       final sessionState = _sessionState(
-        BitmapSurface(canvasSize: const CanvasSize(width: 12, height: 8)),
+        BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
       );
 
       await tester.pumpWidget(
@@ -64,7 +64,7 @@ void main() {
       tester,
     ) async {
       final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 7, height: 5),
+        canvasSize: CanvasSize(width: 7, height: 5),
       );
       final sessionState = _sessionState(surface);
 

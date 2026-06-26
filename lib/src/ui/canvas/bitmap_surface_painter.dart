@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../services/bitmap_tile_rgba.dart';
 
 class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
@@ -21,6 +20,7 @@ class BitmapSurfacePainter extends CustomPainter {
 
     final pixelPaint = Paint()..style = PaintingStyle.fill;
     for (final tile in surface.tiles.values) {
+      final pixels = tile.pixels;
       final tileOriginX = tile.coord.x * tile.size;
       final tileOriginY = tile.coord.y * tile.size;
 
@@ -36,21 +36,16 @@ class BitmapSurfacePainter extends CustomPainter {
             continue;
           }
 
-          final color = readRgbaColorFromBitmapTile(
-            tile: tile,
-            x: localX,
-            y: localY,
-          );
-          if (color.a == 0) {
+          final offset = (localY * tile.size + localX) * 4;
+          final r = pixels[offset];
+          final g = pixels[offset + 1];
+          final b = pixels[offset + 2];
+          final a = pixels[offset + 3];
+          if (a == 0) {
             continue;
           }
 
-          pixelPaint.color = Color.fromARGB(
-            color.a,
-            color.r,
-            color.g,
-            color.b,
-          );
+          pixelPaint.color = Color.fromARGB(a, r, g, b);
           canvas.drawRect(
             Rect.fromLTWH(globalX.toDouble(), globalY.toDouble(), 1, 1),
             pixelPaint,

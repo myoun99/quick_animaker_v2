@@ -15,7 +15,7 @@ void main() {
   group('BitmapSurfacePainter', () {
     test('repaints when surface or transparent background setting changes', () {
       final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 2, height: 2),
+        canvasSize: CanvasSize(width: 2, height: 2),
       );
       final same = BitmapSurfacePainter(surface: surface);
 
@@ -55,7 +55,7 @@ void main() {
         },
       );
       final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 4, height: 2),
+        canvasSize: CanvasSize(width: 4, height: 2),
         tileSize: 2,
         tiles: {firstTile.coord: firstTile, secondTile.coord: secondTile},
       );
@@ -77,7 +77,7 @@ void main() {
 
     test('draws deterministic neutral background when enabled', () async {
       final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 1, height: 1),
+        canvasSize: CanvasSize(width: 1, height: 1),
       );
 
       final pixels = await _paintPixels(
