@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
+import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -12,6 +13,8 @@ import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_canvas_smoke_h
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
+
+import 'brush_canvas_test_helpers.dart';
 
 void main() {
   group('BrushCanvasSmokeScreen', () {
@@ -125,7 +128,7 @@ void main() {
         ),
       );
 
-      await _tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(
         find.textContaining(
@@ -169,7 +172,7 @@ void main() {
       expect(_host(tester).inputSettings.color, 0xFF0000FF);
       expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
 
-      await _tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
       final bluePixels = _view(
         tester,
       ).sessionState.canvasState.currentSurface.tiles.values.single.pixels;
@@ -183,7 +186,7 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-color-black'),
       );
       expect(_host(tester).inputSettings.color, 0xFF000000);
-      await _tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
 
       final blackPixels = _view(
         tester,
@@ -203,7 +206,7 @@ void main() {
         ),
       );
 
-      await _tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
       expect(
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isNotEmpty,
@@ -239,6 +242,149 @@ void main() {
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isEmpty,
       );
+    });
+
+    testWidgets('two strokes followed by undo removes only latest stroke', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(3.5, 2.5));
+      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(2));
+
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+      );
+
+      expect(find.textContaining('operation: undo'), findsOneWidget);
+      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(1));
+      expect(_view(tester).sessionState.historyState.redoEntries, hasLength(1));
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+    });
+
+    testWidgets('redo restores the latest undone stroke', (tester) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(3.5, 2.5));
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-redo'),
+      );
+
+      expect(find.textContaining('operation: redo'), findsOneWidget);
+      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(2));
+      expect(_view(tester).sessionState.historyState.redoEntries, isEmpty);
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+    });
+
+    testWidgets('reset clears canvas and prevents stale redo restore', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+      );
+      expect(_view(tester).sessionState.historyState.redoEntries, hasLength(1));
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-reset'),
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-redo'),
+      );
+
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isEmpty,
+      );
+      expect(_view(tester).sessionState.historyState.redoEntries, isEmpty);
+      expect(find.textContaining('operation: redo'), findsOneWidget);
+    });
+
+    testWidgets('blank undo and redo do not crash or change visible state', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+      );
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isEmpty,
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-redo'),
+      );
+
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isEmpty,
+      );
+      expect(find.textContaining('operation: redo'), findsOneWidget);
+    });
+
+    testWidgets('color change affects future stroke without erasing existing strokes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      final blackState = _view(tester).sessionState;
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-color-blue'),
+      );
+      await tapCanvas(tester, const Offset(3.5, 2.5));
+      final blueState = _view(tester).sessionState;
+
+      expect(_host(tester).inputSettings.color, 0xFF0000FF);
+      expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
+      expect(blueState.historyState.undoEntries, hasLength(2));
+      expect(
+        blueState.canvasState.currentSurface.tiles.length,
+        greaterThanOrEqualTo(
+          blackState.canvasState.currentSurface.tiles.length,
+        ),
+      );
+      expect(_surfaceHasRgbaBytes(blueState, const [0, 0, 255, 255]), isTrue);
+    });
+
+    testWidgets('debug status is deterministic across operations and color', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_smallScreen()));
+
+      expect(_debugStatus(tester), 'operation: none, cacheInvalidations: 0, color: 0xFF000000');
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      expect(_debugStatus(tester), 'operation: commit, cacheInvalidations: 1, color: 0xFF000000');
+      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-undo'));
+      expect(_debugStatus(tester), 'operation: undo, cacheInvalidations: 2, color: 0xFF000000');
+      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-redo'));
+      expect(_debugStatus(tester), 'operation: redo, cacheInvalidations: 3, color: 0xFF000000');
+      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-color-red'));
+      expect(_debugStatus(tester), 'operation: redo, cacheInvalidations: 3, color: 0xFFFF0000');
+      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-reset'));
+      expect(_debugStatus(tester), 'operation: reset, cacheInvalidations: 0, color: 0xFFFF0000');
     });
 
     testWidgets('does not add GestureDetector inside interactive canvas host', (
@@ -281,15 +427,6 @@ void main() {
   });
 }
 
-Future<void> _tapCanvas(WidgetTester tester, Offset localOffset) async {
-  final viewFinder = find.byType(InteractiveBrushEditCanvasView);
-  final globalOffset = tester.getTopLeft(viewFinder) + localOffset;
-  final gesture = await tester.startGesture(globalOffset, pointer: 1);
-  await tester.pump();
-  await gesture.up();
-  await tester.pump();
-}
-
 Widget _app(Widget child) {
   return MaterialApp(
     home: Scaffold(
@@ -313,4 +450,39 @@ InteractiveBrushEditCanvasView _view(WidgetTester tester) {
 Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.tap(find.byKey(key));
   await tester.pump();
+}
+
+BrushCanvasSmokeScreen _smallScreen() {
+  return BrushCanvasSmokeScreen(
+    canvasSize: CanvasSize(width: 8, height: 8),
+    tileSize: 2,
+  );
+}
+
+String _debugStatus(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.byKey(
+          const ValueKey<String>('brush-canvas-smoke-screen-debug-status'),
+        ),
+      )
+      .data!;
+}
+
+bool _surfaceHasRgbaBytes(
+  BrushEditSessionState sessionState,
+  List<int> rgbaBytes,
+) {
+  for (final tile in sessionState.canvasState.currentSurface.tiles.values) {
+    final pixels = tile.pixels;
+    for (var i = 0; i <= pixels.length - rgbaBytes.length; i += 4) {
+      if (pixels[i] == rgbaBytes[0] &&
+          pixels[i + 1] == rgbaBytes[1] &&
+          pixels[i + 2] == rgbaBytes[2] &&
+          pixels[i + 3] == rgbaBytes[3]) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

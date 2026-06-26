@@ -20,6 +20,8 @@ import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_vi
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
+import 'brush_canvas_test_helpers.dart';
+
 class FakeCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
@@ -120,7 +122,7 @@ void main() {
         ),
       );
 
-      await _tap(tester, const Offset(1.5, 1.5));
+      await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
       expect(sink.totalCalls, greaterThan(0));
@@ -203,7 +205,7 @@ void main() {
           ),
         );
 
-        await _tap(tester, const Offset(1.5, 1.5));
+        await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
         expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
 
@@ -248,7 +250,7 @@ void main() {
           ),
         );
 
-        await _tap(tester, const Offset(1.5, 1.5));
+        await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
         expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
 
@@ -292,7 +294,7 @@ void main() {
           ),
         );
 
-        await _tap(tester, const Offset(1.5, 1.5));
+        await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
         expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
 
@@ -316,6 +318,85 @@ void main() {
         );
       },
     );
+
+    testWidgets('repeated strokes keep accumulating in host local session state', (
+      tester,
+    ) async {
+      final sink = FakeCacheInvalidationSink();
+      final results = <BrushEditSessionCacheOperationResult>[];
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: _sessionState(),
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+            onOperationResult: results.add,
+          ),
+        ),
+      );
+
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      final firstState = _view(tester).sessionState;
+      await tapCanvas(tester, const Offset(2.5, 1.5));
+      final secondState = _view(tester).sessionState;
+
+      expect(results, hasLength(2));
+      expect(identical(secondState, firstState), isFalse);
+      expect(secondState.canvasState.currentSurface.tiles, isNotEmpty);
+      expect(secondState.historyState.undoEntries, hasLength(2));
+    });
+
+    testWidgets('sessionResetToken change replaces local stroked session state', (
+      tester,
+    ) async {
+      final firstState = _sessionState();
+      final secondState = _sessionState(width: 10, height: 10);
+      final sink = FakeCacheInvalidationSink();
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: firstState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+            sessionResetToken: 0,
+          ),
+        ),
+      );
+      await tapCanvas(tester, const Offset(1.5, 1.5));
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isNotEmpty,
+      );
+
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushCanvasSmokeHost(
+            initialSessionState: secondState,
+            layerId: layerId,
+            frameId: frameId,
+            inputSettings: inputSettings,
+            cacheInvalidationSink: sink,
+            sessionResetToken: 1,
+          ),
+        ),
+      );
+
+      expect(identical(_view(tester).sessionState, secondState), isTrue);
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        isEmpty,
+      );
+      expect(
+        _view(tester).sessionState.canvasState.currentSurface.canvasSize,
+        CanvasSize(width: 10, height: 10),
+      );
+    });
 
     testWidgets('does not add GestureDetector outside interactive canvas', (
       tester,
@@ -384,13 +465,6 @@ BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
     ),
     historyState: BrushEditHistoryState(),
   );
-}
-
-Future<void> _tap(WidgetTester tester, Offset offset) async {
-  final gesture = await tester.startGesture(offset, pointer: 1);
-  await tester.pump();
-  await gesture.up();
-  await tester.pump();
 }
 
 Widget _app(Widget child) {
