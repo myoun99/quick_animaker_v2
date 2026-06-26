@@ -50,9 +50,9 @@ void main() {
       tester,
     ) async {
       final sessionState = _sessionState();
-        final sink = FakeCacheInvalidationSink();
+      final sink = FakeCacheInvalidationSink();
 
-        await tester.pumpWidget(
+      await tester.pumpWidget(
         _app(
           InteractiveBrushCanvasSmokeHost(
             initialSessionState: sessionState,
@@ -104,10 +104,10 @@ void main() {
       final originalSessionSnapshot = sessionState.toString();
       final originalCanvasSnapshot = originalCanvasState.toString();
       final originalHistorySnapshot = originalHistoryState.toString();
-        final sink = FakeCacheInvalidationSink();
+      final sink = FakeCacheInvalidationSink();
       final results = <BrushEditSessionCacheOperationResult>[];
 
-        await tester.pumpWidget(
+      await tester.pumpWidget(
         _app(
           InteractiveBrushCanvasSmokeHost(
             initialSessionState: sessionState,
@@ -185,47 +185,48 @@ void main() {
       },
     );
 
-    testWidgets('same initialSessionState identity does not reset local stroke', (
-      tester,
-    ) async {
-      final sessionState = _sessionState();
-      final sink = FakeCacheInvalidationSink();
+    testWidgets(
+      'same initialSessionState identity does not reset local stroke',
+      (tester) async {
+        final sessionState = _sessionState();
+        final sink = FakeCacheInvalidationSink();
 
-      await tester.pumpWidget(
-        _app(
-          InteractiveBrushCanvasSmokeHost(
-            initialSessionState: sessionState,
-            layerId: layerId,
-            frameId: frameId,
-            inputSettings: inputSettings,
-            cacheInvalidationSink: sink,
+        await tester.pumpWidget(
+          _app(
+            InteractiveBrushCanvasSmokeHost(
+              initialSessionState: sessionState,
+              layerId: layerId,
+              frameId: frameId,
+              inputSettings: inputSettings,
+              cacheInvalidationSink: sink,
+            ),
           ),
-        ),
-      );
+        );
 
-      await _tap(tester, const Offset(1.5, 1.5));
-      final strokedState = _view(tester).sessionState;
-      expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
+        await _tap(tester, const Offset(1.5, 1.5));
+        final strokedState = _view(tester).sessionState;
+        expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
 
-      await tester.pumpWidget(
-        _app(
-          InteractiveBrushCanvasSmokeHost(
-            initialSessionState: sessionState,
-            layerId: layerId,
-            frameId: frameId,
-            inputSettings: inputSettings,
-            cacheInvalidationSink: sink,
+        await tester.pumpWidget(
+          _app(
+            InteractiveBrushCanvasSmokeHost(
+              initialSessionState: sessionState,
+              layerId: layerId,
+              frameId: frameId,
+              inputSettings: inputSettings,
+              cacheInvalidationSink: sink,
+            ),
           ),
-        ),
-      );
+        );
 
-      expect(identical(_view(tester).sessionState, strokedState), isTrue);
-      expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
-      );
-      expect(sessionState.canvasState.currentSurface.tiles, isEmpty);
-    });
+        expect(identical(_view(tester).sessionState, strokedState), isTrue);
+        expect(
+          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          isNotEmpty,
+        );
+        expect(sessionState.canvasState.currentSurface.tiles, isEmpty);
+      },
+    );
 
     testWidgets(
       'changing initialSessionState without token change preserves local stroke',
@@ -319,7 +320,7 @@ void main() {
     testWidgets('does not add GestureDetector outside interactive canvas', (
       tester,
     ) async {
-        await tester.pumpWidget(
+      await tester.pumpWidget(
         _app(
           InteractiveBrushCanvasSmokeHost(
             initialSessionState: _sessionState(),
@@ -355,7 +356,7 @@ void main() {
     testWidgets('does not affect StoryboardPanel or TimelinePanel', (
       tester,
     ) async {
-        await tester.pumpWidget(
+      await tester.pumpWidget(
         _app(
           InteractiveBrushCanvasSmokeHost(
             initialSessionState: _sessionState(),

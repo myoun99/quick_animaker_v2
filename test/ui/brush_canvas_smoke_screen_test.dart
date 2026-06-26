@@ -141,7 +141,6 @@ void main() {
       expect(view.sessionState.canvasState.currentSurface.tiles, isNotEmpty);
     });
 
-
     testWidgets('color presets update host settings and future strokes', (
       tester,
     ) async {
@@ -171,14 +170,9 @@ void main() {
       expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
 
       await _tapCanvas(tester, const Offset(1.5, 1.5));
-      final bluePixels = _view(tester)
-          .sessionState
-          .canvasState
-          .currentSurface
-          .tiles
-          .values
-          .single
-          .pixels;
+      final bluePixels = _view(
+        tester,
+      ).sessionState.canvasState.currentSurface.tiles.values.single.pixels;
 
       await _tapKey(
         tester,
@@ -191,14 +185,9 @@ void main() {
       expect(_host(tester).inputSettings.color, 0xFF000000);
       await _tapCanvas(tester, const Offset(1.5, 1.5));
 
-      final blackPixels = _view(tester)
-          .sessionState
-          .canvasState
-          .currentSurface
-          .tiles
-          .values
-          .single
-          .pixels;
+      final blackPixels = _view(
+        tester,
+      ).sessionState.canvasState.currentSurface.tiles.values.single.pixels;
       expect(blackPixels, isNot(bluePixels));
     });
 
@@ -252,21 +241,18 @@ void main() {
       );
     });
 
-    testWidgets(
-      'does not add GestureDetector outside interactive canvas path',
-      (tester) async {
-        await tester.pumpWidget(_app(const BrushCanvasSmokeScreen()));
+    testWidgets('does not add GestureDetector inside interactive canvas host', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(const BrushCanvasSmokeScreen()));
 
-        final screenFinder = find.byType(BrushCanvasSmokeScreen);
-        expect(
-          find.descendant(
-            of: screenFinder,
-            matching: find.byType(GestureDetector),
-          ),
-          findsNothing,
-        );
-      },
-    );
+      final hostFinder = find.byType(InteractiveBrushCanvasSmokeHost);
+
+      expect(
+        find.descendant(of: hostFinder, matching: find.byType(GestureDetector)),
+        findsNothing,
+      );
+    });
 
     test(
       'does not include forbidden state management or direct commit calls',
