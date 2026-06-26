@@ -1,18 +1,10 @@
-# QuickAnimaker v2 현재 인수인계문
+# QuickAnimaker v2 인수인계문
 
 ## 0. 문서 목적
 
 이 문서는 QuickAnimaker v2 프로젝트를 다음 GPT 챗이나 다음 작업 세션에서 이어가기 위한 최신 인수인계문이다.
 
 이 문서는 과거 handoff 문서를 대체한다.
-
-중요:
-
-```txt
-현재 기준은 Phase 150 완료 후 상태다.
-Phase 146~150 추천 흐름은 완료되었다.
-이제 다음 방향은 bitmap-first canvas / brush / cache architecture 기반으로 간다.
-```
 
 대화는 한국어로 진행한다.
 
