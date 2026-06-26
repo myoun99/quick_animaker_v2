@@ -31,8 +31,20 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.byType(Listener), findsNothing);
-      expect(find.byType(GestureDetector), findsNothing);
+      final canvasViewFinder = find.byType(BrushEditCanvasView);
+
+      expect(
+        find.descendant(of: canvasViewFinder, matching: find.byType(Listener)),
+        findsNothing,
+      );
+
+      expect(
+        find.descendant(
+          of: canvasViewFinder,
+          matching: find.byType(GestureDetector),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('sizes itself from current surface canvasSize', (tester) async {

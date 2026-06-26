@@ -50,9 +50,7 @@ void main() {
       final secondTile = _tile(
         coord: TileCoord(x: 1, y: 0),
         size: 2,
-        colors: {
-          const _Point(0, 1): RgbaColor(r: 0, g: 0, b: 255, a: 255),
-        },
+        colors: {const _Point(0, 1): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
       );
       final surface = BitmapSurface(
         canvasSize: CanvasSize(width: 4, height: 2),
