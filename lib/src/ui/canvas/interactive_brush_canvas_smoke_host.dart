@@ -20,6 +20,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.cacheInvalidationSink,
+    this.sessionResetToken,
     this.showTransparentBackground = true,
     this.onOperationResult,
   });
@@ -32,6 +33,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     required CacheInvalidationSink cacheInvalidationSink,
     CanvasSize? canvasSize,
     int tileSize = 16,
+    Object? sessionResetToken,
     bool showTransparentBackground = true,
     ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult,
   }) {
@@ -52,6 +54,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
       frameId: frameId,
       inputSettings: inputSettings,
       cacheInvalidationSink: cacheInvalidationSink,
+      sessionResetToken: sessionResetToken,
       showTransparentBackground: showTransparentBackground,
       onOperationResult: onOperationResult,
     );
@@ -62,6 +65,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
   final CacheInvalidationSink cacheInvalidationSink;
+  final Object? sessionResetToken;
   final bool showTransparentBackground;
   final ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult;
 
@@ -78,6 +82,15 @@ class _InteractiveBrushCanvasSmokeHostState
   void initState() {
     super.initState();
     _sessionState = widget.initialSessionState;
+  }
+
+  @override
+  void didUpdateWidget(covariant InteractiveBrushCanvasSmokeHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!identical(widget.sessionResetToken, oldWidget.sessionResetToken)) {
+      _sessionState = widget.initialSessionState;
+    }
   }
 
   @override
