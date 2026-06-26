@@ -343,48 +343,79 @@ void main() {
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
-    testWidgets('color change affects future stroke without erasing existing strokes', (
-      tester,
-    ) async {
-      await tester.pumpWidget(_app(_smallScreen()));
+    testWidgets(
+      'color change affects future stroke without erasing existing strokes',
+      (tester) async {
+        await tester.pumpWidget(_app(_smallScreen()));
 
-      await tapCanvas(tester, const Offset(1.5, 1.5));
-      final blackState = _view(tester).sessionState;
-      await _tapKey(
-        tester,
-        const ValueKey<String>('brush-canvas-smoke-screen-color-blue'),
-      );
-      await tapCanvas(tester, const Offset(3.5, 2.5));
-      final blueState = _view(tester).sessionState;
+        await tapCanvas(tester, const Offset(1.5, 1.5));
+        final blackState = _view(tester).sessionState;
+        await _tapKey(
+          tester,
+          const ValueKey<String>('brush-canvas-smoke-screen-color-blue'),
+        );
+        await tapCanvas(tester, const Offset(3.5, 2.5));
+        final blueState = _view(tester).sessionState;
 
-      expect(_host(tester).inputSettings.color, 0xFF0000FF);
-      expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-      expect(blueState.historyState.undoEntries, hasLength(2));
-      expect(
-        blueState.canvasState.currentSurface.tiles.length,
-        greaterThanOrEqualTo(
-          blackState.canvasState.currentSurface.tiles.length,
-        ),
-      );
-      expect(_surfaceHasRgbaBytes(blueState, const [0, 0, 255, 255]), isTrue);
-    });
+        expect(_host(tester).inputSettings.color, 0xFF0000FF);
+        expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
+        expect(blueState.historyState.undoEntries, hasLength(2));
+        expect(
+          blueState.canvasState.currentSurface.tiles.length,
+          greaterThanOrEqualTo(
+            blackState.canvasState.currentSurface.tiles.length,
+          ),
+        );
+        expect(_surfaceHasRgbaBytes(blueState, const [0, 0, 255, 255]), isTrue);
+      },
+    );
 
     testWidgets('debug status is deterministic across operations and color', (
       tester,
     ) async {
       await tester.pumpWidget(_app(_smallScreen()));
 
-      expect(_debugStatus(tester), 'operation: none, cacheInvalidations: 0, color: 0xFF000000');
+      expect(
+        _debugStatus(tester),
+        'operation: none, cacheInvalidations: 0, color: 0xFF000000',
+      );
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      expect(_debugStatus(tester), 'operation: commit, cacheInvalidations: 1, color: 0xFF000000');
-      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-undo'));
-      expect(_debugStatus(tester), 'operation: undo, cacheInvalidations: 2, color: 0xFF000000');
-      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-redo'));
-      expect(_debugStatus(tester), 'operation: redo, cacheInvalidations: 3, color: 0xFF000000');
-      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-color-red'));
-      expect(_debugStatus(tester), 'operation: redo, cacheInvalidations: 3, color: 0xFFFF0000');
-      await _tapKey(tester, const ValueKey<String>('brush-canvas-smoke-screen-reset'));
-      expect(_debugStatus(tester), 'operation: reset, cacheInvalidations: 0, color: 0xFFFF0000');
+      expect(
+        _debugStatus(tester),
+        'operation: commit, cacheInvalidations: 1, color: 0xFF000000',
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+      );
+      expect(
+        _debugStatus(tester),
+        'operation: undo, cacheInvalidations: 2, color: 0xFF000000',
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-redo'),
+      );
+      expect(
+        _debugStatus(tester),
+        'operation: redo, cacheInvalidations: 3, color: 0xFF000000',
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-color-red'),
+      );
+      expect(
+        _debugStatus(tester),
+        'operation: redo, cacheInvalidations: 3, color: 0xFFFF0000',
+      );
+      await _tapKey(
+        tester,
+        const ValueKey<String>('brush-canvas-smoke-screen-reset'),
+      );
+      expect(
+        _debugStatus(tester),
+        'operation: reset, cacheInvalidations: 0, color: 0xFFFF0000',
+      );
     });
 
     testWidgets('does not add GestureDetector inside interactive canvas host', (

@@ -153,15 +153,23 @@ void main() {
       final sink = FakeCacheInvalidationSink();
       final results = <BrushEditSessionCacheOperationResult>[];
 
-      await tester.pumpWidget(_app(_view(sessionState, sink, (result) {
-        results.add(result);
-        sessionState = result.sessionState;
-      })));
+      await tester.pumpWidget(
+        _app(
+          _view(sessionState, sink, (result) {
+            results.add(result);
+            sessionState = result.sessionState;
+          }),
+        ),
+      );
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      await tester.pumpWidget(_app(_view(sessionState, sink, (result) {
-        results.add(result);
-        sessionState = result.sessionState;
-      })));
+      await tester.pumpWidget(
+        _app(
+          _view(sessionState, sink, (result) {
+            results.add(result);
+            sessionState = result.sessionState;
+          }),
+        ),
+      );
       await tapCanvas(tester, const Offset(2.5, 1.5));
 
       expect(results, hasLength(2));
