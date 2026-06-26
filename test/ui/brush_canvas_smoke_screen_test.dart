@@ -152,20 +152,23 @@ void main() {
       },
     );
 
-    test('does not include forbidden state management or direct commit calls', () {
-      final source = File(
-        'lib/src/ui/canvas/brush_canvas_smoke_screen.dart',
-      ).readAsStringSync();
+    test(
+      'does not include forbidden state management or direct commit calls',
+      () {
+        final source = File(
+          'lib/src/ui/canvas/brush_canvas_smoke_screen.dart',
+        ).readAsStringSync();
 
-      expect(source, isNot(contains('Provider')));
-      expect(source, isNot(contains('Riverpod')));
-      expect(source, isNot(contains('Bloc')));
-      expect(source, isNot(contains('ChangeNotifier')));
-      expect(source, isNot(contains('InheritedWidget')));
-      expect(source, isNot(contains('commitBrushDabSequence')));
-      expect(source, isNot(contains('undoLatestBrushEdit')));
-      expect(source, isNot(contains('redoLatestBrushEdit')));
-    });
+        expect(source, isNot(contains('Provider')));
+        expect(source, isNot(contains('Riverpod')));
+        expect(source, isNot(contains('Bloc')));
+        expect(source, isNot(contains('ChangeNotifier')));
+        expect(source, isNot(contains('InheritedWidget')));
+        expect(source, isNot(contains('commitBrushDabSequence')));
+        expect(source, isNot(contains('undoLatestBrushEdit')));
+        expect(source, isNot(contains('redoLatestBrushEdit')));
+      },
+    );
 
     testWidgets('does not affect StoryboardPanel or TimelinePanel', (
       tester,

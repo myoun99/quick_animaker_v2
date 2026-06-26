@@ -32,8 +32,7 @@ class BrushCanvasSmokeScreen extends StatefulWidget {
   final bool showDebugStatus;
 
   @override
-  State<BrushCanvasSmokeScreen> createState() =>
-      _BrushCanvasSmokeScreenState();
+  State<BrushCanvasSmokeScreen> createState() => _BrushCanvasSmokeScreenState();
 }
 
 class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
