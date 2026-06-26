@@ -45,6 +45,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   late BrushEditCanvasInputSettings _inputSettings;
   late _RecordingCacheInvalidationSink _cacheInvalidationSink;
   BrushEditSessionCacheOperationResult? _latestOperationResult;
+  var _sessionRevision = 0;
   String _debugOperation = 'none';
 
   @override
@@ -130,6 +131,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
             frameId: widget.frameId,
             inputSettings: _inputSettings,
             cacheInvalidationSink: _cacheInvalidationSink,
+            sessionResetToken: _sessionRevision,
             showTransparentBackground: widget.showTransparentBackground,
             onOperationResult: _handleOperationResult,
           ),
@@ -177,6 +179,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
     setState(() {
       _sessionState = result.sessionState;
+      _sessionRevision += 1;
       _latestOperationResult = result;
       _debugOperation = result.kind.name;
     });
@@ -189,6 +192,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
     );
     setState(() {
       _sessionState = result.sessionState;
+      _sessionRevision += 1;
       _latestOperationResult = result;
       _debugOperation = result.kind.name;
     });
@@ -201,6 +205,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
     );
     setState(() {
       _sessionState = result.sessionState;
+      _sessionRevision += 1;
       _latestOperationResult = result;
       _debugOperation = result.kind.name;
     });
@@ -212,6 +217,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
         _resolvedCanvasSize,
         widget.tileSize,
       );
+      _sessionRevision += 1;
       _latestOperationResult = null;
       _cacheInvalidationSink = _RecordingCacheInvalidationSink();
       _debugOperation = debugOperation;
