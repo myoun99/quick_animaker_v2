@@ -110,7 +110,7 @@ void main() {
       final results = <BrushEditSessionCacheOperationResult>[];
 
       await tester.pumpWidget(_app(_view(sessionState, sink, results.add)));
-      await _tap(tester, const Offset(1, 1));
+      await _tap(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
       expect(results.single.kind, BrushEditSessionOperationKind.commit);
@@ -137,7 +137,7 @@ void main() {
       );
 
       final gesture = await tester.createGesture(pointer: 1);
-      await gesture.addPointer(location: const Offset(1, 1));
+      await gesture.addPointer(location: const Offset(1.5, 1.5));
       await tester.pump();
       await gesture.cancel();
       await tester.pump();
@@ -154,10 +154,10 @@ void main() {
       );
 
       tester.binding.handlePointerEvent(
-        const PointerMoveEvent(position: Offset(1, 1)),
+        const PointerMoveEvent(position: Offset(1.5, 1.5)),
       );
       tester.binding.handlePointerEvent(
-        const PointerUpEvent(position: Offset(1, 1)),
+        const PointerUpEvent(position: Offset(1.5, 1.5)),
       );
       await tester.pump();
 
@@ -174,8 +174,8 @@ void main() {
 
       final first = await tester.createGesture(pointer: 1);
       final second = await tester.createGesture(pointer: 2);
-      await first.addPointer(location: const Offset(1, 1));
-      await second.addPointer(location: const Offset(2, 2));
+      await first.addPointer(location: const Offset(1.5, 1.5));
+      await second.addPointer(location: const Offset(2.5, 2.5));
       await second.up();
       await first.up();
       await tester.pump();
@@ -190,8 +190,8 @@ void main() {
       );
 
       final gesture = await tester.createGesture(pointer: 1);
-      await gesture.addPointer(location: const Offset(1, 1));
-      await gesture.moveTo(const Offset(2, 2));
+      await gesture.addPointer(location: const Offset(1.5, 1.5));
+      await gesture.moveTo(const Offset(2.5, 2.5));
       await gesture.moveTo(const Offset(20, 20));
       await gesture.up();
       await tester.pump();
@@ -211,7 +211,7 @@ void main() {
       await tester.pumpWidget(
         _app(_view(sessionState, FakeCacheInvalidationSink(), results.add)),
       );
-      await _tap(tester, const Offset(1, 1));
+      await _tap(tester, const Offset(1.5, 1.5));
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(identical(sessionState.historyState, originalHistoryState), isTrue);
