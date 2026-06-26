@@ -125,7 +125,7 @@ void main() {
         ),
       );
 
-      await _tap(tester, const Offset(1.5, 1.5));
+      await _tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(
         find.textContaining(
@@ -170,7 +170,7 @@ void main() {
       expect(_host(tester).inputSettings.color, 0xFF0000FF);
       expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
 
-      await _tap(tester, const Offset(1.5, 1.5));
+      await _tapCanvas(tester, const Offset(1.5, 1.5));
       final bluePixels = _view(tester)
           .sessionState
           .canvasState
@@ -189,7 +189,7 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-color-black'),
       );
       expect(_host(tester).inputSettings.color, 0xFF000000);
-      await _tap(tester, const Offset(1.5, 1.5));
+      await _tapCanvas(tester, const Offset(1.5, 1.5));
 
       final blackPixels = _view(tester)
           .sessionState
@@ -214,7 +214,7 @@ void main() {
         ),
       );
 
-      await _tap(tester, const Offset(1.5, 1.5));
+      await _tapCanvas(tester, const Offset(1.5, 1.5));
       expect(
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isNotEmpty,
@@ -295,8 +295,10 @@ void main() {
   });
 }
 
-Future<void> _tap(WidgetTester tester, Offset offset) async {
-  final gesture = await tester.startGesture(offset, pointer: 1);
+Future<void> _tapCanvas(WidgetTester tester, Offset localOffset) async {
+  final viewFinder = find.byType(InteractiveBrushEditCanvasView);
+  final globalOffset = tester.getTopLeft(viewFinder) + localOffset;
+  final gesture = await tester.startGesture(globalOffset, pointer: 1);
   await tester.pump();
   await gesture.up();
   await tester.pump();
