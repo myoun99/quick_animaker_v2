@@ -131,13 +131,13 @@ void main() {
       );
       expect(identical(view.sessionState, results.single.sessionState), isTrue);
       expect(identical(view.sessionState, sessionState), isFalse);
-      expect(
-        view.sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
-      );
+      expect(view.sessionState.canvasState.currentSurface.tiles, isNotEmpty);
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
-      expect(identical(sessionState.historyState, originalHistoryState), isTrue);
+      expect(
+        identical(sessionState.historyState, originalHistoryState),
+        isTrue,
+      );
       expect(sessionState.toString(), originalSessionSnapshot);
       expect(originalCanvasState.toString(), originalCanvasSnapshot);
       expect(originalHistoryState.toString(), originalHistorySnapshot);
