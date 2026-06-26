@@ -49,6 +49,7 @@ class _InteractiveBrushEditCanvasViewState
       key: const ValueKey<String>(
         'interactive-brush-edit-canvas-view-listener',
       ),
+      behavior: HitTestBehavior.opaque,
       onPointerDown: _handlePointerDown,
       onPointerMove: _handlePointerMove,
       onPointerUp: _handlePointerUp,
