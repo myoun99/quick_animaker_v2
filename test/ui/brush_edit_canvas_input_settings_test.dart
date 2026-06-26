@@ -35,31 +35,52 @@ void main() {
 
     test('rejects size <= 0', () {
       expect(() => BrushEditCanvasInputSettings(size: 0), throwsAssertionError);
-      expect(() => BrushEditCanvasInputSettings(size: -1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(size: -1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects opacity < 0', () {
-      expect(() => BrushEditCanvasInputSettings(opacity: -0.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(opacity: -0.1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects opacity > 1', () {
-      expect(() => BrushEditCanvasInputSettings(opacity: 1.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(opacity: 1.1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects flow < 0', () {
-      expect(() => BrushEditCanvasInputSettings(flow: -0.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(flow: -0.1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects flow > 1', () {
-      expect(() => BrushEditCanvasInputSettings(flow: 1.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(flow: 1.1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects hardness < 0', () {
-      expect(() => BrushEditCanvasInputSettings(hardness: -0.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(hardness: -0.1),
+        throwsAssertionError,
+      );
     });
 
     test('rejects hardness > 1', () {
-      expect(() => BrushEditCanvasInputSettings(hardness: 1.1), throwsAssertionError);
+      expect(
+        () => BrushEditCanvasInputSettings(hardness: 1.1),
+        throwsAssertionError,
+      );
     });
 
     test('copyWith preserves omitted values', () {

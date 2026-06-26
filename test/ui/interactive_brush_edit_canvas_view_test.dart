@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
@@ -47,60 +46,64 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    testWidgets('builds Listener and BrushEditCanvasView without GestureDetector', (
-      tester,
-    ) async {
-      final sessionState = _sessionState();
-      final sink = FakeCacheInvalidationSink();
+    testWidgets(
+      'builds Listener and BrushEditCanvasView without GestureDetector',
+      (tester) async {
+        final sessionState = _sessionState();
+        final sink = FakeCacheInvalidationSink();
 
-      await tester.pumpWidget(
-        _app(
-          InteractiveBrushEditCanvasView(
-            sessionState: sessionState,
-            layerId: layerId,
-            frameId: frameId,
-            inputSettings: const BrushEditCanvasInputSettings(),
-            cacheInvalidationSink: sink,
-            onOperationResult: (_) {},
-            showTransparentBackground: false,
-          ),
-        ),
-      );
-
-      final viewFinder = find.byType(InteractiveBrushEditCanvasView);
-      expect(viewFinder, findsOneWidget);
-      expect(
-        find.descendant(
-          of: viewFinder,
-          matching: find.byKey(
-            const ValueKey<String>(
-              'interactive-brush-edit-canvas-view-listener',
+        await tester.pumpWidget(
+          _app(
+            InteractiveBrushEditCanvasView(
+              sessionState: sessionState,
+              layerId: layerId,
+              frameId: frameId,
+              inputSettings: const BrushEditCanvasInputSettings(),
+              cacheInvalidationSink: sink,
+              onOperationResult: (_) {},
+              showTransparentBackground: false,
             ),
           ),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: viewFinder,
-          matching: find.byType(BrushEditCanvasView),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: viewFinder, matching: find.byType(GestureDetector)),
-        findsNothing,
-      );
+        );
 
-      final canvasView = tester.widget<BrushEditCanvasView>(
-        find.descendant(
-          of: viewFinder,
-          matching: find.byType(BrushEditCanvasView),
-        ),
-      );
-      expect(identical(canvasView.sessionState, sessionState), isTrue);
-      expect(canvasView.showTransparentBackground, isFalse);
-    });
+        final viewFinder = find.byType(InteractiveBrushEditCanvasView);
+        expect(viewFinder, findsOneWidget);
+        expect(
+          find.descendant(
+            of: viewFinder,
+            matching: find.byKey(
+              const ValueKey<String>(
+                'interactive-brush-edit-canvas-view-listener',
+              ),
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: viewFinder,
+            matching: find.byType(BrushEditCanvasView),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: viewFinder,
+            matching: find.byType(GestureDetector),
+          ),
+          findsNothing,
+        );
+
+        final canvasView = tester.widget<BrushEditCanvasView>(
+          find.descendant(
+            of: viewFinder,
+            matching: find.byType(BrushEditCanvasView),
+          ),
+        );
+        expect(identical(canvasView.sessionState, sessionState), isTrue);
+        expect(canvasView.showTransparentBackground, isFalse);
+      },
+    );
 
     testWidgets('pointer down/up inside surface emits changed commit result', (
       tester,
@@ -119,7 +122,9 @@ void main() {
       expect(identical(results.single.sessionState, sessionState), isFalse);
     });
 
-    testWidgets('pointer outside surface does not emit a result', (tester) async {
+    testWidgets('pointer outside surface does not emit a result', (
+      tester,
+    ) async {
       final results = <BrushEditSessionCacheOperationResult>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
@@ -222,24 +227,32 @@ void main() {
       await _tap(tester, const Offset(1.5, 1.5));
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
-      expect(identical(sessionState.historyState, originalHistoryState), isTrue);
+      expect(
+        identical(sessionState.historyState, originalHistoryState),
+        isTrue,
+      );
       expect(sessionState.toString(), originalSessionSnapshot);
       expect(originalCanvasState.toString(), originalCanvasSnapshot);
       expect(originalHistoryState.toString(), originalHistorySnapshot);
     });
 
-    test('does not execute undo or redo and does not add forbidden state management', () {
-      final source = _readInteractiveSource();
+    test(
+      'does not execute undo or redo and does not add forbidden state management',
+      () {
+        final source = _readInteractiveSource();
 
-      expect(source, isNot(contains('undoLatestBrushEdit')));
-      expect(source, isNot(contains('redoLatestBrushEdit')));
-      expect(source, isNot(contains('Provider')));
-      expect(source, isNot(contains('Riverpod')));
-      expect(source, isNot(contains('Bloc')));
-      expect(source, isNot(contains('ChangeNotifier')));
-    });
+        expect(source, isNot(contains('undoLatestBrushEdit')));
+        expect(source, isNot(contains('redoLatestBrushEdit')));
+        expect(source, isNot(contains('Provider')));
+        expect(source, isNot(contains('Riverpod')));
+        expect(source, isNot(contains('Bloc')));
+        expect(source, isNot(contains('ChangeNotifier')));
+      },
+    );
 
-    testWidgets('does not affect StoryboardPanel or TimelinePanel', (tester) async {
+    testWidgets('does not affect StoryboardPanel or TimelinePanel', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), (_) {})),
       );

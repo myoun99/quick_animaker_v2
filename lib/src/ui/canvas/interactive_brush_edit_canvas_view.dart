@@ -90,12 +90,12 @@ class _InteractiveBrushEditCanvasViewState
     if (_collectedDabs.isNotEmpty) {
       final result =
           commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-        sessionState: widget.sessionState,
-        sequence: BrushDabSequence(_collectedDabs),
-        layerId: widget.layerId,
-        frameId: widget.frameId,
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      );
+            sessionState: widget.sessionState,
+            sequence: BrushDabSequence(_collectedDabs),
+            layerId: widget.layerId,
+            frameId: widget.frameId,
+            cacheInvalidationSink: widget.cacheInvalidationSink,
+          );
       widget.onOperationResult(result);
     }
 
