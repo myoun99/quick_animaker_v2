@@ -60,9 +60,9 @@ void main() {
   test('userUndoLimit trim moves old paint command to deferredBake', () {
     final c = coordinator(userUndoLimit: 2);
 
-    c.applyBrushOperationResult(_commitResult(c));
-    c.applyBrushOperationResult(_commitResult(c));
-    c.applyBrushOperationResult(_commitResult(c));
+    c.applyBrushOperationResult(_commitResult(c, index: 0));
+    c.applyBrushOperationResult(_commitResult(c, index: 1));
+    c.applyBrushOperationResult(_commitResult(c, index: 2));
 
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(c.undoHistory.undoStack, hasLength(2));
@@ -103,8 +103,8 @@ void main() {
   });
 }
 
-BrushDab _dab() => BrushDab(
-  center: CanvasPoint(x: 1, y: 1),
+BrushDab _dab(int index) => BrushDab(
+  center: CanvasPoint(x: 1 + (index * 2), y: 1),
   color: 0xFF000000,
   size: 2,
   opacity: 1,
@@ -116,11 +116,12 @@ BrushDab _dab() => BrushDab(
 );
 
 BrushEditSessionCacheOperationResult _commitResult(
-  BrushWorkspaceCoordinator coordinator,
-) {
+  BrushWorkspaceCoordinator coordinator, {
+  int index = 0,
+}) {
   return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
     sessionState: coordinator.activeSessionState,
-    sequence: BrushDabSequence([_dab()]),
+    sequence: BrushDabSequence([_dab(index)]),
     layerId: coordinator.activeFrameKey.layerId,
     frameId: coordinator.activeFrameKey.frameId,
     cacheInvalidationSink: _NoopSink(),
