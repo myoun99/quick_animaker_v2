@@ -250,3 +250,20 @@ Still out of scope:
 - renderer/playback cache
 - actual deferred bitmap baking
 - full timeline/layer panel integration
+
+## Phase 196 main canvas absorption preparation
+
+Implemented:
+- BrushWorkspaceScreen clarified as a temporary/debug wrapper.
+- Reusable brush editing view extracted from the route-level screen.
+- Temporary brush workspace fixture isolated.
+- Main-canvas-oriented host/component prepared for future HomePage integration.
+
+Still out of scope:
+- deleting BrushWorkspaceScreen
+- fully replacing HomePage CanvasView
+- real timeline/layer/frame selection integration
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking

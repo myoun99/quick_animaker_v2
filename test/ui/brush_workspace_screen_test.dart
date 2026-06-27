@@ -95,6 +95,22 @@ void main() {
       );
     },
   );
+
+  testWidgets('BrushWorkspaceScreen wraps reusable brush workspace view', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: BrushWorkspaceScreen()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-screen')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-view')),
+      findsOneWidget,
+    );
+  });
 }
 
 Offset _canvasPoint(WidgetTester tester) {
