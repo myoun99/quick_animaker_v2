@@ -174,30 +174,33 @@ void main() {
     expect(c.undoHistory.undoStack, isEmpty);
   });
 
-  test('no-op commit still updates session store when session state differs', () {
-    final c = coordinator();
-    final nextSession = _emptyCommitResult(c).sessionState;
+  test(
+    'no-op commit still updates session store when session state differs',
+    () {
+      final c = coordinator();
+      final nextSession = _emptyCommitResult(c).sessionState;
 
-    c.applyBrushOperationResult(
-      BrushEditSessionCacheOperationResult(
-        kind: BrushEditSessionOperationKind.commit,
-        sessionState: nextSession,
-        affectedEntry: null,
-        cacheInvalidationResult: CacheInvalidationExecutionResult(
-          layerTileCount: 0,
-          frameCompositeCount: 0,
-          playbackPreviewCount: 0,
+      c.applyBrushOperationResult(
+        BrushEditSessionCacheOperationResult(
+          kind: BrushEditSessionOperationKind.commit,
+          sessionState: nextSession,
+          affectedEntry: null,
+          cacheInvalidationResult: CacheInvalidationExecutionResult(
+            layerTileCount: 0,
+            frameCompositeCount: 0,
+            playbackPreviewCount: 0,
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(identical(c.activeSessionState, nextSession), isTrue);
-    expect(
-      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
-      isEmpty,
-    );
-    expect(c.undoHistory.undoStack, isEmpty);
-  });
+      expect(identical(c.activeSessionState, nextSession), isTrue);
+      expect(
+        c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+        isEmpty,
+      );
+      expect(c.undoHistory.undoStack, isEmpty);
+    },
+  );
 
   test('repeated same-pixel same-color dab is no-op after first commit', () {
     final c = coordinator();
