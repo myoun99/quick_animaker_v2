@@ -219,3 +219,19 @@ Implemented foundation:
 - Paint commands can move live -> hiddenByUndo -> live, or live -> deferredBake.
 - Deferred bake remains non-user-undoable.
 - Actual bitmap baking and UI wiring remain out of scope.
+
+## Phase 194 app workspace integration
+
+Implemented:
+- BrushWorkspaceScreen app entry.
+- BrushFrameEditSessionStore.
+- BrushWorkspaceCoordinator.
+- Frame switching with independent BrushEditSessionState per BrushFrameKey.
+- Paint commits recorded in BrushFrameStore and UnifiedUndoHistory.
+
+Still out of scope:
+- Save/load.
+- Renderer/playback cache.
+- Actual deferred bitmap baking.
+- Production toolbar.
+- Full timeline/layer panel integration.
