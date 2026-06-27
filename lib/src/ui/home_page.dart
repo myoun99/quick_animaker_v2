@@ -27,6 +27,7 @@ import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_workspace_screen.dart';
+import 'brush/main_canvas_brush_host.dart';
 import 'canvas/canvas_view.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
@@ -65,6 +66,7 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _topToolbarScrollController = ScrollController();
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
+  bool _showMainCanvasBrushHostPreview = false;
 
   @override
   void initState() {
@@ -1332,6 +1334,17 @@ class _HomePageState extends State<HomePage> {
                       child: const Text('Brush Workspace'),
                     ),
                     const SizedBox(width: 16),
+                    FilterChip(
+                      key: const ValueKey<String>('main-canvas-mode-toggle'),
+                      label: const Text('Brush Host Preview'),
+                      selected: _showMainCanvasBrushHostPreview,
+                      onSelected: (selected) {
+                        setState(() {
+                          _showMainCanvasBrushHostPreview = selected;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 16),
                     CutListBar(
                       entries: cutEntries,
                       onCutSelected: _handleCutSelected,
@@ -1371,11 +1384,23 @@ class _HomePageState extends State<HomePage> {
                 decoration: BoxDecoration(
                   border: Border.all(color: const Color(0xFFBDBDBD)),
                 ),
-                child: CanvasView(
-                  controller: _canvasController,
-                  cutId: _activeCutId,
-                  onChanged: () => setState(() {}),
-                ),
+                child: _showMainCanvasBrushHostPreview
+                    // TODO Phase 198: Replace BrushWorkspaceFixture with active
+                    // editor Project / Track / Cut / Layer / Frame selection.
+                    ? const KeyedSubtree(
+                        key: ValueKey<String>(
+                          'main-canvas-brush-host-container',
+                        ),
+                        child: MainCanvasBrushHost(),
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey<String>('main-canvas-legacy-host'),
+                        child: CanvasView(
+                          controller: _canvasController,
+                          cutId: _activeCutId,
+                          onChanged: () => setState(() {}),
+                        ),
+                      ),
               ),
             ),
           ),

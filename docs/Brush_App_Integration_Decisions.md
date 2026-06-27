@@ -267,3 +267,21 @@ Still out of scope:
 - save/load
 - renderer/playback cache
 - actual deferred bitmap baking
+
+## Phase 197 main editor canvas embedding
+
+Implemented:
+- MainCanvasBrushHost can be shown inside the main editor canvas area through a debug/preview mode.
+- Existing CanvasView remains the default path.
+- BrushWorkspaceScreen remains available as a debug/manual route.
+- This is a temporary bridge before real timeline/layer/frame selection integration.
+
+Still out of scope:
+- deleting BrushWorkspaceScreen
+- deleting/replacing CanvasView
+- real timeline/layer/frame selection integration
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
