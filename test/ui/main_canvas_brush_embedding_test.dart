@@ -8,26 +8,27 @@ import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 void main() {
-  testWidgets('HomePage defaults to legacy CanvasView in the main canvas area', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'HomePage defaults to legacy CanvasView in the main canvas area',
+    (tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(
-      find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
-      findsOneWidget,
-    );
-    expect(find.byType(CanvasView), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
-      findsNothing,
-    );
-    expect(find.byType(MainCanvasBrushHost), findsNothing);
-  });
+      expect(
+        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
+        findsOneWidget,
+      );
+      expect(find.byType(CanvasView), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+        findsNothing,
+      );
+      expect(find.byType(MainCanvasBrushHost), findsNothing);
+    },
+  );
 
   testWidgets('debug preview toggle shows MainCanvasBrushHost in main canvas', (
     tester,
@@ -49,10 +50,14 @@ void main() {
     expect(find.byType(CanvasView), findsNothing);
   });
 
-  testWidgets('debug preview toggle returns to legacy CanvasView', (tester) async {
+  testWidgets('debug preview toggle returns to legacy CanvasView', (
+    tester,
+  ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    final toggle = find.byKey(const ValueKey<String>('main-canvas-mode-toggle'));
+    final toggle = find.byKey(
+      const ValueKey<String>('main-canvas-mode-toggle'),
+    );
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     await tester.tap(toggle);
