@@ -145,7 +145,9 @@ class _BrushWorkspaceViewState extends State<BrushWorkspaceView> {
               width: widget.canvasSize.width.toDouble(),
               height: widget.canvasSize.height.toDouble(),
               child: InteractiveBrushEditCanvasView(
-                key: ValueKey<String>('brush-canvas-${activeKey.frameId.value}'),
+                key: ValueKey<String>(
+                  'brush-canvas-${activeKey.frameId.value}',
+                ),
                 sessionState: session,
                 layerId: activeKey.layerId,
                 frameId: activeKey.frameId,
