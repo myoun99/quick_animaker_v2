@@ -21,7 +21,11 @@ void main() {
     frameId: FrameId('frame'),
   );
 
-  UndoHistoryEntry entry(int sequence, UndoHistoryEntryKind kind, UndoHistoryScope scope) {
+  UndoHistoryEntry entry(
+    int sequence,
+    UndoHistoryEntryKind kind,
+    UndoHistoryScope scope,
+  ) {
     return UndoHistoryEntry(
       id: UndoHistoryEntryId('entry-$sequence'),
       sequenceNumber: sequence,
@@ -46,7 +50,11 @@ void main() {
       entry(1, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame),
       entry(2, UndoHistoryEntryKind.renameLayer, UndoHistoryScope.layer),
       entry(3, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame),
-      entry(4, UndoHistoryEntryKind.changeCutDuration, UndoHistoryScope.timeline),
+      entry(
+        4,
+        UndoHistoryEntryKind.changeCutDuration,
+        UndoHistoryScope.timeline,
+      ),
     ];
     for (final item in entries) {
       history = history.pushNewEntry(item).history;
@@ -64,7 +72,10 @@ void main() {
 
   test('redo restores same order after undo', () {
     var history = UnifiedUndoHistory(userUndoLimit: 10);
-    for (final item in [entry(1, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame), entry(2, UndoHistoryEntryKind.createLayer, UndoHistoryScope.layer)]) {
+    for (final item in [
+      entry(1, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame),
+      entry(2, UndoHistoryEntryKind.createLayer, UndoHistoryScope.layer),
+    ]) {
       history = history.pushNewEntry(item).history;
     }
     history = history.takeUndo().history;
@@ -73,16 +84,37 @@ void main() {
     final firstRedo = history.takeRedo();
     final secondRedo = firstRedo.history.takeRedo();
 
-    expect([firstRedo.entry!.sequenceNumber, secondRedo.entry!.sequenceNumber], [1, 2]);
+    expect(
+      [firstRedo.entry!.sequenceNumber, secondRedo.entry!.sequenceNumber],
+      [1, 2],
+    );
   });
 
   test('pushNewEntry clears redoStack', () {
     var history = UnifiedUndoHistory(userUndoLimit: 10);
-    history = history.pushNewEntry(entry(1, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame)).history;
-    history = history.pushNewEntry(entry(2, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame)).history;
+    history = history
+        .pushNewEntry(
+          entry(
+            1,
+            UndoHistoryEntryKind.paintStroke,
+            UndoHistoryScope.brushFrame,
+          ),
+        )
+        .history;
+    history = history
+        .pushNewEntry(
+          entry(
+            2,
+            UndoHistoryEntryKind.paintStroke,
+            UndoHistoryScope.brushFrame,
+          ),
+        )
+        .history;
     history = history.takeUndo().history;
 
-    final result = history.pushNewEntry(entry(3, UndoHistoryEntryKind.createCut, UndoHistoryScope.cut));
+    final result = history.pushNewEntry(
+      entry(3, UndoHistoryEntryKind.createCut, UndoHistoryScope.cut),
+    );
 
     expect(result.history.redoStack, isEmpty);
   });
@@ -91,7 +123,9 @@ void main() {
     var history = UnifiedUndoHistory(userUndoLimit: 3);
     var trimmed = <UndoHistoryEntry>[];
     for (var i = 1; i <= 5; i += 1) {
-      final result = history.pushNewEntry(entry(i, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame));
+      final result = history.pushNewEntry(
+        entry(i, UndoHistoryEntryKind.paintStroke, UndoHistoryScope.brushFrame),
+      );
       history = result.history;
       trimmed.addAll(result.trimmedEntries);
     }

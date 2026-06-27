@@ -5,7 +5,8 @@ class UndoHistoryEntryId {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is UndoHistoryEntryId && other.value == value;
+      identical(this, other) ||
+      other is UndoHistoryEntryId && other.value == value;
 
   @override
   int get hashCode => value.hashCode;

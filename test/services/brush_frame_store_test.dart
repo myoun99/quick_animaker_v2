@@ -16,7 +16,13 @@ import 'package:quick_animaker_v2/src/models/unified_undo_history.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 
 void main() {
-  BrushFrameKey key({String project = 'p', String track = 't', String cut = 'c', String layer = 'l', String frame = 'f'}) => BrushFrameKey(
+  BrushFrameKey key({
+    String project = 'p',
+    String track = 't',
+    String cut = 'c',
+    String layer = 'l',
+    String frame = 'f',
+  }) => BrushFrameKey(
     projectId: ProjectId(project),
     trackId: TrackId(track),
     cutId: CutId(cut),
@@ -30,50 +36,90 @@ void main() {
     kind: BrushPaintCommandKind.paintStroke,
   );
 
-  UndoHistoryEntry paintEntry(BrushFrameKey frameKey, int sequence) => UndoHistoryEntry(
-    id: UndoHistoryEntryId('entry-$sequence'),
-    sequenceNumber: sequence,
-    kind: UndoHistoryEntryKind.paintStroke,
-    scope: UndoHistoryScope.brushFrame,
-    payloadRef: UndoPayloadRef.paintCommand(frameKey: frameKey, paintCommandId: BrushPaintCommandId('paint-$sequence')),
-  );
+  UndoHistoryEntry paintEntry(BrushFrameKey frameKey, int sequence) =>
+      UndoHistoryEntry(
+        id: UndoHistoryEntryId('entry-$sequence'),
+        sequenceNumber: sequence,
+        kind: UndoHistoryEntryKind.paintStroke,
+        scope: UndoHistoryScope.brushFrame,
+        payloadRef: UndoPayloadRef.paintCommand(
+          frameKey: frameKey,
+          paintCommandId: BrushPaintCommandId('paint-$sequence'),
+        ),
+      );
 
-  test('trimmed paint entry moves to deferred bake and leaves kept entries undoable', () {
-    final store = BrushFrameStore();
-    final frameKey = key();
-    var history = UnifiedUndoHistory(userUndoLimit: 3);
+  test(
+    'trimmed paint entry moves to deferred bake and leaves kept entries undoable',
+    () {
+      final store = BrushFrameStore();
+      final frameKey = key();
+      var history = UnifiedUndoHistory(userUndoLimit: 3);
 
-    for (var i = 1; i <= 4; i += 1) {
-      store.addLivePaintCommand(frameKey, command(i));
-      final result = history.pushNewEntry(paintEntry(frameKey, i));
-      history = result.history;
-      for (final trimmed in result.trimmedEntries.where((entry) => entry.isPaintPayload)) {
-        store.movePaintCommandToDeferredBake(trimmed.payloadRef.targetKey!, trimmed.payloadRef.paintCommandId);
+      for (var i = 1; i <= 4; i += 1) {
+        store.addLivePaintCommand(frameKey, command(i));
+        final result = history.pushNewEntry(paintEntry(frameKey, i));
+        history = result.history;
+        for (final trimmed in result.trimmedEntries.where(
+          (entry) => entry.isPaintPayload,
+        )) {
+          store.movePaintCommandToDeferredBake(
+            trimmed.payloadRef.targetKey!,
+            trimmed.payloadRef.paintCommandId,
+          );
+        }
       }
-    }
 
-    final state = store.getOrCreateFrame(frameKey);
-    expect(state.commandById(BrushPaintCommandId('paint-1'))!.state, BrushPaintCommandState.deferredBake);
-    expect(state.livePaintCommands.map((item) => item.id.value), ['paint-2', 'paint-3', 'paint-4']);
-    expect(state.visibleActivePaintCommands.map((item) => item.id.value), ['paint-1', 'paint-2', 'paint-3', 'paint-4']);
-    expect(history.undoStack.map((item) => item.payloadRef.payloadId), isNot(contains('paint-1')));
-  });
+      final state = store.getOrCreateFrame(frameKey);
+      expect(
+        state.commandById(BrushPaintCommandId('paint-1'))!.state,
+        BrushPaintCommandState.deferredBake,
+      );
+      expect(state.livePaintCommands.map((item) => item.id.value), [
+        'paint-2',
+        'paint-3',
+        'paint-4',
+      ]);
+      expect(state.visibleActivePaintCommands.map((item) => item.id.value), [
+        'paint-1',
+        'paint-2',
+        'paint-3',
+        'paint-4',
+      ]);
+      expect(
+        history.undoStack.map((item) => item.payloadRef.payloadId),
+        isNot(contains('paint-1')),
+      );
+    },
+  );
 
   test('trimmed structural command is not deferred baked', () {
     final store = BrushFrameStore();
     final frameKey = key();
     store.addLivePaintCommand(frameKey, command(1));
     var history = UnifiedUndoHistory(userUndoLimit: 1);
-    history = history.pushNewEntry(UndoHistoryEntry(
-      id: UndoHistoryEntryId('structural'),
-      sequenceNumber: 1,
-      kind: UndoHistoryEntryKind.deleteLayer,
-      scope: UndoHistoryScope.layer,
-      payloadRef: UndoPayloadRef(storeName: 'layerStore', payloadId: 'delete-layer', targetPath: 'layer/l'),
-    )).history;
+    history = history
+        .pushNewEntry(
+          UndoHistoryEntry(
+            id: UndoHistoryEntryId('structural'),
+            sequenceNumber: 1,
+            kind: UndoHistoryEntryKind.deleteLayer,
+            scope: UndoHistoryScope.layer,
+            payloadRef: UndoPayloadRef(
+              storeName: 'layerStore',
+              payloadId: 'delete-layer',
+              targetPath: 'layer/l',
+            ),
+          ),
+        )
+        .history;
     final result = history.pushNewEntry(paintEntry(frameKey, 1));
-    for (final trimmed in result.trimmedEntries.where((entry) => entry.isPaintPayload)) {
-      store.movePaintCommandToDeferredBake(trimmed.payloadRef.targetKey!, trimmed.payloadRef.paintCommandId);
+    for (final trimmed in result.trimmedEntries.where(
+      (entry) => entry.isPaintPayload,
+    )) {
+      store.movePaintCommandToDeferredBake(
+        trimmed.payloadRef.targetKey!,
+        trimmed.payloadRef.paintCommandId,
+      );
     }
 
     expect(store.getOrCreateFrame(frameKey).deferredBakePaintCommands, isEmpty);
@@ -83,18 +129,35 @@ void main() {
     final store = BrushFrameStore();
     final frameKey = key();
     store.addLivePaintCommand(frameKey, command(1));
-    var history = UnifiedUndoHistory(userUndoLimit: 3).pushNewEntry(paintEntry(frameKey, 1)).history;
+    var history = UnifiedUndoHistory(
+      userUndoLimit: 3,
+    ).pushNewEntry(paintEntry(frameKey, 1)).history;
 
     final undo = history.takeUndo();
     history = undo.history;
-    store.markPaintCommandHiddenByUndo(frameKey, undo.entry!.payloadRef.paintCommandId);
-    expect(store.getOrCreateFrame(frameKey).visibleActivePaintCommands, isEmpty);
+    store.markPaintCommandHiddenByUndo(
+      frameKey,
+      undo.entry!.payloadRef.paintCommandId,
+    );
+    expect(
+      store.getOrCreateFrame(frameKey).visibleActivePaintCommands,
+      isEmpty,
+    );
     expect(store.getOrCreateFrame(frameKey).deferredBakePaintCommands, isEmpty);
     expect(store.getOrCreateFrame(frameKey).bakedPaintCommandIds, isEmpty);
 
     final redo = history.takeRedo();
-    store.restorePaintCommandFromUndo(frameKey, redo.entry!.payloadRef.paintCommandId);
-    expect(store.getOrCreateFrame(frameKey).visibleActivePaintCommands.map((item) => item.id.value), ['paint-1']);
+    store.restorePaintCommandFromUndo(
+      frameKey,
+      redo.entry!.payloadRef.paintCommandId,
+    );
+    expect(
+      store
+          .getOrCreateFrame(frameKey)
+          .visibleActivePaintCommands
+          .map((item) => item.id.value),
+      ['paint-1'],
+    );
   });
 
   test('deferred commands stay visible when latest live command is undone', () {
@@ -102,28 +165,55 @@ void main() {
     final frameKey = key();
     store.addLivePaintCommand(frameKey, command(1));
     store.addLivePaintCommand(frameKey, command(2));
-    store.movePaintCommandToDeferredBake(frameKey, BrushPaintCommandId('paint-1'));
-    store.markPaintCommandHiddenByUndo(frameKey, BrushPaintCommandId('paint-2'));
+    store.movePaintCommandToDeferredBake(
+      frameKey,
+      BrushPaintCommandId('paint-1'),
+    );
+    store.markPaintCommandHiddenByUndo(
+      frameKey,
+      BrushPaintCommandId('paint-2'),
+    );
 
     final state = store.getOrCreateFrame(frameKey);
-    expect(state.commandById(BrushPaintCommandId('paint-1'))!.state, BrushPaintCommandState.deferredBake);
-    expect(state.visibleActivePaintCommands.map((item) => item.id.value), ['paint-1']);
+    expect(
+      state.commandById(BrushPaintCommandId('paint-1'))!.state,
+      BrushPaintCommandState.deferredBake,
+    );
+    expect(state.visibleActivePaintCommands.map((item) => item.id.value), [
+      'paint-1',
+    ]);
   });
 
-  test('flushFrame returns deferred commands without deleting live commands or changing undo order', () {
-    final store = BrushFrameStore();
-    final frameKey = key();
-    store.addLivePaintCommand(frameKey, command(1));
-    store.addLivePaintCommand(frameKey, command(2));
-    store.movePaintCommandToDeferredBake(frameKey, BrushPaintCommandId('paint-1'));
-    final history = UnifiedUndoHistory(userUndoLimit: 3).pushNewEntry(paintEntry(frameKey, 2)).history;
+  test(
+    'flushFrame returns deferred commands without deleting live commands or changing undo order',
+    () {
+      final store = BrushFrameStore();
+      final frameKey = key();
+      store.addLivePaintCommand(frameKey, command(1));
+      store.addLivePaintCommand(frameKey, command(2));
+      store.movePaintCommandToDeferredBake(
+        frameKey,
+        BrushPaintCommandId('paint-1'),
+      );
+      final history = UnifiedUndoHistory(
+        userUndoLimit: 3,
+      ).pushNewEntry(paintEntry(frameKey, 2)).history;
 
-    final flush = store.flushFrame(frameKey);
+      final flush = store.flushFrame(frameKey);
 
-    expect(flush.deferredCommands.map((item) => item.id.value), ['paint-1']);
-    expect(store.getOrCreateFrame(frameKey).livePaintCommands.map((item) => item.id.value), ['paint-2']);
-    expect(history.undoStack.map((item) => item.payloadRef.payloadId), ['paint-2']);
-  });
+      expect(flush.deferredCommands.map((item) => item.id.value), ['paint-1']);
+      expect(
+        store
+            .getOrCreateFrame(frameKey)
+            .livePaintCommands
+            .map((item) => item.id.value),
+        ['paint-2'],
+      );
+      expect(history.undoStack.map((item) => item.payloadRef.payloadId), [
+        'paint-2',
+      ]);
+    },
+  );
 
   test('full-path BrushFrameKey isolates states sharing the same frame id', () {
     final store = BrushFrameStore();
@@ -133,7 +223,13 @@ void main() {
     store.addLivePaintCommand(first, command(1));
     store.addLivePaintCommand(second, command(2));
 
-    expect(store.getOrCreateFrame(first).livePaintCommands.single.id.value, 'paint-1');
-    expect(store.getOrCreateFrame(second).livePaintCommands.single.id.value, 'paint-2');
+    expect(
+      store.getOrCreateFrame(first).livePaintCommands.single.id.value,
+      'paint-1',
+    );
+    expect(
+      store.getOrCreateFrame(second).livePaintCommands.single.id.value,
+      'paint-2',
+    );
   });
 }

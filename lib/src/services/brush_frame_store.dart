@@ -6,7 +6,10 @@ import '../models/brush_paint_command_state.dart';
 import '../models/layer_id.dart';
 
 class BrushFrameFlushResult {
-  const BrushFrameFlushResult({required this.frameKey, required this.deferredCommands});
+  const BrushFrameFlushResult({
+    required this.frameKey,
+    required this.deferredCommands,
+  });
 
   final BrushFrameKey frameKey;
   final List<BrushPaintCommand> deferredCommands;
@@ -30,20 +33,35 @@ class BrushFrameStore {
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
 
-  BrushFrameDrawingState addLivePaintCommand(BrushFrameKey key, BrushPaintCommand command) {
+  BrushFrameDrawingState addLivePaintCommand(
+    BrushFrameKey key,
+    BrushPaintCommand command,
+  ) {
     final live = command.copyWith(state: BrushPaintCommandState.live);
-    return _update(key, (state) => state.copyWith(paintCommands: [...state.paintCommands, live]));
+    return _update(
+      key,
+      (state) => state.copyWith(paintCommands: [...state.paintCommands, live]),
+    );
   }
 
-  BrushFrameDrawingState markPaintCommandHiddenByUndo(BrushFrameKey key, BrushPaintCommandId id) {
+  BrushFrameDrawingState markPaintCommandHiddenByUndo(
+    BrushFrameKey key,
+    BrushPaintCommandId id,
+  ) {
     return _move(key, id, BrushPaintCommandState.hiddenByUndo);
   }
 
-  BrushFrameDrawingState restorePaintCommandFromUndo(BrushFrameKey key, BrushPaintCommandId id) {
+  BrushFrameDrawingState restorePaintCommandFromUndo(
+    BrushFrameKey key,
+    BrushPaintCommandId id,
+  ) {
     return _move(key, id, BrushPaintCommandState.live);
   }
 
-  BrushFrameDrawingState movePaintCommandToDeferredBake(BrushFrameKey key, BrushPaintCommandId id) {
+  BrushFrameDrawingState movePaintCommandToDeferredBake(
+    BrushFrameKey key,
+    BrushPaintCommandId id,
+  ) {
     return _move(key, id, BrushPaintCommandState.deferredBake);
   }
 
@@ -57,11 +75,15 @@ class BrushFrameStore {
 
   BrushFrameDrawingState markDeferredCommandsBaked(BrushFrameKey key) {
     return _update(key, (state) {
-      final deferredIds = state.deferredBakePaintCommands.map((command) => command.id).toSet();
+      final deferredIds = state.deferredBakePaintCommands
+          .map((command) => command.id)
+          .toSet();
       final commands = state.paintCommands
-          .map((command) => command.state == BrushPaintCommandState.deferredBake
-              ? command.copyWith(state: BrushPaintCommandState.baked)
-              : command)
+          .map(
+            (command) => command.state == BrushPaintCommandState.deferredBake
+                ? command.copyWith(state: BrushPaintCommandState.baked)
+                : command,
+          )
           .toList();
       return state.copyWith(
         paintCommands: commands,
@@ -79,10 +101,17 @@ class BrushFrameStore {
     return BrushLayerFlushPlan(layerId: layerId, frames: frames);
   }
 
-  BrushFrameDrawingState _move(BrushFrameKey key, BrushPaintCommandId id, BrushPaintCommandState nextState) {
+  BrushFrameDrawingState _move(
+    BrushFrameKey key,
+    BrushPaintCommandId id,
+    BrushPaintCommandState nextState,
+  ) {
     return _update(key, (state) {
       final commands = state.paintCommands
-          .map((command) => command.id == id ? command.copyWith(state: nextState) : command)
+          .map(
+            (command) =>
+                command.id == id ? command.copyWith(state: nextState) : command,
+          )
           .toList();
       return state.copyWith(paintCommands: commands);
     });

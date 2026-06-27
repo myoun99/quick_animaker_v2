@@ -27,8 +27,7 @@ class UndoPayloadRef {
   final BrushFrameKey? targetKey;
   final String? targetPath;
 
-  bool get isPaintCommand =>
-      storeName == paintStoreName && targetKey != null;
+  bool get isPaintCommand => storeName == paintStoreName && targetKey != null;
 
   BrushPaintCommandId get paintCommandId => BrushPaintCommandId(payloadId);
 }

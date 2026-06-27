@@ -1,7 +1,12 @@
 import 'brush_paint_command_id.dart';
 import 'brush_paint_command_state.dart';
 
-enum BrushPaintCommandKind { paintStroke, eraseStroke, clearFrameDrawing, fillFrameDrawing }
+enum BrushPaintCommandKind {
+  paintStroke,
+  eraseStroke,
+  clearFrameDrawing,
+  fillFrameDrawing,
+}
 
 class BrushPaintCommand {
   const BrushPaintCommand({

@@ -1,7 +1,10 @@
 import 'undo_history_entry.dart';
 
 class UnifiedUndoHistoryPushResult {
-  const UnifiedUndoHistoryPushResult({required this.history, this.trimmedEntries = const []});
+  const UnifiedUndoHistoryPushResult({
+    required this.history,
+    this.trimmedEntries = const [],
+  });
 
   final UnifiedUndoHistory history;
   final List<UndoHistoryEntry> trimmedEntries;
@@ -25,17 +28,26 @@ class UnifiedUndoHistory {
 
   UnifiedUndoHistoryPushResult pushNewEntry(UndoHistoryEntry entry) {
     final nextUndo = [..._undoStack, entry];
-    final trimCount = nextUndo.length > userUndoLimit ? nextUndo.length - userUndoLimit : 0;
-    final trimmed = trimCount == 0 ? <UndoHistoryEntry>[] : nextUndo.take(trimCount).toList();
+    final trimCount = nextUndo.length > userUndoLimit
+        ? nextUndo.length - userUndoLimit
+        : 0;
+    final trimmed = trimCount == 0
+        ? <UndoHistoryEntry>[]
+        : nextUndo.take(trimCount).toList();
     final kept = trimCount == 0 ? nextUndo : nextUndo.skip(trimCount).toList();
     return UnifiedUndoHistoryPushResult(
-      history: UnifiedUndoHistory(userUndoLimit: userUndoLimit, undoStack: kept),
+      history: UnifiedUndoHistory(
+        userUndoLimit: userUndoLimit,
+        undoStack: kept,
+      ),
       trimmedEntries: trimmed,
     );
   }
 
-  UndoHistoryEntry? get latestUndoEntry => _undoStack.isEmpty ? null : _undoStack.last;
-  UndoHistoryEntry? get latestRedoEntry => _redoStack.isEmpty ? null : _redoStack.last;
+  UndoHistoryEntry? get latestUndoEntry =>
+      _undoStack.isEmpty ? null : _undoStack.last;
+  UndoHistoryEntry? get latestRedoEntry =>
+      _redoStack.isEmpty ? null : _redoStack.last;
 
   UnifiedUndoHistoryTakeResult takeUndo() => _take(fromUndo: true);
   UnifiedUndoHistoryTakeResult takeRedo() => _take(fromUndo: false);
