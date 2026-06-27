@@ -210,3 +210,12 @@ Rules:
 - actual deferred baking;
 - playback cache implementation; and
 - full undo/redo execution.
+
+## Phase 193 foundation
+
+Implemented foundation:
+- UnifiedUndoHistory owns global order.
+- BrushFrameStore owns frame-local paint state.
+- Paint commands can move live -> hiddenByUndo -> live, or live -> deferredBake.
+- Deferred bake remains non-user-undoable.
+- Actual bitmap baking and UI wiring remain out of scope.
