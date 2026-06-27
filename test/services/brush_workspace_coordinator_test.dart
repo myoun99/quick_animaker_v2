@@ -106,7 +106,7 @@ void main() {
 BrushDab _dab() => BrushDab(
   center: CanvasPoint(x: 1, y: 1),
   color: 0xFF000000,
-  size: 1,
+  size: 2,
   opacity: 1,
   flow: 1,
   hardness: 1,
