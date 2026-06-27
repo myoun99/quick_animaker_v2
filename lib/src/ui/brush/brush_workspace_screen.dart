@@ -42,19 +42,18 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
   @override
   void initState() {
     super.initState();
-    _frameKeys = const [
-      FrameId('frame-1'),
-      FrameId('frame-2'),
-      FrameId('frame-3'),
-    ].map((frameId) {
-      return BrushFrameKey(
-        projectId: _projectId,
-        trackId: _trackId,
-        cutId: _cutId,
-        layerId: _layerId,
-        frameId: frameId,
-      );
-    }).toList(growable: false);
+    _frameKeys =
+        const [FrameId('frame-1'), FrameId('frame-2'), FrameId('frame-3')]
+            .map((frameId) {
+              return BrushFrameKey(
+                projectId: _projectId,
+                trackId: _trackId,
+                cutId: _cutId,
+                layerId: _layerId,
+                frameId: frameId,
+              );
+            })
+            .toList(growable: false);
     _coordinator = BrushWorkspaceCoordinator(
       initialFrameKey: _frameKeys.first,
       frameStore: BrushFrameStore(),
@@ -89,39 +88,58 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
                 for (var i = 0; i < _frameKeys.length; i += 1)
                   FilledButton.tonal(
                     key: ValueKey<String>('brush-frame-${i + 1}-button'),
-                    onPressed: () => setState(() => _coordinator.selectFrame(_frameKeys[i])),
+                    onPressed: () =>
+                        setState(() => _coordinator.selectFrame(_frameKeys[i])),
                     child: Text('Frame ${i + 1}'),
                   ),
                 TextButton(
                   key: const ValueKey<String>('brush-workspace-undo-button'),
                   onPressed: _coordinator.undoHistory.undoStack.isEmpty
                       ? null
-                      : () => setState(() => _coordinator.undo(cacheInvalidationSink: _cacheInvalidationSink)),
+                      : () => setState(
+                          () => _coordinator.undo(
+                            cacheInvalidationSink: _cacheInvalidationSink,
+                          ),
+                        ),
                   child: const Text('Undo'),
                 ),
                 TextButton(
                   key: const ValueKey<String>('brush-workspace-redo-button'),
                   onPressed: _coordinator.undoHistory.redoStack.isEmpty
                       ? null
-                      : () => setState(() => _coordinator.redo(cacheInvalidationSink: _cacheInvalidationSink)),
+                      : () => setState(
+                          () => _coordinator.redo(
+                            cacheInvalidationSink: _cacheInvalidationSink,
+                          ),
+                        ),
                   child: const Text('Redo'),
                 ),
                 TextButton(
                   key: const ValueKey<String>('brush-workspace-reset-button'),
-                  onPressed: () => setState(() => _coordinator.sessionStore.reset(activeKey)),
+                  onPressed: () => setState(
+                    () => _coordinator.sessionStore.reset(activeKey),
+                  ),
                   child: const Text('Reset Session'),
                 ),
                 _ColorButton(
                   label: 'Black',
                   color: Colors.black,
                   selected: _inputSettings.color == 0xFF000000,
-                  onPressed: () => setState(() => _inputSettings = _inputSettings.copyWith(color: 0xFF000000)),
+                  onPressed: () => setState(
+                    () => _inputSettings = _inputSettings.copyWith(
+                      color: 0xFF000000,
+                    ),
+                  ),
                 ),
                 _ColorButton(
                   label: 'Red',
                   color: Colors.red,
                   selected: _inputSettings.color == 0xFFFF0000,
-                  onPressed: () => setState(() => _inputSettings = _inputSettings.copyWith(color: 0xFFFF0000)),
+                  onPressed: () => setState(
+                    () => _inputSettings = _inputSettings.copyWith(
+                      color: 0xFFFF0000,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -141,7 +159,9 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
                 width: _canvasSize.width.toDouble(),
                 height: _canvasSize.height.toDouble(),
                 child: InteractiveBrushEditCanvasView(
-                  key: ValueKey<String>('brush-canvas-${activeKey.frameId.value}'),
+                  key: ValueKey<String>(
+                    'brush-canvas-${activeKey.frameId.value}',
+                  ),
                   sessionState: session,
                   layerId: activeKey.layerId,
                   frameId: activeKey.frameId,
@@ -163,7 +183,12 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
 }
 
 class _ColorButton extends StatelessWidget {
-  const _ColorButton({required this.label, required this.color, required this.selected, required this.onPressed});
+  const _ColorButton({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onPressed,
+  });
   final String label;
   final Color color;
   final bool selected;
@@ -181,16 +206,19 @@ class _BrushWorkspaceCacheInvalidationSink implements CacheInvalidationSink {
   final frameComposites = <FrameCompositeCacheKey>[];
   final playbackPreviews = <PlaybackPreviewCacheKey>[];
 
-  CacheInvalidationExecutionResult get latestResult => CacheInvalidationExecutionResult(
-    layerTileCount: layerTiles.length,
-    frameCompositeCount: frameComposites.length,
-    playbackPreviewCount: playbackPreviews.length,
-  );
+  CacheInvalidationExecutionResult get latestResult =>
+      CacheInvalidationExecutionResult(
+        layerTileCount: layerTiles.length,
+        frameCompositeCount: frameComposites.length,
+        playbackPreviewCount: playbackPreviews.length,
+      );
 
   @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) => frameComposites.add(key);
+  void invalidateFrameComposite(FrameCompositeCacheKey key) =>
+      frameComposites.add(key);
   @override
   void invalidateLayerTile(LayerTileCacheKey key) => layerTiles.add(key);
   @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) => playbackPreviews.add(key);
+  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) =>
+      playbackPreviews.add(key);
 }

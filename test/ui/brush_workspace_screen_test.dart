@@ -7,14 +7,24 @@ void main() {
   testWidgets('app entry opens BrushWorkspaceScreen', (tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byKey(const ValueKey<String>('brush-workspace-entry')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey<String>('brush-workspace-entry')));
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-entry')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-workspace-entry')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('brush-workspace-screen')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-screen')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('frame switching preserves independent canvas session state', (tester) async {
+  testWidgets('frame switching preserves independent canvas session state', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: BrushWorkspaceScreen()));
     await tester.pumpAndSettle();
 
@@ -22,7 +32,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey<String>('brush-frame-2-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-frame-2-button')),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('Active Frame: Frame 2'), findsOneWidget);
     expect(find.textContaining('Commands: 0 | Live: 0'), findsOneWidget);
@@ -31,7 +43,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey<String>('brush-frame-1-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-frame-1-button')),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('Active Frame: Frame 1'), findsOneWidget);
     expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
@@ -39,7 +53,9 @@ void main() {
 }
 
 Offset _canvasPoint(WidgetTester tester) {
-  final finder = find.byKey(const ValueKey<String>('interactive-brush-edit-canvas-view-listener'));
+  final finder = find.byKey(
+    const ValueKey<String>('interactive-brush-edit-canvas-view-listener'),
+  );
   final topLeft = tester.getTopLeft(finder);
   return topLeft + const Offset(10, 10);
 }

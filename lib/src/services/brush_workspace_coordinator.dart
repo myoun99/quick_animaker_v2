@@ -24,7 +24,8 @@ class BrushWorkspaceCoordinator {
     required this.historyPolicy,
     UnifiedUndoHistory? undoHistory,
   }) : _activeFrameKey = initialFrameKey,
-       _undoHistory = undoHistory ??
+       _undoHistory =
+           undoHistory ??
            UnifiedUndoHistory(userUndoLimit: historyPolicy.userUndoLimit);
 
   final BrushFrameStore frameStore;
@@ -36,7 +37,8 @@ class BrushWorkspaceCoordinator {
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
   UnifiedUndoHistory get undoHistory => _undoHistory;
-  BrushEditSessionState get activeSessionState => sessionStore.getOrCreate(_activeFrameKey);
+  BrushEditSessionState get activeSessionState =>
+      sessionStore.getOrCreate(_activeFrameKey);
 
   void selectFrame(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
@@ -87,16 +89,22 @@ class BrushWorkspaceCoordinator {
     final take = _undoHistory.takeUndo();
     _undoHistory = take.history;
     final entry = take.entry;
-    if (entry == null || !entry.isPaintPayload || entry.payloadRef.targetKey == null) {
+    if (entry == null ||
+        !entry.isPaintPayload ||
+        entry.payloadRef.targetKey == null) {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    frameStore.markPaintCommandHiddenByUndo(key, entry.payloadRef.paintCommandId);
+    frameStore.markPaintCommandHiddenByUndo(
+      key,
+      entry.payloadRef.paintCommandId,
+    );
     final state = sessionStore.getOrCreate(key);
     if (state.canUndo) {
       final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
         sessionState: state,
-        cacheInvalidationSink: cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+        cacheInvalidationSink:
+            cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
       );
       sessionStore.update(key, result.sessionState);
     }
@@ -107,16 +115,22 @@ class BrushWorkspaceCoordinator {
     final take = _undoHistory.takeRedo();
     _undoHistory = take.history;
     final entry = take.entry;
-    if (entry == null || !entry.isPaintPayload || entry.payloadRef.targetKey == null) {
+    if (entry == null ||
+        !entry.isPaintPayload ||
+        entry.payloadRef.targetKey == null) {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    frameStore.restorePaintCommandFromUndo(key, entry.payloadRef.paintCommandId);
+    frameStore.restorePaintCommandFromUndo(
+      key,
+      entry.payloadRef.paintCommandId,
+    );
     final state = sessionStore.getOrCreate(key);
     if (state.canRedo) {
       final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
         sessionState: state,
-        cacheInvalidationSink: cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+        cacheInvalidationSink:
+            cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
       );
       sessionStore.update(key, result.sessionState);
     }

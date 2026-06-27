@@ -26,7 +26,9 @@ void main() {
     final frameB = key('frame-b');
 
     final sessionA = store.getOrCreate(frameA);
-    final updatedA = sessionA.copyWith(canvasState: sessionA.canvasState.clearLastEdit());
+    final updatedA = sessionA.copyWith(
+      canvasState: sessionA.canvasState.clearLastEdit(),
+    );
     store.update(frameA, updatedA);
 
     final sessionB = store.getOrCreate(frameB);

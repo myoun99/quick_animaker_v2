@@ -35,7 +35,10 @@ class BrushFrameEditSessionStore {
   BrushEditSessionState _createBlankSessionState() {
     return BrushEditSessionState(
       canvasState: CanvasSurfaceState(
-        currentSurface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+        currentSurface: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: tileSize,
+        ),
       ),
       historyState: BrushEditHistoryState(),
     );

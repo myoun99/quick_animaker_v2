@@ -34,8 +34,14 @@ void main() {
     return BrushWorkspaceCoordinator(
       initialFrameKey: initialKey,
       frameStore: BrushFrameStore(),
-      sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize, tileSize: 4),
-      historyPolicy: BrushHistoryPolicy(userUndoLimit: userUndoLimit, deferredBakeRatio: 0),
+      sessionStore: BrushFrameEditSessionStore(
+        canvasSize: canvasSize,
+        tileSize: 4,
+      ),
+      historyPolicy: BrushHistoryPolicy(
+        userUndoLimit: userUndoLimit,
+        deferredBakeRatio: 0,
+      ),
     );
   }
 
@@ -61,24 +67,39 @@ void main() {
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(c.undoHistory.undoStack, hasLength(2));
     expect(frame.deferredBakePaintCommands, hasLength(1));
-    expect(frame.deferredBakePaintCommands.single.state, BrushPaintCommandState.deferredBake);
+    expect(
+      frame.deferredBakePaintCommands.single.state,
+      BrushPaintCommandState.deferredBake,
+    );
     expect(frame.visibleActivePaintCommands, hasLength(3));
   });
 
   test('undo and redo update paint state without deferred baking', () {
     final c = coordinator();
     c.applyBrushOperationResult(_commitResult(c));
-    final id = c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands.single.id;
+    final id = c.frameStore
+        .getOrCreateFrame(c.activeFrameKey)
+        .paintCommands
+        .single
+        .id;
 
     c.undo();
-    var command = c.frameStore.getOrCreateFrame(c.activeFrameKey).commandById(id)!;
+    var command = c.frameStore
+        .getOrCreateFrame(c.activeFrameKey)
+        .commandById(id)!;
     expect(command.state, BrushPaintCommandState.hiddenByUndo);
-    expect(c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands, isEmpty);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands,
+      isEmpty,
+    );
 
     c.redo();
     command = c.frameStore.getOrCreateFrame(c.activeFrameKey).commandById(id)!;
     expect(command.state, BrushPaintCommandState.live);
-    expect(c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands, isEmpty);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands,
+      isEmpty,
+    );
   });
 }
 
