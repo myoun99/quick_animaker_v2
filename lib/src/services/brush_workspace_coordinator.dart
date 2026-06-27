@@ -49,9 +49,14 @@ class BrushWorkspaceCoordinator {
   BrushPaintCommand? applyBrushOperationResult(
     BrushEditSessionCacheOperationResult result,
   ) {
+    final previousUndoCount = activeSessionState.historyState.undoCount;
     sessionStore.update(_activeFrameKey, result.sessionState);
-    if (result.kind != BrushEditSessionOperationKind.commit ||
-        result.affectedEntry == null) {
+    if (result.kind != BrushEditSessionOperationKind.commit) {
+      return null;
+    }
+
+    final nextUndoCount = result.sessionState.historyState.undoCount;
+    if (nextUndoCount <= previousUndoCount) {
       return null;
     }
 
