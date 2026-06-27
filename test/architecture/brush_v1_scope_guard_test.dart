@@ -28,22 +28,25 @@ void main() {
       }
     });
 
-    test('smoke screen avoids external state management and direct commits', () {
-      final source = _readIfExists(
-        'lib/src/ui/canvas/brush_canvas_smoke_screen.dart',
-      );
+    test(
+      'smoke screen avoids external state management and direct commits',
+      () {
+        final source = _readIfExists(
+          'lib/src/ui/canvas/brush_canvas_smoke_screen.dart',
+        );
 
-      for (final forbidden in [
-        'Provider',
-        'Riverpod',
-        'Bloc',
-        'ChangeNotifier',
-        'InheritedWidget',
-        'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
-      ]) {
-        expect(source, isNot(contains(forbidden)));
-      }
-    });
+        for (final forbidden in [
+          'Provider',
+          'Riverpod',
+          'Bloc',
+          'ChangeNotifier',
+          'InheritedWidget',
+          'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+        ]) {
+          expect(source, isNot(contains(forbidden)));
+        }
+      },
+    );
 
     test('storyboard and timeline panels do not import brush smoke UI', () {
       for (final path in [
