@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
+import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
 import 'package:quick_animaker_v2/src/models/brush_paint_command_state.dart';
+import 'package:quick_animaker_v2/src/models/cache_invalidation_execution_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -101,6 +103,115 @@ void main() {
       isEmpty,
     );
   });
+
+  test('undo and redo follow global order across frames', () {
+    final c = coordinator();
+    final frameA = c.activeFrameKey;
+    final frameB = key('frame-b');
+
+    c.applyBrushOperationResult(_commitResult(c, index: 0));
+    final commandA = c.frameStore
+        .getOrCreateFrame(frameA)
+        .paintCommands
+        .single
+        .id;
+    c.selectFrame(frameB);
+    c.applyBrushOperationResult(_commitResult(c, index: 1));
+    final commandB = c.frameStore
+        .getOrCreateFrame(frameB)
+        .paintCommands
+        .single
+        .id;
+
+    final firstUndo = c.undo();
+    expect(firstUndo!.payloadRef.targetKey, frameB);
+    expect(
+      c.frameStore.getOrCreateFrame(frameB).commandById(commandB)!.state,
+      BrushPaintCommandState.hiddenByUndo,
+    );
+    expect(
+      c.frameStore.getOrCreateFrame(frameA).commandById(commandA)!.state,
+      BrushPaintCommandState.live,
+    );
+
+    final secondUndo = c.undo();
+    expect(secondUndo!.payloadRef.targetKey, frameA);
+    expect(
+      c.frameStore.getOrCreateFrame(frameA).commandById(commandA)!.state,
+      BrushPaintCommandState.hiddenByUndo,
+    );
+
+    final firstRedo = c.redo();
+    expect(firstRedo!.payloadRef.targetKey, frameA);
+    expect(
+      c.frameStore.getOrCreateFrame(frameA).commandById(commandA)!.state,
+      BrushPaintCommandState.live,
+    );
+    expect(
+      c.frameStore.getOrCreateFrame(frameB).commandById(commandB)!.state,
+      BrushPaintCommandState.hiddenByUndo,
+    );
+
+    final secondRedo = c.redo();
+    expect(secondRedo!.payloadRef.targetKey, frameB);
+    expect(
+      c.frameStore.getOrCreateFrame(frameB).commandById(commandB)!.state,
+      BrushPaintCommandState.live,
+    );
+    expect(c.activeFrameKey, frameB);
+  });
+
+  test('no-op commit does not create paint command or undo history entry', () {
+    final c = coordinator();
+
+    final result = _emptyCommitResult(c);
+    c.applyBrushOperationResult(result);
+
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+      isEmpty,
+    );
+    expect(c.undoHistory.undoStack, isEmpty);
+  });
+
+  test('no-op commit still updates session store when session state differs', () {
+    final c = coordinator();
+    final nextSession = _emptyCommitResult(c).sessionState;
+
+    c.applyBrushOperationResult(
+      BrushEditSessionCacheOperationResult(
+        kind: BrushEditSessionOperationKind.commit,
+        sessionState: nextSession,
+        affectedEntry: null,
+        cacheInvalidationResult: CacheInvalidationExecutionResult(
+          layerTileCount: 0,
+          frameCompositeCount: 0,
+          playbackPreviewCount: 0,
+        ),
+      ),
+    );
+
+    expect(identical(c.activeSessionState, nextSession), isTrue);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+      isEmpty,
+    );
+    expect(c.undoHistory.undoStack, isEmpty);
+  });
+
+  test('repeated same-pixel same-color dab is no-op after first commit', () {
+    final c = coordinator();
+
+    c.applyBrushOperationResult(_commitResult(c));
+    c.applyBrushOperationResult(_commitResult(c));
+
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+      hasLength(1),
+    );
+    expect(c.undoHistory.undoStack, hasLength(1));
+    expect(c.activeSessionState.historyState.undoCount, 1);
+  });
 }
 
 BrushDab _dab(int index) => BrushDab(
@@ -122,6 +233,18 @@ BrushEditSessionCacheOperationResult _commitResult(
   return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
     sessionState: coordinator.activeSessionState,
     sequence: BrushDabSequence([_dab(index)]),
+    layerId: coordinator.activeFrameKey.layerId,
+    frameId: coordinator.activeFrameKey.frameId,
+    cacheInvalidationSink: _NoopSink(),
+  );
+}
+
+BrushEditSessionCacheOperationResult _emptyCommitResult(
+  BrushWorkspaceCoordinator coordinator,
+) {
+  return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+    sessionState: coordinator.activeSessionState,
+    sequence: BrushDabSequence(),
     layerId: coordinator.activeFrameKey.layerId,
     frameId: coordinator.activeFrameKey.frameId,
     cacheInvalidationSink: _NoopSink(),

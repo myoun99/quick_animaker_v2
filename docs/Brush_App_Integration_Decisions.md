@@ -235,3 +235,18 @@ Still out of scope:
 - Actual deferred bitmap baking.
 - Production toolbar.
 - Full timeline/layer panel integration.
+
+## Phase 195 workspace stabilization
+
+Implemented:
+- Debug reset behavior clarified.
+- Cross-frame undo/redo behavior covered by tests.
+- No-op commit safety covered by tests.
+- BrushWorkspace status/debug text improved.
+
+Still out of scope:
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+- full timeline/layer panel integration

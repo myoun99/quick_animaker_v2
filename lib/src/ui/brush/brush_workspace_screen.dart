@@ -119,7 +119,7 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
                   onPressed: () => setState(
                     () => _coordinator.sessionStore.reset(activeKey),
                   ),
-                  child: const Text('Reset Session'),
+                  child: const Text('Debug Reset Session'),
                 ),
                 _ColorButton(
                   label: 'Black',
@@ -149,8 +149,20 @@ class _BrushWorkspaceScreenState extends State<BrushWorkspaceScreen> {
               key: const ValueKey<String>('brush-workspace-active-frame-label'),
             ),
             Text(
-              'Commands: ${frameState.paintCommands.length} | Live: ${_coordinator.liveCommandCount(activeKey)} | Undo: ${_coordinator.undoHistory.undoStack.length} | Redo: ${_coordinator.undoHistory.redoStack.length}',
+              'Frame ${activeKey.frameId.value} commands: '
+              '${frameState.paintCommands.length} total | '
+              '${frameState.livePaintCommands.length} live | '
+              '${frameState.hiddenByUndoPaintCommands.length} hiddenByUndo | '
+              '${frameState.deferredBakePaintCommands.length} deferredBake | '
+              '${_coordinator.undoHistory.undoStack.length} global undo | '
+              '${_coordinator.undoHistory.redoStack.length} global redo',
               key: const ValueKey<String>('brush-workspace-status-text'),
+            ),
+            const Text(
+              'Debug Reset Session resets only the interactive session for the '
+              'active frame; it does not clear BrushFrameStore commands or '
+              'UnifiedUndoHistory.',
+              key: ValueKey<String>('brush-workspace-debug-reset-help'),
             ),
             const SizedBox(height: 12),
             DecoratedBox(

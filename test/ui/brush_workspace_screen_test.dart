@@ -30,25 +30,69 @@ void main() {
 
     await tester.tapAt(_canvasPoint(tester));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
+    expect(
+      find.textContaining('frame-1 commands: 1 total | 1 live'),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-frame-2-button')),
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Active Frame: Frame 2'), findsOneWidget);
-    expect(find.textContaining('Commands: 0 | Live: 0'), findsOneWidget);
+    expect(
+      find.textContaining('frame-2 commands: 0 total | 0 live'),
+      findsOneWidget,
+    );
 
     await tester.tapAt(_canvasPoint(tester));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
+    expect(
+      find.textContaining('frame-2 commands: 1 total | 1 live'),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-frame-1-button')),
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Active Frame: Frame 1'), findsOneWidget);
-    expect(find.textContaining('Commands: 1 | Live: 1'), findsOneWidget);
+    expect(
+      find.textContaining('frame-1 commands: 1 total | 1 live'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('debug reset is labeled as session-only and keeps history metadata', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: BrushWorkspaceScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Debug Reset Session'), findsOneWidget);
+    expect(
+      find.textContaining('resets only the interactive session'),
+      findsOneWidget,
+    );
+
+    await tester.tapAt(_canvasPoint(tester));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 global undo'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-workspace-reset-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('frame-1 commands: 1 total | 1 live'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('1 global undo'), findsOneWidget);
+    expect(
+      find.textContaining('does not clear BrushFrameStore commands'),
+      findsOneWidget,
+    );
   });
 }
 
