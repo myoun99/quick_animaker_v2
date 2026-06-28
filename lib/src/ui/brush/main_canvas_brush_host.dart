@@ -75,6 +75,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       coordinator: _coordinator,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
+      showDebugControls: false,
     );
   }
 

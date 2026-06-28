@@ -24,6 +24,21 @@ void main() {
     );
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(
+      find.byKey(const ValueKey<String>('brush-frame-1-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-2-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-3-button')),
+      findsNothing,
+    );
+    expect(find.text('Debug Reset Session'), findsNothing);
+    expect(find.text('Black'), findsNothing);
+    expect(find.text('Red'), findsNothing);
+    expect(
       find.byKey(const ValueKey<String>('brush-workspace-screen')),
       findsNothing,
     );
@@ -48,7 +63,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
-    expect(find.textContaining('frame-real'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-real')),
+      findsOneWidget,
+    );
     expect(find.textContaining('frame-1'), findsNothing);
   });
 }

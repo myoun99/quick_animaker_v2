@@ -5,6 +5,58 @@ import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_cache_invalidatio
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_fixture.dart';
 
 void main() {
+  testWidgets('defaults to embedded mode without temporary debug controls', (
+    tester,
+  ) async {
+    final frameKeys = BrushWorkspaceFixture.createFrameKeys();
+    final coordinator = BrushWorkspaceFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('interactive-brush-edit-canvas-view-listener'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-1-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-2-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-3-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-reset-button')),
+      findsNothing,
+    );
+    expect(find.text('Debug Reset Session'), findsNothing);
+    expect(find.text('Black'), findsNothing);
+    expect(find.text('Red'), findsNothing);
+  });
+
   testWidgets('reusable panel preserves independent frame session state', (
     tester,
   ) async {
@@ -20,6 +72,7 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+            showDebugControls: true,
           ),
         ),
       ),
@@ -74,6 +127,7 @@ void main() {
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+              showDebugControls: true,
             ),
           ),
         ),

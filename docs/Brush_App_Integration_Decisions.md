@@ -352,3 +352,28 @@ Still out of scope:
 - save/load
 - renderer/playback cache
 - actual deferred bitmap baking
+
+## Phase 201 main canvas temporary control cleanup
+
+Implemented:
+- BrushCanvasPanel now has an explicit embedded/default mode without temporary debug controls.
+- MainCanvasBrushHost renders BrushCanvasPanel in embedded mode.
+- Frame 1 / Frame 2 / Frame 3 fixture controls are no longer exposed in the main canvas brush preview path.
+- Debug Reset Session is no longer exposed in the main canvas brush preview path.
+- Existing CanvasView remains the default.
+- Brush Host Preview remains opt-in.
+- Debug/test coverage can still explicitly enable temporary controls.
+
+Still out of scope:
+- deleting BrushWorkspaceFixture
+- deleting fixture fallback
+- deleting debug controls completely
+- replacing debug controls with production brush toolbar
+- making Brush Host Preview the default
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+
+Future cleanup:
+Once production brush controls exist, remove the debug controls path entirely.

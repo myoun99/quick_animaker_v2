@@ -60,6 +60,21 @@ void main() {
     expect(find.byType(BrushCanvasPanel), findsOneWidget);
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(find.byType(CanvasView), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-1-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-2-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-frame-3-button')),
+      findsNothing,
+    );
+    expect(find.text('Debug Reset Session'), findsNothing);
+    expect(find.text('Black'), findsNothing);
+    expect(find.text('Red'), findsNothing);
   });
 
   testWidgets(
@@ -77,10 +92,11 @@ void main() {
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
       expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(
-        find.text('Active Frame: Frame 1 (editor-frame-1)'),
+        find.byKey(const ValueKey<String>('brush-canvas-editor-frame-1')),
         findsOneWidget,
       );
       expect(find.text('Active Frame: Frame 1 (frame-1)'), findsNothing);
+      expect(find.text('Debug Reset Session'), findsNothing);
     },
   );
 
