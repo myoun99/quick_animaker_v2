@@ -34,7 +34,7 @@ master
 C:\Users\gunoo\Documents\quick_animaker_v2
 
 ## 3. GPT와의 대화 흐름
-1. AI: 이번 Phase에서 만들 세부 계획만 설명
+1. AI: 이번 Phase에서 만들 계획 간단 명료하게 안내
     - 목표
     - 왜 지금 이 Phase인지
     - 무엇을 삭제/유지/변경할지
