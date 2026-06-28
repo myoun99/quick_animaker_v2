@@ -79,8 +79,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       ? null
                       : () => setState(
                           () => widget.coordinator.undo(
-                            cacheInvalidationSink:
-                                widget.cacheInvalidationSink,
+                            cacheInvalidationSink: widget.cacheInvalidationSink,
                           ),
                         ),
                   child: const Text('Undo'),
@@ -91,8 +90,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       ? null
                       : () => setState(
                           () => widget.coordinator.redo(
-                            cacheInvalidationSink:
-                                widget.cacheInvalidationSink,
+                            cacheInvalidationSink: widget.cacheInvalidationSink,
                           ),
                         ),
                   child: const Text('Redo'),
