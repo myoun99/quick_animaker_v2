@@ -308,6 +308,31 @@ Still out of scope:
 Future deletion target:
 After the main canvas brush path is stable and tested, remove BrushWorkspaceScreen, the Brush Workspace route/button, and fixture-only frame switching UI.
 
+## Phase 200 Brush canvas panel naming cleanup
+
+Implemented:
+- Renamed BrushWorkspaceView to BrushCanvasPanel.
+- Removed workspace naming from the reusable brush UI component.
+- MainCanvasBrushHost now renders BrushCanvasPanel.
+- BrushWorkspaceScreen and the separate Brush Workspace route remain deleted.
+- Existing CanvasView remains the default.
+- Brush Host Preview remains opt-in.
+
+Still out of scope:
+- removing BrushWorkspaceFixture
+- removing fixture fallback
+- removing Frame 1 / Frame 2 / Frame 3 temporary controls
+- removing Debug Reset Session
+- making Brush Host Preview the default
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+
+Future cleanup:
+Remove or replace temporary panel controls after the main canvas brush path is stable.
+
 ## Phase 199 BrushWorkspaceScreen route retirement
 
 Implemented:

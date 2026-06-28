@@ -5,10 +5,10 @@ import '../../models/brush_history_policy.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_workspace_coordinator.dart';
+import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_workspace_cache_invalidation_sink.dart';
 import 'brush_workspace_fixture.dart';
-import 'brush_workspace_view.dart';
 
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
 ///
@@ -70,7 +70,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
 
   @override
   Widget build(BuildContext context) {
-    return BrushWorkspaceView(
+    return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
       coordinator: _coordinator,
       availableFrameKeys: _frameKeys,

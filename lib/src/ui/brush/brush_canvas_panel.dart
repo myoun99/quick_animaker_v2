@@ -9,12 +9,14 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_workspace_fixture.dart';
 
-/// Reusable Brush editing body retained for main-canvas brush preview paths.
+/// Reusable Brush canvas panel retained for main-canvas brush preview paths.
 ///
 /// This widget is route-agnostic and is intended to be embedded in the main
 /// editor canvas area once real timeline/layer/frame selection is wired in.
-class BrushWorkspaceView extends StatefulWidget {
-  const BrushWorkspaceView({
+/// The Frame buttons, Debug Reset Session, and color buttons are temporary
+/// panel controls until production brush/editor controls replace them.
+class BrushCanvasPanel extends StatefulWidget {
+  const BrushCanvasPanel({
     super.key,
     required this.coordinator,
     required this.availableFrameKeys,
@@ -30,10 +32,10 @@ class BrushWorkspaceView extends StatefulWidget {
   final BrushEditCanvasInputSettings initialInputSettings;
 
   @override
-  State<BrushWorkspaceView> createState() => _BrushWorkspaceViewState();
+  State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
 
-class _BrushWorkspaceViewState extends State<BrushWorkspaceView> {
+class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   late var _inputSettings = widget.initialInputSettings;
 
   @override
@@ -46,7 +48,7 @@ class _BrushWorkspaceViewState extends State<BrushWorkspaceView> {
     );
 
     return Padding(
-      key: const ValueKey<String>('brush-workspace-view'),
+      key: const ValueKey<String>('brush-canvas-panel'),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
