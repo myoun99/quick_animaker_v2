@@ -202,6 +202,29 @@ void main() {
     },
   );
 
+  test('session reset preserves frame commands and unified undo history', () {
+    final c = coordinator();
+
+    c.applyBrushOperationResult(_commitResult(c));
+    final beforeResetSession = c.activeSessionState;
+    expect(beforeResetSession.historyState.undoCount, 1);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+      hasLength(1),
+    );
+    expect(c.undoHistory.undoStack, hasLength(1));
+
+    c.sessionStore.reset(c.activeFrameKey);
+
+    expect(identical(c.activeSessionState, beforeResetSession), isFalse);
+    expect(c.activeSessionState.historyState.undoCount, 0);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
+      hasLength(1),
+    );
+    expect(c.undoHistory.undoStack, hasLength(1));
+  });
+
   test('repeated same-pixel same-color dab is no-op after first commit', () {
     final c = coordinator();
 

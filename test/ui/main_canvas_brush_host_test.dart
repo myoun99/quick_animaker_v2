@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -22,6 +23,7 @@ void main() {
       find.byKey(const ValueKey<String>('main-canvas-brush-host')),
       findsOneWidget,
     );
+    expect(find.byType(BrushCanvasPanel), findsOneWidget);
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('brush-frame-1-button')),
@@ -68,5 +70,75 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('frame-1'), findsNothing);
+  });
+
+  testWidgets('updates canvas when active frame key changes', (tester) async {
+    const frameA = BrushFrameKey(
+      projectId: ProjectId('project-real'),
+      trackId: TrackId('track-real'),
+      cutId: CutId('cut-real'),
+      layerId: LayerId('layer-real'),
+      frameId: FrameId('frame-a'),
+    );
+    const frameB = BrushFrameKey(
+      projectId: ProjectId('project-real'),
+      trackId: TrackId('track-real'),
+      cutId: CutId('cut-real'),
+      layerId: LayerId('layer-real'),
+      frameId: FrameId('frame-b'),
+    );
+    const frames = [frameA, frameB];
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: frameA,
+            availableFrameKeys: frames,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: frameB,
+            availableFrameKeys: frames,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-b')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: frameA,
+            availableFrameKeys: frames,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
+      findsOneWidget,
+    );
   });
 }
