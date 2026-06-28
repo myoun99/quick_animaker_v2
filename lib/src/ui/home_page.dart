@@ -26,6 +26,7 @@ import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
+import 'brush/brush_editor_selection.dart';
 import 'brush/brush_workspace_screen.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'canvas/canvas_view.dart';
@@ -368,6 +369,22 @@ class _HomePageState extends State<HomePage> {
   CutId get _activeCutId => _editingSession.activeCutId;
 
   Layer? get _activeLayer => _layerController.activeLayer;
+
+  BrushEditorSelection? get _activeBrushEditorSelection {
+    final activeLayer = _activeLayer;
+    final selectedFrame = _selectedFrame;
+    if (activeLayer == null || selectedFrame == null) {
+      return null;
+    }
+
+    return BrushEditorSelection(
+      projectId: _repository.requireProject().id,
+      trackId: _activeCutTrackId,
+      cutId: _editingSession.activeCutId,
+      layerId: activeLayer.id,
+      frameId: selectedFrame.id,
+    );
+  }
 
   bool get _canDeleteActiveLayer =>
       _activeLayer != null && _activeCut.layers.length >= 2;
@@ -1385,13 +1402,13 @@ class _HomePageState extends State<HomePage> {
                   border: Border.all(color: const Color(0xFFBDBDBD)),
                 ),
                 child: _showMainCanvasBrushHostPreview
-                    // TODO Phase 198: Replace BrushWorkspaceFixture with active
-                    // editor Project / Track / Cut / Layer / Frame selection.
-                    ? const KeyedSubtree(
-                        key: ValueKey<String>(
+                    ? KeyedSubtree(
+                        key: const ValueKey<String>(
                           'main-canvas-brush-host-container',
                         ),
-                        child: MainCanvasBrushHost(),
+                        child: MainCanvasBrushHost(
+                          selection: _activeBrushEditorSelection,
+                        ),
                       )
                     : KeyedSubtree(
                         key: const ValueKey<String>('main-canvas-legacy-host'),
