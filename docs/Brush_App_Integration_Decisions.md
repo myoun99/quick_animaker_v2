@@ -307,3 +307,23 @@ Still out of scope:
 
 Future deletion target:
 After the main canvas brush path is stable and tested, remove BrushWorkspaceScreen, the Brush Workspace route/button, and fixture-only frame switching UI.
+
+## Phase 199 BrushWorkspaceScreen route retirement
+
+Implemented:
+- Removed the separate BrushWorkspaceScreen route/button from HomePage.
+- Retired or migrated BrushWorkspaceScreen-specific tests.
+- Main canvas Brush Host Preview remains the only app-level brush preview path.
+- Existing CanvasView remains the default.
+- BrushWorkspaceView remains as an internal reusable brush editing component for now.
+
+Still out of scope:
+- renaming BrushWorkspaceView
+- removing BrushWorkspaceFixture
+- removing fixture fallback
+- making Brush Host Preview the default
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking

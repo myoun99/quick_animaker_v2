@@ -9,7 +9,7 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_workspace_fixture.dart';
 
-/// Reusable Brush editing body extracted from [BrushWorkspaceScreen].
+/// Reusable Brush editing body retained for main-canvas brush preview paths.
 ///
 /// This widget is route-agnostic and is intended to be embedded in the main
 /// editor canvas area once real timeline/layer/frame selection is wired in.

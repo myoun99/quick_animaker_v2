@@ -13,8 +13,8 @@ import 'brush_workspace_view.dart';
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
 ///
 /// The HomePage preview path can now pass the active editor selection or a
-/// concrete [BrushFrameKey]. The temporary fixture remains only for tests,
-/// BrushWorkspaceScreen, and fallback when no editor layer/frame is available.
+/// concrete [BrushFrameKey]. The temporary fixture remains only for tests and
+/// fallback when no editor layer/frame is available.
 class MainCanvasBrushHost extends StatefulWidget {
   const MainCanvasBrushHost({
     super.key,
@@ -83,8 +83,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     final activeKey = widget.resolvedActiveFrameKey;
     if (explicitKeys == null || explicitKeys.isEmpty) {
       if (activeKey == null) {
-        // TODO Phase 199: Remove fixture fallback after main canvas brush
-        // selection is stable and BrushWorkspaceScreen is deleted.
+        // TODO: Remove fixture fallback after main canvas brush selection is stable.
         return BrushWorkspaceFixture.createFrameKeys();
       }
       return [activeKey];

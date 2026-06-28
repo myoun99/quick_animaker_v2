@@ -27,7 +27,6 @@ import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_editor_selection.dart';
-import 'brush/brush_workspace_screen.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'canvas/canvas_view.dart';
 import 'cut/cut_list_bar.dart';
@@ -1338,18 +1337,6 @@ class _HomePageState extends State<HomePage> {
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
                     Text('Active strokes: ${_canvasController.strokes.length}'),
-                    const SizedBox(width: 16),
-                    FilledButton.tonal(
-                      key: const ValueKey<String>('brush-workspace-entry'),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const BrushWorkspaceScreen(),
-                          ),
-                        );
-                      },
-                      child: const Text('Brush Workspace'),
-                    ),
                     const SizedBox(width: 16),
                     FilterChip(
                       key: const ValueKey<String>('main-canvas-mode-toggle'),
