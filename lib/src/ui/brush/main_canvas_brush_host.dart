@@ -13,24 +13,26 @@ import 'brush_workspace_fixture.dart';
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
 ///
 /// The HomePage preview path can now pass the active editor selection or a
-/// concrete [BrushFrameKey]. The temporary fixture remains only for tests and
-/// fallback when no editor layer/frame is available.
+/// concrete [BrushFrameKey]. The temporary fixture remains only for explicit
+/// fixture/test helper use and is not a production fallback.
 class MainCanvasBrushHost extends StatefulWidget {
   const MainCanvasBrushHost({
     super.key,
     this.activeFrameKey,
     this.selection,
     this.availableFrameKeys,
-  });
+  }) : useFixtureFallback = false;
 
   MainCanvasBrushHost.fixture({super.key})
     : activeFrameKey = null,
       selection = null,
-      availableFrameKeys = BrushWorkspaceFixture.createFrameKeys();
+      availableFrameKeys = BrushWorkspaceFixture.createFrameKeys(),
+      useFixtureFallback = true;
 
   final BrushFrameKey? activeFrameKey;
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
+  final bool useFixtureFallback;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -70,6 +72,13 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
 
   @override
   Widget build(BuildContext context) {
+    if (_frameKeys.isEmpty) {
+      return const Center(
+        key: ValueKey<String>('main-canvas-brush-host-empty-selection'),
+        child: Text('Select a layer and frame to edit with Brush Preview.'),
+      );
+    }
+
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
       coordinator: _coordinator,
@@ -81,20 +90,28 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   List<BrushFrameKey> _resolveFrameKeys() {
     final explicitKeys = widget.availableFrameKeys;
     final activeKey = widget.resolvedActiveFrameKey;
-    if (explicitKeys == null || explicitKeys.isEmpty) {
-      if (activeKey == null) {
-        // TODO: Remove fixture fallback after main canvas brush selection is stable.
+    if (activeKey == null) {
+      if (!widget.useFixtureFallback) {
+        return const [];
+      }
+      if (explicitKeys == null || explicitKeys.isEmpty) {
         return BrushWorkspaceFixture.createFrameKeys();
       }
+      return List<BrushFrameKey>.unmodifiable(explicitKeys);
+    }
+    if (explicitKeys == null || explicitKeys.isEmpty) {
       return [activeKey];
     }
-    if (activeKey == null || explicitKeys.contains(activeKey)) {
+    if (explicitKeys.contains(activeKey)) {
       return List<BrushFrameKey>.unmodifiable(explicitKeys);
     }
     return List<BrushFrameKey>.unmodifiable([...explicitKeys, activeKey]);
   }
 
   void _selectResolvedFrame() {
+    if (_frameKeys.isEmpty) {
+      return;
+    }
     final activeKey = widget.resolvedActiveFrameKey ?? _frameKeys.first;
     _coordinator.selectFrame(activeKey);
   }

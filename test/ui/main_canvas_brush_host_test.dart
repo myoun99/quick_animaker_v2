@@ -11,6 +11,32 @@ import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 void main() {
+  testWidgets(
+    'production host without selection renders empty placeholder only',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: MainCanvasBrushHost())),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Select a layer and frame to edit with Brush Preview.'),
+        findsOneWidget,
+      );
+      expect(find.byType(BrushCanvasPanel), findsNothing);
+      expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
+        findsNothing,
+      );
+    },
+  );
   testWidgets('main canvas host embeds reusable brush view without screen', (
     tester,
   ) async {
@@ -25,6 +51,10 @@ void main() {
     );
     expect(find.byType(BrushCanvasPanel), findsOneWidget);
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('brush-frame-1-button')),
       findsNothing,
@@ -69,7 +99,10 @@ void main() {
       find.byKey(const ValueKey<String>('brush-canvas-frame-real')),
       findsOneWidget,
     );
-    expect(find.textContaining('frame-1'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
+      findsNothing,
+    );
   });
 
   testWidgets('updates canvas when active frame key changes', (tester) async {
