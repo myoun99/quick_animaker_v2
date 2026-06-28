@@ -14,7 +14,6 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_screen.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_view.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
@@ -106,18 +105,16 @@ void main() {
     expect(find.byType(MainCanvasBrushHost), findsNothing);
   });
 
-  testWidgets('BrushWorkspaceScreen remains available from the debug route', (
+  testWidgets('separate Brush Workspace route entry is retired', (
     tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey<String>('brush-workspace-entry')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-
-    expect(find.byType(BrushWorkspaceScreen), findsOneWidget);
-    expect(find.byType(BrushWorkspaceView), findsOneWidget);
+    expect(find.text('Brush Workspace'), findsNothing);
   });
 }
 

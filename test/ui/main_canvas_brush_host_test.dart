@@ -6,7 +6,6 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_screen.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -24,7 +23,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
-    expect(find.byType(BrushWorkspaceScreen), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('brush-workspace-screen')),
+      findsNothing,
+    );
   });
 
   testWidgets('accepts a supplied non-fixture active frame key', (

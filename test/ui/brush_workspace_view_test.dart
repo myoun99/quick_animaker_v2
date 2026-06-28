@@ -53,6 +53,54 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'debug reset is labeled as session-only and keeps history metadata',
+    (tester) async {
+      final frameKeys = BrushWorkspaceFixture.createFrameKeys();
+      final coordinator = BrushWorkspaceFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushWorkspaceView(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Debug Reset Session'), findsOneWidget);
+      expect(
+        find.textContaining('resets only the interactive session'),
+        findsOneWidget,
+      );
+
+      await tester.tapAt(_canvasPoint(tester));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('1 global undo'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-workspace-reset-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('frame-1 commands: 1 total | 1 live'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('1 global undo'), findsOneWidget);
+      expect(
+        find.textContaining('does not clear BrushFrameStore commands'),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 Offset _canvasPoint(WidgetTester tester) {
