@@ -42,48 +42,59 @@ void main() {
     },
   );
 
-  testWidgets('debug preview toggle shows MainCanvasBrushHost in main canvas', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'debug preview toggle shows empty-selection placeholder without active drawing frame',
+    (tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-    );
-    await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
-      findsOneWidget,
-    );
-    expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-    expect(find.byType(BrushCanvasPanel), findsOneWidget);
-    expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
-    expect(find.byType(CanvasView), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-sample-frame')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-frame-1-button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-frame-2-button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-frame-3-button')),
-      findsNothing,
-    );
-    expect(find.text('Debug Reset Session'), findsNothing);
-    expect(find.text('Black'), findsNothing);
-    expect(find.text('Red'), findsNothing);
-  });
+      expect(
+        find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+        findsOneWidget,
+      );
+      expect(find.byType(MainCanvasBrushHost), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Select a layer and frame to edit with Brush Preview.'),
+        findsOneWidget,
+      );
+      expect(find.byType(BrushCanvasPanel), findsNothing);
+      expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
+      expect(find.byType(CanvasView), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('brush-canvas-sample-frame')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('brush-frame-1-button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('brush-frame-2-button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('brush-frame-3-button')),
+        findsNothing,
+      );
+      expect(find.text('Debug Reset Session'), findsNothing);
+      expect(find.text('Black'), findsNothing);
+      expect(find.text('Red'), findsNothing);
+    },
+  );
 
   testWidgets(
     'debug preview uses active editor selection when a frame exists',
