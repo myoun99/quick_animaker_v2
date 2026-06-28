@@ -21,7 +21,7 @@ The Brush integration roadmap is:
 3. Main canvas absorption preparation
    - Done.
    - MainCanvasBrushHost exists.
-   - BrushWorkspaceFixture remains as a temporary fallback/test helper.
+   - BrushCanvasFixture remains as a temporary fallback/test helper.
 
 4. Main editor canvas preview embedding
    - Done.
@@ -49,7 +49,7 @@ The Brush integration roadmap is:
 
 9. Fixture fallback reduction
    - Later.
-   - Remove or reduce BrushWorkspaceFixture fallback after active editor selection path is stable.
+   - Remove BrushCanvasFixture or move it to a test-only helper location after active editor selection path is stable.
 
 10. Brush Host Preview promotion / production integration
    - Later.
@@ -252,12 +252,12 @@ Required test coverage after this phase:
 - Brush Workspace button remains absent.
 ```
 
-### 4. Keep BrushWorkspaceFixture for now
+### 4. Keep BrushCanvasFixture for now
 
 Do not delete:
 
 ```txt
-lib/src/ui/brush/brush_workspace_fixture.dart
+lib/src/ui/brush/brush_canvas_fixture.dart
 ```
 
 It may still be used for:
@@ -296,7 +296,7 @@ Implemented:
 - Brush Host Preview remains opt-in.
 
 Still out of scope:
-- deleting BrushWorkspaceFixture
+- deleting BrushCanvasFixture
 - deleting fixture fallback
 - replacing Brush Host Preview with production canvas mode
 - production brush toolbar

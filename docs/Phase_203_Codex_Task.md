@@ -34,12 +34,12 @@ The Brush integration roadmap is:
 
 6. Fixture fallback separation
    - This phase.
-   - Production MainCanvasBrushHost must not silently fall back to BrushWorkspaceFixture.
+   - Production MainCanvasBrushHost must not silently fall back to BrushCanvasFixture.
    - Fixture behavior must be limited to explicit fixture/test helper paths.
 
 7. Fixture removal / rename
    - Later.
-   - Remove or rename BrushWorkspaceFixture after all production paths are selection-driven.
+   - Remove BrushCanvasFixture or move it to a test-only helper location after all production paths are selection-driven.
 
 8. Brush Host Preview promotion / production integration
    - Later.
@@ -63,7 +63,7 @@ Detailed steps:
 ```txt id="xxswx3"
 1. Keep BrushCanvasPanel simple.
 2. Keep MainCanvasBrushHost as the main brush host.
-3. Stop the default MainCanvasBrushHost constructor from silently using BrushWorkspaceFixture.
+3. Stop the default MainCanvasBrushHost constructor from silently using BrushCanvasFixture.
 4. Keep MainCanvasBrushHost.fixture() as an explicit test/dev helper if still needed.
 5. If activeFrameKey / selection is unavailable in the production constructor, show a safe empty placeholder instead of fixture frame-1.
 6. Ensure HomePage Brush Host Preview still passes real active editor selection when available.
@@ -118,7 +118,7 @@ lib/src/ui/brush/main_canvas_brush_host.dart
 Current behavior likely falls back to:
 
 ```txt id="q8x9kk"
-BrushWorkspaceFixture.createFrameKeys()
+BrushCanvasFixture.createFrameKeys()
 ```
 
 when `activeFrameKey` / `selection` is unavailable.
@@ -139,7 +139,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   MainCanvasBrushHost.fixture({super.key})
       : activeFrameKey = null,
         selection = null,
-        availableFrameKeys = BrushWorkspaceFixture.createFrameKeys(),
+        availableFrameKeys = BrushCanvasFixture.createFrameKeys(),
         useFixtureFallback = true;
 
   final bool useFixtureFallback;
@@ -184,20 +184,20 @@ Do not create fixture frame data.
 
 ### 3. Keep fixture helper explicit
 
-`MainCanvasBrushHost.fixture()` may continue to use `BrushWorkspaceFixture`.
+`MainCanvasBrushHost.fixture()` may continue to use `BrushCanvasFixture`.
 
 Allowed:
 
 ```txt id="c81mnz"
 MainCanvasBrushHost.fixture()
-  -> BrushWorkspaceFixture.createFrameKeys()
+  -> BrushCanvasFixture.createFrameKeys()
 ```
 
 Not allowed:
 
 ```txt id="ytm3yp"
 MainCanvasBrushHost()
-  -> BrushWorkspaceFixture.createFrameKeys()
+  -> BrushCanvasFixture.createFrameKeys()
 ```
 
 ### 4. Keep BrushCanvasPanel unchanged except as needed
@@ -330,7 +330,7 @@ Add:
 ## Phase 203 MainCanvasBrushHost fixture fallback separation
 
 Implemented:
-- The production MainCanvasBrushHost constructor no longer silently falls back to BrushWorkspaceFixture.
+- The production MainCanvasBrushHost constructor no longer silently falls back to BrushCanvasFixture.
 - Missing production selection now renders a safe empty-selection placeholder.
 - MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
 - HomePage Brush Host Preview continues to prefer real active editor selection.
@@ -339,7 +339,7 @@ Implemented:
 - Brush Host Preview remains opt-in.
 
 Still out of scope:
-- deleting BrushWorkspaceFixture
+- deleting BrushCanvasFixture
 - deleting MainCanvasBrushHost.fixture()
 - replacing Brush Host Preview with production canvas mode
 - production brush toolbar
@@ -353,7 +353,7 @@ Add:
 
 ```txt id="shwncx"
 Future cleanup:
-After production selection is stable, remove or rename BrushWorkspaceFixture and remove the explicit fixture helper path if no longer needed.
+After production selection is stable, remove BrushCanvasFixture or move it to a test-only helper location, and remove the explicit fixture helper path if no longer needed.
 ```
 
 ## Not allowed
@@ -485,7 +485,7 @@ Report:
 - whether HomePage Brush Host Preview still uses real active editor selection
 - whether BrushCanvasPanel still renders InteractiveBrushEditCanvasView
 - whether CanvasView remains default
-- what remains before BrushWorkspaceFixture can be deleted or renamed
+- what remains before BrushCanvasFixture can be deleted or moved to a test-only helper location
 - checks run and results
 - git status summary
 ```

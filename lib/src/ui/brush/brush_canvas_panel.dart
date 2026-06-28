@@ -7,7 +7,7 @@ import '../../services/brush_workspace_coordinator.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
-import 'brush_workspace_fixture.dart';
+import 'brush_canvas_fixture.dart';
 
 /// Reusable Brush canvas panel retained for main-canvas brush preview paths.
 ///
@@ -20,7 +20,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.coordinator,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
-    this.canvasSize = BrushWorkspaceFixture.canvasSize,
+    this.canvasSize = BrushCanvasFixture.canvasSize,
     this.initialInputSettings = const BrushEditCanvasInputSettings(size: 10),
   });
 
