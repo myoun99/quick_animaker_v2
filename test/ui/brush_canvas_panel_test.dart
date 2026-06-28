@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_cache_invalidation_sink.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_fixture.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_fixture.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -10,8 +10,8 @@ void main() {
   testWidgets('renders embedded canvas without temporary debug controls', (
     tester,
   ) async {
-    final frameKeys = BrushWorkspaceFixture.createFrameKeys();
-    final coordinator = BrushWorkspaceFixture.createCoordinator(
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
 
@@ -85,8 +85,8 @@ void main() {
   testWidgets('passes custom initial input settings to canvas view', (
     tester,
   ) async {
-    final frameKeys = BrushWorkspaceFixture.createFrameKeys();
-    final coordinator = BrushWorkspaceFixture.createCoordinator(
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
     const settings = BrushEditCanvasInputSettings(

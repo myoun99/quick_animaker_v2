@@ -456,3 +456,12 @@ Report:
 - checks run and results
 - git status summary
 ```
+
+## Phase 204 implementation notes
+
+- `BrushWorkspaceFixture` has been renamed to `BrushCanvasFixture`.
+- `lib/src/ui/brush/brush_workspace_fixture.dart` has been renamed to `lib/src/ui/brush/brush_canvas_fixture.dart`.
+- Runtime and test imports now use `brush_canvas_fixture.dart`.
+- `MainCanvasBrushHost.fixture()` remains as the explicit fixture/test helper path and is documented as not being a production fallback.
+- The default `MainCanvasBrushHost` constructor remains selection-driven and continues to render the empty-selection placeholder when no active frame or selection is supplied.
+- `BrushCanvasPanel` remains a simple embedded panel that renders `InteractiveBrushEditCanvasView` without debug controls.

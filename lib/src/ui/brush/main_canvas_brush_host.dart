@@ -8,7 +8,7 @@ import '../../services/brush_workspace_coordinator.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_workspace_cache_invalidation_sink.dart';
-import 'brush_workspace_fixture.dart';
+import 'brush_canvas_fixture.dart';
 
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
 ///
@@ -23,10 +23,11 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.availableFrameKeys,
   }) : useFixtureFallback = false;
 
+  /// Explicit fixture/test helper path; this is not a production fallback.
   MainCanvasBrushHost.fixture({super.key})
     : activeFrameKey = null,
       selection = null,
-      availableFrameKeys = BrushWorkspaceFixture.createFrameKeys(),
+      availableFrameKeys = BrushCanvasFixture.createFrameKeys(),
       useFixtureFallback = true;
 
   final BrushFrameKey? activeFrameKey;
@@ -46,7 +47,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     initialFrameKey: _frameKeys.first,
     frameStore: BrushFrameStore(),
     sessionStore: BrushFrameEditSessionStore(
-      canvasSize: BrushWorkspaceFixture.canvasSize,
+      canvasSize: BrushCanvasFixture.canvasSize,
     ),
     historyPolicy: const BrushHistoryPolicy(
       userUndoLimit: 24,
@@ -95,7 +96,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         return const [];
       }
       if (explicitKeys == null || explicitKeys.isEmpty) {
-        return BrushWorkspaceFixture.createFrameKeys();
+        return BrushCanvasFixture.createFrameKeys();
       }
       return List<BrushFrameKey>.unmodifiable(explicitKeys);
     }
