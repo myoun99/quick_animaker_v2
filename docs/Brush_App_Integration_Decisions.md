@@ -377,3 +377,30 @@ Still out of scope:
 
 Future cleanup:
 Once production brush controls exist, remove the debug controls path entirely.
+
+## Phase 202 temporary brush debug controls deletion
+
+Implemented:
+- Removed showDebugControls from BrushCanvasPanel.
+- Removed Frame 1 / Frame 2 / Frame 3 debug buttons.
+- Removed Undo / Redo debug buttons.
+- Removed Debug Reset Session from BrushCanvasPanel.
+- Removed temporary Black / Red color buttons.
+- Removed debug status/help text from BrushCanvasPanel.
+- BrushCanvasPanel now behaves as an embedded canvas panel.
+- MainCanvasBrushHost still renders BrushCanvasPanel.
+- Existing CanvasView remains the default.
+- Brush Host Preview remains opt-in.
+
+Still out of scope:
+- deleting BrushWorkspaceFixture
+- deleting fixture fallback
+- replacing Brush Host Preview with production canvas mode
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+
+Future cleanup:
+Move remaining fixture fallback and preview-mode behavior toward real editor selection and production canvas integration.
