@@ -404,3 +404,27 @@ Still out of scope:
 
 Future cleanup:
 Move remaining fixture fallback and preview-mode behavior toward real editor selection and production canvas integration.
+
+## Phase 203 MainCanvasBrushHost fixture fallback separation
+
+Implemented:
+- The production MainCanvasBrushHost constructor no longer silently falls back to BrushWorkspaceFixture.
+- Missing production selection now renders a safe empty-selection placeholder.
+- MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
+- HomePage Brush Host Preview continues to prefer real active editor selection.
+- BrushCanvasPanel remains an embedded canvas panel without debug controls.
+- Existing CanvasView remains the default.
+- Brush Host Preview remains opt-in.
+
+Still out of scope:
+- deleting BrushWorkspaceFixture
+- deleting MainCanvasBrushHost.fixture()
+- replacing Brush Host Preview with production canvas mode
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+
+Future cleanup:
+After production selection is stable, remove or rename BrushWorkspaceFixture and remove the explicit fixture helper path if no longer needed.
