@@ -285,3 +285,25 @@ Still out of scope:
 - save/load
 - renderer/playback cache
 - actual deferred bitmap baking
+
+## Phase 198 active editor selection bridge
+
+Implemented:
+- Main canvas brush preview path can receive active editor selection / BrushFrameKey.
+- BrushWorkspaceFixture is no longer the only path for MainCanvasBrushHost.
+- BrushWorkspaceScreen is explicitly marked as temporary and scheduled for deletion after main canvas brush integration stabilizes.
+
+Still out of scope:
+- deleting BrushWorkspaceScreen
+- deleting Brush Workspace button
+- deleting BrushWorkspaceFixture
+- making Brush Host Preview the default
+- production brush toolbar
+- production Clear Frame command
+- save/load
+- renderer/playback cache
+- actual deferred bitmap baking
+- full timeline/layer/frame production selection replacement
+
+Future deletion target:
+After the main canvas brush path is stable and tested, remove BrushWorkspaceScreen, the Brush Workspace route/button, and fixture-only frame switching UI.
