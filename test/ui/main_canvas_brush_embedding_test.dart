@@ -13,9 +13,9 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_view.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -57,7 +57,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-    expect(find.byType(BrushWorkspaceView), findsOneWidget);
+    expect(find.byType(BrushCanvasPanel), findsOneWidget);
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(find.byType(CanvasView), findsNothing);
   });
@@ -75,7 +75,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-      expect(find.byType(BrushWorkspaceView), findsOneWidget);
+      expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(
         find.text('Active Frame: Frame 1 (editor-frame-1)'),
         findsOneWidget,

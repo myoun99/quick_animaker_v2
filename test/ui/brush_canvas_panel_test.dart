@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_cache_invalidation_sink.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_fixture.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_view.dart';
 
 void main() {
-  testWidgets('reusable view preserves independent frame session state', (
+  testWidgets('reusable panel preserves independent frame session state', (
     tester,
   ) async {
     final frameKeys = BrushWorkspaceFixture.createFrameKeys();
@@ -16,7 +16,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: BrushWorkspaceView(
+          body: BrushCanvasPanel(
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
@@ -25,6 +25,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-panel')),
+      findsOneWidget,
+    );
 
     await tester.tapAt(_canvasPoint(tester));
     await tester.pumpAndSettle();
@@ -65,7 +70,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: BrushWorkspaceView(
+            body: BrushCanvasPanel(
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
