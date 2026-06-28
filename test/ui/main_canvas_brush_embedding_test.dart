@@ -63,26 +63,27 @@ void main() {
     expect(find.byType(CanvasView), findsNothing);
   });
 
-  testWidgets('debug preview uses active editor selection when a frame exists', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
-    );
+  testWidgets(
+    'debug preview uses active editor selection when a frame exists',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
+      );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-    );
-    await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-    expect(find.byType(BrushWorkspaceView), findsOneWidget);
-    expect(
-      find.text('Active Frame: Frame 1 (editor-frame-1)'),
-      findsOneWidget,
-    );
-    expect(find.text('Active Frame: Frame 1 (frame-1)'), findsNothing);
-  });
+      expect(find.byType(MainCanvasBrushHost), findsOneWidget);
+      expect(find.byType(BrushWorkspaceView), findsOneWidget);
+      expect(
+        find.text('Active Frame: Frame 1 (editor-frame-1)'),
+        findsOneWidget,
+      );
+      expect(find.text('Active Frame: Frame 1 (frame-1)'), findsNothing);
+    },
+  );
 
   testWidgets('debug preview toggle returns to legacy CanvasView', (
     tester,
@@ -147,9 +148,7 @@ Project _projectWithActiveFrame() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(
-                    const FrameId('editor-frame-1'),
-                  ),
+                  0: TimelineExposure.drawing(const FrameId('editor-frame-1')),
                 },
               ),
             ],

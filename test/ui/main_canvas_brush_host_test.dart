@@ -27,7 +27,9 @@ void main() {
     expect(find.byType(BrushWorkspaceScreen), findsNothing);
   });
 
-  testWidgets('accepts a supplied non-fixture active frame key', (tester) async {
+  testWidgets('accepts a supplied non-fixture active frame key', (
+    tester,
+  ) async {
     const key = BrushFrameKey(
       projectId: ProjectId('project-real'),
       trackId: TrackId('track-real'),

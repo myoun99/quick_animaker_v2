@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
+import '../../models/brush_history_policy.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_workspace_coordinator.dart';
@@ -44,6 +45,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     frameStore: BrushFrameStore(),
     sessionStore: BrushFrameEditSessionStore(
       canvasSize: BrushWorkspaceFixture.canvasSize,
+    ),
+    historyPolicy: const BrushHistoryPolicy(
+      userUndoLimit: 24,
+      deferredBakeRatio: 0,
     ),
   );
   final _cacheInvalidationSink = BrushWorkspaceCacheInvalidationSink();
