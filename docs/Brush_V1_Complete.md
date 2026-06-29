@@ -1,5 +1,12 @@
 # Brush V1 Complete
 
+> **Legacy Brush V1 smoke/dev/test stack document.**
+>
+> Not the current app-complete brush architecture source of truth.
+>
+> Current source: `docs/Brush_Architecture_Current.md`.
+
+
 ## Status
 
 Brush V1 is complete as an internal smoke/dev/test stack.

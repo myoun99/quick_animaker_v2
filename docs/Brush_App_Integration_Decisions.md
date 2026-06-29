@@ -1,5 +1,10 @@
 # Brush App Integration Decisions
 
+> **Current brush architecture source of truth:** `docs/Brush_Architecture_Current.md`.
+>
+> This file is retained as historical integration decision notes. If wording here conflicts with the canonical current brush architecture document, `docs/Brush_Architecture_Current.md` wins.
+
+
 ## Status
 
 Brush V1 internal smoke/dev/test stack is complete.
@@ -526,7 +531,7 @@ Still out of scope:
 - actual drawing
 - bitmap storage foundation
 - dirty tile tracking
-- tile delta undo
+- legacy tile delta undo implementation detail (non-current user-facing policy)
 - renderer/cache/save/load
 
 Future cleanup:
@@ -551,7 +556,7 @@ Still out of scope:
 - actual drawing
 - bitmap storage foundation
 - dirty tile tracking
-- tile delta undo
+- legacy tile delta undo implementation detail (non-current user-facing policy)
 - renderer/cache/save/load
 
 Future cleanup:
@@ -597,7 +602,7 @@ Still out of scope:
 - actual drawing
 - bitmap storage foundation
 - dirty tile tracking
-- tile delta undo
+- legacy tile delta undo implementation detail (non-current user-facing policy)
 - renderer/cache/save/load
 
 Future cleanup:
@@ -623,7 +628,7 @@ Still out of scope:
 - actual drawing
 - bitmap storage foundation
 - dirty tile tracking
-- tile delta undo
+- legacy tile delta undo implementation detail (non-current user-facing policy)
 - renderer/cache/save/load
 
 Future cleanup:
