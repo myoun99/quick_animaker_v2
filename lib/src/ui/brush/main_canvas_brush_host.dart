@@ -8,33 +8,24 @@ import '../../services/brush_workspace_coordinator.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_workspace_cache_invalidation_sink.dart';
-import 'brush_canvas_fixture.dart';
+import 'brush_canvas_defaults.dart';
 
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
 ///
-/// The HomePage preview path can now pass the active editor selection or a
-/// concrete [BrushFrameKey]. The temporary fixture remains only for explicit
-/// fixture/test helper use and is not a production fallback.
+/// The HomePage preview path can pass the active editor selection or a
+/// concrete [BrushFrameKey]. Missing selection renders a safe placeholder
+/// instead of constructing test fixture data.
 class MainCanvasBrushHost extends StatefulWidget {
   const MainCanvasBrushHost({
     super.key,
     this.activeFrameKey,
     this.selection,
     this.availableFrameKeys,
-  }) : useFixtureFallback = false;
-
-  /// Explicit fixture/test helper path; this is not a production fallback.
-  MainCanvasBrushHost.fixture({super.key})
-    : activeFrameKey = null,
-      selection = null,
-      availableFrameKeys = BrushCanvasFixture.createFrameKeys(),
-      useFixtureFallback = true;
+  });
 
   final BrushFrameKey? activeFrameKey;
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
-  final bool useFixtureFallback;
-
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -47,7 +38,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     initialFrameKey: _frameKeys.first,
     frameStore: BrushFrameStore(),
     sessionStore: BrushFrameEditSessionStore(
-      canvasSize: BrushCanvasFixture.canvasSize,
+      canvasSize: BrushCanvasDefaults.canvasSize,
     ),
     historyPolicy: const BrushHistoryPolicy(
       userUndoLimit: 24,
@@ -92,13 +83,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     final explicitKeys = widget.availableFrameKeys;
     final activeKey = widget.resolvedActiveFrameKey;
     if (activeKey == null) {
-      if (!widget.useFixtureFallback) {
-        return const [];
-      }
-      if (explicitKeys == null || explicitKeys.isEmpty) {
-        return BrushCanvasFixture.createFrameKeys();
-      }
-      return List<BrushFrameKey>.unmodifiable(explicitKeys);
+      return const [];
     }
     if (explicitKeys == null || explicitKeys.isEmpty) {
       return [activeKey];

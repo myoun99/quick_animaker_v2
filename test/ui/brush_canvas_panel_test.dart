@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_cache_invalidation_sink.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_fixture.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+
+import '../helpers/brush_canvas_fixture.dart';
 
 void main() {
   testWidgets('renders embedded canvas without temporary debug controls', (
@@ -80,6 +82,36 @@ void main() {
     expect(find.text('Redo'), findsNothing);
     expect(find.text('Black'), findsNothing);
     expect(find.text('Red'), findsNothing);
+  });
+
+  testWidgets('uses default embedded canvas size when canvasSize is omitted', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+          ),
+        ),
+      ),
+    );
+
+    final sizedBox = tester.widget<SizedBox>(
+      find.ancestor(
+        of: find.byType(InteractiveBrushEditCanvasView),
+        matching: find.byType(SizedBox),
+      ).first,
+    );
+    expect(sizedBox.width, BrushCanvasDefaults.canvasSize.width.toDouble());
+    expect(sizedBox.height, BrushCanvasDefaults.canvasSize.height.toDouble());
   });
 
   testWidgets('passes custom initial input settings to canvas view', (

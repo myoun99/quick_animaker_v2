@@ -410,7 +410,7 @@ Move remaining fixture fallback and preview-mode behavior toward real editor sel
 Implemented:
 - The production MainCanvasBrushHost constructor no longer silently falls back to the fixture helper.
 - Missing production selection now renders a safe empty-selection placeholder.
-- MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
+- explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains the explicit fixture/test helper path.
 - HomePage Brush Host Preview continues to prefer real active editor selection.
 - BrushCanvasPanel remains an embedded canvas panel without debug controls.
 - Existing CanvasView remains the default.
@@ -418,7 +418,7 @@ Implemented:
 
 Still out of scope:
 - deleting BrushCanvasFixture
-- deleting MainCanvasBrushHost.fixture()
+- deleting explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - replacing Brush Host Preview with production canvas mode
 - production brush toolbar
 - production Clear Frame command
@@ -435,7 +435,7 @@ Implemented:
 - Renamed BrushWorkspaceFixture to BrushCanvasFixture.
 - Renamed brush_workspace_fixture.dart to brush_canvas_fixture.dart.
 - Updated runtime and test imports to use BrushCanvasFixture.
-- MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
+- explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains the explicit fixture/test helper path.
 - The production MainCanvasBrushHost constructor still does not silently use fixture fallback.
 - Missing production selection still renders the empty-selection placeholder.
 - BrushCanvasPanel remains an embedded canvas panel without debug controls.
@@ -444,7 +444,7 @@ Implemented:
 
 Still out of scope:
 - deleting BrushCanvasFixture
-- deleting MainCanvasBrushHost.fixture()
+- deleting explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - renaming BrushWorkspaceCoordinator
 - renaming BrushWorkspaceCacheInvalidationSink
 - replacing Brush Host Preview with production canvas mode
@@ -455,4 +455,4 @@ Still out of scope:
 - actual deferred bitmap baking
 
 Future cleanup:
-After fixture usage is reduced further, remove MainCanvasBrushHost.fixture() and either delete BrushCanvasFixture or move it to a test-only helper location.
+After fixture usage is reduced further, remove explicit MainCanvasBrushHost fixture helper (removed in Phase 205) and either delete BrushCanvasFixture or move it to a test-only helper location.

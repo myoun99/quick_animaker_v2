@@ -64,7 +64,7 @@ Detailed steps:
 1. Keep BrushCanvasPanel simple.
 2. Keep MainCanvasBrushHost as the main brush host.
 3. Stop the default MainCanvasBrushHost constructor from silently using BrushCanvasFixture.
-4. Keep MainCanvasBrushHost.fixture() as an explicit test/dev helper if still needed.
+4. Keep explicit MainCanvasBrushHost fixture helper (removed in Phase 205) as an explicit test/dev helper if still needed.
 5. If activeFrameKey / selection is unavailable in the production constructor, show a safe empty placeholder instead of fixture frame-1.
 6. Ensure HomePage Brush Host Preview still passes real active editor selection when available.
 7. Add tests proving production path does not fall back to fixture frame-1.
@@ -100,7 +100,7 @@ That silent fixture fallback must stop.
 Fixture use is allowed only when explicit:
 
 ```txt id="a6shpg"
-MainCanvasBrushHost.fixture()
+explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 ```
 
 or direct test helper setup.
@@ -136,7 +136,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.availableFrameKeys,
   }) : useFixtureFallback = false;
 
-  MainCanvasBrushHost.fixture({super.key})
+  explicit MainCanvasBrushHost fixture helper (removed in Phase 205)({super.key})
       : activeFrameKey = null,
         selection = null,
         availableFrameKeys = BrushCanvasFixture.createFrameKeys(),
@@ -184,12 +184,12 @@ Do not create fixture frame data.
 
 ### 3. Keep fixture helper explicit
 
-`MainCanvasBrushHost.fixture()` may continue to use `BrushCanvasFixture`.
+`explicit MainCanvasBrushHost fixture helper (removed in Phase 205)` may continue to use `BrushCanvasFixture`.
 
 Allowed:
 
 ```txt id="c81mnz"
-MainCanvasBrushHost.fixture()
+explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
   -> BrushCanvasFixture.createFrameKeys()
 ```
 
@@ -268,7 +268,7 @@ Add test:
 Keep explicit fixture test:
 
 ```txt id="ra8q26"
-- pump MainCanvasBrushHost.fixture()
+- pump explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - expect BrushCanvasPanel exists
 - expect InteractiveBrushEditCanvasView exists
 - expect brush-canvas-frame-1 exists
@@ -332,7 +332,7 @@ Add:
 Implemented:
 - The production MainCanvasBrushHost constructor no longer silently falls back to BrushCanvasFixture.
 - Missing production selection now renders a safe empty-selection placeholder.
-- MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
+- explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains the explicit fixture/test helper path.
 - HomePage Brush Host Preview continues to prefer real active editor selection.
 - BrushCanvasPanel remains an embedded canvas panel without debug controls.
 - Existing CanvasView remains the default.
@@ -340,7 +340,7 @@ Implemented:
 
 Still out of scope:
 - deleting BrushCanvasFixture
-- deleting MainCanvasBrushHost.fixture()
+- deleting explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - replacing Brush Host Preview with production canvas mode
 - production brush toolbar
 - production Clear Frame command
@@ -481,7 +481,7 @@ Report:
 - overall roadmap impact
 - this phase detailed roadmap completed
 - how production MainCanvasBrushHost now behaves without selection
-- whether fixture fallback is limited to MainCanvasBrushHost.fixture()
+- whether fixture fallback is limited to explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - whether HomePage Brush Host Preview still uses real active editor selection
 - whether BrushCanvasPanel still renders InteractiveBrushEditCanvasView
 - whether CanvasView remains default

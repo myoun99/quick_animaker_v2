@@ -1,14 +1,14 @@
-import '../../models/brush_frame_key.dart';
-import '../../models/brush_history_policy.dart';
-import '../../models/canvas_size.dart';
-import '../../models/cut_id.dart';
-import '../../models/frame_id.dart';
-import '../../models/project_id.dart';
-import '../../models/layer_id.dart';
-import '../../models/track_id.dart';
-import '../../services/brush_frame_edit_session_store.dart';
-import '../../services/brush_frame_store.dart';
-import '../../services/brush_workspace_coordinator.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/brush_workspace_coordinator.dart';
 
 /// Temporary Brush canvas fixture used by explicit fixture/test helper paths
 /// until the real editor selection supplies Project / Track / Cut / Layer /

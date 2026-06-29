@@ -263,7 +263,7 @@ lib/src/ui/brush/brush_canvas_fixture.dart
 It may still be used for:
 
 ```txt
-- MainCanvasBrushHost.fixture()
+- explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - tests
 - fallback when active editor selection is unavailable
 ```

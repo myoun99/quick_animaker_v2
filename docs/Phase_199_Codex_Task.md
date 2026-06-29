@@ -201,7 +201,7 @@ Do not delete `BrushWorkspaceFixture` in this phase.
 It may still be used for:
 
 ```txt id="hsfnss"
-- MainCanvasBrushHost.fixture()
+- explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
 - tests
 - fallback when active editor selection is unavailable
 ```
