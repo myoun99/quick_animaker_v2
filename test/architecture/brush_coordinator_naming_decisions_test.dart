@@ -48,7 +48,10 @@ void main() {
 
       expect(doc, contains('Left runtime behavior unchanged.'));
       expect(doc, contains('Did not rename BrushWorkspaceCoordinator yet.'));
-      expect(doc, contains('Did not rename BrushWorkspaceCacheInvalidationSink.'));
+      expect(
+        doc,
+        contains('Did not rename BrushWorkspaceCacheInvalidationSink.'),
+      );
       expect(
         doc,
         contains('Did not reintroduce deleted workspace UI or debug controls.'),
