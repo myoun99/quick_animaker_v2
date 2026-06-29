@@ -50,41 +50,46 @@ void main() {
       );
     });
 
-    test('documents Phase 209 BrushEditCacheInvalidationSink runtime rename', () {
-      final doc = File(
-        'docs/Brush_App_Integration_Decisions.md',
-      ).readAsStringSync();
+    test(
+      'documents Phase 209 BrushEditCacheInvalidationSink runtime rename',
+      () {
+        final doc = File(
+          'docs/Brush_App_Integration_Decisions.md',
+        ).readAsStringSync();
 
-      expect(
-        doc,
-        contains('## Phase 209 BrushEditCacheInvalidationSink runtime rename'),
-      );
-      expect(
-        doc,
-        contains(
-          'Renamed BrushWorkspaceCacheInvalidationSink to '
-          'BrushEditCacheInvalidationSink.',
-        ),
-      );
-      expect(
-        doc,
-        contains(
-          'Renamed brush_workspace_cache_invalidation_sink.dart to '
-          'brush_edit_cache_invalidation_sink.dart.',
-        ),
-      );
-      expect(
-        doc,
-        contains(
-          'Updated production imports to use BrushEditCacheInvalidationSink.',
-        ),
-      );
-      expect(
-        doc,
-        contains('Updated tests to use BrushEditCacheInvalidationSink.'),
-      );
-      expect(doc, contains('Kept cache invalidation semantics unchanged.'));
-    });
+        expect(
+          doc,
+          contains(
+            '## Phase 209 BrushEditCacheInvalidationSink runtime rename',
+          ),
+        );
+        expect(
+          doc,
+          contains(
+            'Renamed BrushWorkspaceCacheInvalidationSink to '
+            'BrushEditCacheInvalidationSink.',
+          ),
+        );
+        expect(
+          doc,
+          contains(
+            'Renamed brush_workspace_cache_invalidation_sink.dart to '
+            'brush_edit_cache_invalidation_sink.dart.',
+          ),
+        );
+        expect(
+          doc,
+          contains(
+            'Updated production imports to use BrushEditCacheInvalidationSink.',
+          ),
+        );
+        expect(
+          doc,
+          contains('Updated tests to use BrushEditCacheInvalidationSink.'),
+        );
+        expect(doc, contains('Kept cache invalidation semantics unchanged.'));
+      },
+    );
 
     test('Phase 209 runtime rename is reflected in lib source files', () {
       final renamedSink = File(
