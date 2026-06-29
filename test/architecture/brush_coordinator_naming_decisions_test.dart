@@ -41,22 +41,27 @@ void main() {
       );
     });
 
-    test('kept deleted workspace UI and runtime renames out of Phase 206 scope', () {
-      final doc = File(
-        'docs/Brush_App_Integration_Decisions.md',
-      ).readAsStringSync();
+    test(
+      'kept deleted workspace UI and runtime renames out of Phase 206 scope',
+      () {
+        final doc = File(
+          'docs/Brush_App_Integration_Decisions.md',
+        ).readAsStringSync();
 
-      expect(doc, contains('Left runtime behavior unchanged.'));
-      expect(doc, contains('Did not rename BrushWorkspaceCoordinator yet.'));
-      expect(
-        doc,
-        contains('Did not rename BrushWorkspaceCacheInvalidationSink.'),
-      );
-      expect(
-        doc,
-        contains('Did not reintroduce deleted workspace UI or debug controls.'),
-      );
-    });
+        expect(doc, contains('Left runtime behavior unchanged.'));
+        expect(doc, contains('Did not rename BrushWorkspaceCoordinator yet.'));
+        expect(
+          doc,
+          contains('Did not rename BrushWorkspaceCacheInvalidationSink.'),
+        );
+        expect(
+          doc,
+          contains(
+            'Did not reintroduce deleted workspace UI or debug controls.',
+          ),
+        );
+      },
+    );
 
     test('documents Phase 207 BrushFrameEditingCoordinator runtime rename', () {
       final doc = File(
