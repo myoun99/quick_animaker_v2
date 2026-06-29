@@ -444,3 +444,5 @@ Report:
 - checks run and results
 - git status summary
 ```
+
+Note: MainCanvasBrushHost.fixture() was later removed in Phase 205 and fixture setup moved to test/helpers/brush_canvas_fixture.dart.

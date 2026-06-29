@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_fixture.dart';
+import '../helpers/brush_canvas_fixture.dart';
 
 void main() {
   test('fixture creates three shared-context brush frame keys', () {

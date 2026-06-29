@@ -465,3 +465,5 @@ Report:
 - `MainCanvasBrushHost.fixture()` remains as the explicit fixture/test helper path and is documented as not being a production fallback.
 - The default `MainCanvasBrushHost` constructor remains selection-driven and continues to render the empty-selection placeholder when no active frame or selection is supplied.
 - `BrushCanvasPanel` remains a simple embedded panel that renders `InteractiveBrushEditCanvasView` without debug controls.
+
+Note: MainCanvasBrushHost.fixture() was later removed in Phase 205 and fixture setup moved to test/helpers/brush_canvas_fixture.dart.
