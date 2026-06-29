@@ -486,3 +486,49 @@ Still out of scope:
 
 Future cleanup:
 After tests no longer need shared brush canvas fixture setup, delete the test helper fixture. Consider BrushWorkspaceCoordinator naming cleanup only after production brush integration stabilizes further.
+
+## Phase 206 BrushWorkspaceCoordinator naming cleanup preparation
+
+Decision:
+- BrushWorkspaceCoordinator is no longer tied to the deleted BrushWorkspaceScreen route.
+- BrushWorkspaceCoordinator is currently a production brush editing coordination service.
+- Its current responsibilities include coordinating active brush frame editing state, BrushFrameStore operations, BrushFrameEditSessionStore sessions, and UnifiedUndoHistory.
+- The current name still contains retired "Workspace" wording, but the runtime behavior should not be changed in this phase.
+
+Preferred future rename:
+- BrushWorkspaceCoordinator -> BrushFrameEditingCoordinator
+
+Why BrushFrameEditingCoordinator:
+- It is not a widget.
+- It is not a canvas renderer.
+- It is not a workspace screen.
+- It coordinates brush frame editing behavior.
+- It remains valid after Brush Host Preview becomes production canvas mode.
+
+Alternatives considered:
+- BrushEditCoordinator: too broad.
+- BrushCanvasCoordinator: sounds too close to canvas rendering/widget orchestration.
+- BrushFrameEditCoordinator: acceptable, but BrushFrameEditingCoordinator reads more clearly as a service role.
+
+Implemented in Phase 206:
+- Documented BrushWorkspaceCoordinator responsibility and future rename target.
+- Added architecture coverage for the naming decision.
+- Left runtime behavior unchanged.
+- Did not rename BrushWorkspaceCoordinator yet.
+- Did not rename BrushWorkspaceCacheInvalidationSink.
+- Did not reintroduce deleted workspace UI or debug controls.
+
+Still out of scope:
+- renaming BrushWorkspaceCoordinator
+- renaming BrushWorkspaceCacheInvalidationSink
+- changing brush host behavior
+- changing canvas UI behavior
+- actual drawing
+- bitmap storage foundation
+- dirty tile tracking
+- tile delta undo
+- renderer/cache/save/load
+
+Future cleanup:
+- Phase 207 should rename BrushWorkspaceCoordinator to BrushFrameEditingCoordinator if no new responsibility conflict is found.
+- BrushWorkspaceCacheInvalidationSink should be considered separately after the coordinator rename is stable.
