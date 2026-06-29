@@ -18,7 +18,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_cache_operations.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_workspace_coordinator.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/cache_invalidation_executor.dart';
 
 void main() {
@@ -31,9 +31,9 @@ void main() {
     frameId: FrameId(frameId),
   );
 
-  BrushWorkspaceCoordinator coordinator({int userUndoLimit = 8}) {
+  BrushFrameEditingCoordinator coordinator({int userUndoLimit = 8}) {
     final initialKey = key('frame-a');
-    return BrushWorkspaceCoordinator(
+    return BrushFrameEditingCoordinator(
       initialFrameKey: initialKey,
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(
@@ -253,7 +253,7 @@ BrushDab _dab(int index) => BrushDab(
 );
 
 BrushEditSessionCacheOperationResult _commitResult(
-  BrushWorkspaceCoordinator coordinator, {
+  BrushFrameEditingCoordinator coordinator, {
   int index = 0,
 }) {
   return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
@@ -266,7 +266,7 @@ BrushEditSessionCacheOperationResult _commitResult(
 }
 
 BrushEditSessionCacheOperationResult _emptyCommitResult(
-  BrushWorkspaceCoordinator coordinator,
+  BrushFrameEditingCoordinator coordinator,
 ) {
   return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
     sessionState: coordinator.activeSessionState,

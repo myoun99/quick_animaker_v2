@@ -41,7 +41,7 @@ void main() {
       );
     });
 
-    test('keeps deleted workspace UI and runtime renames out of scope', () {
+    test('kept deleted workspace UI and runtime renames out of Phase 206 scope', () {
       final doc = File(
         'docs/Brush_App_Integration_Decisions.md',
       ).readAsStringSync();
@@ -56,6 +56,59 @@ void main() {
         doc,
         contains('Did not reintroduce deleted workspace UI or debug controls.'),
       );
+    });
+
+    test('documents Phase 207 BrushFrameEditingCoordinator runtime rename', () {
+      final doc = File(
+        'docs/Brush_App_Integration_Decisions.md',
+      ).readAsStringSync();
+
+      expect(
+        doc,
+        contains('## Phase 207 BrushFrameEditingCoordinator runtime rename'),
+      );
+      expect(
+        doc,
+        contains(
+          'Renamed BrushWorkspaceCoordinator to BrushFrameEditingCoordinator.',
+        ),
+      );
+      expect(
+        doc,
+        contains(
+          'Renamed brush_workspace_coordinator.dart to '
+          'brush_frame_editing_coordinator.dart.',
+        ),
+      );
+      expect(doc, contains('Kept runtime behavior unchanged.'));
+      expect(
+        doc,
+        contains(
+          'BrushWorkspaceCacheInvalidationSink was not renamed in this phase.',
+        ),
+      );
+    });
+
+    test('Phase 207 runtime rename is reflected in lib source files', () {
+      final renamedService = File(
+        'lib/src/services/brush_frame_editing_coordinator.dart',
+      );
+      final oldService = File(
+        'lib/src/services/brush_workspace_coordinator.dart',
+      );
+
+      expect(renamedService.existsSync(), isTrue);
+      expect(oldService.existsSync(), isFalse);
+
+      final libDartFiles = Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart'));
+
+      for (final file in libDartFiles) {
+        final source = file.readAsStringSync();
+        expect(source, isNot(contains('brush_workspace_coordinator.dart')));
+      }
     });
   });
 }

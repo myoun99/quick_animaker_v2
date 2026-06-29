@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/brush_edit_session_cache_operation_result.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
-import '../../services/brush_workspace_coordinator.dart';
+import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
@@ -24,7 +24,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.initialInputSettings = const BrushEditCanvasInputSettings(size: 10),
   });
 
-  final BrushWorkspaceCoordinator coordinator;
+  final BrushFrameEditingCoordinator coordinator;
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
