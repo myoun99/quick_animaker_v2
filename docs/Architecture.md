@@ -114,6 +114,12 @@ In the MVP, a stroke can store basic points and simple brush settings only.
 
 ---
 
+## 2.1 Current brush architecture reference
+
+The current brush architecture source of truth is `docs/Brush_Architecture_Current.md`. It defines Deferred Bake Hybrid Brush History, paint-command/stroke-command-based user-facing undo, the separate deferred bake buffer, derived preview/playback caches, and playback rules. Older phase task documents are historical records and must not be read as current brush policy when they conflict with that canonical document.
+
+---
+
 ## 3. Main Design Principles
 
 ### 3.1 Bitmap-first, not vector-first

@@ -1,5 +1,12 @@
 # Brush V1 Integration Review
 
+> **Legacy Brush V1 review document.**
+>
+> Not the current app-complete brush architecture source of truth.
+>
+> Current source: `docs/Brush_Architecture_Current.md`.
+
+
 ## Status
 
 Brush V1 is internally implemented as a testable smoke/dev stack. It is not wired into the main application entrypoint or production route flow.
