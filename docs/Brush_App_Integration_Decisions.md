@@ -556,3 +556,50 @@ Still out of scope:
 
 Future cleanup:
 Decide separately whether BrushWorkspaceCacheInvalidationSink should be renamed or kept.
+
+## Phase 208 BrushWorkspaceCacheInvalidationSink naming decision
+
+Decision:
+- BrushWorkspaceCacheInvalidationSink is no longer tied to deleted BrushWorkspaceScreen / BrushWorkspaceView UI.
+- BrushWorkspaceCacheInvalidationSink currently acts as the cache invalidation sink boundary used by brush editing flows.
+- It should be treated as a brush edit cache invalidation boundary, not as a workspace UI helper.
+- The current name still contains retired "Workspace" wording, but runtime behavior should not be changed in this phase.
+
+Preferred future rename:
+- BrushWorkspaceCacheInvalidationSink -> BrushEditCacheInvalidationSink
+
+Why BrushEditCacheInvalidationSink:
+- It describes the brush editing flow that emits invalidation requests.
+- It avoids tying the type to deleted workspace UI.
+- It avoids making the name too long.
+- It is less renderer/widget-like than BrushCanvasCacheInvalidationSink.
+- It keeps the concept separate from actual renderer/cache implementations.
+
+Alternatives considered:
+- BrushFrameEditingCacheInvalidationSink: accurate but too long.
+- BrushCanvasCacheInvalidationSink: sounds too much like canvas rendering/widget cache.
+- BrushCacheInvalidationSink: acceptable, but too broad if future brush cache concepts expand.
+
+Implemented in Phase 208:
+- Documented BrushWorkspaceCacheInvalidationSink responsibility and future rename target.
+- Added architecture coverage for the naming decision.
+- Left runtime behavior unchanged.
+- Did not rename BrushWorkspaceCacheInvalidationSink yet.
+- Did not rename brush_workspace_cache_invalidation_sink.dart yet.
+
+Still out of scope:
+- renaming BrushWorkspaceCacheInvalidationSink
+- renaming brush_workspace_cache_invalidation_sink.dart
+- changing BrushFrameEditingCoordinator behavior
+- changing brush host behavior
+- changing canvas UI behavior
+- reintroducing deleted workspace UI or debug controls
+- actual drawing
+- bitmap storage foundation
+- dirty tile tracking
+- tile delta undo
+- renderer/cache/save/load
+
+Future cleanup:
+- Phase 209 should rename BrushWorkspaceCacheInvalidationSink to BrushEditCacheInvalidationSink if no new responsibility conflict is found.
+- Phase 209 should rename brush_workspace_cache_invalidation_sink.dart to brush_edit_cache_invalidation_sink.dart as part of that runtime rename.
