@@ -105,10 +105,12 @@ void main() {
     );
 
     final sizedBox = tester.widget<SizedBox>(
-      find.ancestor(
-        of: find.byType(InteractiveBrushEditCanvasView),
-        matching: find.byType(SizedBox),
-      ).first,
+      find
+          .ancestor(
+            of: find.byType(InteractiveBrushEditCanvasView),
+            matching: find.byType(SizedBox),
+          )
+          .first,
     );
     expect(sizedBox.width, BrushCanvasDefaults.canvasSize.width.toDouble());
     expect(sizedBox.height, BrushCanvasDefaults.canvasSize.height.toDouble());
