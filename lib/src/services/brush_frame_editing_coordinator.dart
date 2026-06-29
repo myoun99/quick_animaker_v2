@@ -16,8 +16,8 @@ import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
 import 'cache_invalidation_executor.dart';
 
-class BrushWorkspaceCoordinator {
-  BrushWorkspaceCoordinator({
+class BrushFrameEditingCoordinator {
+  BrushFrameEditingCoordinator({
     required BrushFrameKey initialFrameKey,
     required this.frameStore,
     required this.sessionStore,

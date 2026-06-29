@@ -4,7 +4,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_workspace_coordinator.dart';
+import '../../services/brush_frame_editing_coordinator.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_workspace_cache_invalidation_sink.dart';
@@ -34,7 +34,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 }
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
-  late final _coordinator = BrushWorkspaceCoordinator(
+  late final _coordinator = BrushFrameEditingCoordinator(
     initialFrameKey: _frameKeys.first,
     frameStore: BrushFrameStore(),
     sessionStore: BrushFrameEditSessionStore(

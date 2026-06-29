@@ -8,7 +8,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_workspace_coordinator.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 
 /// Temporary Brush canvas fixture used by explicit fixture/test helper paths
 /// until the real editor selection supplies Project / Track / Cut / Layer /
@@ -43,7 +43,7 @@ class BrushCanvasFixture {
       )
       .toList(growable: false);
 
-  static BrushWorkspaceCoordinator createCoordinator({
+  static BrushFrameEditingCoordinator createCoordinator({
     List<BrushFrameKey>? frameKeys,
     BrushHistoryPolicy historyPolicy = const BrushHistoryPolicy(
       userUndoLimit: 24,
@@ -51,7 +51,7 @@ class BrushCanvasFixture {
     ),
   }) {
     final keys = frameKeys ?? createFrameKeys();
-    return BrushWorkspaceCoordinator(
+    return BrushFrameEditingCoordinator(
       initialFrameKey: keys.first,
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),

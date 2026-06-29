@@ -532,3 +532,27 @@ Still out of scope:
 Future cleanup:
 - Phase 207 should rename BrushWorkspaceCoordinator to BrushFrameEditingCoordinator if no new responsibility conflict is found.
 - BrushWorkspaceCacheInvalidationSink should be considered separately after the coordinator rename is stable.
+
+## Phase 207 BrushFrameEditingCoordinator runtime rename
+
+Implemented:
+- Renamed BrushWorkspaceCoordinator to BrushFrameEditingCoordinator.
+- Renamed brush_workspace_coordinator.dart to brush_frame_editing_coordinator.dart.
+- Updated production imports to use BrushFrameEditingCoordinator.
+- Updated tests and test helpers to use BrushFrameEditingCoordinator.
+- Kept runtime behavior unchanged.
+- BrushWorkspaceCacheInvalidationSink was not renamed in this phase.
+- Deleted workspace UI and debug controls were not reintroduced.
+
+Still out of scope:
+- renaming BrushWorkspaceCacheInvalidationSink
+- changing brush host behavior
+- changing canvas UI behavior
+- actual drawing
+- bitmap storage foundation
+- dirty tile tracking
+- tile delta undo
+- renderer/cache/save/load
+
+Future cleanup:
+Decide separately whether BrushWorkspaceCacheInvalidationSink should be renamed or kept.
