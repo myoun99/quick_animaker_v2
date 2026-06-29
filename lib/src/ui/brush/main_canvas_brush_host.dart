@@ -7,7 +7,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
-import 'brush_workspace_cache_invalidation_sink.dart';
+import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 
 /// Main-canvas-oriented Brush host prepared for HomePage integration.
@@ -45,7 +45,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       deferredBakeRatio: 0,
     ),
   );
-  final _cacheInvalidationSink = BrushWorkspaceCacheInvalidationSink();
+  final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
 

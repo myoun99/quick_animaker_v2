@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_workspace_cache_invalidation_sink.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -23,7 +23,7 @@ void main() {
           body: BrushCanvasPanel(
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           ),
         ),
       ),
@@ -98,7 +98,7 @@ void main() {
           body: BrushCanvasPanel(
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           ),
         ),
       ),
@@ -135,7 +135,7 @@ void main() {
           body: BrushCanvasPanel(
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushWorkspaceCacheInvalidationSink(),
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             initialInputSettings: settings,
           ),
         ),
