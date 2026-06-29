@@ -5,7 +5,7 @@ import '../../models/playback_preview_cache_key.dart';
 import '../../services/cache_invalidation_executor.dart';
 
 /// Debug/manual cache invalidation recorder for temporary Brush hosts.
-class BrushWorkspaceCacheInvalidationSink implements CacheInvalidationSink {
+class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
   final playbackPreviews = <PlaybackPreviewCacheKey>[];

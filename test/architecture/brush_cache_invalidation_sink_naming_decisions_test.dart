@@ -50,20 +50,76 @@ void main() {
       );
     });
 
-    test('keeps runtime sink rename out of Phase 208 scope', () {
-      final currentSink = File(
-        'lib/src/ui/brush/brush_workspace_cache_invalidation_sink.dart',
+    test('documents Phase 209 BrushEditCacheInvalidationSink runtime rename', () {
+      final doc = File(
+        'docs/Brush_App_Integration_Decisions.md',
+      ).readAsStringSync();
+
+      expect(
+        doc,
+        contains('## Phase 209 BrushEditCacheInvalidationSink runtime rename'),
       );
-      final futureSink = File(
+      expect(
+        doc,
+        contains(
+          'Renamed BrushWorkspaceCacheInvalidationSink to '
+          'BrushEditCacheInvalidationSink.',
+        ),
+      );
+      expect(
+        doc,
+        contains(
+          'Renamed brush_workspace_cache_invalidation_sink.dart to '
+          'brush_edit_cache_invalidation_sink.dart.',
+        ),
+      );
+      expect(
+        doc,
+        contains(
+          'Updated production imports to use BrushEditCacheInvalidationSink.',
+        ),
+      );
+      expect(
+        doc,
+        contains('Updated tests to use BrushEditCacheInvalidationSink.'),
+      );
+      expect(doc, contains('Kept cache invalidation semantics unchanged.'));
+    });
+
+    test('Phase 209 runtime rename is reflected in lib source files', () {
+      final renamedSink = File(
         'lib/src/ui/brush/brush_edit_cache_invalidation_sink.dart',
       );
+      final oldSink = File(
+        'lib/src/ui/brush/brush_workspace_cache_invalidation_sink.dart',
+      );
 
-      expect(currentSink.existsSync(), isTrue);
-      expect(futureSink.existsSync(), isFalse);
+      expect(renamedSink.existsSync(), isTrue);
+      expect(oldSink.existsSync(), isFalse);
 
-      final source = currentSink.readAsStringSync();
-      expect(source, contains('class BrushWorkspaceCacheInvalidationSink'));
-      expect(source, isNot(contains('class BrushEditCacheInvalidationSink')));
+      final source = renamedSink.readAsStringSync();
+      expect(source, contains('class BrushEditCacheInvalidationSink'));
+      expect(
+        source,
+        isNot(contains('class BrushWorkspaceCacheInvalidationSink')),
+      );
+
+      final libDartFiles = Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart'));
+
+      for (final file in libDartFiles) {
+        final fileSource = file.readAsStringSync();
+        expect(
+          fileSource,
+          isNot(contains('brush_workspace_cache_invalidation_sink.dart')),
+        );
+        expect(
+          fileSource,
+          isNot(contains('BrushWorkspaceCacheInvalidationSink')),
+        );
+      }
     });
   });
 }
