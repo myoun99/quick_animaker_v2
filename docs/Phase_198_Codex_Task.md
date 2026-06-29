@@ -197,7 +197,7 @@ It is acceptable to keep a factory or constructor for temporary fixture use in t
 For example:
 
 ```dart id="uo4cgi"
-explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
+MainCanvasBrushHost.fixture()
 ```
 
 or:
@@ -468,3 +468,5 @@ Report:
 - checks run and results
 - git status summary
 ```
+
+Note: MainCanvasBrushHost.fixture() was later removed in Phase 205 and fixture setup moved to test/helpers/brush_canvas_fixture.dart.

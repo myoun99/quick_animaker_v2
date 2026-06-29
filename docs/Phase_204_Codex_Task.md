@@ -36,7 +36,7 @@ The Brush integration roadmap is:
    - Done.
    - Production MainCanvasBrushHost no longer silently falls back to fixture frame-1.
    - Missing production selection renders an empty-selection placeholder.
-   - explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains explicit fixture/test helper path.
+   - MainCanvasBrushHost.fixture() remains explicit fixture/test helper path.
 
 7. Fixture helper rename/isolation
    - This phase.
@@ -45,7 +45,7 @@ The Brush integration roadmap is:
 
 8. Fixture helper removal
    - Later.
-   - Remove explicit MainCanvasBrushHost fixture helper (removed in Phase 205) if tests no longer need it.
+   - Remove MainCanvasBrushHost.fixture() if tests no longer need it.
    - Delete or move BrushCanvasFixture if production selection and test setup no longer depend on it.
 
 9. BrushWorkspaceCoordinator naming cleanup
@@ -76,8 +76,8 @@ Detailed steps:
 1. Rename BrushWorkspaceFixture to BrushCanvasFixture.
 2. Rename the file brush_workspace_fixture.dart to brush_canvas_fixture.dart.
 3. Update all imports and references.
-4. Keep explicit MainCanvasBrushHost fixture helper (removed in Phase 205) for now.
-5. Ensure explicit MainCanvasBrushHost fixture helper (removed in Phase 205) is clearly documented as explicit fixture/test helper path.
+4. Keep MainCanvasBrushHost.fixture() for now.
+5. Ensure MainCanvasBrushHost.fixture() is clearly documented as explicit fixture/test helper path.
 6. Ensure production MainCanvasBrushHost constructor still does not use fixture fallback.
 7. Keep missing production selection placeholder behavior.
 8. Keep BrushCanvasPanel unchanged except import update if needed.
@@ -180,12 +180,12 @@ BrushCanvasFixture
 brush_canvas_fixture.dart
 ```
 
-### 3. Keep explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
+### 3. Keep MainCanvasBrushHost.fixture()
 
 Do not delete:
 
 ```dart id="mi86ek"
-explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
+MainCanvasBrushHost.fixture()
 ```
 
 It should remain for this phase.
@@ -193,7 +193,7 @@ It should remain for this phase.
 But make its meaning clear in comments:
 
 ```txt id="yofy23"
-explicit MainCanvasBrushHost fixture helper (removed in Phase 205) is an explicit fixture/test helper path.
+MainCanvasBrushHost.fixture() is an explicit fixture/test helper path.
 It is not a production fallback.
 ```
 
@@ -258,7 +258,7 @@ Required coverage must still pass:
 ```txt id="qp8iui"
 - MainCanvasBrushHost() with no selection renders empty-selection placeholder.
 - MainCanvasBrushHost() with no selection does not render fixture frame-1.
-- explicit MainCanvasBrushHost fixture helper (removed in Phase 205) explicitly renders fixture frame-1.
+- MainCanvasBrushHost.fixture() explicitly renders fixture frame-1.
 - MainCanvasBrushHost(activeFrameKey: frameReal) renders real frame and not fixture frame-1.
 - Active frame rebuild still works.
 - BrushCanvasPanel renders InteractiveBrushEditCanvasView.
@@ -290,7 +290,7 @@ Implemented:
 - Renamed BrushWorkspaceFixture to BrushCanvasFixture.
 - Renamed brush_workspace_fixture.dart to brush_canvas_fixture.dart.
 - Updated imports and tests to use BrushCanvasFixture.
-- explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains the explicit fixture/test helper path.
+- MainCanvasBrushHost.fixture() remains the explicit fixture/test helper path.
 - The production MainCanvasBrushHost constructor still does not silently use fixture fallback.
 - Missing production selection still renders the empty-selection placeholder.
 - BrushCanvasPanel remains an embedded canvas panel without debug controls.
@@ -299,7 +299,7 @@ Implemented:
 
 Still out of scope:
 - deleting BrushCanvasFixture
-- deleting explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
+- deleting MainCanvasBrushHost.fixture()
 - renaming BrushWorkspaceCoordinator
 - renaming BrushWorkspaceCacheInvalidationSink
 - replacing Brush Host Preview with production canvas mode
@@ -314,7 +314,7 @@ Add:
 
 ```txt id="l586ug"
 Future cleanup:
-After fixture usage is reduced further, remove explicit MainCanvasBrushHost fixture helper (removed in Phase 205) and either delete BrushCanvasFixture or move it to a test-only helper location.
+After fixture usage is reduced further, remove MainCanvasBrushHost.fixture() and either delete BrushCanvasFixture or move it to a test-only helper location.
 ```
 
 ## Not allowed
@@ -362,7 +362,7 @@ Do not remove:
 - InteractiveBrushEditCanvasView
 - BrushCanvasPanel
 - MainCanvasBrushHost
-- explicit MainCanvasBrushHost fixture helper (removed in Phase 205)
+- MainCanvasBrushHost.fixture()
 - BrushWorkspaceCoordinator
 - BrushWorkspaceCacheInvalidationSink
 - BrushFrameEditSessionStore
@@ -447,7 +447,7 @@ Report:
 - whether BrushWorkspaceFixture was renamed to BrushCanvasFixture
 - whether the file was renamed to brush_canvas_fixture.dart
 - whether all imports were updated
-- whether explicit MainCanvasBrushHost fixture helper (removed in Phase 205) remains explicit fixture/test helper path
+- whether MainCanvasBrushHost.fixture() remains explicit fixture/test helper path
 - whether production MainCanvasBrushHost still avoids fixture fallback
 - whether missing production selection still renders placeholder
 - whether BrushCanvasPanel still renders InteractiveBrushEditCanvasView
@@ -462,6 +462,8 @@ Report:
 - `BrushWorkspaceFixture` has been renamed to `BrushCanvasFixture`.
 - `lib/src/ui/brush/brush_workspace_fixture.dart` has been renamed to `lib/src/ui/brush/brush_canvas_fixture.dart`.
 - Runtime and test imports now use `brush_canvas_fixture.dart`.
-- `explicit MainCanvasBrushHost fixture helper (removed in Phase 205)` remains as the explicit fixture/test helper path and is documented as not being a production fallback.
+- `MainCanvasBrushHost.fixture()` remains as the explicit fixture/test helper path and is documented as not being a production fallback.
 - The default `MainCanvasBrushHost` constructor remains selection-driven and continues to render the empty-selection placeholder when no active frame or selection is supplied.
 - `BrushCanvasPanel` remains a simple embedded panel that renders `InteractiveBrushEditCanvasView` without debug controls.
+
+Note: MainCanvasBrushHost.fixture() was later removed in Phase 205 and fixture setup moved to test/helpers/brush_canvas_fixture.dart.
