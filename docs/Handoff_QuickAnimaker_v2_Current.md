@@ -90,9 +90,9 @@ C:\Users\gunoo\Documents\quick_animaker_v2
 
 ## 5. Current source-of-truth entry point
 
-This handoff intentionally stays lightweight. It is not an architecture specification or module policy document.
+Sections 0 through 4 above are maintained by the user and must always be read directly. Sections 5 and later are maintained only as a lightweight entry point to the current documentation set; they are not a detailed architecture specification or module policy document.
 
-For current architecture policy, read:
+For detailed current architecture policy, read the matching `Current_*` document directly:
 
 - Docs index: `docs/Current_Docs_Index.md`
 - Project architecture: `docs/Current_Project_Architecture.md`
@@ -103,7 +103,7 @@ For current architecture policy, read:
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 
-Before working on a module, read the matching Current document directly.
+Before working on a module, read the matching Current document directly rather than relying on this handoff summary.
 
 ## 6. Current-doc rule
 
