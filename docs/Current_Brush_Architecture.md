@@ -177,6 +177,17 @@ The current policy is not:
 - Playback replaying strokes.
 - Playback running brush rasterization.
 
+## Brush V1 scope guard
+
+Brush V1 remains a contained brush/canvas foundation and test surface. The interactive smoke UI is not a production route.
+
+Protected scope rules:
+
+- `BrushCanvasSmokeScreen` must not be wired into `main.dart` or production app routes.
+- Brush smoke UI must avoid external app state management frameworks such as Provider, Riverpod, Bloc, `ChangeNotifier`, or `InheritedWidget`.
+- Brush smoke UI must not directly call low-level commit helpers such as `commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation`.
+- Brush V1 runtime implementation details may remain tested, but this document and the Current docs index define current brush architecture policy.
+
 ## Future implementation phases
 
 Future phases may implement actual deferred baking, preview cache generation, playback cache preparation, renderer cache behavior, save/load integration, or memory-estimation UI.

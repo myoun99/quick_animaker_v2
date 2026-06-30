@@ -48,9 +48,39 @@ void main() {
       },
     );
 
-    test('Brush V1 completion and Storyboard roadmap docs exist', () {
-      expect(File('docs/Brush_V1_Complete.md').existsSync(), isTrue);
-      expect(File('docs/Storyboard_Work_Roadmap.md').existsSync(), isTrue);
+    test('Brush V1 and Storyboard scope rules live in Current docs', () {
+      final brush = _readIfExists('docs/Current_Brush_Architecture.md');
+      final storyboard = _readIfExists(
+        'docs/Current_Storyboard_Architecture.md',
+      );
+      final index = _readIfExists('docs/Current_Docs_Index.md');
+
+      for (final term in [
+        'Brush V1 scope guard',
+        'BrushCanvasSmokeScreen',
+        'must not be wired into `main.dart` or production app routes',
+        'must avoid external app state management frameworks',
+        'must not directly call low-level commit helpers',
+      ]) {
+        expect(brush, contains(term), reason: 'Missing brush scope term: $term');
+      }
+
+      for (final term in [
+        'Storyboard is represented as an ordinary layer',
+        'A Cut may have at most one storyboard layer',
+        'Do not wire brush drawing into StoryboardPanel yet',
+      ]) {
+        expect(
+          storyboard,
+          contains(term),
+          reason: 'Missing storyboard scope term: $term',
+        );
+      }
+
+      expect(index, contains('Current_Brush_Architecture.md'));
+      expect(index, contains('Current_Storyboard_Architecture.md'));
+      expect(index, contains('Phase_*_Codex_Task.md'));
+      expect(index, contains('historical records only'));
     });
 
     test('storyboard and timeline panels do not import brush smoke UI', () {
