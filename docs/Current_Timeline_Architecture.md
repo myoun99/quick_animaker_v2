@@ -13,7 +13,6 @@ Timeline stabilization completed around Phase 145. Avoid timeline refactors unle
 Timeline range semantics must not drive canvas/cache/storage semantics. Keep playback/export duration, visible display range, virtualized rendering windows, authored data extent, selected exposure visuals, horizontal scrolling, and frame coordinate conversion separate.
 
 - `Cut.duration` is playback/export duration only.
-- Cut.duration is playback/export duration only.
 - `Cut.duration` must not limit data extent, editability, selected exposure outline, or visible range.
 - Authored frames beyond `Cut.duration` can exist.
 - Editing beyond `Cut.duration` must not auto-extend `Cut.duration`.
