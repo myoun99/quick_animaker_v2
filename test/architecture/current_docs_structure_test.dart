@@ -30,7 +30,7 @@ void main() {
       }
       expect(
         normalizedIndex,
-        contains('phase task docs are historical task/order records'),
+        contains('phase task docs are historical task order records'),
       );
       expect(
         normalizedIndex,
