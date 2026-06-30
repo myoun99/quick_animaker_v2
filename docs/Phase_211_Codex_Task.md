@@ -121,7 +121,9 @@ Report:
 - Phase_*_Codex_Task.md restored.
 - Phase_211_Codex_Task.md corrected.
 - Current_* docs kept.
+- Phase task docs preserved as historical task/order records.
 - Obsolete non-phase docs deleted.
+- PR body/report updated so it does not say legacy Phase_* docs were removed.
 - Tests updated.
 - Runtime code unchanged.
 - Check results.
