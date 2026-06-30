@@ -5,9 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Brush app integration decisions', () {
     test(
-      'decision document exists and records required architecture terms',
+      'current brush document records required integration architecture terms',
       () {
-        final file = File('docs/Brush_App_Integration_Decisions.md');
+        final file = File('docs/Current_Brush_Architecture.md');
 
         expect(file.existsSync(), isTrue);
 

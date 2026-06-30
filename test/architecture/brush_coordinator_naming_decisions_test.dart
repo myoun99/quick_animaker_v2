@@ -6,7 +6,7 @@ void main() {
   group('Brush coordinator naming decisions', () {
     test('documents BrushWorkspaceCoordinator naming cleanup decision', () {
       final doc = File(
-        'docs/Brush_App_Integration_Decisions.md',
+        'docs/Current_Brush_Architecture.md',
       ).readAsStringSync();
 
       expect(
@@ -45,7 +45,7 @@ void main() {
       'kept deleted workspace UI and runtime renames out of Phase 206 scope',
       () {
         final doc = File(
-          'docs/Brush_App_Integration_Decisions.md',
+          'docs/Current_Brush_Architecture.md',
         ).readAsStringSync();
 
         expect(doc, contains('Left runtime behavior unchanged.'));
@@ -65,7 +65,7 @@ void main() {
 
     test('documents Phase 207 BrushFrameEditingCoordinator runtime rename', () {
       final doc = File(
-        'docs/Brush_App_Integration_Decisions.md',
+        'docs/Current_Brush_Architecture.md',
       ).readAsStringSync();
 
       expect(
