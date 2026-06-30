@@ -15,6 +15,16 @@ Project -> Track -> Cut -> Layer -> Frame -> Stroke
 - `Frame` owns lightweight timing/metadata and stroke references; heavy brush bitmap payloads belong outside the frame model.
 - `Stroke` represents drawing/action data where appropriate, but current brush architecture separates transient paint commands and bitmap payload storage from durable frame metadata.
 
+## Lightweight domain and value-object boundaries
+
+This summary preserves current model context without turning the handoff into an architecture specification. Keep these value objects lightweight and independent from rendering/runtime payloads:
+
+- Core IDs are identity/value objects: `ProjectId`, `TrackId`, `CutId`, `LayerId`, `FrameId`, and `StrokeId`. Display names are labels, not identity.
+- Canvas coordinates are explicit value objects: `CanvasPoint` is canvas-space, `ViewportPoint` is viewport/widget-local space, and `CanvasViewport` performs pure coordinate conversion.
+- `CanvasViewport` must remain independent from Flutter rendering/input types such as `Offset`, `PointerEvent`, `Canvas`, `Paint`, and `CustomPainter`.
+- Brush context remains lightweight at the domain boundary: `BrushSettings` is a frozen/value snapshot stored with `Stroke`; `BrushPreset` is reusable preset metadata; `BrushPreset.name` is a display label; and `BrushPresetId` is preset identity.
+- `Stroke` should not directly reference `BrushPreset`. `BrushInputSample` is pre-stroke input data, while `StrokePoint` is stored coordinate data inside `Stroke`.
+
 ## Ownership and module boundaries
 
 - Project data, timeline UI, brush editing, canvas/cache/storage, storyboard overview, persistence, and playback should stay as separate modules with narrow interfaces.

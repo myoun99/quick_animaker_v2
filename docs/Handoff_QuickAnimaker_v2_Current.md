@@ -88,86 +88,14 @@ C:\Users\gunoo\Documents\quick_animaker_v2
 - 임시 땜빵보다 장기적으로 안전한 구조를 우선한다.
 
 
-## 5. 핵심 도메인 모델
+## 5. Current source-of-truth entry point
 
-기본 도메인 계층:
+This handoff intentionally stays lightweight. It is not an architecture specification or module policy document.
 
-```txt
-Project
-  -> Track
-    -> Cut
-      -> Layer
-        -> Frame
-          -> Stroke
-```
-
-주요 모델 / value object:
-
-```txt
-Project
-Track
-Cut
-Layer
-Frame
-Stroke
-
-CanvasSize
-CanvasPoint
-ViewportPoint
-CanvasViewport
-
-BrushSettings
-BrushTipShape
-BrushPreset
-BrushPresetId
-BrushInputSample
-
-ProjectId
-TrackId
-CutId
-LayerId
-FrameId
-StrokeId
-```
-
-핵심 불변식:
-
-```txt
-Project는 tracks를 가진다.
-Track은 cuts를 가진다.
-Cut은 layers를 가진다.
-Layer는 frames를 가진다.
-Frame은 strokes를 가진다.
-Layer.name은 표시용 라벨이다.
-Layer.name 중복은 허용한다.
-LayerId가 진짜 identity다.
-Frame name은 기존 unique/link 정책을 유지한다.
-```
-
-Brush / canvas 관련 불변식:
-
-```txt
-BrushSettings는 Stroke에 저장되는 frozen settings snapshot이다.
-BrushPreset은 재사용 가능한 preset metadata다.
-BrushPreset.name은 표시용 라벨이다.
-BrushPresetId가 preset identity다.
-Stroke는 BrushPreset을 직접 참조하지 않는다.
-BrushInputSample은 pre-stroke input data다.
-StrokePoint는 Stroke 안에 저장되는 좌표 데이터다.
-CanvasPoint는 canvas-space 좌표다.
-ViewportPoint는 viewport/widget-local 좌표다.
-CanvasViewport는 순수 좌표 변환만 담당한다.
-CanvasViewport는 Flutter Offset, PointerEvent, Canvas, Paint, CustomPainter에 의존하지 않는다.
-```
-
----
-
-## 6. Current source-of-truth docs
-
-Before working on a module, read the matching current document directly. Phase task docs are historical task/order records, not current architecture policy.
+For current architecture policy, read:
 
 - Docs index: `docs/Current_Docs_Index.md`
-- General project architecture: `docs/Current_Project_Architecture.md`
+- Project architecture: `docs/Current_Project_Architecture.md`
 - Implementation roadmap: `docs/Current_Implementation_Roadmap.md`
 - Brush: `docs/Current_Brush_Architecture.md`
 - Timeline: `docs/Current_Timeline_Architecture.md`
@@ -175,10 +103,12 @@ Before working on a module, read the matching current document directly. Phase t
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 
-## 7. Current-doc rule
+Before working on a module, read the matching Current document directly.
 
-`Current_*` documents are the source of truth for current policy. Old phase/task docs remain historical records and should not override the matching current document.
+## 6. Current-doc rule
 
-## 8. Latest continuation note
+`Current_*` documents are the source of truth for current policy. Old phase/task docs remain historical records and must not override the matching Current document.
 
-Phase 212B reinforced current documentation and architecture tests only. Continue from the relevant `Current_*` docs before implementation; especially check the roadmap, brush, canvas/cache/storage, and storyboard documents before planning runtime work.
+## 7. Latest continuation note
+
+Phase 212C slimmed handoff section 5+ into a lightweight Current-doc entry point. Continue from `docs/Current_Docs_Index.md` and the relevant `Current_*` document before planning runtime work.
