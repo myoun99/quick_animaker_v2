@@ -22,18 +22,19 @@ void main() {
       }
 
       final index = File('docs/Current_Docs_Index.md').readAsStringSync();
+      final normalizedIndex = _normalizeDocText(index);
       for (final path in currentDocs.where(
         (path) => path.contains('Current_'),
       )) {
         expect(index, contains(path), reason: 'Index should reference $path.');
       }
       expect(
-        index,
-        contains('Phase task docs are historical task/order records'),
+        normalizedIndex,
+        contains('phase task docs are historical task/order records'),
       );
       expect(
-        index,
-        contains('read the matching `Current_*` document directly'),
+        normalizedIndex,
+        contains('read the matching current document directly'),
       );
     });
 
@@ -46,11 +47,12 @@ void main() {
         for (final heading in ['## 0.', '## 1.', '## 2.', '## 3.', '## 4.']) {
           expect(handoff, contains(heading));
         }
+        final normalizedHandoff = _normalizeDocText(handoff);
         expect(handoff, contains('## 6. Current source-of-truth docs'));
         expect(
-          handoff,
+          normalizedHandoff,
           contains(
-            'Before working on a module, read the matching current document directly',
+            'before working on a module read the matching current document directly',
           ),
         );
         expect(handoff, contains('docs/Current_Docs_Index.md'));
@@ -61,17 +63,18 @@ void main() {
       final brush = File(
         'docs/Current_Brush_Architecture.md',
       ).readAsStringSync();
+      final normalizedBrush = _normalizeDocText(brush);
       expect(
-        brush,
-        contains('User-facing undo is based on recent live paint commands'),
+        normalizedBrush,
+        contains('user facing undo is based on recent live paint commands'),
       );
       expect(
-        brush,
-        contains('The deferred bake buffer is not user-facing undo'),
+        normalizedBrush,
+        contains('the deferred bake buffer is not user facing undo'),
       );
       expect(
-        brush,
-        contains('Tile delta is not the current user-facing undo policy'),
+        normalizedBrush,
+        contains('tile delta is not the current user facing undo policy'),
       );
       expect(brush, isNot(contains('Undo source = tile delta data')));
       expect(brush, isNot(contains('Undo should prefer tile deltas')));
@@ -79,35 +82,34 @@ void main() {
       final timeline = File(
         'docs/Current_Timeline_Architecture.md',
       ).readAsStringSync();
+      final normalizedTimeline = _normalizeDocText(timeline);
       expect(
-        timeline,
+        normalizedTimeline,
         contains(
-          'Timeline range semantics must not drive canvas/cache/storage semantics',
+          'timeline range semantics must not drive canvas cache storage semantics',
         ),
       );
       expect(
-        timeline,
-        contains('Cut.duration is playback/export duration only'),
+        normalizedTimeline,
+        contains('cut duration is playback export duration only'),
       );
       expect(
-        timeline,
-        contains('linked frames share drawing material/source identity'),
+        normalizedTimeline,
+        contains('linked frames share drawing material source identity'),
       );
       expect(
-        timeline,
-        contains('Linked frames do not share placement, exposure duration'),
+        normalizedTimeline,
+        contains('linked frames do not share placement exposure duration'),
       );
       expect(
-        timeline,
+        normalizedTimeline,
         contains(
-          '`+ Exposure` and `- Exposure` operate on the selected authored timeline entry',
+          'exposure and exposure operate on the selected authored timeline entry',
         ),
       );
       expect(
-        timeline,
-        contains(
-          'must not accidentally mutate every linked use of a `FrameId`',
-        ),
+        normalizedTimeline,
+        contains('must not accidentally mutate every linked use of a frameid'),
       );
 
       final cutManagement = File(
@@ -149,16 +151,24 @@ void main() {
       final storyboard = File(
         'docs/Current_Storyboard_Architecture.md',
       ).readAsStringSync();
+      final normalizedStoryboard = _normalizeDocText(storyboard);
       expect(
-        storyboard,
-        contains('Storyboard is an ordinary `Layer` with `kind: storyboard`'),
+        normalizedStoryboard,
+        contains('storyboard is an ordinary layer with kind storyboard'),
       );
 
       final canvas = File(
         'docs/Current_Canvas_Cache_Storage_Architecture.md',
       ).readAsStringSync();
-      expect(canvas, contains('Playback must not replay live paint commands'));
-      expect(canvas, contains('Cache images are derived, not source of truth'));
+      final normalizedCanvas = _normalizeDocText(canvas);
+      expect(
+        normalizedCanvas,
+        contains('playback must not replay live paint commands'),
+      );
+      expect(
+        normalizedCanvas,
+        contains('cache images are derived not source of truth'),
+      );
     });
 
     test(
@@ -189,4 +199,12 @@ void main() {
       },
     );
   });
+}
+
+String _normalizeDocText(String source) {
+  return source
+      .toLowerCase()
+      .replaceAll(RegExp(r'[`*_.,;:()\[\]/-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }

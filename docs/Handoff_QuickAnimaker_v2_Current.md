@@ -178,3 +178,7 @@ Before working on a module, read the matching current document directly. Phase t
 ## 7. Current-doc rule
 
 `Current_*` documents are the source of truth for current policy. Old phase/task docs remain historical records and should not override the matching current document.
+
+## 8. Latest continuation note
+
+Phase 212B reinforced current documentation and architecture tests only. Continue from the relevant `Current_*` docs before implementation; especially check the roadmap, brush, canvas/cache/storage, and storyboard documents before planning runtime work.

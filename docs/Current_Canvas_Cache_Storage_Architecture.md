@@ -4,21 +4,54 @@
 
 Canvas/cache/storage must align with current brush architecture without treating timeline range semantics as storage policy. Cache images are derived, not source of truth.
 
+Runtime may not yet implement every item in this document. This file defines current policy and future implementation direction.
+
+## Current policy
+
+- Cache images are derived from source drawing payloads; they are not the source of truth.
+- Heavy bitmap payloads, paint command buffers, baked surfaces, preview caches, dirty flags, and similar frame-local drawing data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
+- `BrushFrameStore` or an equivalent brush/canvas storage boundary owns frame-local drawing payloads keyed by frame identity.
+- `Project`, `Stroke`, `PaintCommand`, and `BrushFrameStore` must stay conceptually distinct:
+  - `Project` owns lightweight project structure such as tracks, cuts, layers, and frames.
+  - `Stroke` / stroke-like data and `PaintCommand` data describe authored drawing input or brush actions where appropriate.
+  - `BrushFrameStore` owns the heavy frame-local drawing payload, command buffers, baked bitmap surfaces, and derived caches.
+- Timeline range semantics must not decide storage validity.
+- `Cut.duration` is playback/export duration only.
+- Authored drawing data can exist beyond `Cut.duration`.
+
 ## Brush-aligned playback policy
 
+- Playback should use prepared preview/composite bitmap cache images.
 - Playback must not replay live paint commands.
 - Playback must not run brush rasterization.
-- Playback should use prepared preview/composite bitmap cache images.
+- Playback should not composite all layers from scratch when a valid cache exists.
 - `inactivePreviewCache` and `playbackPreviewCache` are derived images that can be invalidated and rebuilt from brush frame drawing state.
+- If a required cache is stale or missing, cache preparation should happen outside the hot playback path or be handled by future renderer/cache policy.
 
 ## Storage boundaries
 
 Heavy bitmap payloads, paint command buffers, baked surfaces, preview caches, dirty flags, and similar frame-local drawing data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
 
+`Frame` should remain lightweight timing/identity/metadata. It should not embed large bitmap surfaces, command lists, or preview/composite cache images.
+
 ## Timeline separation
 
 Canvas/cache/storage semantics must stay separate from timeline range semantics. `Cut.duration` is a playback/export boundary; it must not decide whether frame bitmap data can exist, whether caches can be stored, or whether authored drawing data is valid.
 
+Authored frames and drawing payloads beyond `Cut.duration` may remain valid project data. Editing beyond `Cut.duration` must not implicitly become a storage allocation or storage deletion rule.
+
+## Future implementation direction
+
+- Dirty flags, dirty regions, and dirty tiles are future cache invalidation concepts.
+- Sparse tile allocation is the preferred future storage direction.
+- Do not eagerly allocate every tile in every frame or layer.
+- Cache invalidation should be explicit enough to rebuild derived previews/composites without making cache images durable source data.
+- Save/load must distinguish source payload from derived caches.
+- Source drawing payloads must be persisted.
+- Derived caches may be omitted, invalidated, or rebuilt.
+
 ## Tile delta wording
 
 Tile delta is not the current user-facing brush undo policy. Tile delta may appear only as a legacy implementation detail, possible low-level optimization, or internal bitmap mutation/storage detail. Do not describe tile delta as current user-facing undo.
+
+Tile delta is not the current user-facing undo source. Tile delta may remain only as a low-level bitmap mutation/storage detail or optimization if a future implementation needs it.

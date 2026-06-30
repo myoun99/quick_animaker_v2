@@ -101,7 +101,7 @@ deferredBakeRatio = 10%
 deferredBakeLimit = 25
 ```
 
-The deferred bake buffer is not buffer undo.
+The deferred bake buffer is not an undo buffer.
 The deferred bake buffer is not user-facing undo.
 It exists only to delay baking and keep active drawing responsive.
 
@@ -170,7 +170,7 @@ Legacy or lower-level implementation details:
 
 The current policy is not:
 
-- Tile-delta data is not the user-facing undo source.
+- Tile delta as the user-facing undo source.
 - User-facing undo as `TileDeltaCommand`.
 - Tile delta as the primary brush undo model.
 - Brush display based on replaying every old stroke.
