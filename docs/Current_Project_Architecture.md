@@ -28,4 +28,12 @@ Project -> Track -> Cut -> Layer -> Frame -> Stroke
 - Timeline policy: `docs/Current_Timeline_Architecture.md`
 - Canvas/cache/storage policy: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard policy: `docs/Current_Storyboard_Architecture.md`
+- Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Roadmap: `docs/Current_Implementation_Roadmap.md`
+
+
+## Frame material identity
+
+Same frame name means same drawing material inside the relevant layer. A non-empty frame name is a material identity label, and duplicate independent `FrameId`s with the same non-empty name in the same layer should be prevented or resolved by linking rather than preserved as separate materials.
+
+Linked frames share drawing material/source identity through the same `FrameId`, drawing strokes/material, and frame name. Linked material identity must stay separate from authored timeline placement.

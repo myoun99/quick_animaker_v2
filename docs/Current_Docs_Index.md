@@ -7,6 +7,7 @@
 - Implementation roadmap: `docs/Current_Implementation_Roadmap.md`
 - Brush: `docs/Current_Brush_Architecture.md`
 - Timeline: `docs/Current_Timeline_Architecture.md`
+- Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 
@@ -18,8 +19,9 @@ Before planning or implementing in a module, read the matching `Current_*` docum
 
 Useful current content was moved into the `Current_*` documents and obsolete non-phase source documents were deleted rather than kept as legacy redirects. Phase task docs and other task-order docs are preserved as historical records.
 
-- `docs/Architecture.md` -> `docs/Current_Project_Architecture.md`
+- `docs/Architecture.md`, `docs/Product_Direction_Notes.md` -> `docs/Current_Project_Architecture.md` and `docs/Current_Timeline_Architecture.md`
 - `docs/Brush_Architecture_Current.md`, `docs/Bitmap_Canvas_Brush_Architecture.md`, `docs/Brush_App_Integration_Decisions.md`, `docs/Brush_V1_Complete.md`, `docs/Brush_V1_Integration_Review.md` -> `docs/Current_Brush_Architecture.md` and `docs/Current_Canvas_Cache_Storage_Architecture.md`
+- `docs/Active_Cut_State_Design.md`, `docs/Cut_Management_Policy.md` -> `docs/Current_Cut_Management_Architecture.md`
 - `docs/Timeline_Stabilization_Checkpoint.md`, `docs/LongTerm_Timeline_Range_Semantics.md`, `docs/LongTerm_Roadmap_After_Phase_150.md` -> `docs/Current_Timeline_Architecture.md`, `docs/Current_Canvas_Cache_Storage_Architecture.md`, and `docs/Current_Implementation_Roadmap.md`
 - `docs/Storyboard_Work_Roadmap.md` -> `docs/Current_Storyboard_Architecture.md` and `docs/Current_Implementation_Roadmap.md`
 

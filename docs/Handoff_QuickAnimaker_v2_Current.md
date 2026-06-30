@@ -171,6 +171,7 @@ Before working on a module, read the matching current document directly. Phase t
 - Implementation roadmap: `docs/Current_Implementation_Roadmap.md`
 - Brush: `docs/Current_Brush_Architecture.md`
 - Timeline: `docs/Current_Timeline_Architecture.md`
+- Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 

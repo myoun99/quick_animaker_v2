@@ -19,6 +19,14 @@ Timeline range semantics must not drive canvas/cache/storage semantics. Keep pla
 - Virtualized frame windows are rendering optimizations, not data or playback boundaries.
 - Frame coordinate helpers should remain pure conversions and should not embed playback, authored extent, canvas/cache, or storage semantics.
 
+## Linked frame exposure and placement policy
+
+Same frame name means same drawing material, and linked frames share drawing material/source identity. Linked frames do not share placement, exposure duration, timeline marks, blank/X positions, selected cell state, or other authored timeline entry state.
+
+`+ Exposure` and `- Exposure` operate on the selected authored timeline entry, not every use of the same `FrameId`. Exposure duration belongs to the selected authored timeline entry, not to the `FrameId` globally.
+
+Future timeline or rename work must not accidentally mutate every linked use of a `FrameId` when only placement, exposure, marks, or authored timeline entry state is being edited.
+
 ## Layer ordering
 
 Layer ordering must keep raw model order separate from display order.
