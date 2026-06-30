@@ -2,6 +2,7 @@
 
 ## Current source-of-truth docs
 
+- Docs index: `docs/Current_Docs_Index.md`
 - Handoff / conversation flow: `docs/Handoff_QuickAnimaker_v2_Current.md`
 - Project architecture: `docs/Current_Project_Architecture.md`
 - Implementation roadmap: `docs/Current_Implementation_Roadmap.md`
@@ -13,7 +14,7 @@
 
 ## AI reading rule
 
-Before planning or implementing in a module, read the matching `Current_*` document directly. Do not rely on old phase/task docs as current policy. Phase task docs are historical task/order records, not current architecture policy.
+Current_* docs are the source of truth for current architecture policy. Before planning or implementing in a module, read the matching `Current_*` document directly. Do not rely on old phase/task docs as current policy. Phase task docs are historical task/order records, not current architecture policy.
 
 ## Consolidated / deleted non-current docs
 
