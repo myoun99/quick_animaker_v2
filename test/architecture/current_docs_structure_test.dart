@@ -82,10 +82,7 @@ void main() {
           lessThan(1800),
           reason: 'Handoff section 5+ should stay lightweight.',
         );
-        expect(
-          handoffSection5AndLater,
-          isNot(contains('핵심 도메인 모델')),
-        );
+        expect(handoffSection5AndLater, isNot(contains('핵심 도메인 모델')));
       },
     );
 
@@ -192,10 +189,7 @@ void main() {
           reason: '$idName should remain documented as a core ID.',
         );
       }
-      expect(
-        normalizedProject,
-        contains('canvaspoint is canvas space'),
-      );
+      expect(normalizedProject, contains('canvaspoint is canvas space'));
       expect(
         normalizedProject,
         contains('viewportpoint is viewport widget local space'),
@@ -229,10 +223,7 @@ void main() {
         normalizedProject,
         contains('brushpreset name is a display label'),
       );
-      expect(
-        normalizedProject,
-        contains('brushpresetid is preset identity'),
-      );
+      expect(normalizedProject, contains('brushpresetid is preset identity'));
       expect(
         normalizedProject,
         contains('stroke should not directly reference brushpreset'),
