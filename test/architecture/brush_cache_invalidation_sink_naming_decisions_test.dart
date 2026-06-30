@@ -6,7 +6,7 @@ void main() {
   group('Brush cache invalidation sink naming decisions', () {
     test('documents BrushWorkspaceCacheInvalidationSink naming decision', () {
       final doc = File(
-        'docs/Brush_App_Integration_Decisions.md',
+        'docs/Current_Brush_Architecture.md',
       ).readAsStringSync();
 
       expect(
@@ -54,7 +54,7 @@ void main() {
       'documents Phase 209 BrushEditCacheInvalidationSink runtime rename',
       () {
         final doc = File(
-          'docs/Brush_App_Integration_Decisions.md',
+          'docs/Current_Brush_Architecture.md',
         ).readAsStringSync();
 
         expect(

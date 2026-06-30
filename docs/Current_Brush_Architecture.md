@@ -1,4 +1,4 @@
-# Brush Architecture Current
+# Current Brush Architecture
 
 ## Status
 
@@ -182,3 +182,27 @@ The current policy is not:
 Future phases may implement actual deferred baking, preview cache generation, playback cache preparation, renderer cache behavior, save/load integration, or memory-estimation UI.
 
 Those phases must preserve this policy unless a newer canonical architecture document explicitly supersedes it.
+
+## Brush V1 implementation snapshot retained as context
+
+Brush V1 completed an internal smoke/dev/test stack with BitmapSurface / BitmapTile storage, BrushDabSequence input, brush pixel blending, commit/undo/redo services, cache invalidation facades, BitmapSurfacePainter display, InteractiveBrushEditCanvasView, and smoke-screen regression coverage. That stack is context only: it is not app-complete and must not be restored into production routes merely to satisfy legacy documentation tests.
+
+Tile delta is not the current user-facing undo policy. Tile delta may appear only as a legacy implementation detail, possible low-level optimization, or internal bitmap mutation/storage detail.
+
+## Historical naming decisions retained for current integration context
+
+### Phase 206 BrushWorkspaceCoordinator naming cleanup preparation
+
+BrushWorkspaceCoordinator is no longer tied to the deleted BrushWorkspaceScreen route. BrushWorkspaceCoordinator is currently a production brush editing coordination service. The planned naming direction was BrushWorkspaceCoordinator -> BrushFrameEditingCoordinator. BrushWorkspaceCacheInvalidationSink should be considered separately. Left runtime behavior unchanged. Did not rename BrushWorkspaceCoordinator yet. Did not rename BrushWorkspaceCacheInvalidationSink. Did not reintroduce deleted workspace UI or debug controls.
+
+### Phase 207 BrushFrameEditingCoordinator runtime rename
+
+Renamed BrushWorkspaceCoordinator to BrushFrameEditingCoordinator. Renamed brush_workspace_coordinator.dart to brush_frame_editing_coordinator.dart. Kept runtime behavior unchanged. BrushWorkspaceCacheInvalidationSink was not renamed in this phase.
+
+### Phase 208 BrushWorkspaceCacheInvalidationSink naming decision
+
+BrushWorkspaceCacheInvalidationSink is no longer tied to deleted BrushWorkspaceScreen / BrushWorkspaceView UI. BrushWorkspaceCacheInvalidationSink currently acts as the cache invalidation sink boundary used by brush editing flows. BrushWorkspaceCacheInvalidationSink -> BrushEditCacheInvalidationSink. Why BrushEditCacheInvalidationSink: it names the brush-edit cache invalidation boundary without implying a deleted workspace UI. Left runtime behavior unchanged. Did not rename BrushWorkspaceCacheInvalidationSink yet. Did not rename brush_workspace_cache_invalidation_sink.dart yet.
+
+### Phase 209 BrushEditCacheInvalidationSink runtime rename
+
+Renamed BrushWorkspaceCacheInvalidationSink to BrushEditCacheInvalidationSink. Renamed brush_workspace_cache_invalidation_sink.dart to brush_edit_cache_invalidation_sink.dart. Updated production imports to use BrushEditCacheInvalidationSink. Updated tests to use BrushEditCacheInvalidationSink. Kept cache invalidation semantics unchanged.

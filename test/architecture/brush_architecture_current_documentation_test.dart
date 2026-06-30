@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Current brush architecture documentation', () {
     test('canonical document exists and protects deferred-bake policy', () {
-      final file = File('docs/Brush_Architecture_Current.md');
+      final file = File('docs/Current_Brush_Architecture.md');
 
       expect(file.existsSync(), isTrue);
 
@@ -34,30 +34,17 @@ void main() {
       }
     });
 
-    test('legacy brush docs defer to the canonical document', () {
-      final bitmapDoc = File('docs/Bitmap_Canvas_Brush_Architecture.md');
-      if (bitmapDoc.existsSync()) {
-        final source = bitmapDoc.readAsStringSync();
-        expect(source, contains('Superseded notice'));
-        expect(source, contains('docs/Brush_Architecture_Current.md'));
-        expect(
-          source,
-          contains('tile delta is not the current user-facing undo policy'),
-        );
-      }
-
+    test('obsolete legacy brush docs were deleted after consolidation', () {
       for (final path in [
+        'docs/Bitmap_Canvas_Brush_Architecture.md',
         'docs/Brush_V1_Complete.md',
         'docs/Brush_V1_Integration_Review.md',
       ]) {
-        final file = File(path);
-        if (!file.existsSync()) {
-          continue;
-        }
-
-        final source = file.readAsStringSync();
-        expect(source, contains('Legacy Brush V1'));
-        expect(source, contains('docs/Brush_Architecture_Current.md'));
+        expect(
+          File(path).existsSync(),
+          isFalse,
+          reason: '$path should be consolidated into Current_* docs.',
+        );
       }
     });
   });
