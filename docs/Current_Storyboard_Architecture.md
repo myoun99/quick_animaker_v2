@@ -14,12 +14,24 @@
 
 `StoryboardPanel` should help users inspect and plan cuts, tracks, and storyboard-layer presence. It should not own timeline range semantics, and it should not mutate `Project` during layout/read operations.
 
+## Long-term multi-track overview direction
+
+Long-term `StoryboardPanel` direction is a Premiere Pro / DaVinci Resolve-like multi-track overview, while still remaining an overview/planning surface rather than a drawing canvas.
+
+- `Project.tracks` represent V1/V2/V3-like tracks.
+- Tracks contain Cut blocks.
+- A Cut block spans the Cut duration.
+- If a Cut has a storyboard layer, `StoryboardPanel` may show that storyboard layer's head/exposure strip inside the Cut block.
+- Reuse existing timeline primitives and layout logic when possible instead of creating a completely separate storyboard-specific timeline engine.
+- This direction must preserve storyboard-as-layer policy and must not introduce `Cut.storyboardLayer.panels`.
+
 ## Export direction
 
 - Basic storyboard export should default to Primary Track only.
 - Selected-track export is a future optional feature, not the default.
 - Composite output across tracks/layers is a future optional feature, not the default.
 - Export behavior must preserve storyboard-as-layer semantics unless a future current document explicitly changes this policy.
+- `StoryboardExportPlan` should be derived from `Project` data and must not mutate `Project`.
 
 ## Future direction
 
