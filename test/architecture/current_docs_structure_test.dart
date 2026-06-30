@@ -172,10 +172,78 @@ void main() {
       final project = File(
         'docs/Current_Project_Architecture.md',
       ).readAsStringSync();
+      final normalizedProject = _normalizeDocText(project);
       expect(project, contains('Same frame name means same drawing material'));
       expect(
         project,
         contains('Linked frames share drawing material/source identity'),
+      );
+      for (final idName in [
+        'ProjectId',
+        'TrackId',
+        'CutId',
+        'LayerId',
+        'FrameId',
+        'StrokeId',
+      ]) {
+        expect(
+          project,
+          contains(idName),
+          reason: '$idName should remain documented as a core ID.',
+        );
+      }
+      expect(
+        normalizedProject,
+        contains('canvaspoint is canvas space'),
+      );
+      expect(
+        normalizedProject,
+        contains('viewportpoint is viewport widget local space'),
+      );
+      expect(
+        normalizedProject,
+        contains('canvasviewport performs pure coordinate conversion'),
+      );
+      for (final flutterType in [
+        'Offset',
+        'PointerEvent',
+        'Canvas',
+        'Paint',
+        'CustomPainter',
+      ]) {
+        expect(
+          project,
+          contains(flutterType),
+          reason: '$flutterType independence should stay documented.',
+        );
+      }
+      expect(
+        normalizedProject,
+        contains('brushsettings is a frozen value snapshot stored with stroke'),
+      );
+      expect(
+        normalizedProject,
+        contains('brushpreset is reusable preset metadata'),
+      );
+      expect(
+        normalizedProject,
+        contains('brushpreset name is a display label'),
+      );
+      expect(
+        normalizedProject,
+        contains('brushpresetid is preset identity'),
+      );
+      expect(
+        normalizedProject,
+        contains('stroke should not directly reference brushpreset'),
+      );
+      expect(
+        normalizedProject,
+        contains('brushinputsample is pre stroke input data'),
+      );
+      expect(
+        normalizedProject,
+        contains('strokepoint is stored coordinate data inside stroke'),
       );
 
       final storyboard = File(
