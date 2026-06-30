@@ -47,7 +47,7 @@ C:\Users\gunoo\Documents\quick_animaker_v2
 2. 사용자: 진행하자
 
 3. AI: 담백하게 실행용 안내만 제공
-    - 만들 문서 파일명c
+    - 만들 문서 파일명
     - 문서 내용 (영어)
     - git add / commit / push
     - Codex 주문서 (영어)
