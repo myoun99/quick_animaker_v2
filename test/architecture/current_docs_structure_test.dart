@@ -47,15 +47,45 @@ void main() {
         for (final heading in ['## 0.', '## 1.', '## 2.', '## 3.', '## 4.']) {
           expect(handoff, contains(heading));
         }
-        final normalizedHandoff = _normalizeDocText(handoff);
-        expect(handoff, contains('## 6. Current source-of-truth docs'));
+        final handoffSection5AndLater = _sectionFrom(handoff, '## 5.');
+        final normalizedSection5AndLater = _normalizeDocText(
+          handoffSection5AndLater,
+        );
+
+        expect(handoff, contains('## 5.'));
         expect(
-          normalizedHandoff,
+          normalizedSection5AndLater,
+          contains('this handoff intentionally stays lightweight'),
+        );
+        expect(
+          normalizedSection5AndLater,
+          contains('not an architecture specification'),
+        );
+        expect(
+          normalizedSection5AndLater,
           contains(
             'before working on a module read the matching current document directly',
           ),
         );
-        expect(handoff, contains('docs/Current_Docs_Index.md'));
+        expect(handoffSection5AndLater, contains('docs/Current_Docs_Index.md'));
+        for (final path in currentDocs.where(
+          (path) => path.contains('Current_'),
+        )) {
+          expect(
+            handoffSection5AndLater,
+            contains(path),
+            reason: 'Handoff section 5+ should point to $path.',
+          );
+        }
+        expect(
+          handoffSection5AndLater.length,
+          lessThan(1800),
+          reason: 'Handoff section 5+ should stay lightweight.',
+        );
+        expect(
+          handoffSection5AndLater,
+          isNot(contains('핵심 도메인 모델')),
+        );
       },
     );
 
@@ -169,6 +199,16 @@ void main() {
         normalizedCanvas,
         contains('cache images are derived not source of truth'),
       );
+      expect(
+        normalizedCanvas,
+        contains(
+          'project stroke paintcommand and brushframestore must stay conceptually distinct',
+        ),
+      );
+      expect(
+        normalizedCanvas,
+        contains('heavy bitmap payloads paint command buffers baked surfaces'),
+      );
     });
 
     test(
@@ -207,4 +247,12 @@ String _normalizeDocText(String source) {
       .replaceAll(RegExp(r'[`*_.,;:()\[\]/-]+'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+}
+
+String _sectionFrom(String source, String headingPrefix) {
+  final index = source.indexOf(headingPrefix);
+  if (index == -1) {
+    return '';
+  }
+  return source.substring(index);
 }
