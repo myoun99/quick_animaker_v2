@@ -55,7 +55,7 @@ bakedBaseSurface
 + dirty flags
 ```
 
-`BrushFrameStore` owns this frame-local drawing payload, keyed by `BrushFrameKey`. A `Frame` remains lightweight metadata and should not embed heavy bitmap surfaces, command lists, or cache images directly.
+`BrushFrameStore` owns this frame-local drawing payload, keyed by `BrushFrameKey`. Frame remains lightweight; heavy brush bitmap payloads, command lists, and cache images belong in BrushFrameStore. A `Frame` remains lightweight metadata and should not embed heavy bitmap surfaces, command lists, or cache images directly.
 
 ## Active editing display
 
@@ -170,7 +170,7 @@ Legacy or lower-level implementation details:
 
 The current policy is not:
 
-- `Undo source = tile delta data` as the current user-facing architecture.
+- Tile-delta data is not the user-facing undo source.
 - User-facing undo as `TileDeltaCommand`.
 - Tile delta as the primary brush undo model.
 - Brush display based on replaying every old stroke.
