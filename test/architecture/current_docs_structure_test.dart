@@ -22,7 +22,9 @@ void main() {
       }
 
       final index = File('docs/Current_Docs_Index.md').readAsStringSync();
-      for (final path in currentDocs.where((path) => path.contains('Current_'))) {
+      for (final path in currentDocs.where(
+        (path) => path.contains('Current_'),
+      )) {
         expect(index, contains(path), reason: 'Index should reference $path.');
       }
       expect(
@@ -35,31 +37,42 @@ void main() {
       );
     });
 
-    test('handoff preserves user-managed sections and points to current docs', () {
-      final handoff = File(
-        'docs/Handoff_QuickAnimaker_v2_Current.md',
-      ).readAsStringSync();
-      for (final heading in ['## 0.', '## 1.', '## 2.', '## 3.', '## 4.']) {
-        expect(handoff, contains(heading));
-      }
-      expect(handoff, contains('## 6. Current source-of-truth docs'));
-      expect(
-        handoff,
-        contains(
-          'Before working on a module, read the matching current document directly',
-        ),
-      );
-      expect(handoff, contains('docs/Current_Docs_Index.md'));
-    });
+    test(
+      'handoff preserves user-managed sections and points to current docs',
+      () {
+        final handoff = File(
+          'docs/Handoff_QuickAnimaker_v2_Current.md',
+        ).readAsStringSync();
+        for (final heading in ['## 0.', '## 1.', '## 2.', '## 3.', '## 4.']) {
+          expect(handoff, contains(heading));
+        }
+        expect(handoff, contains('## 6. Current source-of-truth docs'));
+        expect(
+          handoff,
+          contains(
+            'Before working on a module, read the matching current document directly',
+          ),
+        );
+        expect(handoff, contains('docs/Current_Docs_Index.md'));
+      },
+    );
 
     test('current docs protect consolidated architecture policies', () {
-      final brush = File('docs/Current_Brush_Architecture.md').readAsStringSync();
+      final brush = File(
+        'docs/Current_Brush_Architecture.md',
+      ).readAsStringSync();
       expect(
         brush,
         contains('User-facing undo is based on recent live paint commands'),
       );
-      expect(brush, contains('The deferred bake buffer is not user-facing undo'));
-      expect(brush, contains('Tile delta is not the current user-facing undo policy'));
+      expect(
+        brush,
+        contains('The deferred bake buffer is not user-facing undo'),
+      );
+      expect(
+        brush,
+        contains('Tile delta is not the current user-facing undo policy'),
+      );
       expect(brush, isNot(contains('Undo source = tile delta data')));
       expect(brush, isNot(contains('Undo should prefer tile deltas')));
 
@@ -72,7 +85,10 @@ void main() {
           'Timeline range semantics must not drive canvas/cache/storage semantics',
         ),
       );
-      expect(timeline, contains('Cut.duration is playback/export duration only'));
+      expect(
+        timeline,
+        contains('Cut.duration is playback/export duration only'),
+      );
       expect(
         timeline,
         contains('linked frames share drawing material/source identity'),
@@ -89,7 +105,9 @@ void main() {
       );
       expect(
         timeline,
-        contains('must not accidentally mutate every linked use of a `FrameId`'),
+        contains(
+          'must not accidentally mutate every linked use of a `FrameId`',
+        ),
       );
 
       final cutManagement = File(
@@ -108,7 +126,9 @@ void main() {
       );
       expect(
         cutManagement,
-        contains('Deleting a Cut must not leave the editor pointing at a missing Cut'),
+        contains(
+          'Deleting a Cut must not leave the editor pointing at a missing Cut',
+        ),
       );
       expect(
         cutManagement,
@@ -117,9 +137,14 @@ void main() {
         ),
       );
 
-      final project = File('docs/Current_Project_Architecture.md').readAsStringSync();
+      final project = File(
+        'docs/Current_Project_Architecture.md',
+      ).readAsStringSync();
       expect(project, contains('Same frame name means same drawing material'));
-      expect(project, contains('Linked frames share drawing material/source identity'));
+      expect(
+        project,
+        contains('Linked frames share drawing material/source identity'),
+      );
 
       final storyboard = File(
         'docs/Current_Storyboard_Architecture.md',
@@ -136,29 +161,32 @@ void main() {
       expect(canvas, contains('Cache images are derived, not source of truth'));
     });
 
-    test('obsolete non-phase docs are deleted while task records remain historical', () {
-      for (final path in [
-        'docs/Active_Cut_State_Design.md',
-        'docs/Cut_Management_Policy.md',
-        'docs/Product_Direction_Notes.md',
-      ]) {
-        expect(
-          File(path).existsSync(),
-          isFalse,
-          reason: '$path should stay consolidated into Current_* docs.',
-        );
-      }
+    test(
+      'obsolete non-phase docs are deleted while task records remain historical',
+      () {
+        for (final path in [
+          'docs/Active_Cut_State_Design.md',
+          'docs/Cut_Management_Policy.md',
+          'docs/Product_Direction_Notes.md',
+        ]) {
+          expect(
+            File(path).existsSync(),
+            isFalse,
+            reason: '$path should stay consolidated into Current_* docs.',
+          );
+        }
 
-      expect(File('docs/Phase_211_Codex_Task.md').existsSync(), isTrue);
-      final index = File('docs/Current_Docs_Index.md').readAsStringSync();
-      expect(
-        index,
-        contains(
-          'Phase task docs and other task-order docs are preserved as historical records',
-        ),
-      );
-      expect(index, contains('Current_*'));
-      expect(index, contains('source of truth'));
-    });
+        expect(File('docs/Phase_211_Codex_Task.md').existsSync(), isTrue);
+        final index = File('docs/Current_Docs_Index.md').readAsStringSync();
+        expect(
+          index,
+          contains(
+            'Phase task docs and other task-order docs are preserved as historical records',
+          ),
+        );
+        expect(index, contains('Current_*'));
+        expect(index, contains('source of truth'));
+      },
+    );
   });
 }

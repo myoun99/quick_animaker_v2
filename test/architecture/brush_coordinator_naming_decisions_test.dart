@@ -5,9 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Brush coordinator naming decisions', () {
     test('documents BrushWorkspaceCoordinator naming cleanup decision', () {
-      final doc = File(
-        'docs/Current_Brush_Architecture.md',
-      ).readAsStringSync();
+      final doc = File('docs/Current_Brush_Architecture.md').readAsStringSync();
 
       expect(
         doc,
@@ -64,9 +62,7 @@ void main() {
     );
 
     test('documents Phase 207 BrushFrameEditingCoordinator runtime rename', () {
-      final doc = File(
-        'docs/Current_Brush_Architecture.md',
-      ).readAsStringSync();
+      final doc = File('docs/Current_Brush_Architecture.md').readAsStringSync();
 
       expect(
         doc,

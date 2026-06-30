@@ -5,9 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Brush cache invalidation sink naming decisions', () {
     test('documents BrushWorkspaceCacheInvalidationSink naming decision', () {
-      final doc = File(
-        'docs/Current_Brush_Architecture.md',
-      ).readAsStringSync();
+      final doc = File('docs/Current_Brush_Architecture.md').readAsStringSync();
 
       expect(
         doc,
