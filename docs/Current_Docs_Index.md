@@ -1,6 +1,6 @@
 # Current Docs Index
 
-This directory is intentionally small. The files below are the only current source-of-truth architecture and roadmap documents. Older phase tasks, review notes, checkpoint notes, decision memos, and LongTerm-prefixed drafts were consolidated and removed.
+This directory keeps a small `Current_`-prefixed source-of-truth architecture set alongside historical phase task/order records. The `Current_*` files are current policy. `Phase_*_Codex_Task.md` and other `*_Task.md` files are historical records only and must not be used as current architecture policy when they conflict with `Current_*` docs.
 
 ## Current source-of-truth documents
 
@@ -16,6 +16,6 @@ This directory is intentionally small. The files below are the only current sour
 
 - Use the `Current_` prefix for source-of-truth docs.
 - Do not use removed long-term draft documents as active references.
-- Do not resurrect deleted phase task docs as current policy.
+- Phase task/order docs are allowed historical records, but they are not current architecture policy.
 - If module-specific detail is needed, add it to the relevant `Current_*` document rather than the handoff.
 - Runtime code policy lives in code and tests; these docs describe architecture direction without changing runtime behavior by themselves.

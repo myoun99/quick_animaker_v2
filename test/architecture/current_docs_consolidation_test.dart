@@ -22,11 +22,16 @@ void main() {
         expect(index, contains(path.split('/').last));
       }
 
-      expect(File('docs/Handoff_QuickAnimaker_v2_Current.md').existsSync(), isTrue);
+      expect(
+        File('docs/Handoff_QuickAnimaker_v2_Current.md').existsSync(),
+        isTrue,
+      );
     });
 
     test('handoff keeps user-owned sections 0 through 4', () {
-      final handoff = File('docs/Handoff_QuickAnimaker_v2_Current.md').readAsStringSync();
+      final handoff = File(
+        'docs/Handoff_QuickAnimaker_v2_Current.md',
+      ).readAsStringSync();
 
       for (final heading in [
         '## 0. 문서 목적',
@@ -43,7 +48,9 @@ void main() {
     });
 
     test('module-specific current docs contain protected key rules', () {
-      final brush = File('docs/Current_Brush_Architecture.md').readAsStringSync();
+      final brush = File(
+        'docs/Current_Brush_Architecture.md',
+      ).readAsStringSync();
       for (final term in [
         'Deferred Bake Hybrid Brush History',
         'UnifiedUndoHistory',
@@ -56,7 +63,9 @@ void main() {
         expect(brush, contains(term), reason: 'Missing brush term: $term');
       }
 
-      final timeline = File('docs/Current_Timeline_Architecture.md').readAsStringSync();
+      final timeline = File(
+        'docs/Current_Timeline_Architecture.md',
+      ).readAsStringSync();
       for (final term in [
         'Playback range',
         'Visible/display range',
@@ -67,17 +76,22 @@ void main() {
         expect(timeline, contains(term), reason: 'Missing timeline term: $term');
       }
 
-      final canvas = File('docs/Current_Canvas_Cache_Storage_Architecture.md').readAsStringSync();
+      final canvas = File(
+        'docs/Current_Canvas_Cache_Storage_Architecture.md',
+      ).readAsStringSync();
       for (final term in [
         'CanvasViewport is pure coordinate conversion',
         'Derived cache images are not source of truth',
         'Playback must not replay live paint commands',
-        'Low-level tile/delta concepts are not the current user-facing brush undo policy',
+        'Low-level tile/delta concepts are not the current user-facing brush '
+            'undo policy',
       ]) {
         expect(canvas, contains(term), reason: 'Missing canvas/cache term: $term');
       }
 
-      final storyboard = File('docs/Current_Storyboard_Architecture.md').readAsStringSync();
+      final storyboard = File(
+        'docs/Current_Storyboard_Architecture.md',
+      ).readAsStringSync();
       for (final term in [
         'Layer(kind: LayerKind.storyboard)',
         'A Cut may have at most one storyboard layer',
@@ -89,18 +103,57 @@ void main() {
       }
     });
 
-    test('obsolete docs were removed and stale names are not active references', () {
+    test('obsolete non-phase docs were removed and phase tasks are allowed', () {
       final docsFiles = Directory('docs').listSync().whereType<File>().toList();
       expect(
         docsFiles.every((file) {
           final name = file.uri.pathSegments.last;
           return name == 'Handoff_QuickAnimaker_v2_Current.md' ||
-              name.startsWith('Current_');
+              name.startsWith('Current_') ||
+              (name.startsWith('Phase_') &&
+                  name.endsWith('_Codex_Task.md')) ||
+              name.endsWith('_Task.md');
         }),
         isTrue,
       );
 
-      expect(Directory('docs').listSync().whereType<File>().length, 8);
+      expect(
+        docsFiles.any((file) =>
+            file.uri.pathSegments.last.startsWith('Phase_') &&
+            file.uri.pathSegments.last.endsWith('_Codex_Task.md')),
+        isTrue,
+      );
+    });
+
+    test('active docs do not reference obsolete non-phase docs', () {
+      final obsoleteTerms = [
+        'Long' 'Term_',
+        'Brush_' 'Architecture_Current',
+        'Bitmap_Canvas_' 'Brush_Architecture',
+        'Brush_App_' 'Integration_Decisions',
+        'Timeline_' 'Stabilization_Checkpoint',
+        'Brush_V1_' 'Complete',
+        'Brush_V1_' 'Integration_Review',
+      ];
+      final activeDocs = Directory('docs')
+          .listSync()
+          .whereType<File>()
+          .where((file) {
+            final name = file.uri.pathSegments.last;
+            return name == 'Handoff_QuickAnimaker_v2_Current.md' ||
+                name.startsWith('Current_');
+          });
+
+      for (final file in activeDocs) {
+        final source = file.readAsStringSync();
+        for (final term in obsoleteTerms) {
+          expect(
+            source,
+            isNot(contains(term)),
+            reason: '${file.path}: $term',
+          );
+        }
+      }
     });
   });
 }
