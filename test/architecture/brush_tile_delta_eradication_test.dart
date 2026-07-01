@@ -105,6 +105,75 @@ void main() {
     });
 
     test(
+      'main-canvas brush route stays behind public coordinator undo boundary',
+      () {
+        final host = File(
+          'lib/src/ui/brush/main_canvas_brush_host.dart',
+        ).readAsStringSync();
+        final panel = File(
+          'lib/src/ui/brush/brush_canvas_panel.dart',
+        ).readAsStringSync();
+        final coordinator = File(
+          'lib/src/services/brush_frame_editing_coordinator.dart',
+        ).readAsStringSync();
+
+        expect(host, contains('BrushFrameEditingCoordinator'));
+        expect(panel, contains('applyBrushOperationResult'));
+        expect(coordinator, contains('UndoPayloadRef.paintCommand'));
+        expect(coordinator, contains('frameStore.addLivePaintCommand'));
+        expect(coordinator, contains('frameStore.markPaintCommandHiddenByUndo'));
+        expect(coordinator, contains('frameStore.restorePaintCommandFromUndo'));
+
+        for (final text in [host, panel]) {
+          expect(
+            text,
+            isNot(contains('undoLatestBrushBitmapMaterialization')),
+            reason:
+                'UI-facing active-frame display routes must not call internal materialization undo.',
+          );
+          expect(
+            text,
+            isNot(contains('redoLatestBrushBitmapMaterialization')),
+            reason:
+                'UI-facing active-frame display routes must not call internal materialization redo.',
+          );
+        }
+      },
+    );
+
+    test(
+      'TileDelta names stay out of brush commit undo redo and cache boundaries',
+      () {
+        final boundaryFiles = [
+          'lib/src/services/brush_frame_editing_coordinator.dart',
+          'lib/src/services/brush_frame_store.dart',
+          'lib/src/services/brush_edit_session_cache_operations.dart',
+          'lib/src/services/brush_edit_session_commit.dart',
+          'lib/src/models/brush_commit_result.dart',
+          'lib/src/models/brush_paint_command.dart',
+          'lib/src/models/brush_frame_drawing_state.dart',
+          'lib/src/ui/brush/brush_edit_cache_invalidation_sink.dart',
+        ];
+
+        for (final path in boundaryFiles) {
+          final text = File(path).readAsStringSync();
+          expect(
+            text,
+            isNot(contains('TileDelta')),
+            reason:
+                '$path is a brush commit/undo/redo/edit-history/cache boundary and must not use TileDelta.',
+          );
+          expect(
+            text,
+            isNot(contains('TileDeltaCommand')),
+            reason:
+                '$path is a brush commit/undo/redo/edit-history/cache boundary and must not use TileDeltaCommand.',
+          );
+        }
+      },
+    );
+
+    test(
       'current brush runtime exposes production undo and payload ownership boundaries',
       () {
         final unifiedUndo = File(

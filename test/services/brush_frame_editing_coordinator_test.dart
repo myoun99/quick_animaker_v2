@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_cache_operations.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
@@ -133,6 +134,37 @@ void main() {
       isEmpty,
     );
   });
+
+  test(
+    'active-frame public route displays commit, hides undo, and restores redo',
+    () {
+      final c = coordinator();
+
+      final command = c.applyBrushOperationResult(_commitResult(c));
+      expect(command, isNotNull);
+
+      var frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+      expect(frame.visibleActivePaintCommands, [command]);
+      expect(_alphaAtActivePixel(c), greaterThan(0));
+
+      c.undo();
+      frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+      expect(frame.livePaintCommands, isEmpty);
+      expect(frame.hiddenByUndoPaintCommands.map((item) => item.id), [
+        command!.id,
+      ]);
+      expect(frame.visibleActivePaintCommands, isEmpty);
+      expect(_alphaAtActivePixel(c), 0);
+
+      c.redo();
+      frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+      expect(frame.visibleActivePaintCommands.map((item) => item.id), [
+        command.id,
+      ]);
+      expect(frame.hiddenByUndoPaintCommands, isEmpty);
+      expect(_alphaAtActivePixel(c), greaterThan(0));
+    },
+  );
 
   test('undo and redo follow global order across frames', () {
     final c = coordinator();
@@ -317,4 +349,15 @@ class _NoopSink implements CacheInvalidationSink {
 
   @override
   void invalidatePlaybackPreview(key) {}
+}
+
+int _alphaAtActivePixel(BrushFrameEditingCoordinator coordinator) {
+  final surface = coordinator.activeSessionState.canvasState.currentSurface;
+  final tile = surface.tileAt(const TileCoord(0, 0));
+  if (tile == null) {
+    return 0;
+  }
+  final pixels = tile.pixels;
+  final offset = tile.byteOffsetForPixel(x: 1, y: 1);
+  return pixels[offset + 3];
 }

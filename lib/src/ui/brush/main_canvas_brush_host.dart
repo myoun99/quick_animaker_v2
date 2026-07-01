@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
+import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer_id.dart';
+import '../../models/project_id.dart';
+import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -34,20 +39,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 }
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
-  late final _coordinator = BrushFrameEditingCoordinator(
-    initialFrameKey: _frameKeys.first,
-    frameStore: BrushFrameStore(),
-    sessionStore: BrushFrameEditSessionStore(
-      canvasSize: BrushCanvasDefaults.canvasSize,
-    ),
-    historyPolicy: const BrushHistoryPolicy(
-      userUndoLimit: 24,
-      deferredBakeRatio: 0,
-    ),
-  );
   final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
+  late final _coordinator = _createCoordinator();
 
   @override
   void initState() {
@@ -100,5 +95,28 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     }
     final activeKey = widget.resolvedActiveFrameKey ?? _frameKeys.first;
     _coordinator.selectFrame(activeKey);
+  }
+
+  BrushFrameEditingCoordinator _createCoordinator() {
+    final initialFrameKey = _frameKeys.isEmpty
+        ? const BrushFrameKey(
+            projectId: ProjectId('brush-host-placeholder-project'),
+            trackId: TrackId('brush-host-placeholder-track'),
+            cutId: CutId('brush-host-placeholder-cut'),
+            layerId: LayerId('brush-host-placeholder-layer'),
+            frameId: FrameId('brush-host-placeholder-frame'),
+          )
+        : _frameKeys.first;
+    return BrushFrameEditingCoordinator(
+      initialFrameKey: initialFrameKey,
+      frameStore: BrushFrameStore(),
+      sessionStore: BrushFrameEditSessionStore(
+        canvasSize: BrushCanvasDefaults.canvasSize,
+      ),
+      historyPolicy: const BrushHistoryPolicy(
+        userUndoLimit: 24,
+        deferredBakeRatio: 0,
+      ),
+    );
   }
 }
