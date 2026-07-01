@@ -1,4 +1,4 @@
-import 'brush_edit_history_entry.dart';
+import 'brush_bitmap_materialization_history_entry.dart';
 import 'brush_edit_session_operation_kind.dart';
 import 'brush_edit_session_state.dart';
 import 'cache_invalidation_execution_result.dart';
@@ -15,7 +15,7 @@ class BrushEditSessionCacheOperationResult {
 
   final BrushEditSessionOperationKind kind;
   final BrushEditSessionState sessionState;
-  final BrushEditHistoryEntry? affectedEntry;
+  final BrushBitmapMaterializationHistoryEntry? affectedEntry;
   final CacheInvalidationExecutionResult cacheInvalidationResult;
 
   bool get didAffectHistory => affectedEntry != null;
@@ -33,7 +33,7 @@ class BrushEditSessionCacheOperationResult {
       sessionState: sessionState ?? this.sessionState,
       affectedEntry: identical(affectedEntry, _copyWithSentinel)
           ? this.affectedEntry
-          : affectedEntry as BrushEditHistoryEntry?,
+          : affectedEntry as BrushBitmapMaterializationHistoryEntry?,
       cacheInvalidationResult:
           cacheInvalidationResult ?? this.cacheInvalidationResult,
     );

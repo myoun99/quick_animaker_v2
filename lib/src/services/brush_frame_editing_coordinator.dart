@@ -49,13 +49,13 @@ class BrushFrameEditingCoordinator {
   BrushPaintCommand? applyBrushOperationResult(
     BrushEditSessionCacheOperationResult result,
   ) {
-    final previousUndoCount = activeSessionState.historyState.undoCount;
+    final previousUndoCount = activeSessionState.materializationHistoryState.undoCount;
     sessionStore.update(_activeFrameKey, result.sessionState);
     if (result.kind != BrushEditSessionOperationKind.commit) {
       return null;
     }
 
-    final nextUndoCount = result.sessionState.historyState.undoCount;
+    final nextUndoCount = result.sessionState.materializationHistoryState.undoCount;
     if (nextUndoCount <= previousUndoCount) {
       return null;
     }
@@ -106,7 +106,7 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canUndo) {
-      final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: state,
         cacheInvalidationSink:
             cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
@@ -132,7 +132,7 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canRedo) {
-      final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: state,
         cacheInvalidationSink:
             cacheInvalidationSink ?? _NoopCacheInvalidationSink(),

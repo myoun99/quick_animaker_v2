@@ -56,7 +56,7 @@ void main() {
     expect(frame.livePaintCommands, hasLength(1));
     expect(c.undoHistory.undoStack, hasLength(1));
     expect(c.undoHistory.undoStack.single.isPaintPayload, isTrue);
-    expect(c.activeSessionState.historyState.undoCount, 1);
+    expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
   });
 
   test('userUndoLimit trim moves old paint command to deferredBake', () {
@@ -207,7 +207,7 @@ void main() {
 
     c.applyBrushOperationResult(_commitResult(c));
     final beforeResetSession = c.activeSessionState;
-    expect(beforeResetSession.historyState.undoCount, 1);
+    expect(beforeResetSession.materializationHistoryState.undoCount, 1);
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
       hasLength(1),
@@ -217,7 +217,7 @@ void main() {
     c.sessionStore.reset(c.activeFrameKey);
 
     expect(identical(c.activeSessionState, beforeResetSession), isFalse);
-    expect(c.activeSessionState.historyState.undoCount, 0);
+    expect(c.activeSessionState.materializationHistoryState.undoCount, 0);
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
       hasLength(1),
@@ -236,7 +236,7 @@ void main() {
       hasLength(1),
     );
     expect(c.undoHistory.undoStack, hasLength(1));
-    expect(c.activeSessionState.historyState.undoCount, 1);
+    expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
   });
 }
 

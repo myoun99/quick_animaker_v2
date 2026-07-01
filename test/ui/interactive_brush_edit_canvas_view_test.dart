@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
@@ -281,7 +281,7 @@ void main() {
     testWidgets('does not mutate input states', (tester) async {
       final sessionState = _sessionState();
       final originalCanvasState = sessionState.canvasState;
-      final originalHistoryState = sessionState.historyState;
+      final originalHistoryState = sessionState.materializationHistoryState;
       final originalSessionSnapshot = sessionState.toString();
       final originalCanvasSnapshot = originalCanvasState.toString();
       final originalHistorySnapshot = originalHistoryState.toString();
@@ -294,7 +294,7 @@ void main() {
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
-        identical(sessionState.historyState, originalHistoryState),
+        identical(sessionState.materializationHistoryState, originalHistoryState),
         isTrue,
       );
       expect(sessionState.toString(), originalSessionSnapshot);
@@ -307,8 +307,8 @@ void main() {
       () {
         final source = _readInteractiveSource();
 
-        expect(source, isNot(contains('undoLatestBrushEdit')));
-        expect(source, isNot(contains('redoLatestBrushEdit')));
+        expect(source, isNot(contains('undoLatestBrushBitmapMaterialization')));
+        expect(source, isNot(contains('redoLatestBrushBitmapMaterialization')));
         expect(source, isNot(contains('Provider')));
         expect(source, isNot(contains('Riverpod')));
         expect(source, isNot(contains('Bloc')));
@@ -337,7 +337,7 @@ BrushEditSessionState _sessionState() {
         tileSize: 2,
       ),
     ),
-    historyState: BrushEditHistoryState(),
+    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
   );
 }
 

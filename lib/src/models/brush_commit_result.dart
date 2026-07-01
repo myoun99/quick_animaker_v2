@@ -2,6 +2,13 @@ import 'bitmap_surface.dart';
 import 'cache_invalidation_plan.dart';
 import 'dirty_tile_set.dart';
 
+/// Internal bitmap materialization bridge for a brush commit.
+///
+/// The before/after surfaces here support sparse BitmapSurface materialization
+/// and temporary session-local apply/revert operations. They are not the
+/// durable brush command payload and must not become user-facing undo history;
+/// production undo order is represented by UnifiedUndoHistory entries pointing
+/// at BrushPaintCommand payloads owned by BrushFrameStore.
 class BrushCommitResult {
   BrushCommitResult({
     required this.beforeSurface,

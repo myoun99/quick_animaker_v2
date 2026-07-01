@@ -1,5 +1,5 @@
 import '../models/bitmap_surface.dart';
-import '../models/brush_edit_history_state.dart';
+import '../models/brush_bitmap_materialization_history_state.dart';
 import '../models/brush_edit_session_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
@@ -40,7 +40,7 @@ class BrushFrameEditSessionStore {
           tileSize: tileSize,
         ),
       ),
-      historyState: BrushEditHistoryState(),
+      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
     );
   }
 }

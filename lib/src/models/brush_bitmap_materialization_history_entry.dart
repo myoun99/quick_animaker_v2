@@ -4,15 +4,21 @@ import 'dirty_tile_set.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
 
-class BrushEditHistoryEntry {
-  BrushEditHistoryEntry({
+/// Internal bitmap materialization snapshot entry.
+///
+/// This entry wraps a BrushCommitResult only for temporary/session-local
+/// BitmapSurface materialization and cache invalidation. It must not be used as
+/// the authoritative brush command or user-facing undo payload; production
+/// brush undo uses BrushPaintCommand refs in UnifiedUndoHistory.
+class BrushBitmapMaterializationHistoryEntry {
+  BrushBitmapMaterializationHistoryEntry({
     required this.layerId,
     required this.frameId,
     required this.commitResult,
   }) {
     if (commitResult.isNoOp) {
       throw ArgumentError(
-        'BrushEditHistoryEntry requires a changed commitResult.',
+        'BrushBitmapMaterializationHistoryEntry requires a changed commitResult.',
       );
     }
   }
@@ -28,12 +34,12 @@ class BrushEditHistoryEntry {
 
   int get changedTileCount => commitResult.changedTileCount;
 
-  BrushEditHistoryEntry copyWith({
+  BrushBitmapMaterializationHistoryEntry copyWith({
     LayerId? layerId,
     FrameId? frameId,
     BrushCommitResult? commitResult,
   }) {
-    return BrushEditHistoryEntry(
+    return BrushBitmapMaterializationHistoryEntry(
       layerId: layerId ?? this.layerId,
       frameId: frameId ?? this.frameId,
       commitResult: commitResult ?? this.commitResult,
@@ -43,7 +49,7 @@ class BrushEditHistoryEntry {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BrushEditHistoryEntry &&
+      other is BrushBitmapMaterializationHistoryEntry &&
           other.layerId == layerId &&
           other.frameId == frameId &&
           other.commitResult == commitResult;
@@ -53,6 +59,6 @@ class BrushEditHistoryEntry {
 
   @override
   String toString() =>
-      'BrushEditHistoryEntry(layerId: $layerId, frameId: $frameId, '
+      'BrushBitmapMaterializationHistoryEntry(layerId: $layerId, frameId: $frameId, '
       'commitResult: $commitResult)';
 }

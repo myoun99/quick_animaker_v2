@@ -251,7 +251,7 @@ void main() {
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tapCanvas(tester, const Offset(3.5, 2.5));
-      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(2));
+      expect(_view(tester).sessionState.materializationHistoryState.undoEntries, hasLength(2));
 
       await _tapKey(
         tester,
@@ -259,8 +259,8 @@ void main() {
       );
 
       expect(find.textContaining('operation: undo'), findsOneWidget);
-      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(1));
-      expect(_view(tester).sessionState.historyState.redoEntries, hasLength(1));
+      expect(_view(tester).sessionState.materializationHistoryState.undoEntries, hasLength(1));
+      expect(_view(tester).sessionState.materializationHistoryState.redoEntries, hasLength(1));
       expect(
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isNotEmpty,
@@ -282,8 +282,8 @@ void main() {
       );
 
       expect(find.textContaining('operation: redo'), findsOneWidget);
-      expect(_view(tester).sessionState.historyState.undoEntries, hasLength(2));
-      expect(_view(tester).sessionState.historyState.redoEntries, isEmpty);
+      expect(_view(tester).sessionState.materializationHistoryState.undoEntries, hasLength(2));
+      expect(_view(tester).sessionState.materializationHistoryState.redoEntries, isEmpty);
       expect(
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isNotEmpty,
@@ -300,7 +300,7 @@ void main() {
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
-      expect(_view(tester).sessionState.historyState.redoEntries, hasLength(1));
+      expect(_view(tester).sessionState.materializationHistoryState.redoEntries, hasLength(1));
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-reset'),
@@ -314,7 +314,7 @@ void main() {
         _view(tester).sessionState.canvasState.currentSurface.tiles,
         isEmpty,
       );
-      expect(_view(tester).sessionState.historyState.redoEntries, isEmpty);
+      expect(_view(tester).sessionState.materializationHistoryState.redoEntries, isEmpty);
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
@@ -359,7 +359,7 @@ void main() {
 
         expect(_host(tester).inputSettings.color, 0xFF0000FF);
         expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-        expect(blueState.historyState.undoEntries, hasLength(2));
+        expect(blueState.materializationHistoryState.undoEntries, hasLength(2));
         expect(
           blueState.canvasState.currentSurface.tiles.length,
           greaterThanOrEqualTo(

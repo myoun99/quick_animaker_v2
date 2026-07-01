@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/brush_edit_history_state.dart';
+import '../../models/brush_bitmap_materialization_history_state.dart';
 import '../../models/brush_edit_session_cache_operation_result.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_size.dart';
@@ -161,7 +161,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
           tileSize: tileSize,
         ),
       ),
-      historyState: BrushEditHistoryState(),
+      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
     );
   }
 
@@ -186,7 +186,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   void _undo() {
-    final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+    final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
       sessionState: _sessionState,
       cacheInvalidationSink: _cacheInvalidationSink,
     );
@@ -199,7 +199,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   void _redo() {
-    final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+    final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
       sessionState: _sessionState,
       cacheInvalidationSink: _cacheInvalidationSink,
     );

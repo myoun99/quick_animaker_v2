@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -78,7 +78,7 @@ void main() {
     ) async {
       final sessionState = _sessionState();
       final originalCanvasState = sessionState.canvasState;
-      final originalHistoryState = sessionState.historyState;
+      final originalHistoryState = sessionState.materializationHistoryState;
       final originalSessionSnapshot = sessionState.toString();
       final originalCanvasSnapshot = originalCanvasState.toString();
       final originalHistorySnapshot = originalHistoryState.toString();
@@ -113,7 +113,7 @@ void main() {
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
-        identical(sessionState.historyState, originalHistoryState),
+        identical(sessionState.materializationHistoryState, originalHistoryState),
         isTrue,
       );
       expect(sessionState.toString(), originalSessionSnapshot);
@@ -322,7 +322,7 @@ void main() {
         expect(results, hasLength(2));
         expect(identical(secondState, firstState), isFalse);
         expect(secondState.canvasState.currentSurface.tiles, isNotEmpty);
-        expect(secondState.historyState.undoEntries, hasLength(2));
+        expect(secondState.materializationHistoryState.undoEntries, hasLength(2));
       },
     );
 
@@ -408,8 +408,8 @@ void main() {
       expect(source, isNot(contains('Bloc')));
       expect(source, isNot(contains('ChangeNotifier')));
       expect(source, isNot(contains('commitBrushDabSequence')));
-      expect(source, isNot(contains('undoLatestBrushEdit')));
-      expect(source, isNot(contains('redoLatestBrushEdit')));
+      expect(source, isNot(contains('undoLatestBrushBitmapMaterialization')));
+      expect(source, isNot(contains('redoLatestBrushBitmapMaterialization')));
     });
 
     testWidgets('does not affect StoryboardPanel or TimelinePanel', (
@@ -441,7 +441,7 @@ BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
         tileSize: 2,
       ),
     ),
-    historyState: BrushEditHistoryState(),
+    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
   );
 }
 
