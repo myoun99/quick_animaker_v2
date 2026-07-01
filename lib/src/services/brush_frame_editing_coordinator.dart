@@ -2,8 +2,10 @@ import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_edit_session_cache_operation_result.dart';
 import '../models/brush_edit_session_operation_kind.dart';
 import '../models/brush_edit_session_state.dart';
+import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_history_policy.dart';
+import '../models/dirty_tile_set.dart';
 import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
 import '../models/brush_paint_command_state.dart';
@@ -50,8 +52,9 @@ class BrushFrameEditingCoordinator {
   }
 
   BrushPaintCommand? applyBrushOperationResult(
-    BrushEditSessionCacheOperationResult result,
-  ) {
+    BrushEditSessionCacheOperationResult result, {
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) {
     final previousUndoCount =
         activeSessionState.materializationHistoryState.undoCount;
     sessionStore.update(_activeFrameKey, result.sessionState);
@@ -78,7 +81,16 @@ class BrushFrameEditingCoordinator {
         entry: affectedEntry,
       ),
     );
-    frameStore.addLivePaintCommand(_activeFrameKey, command);
+    frameStore.addLivePaintCommand(
+      _activeFrameKey,
+      command,
+      dirtyTiles: affectedEntry.dirtyTiles,
+    );
+    _invalidateBrushFrame(
+      cacheInvalidationSink,
+      _activeFrameKey,
+      dirtyTiles: affectedEntry.dirtyTiles,
+    );
     final entry = UndoHistoryEntry(
       id: UndoHistoryEntryId('undo-${command.id.value}'),
       sequenceNumber: command.sequenceNumber,
@@ -112,10 +124,6 @@ class BrushFrameEditingCoordinator {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    frameStore.markPaintCommandHiddenByUndo(
-      key,
-      entry.payloadRef.paintCommandId,
-    );
     final state = sessionStore.getOrCreate(key);
     if (state.canUndo) {
       final result =
@@ -125,6 +133,22 @@ class BrushFrameEditingCoordinator {
                 cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
           );
       sessionStore.update(key, result.sessionState);
+      frameStore.markPaintCommandHiddenByUndo(
+        key,
+        entry.payloadRef.paintCommandId,
+        dirtyTiles: result.affectedEntry?.dirtyTiles,
+      );
+      _invalidateBrushFrame(
+        cacheInvalidationSink,
+        key,
+        dirtyTiles: result.affectedEntry?.dirtyTiles,
+      );
+    } else {
+      frameStore.markPaintCommandHiddenByUndo(
+        key,
+        entry.payloadRef.paintCommandId,
+      );
+      _invalidateBrushFrame(cacheInvalidationSink, key);
     }
     return entry;
   }
@@ -139,10 +163,6 @@ class BrushFrameEditingCoordinator {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    frameStore.restorePaintCommandFromUndo(
-      key,
-      entry.payloadRef.paintCommandId,
-    );
     final state = sessionStore.getOrCreate(key);
     if (state.canRedo) {
       final result =
@@ -152,8 +172,38 @@ class BrushFrameEditingCoordinator {
                 cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
           );
       sessionStore.update(key, result.sessionState);
+      frameStore.restorePaintCommandFromUndo(
+        key,
+        entry.payloadRef.paintCommandId,
+        dirtyTiles: result.affectedEntry?.dirtyTiles,
+      );
+      _invalidateBrushFrame(
+        cacheInvalidationSink,
+        key,
+        dirtyTiles: result.affectedEntry?.dirtyTiles,
+      );
+    } else {
+      frameStore.restorePaintCommandFromUndo(
+        key,
+        entry.payloadRef.paintCommandId,
+      );
+      _invalidateBrushFrame(cacheInvalidationSink, key);
     }
     return entry;
+  }
+
+  void _invalidateBrushFrame(
+    CacheInvalidationSink? sink,
+    BrushFrameKey key, {
+    DirtyTileSet? dirtyTiles,
+  }) {
+    (sink ?? _NoopCacheInvalidationSink()).invalidateBrushFrame(
+      BrushFrameCacheInvalidation(
+        frameKey: key,
+        dirtyTiles: dirtyTiles,
+        wholeFrame: dirtyTiles == null || dirtyTiles.isEmpty,
+      ),
+    );
   }
 
   String _materializationRefFor({
@@ -183,6 +233,9 @@ class BrushFrameEditingCoordinator {
 }
 
 class _NoopCacheInvalidationSink implements CacheInvalidationSink {
+  @override
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
+
   @override
   void invalidateFrameComposite(key) {}
   @override

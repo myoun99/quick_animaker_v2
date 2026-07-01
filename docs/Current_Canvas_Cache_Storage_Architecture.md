@@ -61,3 +61,7 @@ Do not add project-level material/source ownership as a shortcut before brush/ca
 ## Tile delta wording
 
 TileDelta / TileDeltaCommand are not current brush runtime architecture. They must not be used as brush commit results, brush undo/redo payloads, brush edit history entries, or cache-invalidation inputs. Sparse tile storage remains valid; dirty-region/dirty-tile APIs are the cache invalidation boundary.
+
+## Phase 217 brush-frame invalidation boundary note
+
+Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordinator` now mark the affected `BrushFrameKey` dirty through the frame-local `BrushFrameStore` drawing state and may emit a lightweight `BrushFrameCacheInvalidation` through `CacheInvalidationSink`. The invalidation event carries the `BrushFrameKey` plus dirty tiles when the current materialization bridge has them; otherwise it can fall back to whole-frame invalidation. This boundary is only dirty metadata for future derived inactive-preview, playback, save/load, or renderer rebuild work. It does not generate cache images, does not make cache images source of truth, and does not move source brush payload ownership out of `BrushFrameStore`.

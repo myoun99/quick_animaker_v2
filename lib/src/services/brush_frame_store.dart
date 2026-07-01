@@ -3,6 +3,7 @@ import '../models/brush_frame_key.dart';
 import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
 import '../models/brush_paint_command_state.dart';
+import '../models/dirty_tile_set.dart';
 import '../models/layer_id.dart';
 import '../models/undo_payload_ref.dart';
 
@@ -51,27 +52,43 @@ class BrushFrameStore {
 
   BrushFrameDrawingState addLivePaintCommand(
     BrushFrameKey key,
-    BrushPaintCommand command,
-  ) {
+    BrushPaintCommand command, {
+    DirtyTileSet? dirtyTiles,
+  }) {
     final live = command.copyWith(state: BrushPaintCommandState.live);
     return _update(
       key,
-      (state) => state.copyWith(paintCommands: [...state.paintCommands, live]),
+      (state) => _markCacheDirty(
+        state.copyWith(paintCommands: [...state.paintCommands, live]),
+        dirtyTiles: dirtyTiles,
+      ),
     );
   }
 
   BrushFrameDrawingState markPaintCommandHiddenByUndo(
     BrushFrameKey key,
-    BrushPaintCommandId id,
-  ) {
-    return _move(key, id, BrushPaintCommandState.hiddenByUndo);
+    BrushPaintCommandId id, {
+    DirtyTileSet? dirtyTiles,
+  }) {
+    return _move(
+      key,
+      id,
+      BrushPaintCommandState.hiddenByUndo,
+      dirtyTiles: dirtyTiles,
+    );
   }
 
   BrushFrameDrawingState restorePaintCommandFromUndo(
     BrushFrameKey key,
-    BrushPaintCommandId id,
-  ) {
-    return _move(key, id, BrushPaintCommandState.live);
+    BrushPaintCommandId id, {
+    DirtyTileSet? dirtyTiles,
+  }) {
+    return _move(
+      key,
+      id,
+      BrushPaintCommandState.live,
+      dirtyTiles: dirtyTiles,
+    );
   }
 
   BrushFrameDrawingState movePaintCommandToDeferredBake(
@@ -120,8 +137,9 @@ class BrushFrameStore {
   BrushFrameDrawingState _move(
     BrushFrameKey key,
     BrushPaintCommandId id,
-    BrushPaintCommandState nextState,
-  ) {
+    BrushPaintCommandState nextState, {
+    DirtyTileSet? dirtyTiles,
+  }) {
     return _update(key, (state) {
       final commands = state.paintCommands
           .map(
@@ -129,8 +147,23 @@ class BrushFrameStore {
                 command.id == id ? command.copyWith(state: nextState) : command,
           )
           .toList();
-      return state.copyWith(paintCommands: commands);
+      return _markCacheDirty(
+        state.copyWith(paintCommands: commands),
+        dirtyTiles: dirtyTiles,
+      );
     });
+  }
+
+  BrushFrameDrawingState _markCacheDirty(
+    BrushFrameDrawingState state, {
+    DirtyTileSet? dirtyTiles,
+  }) {
+    return state.copyWith(
+      inactivePreviewDirty: true,
+      cacheDirtyTiles: dirtyTiles == null
+          ? state.cacheDirtyTiles
+          : state.cacheDirtyTiles.union(dirtyTiles),
+    );
   }
 
   BrushFrameDrawingState _update(

@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_cache_invalidation.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
 import 'package:quick_animaker_v2/src/models/brush_paint_command_state.dart';
@@ -88,6 +89,48 @@ void main() {
       command,
     );
     expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
+  });
+
+
+
+  test('commit marks active BrushFrameKey dirty and emits brush invalidation', () {
+    final c = coordinator();
+    final sink = _RecordingSink();
+
+    c.applyBrushOperationResult(
+      _commitResult(c),
+      cacheInvalidationSink: sink,
+    );
+
+    final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(frame.inactivePreviewDirty, isTrue);
+    expect(frame.cacheDirtyTiles.isNotEmpty, isTrue);
+    expect(sink.brushFrames, hasLength(1));
+    expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
+    expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
+    expect(sink.brushFrames.single.wholeFrame, isFalse);
+  });
+
+  test('undo and redo emit BrushFrameKey dirty invalidations', () {
+    final c = coordinator();
+    c.applyBrushOperationResult(_commitResult(c));
+    final sink = _RecordingSink();
+
+    final undone = c.undo(cacheInvalidationSink: sink);
+    final redone = c.redo(cacheInvalidationSink: sink);
+
+    expect(undone!.payloadRef.targetKey, c.activeFrameKey);
+    expect(redone!.payloadRef.targetKey, c.activeFrameKey);
+    expect(sink.brushFrames, hasLength(2));
+    expect(sink.brushFrames.map((event) => event.frameKey), [
+      c.activeFrameKey,
+      c.activeFrameKey,
+    ]);
+    expect(sink.brushFrames.every((event) => event.hasDirtyTiles), isTrue);
+    expect(
+      c.frameStore.getOrCreateFrame(c.activeFrameKey).inactivePreviewDirty,
+      isTrue,
+    );
   });
 
   test('userUndoLimit trim moves old paint command to deferredBake', () {
@@ -340,7 +383,27 @@ BrushEditSessionCacheOperationResult _emptyCommitResult(
   );
 }
 
+class _RecordingSink implements CacheInvalidationSink {
+  final brushFrames = <BrushFrameCacheInvalidation>[];
+
+  @override
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
+      brushFrames.add(invalidation);
+
+  @override
+  void invalidateFrameComposite(key) {}
+
+  @override
+  void invalidateLayerTile(key) {}
+
+  @override
+  void invalidatePlaybackPreview(key) {}
+}
+
 class _NoopSink implements CacheInvalidationSink {
+  @override
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
+
   @override
   void invalidateFrameComposite(key) {}
 

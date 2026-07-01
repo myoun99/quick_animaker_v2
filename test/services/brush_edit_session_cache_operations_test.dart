@@ -33,6 +33,9 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
+  void invalidateBrushFrame(invalidation) {}
+
+  @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) {
     frameComposites.add(key);
   }
