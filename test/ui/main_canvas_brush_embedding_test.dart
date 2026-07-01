@@ -16,44 +16,42 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 void main() {
   testWidgets(
-    'HomePage defaults to legacy CanvasView in the main canvas area',
+    'HomePage mounts production brush host in the main canvas area',
     (tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
       expect(
         find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
-        findsOneWidget,
-      );
-      expect(find.byType(CanvasView), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
         findsNothing,
       );
-      expect(find.byType(MainCanvasBrushHost), findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey<String>('main-canvas-brush-host-container'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(MainCanvasBrushHost), findsOneWidget);
     },
   );
 
   testWidgets(
-    'debug preview toggle shows empty-selection placeholder without active drawing frame',
+    'production brush host shows empty-selection placeholder without active drawing frame',
     (tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-      );
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+        find.byKey(
+          const ValueKey<String>('main-canvas-brush-host-container'),
+        ),
         findsOneWidget,
       );
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
@@ -64,30 +62,17 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Select a layer and frame to edit with Brush Preview.'),
+        find.text('Select a layer and frame to edit with Brush.'),
         findsOneWidget,
       );
       expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
-      expect(find.byType(CanvasView), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-sample-frame')),
         findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('brush-frame-1-button')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('brush-frame-2-button')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('brush-frame-3-button')),
         findsNothing,
       );
       expect(find.text('Debug Reset Session'), findsNothing);
@@ -97,15 +82,14 @@ void main() {
   );
 
   testWidgets(
-    'debug preview uses active editor selection when a frame exists',
+    'production brush host uses active editor selection when a frame exists',
     (tester) async {
       await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
+        MaterialApp(
+          home: HomePage(initialProject: _projectWithActiveFrame()),
+        ),
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-      );
       await tester.pumpAndSettle();
 
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
@@ -114,6 +98,11 @@ void main() {
         find.byKey(const ValueKey<String>('brush-canvas-editor-frame-1')),
         findsOneWidget,
       );
+      final brushView = tester.widget<InteractiveBrushEditCanvasView>(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
+      expect(brushView.layerId, const LayerId('editor-layer'));
+      expect(brushView.frameId, const FrameId('editor-frame-1'));
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
         findsNothing,
@@ -122,27 +111,6 @@ void main() {
       expect(find.text('Debug Reset Session'), findsNothing);
     },
   );
-
-  testWidgets('debug preview toggle returns to legacy CanvasView', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
-
-    final toggle = find.byKey(
-      const ValueKey<String>('main-canvas-mode-toggle'),
-    );
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
-      findsOneWidget,
-    );
-    expect(find.byType(CanvasView), findsOneWidget);
-    expect(find.byType(MainCanvasBrushHost), findsNothing);
-  });
 
   testWidgets('separate Brush Workspace route entry is retired', (
     tester,

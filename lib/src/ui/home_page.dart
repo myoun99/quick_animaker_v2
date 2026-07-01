@@ -28,7 +28,6 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/main_canvas_brush_host.dart';
-import 'canvas/canvas_view.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'storyboard_panel.dart';
@@ -66,7 +65,6 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _topToolbarScrollController = ScrollController();
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
-  bool _showMainCanvasBrushHostPreview = false;
 
   @override
   void initState() {
@@ -1338,17 +1336,6 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text('Active strokes: ${_canvasController.strokes.length}'),
                     const SizedBox(width: 16),
-                    FilterChip(
-                      key: const ValueKey<String>('main-canvas-mode-toggle'),
-                      label: const Text('Brush Host Preview'),
-                      selected: _showMainCanvasBrushHostPreview,
-                      onSelected: (selected) {
-                        setState(() {
-                          _showMainCanvasBrushHostPreview = selected;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 16),
                     CutListBar(
                       entries: cutEntries,
                       onCutSelected: _handleCutSelected,
@@ -1388,23 +1375,14 @@ class _HomePageState extends State<HomePage> {
                 decoration: BoxDecoration(
                   border: Border.all(color: const Color(0xFFBDBDBD)),
                 ),
-                child: _showMainCanvasBrushHostPreview
-                    ? KeyedSubtree(
-                        key: const ValueKey<String>(
-                          'main-canvas-brush-host-container',
-                        ),
-                        child: MainCanvasBrushHost(
-                          selection: _activeBrushEditorSelection,
-                        ),
-                      )
-                    : KeyedSubtree(
-                        key: const ValueKey<String>('main-canvas-legacy-host'),
-                        child: CanvasView(
-                          controller: _canvasController,
-                          cutId: _activeCutId,
-                          onChanged: () => setState(() {}),
-                        ),
-                      ),
+                child: KeyedSubtree(
+                  key: const ValueKey<String>(
+                    'main-canvas-brush-host-container',
+                  ),
+                  child: MainCanvasBrushHost(
+                    selection: _activeBrushEditorSelection,
+                  ),
+                ),
               ),
             ),
           ),

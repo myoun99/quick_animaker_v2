@@ -10,7 +10,7 @@ import '../../models/track_id.dart';
 ///
 /// This intentionally owns no app state. HomePage builds it from existing
 /// editor controllers, then converts it to [BrushFrameKey] for the main canvas
-/// brush preview path.
+/// brush editing path.
 class BrushEditorSelection {
   const BrushEditorSelection({
     required this.projectId,

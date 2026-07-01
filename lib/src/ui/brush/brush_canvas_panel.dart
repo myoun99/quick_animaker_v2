@@ -9,7 +9,7 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_canvas_defaults.dart';
 
-/// Reusable Brush canvas panel retained for main-canvas brush preview paths.
+/// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
 /// the main editor canvas area. Temporary debug controls are intentionally not

@@ -144,6 +144,50 @@ void main() {
       },
     );
 
+    test('Frame model remains lightweight and does not own brush payloads', () {
+      final frameSource = File('lib/src/models/frame.dart').readAsStringSync();
+
+      for (final forbidden in [
+        'BitmapSurface',
+        'BrushFrameStore',
+        'BrushPaintCommand',
+        'BrushFrameDrawingState',
+        'BrushCommitResult',
+        'inactivePreviewCache',
+        'playbackPreviewCache',
+        'bakedBaseSurface',
+        'livePaintCommands',
+        'hiddenByUndoPaintCommands',
+        'deferredBakePaintCommands',
+      ]) {
+        expect(
+          frameSource,
+          isNot(contains(forbidden)),
+          reason: 'Frame must stay lightweight and must not own $forbidden.',
+        );
+      }
+    });
+
+    test(
+      'HomePage main canvas mounts production brush host without preview toggle',
+      () {
+        final homePageSource = File(
+          'lib/src/ui/home_page.dart',
+        ).readAsStringSync();
+
+        expect(homePageSource, contains('MainCanvasBrushHost'));
+        expect(homePageSource, contains('_activeBrushEditorSelection'));
+        expect(homePageSource, contains('main-canvas-brush-host-container'));
+        expect(homePageSource, isNot(contains('Brush Host Preview')));
+        expect(
+          homePageSource,
+          isNot(contains('_showMainCanvasBrushHostPreview')),
+        );
+        expect(homePageSource, isNot(contains('main-canvas-mode-toggle')));
+        expect(homePageSource, isNot(contains('CanvasView(')));
+      },
+    );
+
     test(
       'TileDelta names stay out of brush commit undo redo and cache boundaries',
       () {
