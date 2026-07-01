@@ -67,7 +67,9 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
       _inputSettings = widget.inputSettings;
     }
 
-    if (widget.canvasSize != oldWidget.canvasSize ||
+    if (widget.layerId != oldWidget.layerId ||
+        widget.frameId != oldWidget.frameId ||
+        widget.canvasSize != oldWidget.canvasSize ||
         widget.tileSize != oldWidget.tileSize) {
       _resetSession(debugOperation: 'reset');
     }

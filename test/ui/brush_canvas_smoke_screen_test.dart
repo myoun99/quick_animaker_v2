@@ -194,6 +194,65 @@ void main() {
       expect(blackPixels, isNot(bluePixels));
     });
 
+    testWidgets(
+      'changing frame target resets session before future brush operations',
+      (tester) async {
+        final canvasSize = CanvasSize(width: 8, height: 8);
+
+        await tester.pumpWidget(
+          _app(
+            BrushCanvasSmokeScreen(
+              layerId: const LayerId('layer-a'),
+              frameId: const FrameId('frame-a'),
+              canvasSize: canvasSize,
+              tileSize: 2,
+            ),
+          ),
+        );
+
+        await tapCanvas(tester, const Offset(1.5, 1.5));
+        expect(
+          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          isNotEmpty,
+        );
+
+        await tester.pumpWidget(
+          _app(
+            BrushCanvasSmokeScreen(
+              layerId: const LayerId('layer-b'),
+              frameId: const FrameId('frame-b'),
+              canvasSize: canvasSize,
+              tileSize: 2,
+            ),
+          ),
+        );
+
+        expect(_host(tester).layerId, const LayerId('layer-b'));
+        expect(_host(tester).frameId, const FrameId('frame-b'));
+        expect(find.textContaining('operation: reset'), findsOneWidget);
+        expect(
+          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          isEmpty,
+        );
+
+        await tapCanvas(tester, const Offset(3.5, 3.5));
+        expect(
+          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          isNotEmpty,
+        );
+
+        await _tapKey(
+          tester,
+          const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+        );
+        expect(find.textContaining('operation: undo'), findsOneWidget);
+        expect(
+          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          isEmpty,
+        );
+      },
+    );
+
     testWidgets('undo, redo, and reset update visible state and debug status', (
       tester,
     ) async {
