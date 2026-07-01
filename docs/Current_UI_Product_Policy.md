@@ -1,0 +1,58 @@
+# Current UI Product Policy
+
+## Status
+
+This is the current source-of-truth policy for QuickAnimaker v2 user-facing UI/product interaction principles.
+
+Runtime implementation may lag behind this document. Future UI work should update this document when product interaction policy changes.
+
+## Product UI goal
+
+QuickAnimaker v2 is a production-oriented 2D bitmap animation tool for a real animator workflow. UI should favor practical production speed, clear tool affordances, and lightweight behavior over tutorial-like explanations.
+
+The UI should feel closer to a compact production tool than an onboarding demo.
+
+## Core UI principles
+
+- Keep user-facing UI compact and practical.
+- Prefer icon buttons with tooltips over long inline instructional text.
+- Keep status text short and useful.
+- Avoid tutorial-like long hints in persistent production UI.
+- Avoid restoring deleted smoke/dev/debug routes into production navigation.
+- Do not add debug-only controls to production UI unless a future current document explicitly plans them.
+- Preserve stable semantic keys used by widget tests when changing UI structure.
+- UI should not perform project mutations during build, layout, or read-only rendering.
+- Mutating UI actions should call explicit helpers, controllers, commands, or repository boundaries rather than directly editing unrelated state.
+
+## Interaction and architecture boundaries
+
+- Project, timeline, brush editing, canvas/cache/storage, storyboard overview, playback, and persistence UI should remain separated by narrow interfaces.
+- UI widgets should not become god objects that coordinate unrelated project, brush, cache, storage, persistence, and playback concerns.
+- Do not introduce Provider, Riverpod, Bloc, ChangeNotifier, hidden globals, or broad app-wide state-management packages for UI convenience unless a future phase explicitly designs that architecture.
+- UI state should remain small and local where possible. Shared editing/session state should use focused boundaries such as editing-session state, controllers, commands, or dedicated services.
+
+## Tool controls
+
+- Prefer compact controls that are understandable to experienced animation users.
+- When labels are necessary, keep them short.
+- Tooltips may carry slightly longer explanations, but they should still be concise.
+- Avoid replacing production controls with explanatory cards unless the phase is specifically about onboarding, help, or documentation UI.
+
+## Panel-specific boundaries
+
+- `TimelinePanel` remains the public timeline entry point and should not be refactored for unrelated UI work without a test-proven reason or explicitly planned phase.
+- `StoryboardPanel` remains an overview/planning surface, not a brush drawing canvas, unless a future current document explicitly changes that policy.
+- Brush editing UI must respect the current brush architecture and must not reintroduce deleted Brush V1 smoke workspace routes into production navigation.
+- Playback UI should consume prepared preview/composite cache policy rather than encouraging live brush command replay during playback.
+
+## Manual check expectations
+
+When a UI phase changes visible behavior, manual checks should confirm:
+
+1. App launches normally.
+2. Existing core flows still work.
+3. New controls are compact and production-oriented.
+4. No unintended debug/smoke UI appears in production navigation.
+5. Stable UI keys expected by tests remain preserved unless the phase explicitly updates those tests.
+
+For documentation-only or internal command/helper phases, manual UI checks may be optional, but PR review should still state whether visible behavior is expected to change.
