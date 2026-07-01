@@ -123,8 +123,14 @@ void main() {
           materializationState,
           contains('not the production user-facing brush undo source of truth'),
         );
-        expect(commitResult, contains('Internal bitmap materialization bridge'));
-        expect(commitResult, contains('must not become user-facing undo history'));
+        expect(
+          commitResult,
+          contains('Internal bitmap materialization bridge'),
+        );
+        expect(
+          commitResult,
+          contains('must not become user-facing undo history'),
+        );
       },
     );
 

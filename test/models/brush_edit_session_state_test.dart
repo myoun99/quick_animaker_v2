@@ -39,7 +39,8 @@ void main() {
 
     test('stores canvasState and materializationHistoryState', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState();
       final state = BrushEditSessionState(
         canvasState: canvasState,
         materializationHistoryState: materializationHistoryState,
@@ -143,18 +144,29 @@ void main() {
       );
 
       expect(
-        state.copyWith(materializationHistoryState: committed.materializationHistoryState).materializationHistoryState,
+        state
+            .copyWith(
+              materializationHistoryState:
+                  committed.materializationHistoryState,
+            )
+            .materializationHistoryState,
         committed.materializationHistoryState,
       );
       expect(
-        state.copyWith(materializationHistoryState: committed.materializationHistoryState).canvasState,
+        state
+            .copyWith(
+              materializationHistoryState:
+                  committed.materializationHistoryState,
+            )
+            .canvasState,
         state.canvasState,
       );
     });
 
     test('equality / hashCode / toString', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState();
       final a = BrushEditSessionState(
         canvasState: canvasState,
         materializationHistoryState: materializationHistoryState,

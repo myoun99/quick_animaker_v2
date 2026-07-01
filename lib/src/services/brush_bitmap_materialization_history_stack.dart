@@ -1,7 +1,8 @@
 import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_bitmap_materialization_history_state.dart';
 
-BrushBitmapMaterializationHistoryState pushBrushBitmapMaterializationHistoryEntry({
+BrushBitmapMaterializationHistoryState
+pushBrushBitmapMaterializationHistoryEntry({
   required BrushBitmapMaterializationHistoryState history,
   required BrushBitmapMaterializationHistoryEntry entry,
 }) {
@@ -11,13 +12,15 @@ BrushBitmapMaterializationHistoryState pushBrushBitmapMaterializationHistoryEntr
   );
 }
 
-BrushBitmapMaterializationHistoryState clearBrushBitmapMaterializationHistoryState({
+BrushBitmapMaterializationHistoryState
+clearBrushBitmapMaterializationHistoryState({
   required BrushBitmapMaterializationHistoryState history,
 }) {
   return BrushBitmapMaterializationHistoryState();
 }
 
-BrushBitmapMaterializationHistoryState clearBrushBitmapMaterializationRedoEntries({
+BrushBitmapMaterializationHistoryState
+clearBrushBitmapMaterializationRedoEntries({
   required BrushBitmapMaterializationHistoryState history,
 }) {
   return history.copyWith(redoEntries: const []);

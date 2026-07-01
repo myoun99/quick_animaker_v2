@@ -66,18 +66,28 @@ void main() {
       expect(result.materializationHistoryState.undoEntries, isEmpty);
     });
 
-    test('no-op edit preserves existing materializationHistoryState instance', () {
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
-      final result = commitBrushDabSequenceToBrushEditSession(
-        canvasState: CanvasSurfaceState(currentSurface: surface()),
-        materializationHistoryState: materializationHistoryState,
-        sequence: BrushDabSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
+    test(
+      'no-op edit preserves existing materializationHistoryState instance',
+      () {
+        final materializationHistoryState =
+            BrushBitmapMaterializationHistoryState();
+        final result = commitBrushDabSequenceToBrushEditSession(
+          canvasState: CanvasSurfaceState(currentSurface: surface()),
+          materializationHistoryState: materializationHistoryState,
+          sequence: BrushDabSequence(),
+          layerId: layerId,
+          frameId: frameId,
+        );
 
-      expect(identical(result.materializationHistoryState, materializationHistoryState), isTrue);
-    });
+        expect(
+          identical(
+            result.materializationHistoryState,
+            materializationHistoryState,
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('changed edit updates CanvasSurfaceState.currentSurface', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
@@ -130,7 +140,9 @@ void main() {
         frameId: frameId,
       );
 
-      expect(result.materializationHistoryState.undoEntries, [result.historyEntry]);
+      expect(result.materializationHistoryState.undoEntries, [
+        result.historyEntry,
+      ]);
     });
 
     test('changed edit clears redoEntries', () {
@@ -143,7 +155,9 @@ void main() {
       ).historyEntry!;
       final result = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        materializationHistoryState: BrushBitmapMaterializationHistoryState(redoEntries: [first]),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(
+          redoEntries: [first],
+        ),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
@@ -180,7 +194,8 @@ void main() {
 
     test('result matches manual composition of existing services', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState();
       final sequence = changedSequence();
       final edit = brushSurfaceEditForBrushDabSequenceOnBitmapSurface(
         surface: canvasState.currentSurface,
@@ -192,11 +207,12 @@ void main() {
         state: canvasState,
         edit: edit,
       );
-      final historyEntry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-        edit: edit,
-        layerId: layerId,
-        frameId: frameId,
-      )!;
+      final historyEntry =
+          brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+            edit: edit,
+            layerId: layerId,
+            frameId: frameId,
+          )!;
       final updatedHistoryState = pushBrushBitmapMaterializationHistoryEntry(
         history: materializationHistoryState,
         entry: historyEntry,
@@ -215,23 +231,28 @@ void main() {
       expect(result.historyEntry, historyEntry);
     });
 
-    test('changed edit can be reverted with internal undoLatestBrushBitmapMaterialization', () {
-      final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final committed = commitBrushDabSequenceToBrushEditSession(
-        canvasState: canvasState,
-        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-        sequence: changedSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
-      final undone = undoLatestBrushBitmapMaterialization(
-        canvasState: committed.canvasState,
-        materializationHistoryState: committed.materializationHistoryState,
-      );
+    test(
+      'changed edit can be reverted with internal undoLatestBrushBitmapMaterialization',
+      () {
+        final canvasState = CanvasSurfaceState(currentSurface: surface());
+        final committed = commitBrushDabSequenceToBrushEditSession(
+          canvasState: canvasState,
+          materializationHistoryState: BrushBitmapMaterializationHistoryState(),
+          sequence: changedSequence(),
+          layerId: layerId,
+          frameId: frameId,
+        );
+        final undone = undoLatestBrushBitmapMaterialization(
+          canvasState: committed.canvasState,
+          materializationHistoryState: committed.materializationHistoryState,
+        );
 
-      expect(undone.canvasState.currentSurface, canvasState.currentSurface);
-      expect(undone.materializationHistoryState.redoEntries, [committed.historyEntry]);
-    });
+        expect(undone.canvasState.currentSurface, canvasState.currentSurface);
+        expect(undone.materializationHistoryState.redoEntries, [
+          committed.historyEntry,
+        ]);
+      },
+    );
 
     test(
       'changed edit can be redone with existing redoLatestBrushBitmapMaterialization after undo',
@@ -257,7 +278,9 @@ void main() {
           redone.canvasState.currentSurface,
           committed.canvasState.currentSurface,
         );
-        expect(redone.materializationHistoryState.undoEntries, [committed.historyEntry]);
+        expect(redone.materializationHistoryState.undoEntries, [
+          committed.historyEntry,
+        ]);
       },
     );
 
@@ -276,7 +299,8 @@ void main() {
     });
 
     test('does not mutate input BrushBitmapMaterializationHistoryState', () {
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState();
       final before = materializationHistoryState.copyWith();
       commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),

@@ -58,8 +58,14 @@ void main() {
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(command, isNotNull);
     expect(command!.materializationRef, isNotNull);
-    expect(command.materializationRef, contains(c.activeFrameKey.layerId.value));
-    expect(command.materializationRef, contains(c.activeFrameKey.frameId.value));
+    expect(
+      command.materializationRef,
+      contains(c.activeFrameKey.layerId.value),
+    );
+    expect(
+      command.materializationRef,
+      contains(c.activeFrameKey.frameId.value),
+    );
     expect(command.materializationRef, contains(affectedEntry.layerId.value));
     expect(command.materializationRef, contains(affectedEntry.frameId.value));
     expect(

@@ -24,7 +24,8 @@ class BrushEditSessionCommitResult {
   }) {
     return BrushEditSessionCommitResult(
       canvasState: canvasState ?? this.canvasState,
-      materializationHistoryState: materializationHistoryState ?? this.materializationHistoryState,
+      materializationHistoryState:
+          materializationHistoryState ?? this.materializationHistoryState,
       historyEntry: identical(historyEntry, _copyWithSentinel)
           ? this.historyEntry
           : historyEntry as BrushBitmapMaterializationHistoryEntry?,
@@ -40,7 +41,8 @@ class BrushEditSessionCommitResult {
           other.historyEntry == historyEntry;
 
   @override
-  int get hashCode => Object.hash(canvasState, materializationHistoryState, historyEntry);
+  int get hashCode =>
+      Object.hash(canvasState, materializationHistoryState, historyEntry);
 
   @override
   String toString() =>

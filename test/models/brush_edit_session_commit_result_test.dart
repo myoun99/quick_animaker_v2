@@ -52,7 +52,8 @@ void main() {
 
     test('stores canvasState, materializationHistoryState, historyEntry', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState();
       final historyEntry = entry();
       final result = BrushEditSessionCommitResult(
         canvasState: canvasState,
@@ -114,10 +115,14 @@ void main() {
         materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: null,
       );
-      final nextHistory = BrushBitmapMaterializationHistoryState(undoEntries: [entry()]);
+      final nextHistory = BrushBitmapMaterializationHistoryState(
+        undoEntries: [entry()],
+      );
 
       expect(
-        result.copyWith(materializationHistoryState: nextHistory).materializationHistoryState,
+        result
+            .copyWith(materializationHistoryState: nextHistory)
+            .materializationHistoryState,
         nextHistory,
       );
     });
@@ -149,7 +154,8 @@ void main() {
     test('equality / hashCode / toString', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
       final historyEntry = entry();
-      final materializationHistoryState = BrushBitmapMaterializationHistoryState(undoEntries: [historyEntry]);
+      final materializationHistoryState =
+          BrushBitmapMaterializationHistoryState(undoEntries: [historyEntry]);
       final a = BrushEditSessionCommitResult(
         canvasState: canvasState,
         materializationHistoryState: materializationHistoryState,

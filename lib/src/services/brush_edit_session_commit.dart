@@ -26,11 +26,12 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
     state: canvasState,
     edit: edit,
   );
-  final historyEntry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-    edit: edit,
-    layerId: layerId,
-    frameId: frameId,
-  );
+  final historyEntry =
+      brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+        edit: edit,
+        layerId: layerId,
+        frameId: frameId,
+      );
 
   if (historyEntry == null) {
     return BrushEditSessionCommitResult(

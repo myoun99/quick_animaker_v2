@@ -22,7 +22,8 @@ class BrushEditSessionState {
   }) {
     return BrushEditSessionState(
       canvasState: canvasState ?? this.canvasState,
-      materializationHistoryState: materializationHistoryState ?? this.materializationHistoryState,
+      materializationHistoryState:
+          materializationHistoryState ?? this.materializationHistoryState,
     );
   }
 

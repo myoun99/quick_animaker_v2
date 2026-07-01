@@ -113,7 +113,10 @@ void main() {
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
-        identical(sessionState.materializationHistoryState, originalHistoryState),
+        identical(
+          sessionState.materializationHistoryState,
+          originalHistoryState,
+        ),
         isTrue,
       );
       expect(sessionState.toString(), originalSessionSnapshot);
@@ -322,7 +325,10 @@ void main() {
         expect(results, hasLength(2));
         expect(identical(secondState, firstState), isFalse);
         expect(secondState.canvasState.currentSurface.tiles, isNotEmpty);
-        expect(secondState.materializationHistoryState.undoEntries, hasLength(2));
+        expect(
+          secondState.materializationHistoryState.undoEntries,
+          hasLength(2),
+        );
       },
     );
 

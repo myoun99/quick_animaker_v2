@@ -116,11 +116,12 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canUndo) {
-      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: state,
-        cacheInvalidationSink:
-            cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
-      );
+      final result =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: state,
+            cacheInvalidationSink:
+                cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+          );
       sessionStore.update(key, result.sessionState);
     }
     return entry;
@@ -142,11 +143,12 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canRedo) {
-      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: state,
-        cacheInvalidationSink:
-            cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
-      );
+      final result =
+          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: state,
+            cacheInvalidationSink:
+                cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+          );
       sessionStore.update(key, result.sessionState);
     }
     return entry;

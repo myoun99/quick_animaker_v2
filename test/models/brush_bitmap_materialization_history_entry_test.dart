@@ -151,7 +151,10 @@ void main() {
     test('toString describes history entry without command payload', () {
       final historyEntry = entry();
 
-      expect(historyEntry.toString(), contains('BrushBitmapMaterializationHistoryEntry'));
+      expect(
+        historyEntry.toString(),
+        contains('BrushBitmapMaterializationHistoryEntry'),
+      );
       expect(historyEntry.toString(), contains('layerId'));
       expect(historyEntry.toString(), contains('frameId'));
       expect(historyEntry.toString(), isNot(contains('TileDeltaCommand')));

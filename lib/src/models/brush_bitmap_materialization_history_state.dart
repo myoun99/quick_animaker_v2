@@ -10,8 +10,12 @@ class BrushBitmapMaterializationHistoryState {
   BrushBitmapMaterializationHistoryState({
     Iterable<BrushBitmapMaterializationHistoryEntry> undoEntries = const [],
     Iterable<BrushBitmapMaterializationHistoryEntry> redoEntries = const [],
-  }) : _undoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(undoEntries),
-       _redoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(redoEntries);
+  }) : _undoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(
+         undoEntries,
+       ),
+       _redoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(
+         redoEntries,
+       );
 
   final List<BrushBitmapMaterializationHistoryEntry> _undoEntries;
   final List<BrushBitmapMaterializationHistoryEntry> _redoEntries;

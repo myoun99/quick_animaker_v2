@@ -82,17 +82,21 @@ void main() {
       );
     });
 
-    test('returns BrushBitmapMaterializationHistoryEntry for changed BrushSurfaceEdit', () {
-      final edit = changedEdit(source: surface());
-      final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-        edit: edit,
-        layerId: layerId,
-        frameId: frameId,
-      );
+    test(
+      'returns BrushBitmapMaterializationHistoryEntry for changed BrushSurfaceEdit',
+      () {
+        final edit = changedEdit(source: surface());
+        final entry =
+            brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+              edit: edit,
+              layerId: layerId,
+              frameId: frameId,
+            );
 
-      expect(entry, isNotNull);
-      expect(entry!.commitResult, edit.commitResult);
-    });
+        expect(entry, isNotNull);
+        expect(entry!.commitResult, edit.commitResult);
+      },
+    );
 
     test('entry uses provided LayerId and FrameId', () {
       final edit = changedEdit(source: surface());
@@ -124,11 +128,12 @@ void main() {
       'entry can revert applied surface using commitResult through existing revert service',
       () {
         final edit = changedEdit(source: surface());
-        final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-          edit: edit,
-          layerId: layerId,
-          frameId: frameId,
-        )!;
+        final entry =
+            brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+              edit: edit,
+              layerId: layerId,
+              frameId: frameId,
+            )!;
 
         final reverted = revertBrushCommitResultOnBitmapSurface(
           surface: edit.afterSurface,
@@ -166,11 +171,12 @@ void main() {
       () {
         final edit = changedEdit(source: surface());
         final keyCount = edit.commitResult.cacheInvalidationPlan.totalKeyCount;
-        final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-          edit: edit,
-          layerId: layerId,
-          frameId: frameId,
-        )!;
+        final entry =
+            brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+              edit: edit,
+              layerId: layerId,
+              frameId: frameId,
+            )!;
 
         expect(
           entry.cacheInvalidationPlan,

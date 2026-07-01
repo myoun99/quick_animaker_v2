@@ -48,4 +48,34 @@ class BrushPaintCommand {
       metadataRef: metadataRef,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BrushPaintCommand &&
+          other.id == id &&
+          other.sequenceNumber == sequenceNumber &&
+          other.kind == kind &&
+          other.state == state &&
+          other.debugLabel == debugLabel &&
+          other.affectedBoundsRef == affectedBoundsRef &&
+          other.materializationRef == materializationRef &&
+          other.metadataRef == metadataRef;
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sequenceNumber,
+    kind,
+    state,
+    debugLabel,
+    affectedBoundsRef,
+    materializationRef,
+    metadataRef,
+  );
+
+  @override
+  String toString() =>
+      'BrushPaintCommand(id: $id, sequenceNumber: $sequenceNumber, '
+      'kind: $kind, state: $state, materializationRef: $materializationRef)';
 }

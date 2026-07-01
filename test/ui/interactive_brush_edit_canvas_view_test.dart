@@ -294,7 +294,10 @@ void main() {
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
-        identical(sessionState.materializationHistoryState, originalHistoryState),
+        identical(
+          sessionState.materializationHistoryState,
+          originalHistoryState,
+        ),
         isTrue,
       );
       expect(sessionState.toString(), originalSessionSnapshot);

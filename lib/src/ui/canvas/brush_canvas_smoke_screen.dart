@@ -186,10 +186,11 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   void _undo() {
-    final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-      sessionState: _sessionState,
-      cacheInvalidationSink: _cacheInvalidationSink,
-    );
+    final result =
+        undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+          sessionState: _sessionState,
+          cacheInvalidationSink: _cacheInvalidationSink,
+        );
     setState(() {
       _sessionState = result.sessionState;
       _sessionRevision += 1;
@@ -199,10 +200,11 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   void _redo() {
-    final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-      sessionState: _sessionState,
-      cacheInvalidationSink: _cacheInvalidationSink,
-    );
+    final result =
+        redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+          sessionState: _sessionState,
+          cacheInvalidationSink: _cacheInvalidationSink,
+        );
     setState(() {
       _sessionState = result.sessionState;
       _sessionRevision += 1;

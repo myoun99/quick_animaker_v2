@@ -24,7 +24,8 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   );
 }
 
-BrushBitmapMaterializationUndoResult undoLatestBrushBitmapMaterializationInSessionState({
+BrushBitmapMaterializationUndoResult
+undoLatestBrushBitmapMaterializationInSessionState({
   required BrushEditSessionState sessionState,
 }) {
   return undoLatestBrushBitmapMaterialization(
@@ -33,7 +34,8 @@ BrushBitmapMaterializationUndoResult undoLatestBrushBitmapMaterializationInSessi
   );
 }
 
-BrushBitmapMaterializationRedoResult redoLatestBrushBitmapMaterializationInSessionState({
+BrushBitmapMaterializationRedoResult
+redoLatestBrushBitmapMaterializationInSessionState({
   required BrushEditSessionState sessionState,
 }) {
   return redoLatestBrushBitmapMaterialization(
@@ -51,14 +53,18 @@ BrushEditSessionState sessionStateFromCommitResult(
   );
 }
 
-BrushEditSessionState sessionStateFromUndoResult(BrushBitmapMaterializationUndoResult result) {
+BrushEditSessionState sessionStateFromUndoResult(
+  BrushBitmapMaterializationUndoResult result,
+) {
   return BrushEditSessionState(
     canvasState: result.canvasState,
     materializationHistoryState: result.materializationHistoryState,
   );
 }
 
-BrushEditSessionState sessionStateFromRedoResult(BrushBitmapMaterializationRedoResult result) {
+BrushEditSessionState sessionStateFromRedoResult(
+  BrushBitmapMaterializationRedoResult result,
+) {
   return BrushEditSessionState(
     canvasState: result.canvasState,
     materializationHistoryState: result.materializationHistoryState,

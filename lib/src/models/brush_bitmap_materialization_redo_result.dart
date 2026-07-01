@@ -24,10 +24,13 @@ class BrushBitmapMaterializationRedoResult {
   }) {
     return BrushBitmapMaterializationRedoResult(
       canvasState: canvasState ?? this.canvasState,
-      materializationHistoryState: materializationHistoryState ?? this.materializationHistoryState,
-      redoneMaterializationEntry: identical(redoneMaterializationEntry, _copyWithSentinel)
+      materializationHistoryState:
+          materializationHistoryState ?? this.materializationHistoryState,
+      redoneMaterializationEntry:
+          identical(redoneMaterializationEntry, _copyWithSentinel)
           ? this.redoneMaterializationEntry
-          : redoneMaterializationEntry as BrushBitmapMaterializationHistoryEntry?,
+          : redoneMaterializationEntry
+                as BrushBitmapMaterializationHistoryEntry?,
     );
   }
 
@@ -40,7 +43,11 @@ class BrushBitmapMaterializationRedoResult {
           other.redoneMaterializationEntry == redoneMaterializationEntry;
 
   @override
-  int get hashCode => Object.hash(canvasState, materializationHistoryState, redoneMaterializationEntry);
+  int get hashCode => Object.hash(
+    canvasState,
+    materializationHistoryState,
+    redoneMaterializationEntry,
+  );
 
   @override
   String toString() =>

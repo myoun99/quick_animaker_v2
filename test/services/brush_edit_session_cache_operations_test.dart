@@ -186,10 +186,11 @@ void main() {
     });
 
     test('undo no-op returns zero cache invalidation result', () {
-      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: emptySession(),
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final result =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: emptySession(),
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
 
       expect(result.cacheInvalidationResult.totalCount, 0);
     });
@@ -200,10 +201,11 @@ void main() {
         FakeCacheInvalidationSink(),
       );
       final sink = FakeCacheInvalidationSink();
-      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: committed.sessionState,
-        cacheInvalidationSink: sink,
-      );
+      final result =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: committed.sessionState,
+            cacheInvalidationSink: sink,
+          );
 
       expect(
         sink.totalCalls,
@@ -248,10 +250,11 @@ void main() {
     });
 
     test('redo no-op returns zero cache invalidation result', () {
-      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: emptySession(),
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final result =
+          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: emptySession(),
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
 
       expect(result.cacheInvalidationResult.totalCount, 0);
     });
@@ -261,15 +264,17 @@ void main() {
         emptySession(),
         FakeCacheInvalidationSink(),
       );
-      final undone = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: committed.sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final undone =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: committed.sessionState,
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
       final sink = FakeCacheInvalidationSink();
-      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: undone.sessionState,
-        cacheInvalidationSink: sink,
-      );
+      final result =
+          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: undone.sessionState,
+            cacheInvalidationSink: sink,
+          );
 
       expect(
         sink.totalCalls,
@@ -329,14 +334,16 @@ void main() {
         emptySession(),
         FakeCacheInvalidationSink(),
       );
-      final undone = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: committed.sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
-      final redone = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: undone.sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
+      final undone =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: committed.sessionState,
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
+      final redone =
+          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: undone.sessionState,
+            cacheInvalidationSink: FakeCacheInvalidationSink(),
+          );
 
       expect(committed.didAffectHistory, isTrue);
       expect(undone.didAffectHistory, isTrue);
@@ -366,11 +373,18 @@ void main() {
 
     test('input BrushBitmapMaterializationHistoryState is not mutated', () {
       final sessionState = emptySession();
-      final materializationHistoryState = sessionState.materializationHistoryState;
+      final materializationHistoryState =
+          sessionState.materializationHistoryState;
 
       commitChanged(sessionState, FakeCacheInvalidationSink());
 
-      expect(identical(sessionState.materializationHistoryState, materializationHistoryState), isTrue);
+      expect(
+        identical(
+          sessionState.materializationHistoryState,
+          materializationHistoryState,
+        ),
+        isTrue,
+      );
       expect(sessionState.materializationHistoryState.undoEntries, isEmpty);
       expect(sessionState.materializationHistoryState.redoEntries, isEmpty);
     });
