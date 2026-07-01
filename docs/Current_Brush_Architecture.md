@@ -224,3 +224,7 @@ Runtime naming now separates production user-facing brush undo from the temporar
 - `BrushPaintCommand` is the brush command identity / payload boundary and carries a minimal internal `materializationRef` bridge to the current bitmap materialization payload while full persistence/deferred bake payload design remains future work.
 - `BrushBitmapMaterializationHistoryState` and `BrushBitmapMaterializationHistoryEntry` are internal session-local bitmap materialization helpers only; they are not user-facing brush undo source of truth.
 - `BrushCommitResult` remains an internal before/after `BitmapSurface` materialization bridge only; it is not durable brush command history.
+
+## Phase 217 brush-frame invalidation boundary note
+
+Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordinator` now mark the affected `BrushFrameKey` dirty through the frame-local `BrushFrameStore` drawing state and may emit a lightweight `BrushFrameCacheInvalidation` through `CacheInvalidationSink`. The invalidation event carries the `BrushFrameKey` plus dirty tiles when the current materialization bridge has them; otherwise it can fall back to whole-frame invalidation. This boundary is only dirty metadata for future derived inactive-preview, playback, save/load, or renderer rebuild work. It does not generate cache images, does not make cache images source of truth, and does not move source brush payload ownership out of `BrushFrameStore`.

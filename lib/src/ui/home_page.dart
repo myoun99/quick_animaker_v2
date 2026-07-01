@@ -1345,14 +1345,14 @@ class _HomePageState extends State<HomePage> {
                       onPressed: _historyManager.canUndo
                           ? _undoProjectHistory
                           : null,
-                      child: const Text('Project Undo'),
+                      child: const Text('Undo'),
                     ),
                     TextButton(
                       key: const ValueKey<String>('redo-button'),
                       onPressed: _historyManager.canRedo
                           ? _redoProjectHistory
                           : null,
-                      child: const Text('Project Redo'),
+                      child: const Text('Redo'),
                     ),
                   ],
                 ),

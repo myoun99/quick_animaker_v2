@@ -65,6 +65,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
-    setState(() => widget.coordinator.applyBrushOperationResult(result));
+    setState(
+      () => widget.coordinator.applyBrushOperationResult(
+        result,
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      ),
+    );
   }
 }

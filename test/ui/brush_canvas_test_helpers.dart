@@ -17,6 +17,9 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
   void invalidateLayerTile(LayerTileCacheKey key) => layerTiles.add(key);
 
   @override
+  void invalidateBrushFrame(invalidation) {}
+
+  @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) =>
       frameComposites.add(key);
 

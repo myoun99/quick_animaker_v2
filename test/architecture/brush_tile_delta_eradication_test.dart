@@ -159,6 +159,9 @@ void main() {
         'livePaintCommands',
         'hiddenByUndoPaintCommands',
         'deferredBakePaintCommands',
+        'dirtyFlags',
+        'cacheDirtyTiles',
+        'inactivePreviewDirty',
       ]) {
         expect(
           frameSource,
@@ -202,6 +205,10 @@ void main() {
         expect(homePageSource, isNot(contains('_canvasController.redo()')));
         expect(homePageSource, contains('_historyManager.canUndo'));
         expect(homePageSource, contains('_undoProjectHistory'));
+        expect(homePageSource, contains("Text('Undo')"));
+        expect(homePageSource, contains("Text('Redo')"));
+        expect(homePageSource, isNot(contains("Text('Project Undo')")));
+        expect(homePageSource, isNot(contains("Text('Project Redo')")));
         expect(homePageSource, contains('_redoProjectHistory'));
       },
     );
@@ -217,6 +224,7 @@ void main() {
           'lib/src/models/brush_commit_result.dart',
           'lib/src/models/brush_paint_command.dart',
           'lib/src/models/brush_frame_drawing_state.dart',
+          'lib/src/models/brush_frame_cache_invalidation.dart',
           'lib/src/ui/brush/brush_edit_cache_invalidation_sink.dart',
         ];
 
@@ -256,6 +264,9 @@ void main() {
         final frameDrawingState = File(
           'lib/src/models/brush_frame_drawing_state.dart',
         ).readAsStringSync();
+        final brushFrameCacheInvalidation = File(
+          'lib/src/models/brush_frame_cache_invalidation.dart',
+        ).readAsStringSync();
         final materializationState = File(
           'lib/src/models/brush_bitmap_materialization_history_state.dart',
         ).readAsStringSync();
@@ -278,6 +289,27 @@ void main() {
         expect(paintCommand, contains('materializationRef'));
         expect(paintCommand, contains('minimal bridge'));
         expect(frameDrawingState, contains('commandById'));
+        expect(frameDrawingState, contains('cacheDirtyTiles'));
+        expect(brushFrameCacheInvalidation, contains('BrushFrameKey'));
+        expect(brushFrameCacheInvalidation, contains('DirtyTileSet'));
+        for (final forbidden in [
+          'BitmapSurface',
+          'Uint8List',
+          'ByteData',
+          'inactivePreviewCache',
+          'playbackPreviewCache',
+          'cacheImage',
+          'previewImage',
+          'sourcePayload',
+          'paintCommands',
+        ]) {
+          expect(
+            brushFrameCacheInvalidation,
+            isNot(contains(forbidden)),
+            reason:
+                'BrushFrameCacheInvalidation must stay metadata-only and must not carry $forbidden.',
+          );
+        }
         expect(
           materializationState,
           contains('Internal session-local bitmap materialization'),

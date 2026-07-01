@@ -38,10 +38,10 @@ void main() {
     );
     expect(find.byType(MainCanvasBrushHost), findsOneWidget);
     expect(find.textContaining('Active strokes:'), findsNothing);
-    expect(find.text('Undo'), findsNothing);
-    expect(find.text('Redo'), findsNothing);
-    expect(find.text('Project Undo'), findsOneWidget);
-    expect(find.text('Project Redo'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(find.text('Redo'), findsOneWidget);
+    expect(find.text('Project Undo'), findsNothing);
+    expect(find.text('Project Redo'), findsNothing);
   });
 
   testWidgets(
