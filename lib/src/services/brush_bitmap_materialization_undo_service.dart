@@ -1,3 +1,5 @@
+// Internal session-local BitmapSurface materialization bridge.
+// UI-facing/user undo-redo must route through BrushFrameEditingCoordinator.
 import '../models/brush_bitmap_materialization_history_state.dart';
 import '../models/brush_bitmap_materialization_undo_result.dart';
 import '../models/canvas_surface_state.dart';
