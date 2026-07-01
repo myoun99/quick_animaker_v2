@@ -22,6 +22,7 @@ This roadmap records current future direction only. Old phase-by-phase documents
 3. Storyboard panel work:
    - Improve overview/planning interactions only after preserving storyboard-as-layer semantics.
    - Keep storyboard data inside ordinary `Layer(kind: storyboard)` entries in `Cut.layers`.
+   - Derive storyboard panel segmentation from ordinary storyboard-layer drawing heads / authored exposures rather than adding a separate persisted panel tree.
    - Do not turn `StoryboardPanel` into a brush drawing canvas unless a future current document explicitly changes the policy.
 4. Save/load foundation:
    - Persist project data and source drawing payloads through explicit repository/storage boundaries.
@@ -30,14 +31,28 @@ This roadmap records current future direction only. Old phase-by-phase documents
    - Use prepared preview/composite bitmap cache images for playback.
    - Do not replay live paint commands, rerun brush rasterization, or composite every layer from scratch when a valid cache exists.
 
+## Long-term candidates to preserve
+
+These ideas are intentionally preserved as long-term candidates. They are not current implementation scope unless a future phase explicitly updates the matching `Current_*` document and task plan.
+
+- Lightweight `lastActiveCutId` project-open metadata may be added later to restore the last viewed/edited Cut on reopen. It must remain separate from volatile `activeCutId` editing-session state and must not imply saving undo/redo history.
+- Linked Cut, Linked Layer, cross-layer linked paste, and cross-cut linked paste remain future candidates for shared drawing/material workflows. They must preserve the separation between drawing material/source sharing and authored timeline placement/timing.
+- A project-level or repository-level material/source ownership model may be needed later for robust cross-layer or cross-cut sharing. Do not introduce it as a shortcut before brush/canvas storage ownership and save/load boundaries are stable.
+- Future storyboard audio views and timeline playback audio should share the same project audio/sound source model rather than duplicating storyboard-only audio persistence.
+- Photoshop-class layer capabilities remain long-term candidates, including blend modes, masks, clipping-like relationships, adjustment/effect-style behavior, richer compositing, and PSD-oriented import/export compatibility. Folder/group-style organization must be designed separately for QuickAnimaker's animation workflow and must not be assumed to copy Photoshop folders by default.
+- UI should remain compact and production-tool-oriented. When UI policy changes, update `docs/Current_UI_Product_Policy.md` rather than scattering UI principles through phase task docs.
+
 ## Not yet
 
 - Do not add Provider, Riverpod, Bloc, ChangeNotifier, or broad app-wide state management.
 - Do not restore deleted obsolete non-phase docs or deleted Brush V1 workspace routes.
 - Do not make `Cut.duration` decide authored data extent, editability, cache storage validity, or frame bitmap existence.
 - Do not add `Cut.storyboardLayer.panels` or a separate storyboard persistence system.
+- Do not add storyboard-only audio persistence that can diverge from timeline/project audio source data.
 - Do not make tile delta the user-facing brush undo model.
 - Do not persist undo/redo history in project save files.
+- Do not implement Linked Cut, Linked Layer, cross-layer linked paste, cross-cut linked paste, or project-level material/source ownership without a dedicated current architecture update.
+- Do not implement layer groups, folders, masks, blend modes, clipping, adjustment layers, or PSD import/export without a dedicated current architecture update and task plan.
 
 ## Dependency notes
 

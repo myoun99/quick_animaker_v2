@@ -34,7 +34,7 @@ Timeline range semantics must not drive canvas/cache/storage semantics. Keep pla
 
 ## Timesheet-oriented layer sections
 
-Long-term timeline direction is inspired by traditional Japanese animation timesheets. This is architecture direction only; do not implement these future layer types in runtime code unless a future runtime phase explicitly asks for them.
+Long-term timeline direction is inspired by traditional Japanese animation timesheets. This section records architecture direction; runtime scope and timing are decided by dedicated phase/task documents.
 
 Top-to-bottom horizontal timeline section order:
 
@@ -51,10 +51,21 @@ Bottom-to-top reading order:
 This order matters.
 
 - Main Section contains animation layers, storyboard layers, future rough layers, future guide layers, and ordinary drawable layers. Storyboard remains inside Main Section as an ordinary `Layer(kind: storyboard)`, and users should be able to place animation layers above and below storyboard layers.
-- Sound Section may later contain dialogue layers, SE layers, and sound note layers corresponding to traditional SOUND/timesheet columns. Do not implement sound features now unless a future runtime phase explicitly asks for them.
+- Sound Section may later contain dialogue layers, SE layers, and sound note layers corresponding to traditional SOUND/timesheet columns.
+- Sound/SE-related layers may be multiple in the future; avoid hard-coding Sound Section design around a single SE lane too early.
 - Camera Section may later contain camera control layers and camera direction layers.
 - Camera Control Layer is for actual render camera control such as pan, zoom, follow, shake, and camera keyframes.
 - Camera Direction Layer is for written camera instructions on the sheet, such as PAN, BOOK, BG, TU, and TB. It may correspond to visible sheet headers/columns and must be distinguished from actual camera-control data.
+- Camera Direction Layers may be multiple in the future; their layer names may become sheet headers/columns such as PAN, BOOK, BG, TU, or TB.
+
+## Storyboard / timeline audio linkage
+
+Future audio shown in storyboard overview surfaces and future audio used by timeline playback should be derived from the same project audio/sound source model.
+
+- Do not create a separate storyboard-only audio persistence tree.
+- The Sound Section should represent the timeline/editor view of project sound data.
+- `StoryboardPanel` may show overview audio strips, dialogue timing, or sound notes later, but those views should read from the same project audio/sound source model used by timeline playback.
+- Final audio layer kinds, audio source ownership, and save/load representation must be designed in a future current architecture update before implementation.
 
 ## Default layer naming and initial exposure
 
@@ -81,8 +92,8 @@ Timeline layer controls may show layer kind icons.
 
 - Current layer kind meanings are `animation` for animation/drawing layers and `storyboard` for storyboard/conte layers.
 - Preserve stable semantic keys such as `timeline-layer-kind-icon-<layerId>` when relevant.
-- Future icons may represent sound, camera, rough, or guide layer kinds only after those layer kinds are explicitly planned.
-- Do not implement new layer kinds or icons in this documentation task.
+- Future icons may represent sound, camera, rough, or guide layer kinds after those layer kinds are explicitly planned.
+- Add layer kinds or icons through phase/task documents that target that work.
 
 ## Linked frame exposure and placement policy
 

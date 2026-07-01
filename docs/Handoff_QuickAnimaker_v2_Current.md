@@ -102,6 +102,7 @@ For detailed current architecture policy, read the matching `Current_*` document
 - Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
+- UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
 
 Before working on a module, read the matching Current document directly rather than relying on this handoff summary.
 

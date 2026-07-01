@@ -18,6 +18,14 @@ Recommended ownership remains near the UI/controller boundary or in a small edit
 
 `ProjectRepository` should remain focused on project data mutations, not UI selection state. Controllers and edit commands should carry enough Cut context to make their target explicit and avoid ambiguous repository-wide searches.
 
+## lastActiveCutId metadata candidate
+
+`activeCutId` remains volatile editing/session state and must not be treated as persisted project structure.
+
+A separate future `lastActiveCutId` may be persisted as lightweight project-open metadata if a future save/load phase explicitly implements it. This metadata would restore the last viewed/edited Cut when reopening a project, but it must remain separate from the live editing-session `activeCutId` and must not imply persisting undo/redo history.
+
+If implemented, `lastActiveCutId` restore must validate that the Cut still exists. If the saved id is missing or invalid, project opening should fall back to the default active-Cut selection policy rather than leaving the editor pointed at a missing Cut.
+
 ## Valid active Cut invariant
 
 Create, delete, and switch Cut flows must keep `activeCutId` valid. Deleting a Cut must not leave the editor pointing at a missing Cut.
@@ -50,3 +58,11 @@ Timeline placement remains independent per Cut. Linked frames may share material
 ## Future duplication direction
 
 The MVP Cut duplicate behavior should be an independent deep copy: new `CutId`, new `LayerId`s, new `FrameId`s, independent authored placement, and no linked Cut/Layer/material behavior by default. Editing the duplicated Cut must not mutate the source Cut, and editing the source Cut must not mutate the duplicate.
+
+## Long-term linked Cut / linked Layer candidates
+
+Linked Cut, Linked Layer, cross-layer linked paste, and cross-cut linked paste remain long-term candidates only. They are not current MVP Cut duplicate behavior and must not be introduced accidentally by duplicate, rename, reorder, or paste work.
+
+Any future linked Cut or linked Layer design must preserve the separation between drawing material/source sharing and authored timeline placement/timing. Sharing drawing material/source must not silently share exposure duration, timeline placement, marks, blank/X positions, selected cell state, camera/sound/storyboard timing, or unrelated Cut metadata.
+
+Linked Cut may be useful later for shared-use Cut workflows and relationship tracking, but it requires a dedicated current architecture update before implementation. Linked Layer and cross-Cut material/source relationships should be designed with the brush/canvas storage policy rather than by overloading Cut names, Layer names, Frame names, or timeline placement.

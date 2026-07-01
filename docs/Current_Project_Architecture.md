@@ -27,10 +27,20 @@ This summary preserves current model context without turning the handoff into an
 
 ## Ownership and module boundaries
 
-- Project data, timeline UI, brush editing, canvas/cache/storage, storyboard overview, persistence, and playback should stay as separate modules with narrow interfaces.
-- Avoid global singleton state and avoid collapsing project, timeline, brush, cache, and persistence concerns into one coordinator.
+- Project data, timeline UI, brush editing, canvas/cache/storage, storyboard overview, persistence, playback, and product UI policy should stay as separate modules with narrow interfaces.
+- Avoid global singleton state and avoid collapsing project, timeline, brush, cache, UI, and persistence concerns into one coordinator.
 - Do not introduce Provider, Riverpod, Bloc, ChangeNotifier, or similar app-wide state-management packages unless a future phase explicitly plans that architecture.
 - Runtime code should remain test-driven and modular; documentation phases must not change runtime behavior.
+
+## Long-term layer system direction
+
+QuickAnimaker v2 keeps Photoshop-class layer capability as a long-term quality target, but runtime work must not copy Photoshop's layer-folder model by default.
+
+- Long-term candidates include blend modes, masks, clipping-like relationships, adjustment/effect-style layer behavior, richer opacity/compositing rules, and PSD-oriented import/export compatibility.
+- Folder/group-style organization is not decided yet and should be designed separately for QuickAnimaker's animation/timesheet workflow rather than assumed to be identical to Photoshop folders.
+- Layer names remain display labels; `LayerId` remains identity.
+- Layer system work must preserve lightweight domain metadata and keep heavy bitmap/composite payloads in brush/canvas/cache/storage boundaries.
+- Do not introduce layer groups, folders, masks, blend modes, clipping, adjustment layers, or PSD import/export without a dedicated current architecture update and phase/task plan.
 
 ## Current module sources
 
@@ -39,6 +49,7 @@ This summary preserves current model context without turning the handoff into an
 - Canvas/cache/storage policy: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard policy: `docs/Current_Storyboard_Architecture.md`
 - Cut management: `docs/Current_Cut_Management_Architecture.md`
+- UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
 - Roadmap: `docs/Current_Implementation_Roadmap.md`
 
 
