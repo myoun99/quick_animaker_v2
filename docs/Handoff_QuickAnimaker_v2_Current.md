@@ -119,4 +119,45 @@ Documentation and handoff tests should protect stable project rules, not exact l
 
 ## 8. Latest continuation note
 
-Phase 213A removed TileDelta / TileDeltaCommand from brush runtime boundaries. Follow-up relaxed brittle documentation tests so Current docs and handoff notes can evolve without preserving exact old sentences.
+Current active work remains the brush part. Continue brush work until the brush area is temporarily production-safe enough to move on.
+
+Recent brush cleanup status:
+
+- Phase 213A removed `TileDelta` / `TileDeltaCommand` from brush runtime boundaries.
+- Phase 213B cleaned up brush history/source-of-truth boundaries:
+    - `UnifiedUndoHistory` is the production-facing user undo/redo order.
+    - `BrushFrameStore` owns frame-local brush payload movement.
+    - `BrushPaintCommand` is the brush command identity / payload boundary and carries a minimal `materializationRef`.
+    - `BrushBitmapMaterializationHistoryState` / `BrushBitmapMaterializationHistoryEntry` and `BrushCommitResult` remain internal session-local bitmap materialization bridges only.
+- Phase 213C protects UI-facing brush undo/redo routes:
+    - UI/canvas/smoke routes must call `BrushFrameEditingCoordinator.undo()` / `BrushFrameEditingCoordinator.redo()`.
+    - UI must not directly call internal bitmap materialization undo/redo services.
+    - Architecture guard tests protect this boundary.
+
+Before continuing brush work in a new chat:
+
+1. Read sections 0 through 4 of this handoff directly.
+2. Read `docs/Current_Brush_Architecture.md` directly.
+3. Read `docs/Current_Canvas_Cache_Storage_Architecture.md` if the next brush phase touches storage/cache/display.
+4. Confirm whether PR 279 was merged and local checks passed:
+    - `dart format lib test`
+    - `flutter analyze`
+    - `flutter test`
+    - `git status`
+
+Next preferred brush direction:
+
+- Continue brush part rather than moving to storyboard/timeline/save-load yet.
+- Do not reintroduce `TileDelta` / `TileDeltaCommand`.
+- Do not treat internal materialization history as user-facing undo.
+- Keep `Frame` lightweight.
+- Keep cache images derived, not source of truth.
+- Do not implement save/load, playback cache, real deferred bake, or large UI rewrites unless a new phase explicitly targets them.
+
+Likely next brush phases:
+
+1. Brush runtime/display stabilization.
+2. Brush command payload/materialization boundary strengthening.
+3. Brush active-frame drawing display correctness.
+4. Brush cache/storage preparation.
+5. Only after that, move toward save/load or playback/cache phases.
