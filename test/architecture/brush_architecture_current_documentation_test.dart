@@ -28,9 +28,19 @@ void main() {
         'They are not the source of truth',
         'Playback must not replay live paint commands',
         'Playback must not run brush rasterization',
-        'Tile delta is not the current user-facing undo policy',
       ]) {
         expect(source, contains(term), reason: 'Missing term: $term');
+      }
+
+      final normalizedSource = _normalizeDocText(source);
+      for (final term in [
+        'tiledelta tiledeltacommand',
+        'brush commit',
+        'brush edit history',
+        'brush undo redo',
+        'cache invalidation',
+      ]) {
+        expect(normalizedSource, contains(term), reason: 'Missing term: $term');
       }
     });
 
@@ -48,4 +58,12 @@ void main() {
       }
     });
   });
+}
+
+String _normalizeDocText(String source) {
+  return source
+      .toLowerCase()
+      .replaceAll(RegExp(r'[`*_.,;:()\[\]/-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }
