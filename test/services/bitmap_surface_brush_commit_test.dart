@@ -1,0 +1,181 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+
+void main() {
+  group('materializeBrushDabSequenceOnBitmapSurface', () {
+    BitmapSurface surface({
+      int width = 4,
+      int height = 4,
+      int tileSize = 2,
+      Map<TileCoord, BitmapTile> tiles = const {},
+    }) {
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: width, height: height),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+    }
+
+    BitmapTile blankTile(int x, int y, {int size = 2}) {
+      return BitmapTile.blank(coord: TileCoord(x: x, y: y), size: size);
+    }
+
+    BrushDab onePixelDab({
+      required double globalX,
+      required double globalY,
+      int color = 0xFFFF0000,
+      double opacity = 1,
+      double flow = 1,
+      int sequence = 0,
+    }) {
+      return BrushDab(
+        center: CanvasPoint(x: globalX + 0.5, y: globalY + 0.5),
+        color: color,
+        size: 1,
+        opacity: opacity,
+        flow: flow,
+        hardness: 1,
+        tipShape: BrushTipShape.round,
+        pressure: 1,
+        sequence: sequence,
+      );
+    }
+
+    BrushDab squareDab({required double centerX, required double centerY}) {
+      return BrushDab(
+        center: CanvasPoint(x: centerX, y: centerY),
+        color: 0xFFFF0000,
+        size: 2,
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
+      );
+    }
+
+    test('returns no changes for empty sequence', () {
+      final original = surface();
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence(),
+      );
+
+      expect(result.surface, original);
+      expect(result.dirtyTiles.isEmpty, isTrue);
+      expect(result.hasChanges, isFalse);
+    });
+
+    test('returns no changes for non-effective dab', () {
+      final original = surface();
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([
+          onePixelDab(globalX: 0, globalY: 0, opacity: 0),
+        ]),
+      );
+
+      expect(result.surface, original);
+      expect(result.dirtyTiles.isEmpty, isTrue);
+    });
+
+    test('returns updated surface and dirtyTiles for dab on missing tile', () {
+      final original = surface();
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+      );
+
+      final coord = TileCoord(x: 0, y: 0);
+      expect(result.surface.tileAt(coord), isNotNull);
+      expect(result.dirtyTiles.contains(coord), isTrue);
+      expect(
+        readRgbaColorFromBitmapTile(tile: result.surface.tileAt(coord)!, x: 0, y: 0).a,
+        255,
+      );
+    });
+
+    test('returns updated surface and dirtyTiles for dab on existing tile', () {
+      final existing = blankTile(0, 0);
+      final original = surface(tiles: {existing.coord: existing});
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+      );
+
+      expect(result.surface.tileAt(existing.coord), isNot(existing));
+      expect(result.dirtyTiles.contains(existing.coord), isTrue);
+    });
+
+    test('handles multi-tile dab deterministically', () {
+      final original = surface(width: 4, height: 4, tileSize: 2);
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
+      );
+
+      expect(result.dirtyTiles.coords.toList(), [
+        TileCoord(x: 0, y: 0),
+        TileCoord(x: 1, y: 0),
+      ]);
+    });
+
+    test('ignores pixels outside canvas bounds', () {
+      final original = surface(width: 1, height: 1, tileSize: 1);
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([squareDab(centerX: 0, centerY: 0)]),
+      );
+
+      expect(result.dirtyTiles.coords, {TileCoord(x: 0, y: 0)});
+      expect(result.surface.tiles.length, 1);
+    });
+
+    test('does not mutate original BitmapSurface', () {
+      final original = surface();
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+      );
+
+      expect(original.tiles, isEmpty);
+    });
+
+    test('does not mutate existing BitmapTile', () {
+      final existing = blankTile(0, 0);
+      final beforePixels = existing.pixels;
+      final original = surface(tiles: {existing.coord: existing});
+
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+      );
+
+      expect(existing.pixels, beforePixels);
+    });
+
+    test('does not mutate BrushDabSequence or BrushDab', () {
+      final dab = onePixelDab(globalX: 0, globalY: 0);
+      final sequence = BrushDabSequence([dab]);
+      final before = BrushDabSequence.fromJson(sequence.toJson());
+
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: surface(),
+        sequence: sequence,
+      );
+
+      expect(sequence, before);
+      expect(sequence.dabs.single, dab);
+    });
+  });
+}
