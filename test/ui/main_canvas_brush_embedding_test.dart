@@ -19,33 +19,30 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 void main() {
-  testWidgets(
-    'HomePage mounts production brush host in the main canvas area',
-    (tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets('HomePage mounts production brush host in the main canvas area', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
 
-      expect(
-        find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(
-          const ValueKey<String>('main-canvas-brush-host-container'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-      expect(find.textContaining('Active strokes:'), findsNothing);
-      expect(find.text('Undo'), findsNothing);
-      expect(find.text('Redo'), findsNothing);
-      expect(find.text('Project Undo'), findsOneWidget);
-      expect(find.text('Project Redo'), findsOneWidget);
-    },
-  );
+    expect(
+      find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('main-canvas-legacy-host')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+      findsOneWidget,
+    );
+    expect(find.byType(MainCanvasBrushHost), findsOneWidget);
+    expect(find.textContaining('Active strokes:'), findsNothing);
+    expect(find.text('Undo'), findsNothing);
+    expect(find.text('Redo'), findsNothing);
+    expect(find.text('Project Undo'), findsOneWidget);
+    expect(find.text('Project Redo'), findsOneWidget);
+  });
 
   testWidgets(
     'production brush host shows empty-selection placeholder without active drawing frame',
@@ -54,9 +51,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(
-          const ValueKey<String>('main-canvas-brush-host-container'),
-        ),
+        find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
         findsOneWidget,
       );
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
@@ -90,9 +85,7 @@ void main() {
     'production brush host uses active editor selection when a frame exists',
     (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(initialProject: _projectWithActiveFrame()),
-        ),
+        MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
       );
 
       await tester.pumpAndSettle();

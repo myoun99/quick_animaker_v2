@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../core/timeline/timeline_defaults.dart';
-import '../controllers/canvas_controller.dart';
 import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
@@ -55,7 +54,6 @@ class _HomePageState extends State<HomePage> {
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;
   final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
-  late CanvasController _canvasController;
   late LayerController _layerController;
   late TimelineController _timelineController;
 
@@ -106,13 +104,6 @@ class _HomePageState extends State<HomePage> {
       repository: _repository,
       historyManager: _historyManager,
       cutId: activeCutId,
-    );
-    _canvasController = CanvasController(
-      repository: _repository,
-      historyManager: _historyManager,
-      frameId: _frameId,
-      layerController: _layerController,
-      timelineController: _timelineController,
     );
   }
 
@@ -362,8 +353,6 @@ class _HomePageState extends State<HomePage> {
       _rebuildActiveCutControllers();
     });
   }
-
-  CutId get _activeCutId => _editingSession.activeCutId;
 
   Layer? get _activeLayer => _layerController.activeLayer;
 

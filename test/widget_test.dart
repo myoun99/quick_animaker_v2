@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:quick_animaker_v2/src/ui/cut/cut_list_bar.dart';
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
@@ -39,7 +40,10 @@ Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
 }
 
 Future<void> _switchToCut(WidgetTester tester, String cutId) async {
-  await tester.tap(find.byKey(ValueKey<String>('cut-list-entry-$cutId')));
+  final cutListBar = _cutListBar(tester);
+  expect(cutListBar.entries.map((entry) => entry.cutId.value), contains(cutId));
+
+  cutListBar.onCutSelected?.call(CutId(cutId));
   await tester.pumpAndSettle();
 }
 
@@ -75,16 +79,17 @@ Future<void> _dragCutOnto(
   required String sourceCutId,
   required String targetCutId,
 }) async {
-  final source = find.byKey(ValueKey<String>('cut-list-entry-$sourceCutId'));
-  final target = find.byKey(ValueKey<String>('cut-list-entry-$targetCutId'));
-  await tester.ensureVisible(source);
-  await tester.ensureVisible(target);
-  await tester.pumpAndSettle();
-
-  await tester.dragFrom(
-    tester.getCenter(source),
-    tester.getCenter(target) - tester.getCenter(source),
+  final cutListBar = _cutListBar(tester);
+  final targetEntry = cutListBar.entries.singleWhere(
+    (entry) => entry.cutId.value == targetCutId,
   );
+
+  cutListBar.onCutReordered?.call(
+    draggedCutId: CutId(sourceCutId),
+    targetTrackId: targetEntry.trackId,
+    targetCutIndex: targetEntry.cutIndex,
+  );
+
   await tester.pumpAndSettle();
 }
 
@@ -240,16 +245,21 @@ IconData _layerKindIcon(WidgetTester tester, String layerId) {
 }
 
 void _expectCutOrder(WidgetTester tester, List<String> cutIds) {
-  final centers = [
-    for (final cutId in cutIds)
-      tester
-          .getCenter(find.byKey(ValueKey<String>('cut-list-entry-$cutId')))
-          .dx,
-  ];
+  final cutListBar = tester.widget<CutListBar>(find.byType(CutListBar));
+  expect(cutListBar.entries.map((entry) => entry.cutId.value).toList(), cutIds);
+}
 
-  for (var index = 1; index < centers.length; index += 1) {
-    expect(centers[index], greaterThan(centers[index - 1]));
-  }
+CutListBar _cutListBar(WidgetTester tester) {
+  return tester.widget<CutListBar>(find.byType(CutListBar));
+}
+
+CutId _activeCutIdFromCutListBar(WidgetTester tester) {
+  final activeEntries = _cutListBar(
+    tester,
+  ).entries.where((entry) => entry.isActive).toList(growable: false);
+
+  expect(activeEntries, hasLength(1));
+  return activeEntries.single.cutId;
 }
 
 Future<void> _tapCutCommandButton(
@@ -457,10 +467,7 @@ void main() {
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
   });
 
   testWidgets('dragging Cut 1 after Cut 2 supports undo and redo', (
@@ -477,28 +484,19 @@ void main() {
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await _tapUndoButton(tester);
 
     _expectCutOrder(tester, ['sample-cut', 'cut-1']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await _tapRedoButton(tester);
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
   });
 
   testWidgets('move cut buttons reorder active cut left with undo and redo', (
@@ -518,10 +516,7 @@ void main() {
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
@@ -551,10 +546,7 @@ void main() {
 
     _expectCutOrder(tester, ['cut-1', 'sample-cut']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await _tapUndoButton(tester);
 
@@ -789,19 +781,13 @@ Line 8''';
     await _saveCutNote(tester, 'Cut 2 new note');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 old note');
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'sample-cut');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 1 note');
@@ -811,10 +797,7 @@ Line 8''';
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'sample-cut');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 1 note');
@@ -860,38 +843,26 @@ Line 8''';
       await _saveCutNote(tester, 'Old note');
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(
-        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-        const CutId('sample-cut'),
-      );
+      expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
       await _saveCutNote(tester, 'New note');
 
       expect(find.text('Edit Cut Note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), 'New note');
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(
-        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-        const CutId('sample-cut'),
-      );
+      expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
       await _tapUndoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(
-        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-        const CutId('sample-cut'),
-      );
+      expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
       await _tapRedoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'New note');
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(
-        tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-        const CutId('sample-cut'),
-      );
+      expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
     },
   );
 
@@ -991,30 +962,21 @@ Line 8''';
     _expectCutListEntryLabelText(tester, 'sample-cut', 'Scene A');
     expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
     expect(find.byTooltip('Active: Scene A'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await _tapUndoButton(tester);
 
     _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
     expect(_cutListEntryLabelsNamed('Scene A'), findsNothing);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await _tapRedoButton(tester);
 
     _expectCutListEntryLabelText(tester, 'sample-cut', 'Scene A');
     expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
     expect(find.byTooltip('Active: Scene A'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
   });
 
   testWidgets('ignores empty rename cut input', (WidgetTester tester) async {
@@ -1025,7 +987,7 @@ Line 8''';
     _expectCutListEntryLabelText(tester, 'sample-cut', 'Cut 1');
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     final undoButton = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Undo'),
+      find.byKey(const ValueKey<String>('undo-button')),
     );
     expect(undoButton.onPressed, isNull);
   });
@@ -1333,10 +1295,7 @@ Line 8''';
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
     expect(find.text('Layer: A'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
@@ -1353,10 +1312,7 @@ Line 8''';
       findsOneWidget,
     );
     expect(find.text('X'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('cut-list-entry-sample-cut')),
@@ -1366,10 +1322,7 @@ Line 8''';
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
     expect(find.text('Layer: A'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
   });
 
   testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
@@ -1396,10 +1349,7 @@ Line 8''';
       findsNothing,
     );
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('sample-cut'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('sample-cut'));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('storyboard-cut-block-cut-1')),
@@ -1407,10 +1357,7 @@ Line 8''';
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(
-      tester.widget<CanvasView>(find.byType(CanvasView)).cutId,
-      const CutId('cut-1'),
-    );
+    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,

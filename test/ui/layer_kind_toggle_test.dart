@@ -22,7 +22,7 @@ import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
@@ -46,6 +46,13 @@ Future<void> _pumpHome(
       ),
     ),
   );
+}
+
+CutId? _mainCanvasCutId(WidgetTester tester) {
+  final host = tester.widget<MainCanvasBrushHost>(
+    find.byType(MainCanvasBrushHost),
+  );
+  return host.selection?.cutId;
 }
 
 Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) async {
@@ -193,15 +200,15 @@ void main() {
 
     await _tapKey(tester, _toggleKey);
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
 
     await _tapKey(tester, _undoKey);
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
 
     await _tapKey(tester, _redoKey);
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
   });
 
   testWidgets('undo and redo work after toggling to animation', (tester) async {
@@ -214,15 +221,15 @@ void main() {
 
     await _tapKey(tester, _toggleKey);
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
 
     await _tapKey(tester, _undoKey);
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
 
     await _tapKey(tester, _redoKey);
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(tester.widget<CanvasView>(find.byType(CanvasView)).cutId, _cutId);
+    expect(_mainCanvasCutId(tester), _cutId);
   });
 
   testWidgets('active cut with no layers is safe and disabled', (tester) async {
