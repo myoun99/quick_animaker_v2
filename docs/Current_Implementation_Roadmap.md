@@ -30,6 +30,15 @@ This roadmap records current future direction only. Old phase-by-phase documents
    - Use prepared preview/composite bitmap cache images for playback.
    - Do not replay live paint commands, rerun brush rasterization, or composite every layer from scratch when a valid cache exists.
 
+## Long-term candidates to preserve
+
+These ideas are intentionally preserved as long-term candidates. They are not current implementation scope unless a future phase explicitly updates the matching `Current_*` document and task plan.
+
+- Lightweight `lastActiveCutId` project-open metadata may be added later to restore the last viewed/edited Cut on reopen. It must remain separate from volatile `activeCutId` editing-session state and must not imply saving undo/redo history.
+- Linked Cut, Linked Layer, cross-layer linked paste, and cross-cut linked paste remain future candidates for shared drawing/material workflows. They must preserve the separation between drawing material/source sharing and authored timeline placement/timing.
+- A project-level or repository-level material/source ownership model may be needed later for robust cross-layer or cross-cut sharing. Do not introduce it as a shortcut before brush/canvas storage ownership and save/load boundaries are stable.
+- UI should remain compact and production-tool-oriented. When UI policy changes, update `docs/Current_UI_Product_Policy.md` rather than scattering UI principles through phase task docs.
+
 ## Not yet
 
 - Do not add Provider, Riverpod, Bloc, ChangeNotifier, or broad app-wide state management.
@@ -38,6 +47,7 @@ This roadmap records current future direction only. Old phase-by-phase documents
 - Do not add `Cut.storyboardLayer.panels` or a separate storyboard persistence system.
 - Do not make tile delta the user-facing brush undo model.
 - Do not persist undo/redo history in project save files.
+- Do not implement Linked Cut, Linked Layer, cross-layer linked paste, cross-cut linked paste, or project-level material/source ownership without a dedicated current architecture update.
 
 ## Dependency notes
 
