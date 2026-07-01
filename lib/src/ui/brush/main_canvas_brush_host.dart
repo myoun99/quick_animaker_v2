@@ -15,11 +15,11 @@ import 'brush_editor_selection.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 
-/// Main-canvas-oriented Brush host prepared for HomePage integration.
+/// Production main-canvas Brush host for HomePage integration.
 ///
-/// The HomePage preview path can pass the active editor selection or a
-/// concrete [BrushFrameKey]. Missing selection renders a safe placeholder
-/// instead of constructing test fixture data.
+/// The editor passes the active selection or a concrete [BrushFrameKey]. Missing
+/// selection renders a safe placeholder instead of constructing fake editable
+/// state. Drawing payload ownership remains in the coordinator/store boundary.
 class MainCanvasBrushHost extends StatefulWidget {
   const MainCanvasBrushHost({
     super.key,
@@ -62,7 +62,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     if (_frameKeys.isEmpty) {
       return const Center(
         key: ValueKey<String>('main-canvas-brush-host-empty-selection'),
-        child: Text('Select a layer and frame to edit with Brush Preview.'),
+        child: Text('Select a layer and frame to edit with Brush.'),
       );
     }
 

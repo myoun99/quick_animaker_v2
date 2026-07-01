@@ -28,7 +28,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Select a layer and frame to edit with Brush Preview.'),
+        find.text('Select a layer and frame to edit with Brush.'),
         findsOneWidget,
       );
       expect(find.byType(BrushCanvasPanel), findsNothing);
