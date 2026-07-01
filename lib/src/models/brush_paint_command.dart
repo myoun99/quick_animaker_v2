@@ -32,7 +32,10 @@ class BrushPaintCommand {
   ///
   /// This is the minimal bridge from production-facing paint-command undo refs
   /// back to the current session-local bitmap materialization result. It is not
-  /// a save/load payload format.
+  /// a save/load payload format, durable command history, public undo entry, or
+  /// bitmap/cache payload. The user-facing brush undo boundary remains:
+  ///
+  /// UndoPayloadRef.paintCommand -> BrushFrameStore -> BrushPaintCommand.
   final String? materializationRef;
   final String? metadataRef;
 

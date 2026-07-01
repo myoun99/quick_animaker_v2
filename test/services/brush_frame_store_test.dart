@@ -34,6 +34,7 @@ void main() {
     id: BrushPaintCommandId('paint-$sequence'),
     sequenceNumber: sequence,
     kind: BrushPaintCommandKind.paintStroke,
+    materializationRef: 'brush-materialization/session-only/$sequence',
   );
 
   UndoHistoryEntry paintEntry(BrushFrameKey frameKey, int sequence) =>
@@ -47,6 +48,47 @@ void main() {
           paintCommandId: BrushPaintCommandId('paint-$sequence'),
         ),
       );
+
+  test(
+    'paint undo payload ref resolves through BrushFrameStore to command payload',
+    () {
+      final store = BrushFrameStore();
+      final frameKey = key();
+      final added = command(1);
+      store.addLivePaintCommand(frameKey, added);
+      final entry = paintEntry(frameKey, 1);
+
+      expect(entry.payloadRef.isPaintCommand, isTrue);
+      expect(entry.payloadRef.storeName, UndoPayloadRef.paintStoreName);
+      expect(entry.payloadRef.paintCommandId, added.id);
+
+      final resolved = store.paintCommandForUndoPayload(entry.payloadRef);
+
+      expect(resolved, isNotNull);
+      expect(resolved!.id, added.id);
+      expect(resolved.materializationRef, added.materializationRef);
+      expect(resolved.state, BrushPaintCommandState.live);
+    },
+  );
+
+  test(
+    'non-paint undo payload ref does not resolve through brush frame store',
+    () {
+      final store = BrushFrameStore();
+      final frameKey = key();
+      store.addLivePaintCommand(frameKey, command(1));
+
+      final resolved = store.paintCommandForUndoPayload(
+        const UndoPayloadRef(
+          storeName: 'brushBitmapMaterializationHistoryState',
+          payloadId: 'entry-1',
+          targetPath: 'internal/session-local',
+        ),
+      );
+
+      expect(resolved, isNull);
+    },
+  );
 
   test(
     'trimmed paint entry moves to deferred bake and leaves kept entries undoable',

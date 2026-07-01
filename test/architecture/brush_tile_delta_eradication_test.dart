@@ -236,6 +236,71 @@ void main() {
     );
 
     test(
+      'public brush undo boundary does not depend on materialization history APIs',
+      () {
+        final publicBoundaryFiles = [
+          'lib/src/models/undo_payload_ref.dart',
+          'lib/src/models/unified_undo_history.dart',
+          'lib/src/models/undo_history_entry.dart',
+          'lib/src/services/brush_frame_store.dart',
+        ];
+
+        for (final path in publicBoundaryFiles) {
+          final text = File(path).readAsStringSync();
+
+          for (final forbidden in [
+            'brush_bitmap_materialization_undo_service.dart',
+            'brush_bitmap_materialization_redo_service.dart',
+            'BrushBitmapMaterializationHistoryState',
+            'BrushBitmapMaterializationHistoryEntry',
+            'BrushCommitResult',
+            'undoLatestBrushBitmapMaterialization',
+            'redoLatestBrushBitmapMaterialization',
+            'undoEntries',
+            'redoEntries',
+          ]) {
+            expect(
+              text,
+              isNot(contains(forbidden)),
+              reason:
+                  '$path must keep user undo refs pointed at BrushPaintCommand payloads, not $forbidden.',
+            );
+          }
+        }
+      },
+    );
+
+    test(
+      'BrushPaintCommand materializationRef remains a minimal internal bridge',
+      () {
+        final text = File(
+          'lib/src/models/brush_paint_command.dart',
+        ).readAsStringSync();
+
+        expect(text, contains('materializationRef'));
+        expect(text, contains('minimal bridge'));
+        expect(text, contains('session-local'));
+        expect(text, contains('not'));
+        for (final forbidden in [
+          'Uint8List',
+          'ByteData',
+          'BitmapSurface',
+          'BrushCommitResult',
+          'BrushBitmapMaterializationHistoryEntry',
+          'undoEntries',
+          'redoEntries',
+        ]) {
+          expect(
+            text,
+            isNot(contains(forbidden)),
+            reason:
+                'BrushPaintCommand must not turn materializationRef into a heavy or public undo payload via $forbidden.',
+          );
+        }
+      },
+    );
+
+    test(
       'current brush docs forbid TileDeltaCommand brush runtime boundaries',
       () {
         final text = File(
