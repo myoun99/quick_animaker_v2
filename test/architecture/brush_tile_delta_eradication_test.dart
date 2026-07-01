@@ -263,6 +263,8 @@ void main() {
         ).readAsStringSync();
         final frameDrawingState = File(
           'lib/src/models/brush_frame_drawing_state.dart',
+        ).readAsStringSync();
+        final brushFrameCacheInvalidation = File(
           'lib/src/models/brush_frame_cache_invalidation.dart',
         ).readAsStringSync();
         final materializationState = File(
@@ -287,6 +289,27 @@ void main() {
         expect(paintCommand, contains('materializationRef'));
         expect(paintCommand, contains('minimal bridge'));
         expect(frameDrawingState, contains('commandById'));
+        expect(frameDrawingState, contains('cacheDirtyTiles'));
+        expect(brushFrameCacheInvalidation, contains('BrushFrameKey'));
+        expect(brushFrameCacheInvalidation, contains('DirtyTileSet'));
+        for (final forbidden in [
+          'BitmapSurface',
+          'Uint8List',
+          'ByteData',
+          'inactivePreviewCache',
+          'playbackPreviewCache',
+          'cacheImage',
+          'previewImage',
+          'sourcePayload',
+          'paintCommands',
+        ]) {
+          expect(
+            brushFrameCacheInvalidation,
+            isNot(contains(forbidden)),
+            reason:
+                'BrushFrameCacheInvalidation must stay metadata-only and must not carry $forbidden.',
+          );
+        }
         expect(
           materializationState,
           contains('Internal session-local bitmap materialization'),
