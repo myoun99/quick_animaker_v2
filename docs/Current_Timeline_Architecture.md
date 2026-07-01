@@ -58,6 +58,15 @@ This order matters.
 - Camera Direction Layer is for written camera instructions on the sheet, such as PAN, BOOK, BG, TU, and TB. It may correspond to visible sheet headers/columns and must be distinguished from actual camera-control data.
 - Camera Direction Layers may be multiple in the future; their layer names may become sheet headers/columns such as PAN, BOOK, BG, TU, or TB.
 
+## Storyboard / timeline audio linkage
+
+Future audio shown in storyboard overview surfaces and future audio used by timeline playback should be derived from the same project audio/sound source model.
+
+- Do not create a separate storyboard-only audio persistence tree.
+- The Sound Section should represent the timeline/editor view of project sound data.
+- `StoryboardPanel` may show overview audio strips, dialogue timing, or sound notes later, but those views should read from the same project audio/sound source model used by timeline playback.
+- Final audio layer kinds, audio source ownership, and save/load representation must be designed in a future current architecture update before implementation.
+
 ## Default layer naming and initial exposure
 
 Layer names are display labels; `LayerId` is identity. Layer names may duplicate, and code must not infer identity or linking from a layer name.
