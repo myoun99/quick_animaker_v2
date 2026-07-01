@@ -83,12 +83,7 @@ class BrushFrameStore {
     BrushPaintCommandId id, {
     DirtyTileSet? dirtyTiles,
   }) {
-    return _move(
-      key,
-      id,
-      BrushPaintCommandState.live,
-      dirtyTiles: dirtyTiles,
-    );
+    return _move(key, id, BrushPaintCommandState.live, dirtyTiles: dirtyTiles);
   }
 
   BrushFrameDrawingState movePaintCommandToDeferredBake(

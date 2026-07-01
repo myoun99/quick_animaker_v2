@@ -91,25 +91,26 @@ void main() {
     expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
   });
 
+  test(
+    'commit marks active BrushFrameKey dirty and emits brush invalidation',
+    () {
+      final c = coordinator();
+      final sink = _RecordingSink();
 
+      c.applyBrushOperationResult(
+        _commitResult(c),
+        cacheInvalidationSink: sink,
+      );
 
-  test('commit marks active BrushFrameKey dirty and emits brush invalidation', () {
-    final c = coordinator();
-    final sink = _RecordingSink();
-
-    c.applyBrushOperationResult(
-      _commitResult(c),
-      cacheInvalidationSink: sink,
-    );
-
-    final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
-    expect(frame.inactivePreviewDirty, isTrue);
-    expect(frame.cacheDirtyTiles.isNotEmpty, isTrue);
-    expect(sink.brushFrames, hasLength(1));
-    expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
-    expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
-    expect(sink.brushFrames.single.wholeFrame, isFalse);
-  });
+      final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+      expect(frame.inactivePreviewDirty, isTrue);
+      expect(frame.cacheDirtyTiles.isNotEmpty, isTrue);
+      expect(sink.brushFrames, hasLength(1));
+      expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
+      expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
+      expect(sink.brushFrames.single.wholeFrame, isFalse);
+    },
+  );
 
   test('undo and redo emit BrushFrameKey dirty invalidations', () {
     final c = coordinator();
