@@ -4,6 +4,7 @@ import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
 import '../models/brush_paint_command_state.dart';
 import '../models/layer_id.dart';
+import '../models/undo_payload_ref.dart';
 
 class BrushFrameFlushResult {
   const BrushFrameFlushResult({
@@ -32,6 +33,21 @@ class BrushFrameStore {
   }
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
+
+  /// Resolves the production-facing user undo payload reference back to the
+  /// frame-local brush command payload owned by this store.
+  ///
+  /// Internal bitmap materialization history is intentionally not consulted
+  /// here; it is a session-local bridge below the public coordinator/store
+  /// boundary, not user-facing undo history.
+  BrushPaintCommand? paintCommandForUndoPayload(UndoPayloadRef payloadRef) {
+    if (!payloadRef.isPaintCommand || payloadRef.targetKey == null) {
+      return null;
+    }
+    return frameOrNull(
+      payloadRef.targetKey!,
+    )?.commandById(payloadRef.paintCommandId);
+  }
 
   BrushFrameDrawingState addLivePaintCommand(
     BrushFrameKey key,
