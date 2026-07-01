@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
@@ -105,7 +105,7 @@ void main() {
 BrushEditSessionState _sessionState(BitmapSurface surface) {
   return BrushEditSessionState(
     canvasState: CanvasSurfaceState(currentSurface: surface),
-    historyState: BrushEditHistoryState(),
+    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
   );
 }
 

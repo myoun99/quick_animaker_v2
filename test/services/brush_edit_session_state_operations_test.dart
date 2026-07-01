@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -10,10 +10,10 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_redo_service.dart';
+import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_redo_service.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_commit.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_state_operations.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_undo_service.dart';
+import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_undo_service.dart';
 
 void main() {
   group('brush edit session state operations', () {
@@ -41,7 +41,7 @@ void main() {
 
     BrushEditSessionState emptySession() => BrushEditSessionState(
       canvasState: CanvasSurfaceState(currentSurface: surface()),
-      historyState: BrushEditHistoryState(),
+      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
     );
 
     test('commit facade returns same result as '
@@ -50,7 +50,7 @@ void main() {
       final sequence = changedSequence();
       final direct = commitBrushDabSequenceToBrushEditSession(
         canvasState: sessionState.canvasState,
-        historyState: sessionState.historyState,
+        materializationHistoryState: sessionState.materializationHistoryState,
         sequence: sequence,
         layerId: layerId,
         frameId: frameId,
@@ -69,7 +69,7 @@ void main() {
       final sessionState = emptySession();
       final direct = commitBrushDabSequenceToBrushEditSession(
         canvasState: sessionState.canvasState,
-        historyState: sessionState.historyState,
+        materializationHistoryState: sessionState.materializationHistoryState,
         sequence: BrushDabSequence(),
         layerId: layerId,
         frameId: frameId,
@@ -96,11 +96,11 @@ void main() {
       );
 
       expect(facade.didCommit, isTrue);
-      expect(facade.historyState.undoEntries, [facade.historyEntry]);
+      expect(facade.materializationHistoryState.undoEntries, [facade.historyEntry]);
       expect(facade.canvasState.hasLastEdit, isTrue);
     });
 
-    test('undo facade returns same result as undoLatestBrushEdit', () {
+    test('undo facade returns same result as undoLatestBrushBitmapMaterialization', () {
       final committed = commitBrushDabSequenceToBrushEditSessionState(
         sessionState: emptySession(),
         sequence: changedSequence(),
@@ -108,11 +108,11 @@ void main() {
         frameId: frameId,
       );
       final sessionState = sessionStateFromCommitResult(committed);
-      final direct = undoLatestBrushEdit(
+      final direct = undoLatestBrushBitmapMaterialization(
         canvasState: sessionState.canvasState,
-        historyState: sessionState.historyState,
+        materializationHistoryState: sessionState.materializationHistoryState,
       );
-      final facade = undoLatestBrushEditInSessionState(
+      final facade = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionState,
       );
 
@@ -121,31 +121,31 @@ void main() {
 
     test('undo facade no-op behavior matches existing undo service', () {
       final sessionState = emptySession();
-      final facade = undoLatestBrushEditInSessionState(
+      final facade = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionState,
       );
 
       expect(facade.didUndo, isFalse);
       expect(identical(facade.canvasState, sessionState.canvasState), isTrue);
-      expect(identical(facade.historyState, sessionState.historyState), isTrue);
+      expect(identical(facade.materializationHistoryState, sessionState.materializationHistoryState), isTrue);
     });
 
-    test('redo facade returns same result as redoLatestBrushEdit', () {
+    test('redo facade returns same result as redoLatestBrushBitmapMaterialization', () {
       final committed = commitBrushDabSequenceToBrushEditSessionState(
         sessionState: emptySession(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
-      final undone = undoLatestBrushEditInSessionState(
+      final undone = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromCommitResult(committed),
       );
       final sessionState = sessionStateFromUndoResult(undone);
-      final direct = redoLatestBrushEdit(
+      final direct = redoLatestBrushBitmapMaterialization(
         canvasState: sessionState.canvasState,
-        historyState: sessionState.historyState,
+        materializationHistoryState: sessionState.materializationHistoryState,
       );
-      final facade = redoLatestBrushEditInSessionState(
+      final facade = redoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionState,
       );
 
@@ -154,16 +154,16 @@ void main() {
 
     test('redo facade no-op behavior matches existing redo service', () {
       final sessionState = emptySession();
-      final facade = redoLatestBrushEditInSessionState(
+      final facade = redoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionState,
       );
 
       expect(facade.didRedo, isFalse);
       expect(identical(facade.canvasState, sessionState.canvasState), isTrue);
-      expect(identical(facade.historyState, sessionState.historyState), isTrue);
+      expect(identical(facade.materializationHistoryState, sessionState.materializationHistoryState), isTrue);
     });
 
-    test('sessionStateFromCommitResult maps canvasState and historyState', () {
+    test('sessionStateFromCommitResult maps canvasState and materializationHistoryState', () {
       final result = commitBrushDabSequenceToBrushEditSessionState(
         sessionState: emptySession(),
         sequence: changedSequence(),
@@ -173,42 +173,42 @@ void main() {
       final sessionState = sessionStateFromCommitResult(result);
 
       expect(identical(sessionState.canvasState, result.canvasState), isTrue);
-      expect(identical(sessionState.historyState, result.historyState), isTrue);
+      expect(identical(sessionState.materializationHistoryState, result.materializationHistoryState), isTrue);
     });
 
-    test('sessionStateFromUndoResult maps canvasState and historyState', () {
+    test('sessionStateFromUndoResult maps canvasState and materializationHistoryState', () {
       final committed = commitBrushDabSequenceToBrushEditSessionState(
         sessionState: emptySession(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
-      final result = undoLatestBrushEditInSessionState(
+      final result = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromCommitResult(committed),
       );
       final sessionState = sessionStateFromUndoResult(result);
 
       expect(identical(sessionState.canvasState, result.canvasState), isTrue);
-      expect(identical(sessionState.historyState, result.historyState), isTrue);
+      expect(identical(sessionState.materializationHistoryState, result.materializationHistoryState), isTrue);
     });
 
-    test('sessionStateFromRedoResult maps canvasState and historyState', () {
+    test('sessionStateFromRedoResult maps canvasState and materializationHistoryState', () {
       final committed = commitBrushDabSequenceToBrushEditSessionState(
         sessionState: emptySession(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
-      final undone = undoLatestBrushEditInSessionState(
+      final undone = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromCommitResult(committed),
       );
-      final result = redoLatestBrushEditInSessionState(
+      final result = redoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromUndoResult(undone),
       );
       final sessionState = sessionStateFromRedoResult(result);
 
       expect(identical(sessionState.canvasState, result.canvasState), isTrue);
-      expect(identical(sessionState.historyState, result.historyState), isTrue);
+      expect(identical(sessionState.materializationHistoryState, result.materializationHistoryState), isTrue);
     });
 
     test('commit -> sessionStateFromCommitResult -> undo works', () {
@@ -219,7 +219,7 @@ void main() {
         layerId: layerId,
         frameId: frameId,
       );
-      final undone = undoLatestBrushEditInSessionState(
+      final undone = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromCommitResult(committed),
       );
 
@@ -228,7 +228,7 @@ void main() {
         undone.canvasState.currentSurface,
         original.canvasState.currentSurface,
       );
-      expect(undone.historyState.redoEntries, [committed.historyEntry]);
+      expect(undone.materializationHistoryState.redoEntries, [committed.historyEntry]);
     });
 
     test('undo -> sessionStateFromUndoResult -> redo works', () {
@@ -238,10 +238,10 @@ void main() {
         layerId: layerId,
         frameId: frameId,
       );
-      final undone = undoLatestBrushEditInSessionState(
+      final undone = undoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromCommitResult(committed),
       );
-      final redone = redoLatestBrushEditInSessionState(
+      final redone = redoLatestBrushBitmapMaterializationInSessionState(
         sessionState: sessionStateFromUndoResult(undone),
       );
 
@@ -250,7 +250,7 @@ void main() {
         redone.canvasState.currentSurface,
         committed.canvasState.currentSurface,
       );
-      expect(redone.historyState.undoEntries, [committed.historyEntry]);
+      expect(redone.materializationHistoryState.undoEntries, [committed.historyEntry]);
     });
 
     test('does not mutate input BrushEditSessionState', () {
@@ -283,9 +283,9 @@ void main() {
       expect(sessionState.canvasState.lastEdit, isNull);
     });
 
-    test('does not mutate input BrushEditHistoryState', () {
+    test('does not mutate input BrushBitmapMaterializationHistoryState', () {
       final sessionState = emptySession();
-      final historyState = sessionState.historyState;
+      final materializationHistoryState = sessionState.materializationHistoryState;
 
       commitBrushDabSequenceToBrushEditSessionState(
         sessionState: sessionState,
@@ -294,9 +294,9 @@ void main() {
         frameId: frameId,
       );
 
-      expect(identical(sessionState.historyState, historyState), isTrue);
-      expect(sessionState.historyState.undoEntries, isEmpty);
-      expect(sessionState.historyState.redoEntries, isEmpty);
+      expect(identical(sessionState.materializationHistoryState, materializationHistoryState), isTrue);
+      expect(sessionState.materializationHistoryState.undoEntries, isEmpty);
+      expect(sessionState.materializationHistoryState.redoEntries, isEmpty);
     });
 
     test('does not execute cache invalidation', () {
@@ -315,8 +315,8 @@ void main() {
 
     test('does not add UI/state management/timeline/storyboard changes', () {
       expect(commitBrushDabSequenceToBrushEditSessionState, isA<Function>());
-      expect(undoLatestBrushEditInSessionState, isA<Function>());
-      expect(redoLatestBrushEditInSessionState, isA<Function>());
+      expect(undoLatestBrushBitmapMaterializationInSessionState, isA<Function>());
+      expect(redoLatestBrushBitmapMaterializationInSessionState, isA<Function>());
     });
   });
 }

@@ -1,17 +1,17 @@
 import '../models/brush_dab_sequence.dart';
-import '../models/brush_edit_history_state.dart';
+import '../models/brush_bitmap_materialization_history_state.dart';
 import '../models/brush_edit_session_commit_result.dart';
 import '../models/canvas_surface_state.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
-import 'brush_edit_history_entry_builder.dart';
-import 'brush_edit_history_stack.dart';
+import 'brush_bitmap_materialization_history_entry_builder.dart';
+import 'brush_bitmap_materialization_history_stack.dart';
 import 'brush_surface_edit_builder.dart';
 import 'canvas_surface_state_edit.dart';
 
 BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   required CanvasSurfaceState canvasState,
-  required BrushEditHistoryState historyState,
+  required BrushBitmapMaterializationHistoryState materializationHistoryState,
   required BrushDabSequence sequence,
   required LayerId layerId,
   required FrameId frameId,
@@ -26,7 +26,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
     state: canvasState,
     edit: edit,
   );
-  final historyEntry = brushEditHistoryEntryFromBrushSurfaceEdit(
+  final historyEntry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
     edit: edit,
     layerId: layerId,
     frameId: frameId,
@@ -35,19 +35,19 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   if (historyEntry == null) {
     return BrushEditSessionCommitResult(
       canvasState: updatedCanvasState,
-      historyState: historyState,
+      materializationHistoryState: materializationHistoryState,
       historyEntry: null,
     );
   }
 
-  final updatedHistoryState = pushBrushEditHistoryEntry(
-    history: historyState,
+  final updatedHistoryState = pushBrushBitmapMaterializationHistoryEntry(
+    history: materializationHistoryState,
     entry: historyEntry,
   );
 
   return BrushEditSessionCommitResult(
     canvasState: updatedCanvasState,
-    historyState: updatedHistoryState,
+    materializationHistoryState: updatedHistoryState,
     historyEntry: historyEntry,
   );
 }

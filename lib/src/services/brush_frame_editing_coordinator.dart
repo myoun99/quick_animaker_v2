@@ -1,3 +1,4 @@
+import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_edit_session_cache_operation_result.dart';
 import '../models/brush_edit_session_operation_kind.dart';
 import '../models/brush_edit_session_state.dart';
@@ -49,22 +50,31 @@ class BrushFrameEditingCoordinator {
   BrushPaintCommand? applyBrushOperationResult(
     BrushEditSessionCacheOperationResult result,
   ) {
-    final previousUndoCount = activeSessionState.historyState.undoCount;
+    final previousUndoCount =
+        activeSessionState.materializationHistoryState.undoCount;
     sessionStore.update(_activeFrameKey, result.sessionState);
     if (result.kind != BrushEditSessionOperationKind.commit) {
       return null;
     }
 
-    final nextUndoCount = result.sessionState.historyState.undoCount;
-    if (nextUndoCount <= previousUndoCount) {
+    final nextUndoCount =
+        result.sessionState.materializationHistoryState.undoCount;
+    final affectedEntry = result.affectedEntry;
+    if (nextUndoCount <= previousUndoCount || affectedEntry == null) {
       return null;
     }
 
+    final sequenceNumber = _nextSequenceNumber++;
     final command = BrushPaintCommand(
-      id: BrushPaintCommandId('brush-paint-${_nextSequenceNumber++}'),
-      sequenceNumber: _nextSequenceNumber - 1,
+      id: BrushPaintCommandId('brush-paint-$sequenceNumber'),
+      sequenceNumber: sequenceNumber,
       kind: BrushPaintCommandKind.paintStroke,
-      debugLabel: 'Paint stroke ${_nextSequenceNumber - 1}',
+      debugLabel: 'Paint stroke $sequenceNumber',
+      materializationRef: _materializationRefFor(
+        frameKey: _activeFrameKey,
+        sequenceNumber: sequenceNumber,
+        entry: affectedEntry,
+      ),
     );
     frameStore.addLivePaintCommand(_activeFrameKey, command);
     final entry = UndoHistoryEntry(
@@ -106,7 +116,7 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canUndo) {
-      final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: state,
         cacheInvalidationSink:
             cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
@@ -132,7 +142,7 @@ class BrushFrameEditingCoordinator {
     );
     final state = sessionStore.getOrCreate(key);
     if (state.canRedo) {
-      final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: state,
         cacheInvalidationSink:
             cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
@@ -140,6 +150,25 @@ class BrushFrameEditingCoordinator {
       sessionStore.update(key, result.sessionState);
     }
     return entry;
+  }
+
+  String _materializationRefFor({
+    required BrushFrameKey frameKey,
+    required int sequenceNumber,
+    required BrushBitmapMaterializationHistoryEntry entry,
+  }) {
+    return [
+      'brush-materialization',
+      frameKey.projectId.value,
+      frameKey.trackId.value,
+      frameKey.cutId.value,
+      frameKey.layerId.value,
+      frameKey.frameId.value,
+      'seq-$sequenceNumber',
+      'entry-layer-${entry.layerId.value}',
+      'entry-frame-${entry.frameId.value}',
+      'dirty-tiles-${entry.changedTileCount}',
+    ].join('/');
   }
 
   int liveCommandCount(BrushFrameKey key) => frameStore

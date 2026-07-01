@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
@@ -53,7 +53,7 @@ void main() {
 
     BrushEditSessionState emptySession() => BrushEditSessionState(
       canvasState: CanvasSurfaceState(currentSurface: surface()),
-      historyState: BrushEditHistoryState(),
+      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
     );
 
     BrushDabSequence changedSequence() => BrushDabSequence([
@@ -177,7 +177,7 @@ void main() {
     test('undo no-op does not call cache sink', () {
       final sink = FakeCacheInvalidationSink();
 
-      undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: emptySession(),
         cacheInvalidationSink: sink,
       );
@@ -186,7 +186,7 @@ void main() {
     });
 
     test('undo no-op returns zero cache invalidation result', () {
-      final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: emptySession(),
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
@@ -200,7 +200,7 @@ void main() {
         FakeCacheInvalidationSink(),
       );
       final sink = FakeCacheInvalidationSink();
-      final result = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: sink,
       );
@@ -221,25 +221,25 @@ void main() {
           frameId: frameId,
         );
         final sessionState = sessionStateFromCommitResult(committed);
-        final normal = undoLatestBrushEditInSessionState(
+        final normal = undoLatestBrushBitmapMaterializationInSessionState(
           sessionState: sessionState,
         );
         final cacheAware =
-            undoLatestBrushEditInSessionStateWithCacheInvalidation(
+            undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
               sessionState: sessionState,
               cacheInvalidationSink: FakeCacheInvalidationSink(),
             );
 
         expect(cacheAware.kind, BrushEditSessionOperationKind.undo);
         expect(cacheAware.sessionState, sessionStateFromUndoResult(normal));
-        expect(cacheAware.affectedEntry, normal.undoneEntry);
+        expect(cacheAware.affectedEntry, normal.undoneMaterializationEntry);
       },
     );
 
     test('redo no-op does not call cache sink', () {
       final sink = FakeCacheInvalidationSink();
 
-      redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: emptySession(),
         cacheInvalidationSink: sink,
       );
@@ -248,7 +248,7 @@ void main() {
     });
 
     test('redo no-op returns zero cache invalidation result', () {
-      final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: emptySession(),
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
@@ -261,12 +261,12 @@ void main() {
         emptySession(),
         FakeCacheInvalidationSink(),
       );
-      final undone = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final undone = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
       final sink = FakeCacheInvalidationSink();
-      final result = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final result = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: undone.sessionState,
         cacheInvalidationSink: sink,
       );
@@ -286,22 +286,22 @@ void main() {
           layerId: layerId,
           frameId: frameId,
         );
-        final undone = undoLatestBrushEditInSessionState(
+        final undone = undoLatestBrushBitmapMaterializationInSessionState(
           sessionState: sessionStateFromCommitResult(committed),
         );
         final sessionState = sessionStateFromUndoResult(undone);
-        final normal = redoLatestBrushEditInSessionState(
+        final normal = redoLatestBrushBitmapMaterializationInSessionState(
           sessionState: sessionState,
         );
         final cacheAware =
-            redoLatestBrushEditInSessionStateWithCacheInvalidation(
+            redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
               sessionState: sessionState,
               cacheInvalidationSink: FakeCacheInvalidationSink(),
             );
 
         expect(cacheAware.kind, BrushEditSessionOperationKind.redo);
         expect(cacheAware.sessionState, sessionStateFromRedoResult(normal));
-        expect(cacheAware.affectedEntry, normal.redoneEntry);
+        expect(cacheAware.affectedEntry, normal.redoneMaterializationEntry);
       },
     );
 
@@ -329,11 +329,11 @@ void main() {
         emptySession(),
         FakeCacheInvalidationSink(),
       );
-      final undone = undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final undone = undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
-      final redone = redoLatestBrushEditInSessionStateWithCacheInvalidation(
+      final redone = redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: undone.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
@@ -364,15 +364,15 @@ void main() {
       expect(sessionState.canvasState.lastEdit, isNull);
     });
 
-    test('input BrushEditHistoryState is not mutated', () {
+    test('input BrushBitmapMaterializationHistoryState is not mutated', () {
       final sessionState = emptySession();
-      final historyState = sessionState.historyState;
+      final materializationHistoryState = sessionState.materializationHistoryState;
 
       commitChanged(sessionState, FakeCacheInvalidationSink());
 
-      expect(identical(sessionState.historyState, historyState), isTrue);
-      expect(sessionState.historyState.undoEntries, isEmpty);
-      expect(sessionState.historyState.redoEntries, isEmpty);
+      expect(identical(sessionState.materializationHistoryState, materializationHistoryState), isTrue);
+      expect(sessionState.materializationHistoryState.undoEntries, isEmpty);
+      expect(sessionState.materializationHistoryState.redoEntries, isEmpty);
     });
 
     test('CacheInvalidationPlan is not mutated', () {
@@ -383,7 +383,7 @@ void main() {
       final plan = committed.affectedEntry!.cacheInvalidationPlan;
       final before = plan.toJson();
 
-      undoLatestBrushEditInSessionStateWithCacheInvalidation(
+      undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
         sessionState: committed.sessionState,
         cacheInvalidationSink: FakeCacheInvalidationSink(),
       );
@@ -408,11 +408,11 @@ void main() {
         isA<Function>(),
       );
       expect(
-        undoLatestBrushEditInSessionStateWithCacheInvalidation,
+        undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation,
         isA<Function>(),
       );
       expect(
-        redoLatestBrushEditInSessionStateWithCacheInvalidation,
+        redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation,
         isA<Function>(),
       );
     });

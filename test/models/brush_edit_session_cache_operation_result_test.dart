@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_entry.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_entry.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
@@ -28,7 +28,7 @@ void main() {
           tileSize: 2,
         ),
       ),
-      historyState: BrushEditHistoryState(),
+      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
     );
 
     BrushDabSequence sequence() => BrushDabSequence([
@@ -45,7 +45,7 @@ void main() {
       ),
     ]);
 
-    BrushEditHistoryEntry entry() {
+    BrushBitmapMaterializationHistoryEntry entry() {
       return commitBrushDabSequenceToBrushEditSessionState(
         sessionState: session(),
         sequence: sequence(),
@@ -73,7 +73,7 @@ void main() {
     BrushEditSessionCacheOperationResult result({
       BrushEditSessionOperationKind kind = BrushEditSessionOperationKind.commit,
       BrushEditSessionState? sessionState,
-      BrushEditHistoryEntry? affectedEntry,
+      BrushBitmapMaterializationHistoryEntry? affectedEntry,
       CacheInvalidationExecutionResult? cacheInvalidationResult,
     }) {
       return BrushEditSessionCacheOperationResult(

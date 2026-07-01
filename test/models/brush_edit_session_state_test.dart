@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -11,7 +11,7 @@ import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_commit.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_undo_service.dart';
+import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_undo_service.dart';
 
 void main() {
   group('BrushEditSessionState', () {
@@ -37,67 +37,67 @@ void main() {
       ),
     ]);
 
-    test('stores canvasState and historyState', () {
+    test('stores canvasState and materializationHistoryState', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final historyState = BrushEditHistoryState();
+      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
       final state = BrushEditSessionState(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
       );
 
       expect(state.canvasState, canvasState);
-      expect(state.historyState, historyState);
+      expect(state.materializationHistoryState, materializationHistoryState);
     });
 
-    test('canUndo delegates to historyState.canUndo', () {
+    test('canUndo delegates to materializationHistoryState.canUndo', () {
       final committed = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
       final state = BrushEditSessionState(
         canvasState: committed.canvasState,
-        historyState: committed.historyState,
+        materializationHistoryState: committed.materializationHistoryState,
       );
 
-      expect(state.canUndo, committed.historyState.canUndo);
+      expect(state.canUndo, committed.materializationHistoryState.canUndo);
       expect(state.canUndo, isTrue);
     });
 
-    test('canRedo delegates to historyState.canRedo', () {
+    test('canRedo delegates to materializationHistoryState.canRedo', () {
       final committed = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
-      final undone = undoLatestBrushEdit(
+      final undone = undoLatestBrushBitmapMaterialization(
         canvasState: committed.canvasState,
-        historyState: committed.historyState,
+        materializationHistoryState: committed.materializationHistoryState,
       );
       final state = BrushEditSessionState(
         canvasState: undone.canvasState,
-        historyState: undone.historyState,
+        materializationHistoryState: undone.materializationHistoryState,
       );
 
-      expect(state.canRedo, undone.historyState.canRedo);
+      expect(state.canRedo, undone.materializationHistoryState.canRedo);
       expect(state.canRedo, isTrue);
     });
 
     test('hasLastEdit delegates to canvasState.hasLastEdit', () {
       final committed = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
       final state = BrushEditSessionState(
         canvasState: committed.canvasState,
-        historyState: committed.historyState,
+        materializationHistoryState: committed.materializationHistoryState,
       );
 
       expect(state.hasLastEdit, committed.canvasState.hasLastEdit);
@@ -107,7 +107,7 @@ void main() {
     test('copyWith preserves omitted values', () {
       final state = BrushEditSessionState(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
       );
 
       expect(state.copyWith(), state);
@@ -116,7 +116,7 @@ void main() {
     test('copyWith updates canvasState', () {
       final state = BrushEditSessionState(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
       );
       final nextCanvas = CanvasSurfaceState(
         currentSurface: surface(width: 8, height: 8),
@@ -124,51 +124,51 @@ void main() {
 
       expect(state.copyWith(canvasState: nextCanvas).canvasState, nextCanvas);
       expect(
-        state.copyWith(canvasState: nextCanvas).historyState,
-        state.historyState,
+        state.copyWith(canvasState: nextCanvas).materializationHistoryState,
+        state.materializationHistoryState,
       );
     });
 
-    test('copyWith updates historyState', () {
+    test('copyWith updates materializationHistoryState', () {
       final committed = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         sequence: changedSequence(),
         layerId: layerId,
         frameId: frameId,
       );
       final state = BrushEditSessionState(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
       );
 
       expect(
-        state.copyWith(historyState: committed.historyState).historyState,
-        committed.historyState,
+        state.copyWith(materializationHistoryState: committed.materializationHistoryState).materializationHistoryState,
+        committed.materializationHistoryState,
       );
       expect(
-        state.copyWith(historyState: committed.historyState).canvasState,
+        state.copyWith(materializationHistoryState: committed.materializationHistoryState).canvasState,
         state.canvasState,
       );
     });
 
     test('equality / hashCode / toString', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final historyState = BrushEditHistoryState();
+      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
       final a = BrushEditSessionState(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
       );
       final b = BrushEditSessionState(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
       );
 
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a.toString(), contains('BrushEditSessionState'));
       expect(a.toString(), contains('canvasState'));
-      expect(a.toString(), contains('historyState'));
+      expect(a.toString(), contains('materializationHistoryState'));
     });
   });
 }

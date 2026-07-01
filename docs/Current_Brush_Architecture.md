@@ -206,3 +206,14 @@ BrushWorkspaceCacheInvalidationSink is no longer tied to deleted BrushWorkspaceS
 ### Phase 209 BrushEditCacheInvalidationSink runtime rename
 
 Renamed BrushWorkspaceCacheInvalidationSink to BrushEditCacheInvalidationSink. Renamed brush_workspace_cache_invalidation_sink.dart to brush_edit_cache_invalidation_sink.dart. Updated production imports to use BrushEditCacheInvalidationSink. Updated tests to use BrushEditCacheInvalidationSink. Kept cache invalidation semantics unchanged.
+
+## Phase 213B source-of-truth boundary note
+
+Runtime naming now separates production user-facing brush undo from the temporary bitmap materialization bridge:
+
+- `UnifiedUndoHistory` is the production-facing global user undo/redo order.
+- `UndoPayloadRef.paintCommand` points user undo entries at brush paint-command payloads.
+- `BrushFrameStore` owns frame-local brush payload movement for live, hidden-by-undo, deferred-bake, and baked paint commands.
+- `BrushPaintCommand` is the brush command identity / payload boundary and carries a minimal internal `materializationRef` bridge to the current bitmap materialization payload while full persistence/deferred bake payload design remains future work.
+- `BrushBitmapMaterializationHistoryState` and `BrushBitmapMaterializationHistoryEntry` are internal session-local bitmap materialization helpers only; they are not user-facing brush undo source of truth.
+- `BrushCommitResult` remains an internal before/after `BitmapSurface` materialization bridge only; it is not durable brush command history.

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/brush_edit_history_state.dart';
+import '../../models/brush_bitmap_materialization_history_state.dart';
 import '../../models/brush_edit_session_cache_operation_result.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_size.dart';
@@ -48,7 +48,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
             tileSize: tileSize,
           ),
         ),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
       ),
       layerId: layerId,
       frameId: frameId,

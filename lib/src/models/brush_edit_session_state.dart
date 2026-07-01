@@ -1,28 +1,28 @@
-import 'brush_edit_history_state.dart';
+import 'brush_bitmap_materialization_history_state.dart';
 import 'canvas_surface_state.dart';
 
 class BrushEditSessionState {
   BrushEditSessionState({
     required this.canvasState,
-    required this.historyState,
+    required this.materializationHistoryState,
   });
 
   final CanvasSurfaceState canvasState;
-  final BrushEditHistoryState historyState;
+  final BrushBitmapMaterializationHistoryState materializationHistoryState;
 
-  bool get canUndo => historyState.canUndo;
+  bool get canUndo => materializationHistoryState.canUndo;
 
-  bool get canRedo => historyState.canRedo;
+  bool get canRedo => materializationHistoryState.canRedo;
 
   bool get hasLastEdit => canvasState.hasLastEdit;
 
   BrushEditSessionState copyWith({
     CanvasSurfaceState? canvasState,
-    BrushEditHistoryState? historyState,
+    BrushBitmapMaterializationHistoryState? materializationHistoryState,
   }) {
     return BrushEditSessionState(
       canvasState: canvasState ?? this.canvasState,
-      historyState: historyState ?? this.historyState,
+      materializationHistoryState: materializationHistoryState ?? this.materializationHistoryState,
     );
   }
 
@@ -31,13 +31,13 @@ class BrushEditSessionState {
       identical(this, other) ||
       other is BrushEditSessionState &&
           other.canvasState == canvasState &&
-          other.historyState == historyState;
+          other.materializationHistoryState == materializationHistoryState;
 
   @override
-  int get hashCode => Object.hash(canvasState, historyState);
+  int get hashCode => Object.hash(canvasState, materializationHistoryState);
 
   @override
   String toString() =>
       'BrushEditSessionState(canvasState: $canvasState, '
-      'historyState: $historyState)';
+      'materializationHistoryState: $materializationHistoryState)';
 }

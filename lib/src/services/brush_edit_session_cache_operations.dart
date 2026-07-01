@@ -38,46 +38,46 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
 }
 
 BrushEditSessionCacheOperationResult
-undoLatestBrushEditInSessionStateWithCacheInvalidation({
+undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
   required BrushEditSessionState sessionState,
   required CacheInvalidationSink cacheInvalidationSink,
 }) {
-  final undoResult = undoLatestBrushEditInSessionState(
+  final undoResult = undoLatestBrushBitmapMaterializationInSessionState(
     sessionState: sessionState,
   );
-  final undoneEntry = undoResult.undoneEntry;
+  final undoneMaterializationEntry = undoResult.undoneMaterializationEntry;
 
   return BrushEditSessionCacheOperationResult(
     kind: BrushEditSessionOperationKind.undo,
     sessionState: sessionStateFromUndoResult(undoResult),
-    affectedEntry: undoneEntry,
-    cacheInvalidationResult: undoneEntry == null
+    affectedEntry: undoneMaterializationEntry,
+    cacheInvalidationResult: undoneMaterializationEntry == null
         ? _zeroCacheInvalidationResult()
         : executeCacheInvalidationPlan(
-            plan: undoneEntry.cacheInvalidationPlan,
+            plan: undoneMaterializationEntry.cacheInvalidationPlan,
             sink: cacheInvalidationSink,
           ),
   );
 }
 
 BrushEditSessionCacheOperationResult
-redoLatestBrushEditInSessionStateWithCacheInvalidation({
+redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
   required BrushEditSessionState sessionState,
   required CacheInvalidationSink cacheInvalidationSink,
 }) {
-  final redoResult = redoLatestBrushEditInSessionState(
+  final redoResult = redoLatestBrushBitmapMaterializationInSessionState(
     sessionState: sessionState,
   );
-  final redoneEntry = redoResult.redoneEntry;
+  final redoneMaterializationEntry = redoResult.redoneMaterializationEntry;
 
   return BrushEditSessionCacheOperationResult(
     kind: BrushEditSessionOperationKind.redo,
     sessionState: sessionStateFromRedoResult(redoResult),
-    affectedEntry: redoneEntry,
-    cacheInvalidationResult: redoneEntry == null
+    affectedEntry: redoneMaterializationEntry,
+    cacheInvalidationResult: redoneMaterializationEntry == null
         ? _zeroCacheInvalidationResult()
         : executeCacheInvalidationPlan(
-            plan: redoneEntry.cacheInvalidationPlan,
+            plan: redoneMaterializationEntry.cacheInvalidationPlan,
             sink: cacheInvalidationSink,
           ),
   );

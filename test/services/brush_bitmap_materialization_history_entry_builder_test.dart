@@ -11,11 +11,11 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/brush_commit_result_revert.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_history_entry_builder.dart';
+import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_history_entry_builder.dart';
 import 'package:quick_animaker_v2/src/services/brush_surface_edit_builder.dart';
 
 void main() {
-  group('brushEditHistoryEntryFromBrushSurfaceEdit', () {
+  group('brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
@@ -73,7 +73,7 @@ void main() {
 
     test('returns null for no-op BrushSurfaceEdit', () {
       expect(
-        brushEditHistoryEntryFromBrushSurfaceEdit(
+        brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
           edit: noOpEdit(source: surface()),
           layerId: layerId,
           frameId: frameId,
@@ -82,9 +82,9 @@ void main() {
       );
     });
 
-    test('returns BrushEditHistoryEntry for changed BrushSurfaceEdit', () {
+    test('returns BrushBitmapMaterializationHistoryEntry for changed BrushSurfaceEdit', () {
       final edit = changedEdit(source: surface());
-      final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+      final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
         edit: edit,
         layerId: layerId,
         frameId: frameId,
@@ -98,7 +98,7 @@ void main() {
       final edit = changedEdit(source: surface());
       const customLayerId = LayerId('custom-layer');
       const customFrameId = FrameId('custom-frame');
-      final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+      final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
         edit: edit,
         layerId: customLayerId,
         frameId: customFrameId,
@@ -110,7 +110,7 @@ void main() {
 
     test('entry dirtyTiles and changedTileCount mirror edit commitResult', () {
       final edit = changedEdit(source: surface());
-      final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+      final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
         edit: edit,
         layerId: layerId,
         frameId: frameId,
@@ -124,7 +124,7 @@ void main() {
       'entry can revert applied surface using commitResult through existing revert service',
       () {
         final edit = changedEdit(source: surface());
-        final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+        final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
           edit: edit,
           layerId: layerId,
           frameId: frameId,
@@ -148,7 +148,7 @@ void main() {
         final beforeSurface = edit.beforeSurface.copyWith();
         final afterSurface = edit.afterSurface.copyWith();
 
-        brushEditHistoryEntryFromBrushSurfaceEdit(
+        brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
           edit: edit,
           layerId: layerId,
           frameId: frameId,
@@ -166,7 +166,7 @@ void main() {
       () {
         final edit = changedEdit(source: surface());
         final keyCount = edit.commitResult.cacheInvalidationPlan.totalKeyCount;
-        final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+        final entry = brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
           edit: edit,
           layerId: layerId,
           frameId: frameId,

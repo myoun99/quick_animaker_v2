@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_entry.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_history_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_entry.dart';
+import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_commit_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -11,7 +11,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_history_entry_builder.dart';
+import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_history_entry_builder.dart';
 import 'package:quick_animaker_v2/src/services/brush_surface_edit_builder.dart';
 
 void main() {
@@ -36,39 +36,39 @@ void main() {
       sequence: 0,
     );
 
-    BrushEditHistoryEntry entry() {
+    BrushBitmapMaterializationHistoryEntry entry() {
       final edit = brushSurfaceEditForBrushDabSequenceOnBitmapSurface(
         surface: surface(),
         sequence: BrushDabSequence([dab()]),
         layerId: layerId,
         frameId: frameId,
       );
-      return brushEditHistoryEntryFromBrushSurfaceEdit(
+      return brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
         edit: edit,
         layerId: layerId,
         frameId: frameId,
       )!;
     }
 
-    test('stores canvasState, historyState, historyEntry', () {
+    test('stores canvasState, materializationHistoryState, historyEntry', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
-      final historyState = BrushEditHistoryState();
+      final materializationHistoryState = BrushBitmapMaterializationHistoryState();
       final historyEntry = entry();
       final result = BrushEditSessionCommitResult(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
         historyEntry: historyEntry,
       );
 
       expect(result.canvasState, canvasState);
-      expect(result.historyState, historyState);
+      expect(result.materializationHistoryState, materializationHistoryState);
       expect(result.historyEntry, historyEntry);
     });
 
     test('didCommit false when historyEntry is null', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: null,
       );
 
@@ -78,7 +78,7 @@ void main() {
     test('didCommit true when historyEntry is non-null', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: entry(),
       );
 
@@ -88,7 +88,7 @@ void main() {
     test('copyWith preserves omitted values', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: entry(),
       );
 
@@ -98,7 +98,7 @@ void main() {
     test('copyWith updates canvasState', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: null,
       );
       final nextCanvas = CanvasSurfaceState(
@@ -108,16 +108,16 @@ void main() {
       expect(result.copyWith(canvasState: nextCanvas).canvasState, nextCanvas);
     });
 
-    test('copyWith updates historyState', () {
+    test('copyWith updates materializationHistoryState', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: null,
       );
-      final nextHistory = BrushEditHistoryState(undoEntries: [entry()]);
+      final nextHistory = BrushBitmapMaterializationHistoryState(undoEntries: [entry()]);
 
       expect(
-        result.copyWith(historyState: nextHistory).historyState,
+        result.copyWith(materializationHistoryState: nextHistory).materializationHistoryState,
         nextHistory,
       );
     });
@@ -125,7 +125,7 @@ void main() {
     test('copyWith can set historyEntry', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: null,
       );
       final historyEntry = entry();
@@ -139,7 +139,7 @@ void main() {
     test('copyWith can clear historyEntry with null', () {
       final result = BrushEditSessionCommitResult(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
-        historyState: BrushEditHistoryState(),
+        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
         historyEntry: entry(),
       );
 
@@ -149,15 +149,15 @@ void main() {
     test('equality / hashCode / toString', () {
       final canvasState = CanvasSurfaceState(currentSurface: surface());
       final historyEntry = entry();
-      final historyState = BrushEditHistoryState(undoEntries: [historyEntry]);
+      final materializationHistoryState = BrushBitmapMaterializationHistoryState(undoEntries: [historyEntry]);
       final a = BrushEditSessionCommitResult(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
         historyEntry: historyEntry,
       );
       final b = BrushEditSessionCommitResult(
         canvasState: canvasState,
-        historyState: historyState,
+        materializationHistoryState: materializationHistoryState,
         historyEntry: historyEntry,
       );
 
