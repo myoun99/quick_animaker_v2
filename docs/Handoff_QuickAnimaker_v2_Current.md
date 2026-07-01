@@ -110,6 +110,10 @@ Before working on a module, read the matching Current document directly rather t
 
 `Current_*` documents are the source of truth for current policy. Old phase/task docs remain historical records and must not override the matching Current document.
 
-## 7. Latest continuation note
+## 7. Documentation test rule
 
-Phase 212C slimmed handoff section 5+ into a lightweight Current-doc entry point. Continue from `docs/Current_Docs_Index.md` and the relevant `Current_*` document before planning runtime work.
+Documentation and handoff tests should protect stable project rules, not exact long-term memo wording. Prefer tests for file existence, Current-doc links, lightweight handoff shape, and forbidden runtime architecture reintroduction. Do not make tests fail only because policy wording or continuation notes were rewritten.
+
+## 8. Latest continuation note
+
+Phase 213A removed TileDelta / TileDeltaCommand from brush runtime boundaries. Follow-up relaxed brittle documentation tests so Current docs and handoff notes can evolve without preserving exact old sentences.
