@@ -11,6 +11,7 @@
 - Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
+- UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
 
 ## AI reading rule
 
@@ -25,6 +26,7 @@ Useful current content was moved into the `Current_*` documents and obsolete non
 - `docs/Active_Cut_State_Design.md`, `docs/Cut_Management_Policy.md` -> `docs/Current_Cut_Management_Architecture.md`
 - `docs/Timeline_Stabilization_Checkpoint.md`, `docs/LongTerm_Timeline_Range_Semantics.md`, `docs/LongTerm_Roadmap_After_Phase_150.md` -> `docs/Current_Timeline_Architecture.md`, `docs/Current_Canvas_Cache_Storage_Architecture.md`, and `docs/Current_Implementation_Roadmap.md`
 - `docs/Storyboard_Work_Roadmap.md` -> `docs/Current_Storyboard_Architecture.md` and `docs/Current_Implementation_Roadmap.md`
+- Compact production-tool UI principles are preserved in `docs/Current_UI_Product_Policy.md`.
 
 ## Current-doc maintenance rule
 
