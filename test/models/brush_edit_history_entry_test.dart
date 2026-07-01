@@ -1,152 +1,157 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_commit_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_history_entry.dart';
 import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta_command.dart';
 
 void main() {
   group('BrushEditHistoryEntry', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapTile tile(int x, int y) {
-      return BitmapTile.blank(
-        coord: TileCoord(x: x, y: y),
-        size: 2,
+    BitmapSurface surface({bool withTile = false, int tileX = 0}) {
+      final coord = TileCoord(x: tileX, y: 0);
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: 4, height: 4),
+        tileSize: 2,
+        tiles: withTile
+            ? {coord: BitmapTile.blank(coord: coord, size: 2)}
+            : const {},
       );
     }
 
-    BrushCommitResult resultForCoords(List<TileCoord> coords) {
-      final command = TileDeltaCommand(
-        deltas: coords.map(
-          (coord) => TileDelta.created(tile(coord.x, coord.y)),
-        ),
-      );
+    BrushCommitResult changedResult({
+      BitmapSurface? beforeSurface,
+      BitmapSurface? afterSurface,
+      DirtyTileSet? dirtyTiles,
+      LayerId layer = layerId,
+      FrameId frame = frameId,
+    }) {
+      final before = beforeSurface ?? surface();
+      final after = afterSurface ?? surface(withTile: true);
+      final tiles = dirtyTiles ?? DirtyTileSet([TileCoord(x: 0, y: 0)]);
       return BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: CacheInvalidationPlan.fromTileDeltaCommand(
-          layerId: layerId,
-          frameId: frameId,
-          command: command,
+        beforeSurface: before,
+        afterSurface: after,
+        dirtyTiles: tiles,
+        cacheInvalidationPlan: CacheInvalidationPlan.fromDirtyTiles(
+          layerId: layer,
+          frameId: frame,
+          dirtyTiles: tiles,
         ),
       );
     }
 
-    BrushEditHistoryEntry entryFor(BrushCommitResult result) {
+    BrushEditHistoryEntry entry({
+      LayerId layer = layerId,
+      FrameId frame = frameId,
+      BrushCommitResult? commitResult,
+    }) {
       return BrushEditHistoryEntry(
-        layerId: layerId,
-        frameId: frameId,
-        commitResult: result,
+        layerId: layer,
+        frameId: frame,
+        commitResult: commitResult ?? changedResult(layer: layer, frame: frame),
       );
     }
 
     test('stores layerId, frameId, and commitResult', () {
-      final result = resultForCoords([TileCoord(x: 0, y: 0)]);
-      final entry = entryFor(result);
+      final commit = changedResult();
+      final historyEntry = entry(commitResult: commit);
 
-      expect(entry.layerId, layerId);
-      expect(entry.frameId, frameId);
-      expect(entry.commitResult, result);
+      expect(historyEntry.layerId, layerId);
+      expect(historyEntry.frameId, frameId);
+      expect(historyEntry.commitResult, commit);
     });
 
-    test('rejects no-op commitResult', () {
+    test('rejects no-op BrushCommitResult', () {
+      final original = surface();
+
       expect(
         () => BrushEditHistoryEntry(
           layerId: layerId,
           frameId: frameId,
-          commitResult: BrushCommitResult.noOp(),
+          commitResult: BrushCommitResult.noOp(surface: original),
         ),
         throwsArgumentError,
       );
     });
 
-    test('command getter returns commitResult.command', () {
-      final result = resultForCoords([TileCoord(x: 0, y: 0)]);
-      expect(entryFor(result).command, result.command);
+    test('cacheInvalidationPlan getter delegates to commitResult', () {
+      final commit = changedResult();
+      final historyEntry = entry(commitResult: commit);
+
+      expect(historyEntry.cacheInvalidationPlan, commit.cacheInvalidationPlan);
     });
 
-    test(
-      'cacheInvalidationPlan getter returns commitResult.cacheInvalidationPlan',
-      () {
-        final result = resultForCoords([TileCoord(x: 0, y: 0)]);
-        expect(
-          entryFor(result).cacheInvalidationPlan,
-          result.cacheInvalidationPlan,
-        );
-      },
-    );
+    test('dirtyTiles getter delegates to commitResult', () {
+      final commit = changedResult();
+      final historyEntry = entry(commitResult: commit);
 
-    test('dirtyTiles getter returns command.dirtyTiles', () {
-      final entry = entryFor(resultForCoords([TileCoord(x: 0, y: 0)]));
-      expect(entry.dirtyTiles, entry.command.dirtyTiles);
+      expect(historyEntry.dirtyTiles, commit.dirtyTiles);
     });
 
-    test('changedTileCount getter returns command.length', () {
-      final entry = entryFor(
-        resultForCoords([TileCoord(x: 0, y: 0), TileCoord(x: 1, y: 0)]),
+    test('changedTileCount delegates to commitResult', () {
+      final commit = changedResult(
+        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0), TileCoord(x: 1, y: 0)]),
       );
-      expect(entry.changedTileCount, entry.command.length);
+      final historyEntry = entry(commitResult: commit);
+
+      expect(historyEntry.changedTileCount, commit.changedTileCount);
     });
 
     test('copyWith preserves omitted values', () {
-      final entry = entryFor(resultForCoords([TileCoord(x: 0, y: 0)]));
-      expect(entry.copyWith(), entry);
+      final original = entry();
+      final copied = original.copyWith();
+
+      expect(copied.layerId, original.layerId);
+      expect(copied.frameId, original.frameId);
+      expect(copied.commitResult, original.commitResult);
     });
 
-    test('copyWith updates layerId', () {
-      final entry = entryFor(resultForCoords([TileCoord(x: 0, y: 0)]));
-      expect(
-        entry.copyWith(layerId: LayerId('layer-b')).layerId,
-        LayerId('layer-b'),
+    test('copyWith updates layerId, frameId, and commitResult', () {
+      final original = entry();
+      const nextLayerId = LayerId('layer-b');
+      const nextFrameId = FrameId('frame-b');
+      final nextCommit = changedResult(
+        afterSurface: surface(withTile: true, tileX: 1),
+        dirtyTiles: DirtyTileSet([TileCoord(x: 1, y: 0)]),
+        layer: nextLayerId,
+        frame: nextFrameId,
       );
-    });
 
-    test('copyWith updates frameId', () {
-      final entry = entryFor(resultForCoords([TileCoord(x: 0, y: 0)]));
-      expect(
-        entry.copyWith(frameId: FrameId('frame-b')).frameId,
-        FrameId('frame-b'),
+      final copied = original.copyWith(
+        layerId: nextLayerId,
+        frameId: nextFrameId,
+        commitResult: nextCommit,
       );
+
+      expect(copied.layerId, nextLayerId);
+      expect(copied.frameId, nextFrameId);
+      expect(copied.commitResult, nextCommit);
     });
 
-    test('copyWith updates commitResult', () {
-      final entry = entryFor(resultForCoords([TileCoord(x: 0, y: 0)]));
-      final other = resultForCoords([TileCoord(x: 1, y: 0)]);
-      expect(entry.copyWith(commitResult: other).commitResult, other);
+    test('equality and hashCode compare value fields', () {
+      final commit = changedResult();
+      final a = entry(commitResult: commit);
+      final b = entry(commitResult: commit);
+
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
     });
 
-    test('equality compares layerId, frameId, and commitResult', () {
-      final result = resultForCoords([TileCoord(x: 0, y: 0)]);
-      expect(entryFor(result), entryFor(result));
-      expect(
-        entryFor(result),
-        isNot(entryFor(resultForCoords([TileCoord(x: 1, y: 0)]))),
-      );
-    });
+    test('toString describes history entry without command payload', () {
+      final historyEntry = entry();
 
-    test('hashCode matches equality', () {
-      final result = resultForCoords([TileCoord(x: 0, y: 0)]);
-      expect(entryFor(result).hashCode, entryFor(result).hashCode);
-    });
-
-    test('toString contains useful class name', () {
-      expect(
-        entryFor(resultForCoords([TileCoord(x: 0, y: 0)])).toString(),
-        contains('BrushEditHistoryEntry'),
-      );
-    });
-
-    test('does not contain beforeSurface or afterSurface fields', () {
-      final text = entryFor(
-        resultForCoords([TileCoord(x: 0, y: 0)]),
-      ).toString();
-      expect(text, isNot(contains('beforeSurface')));
-      expect(text, isNot(contains('afterSurface')));
+      expect(historyEntry.toString(), contains('BrushEditHistoryEntry'));
+      expect(historyEntry.toString(), contains('layerId'));
+      expect(historyEntry.toString(), contains('frameId'));
+      expect(historyEntry.toString(), isNot(contains('TileDeltaCommand')));
     });
   });
 }

@@ -50,7 +50,7 @@ Do not add project-level material/source ownership as a shortcut before brush/ca
 
 ## Future implementation direction
 
-- Dirty flags, dirty regions, and dirty tiles are future cache invalidation concepts.
+- Dirty flags, dirty regions, and dirty tiles are cache invalidation concepts; brush cache invalidation must use dirty-region/dirty-tile boundaries rather than TileDelta / TileDeltaCommand.
 - Sparse tile allocation is the preferred future storage direction.
 - Do not eagerly allocate every tile in every frame or layer.
 - Cache invalidation should be explicit enough to rebuild derived previews/composites without making cache images durable source data.
@@ -60,6 +60,4 @@ Do not add project-level material/source ownership as a shortcut before brush/ca
 
 ## Tile delta wording
 
-Tile delta is not the current user-facing brush undo policy. Tile delta may appear only as a legacy implementation detail, possible low-level optimization, or internal bitmap mutation/storage detail. Do not describe tile delta as current user-facing undo.
-
-Tile delta is not the current user-facing undo source. Tile delta may remain only as a low-level bitmap mutation/storage detail or optimization if a future implementation needs it.
+TileDelta / TileDeltaCommand are not current brush runtime architecture. They must not be used as brush commit results, brush undo/redo payloads, brush edit history entries, or cache-invalidation inputs. Sparse tile storage remains valid; dirty-region/dirty-tile APIs are the cache invalidation boundary.

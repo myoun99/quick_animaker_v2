@@ -109,7 +109,7 @@ void main() {
     });
 
     test(
-      'entry command, dirtyTiles, and changedTileCount mirror edit commitResult',
+      'entry dirtyTiles and changedTileCount mirror edit commitResult',
       () {
         final edit = changedEdit(source: surface());
         final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
@@ -118,7 +118,6 @@ void main() {
           frameId: frameId,
         )!;
 
-        expect(entry.command, edit.commitResult.command);
         expect(entry.dirtyTiles, edit.commitResult.dirtyTiles);
         expect(entry.changedTileCount, edit.commitResult.changedTileCount);
       },

@@ -1,258 +1,139 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_commit_result.dart';
 import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta_command.dart';
 
 void main() {
   group('BrushCommitResult', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapTile tile(int x, int y) {
-      return BitmapTile.blank(
-        coord: TileCoord(x: x, y: y),
-        size: 2,
+    BitmapSurface surface({int width = 4, int height = 4, int tileSize = 2}) {
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: width, height: height),
+        tileSize: tileSize,
       );
     }
 
-    TileDeltaCommand commandForCoords(List<TileCoord> coords) {
-      return TileDeltaCommand(
-        deltas: coords.map(
-          (coord) => TileDelta.created(tile(coord.x, coord.y)),
-        ),
-      );
+    DirtyTileSet dirtyTiles([Iterable<TileCoord>? coords]) {
+      return DirtyTileSet(coords ?? [TileCoord(x: 0, y: 0)]);
     }
 
-    CacheInvalidationPlan planForCommand(TileDeltaCommand command) {
-      return CacheInvalidationPlan.fromTileDeltaCommand(
+    CacheInvalidationPlan planFor(DirtyTileSet tiles) {
+      return CacheInvalidationPlan.fromDirtyTiles(
         layerId: layerId,
         frameId: frameId,
-        command: command,
+        dirtyTiles: tiles,
       );
     }
 
-    test('noOp creates null command and empty cache invalidation plan', () {
-      final result = BrushCommitResult.noOp();
+    test('noOp(surface:) stores beforeSurface and afterSurface as same surface', () {
+      final original = surface();
+      final result = BrushCommitResult.noOp(surface: original);
 
-      expect(result.command, isNull);
+      expect(result.beforeSurface, original);
+      expect(result.afterSurface, original);
+      expect(identical(result.beforeSurface, result.afterSurface), isTrue);
+    });
+
+    test('noOp(surface:) has empty DirtyTileSet and CacheInvalidationPlan', () {
+      final result = BrushCommitResult.noOp(surface: surface());
+
+      expect(result.dirtyTiles.isEmpty, isTrue);
       expect(result.cacheInvalidationPlan.isEmpty, isTrue);
+      expect(result.hasChanges, isFalse);
+      expect(result.isNoOp, isTrue);
     });
 
-    test('noOp hasChanges is false', () {
-      expect(BrushCommitResult.noOp().hasChanges, isFalse);
-    });
-
-    test('noOp isNoOp is true', () {
-      expect(BrushCommitResult.noOp().isNoOp, isTrue);
-    });
-
-    test('noOp changedTileCount is 0', () {
-      expect(BrushCommitResult.noOp().changedTileCount, 0);
-    });
-
-    test('noOp dirtyTiles is empty', () {
-      expect(BrushCommitResult.noOp().dirtyTiles.isEmpty, isTrue);
-    });
-
-    test('changed stores command and cache invalidation plan', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-      final plan = planForCommand(command);
+    test('changed stores surfaces, DirtyTileSet, and CacheInvalidationPlan', () {
+      final before = surface();
+      final after = before.copyWith();
+      final tiles = dirtyTiles();
+      final plan = planFor(tiles);
 
       final result = BrushCommitResult.changed(
-        command: command,
+        beforeSurface: before,
+        afterSurface: after,
+        dirtyTiles: tiles,
         cacheInvalidationPlan: plan,
       );
 
-      expect(result.command, command);
+      expect(result.beforeSurface, before);
+      expect(result.afterSurface, after);
+      expect(result.dirtyTiles, tiles);
       expect(result.cacheInvalidationPlan, plan);
+      expect(result.hasChanges, isTrue);
     });
 
-    test('changed hasChanges is true', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
+    test('changedTileCount equals dirtyTiles.length', () {
+      final before = surface();
+      final tiles = dirtyTiles([TileCoord(x: 0, y: 0), TileCoord(x: 1, y: 0)]);
+      final result = BrushCommitResult.changed(
+        beforeSurface: before,
+        afterSurface: before.copyWith(),
+        dirtyTiles: tiles,
+        cacheInvalidationPlan: planFor(tiles),
+      );
+
+      expect(result.changedTileCount, tiles.length);
+    });
+
+    test('rejects empty dirtyTiles with non-empty cacheInvalidationPlan', () {
       expect(
-        BrushCommitResult.changed(
-          command: command,
-          cacheInvalidationPlan: planForCommand(command),
-        ).hasChanges,
-        isTrue,
+        () => BrushCommitResult(
+          beforeSurface: surface(),
+          afterSurface: surface(),
+          dirtyTiles: DirtyTileSet.empty(),
+          cacheInvalidationPlan: planFor(dirtyTiles()),
+        ),
+        throwsArgumentError,
       );
     });
 
-    test('changed isNoOp is false', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
+    test('rejects non-empty dirtyTiles with empty cacheInvalidationPlan', () {
       expect(
-        BrushCommitResult.changed(
-          command: command,
-          cacheInvalidationPlan: planForCommand(command),
-        ).isNoOp,
-        isFalse,
+        () => BrushCommitResult(
+          beforeSurface: surface(),
+          afterSurface: surface(),
+          dirtyTiles: dirtyTiles(),
+          cacheInvalidationPlan: CacheInvalidationPlan.empty(),
+        ),
+        throwsArgumentError,
       );
     });
 
-    test('changedTileCount equals command.length', () {
-      final command = commandForCoords([
-        TileCoord(x: 0, y: 0),
-        TileCoord(x: 1, y: 0),
-      ]);
-      final result = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-
-      expect(result.changedTileCount, command.length);
-    });
-
-    test('dirtyTiles equals command.dirtyTiles', () {
-      final command = commandForCoords([
-        TileCoord(x: 0, y: 0),
-        TileCoord(x: 1, y: 0),
-      ]);
-      final result = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-
-      expect(result.dirtyTiles, command.dirtyTiles);
-    });
-
-    test(
-      'constructor rejects null command with non-empty cache invalidation plan',
-      () {
-        final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-
-        expect(
-          () => BrushCommitResult(
-            command: null,
-            cacheInvalidationPlan: planForCommand(command),
-          ),
-          throwsArgumentError,
-        );
-      },
-    );
-
-    test(
-      'constructor rejects non-null command with empty cache invalidation plan',
-      () {
-        final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-
-        expect(
-          () => BrushCommitResult(
-            command: command,
-            cacheInvalidationPlan: CacheInvalidationPlan.empty(),
-          ),
-          throwsArgumentError,
-        );
-      },
-    );
-
-    test('copyWith preserves existing values when omitted', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-      final result = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-
-      expect(result.copyWith(), result);
-    });
-
-    test(
-      'copyWith can produce noOp when command is explicitly null and plan is empty',
-      () {
-        final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-        final result =
-            BrushCommitResult.changed(
-              command: command,
-              cacheInvalidationPlan: planForCommand(command),
-            ).copyWith(
-              command: null,
-              cacheInvalidationPlan: CacheInvalidationPlan.empty(),
-            );
-
-        expect(result, BrushCommitResult.noOp());
-      },
-    );
-
-    test(
-      'copyWith can produce changed result when command and plan are provided',
-      () {
-        final command = commandForCoords([TileCoord(x: 1, y: 0)]);
-        final plan = planForCommand(command);
-        final result = BrushCommitResult.noOp().copyWith(
-          command: command,
-          cacheInvalidationPlan: plan,
-        );
-
-        expect(
-          result,
-          BrushCommitResult.changed(
-            command: command,
-            cacheInvalidationPlan: plan,
-          ),
-        );
-      },
-    );
-
-    test('toJson/fromJson round trips noOp', () {
-      final result = BrushCommitResult.noOp();
-
-      expect(BrushCommitResult.fromJson(result.toJson()), result);
-      expect(result.toJson()['command'], isNull);
-    });
-
-    test('toJson/fromJson round trips changed result', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-      final result = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-
-      expect(BrushCommitResult.fromJson(result.toJson()), result);
-    });
-
-    test('equality compares command and cacheInvalidationPlan', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
+    test('equality and hashCode compare value fields', () {
+      final before = surface();
+      final after = before.copyWith();
+      final tiles = dirtyTiles();
       final a = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
+        beforeSurface: before,
+        afterSurface: after,
+        dirtyTiles: tiles,
+        cacheInvalidationPlan: planFor(tiles),
       );
       final b = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-      final otherCommand = commandForCoords([TileCoord(x: 1, y: 0)]);
-      final c = BrushCommitResult.changed(
-        command: otherCommand,
-        cacheInvalidationPlan: planForCommand(otherCommand),
+        beforeSurface: before,
+        afterSurface: after,
+        dirtyTiles: tiles,
+        cacheInvalidationPlan: planFor(tiles),
       );
 
       expect(a, b);
-      expect(a, isNot(c));
-    });
-
-    test('hashCode matches equality', () {
-      final command = commandForCoords([TileCoord(x: 0, y: 0)]);
-      final a = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-      final b = BrushCommitResult.changed(
-        command: command,
-        cacheInvalidationPlan: planForCommand(command),
-      );
-
       expect(a.hashCode, b.hashCode);
     });
 
-    test('toString contains useful class name', () {
-      expect(
-        BrushCommitResult.noOp().toString(),
-        contains('BrushCommitResult'),
-      );
+    test('toString describes brush-domain fields without command payload', () {
+      final result = BrushCommitResult.noOp(surface: surface());
+
+      expect(result.toString(), contains('BrushCommitResult'));
+      expect(result.toString(), contains('dirtyTiles'));
+      expect(result.toString(), isNot(contains('TileDeltaCommand')));
     });
   });
 }

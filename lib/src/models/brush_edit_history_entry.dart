@@ -3,7 +3,6 @@ import 'cache_invalidation_plan.dart';
 import 'dirty_tile_set.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
-import 'tile_delta_command.dart';
 
 class BrushEditHistoryEntry {
   BrushEditHistoryEntry({
@@ -22,14 +21,12 @@ class BrushEditHistoryEntry {
   final FrameId frameId;
   final BrushCommitResult commitResult;
 
-  TileDeltaCommand get command => commitResult.command!;
-
   CacheInvalidationPlan get cacheInvalidationPlan =>
       commitResult.cacheInvalidationPlan;
 
-  DirtyTileSet get dirtyTiles => command.dirtyTiles;
+  DirtyTileSet get dirtyTiles => commitResult.dirtyTiles;
 
-  int get changedTileCount => command.length;
+  int get changedTileCount => commitResult.changedTileCount;
 
   BrushEditHistoryEntry copyWith({
     LayerId? layerId,
