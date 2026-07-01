@@ -1,17 +1,13 @@
-# quick_animaker_v2
+# QuickAnimaker v2
 
-A new Flutter project.
+QuickAnimaker v2 is a Flutter/Dart 2D bitmap animation tool targeting a TVPaint-style production workflow.
 
-## Getting Started
+For current project policy and architecture direction, start here:
 
-This project is a starting point for a Flutter application.
+- `docs/Current_Docs_Index.md`
 
-A few resources to get you started if this is your first Flutter project:
+Important:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `Current_*` documents are the source of truth for current architecture policy.
+- Historical `Phase_*_Codex_Task.md` files are task/order records and must not override the matching current documents.
+- Before planning or implementing a module, read the matching `Current_*` document directly.
