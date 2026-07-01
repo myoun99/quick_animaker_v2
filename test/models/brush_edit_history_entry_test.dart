@@ -98,7 +98,10 @@ void main() {
 
     test('changedTileCount delegates to commitResult', () {
       final commit = changedResult(
-        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0), TileCoord(x: 1, y: 0)]),
+        dirtyTiles: DirtyTileSet([
+          TileCoord(x: 0, y: 0),
+          TileCoord(x: 1, y: 0),
+        ]),
       );
       final historyEntry = entry(commitResult: commit);
 

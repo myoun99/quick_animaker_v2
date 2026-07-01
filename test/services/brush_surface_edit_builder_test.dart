@@ -122,7 +122,10 @@ void main() {
     test('no-op edit commitResult is BrushCommitResult.noOp', () {
       final edit = editFor(surface: surface(), sequence: BrushDabSequence());
 
-      expect(edit.commitResult, BrushCommitResult.noOp(surface: edit.beforeSurface));
+      expect(
+        edit.commitResult,
+        BrushCommitResult.noOp(surface: edit.beforeSurface),
+      );
     });
 
     test('returns changed BrushSurfaceEdit for dab on missing tile', () {
@@ -133,7 +136,10 @@ void main() {
 
       expect(edit.hasChanges, isTrue);
       expect(edit.isNoOp, isFalse);
-      expect(edit.commitResult.dirtyTiles.contains(TileCoord(x: 0, y: 0)), isTrue);
+      expect(
+        edit.commitResult.dirtyTiles.contains(TileCoord(x: 0, y: 0)),
+        isTrue,
+      );
     });
 
     test('changed edit beforeSurface is original surface', () {
@@ -184,7 +190,10 @@ void main() {
       );
 
       expect(edit.hasChanges, isTrue);
-      expect(edit.commitResult.dirtyTiles.contains(TileCoord(x: 0, y: 0)), isTrue);
+      expect(
+        edit.commitResult.dirtyTiles.contains(TileCoord(x: 0, y: 0)),
+        isTrue,
+      );
     });
 
     test(

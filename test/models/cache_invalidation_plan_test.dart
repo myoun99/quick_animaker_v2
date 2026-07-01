@@ -1,7 +1,4 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -36,11 +33,6 @@ void main() {
       cutId: CutId(cut),
       frameIndex: frameIndex,
       previewSize: CanvasSize(width: width, height: height),
-    );
-    BitmapTile tile(int x, int y) => BitmapTile(
-      coord: TileCoord(x: x, y: y),
-      size: 2,
-      pixels: Uint8List(16),
     );
 
     test('empty plan is empty', () {
@@ -226,29 +218,23 @@ void main() {
       },
     );
 
-    test(
-      'fromDirtyTiles does not create FrameCompositeCacheKey entries',
-      () {
-        final plan = CacheInvalidationPlan.fromDirtyTiles(
-          layerId: const LayerId('layer-a'),
-          frameId: const FrameId('frame-a'),
-          dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
-        );
-        expect(plan.frameComposites, isEmpty);
-      },
-    );
+    test('fromDirtyTiles does not create FrameCompositeCacheKey entries', () {
+      final plan = CacheInvalidationPlan.fromDirtyTiles(
+        layerId: const LayerId('layer-a'),
+        frameId: const FrameId('frame-a'),
+        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
+      );
+      expect(plan.frameComposites, isEmpty);
+    });
 
-    test(
-      'fromDirtyTiles does not create PlaybackPreviewCacheKey entries',
-      () {
-        final plan = CacheInvalidationPlan.fromDirtyTiles(
-          layerId: const LayerId('layer-a'),
-          frameId: const FrameId('frame-a'),
-          dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
-        );
-        expect(plan.playbackPreviews, isEmpty);
-      },
-    );
+    test('fromDirtyTiles does not create PlaybackPreviewCacheKey entries', () {
+      final plan = CacheInvalidationPlan.fromDirtyTiles(
+        layerId: const LayerId('layer-a'),
+        frameId: const FrameId('frame-a'),
+        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
+      );
+      expect(plan.playbackPreviews, isEmpty);
+    });
 
     test('equality ignores insertion order', () {
       final a = layerKey(0, 0);

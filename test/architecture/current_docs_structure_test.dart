@@ -23,7 +23,9 @@ void main() {
 
       final index = File('docs/Current_Docs_Index.md').readAsStringSync();
       final normalizedIndex = _normalizeDocText(index);
-      for (final path in currentDocs.where((path) => path.contains('Current_'))) {
+      for (final path in currentDocs.where(
+        (path) => path.contains('Current_'),
+      )) {
         expect(index, contains(path), reason: 'Index should reference $path.');
       }
       expect(
@@ -62,7 +64,9 @@ void main() {
         ),
       );
       expect(handoffSection5AndLater, contains('docs/Current_Docs_Index.md'));
-      for (final path in currentDocs.where((path) => path.contains('Current_'))) {
+      for (final path in currentDocs.where(
+        (path) => path.contains('Current_'),
+      )) {
         expect(
           handoffSection5AndLater,
           contains(path),
@@ -111,7 +115,11 @@ void main() {
         'linked frames share drawing material source identity',
         'linked frames do not share placement exposure duration',
       ]) {
-        expect(normalizedTimeline, contains(term), reason: 'Missing term: $term');
+        expect(
+          normalizedTimeline,
+          contains(term),
+          reason: 'Missing term: $term',
+        );
       }
 
       final project = File(
@@ -126,7 +134,11 @@ void main() {
         'canvasviewport performs pure coordinate conversion',
         'brushsettings is a frozen value snapshot stored with stroke',
       ]) {
-        expect(normalizedProject, contains(term), reason: 'Missing term: $term');
+        expect(
+          normalizedProject,
+          contains(term),
+          reason: 'Missing term: $term',
+        );
       }
       for (final idName in [
         'ProjectId',
@@ -153,30 +165,33 @@ void main() {
       }
     });
 
-    test('obsolete non-phase docs are deleted while task records remain historical', () {
-      for (final path in [
-        'docs/Active_Cut_State_Design.md',
-        'docs/Cut_Management_Policy.md',
-        'docs/Product_Direction_Notes.md',
-      ]) {
-        expect(
-          File(path).existsSync(),
-          isFalse,
-          reason: '$path should stay consolidated into Current_* docs.',
-        );
-      }
+    test(
+      'obsolete non-phase docs are deleted while task records remain historical',
+      () {
+        for (final path in [
+          'docs/Active_Cut_State_Design.md',
+          'docs/Cut_Management_Policy.md',
+          'docs/Product_Direction_Notes.md',
+        ]) {
+          expect(
+            File(path).existsSync(),
+            isFalse,
+            reason: '$path should stay consolidated into Current_* docs.',
+          );
+        }
 
-      expect(File('docs/Phase_211_Codex_Task.md').existsSync(), isTrue);
-      final index = File('docs/Current_Docs_Index.md').readAsStringSync();
-      expect(
-        index,
-        contains(
-          'Phase task docs and other task-order docs are preserved as historical records',
-        ),
-      );
-      expect(index, contains('Current_*'));
-      expect(index, contains('source of truth'));
-    });
+        expect(File('docs/Phase_211_Codex_Task.md').existsSync(), isTrue);
+        final index = File('docs/Current_Docs_Index.md').readAsStringSync();
+        expect(
+          index,
+          contains(
+            'Phase task docs and other task-order docs are preserved as historical records',
+          ),
+        );
+        expect(index, contains('Current_*'));
+        expect(index, contains('source of truth'));
+      },
+    );
   });
 }
 

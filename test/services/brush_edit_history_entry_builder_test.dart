@@ -108,20 +108,17 @@ void main() {
       expect(entry.frameId, customFrameId);
     });
 
-    test(
-      'entry dirtyTiles and changedTileCount mirror edit commitResult',
-      () {
-        final edit = changedEdit(source: surface());
-        final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
-          edit: edit,
-          layerId: layerId,
-          frameId: frameId,
-        )!;
+    test('entry dirtyTiles and changedTileCount mirror edit commitResult', () {
+      final edit = changedEdit(source: surface());
+      final entry = brushEditHistoryEntryFromBrushSurfaceEdit(
+        edit: edit,
+        layerId: layerId,
+        frameId: frameId,
+      )!;
 
-        expect(entry.dirtyTiles, edit.commitResult.dirtyTiles);
-        expect(entry.changedTileCount, edit.commitResult.changedTileCount);
-      },
-    );
+      expect(entry.dirtyTiles, edit.commitResult.dirtyTiles);
+      expect(entry.changedTileCount, edit.commitResult.changedTileCount);
+    });
 
     test(
       'entry can revert applied surface using commitResult through existing revert service',

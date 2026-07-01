@@ -31,7 +31,10 @@ void main() {
         dirtyTiles: dirtyTiles,
       );
 
-      expect(plan.layerTiles.map((key) => key.tileCoord).toSet(), dirtyTiles.coords);
+      expect(
+        plan.layerTiles.map((key) => key.tileCoord).toSet(),
+        dirtyTiles.coords,
+      );
       expect(plan.layerTiles.every((key) => key.layerId == layerId), isTrue);
       expect(plan.layerTiles.every((key) => key.frameId == frameId), isTrue);
     });

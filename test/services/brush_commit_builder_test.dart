@@ -16,10 +16,8 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapSurface surface() => BitmapSurface(
-      canvasSize: CanvasSize(width: 4, height: 4),
-      tileSize: 2,
-    );
+    BitmapSurface surface() =>
+        BitmapSurface(canvasSize: CanvasSize(width: 4, height: 4), tileSize: 2);
 
     BrushDab onePixelDab({required double globalX, required double globalY}) {
       return BrushDab(
@@ -35,41 +33,49 @@ void main() {
       );
     }
 
-    test('empty sequence returns BrushCommitResult.noOp(surface: original)', () {
-      final original = surface();
-      final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: original,
-        sequence: BrushDabSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
+    test(
+      'empty sequence returns BrushCommitResult.noOp(surface: original)',
+      () {
+        final original = surface();
+        final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+          surface: original,
+          sequence: BrushDabSequence(),
+          layerId: layerId,
+          frameId: frameId,
+        );
 
-      expect(result.beforeSurface, original);
-      expect(result.afterSurface, original);
-      expect(result.isNoOp, isTrue);
-      expect(result.dirtyTiles.isEmpty, isTrue);
-    });
+        expect(result.beforeSurface, original);
+        expect(result.afterSurface, original);
+        expect(result.isNoOp, isTrue);
+        expect(result.dirtyTiles.isEmpty, isTrue);
+      },
+    );
 
-    test('changed sequence returns surfaces, dirtyTiles, and invalidation plan', () {
-      final original = surface();
-      final sequence = BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]);
-      final materialized = materializeBrushDabSequenceOnBitmapSurface(
-        surface: original,
-        sequence: sequence,
-      );
+    test(
+      'changed sequence returns surfaces, dirtyTiles, and invalidation plan',
+      () {
+        final original = surface();
+        final sequence = BrushDabSequence([
+          onePixelDab(globalX: 0, globalY: 0),
+        ]);
+        final materialized = materializeBrushDabSequenceOnBitmapSurface(
+          surface: original,
+          sequence: sequence,
+        );
 
-      final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: original,
-        sequence: sequence,
-        layerId: layerId,
-        frameId: frameId,
-      );
+        final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+          surface: original,
+          sequence: sequence,
+          layerId: layerId,
+          frameId: frameId,
+        );
 
-      expect(result.beforeSurface, original);
-      expect(result.afterSurface, materialized.surface);
-      expect(result.dirtyTiles, materialized.dirtyTiles);
-      expect(result.cacheInvalidationPlan.isNotEmpty, isTrue);
-    });
+        expect(result.beforeSurface, original);
+        expect(result.afterSurface, materialized.surface);
+        expect(result.dirtyTiles, materialized.dirtyTiles);
+        expect(result.cacheInvalidationPlan.isNotEmpty, isTrue);
+      },
+    );
 
     test('cache invalidation layer and frame ids match provided ids', () {
       final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
@@ -94,7 +100,9 @@ void main() {
 
       expect(result.dirtyTiles.coords, {TileCoord(x: 1, y: 0)});
       expect(
-        result.cacheInvalidationPlan.layerTiles.map((key) => key.tileCoord).toSet(),
+        result.cacheInvalidationPlan.layerTiles
+            .map((key) => key.tileCoord)
+            .toSet(),
         result.dirtyTiles.coords,
       );
     });

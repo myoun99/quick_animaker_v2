@@ -32,14 +32,17 @@ void main() {
       );
     }
 
-    test('noOp(surface:) stores beforeSurface and afterSurface as same surface', () {
-      final original = surface();
-      final result = BrushCommitResult.noOp(surface: original);
+    test(
+      'noOp(surface:) stores beforeSurface and afterSurface as same surface',
+      () {
+        final original = surface();
+        final result = BrushCommitResult.noOp(surface: original);
 
-      expect(result.beforeSurface, original);
-      expect(result.afterSurface, original);
-      expect(identical(result.beforeSurface, result.afterSurface), isTrue);
-    });
+        expect(result.beforeSurface, original);
+        expect(result.afterSurface, original);
+        expect(identical(result.beforeSurface, result.afterSurface), isTrue);
+      },
+    );
 
     test('noOp(surface:) has empty DirtyTileSet and CacheInvalidationPlan', () {
       final result = BrushCommitResult.noOp(surface: surface());
@@ -50,25 +53,28 @@ void main() {
       expect(result.isNoOp, isTrue);
     });
 
-    test('changed stores surfaces, DirtyTileSet, and CacheInvalidationPlan', () {
-      final before = surface();
-      final after = before.copyWith();
-      final tiles = dirtyTiles();
-      final plan = planFor(tiles);
+    test(
+      'changed stores surfaces, DirtyTileSet, and CacheInvalidationPlan',
+      () {
+        final before = surface();
+        final after = before.copyWith();
+        final tiles = dirtyTiles();
+        final plan = planFor(tiles);
 
-      final result = BrushCommitResult.changed(
-        beforeSurface: before,
-        afterSurface: after,
-        dirtyTiles: tiles,
-        cacheInvalidationPlan: plan,
-      );
+        final result = BrushCommitResult.changed(
+          beforeSurface: before,
+          afterSurface: after,
+          dirtyTiles: tiles,
+          cacheInvalidationPlan: plan,
+        );
 
-      expect(result.beforeSurface, before);
-      expect(result.afterSurface, after);
-      expect(result.dirtyTiles, tiles);
-      expect(result.cacheInvalidationPlan, plan);
-      expect(result.hasChanges, isTrue);
-    });
+        expect(result.beforeSurface, before);
+        expect(result.afterSurface, after);
+        expect(result.dirtyTiles, tiles);
+        expect(result.cacheInvalidationPlan, plan);
+        expect(result.hasChanges, isTrue);
+      },
+    );
 
     test('changedTileCount equals dirtyTiles.length', () {
       final before = surface();

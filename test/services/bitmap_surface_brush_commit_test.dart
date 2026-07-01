@@ -26,7 +26,10 @@ void main() {
     }
 
     BitmapTile blankTile(int x, int y, {int size = 2}) {
-      return BitmapTile.blank(coord: TileCoord(x: x, y: y), size: size);
+      return BitmapTile.blank(
+        coord: TileCoord(x: x, y: y),
+        size: size,
+      );
     }
 
     BrushDab onePixelDab({
@@ -100,7 +103,11 @@ void main() {
       expect(result.surface.tileAt(coord), isNotNull);
       expect(result.dirtyTiles.contains(coord), isTrue);
       expect(
-        readRgbaColorFromBitmapTile(tile: result.surface.tileAt(coord)!, x: 0, y: 0).a,
+        readRgbaColorFromBitmapTile(
+          tile: result.surface.tileAt(coord)!,
+          x: 0,
+          y: 0,
+        ).a,
         255,
       );
     });

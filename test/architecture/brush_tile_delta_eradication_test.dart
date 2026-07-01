@@ -41,16 +41,19 @@ void main() {
       }
     });
 
-    test('current brush docs forbid TileDeltaCommand brush runtime boundaries', () {
-      final text = File(
-        'docs/Current_Brush_Architecture.md',
-      ).readAsStringSync();
+    test(
+      'current brush docs forbid TileDeltaCommand brush runtime boundaries',
+      () {
+        final text = File(
+          'docs/Current_Brush_Architecture.md',
+        ).readAsStringSync();
 
-      expect(text, contains('TileDelta / TileDeltaCommand must not be used'));
-      expect(text, contains('brush commit'));
-      expect(text, contains('brush edit history'));
-      expect(text, contains('brush undo/redo'));
-      expect(text, contains('cache-invalidation'));
-    });
+        expect(text, contains('TileDelta / TileDeltaCommand must not be used'));
+        expect(text, contains('brush commit'));
+        expect(text, contains('brush edit history'));
+        expect(text, contains('brush undo/redo'));
+        expect(text, contains('cache-invalidation'));
+      },
+    );
   });
 }
