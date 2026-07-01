@@ -16,6 +16,7 @@ class BrushPaintCommand {
     this.state = BrushPaintCommandState.live,
     this.debugLabel,
     this.affectedBoundsRef,
+    this.materializationRef,
     this.metadataRef,
   });
 
@@ -25,6 +26,14 @@ class BrushPaintCommand {
   final BrushPaintCommandState state;
   final String? debugLabel;
   final String? affectedBoundsRef;
+
+  /// Stable internal reference to the bitmap materialization payload that this
+  /// command was created from.
+  ///
+  /// This is the minimal bridge from production-facing paint-command undo refs
+  /// back to the current session-local bitmap materialization result. It is not
+  /// a save/load payload format.
+  final String? materializationRef;
   final String? metadataRef;
 
   BrushPaintCommand copyWith({BrushPaintCommandState? state}) {
@@ -35,6 +44,7 @@ class BrushPaintCommand {
       state: state ?? this.state,
       debugLabel: debugLabel,
       affectedBoundsRef: affectedBoundsRef,
+      materializationRef: materializationRef,
       metadataRef: metadataRef,
     );
   }

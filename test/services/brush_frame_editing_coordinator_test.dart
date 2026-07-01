@@ -50,12 +50,36 @@ void main() {
   test('records brush commit in frame store and unified undo history', () {
     final c = coordinator();
 
-    c.applyBrushOperationResult(_commitResult(c));
+    final result = _commitResult(c);
+    final affectedEntry = result.affectedEntry!;
+
+    final command = c.applyBrushOperationResult(result);
 
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(command, isNotNull);
+    expect(command!.materializationRef, isNotNull);
+    expect(command.materializationRef, contains(c.activeFrameKey.layerId.value));
+    expect(command.materializationRef, contains(c.activeFrameKey.frameId.value));
+    expect(command.materializationRef, contains(affectedEntry.layerId.value));
+    expect(command.materializationRef, contains(affectedEntry.frameId.value));
+    expect(
+      command.materializationRef,
+      contains('dirty-tiles-${affectedEntry.changedTileCount}'),
+    );
     expect(frame.livePaintCommands, hasLength(1));
+    expect(frame.commandById(command.id), command);
     expect(c.undoHistory.undoStack, hasLength(1));
     expect(c.undoHistory.undoStack.single.isPaintPayload, isTrue);
+    expect(
+      c.undoHistory.undoStack.single.payloadRef.paintCommandId,
+      command.id,
+    );
+    expect(
+      frame.commandById(
+        c.undoHistory.undoStack.single.payloadRef.paintCommandId,
+      ),
+      command,
+    );
     expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
   });
 
@@ -165,8 +189,9 @@ void main() {
     final c = coordinator();
 
     final result = _emptyCommitResult(c);
-    c.applyBrushOperationResult(result);
+    final command = c.applyBrushOperationResult(result);
 
+    expect(command, isNull);
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
       isEmpty,

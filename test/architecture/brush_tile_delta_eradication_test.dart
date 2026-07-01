@@ -90,6 +90,9 @@ void main() {
         final paintCommand = File(
           'lib/src/models/brush_paint_command.dart',
         ).readAsStringSync();
+        final frameDrawingState = File(
+          'lib/src/models/brush_frame_drawing_state.dart',
+        ).readAsStringSync();
         final materializationState = File(
           'lib/src/models/brush_bitmap_materialization_history_state.dart',
         ).readAsStringSync();
@@ -109,6 +112,9 @@ void main() {
         expect(frameStore, contains('restorePaintCommandFromUndo'));
         expect(frameStore, contains('movePaintCommandToDeferredBake'));
         expect(paintCommand, contains('class BrushPaintCommand'));
+        expect(paintCommand, contains('materializationRef'));
+        expect(paintCommand, contains('minimal bridge'));
+        expect(frameDrawingState, contains('commandById'));
         expect(
           materializationState,
           contains('Internal session-local bitmap materialization'),
