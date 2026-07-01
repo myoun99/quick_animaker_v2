@@ -1,16 +1,27 @@
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/dirty_tile_set.dart';
 import '../models/rgba_color.dart';
 import '../models/tile_coord.dart';
-import '../models/tile_delta.dart';
-import '../models/tile_delta_command.dart';
 import '../models/brush_pixel_blend_operation.dart';
-import 'bitmap_tile_operation_delta.dart';
+import 'bitmap_tile_operation_materialization.dart';
 import 'bitmap_tile_rgba.dart';
 import 'brush_dab_sequence_blend.dart';
 
-TileDeltaCommand? tileDeltaCommandForBrushDabSequenceOnBitmapSurface({
+class BrushSurfaceMaterialization {
+  const BrushSurfaceMaterialization({
+    required this.surface,
+    required this.dirtyTiles,
+  });
+
+  final BitmapSurface surface;
+  final DirtyTileSet dirtyTiles;
+
+  bool get hasChanges => dirtyTiles.isNotEmpty;
+}
+
+BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
 }) {
@@ -58,7 +69,12 @@ TileDeltaCommand? tileDeltaCommandForBrushDabSequenceOnBitmapSurface({
     operationsByCoord.putIfAbsent(coord, () => []).add(operation);
   }
 
-  if (operationsByCoord.isEmpty) return null;
+  if (operationsByCoord.isEmpty) {
+    return BrushSurfaceMaterialization(
+      surface: surface,
+      dirtyTiles: DirtyTileSet.empty(),
+    );
+  }
 
   final coords = operationsByCoord.keys.toList()
     ..sort((a, b) {
@@ -67,25 +83,23 @@ TileDeltaCommand? tileDeltaCommandForBrushDabSequenceOnBitmapSurface({
       return a.x.compareTo(b.x);
     });
 
-  final deltas = <TileDelta>[];
+  var updatedSurface = surface;
+  var dirtyTiles = DirtyTileSet.empty();
   for (final coord in coords) {
     final existingTile = surface.tileAt(coord);
     final tile =
         existingTile ?? BitmapTile.blank(coord: coord, size: surface.tileSize);
-    final command = tileDeltaCommandForBitmapTileOperations(
+    final updatedTile = materializedBitmapTileForOperations(
       tile: tile,
       operations: operationsByCoord[coord]!,
     );
-    if (command == null) continue;
-
-    final delta = command.deltas.single;
-    if (existingTile == null) {
-      deltas.add(TileDelta.created(delta.after!));
-    } else {
-      deltas.add(delta);
-    }
+    if (updatedTile == null) continue;
+    updatedSurface = updatedSurface.putTile(updatedTile);
+    dirtyTiles = dirtyTiles.add(coord);
   }
 
-  if (deltas.isEmpty) return null;
-  return TileDeltaCommand(deltas: deltas);
+  return BrushSurfaceMaterialization(
+    surface: updatedSurface,
+    dirtyTiles: dirtyTiles,
+  );
 }

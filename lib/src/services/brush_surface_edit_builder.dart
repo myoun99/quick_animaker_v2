@@ -4,7 +4,6 @@ import '../models/brush_surface_edit.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'brush_commit_builder.dart';
-import 'brush_commit_result_apply.dart';
 
 BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
@@ -18,14 +17,10 @@ BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
     layerId: layerId,
     frameId: frameId,
   );
-  final afterSurface = applyBrushCommitResultToBitmapSurface(
-    surface: surface,
-    result: commitResult,
-  );
 
   return BrushSurfaceEdit(
     beforeSurface: surface,
-    afterSurface: afterSurface,
+    afterSurface: commitResult.afterSurface,
     commitResult: commitResult,
   );
 }

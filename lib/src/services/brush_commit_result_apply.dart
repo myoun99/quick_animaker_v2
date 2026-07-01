@@ -5,7 +5,11 @@ BitmapSurface applyBrushCommitResultToBitmapSurface({
   required BitmapSurface surface,
   required BrushCommitResult result,
 }) {
-  final command = result.command;
-  if (command == null) return surface;
-  return command.applyAfter(surface);
+  if (result.isNoOp) return surface;
+  if (surface != result.beforeSurface) {
+    throw ArgumentError(
+      'BrushCommitResult beforeSurface must match the surface being applied.',
+    );
+  }
+  return result.afterSurface;
 }

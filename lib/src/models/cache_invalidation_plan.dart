@@ -3,7 +3,7 @@ import 'frame_id.dart';
 import 'layer_id.dart';
 import 'layer_tile_cache_key.dart';
 import 'playback_preview_cache_key.dart';
-import 'tile_delta_command.dart';
+import 'dirty_tile_set.dart';
 
 class CacheInvalidationPlan {
   CacheInvalidationPlan({
@@ -20,13 +20,13 @@ class CacheInvalidationPlan {
 
   factory CacheInvalidationPlan.empty() => CacheInvalidationPlan();
 
-  factory CacheInvalidationPlan.fromTileDeltaCommand({
+  factory CacheInvalidationPlan.fromDirtyTiles({
     required LayerId layerId,
     required FrameId frameId,
-    required TileDeltaCommand command,
+    required DirtyTileSet dirtyTiles,
   }) {
     return CacheInvalidationPlan(
-      layerTiles: command.dirtyTiles.coords.map(
+      layerTiles: dirtyTiles.coords.map(
         (tileCoord) => LayerTileCacheKey(
           layerId: layerId,
           frameId: frameId,

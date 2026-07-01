@@ -5,7 +5,11 @@ BitmapSurface revertBrushCommitResultOnBitmapSurface({
   required BitmapSurface surface,
   required BrushCommitResult result,
 }) {
-  final command = result.command;
-  if (command == null) return surface;
-  return command.applyBefore(surface);
+  if (result.isNoOp) return surface;
+  if (surface != result.afterSurface) {
+    throw ArgumentError(
+      'BrushCommitResult afterSurface must match the surface being reverted.',
+    );
+  }
+  return result.beforeSurface;
 }

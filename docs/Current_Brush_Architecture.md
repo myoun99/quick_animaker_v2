@@ -162,9 +162,9 @@ Current policy:
 
 Legacy or lower-level implementation details:
 
-- Existing Brush V1 tile delta classes may remain as implementation details of bitmap edit services and tests.
-- Tile delta may be considered a possible future low-level optimization for bitmap mutation or storage.
-- Tile delta is not the current user-facing undo policy.
+- TileDelta / TileDeltaCommand must not be used by brush commit results, brush edit history entries, brush undo/redo payloads, or brush cache-invalidation APIs.
+- Sparse bitmap tile storage remains valid: BitmapSurface, BitmapTile, TileCoord, DirtyRegion, and DirtyTileSet may be used for storage and invalidation boundaries.
+- Any future low-level bitmap mutation optimization must stay behind brush-domain APIs and must not reintroduce TileDelta / TileDeltaCommand as brush runtime architecture.
 
 ## Explicitly not the current policy
 
@@ -187,7 +187,7 @@ Those phases must preserve this policy unless a newer canonical architecture doc
 
 Brush V1 completed an internal smoke/dev/test stack with BitmapSurface / BitmapTile storage, BrushDabSequence input, brush pixel blending, commit/undo/redo services, cache invalidation facades, BitmapSurfacePainter display, InteractiveBrushEditCanvasView, and smoke-screen regression coverage. That stack is context only: it is not app-complete and must not be restored into production routes merely to satisfy legacy documentation tests.
 
-Tile delta is not the current user-facing undo policy. Tile delta may appear only as a legacy implementation detail, possible low-level optimization, or internal bitmap mutation/storage detail.
+TileDelta / TileDeltaCommand are not the current brush runtime policy. They must not appear in brush commit, undo, redo, edit history, or cache-invalidation boundaries.
 
 ## Historical naming decisions retained for current integration context
 

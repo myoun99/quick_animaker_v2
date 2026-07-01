@@ -11,8 +11,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_tile_cache_key.dart';
 import 'package:quick_animaker_v2/src/models/playback_preview_cache_key.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta.dart';
-import 'package:quick_animaker_v2/src/models/tile_delta_command.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 
 void main() {
   group('CacheInvalidationPlan', () {
@@ -212,42 +211,40 @@ void main() {
     });
 
     test(
-      'fromTileDeltaCommand creates LayerTileCacheKey entries for every dirty tile',
+      'fromDirtyTiles creates LayerTileCacheKey entries for every dirty tile',
       () {
-        final command = TileDeltaCommand(
-          deltas: [
-            TileDelta.created(tile(0, 0)),
-            TileDelta.created(tile(1, 0)),
-          ],
-        );
-        final plan = CacheInvalidationPlan.fromTileDeltaCommand(
+        final dirtyTiles = DirtyTileSet([
+          TileCoord(x: 0, y: 0),
+          TileCoord(x: 1, y: 0),
+        ]);
+        final plan = CacheInvalidationPlan.fromDirtyTiles(
           layerId: const LayerId('layer-a'),
           frameId: const FrameId('frame-a'),
-          command: command,
+          dirtyTiles: dirtyTiles,
         );
         expect(plan.layerTiles, containsAll([layerKey(0, 0), layerKey(1, 0)]));
       },
     );
 
     test(
-      'fromTileDeltaCommand does not create FrameCompositeCacheKey entries',
+      'fromDirtyTiles does not create FrameCompositeCacheKey entries',
       () {
-        final plan = CacheInvalidationPlan.fromTileDeltaCommand(
+        final plan = CacheInvalidationPlan.fromDirtyTiles(
           layerId: const LayerId('layer-a'),
           frameId: const FrameId('frame-a'),
-          command: TileDeltaCommand(deltas: [TileDelta.created(tile(0, 0))]),
+          dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
         );
         expect(plan.frameComposites, isEmpty);
       },
     );
 
     test(
-      'fromTileDeltaCommand does not create PlaybackPreviewCacheKey entries',
+      'fromDirtyTiles does not create PlaybackPreviewCacheKey entries',
       () {
-        final plan = CacheInvalidationPlan.fromTileDeltaCommand(
+        final plan = CacheInvalidationPlan.fromDirtyTiles(
           layerId: const LayerId('layer-a'),
           frameId: const FrameId('frame-a'),
-          command: TileDeltaCommand(deltas: [TileDelta.created(tile(0, 0))]),
+          dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
         );
         expect(plan.playbackPreviews, isEmpty);
       },

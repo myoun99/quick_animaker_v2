@@ -1,69 +1,68 @@
+import 'bitmap_surface.dart';
 import 'cache_invalidation_plan.dart';
 import 'dirty_tile_set.dart';
-import 'tile_delta_command.dart';
 
 class BrushCommitResult {
   BrushCommitResult({
-    required this.command,
+    required this.beforeSurface,
+    required this.afterSurface,
+    required this.dirtyTiles,
     required this.cacheInvalidationPlan,
   }) {
-    _validate(command: command, cacheInvalidationPlan: cacheInvalidationPlan);
+    _validate(
+      beforeSurface: beforeSurface,
+      afterSurface: afterSurface,
+      dirtyTiles: dirtyTiles,
+      cacheInvalidationPlan: cacheInvalidationPlan,
+    );
   }
 
-  factory BrushCommitResult.noOp() {
+  factory BrushCommitResult.noOp({required BitmapSurface surface}) {
     return BrushCommitResult(
-      command: null,
+      beforeSurface: surface,
+      afterSurface: surface,
+      dirtyTiles: DirtyTileSet.empty(),
       cacheInvalidationPlan: CacheInvalidationPlan.empty(),
     );
   }
 
   factory BrushCommitResult.changed({
-    required TileDeltaCommand command,
+    required BitmapSurface beforeSurface,
+    required BitmapSurface afterSurface,
+    required DirtyTileSet dirtyTiles,
     required CacheInvalidationPlan cacheInvalidationPlan,
   }) {
     return BrushCommitResult(
-      command: command,
+      beforeSurface: beforeSurface,
+      afterSurface: afterSurface,
+      dirtyTiles: dirtyTiles,
       cacheInvalidationPlan: cacheInvalidationPlan,
     );
   }
 
-  final TileDeltaCommand? command;
+  final BitmapSurface beforeSurface;
+  final BitmapSurface afterSurface;
+  final DirtyTileSet dirtyTiles;
   final CacheInvalidationPlan cacheInvalidationPlan;
 
-  bool get hasChanges => command != null;
+  bool get hasChanges => dirtyTiles.isNotEmpty;
 
   bool get isNoOp => !hasChanges;
 
-  int get changedTileCount => command?.length ?? 0;
-
-  DirtyTileSet get dirtyTiles => command?.dirtyTiles ?? DirtyTileSet.empty();
+  int get changedTileCount => dirtyTiles.length;
 
   BrushCommitResult copyWith({
-    Object? command = _copyWithSentinel,
+    BitmapSurface? beforeSurface,
+    BitmapSurface? afterSurface,
+    DirtyTileSet? dirtyTiles,
     CacheInvalidationPlan? cacheInvalidationPlan,
   }) {
     return BrushCommitResult(
-      command: identical(command, _copyWithSentinel)
-          ? this.command
-          : command as TileDeltaCommand?,
+      beforeSurface: beforeSurface ?? this.beforeSurface,
+      afterSurface: afterSurface ?? this.afterSurface,
+      dirtyTiles: dirtyTiles ?? this.dirtyTiles,
       cacheInvalidationPlan:
           cacheInvalidationPlan ?? this.cacheInvalidationPlan,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'command': command?.toJson(),
-    'cacheInvalidationPlan': cacheInvalidationPlan.toJson(),
-  };
-
-  factory BrushCommitResult.fromJson(Map<String, dynamic> json) {
-    return BrushCommitResult(
-      command: json['command'] == null
-          ? null
-          : TileDeltaCommand.fromJson(json['command'] as Map<String, dynamic>),
-      cacheInvalidationPlan: CacheInvalidationPlan.fromJson(
-        json['cacheInvalidationPlan'] as Map<String, dynamic>,
-      ),
     );
   }
 
@@ -71,34 +70,45 @@ class BrushCommitResult {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BrushCommitResult &&
-          other.command == command &&
+          other.beforeSurface == beforeSurface &&
+          other.afterSurface == afterSurface &&
+          other.dirtyTiles == dirtyTiles &&
           other.cacheInvalidationPlan == cacheInvalidationPlan;
 
   @override
-  int get hashCode => Object.hash(command, cacheInvalidationPlan);
+  int get hashCode => Object.hash(
+    beforeSurface,
+    afterSurface,
+    dirtyTiles,
+    cacheInvalidationPlan,
+  );
 
   @override
   String toString() =>
-      'BrushCommitResult(command: $command, '
+      'BrushCommitResult(dirtyTiles: $dirtyTiles, '
       'cacheInvalidationPlan: $cacheInvalidationPlan)';
 }
 
 void _validate({
-  required TileDeltaCommand? command,
+  required BitmapSurface beforeSurface,
+  required BitmapSurface afterSurface,
+  required DirtyTileSet dirtyTiles,
   required CacheInvalidationPlan cacheInvalidationPlan,
 }) {
-  if (command == null && cacheInvalidationPlan.isNotEmpty) {
+  if (beforeSurface.canvasSize != afterSurface.canvasSize ||
+      beforeSurface.tileSize != afterSurface.tileSize) {
     throw ArgumentError(
-      'BrushCommitResult with null command must have an empty '
-      'cacheInvalidationPlan.',
+      'BrushCommitResult beforeSurface and afterSurface must describe the same bitmap surface bounds.',
     );
   }
-  if (command != null && cacheInvalidationPlan.isEmpty) {
+  if (dirtyTiles.isEmpty && cacheInvalidationPlan.isNotEmpty) {
     throw ArgumentError(
-      'BrushCommitResult with a command must have a non-empty '
-      'cacheInvalidationPlan.',
+      'BrushCommitResult with no dirty tiles must have an empty cacheInvalidationPlan.',
+    );
+  }
+  if (dirtyTiles.isNotEmpty && cacheInvalidationPlan.isEmpty) {
+    throw ArgumentError(
+      'BrushCommitResult with dirty tiles must have a non-empty cacheInvalidationPlan.',
     );
   }
 }
-
-const Object _copyWithSentinel = Object();
