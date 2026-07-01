@@ -52,9 +52,11 @@ This order matters.
 
 - Main Section contains animation layers, storyboard layers, future rough layers, future guide layers, and ordinary drawable layers. Storyboard remains inside Main Section as an ordinary `Layer(kind: storyboard)`, and users should be able to place animation layers above and below storyboard layers.
 - Sound Section may later contain dialogue layers, SE layers, and sound note layers corresponding to traditional SOUND/timesheet columns. Do not implement sound features now unless a future runtime phase explicitly asks for them.
+- Sound/SE-related layers may be multiple in the future; do not hard-code Sound Section design around a single SE lane too early.
 - Camera Section may later contain camera control layers and camera direction layers.
 - Camera Control Layer is for actual render camera control such as pan, zoom, follow, shake, and camera keyframes.
 - Camera Direction Layer is for written camera instructions on the sheet, such as PAN, BOOK, BG, TU, and TB. It may correspond to visible sheet headers/columns and must be distinguished from actual camera-control data.
+- Camera Direction Layers may be multiple in the future; their layer names may become sheet headers/columns such as PAN, BOOK, BG, TU, or TB.
 
 ## Default layer naming and initial exposure
 
