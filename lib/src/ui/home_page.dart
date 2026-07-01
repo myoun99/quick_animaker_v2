@@ -323,11 +323,11 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _undo() {
+  void _undoProjectHistory() {
     final beforeLayers = List<Layer>.of(_activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;
     setState(() {
-      _canvasController.undo();
+      _historyManager.undo();
       final preferredLayerId = _preferredLayerAfterLayerListChange(
         beforeLayers: beforeLayers,
         afterLayers: _activeCut.layers,
@@ -337,11 +337,11 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _redo() {
+  void _redoProjectHistory() {
     final beforeLayers = List<Layer>.of(_activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;
     setState(() {
-      _canvasController.redo();
+      _historyManager.redo();
       final preferredLayerId = _preferredLayerAfterLayerListChange(
         beforeLayers: beforeLayers,
         afterLayers: _activeCut.layers,
@@ -1334,8 +1334,6 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
-                    Text('Active strokes: ${_canvasController.strokes.length}'),
-                    const SizedBox(width: 16),
                     CutListBar(
                       entries: cutEntries,
                       onCutSelected: _handleCutSelected,
@@ -1355,13 +1353,17 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(width: 16),
                     TextButton(
                       key: const ValueKey<String>('undo-button'),
-                      onPressed: _canvasController.canUndo ? _undo : null,
-                      child: const Text('Undo'),
+                      onPressed: _historyManager.canUndo
+                          ? _undoProjectHistory
+                          : null,
+                      child: const Text('Project Undo'),
                     ),
                     TextButton(
                       key: const ValueKey<String>('redo-button'),
-                      onPressed: _canvasController.canRedo ? _redo : null,
-                      child: const Text('Redo'),
+                      onPressed: _historyManager.canRedo
+                          ? _redoProjectHistory
+                          : null,
+                      child: const Text('Project Redo'),
                     ),
                   ],
                 ),

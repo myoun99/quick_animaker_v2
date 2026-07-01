@@ -189,6 +189,24 @@ void main() {
     );
 
     test(
+      'HomePage toolbar does not expose legacy CanvasController brush state',
+      () {
+        final homePageSource = File(
+          'lib/src/ui/home_page.dart',
+        ).readAsStringSync();
+
+        expect(homePageSource, isNot(contains('Active strokes:')));
+        expect(homePageSource, isNot(contains('_canvasController.canUndo')));
+        expect(homePageSource, isNot(contains('_canvasController.canRedo')));
+        expect(homePageSource, isNot(contains('_canvasController.undo()')));
+        expect(homePageSource, isNot(contains('_canvasController.redo()')));
+        expect(homePageSource, contains('_historyManager.canUndo'));
+        expect(homePageSource, contains('_undoProjectHistory'));
+        expect(homePageSource, contains('_redoProjectHistory'));
+      },
+    );
+
+    test(
       'TileDelta names stay out of brush commit undo redo and cache boundaries',
       () {
         final boundaryFiles = [
