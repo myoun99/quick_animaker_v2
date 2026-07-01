@@ -8,6 +8,14 @@
 - Do not add `Cut.storyboardLayer.panels`.
 - Do not treat storyboard as a separate non-layer persistence system.
 
+## Metadata ownership policy
+
+- `CutMetadata` remains Cut-level note-only metadata.
+- Do not add `actionMemo` or `dialogueMemo` to `CutMetadata`.
+- Storyboard action/dialogue/note fields belong to `Frame.storyboardMetadata`.
+- `Frame.storyboardMetadata` belongs to ordinary `Frame` data inside a `Layer(kind: storyboard)`.
+- Storyboard metadata ownership must not introduce a separate storyboard persistence tree.
+
 ## Panel role
 
 `StoryboardPanel` is a project/cut overview and planning surface, not a drawing canvas. Do not wire brush drawing into `StoryboardPanel` unless a future current document explicitly changes this policy.
