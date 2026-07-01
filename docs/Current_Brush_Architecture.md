@@ -177,6 +177,13 @@ The current policy is not:
 - Playback replaying strokes.
 - Playback running brush rasterization.
 
+
+## Phase 213C UI undo route safety note
+
+UI-facing brush undo/redo routes, including smoke and canvas hosts, must call `BrushFrameEditingCoordinator.undo()` / `BrushFrameEditingCoordinator.redo()` rather than direct bitmap materialization undo/redo helpers. The coordinator is the public brush editing boundary for production-facing undo: it takes entries from `UnifiedUndoHistory`, moves paint-command state in `BrushFrameStore`, and may use the session-local bitmap materialization bridge only below that boundary to refresh temporary `BitmapSurface` display.
+
+`BrushBitmapMaterializationHistoryState`, `BrushBitmapMaterializationHistoryEntry`, `BrushCommitResult`, and the materialization undo/redo services remain internal/session-local bitmap materialization bridges. They are not public UI/user undo history, not durable brush command history, and not a replacement for `UndoPayloadRef.paintCommand -> BrushFrameStore -> BrushPaintCommand`.
+
 ## Future implementation phases
 
 Future phases may implement actual deferred baking, preview cache generation, playback cache preparation, renderer cache behavior, save/load integration, or memory-estimation UI.

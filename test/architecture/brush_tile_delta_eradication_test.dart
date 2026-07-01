@@ -75,6 +75,35 @@ void main() {
       },
     );
 
+    test('UI-facing files do not import or call materialization undo routes', () {
+      final uiFiles = Directory('lib/src/ui')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart'))
+          .toList();
+
+      for (final file in uiFiles) {
+        final path = file.path.replaceAll('\\', '/');
+        final text = file.readAsStringSync();
+        for (final forbidden in [
+          'brush_bitmap_materialization_undo_service.dart',
+          'brush_bitmap_materialization_redo_service.dart',
+          'brush_bitmap_materialization_history_state.dart',
+          'undoLatestBrushBitmapMaterialization',
+          'redoLatestBrushBitmapMaterialization',
+          'materializationHistoryState.undoEntries',
+          'materializationHistoryState.redoEntries',
+        ]) {
+          expect(
+            text,
+            isNot(contains(forbidden)),
+            reason:
+                '$path must route UI-facing undo/redo through BrushFrameEditingCoordinator, not $forbidden.',
+          );
+        }
+      }
+    });
+
     test(
       'current brush runtime exposes production undo and payload ownership boundaries',
       () {

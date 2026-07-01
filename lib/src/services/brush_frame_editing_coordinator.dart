@@ -38,6 +38,8 @@ class BrushFrameEditingCoordinator {
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
   UnifiedUndoHistory get undoHistory => _undoHistory;
+  bool get canUndo => _undoHistory.undoStack.isNotEmpty;
+  bool get canRedo => _undoHistory.redoStack.isNotEmpty;
   BrushEditSessionState get activeSessionState =>
       sessionStore.getOrCreate(_activeFrameKey);
 

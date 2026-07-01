@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_bitmap_materialization_history_state.dart';
 import '../../models/brush_edit_session_cache_operation_result.dart';
 import '../../models/brush_edit_session_state.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
-import '../../models/canvas_surface_state.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/project_id.dart';
+import '../../models/track_id.dart';
+import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_edit_canvas_view.dart';
@@ -38,18 +40,21 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult,
   }) {
     final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
+    final sessionStore = BrushFrameEditSessionStore(
+      canvasSize: resolvedCanvasSize,
+      tileSize: tileSize,
+    );
+    final frameKey = BrushFrameKey(
+      projectId: const ProjectId('smoke-project'),
+      trackId: const TrackId('smoke-track'),
+      cutId: const CutId('smoke-cut'),
+      layerId: layerId,
+      frameId: frameId,
+    );
 
     return InteractiveBrushCanvasSmokeHost(
       key: key,
-      initialSessionState: BrushEditSessionState(
-        canvasState: CanvasSurfaceState(
-          currentSurface: BitmapSurface(
-            canvasSize: resolvedCanvasSize,
-            tileSize: tileSize,
-          ),
-        ),
-        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-      ),
+      initialSessionState: sessionStore.getOrCreate(frameKey),
       layerId: layerId,
       frameId: frameId,
       inputSettings: inputSettings,

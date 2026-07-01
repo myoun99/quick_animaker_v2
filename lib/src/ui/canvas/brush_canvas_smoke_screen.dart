@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_bitmap_materialization_history_state.dart';
 import '../../models/brush_edit_session_cache_operation_result.dart';
-import '../../models/brush_edit_session_state.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
-import '../../models/canvas_surface_state.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_composite_cache_key.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_tile_cache_key.dart';
 import '../../models/playback_preview_cache_key.dart';
-import '../../services/brush_edit_session_cache_operations.dart';
+import '../../models/project_id.dart';
+import '../../models/track_id.dart';
+import '../../services/brush_frame_edit_session_store.dart';
+import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_canvas_smoke_host.dart';
@@ -41,7 +44,7 @@ class BrushCanvasSmokeScreen extends StatefulWidget {
 }
 
 class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
-  late BrushEditSessionState _sessionState;
+  late BrushFrameEditingCoordinator _coordinator;
   late BrushEditCanvasInputSettings _inputSettings;
   late _RecordingCacheInvalidationSink _cacheInvalidationSink;
   BrushEditSessionCacheOperationResult? _latestOperationResult;
@@ -51,10 +54,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   @override
   void initState() {
     super.initState();
-    _sessionState = _createBlankSessionState(
-      _resolvedCanvasSize,
-      widget.tileSize,
-    );
+    _coordinator = _createCoordinator();
     _inputSettings = widget.inputSettings;
     _cacheInvalidationSink = _RecordingCacheInvalidationSink();
   }
@@ -67,7 +67,9 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
       _inputSettings = widget.inputSettings;
     }
 
-    if (widget.canvasSize != oldWidget.canvasSize ||
+    if (widget.layerId != oldWidget.layerId ||
+        widget.frameId != oldWidget.frameId ||
+        widget.canvasSize != oldWidget.canvasSize ||
         widget.tileSize != oldWidget.tileSize) {
       _resetSession(debugOperation: 'reset');
     }
@@ -126,7 +128,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
           ),
           InteractiveBrushCanvasSmokeHost(
             key: const ValueKey<String>('brush-canvas-smoke-screen-host'),
-            initialSessionState: _sessionState,
+            initialSessionState: _coordinator.activeSessionState,
             layerId: widget.layerId,
             frameId: widget.frameId,
             inputSettings: _inputSettings,
@@ -150,18 +152,26 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   CanvasSize get _resolvedCanvasSize =>
       widget.canvasSize ?? CanvasSize(width: 64, height: 64);
 
-  BrushEditSessionState _createBlankSessionState(
-    CanvasSize canvasSize,
-    int tileSize,
-  ) {
-    return BrushEditSessionState(
-      canvasState: CanvasSurfaceState(
-        currentSurface: BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-        ),
+  BrushFrameEditingCoordinator _createCoordinator() {
+    final frameKey = BrushFrameKey(
+      projectId: const ProjectId('smoke-project'),
+      trackId: const TrackId('smoke-track'),
+      cutId: const CutId('smoke-cut'),
+      layerId: widget.layerId,
+      frameId: widget.frameId,
+    );
+
+    return BrushFrameEditingCoordinator(
+      initialFrameKey: frameKey,
+      frameStore: BrushFrameStore(),
+      sessionStore: BrushFrameEditSessionStore(
+        canvasSize: _resolvedCanvasSize,
+        tileSize: widget.tileSize,
       ),
-      materializationHistoryState: BrushBitmapMaterializationHistoryState(),
+      historyPolicy: const BrushHistoryPolicy(
+        userUndoLimit: 256,
+        deferredBakeRatio: 0.1,
+      ),
     );
   }
 
@@ -178,7 +188,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
 
   void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
     setState(() {
-      _sessionState = result.sessionState;
+      _coordinator.applyBrushOperationResult(result);
       _sessionRevision += 1;
       _latestOperationResult = result;
       _debugOperation = result.kind.name;
@@ -186,39 +196,30 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   void _undo() {
-    final result =
-        undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-          sessionState: _sessionState,
-          cacheInvalidationSink: _cacheInvalidationSink,
-        );
     setState(() {
-      _sessionState = result.sessionState;
+      final entry = _coordinator.undo(
+        cacheInvalidationSink: _cacheInvalidationSink,
+      );
       _sessionRevision += 1;
-      _latestOperationResult = result;
-      _debugOperation = result.kind.name;
+      _latestOperationResult = null;
+      _debugOperation = entry == null ? 'undo-empty' : 'undo';
     });
   }
 
   void _redo() {
-    final result =
-        redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-          sessionState: _sessionState,
-          cacheInvalidationSink: _cacheInvalidationSink,
-        );
     setState(() {
-      _sessionState = result.sessionState;
+      final entry = _coordinator.redo(
+        cacheInvalidationSink: _cacheInvalidationSink,
+      );
       _sessionRevision += 1;
-      _latestOperationResult = result;
-      _debugOperation = result.kind.name;
+      _latestOperationResult = null;
+      _debugOperation = entry == null ? 'redo-empty' : 'redo';
     });
   }
 
   void _resetSession({required String debugOperation}) {
     setState(() {
-      _sessionState = _createBlankSessionState(
-        _resolvedCanvasSize,
-        widget.tileSize,
-      );
+      _coordinator = _createCoordinator();
       _sessionRevision += 1;
       _latestOperationResult = null;
       _cacheInvalidationSink = _RecordingCacheInvalidationSink();
