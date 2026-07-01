@@ -40,6 +40,14 @@ Canvas/cache/storage semantics must stay separate from timeline range semantics.
 
 Authored frames and drawing payloads beyond `Cut.duration` may remain valid project data. Editing beyond `Cut.duration` must not implicitly become a storage allocation or storage deletion rule.
 
+## Long-term shared material/source ownership candidate
+
+A project-level or repository-level drawing material/source ownership model may be needed later for robust cross-layer or cross-cut sharing. This remains a long-term candidate only.
+
+If introduced, it must preserve the current separation between lightweight project structure, frame-local brush payload storage, and derived caches. It must not make timeline placement, exposure duration, marks, blank/X positions, selected cell state, cache images, or playback previews into shared source-of-truth data merely because drawing material/source is shared.
+
+Do not add project-level material/source ownership as a shortcut before brush/canvas storage ownership, save/load source-payload boundaries, and linked Cut/Layer policy are explicitly designed in current documents.
+
 ## Future implementation direction
 
 - Dirty flags, dirty regions, and dirty tiles are future cache invalidation concepts.
