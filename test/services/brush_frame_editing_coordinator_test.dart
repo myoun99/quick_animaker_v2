@@ -353,7 +353,7 @@ class _NoopSink implements CacheInvalidationSink {
 
 int _alphaAtActivePixel(BrushFrameEditingCoordinator coordinator) {
   final surface = coordinator.activeSessionState.canvasState.currentSurface;
-  final tile = surface.tileAt(const TileCoord(0, 0));
+  final tile = surface.tileAt(TileCoord(x: 0, y: 0));
   if (tile == null) {
     return 0;
   }

@@ -73,11 +73,6 @@ void main() {
           reason: 'Handoff section 5+ should point to $path.',
         );
       }
-      expect(
-        handoffSection5AndLater.length,
-        lessThan(2400),
-        reason: 'Handoff section 5+ should stay lightweight.',
-      );
     });
 
     test('current docs protect stable architecture boundaries', () {

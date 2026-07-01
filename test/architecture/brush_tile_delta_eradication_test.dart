@@ -121,7 +121,10 @@ void main() {
         expect(panel, contains('applyBrushOperationResult'));
         expect(coordinator, contains('UndoPayloadRef.paintCommand'));
         expect(coordinator, contains('frameStore.addLivePaintCommand'));
-        expect(coordinator, contains('frameStore.markPaintCommandHiddenByUndo'));
+        expect(
+          coordinator,
+          contains('frameStore.markPaintCommandHiddenByUndo'),
+        );
         expect(coordinator, contains('frameStore.restorePaintCommandFromUndo'));
 
         for (final text in [host, panel]) {
