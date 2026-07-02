@@ -38,6 +38,20 @@ void main() {
     expect(sampled.last.center.y, 0);
   });
 
+
+  test('movement just beyond spacing inserts an intermediate dab and endpoint', () {
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0, size: 8, sequence: 0),
+      nextRaw: dab(2.1, 0, size: 8),
+      firstSequence: 1,
+    );
+
+    expect(sampled, hasLength(2));
+    expect(sampled.last.center.x, 2.1);
+    expect(sampled.map((item) => item.sequence), [1, 2]);
+  });
+
   test('tiny movement below spacing does not generate duplicate dabs', () {
     const interpolator = BrushDabInterpolator();
     final first = dab(0, 0, sequence: 0);

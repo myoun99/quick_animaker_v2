@@ -43,6 +43,11 @@ void main() {
     ).readAsStringSync();
 
     expect(interactiveView, contains('activeStrokeOverlay'));
+    expect(interactiveView, contains('BrushDabInterpolator'));
+    expect(
+      interactiveView,
+      isNot(contains('_collectedDabs.add(_dabFromPosition')),
+    );
     expect(bitmapPainter, contains('_paintActiveStrokeOverlay'));
     for (final forbidden in [
       'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',

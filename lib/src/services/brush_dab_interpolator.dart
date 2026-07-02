@@ -38,7 +38,7 @@ class BrushDabInterpolator {
       return const <BrushDab>[];
     }
 
-    final stepCount = math.max(1, (distance / spacing).floor());
+    final stepCount = math.max(1, (distance / spacing).ceil());
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
