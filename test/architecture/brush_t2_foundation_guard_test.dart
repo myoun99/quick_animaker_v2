@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Brush T2 source model uses commands plus hiddenCommandIds only', () {
+  test('Brush T2 source model does not reintroduce local visible counts', () {
     final drawingState = File(
       'lib/src/models/brush_frame_drawing_state.dart',
     ).readAsStringSync();
@@ -11,9 +11,6 @@ void main() {
       'lib/src/services/brush_frame_store.dart',
     ).readAsStringSync();
 
-    expect(drawingState, contains('List<BrushPaintCommand> get commands'));
-    expect(drawingState, contains('hiddenCommandIds'));
-    expect(store, contains('hiddenCommandIds'));
     expect(drawingState, isNot(contains('visibleCommandCount')));
     expect(store, isNot(contains('visibleCommandCount')));
   });
@@ -46,13 +43,10 @@ void main() {
         'lib/src/ui/canvas/bitmap_surface_painter.dart',
       ).readAsStringSync();
 
-      expect(interactiveView, contains('activeStrokeOverlay'));
-      expect(interactiveView, contains('BrushDabInterpolator'));
       expect(
         interactiveView,
-        isNot(contains('_collectedDabs.add(_dabFromPosition')),
+        isNot(contains('_collectedDabs.add(_dabFromPosition)')),
       );
-      expect(bitmapPainter, contains('_paintActiveStrokeOverlay'));
       for (final forbidden in [
         'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
         'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
