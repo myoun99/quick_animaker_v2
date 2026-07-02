@@ -78,7 +78,7 @@ void main() {
 
     test('connects dabs within each visible source stroke only', () async {
       final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 8, height: 3),
+        canvasSize: CanvasSize(width: 12, height: 3),
       );
 
       final pixels = await _paintPixels(
@@ -87,17 +87,17 @@ void main() {
           showTransparentBackground: false,
           committedSourceDabStrokes: [
             [_dab(1, 1), _dab(3, 1)],
-            [_dab(6, 1)],
+            [_dab(10, 1)],
           ],
         ),
-        width: 8,
+        width: 12,
         height: 3,
       );
 
-      expect(_rgbaAt(pixels, width: 8, x: 2, y: 1).last, greaterThan(0));
-      expect(_rgbaAt(pixels, width: 8, x: 4, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 8, x: 5, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 8, x: 6, y: 1).last, greaterThan(0));
+      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, greaterThan(0));
+      expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
+      expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
+      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
     });
 
     test('draws deterministic neutral background when enabled', () async {
