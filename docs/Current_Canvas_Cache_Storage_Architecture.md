@@ -9,15 +9,59 @@ Runtime may not yet implement every item in this document. This file defines cur
 ## Current policy
 
 - Cache images are derived from source drawing payloads; they are not the source of truth.
-- Heavy bitmap payloads, paint command buffers, baked surfaces, preview caches, dirty flags, and similar frame-local drawing data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
-- `BrushFrameStore` or an equivalent brush/canvas storage boundary owns frame-local drawing payloads keyed by frame identity.
-- `Project`, `Stroke`, `PaintCommand`, and `BrushFrameStore` must stay conceptually distinct:
-  - `Project` owns lightweight project structure such as tracks, cuts, layers, and frames.
-  - `Stroke` / stroke-like data and `PaintCommand` data describe authored drawing input or brush actions where appropriate.
-  - `BrushFrameStore` owns the heavy frame-local drawing payload, command buffers, baked bitmap surfaces, and derived caches.
+- Heavy bitmap payloads, baked surfaces, preview caches, playback caches, image caches, dirty flags, and similar frame-local drawing/cache data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
+- `BrushFrameStore` or an equivalent brush/canvas storage boundary owns frame-local brush source drawing payloads keyed by frame identity.
+- For Brush T2, the minimum source drawing payload is `BrushFrameDrawing.commands + hiddenCommandIds`.
+- `Project`, `Cut`, `Frame`, `Stroke` / `BrushPaintCommand`, and `BrushFrameStore` must stay conceptually distinct:
+  - `Project` owns lightweight project structure such as tracks and project-wide camera settings.
+  - `Cut` owns playback/export duration, cut metadata, layers, and cut canvas size.
+  - `Frame` owns lightweight identity/timing/name/storyboard metadata.
+  - `Stroke` / stroke-like data and `BrushPaintCommand` data describe authored drawing input or brush actions where appropriate.
+  - `BrushFrameStore` owns frame-local brush source payloads and later derived/baked/cache payloads.
 - Timeline range semantics must not decide storage validity.
 - `Cut.duration` is playback/export duration only.
 - Authored drawing data can exist beyond `Cut.duration`.
+
+## Project camera and Cut canvas policy
+
+Brush T2 uses separate project camera and cut canvas concepts.
+
+```txt
+Project.cameraSize = 1920 x 1080 by default
+Cut.canvasSize = 2340 x 1654 by default
+```
+
+`Project.cameraSize` is the project-wide camera/output frame size. All Cuts in a Project share this camera output size unless a future explicit camera-output architecture changes this policy.
+
+`Cut.canvasSize` is the drawable/storage canvas bounds for that Cut. Each Cut may have its own canvas size.
+
+The temporary production brush default canvas size of 320 x 240 is not part of the T2 policy and should be removed when the brush route starts using active Cut canvas settings.
+
+## Drawable area policy
+
+Brush T2 does not add a separate drawable-area model.
+
+```txt
+drawing bounds = Cut.canvasSize
+```
+
+Drawing source points should be recorded inside the active Cut canvas bounds.
+
+Viewport interaction is separate from drawing bounds. Future pan/zoom/spacebar viewport movement may receive input outside the visual canvas area, but that does not create a separate drawable-area model for T2.
+
+## Export size policy
+
+The following export-size concepts are planned:
+
+1. Canvas export
+   - Outputs the active Cut canvas size.
+   - Example default: 2340 x 1654.
+
+2. Camera export
+   - Outputs the Project camera frame size.
+   - Example default: 1920 x 1080.
+
+Storyboard-style output, TDTS output, XDTS output, and other timesheet/storyboard export formats are future export/sheet features. They must not redefine brush/canvas source storage semantics.
 
 ## Brush-aligned playback policy
 
@@ -28,11 +72,28 @@ Runtime may not yet implement every item in this document. This file defines cur
 - `inactivePreviewCache` and `playbackPreviewCache` are derived images that can be invalidated and rebuilt from brush frame drawing state.
 - If a required cache is stale or missing, cache preparation should happen outside the hot playback path or be handled by future renderer/cache policy.
 
+Brush T2 may defer playback cache implementation, but it must preserve the future policy that playback should not run live brush rendering.
+
 ## Storage boundaries
 
-Heavy bitmap payloads, paint command buffers, baked surfaces, preview caches, dirty flags, and similar frame-local drawing data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
+`Frame` should remain lightweight timing/identity/name/storyboard metadata. It should not embed brush source command lists, large bitmap surfaces, baked surfaces, preview/composite cache images, playback caches, image caches, or dirty state.
 
-`Frame` should remain lightweight timing/identity/metadata. It should not embed large bitmap surfaces, command lists, or preview/composite cache images.
+Brush source drawing data belongs outside `Frame` in `BrushFrameStore` or an equivalent brush/canvas storage boundary.
+
+For T2, the minimum brush source storage is:
+
+```txt
+BrushFrameStore
+- BrushFrameKey -> BrushFrameDrawing
+
+BrushFrameDrawing
+- commands: List<BrushPaintCommand>
+- hiddenCommandIds: Set<BrushPaintCommandId>
+```
+
+`hiddenCommandIds` is source-state metadata used by global undo/redo to hide or restore source commands. It is not a cache image and not a bitmap payload.
+
+Derived caches may be omitted, invalidated, or rebuilt. Source drawing payloads must be persisted when save/load is designed.
 
 ## Timeline separation
 
@@ -57,6 +118,7 @@ Do not add project-level material/source ownership as a shortcut before brush/ca
 - Save/load must distinguish source payload from derived caches.
 - Source drawing payloads must be persisted.
 - Derived caches may be omitted, invalidated, or rebuilt.
+- Bitmap baking and cache image generation must not happen in the live stroke editing hot path.
 
 ## Tile delta wording
 
@@ -65,3 +127,15 @@ TileDelta / TileDeltaCommand are not current brush runtime architecture. They mu
 ## Phase 217 brush-frame invalidation boundary note
 
 Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordinator` now mark the affected `BrushFrameKey` dirty through the frame-local `BrushFrameStore` drawing state and may emit a lightweight `BrushFrameCacheInvalidation` through `CacheInvalidationSink`. The invalidation event carries the `BrushFrameKey` plus dirty tiles when the current materialization bridge has them; otherwise it can fall back to whole-frame invalidation. This boundary is only dirty metadata for future derived inactive-preview, playback, save/load, or renderer rebuild work. It does not generate cache images, does not make cache images source of truth, and does not move source brush payload ownership out of `BrushFrameStore`.
+
+## Brush T2 canvas/storage planning note
+
+Brush T2 should begin from the simplest canvas/storage model that does not block future cache and baking work:
+
+- Project owns camera size, default 1920 x 1080.
+- Cut owns canvas size, default 2340 x 1654.
+- No separate drawable-area model exists for T2.
+- Drawing bounds equal active Cut canvas bounds.
+- Frame remains lightweight and does not own drawing source payloads.
+- BrushFrameStore owns `BrushFrameDrawing.commands + hiddenCommandIds`.
+- Cache images, baked surfaces, and playback previews remain derived or future payloads, not source of truth.
