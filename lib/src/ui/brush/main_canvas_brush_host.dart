@@ -2,11 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
-import '../../models/cut_id.dart';
-import '../../models/frame_id.dart';
-import '../../models/layer_id.dart';
-import '../../models/project_id.dart';
-import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -42,7 +37,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
-  late final _coordinator = _createCoordinator();
+  BrushFrameEditingCoordinator? _coordinator;
 
   @override
   void initState() {
@@ -59,7 +54,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
 
   @override
   Widget build(BuildContext context) {
-    if (_frameKeys.isEmpty) {
+    final coordinator = _coordinator;
+    if (_frameKeys.isEmpty || coordinator == null) {
       return const Center(
         key: ValueKey<String>('main-canvas-brush-host-empty-selection'),
         child: Text('Select a layer and frame to edit with Brush.'),
@@ -68,7 +64,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
 
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
-      coordinator: _coordinator,
+      coordinator: coordinator,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
     );
@@ -94,19 +90,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       return;
     }
     final activeKey = widget.resolvedActiveFrameKey ?? _frameKeys.first;
-    _coordinator.selectFrame(activeKey);
+    final coordinator = _coordinator;
+    if (coordinator == null) {
+      _coordinator = _createCoordinator(initialFrameKey: activeKey);
+      return;
+    }
+    coordinator.selectFrame(activeKey);
   }
 
-  BrushFrameEditingCoordinator _createCoordinator() {
-    final initialFrameKey = _frameKeys.isEmpty
-        ? const BrushFrameKey(
-            projectId: ProjectId('brush-host-placeholder-project'),
-            trackId: TrackId('brush-host-placeholder-track'),
-            cutId: CutId('brush-host-placeholder-cut'),
-            layerId: LayerId('brush-host-placeholder-layer'),
-            frameId: FrameId('brush-host-placeholder-frame'),
-          )
-        : _frameKeys.first;
+  BrushFrameEditingCoordinator _createCoordinator({
+    required BrushFrameKey initialFrameKey,
+  }) {
     return BrushFrameEditingCoordinator(
       initialFrameKey: initialFrameKey,
       frameStore: BrushFrameStore(),

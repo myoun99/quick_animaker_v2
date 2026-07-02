@@ -192,6 +192,63 @@ void main() {
     );
 
     test(
+      'production brush route keeps smoke debug and fake selection boundaries out',
+      () {
+        final homePageSource = File(
+          'lib/src/ui/home_page.dart',
+        ).readAsStringSync();
+        final hostSource = File(
+          'lib/src/ui/brush/main_canvas_brush_host.dart',
+        ).readAsStringSync();
+        final panelSource = File(
+          'lib/src/ui/brush/brush_canvas_panel.dart',
+        ).readAsStringSync();
+        final viewSource = File(
+          'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
+        ).readAsStringSync();
+
+        for (final source in [homePageSource, hostSource, panelSource]) {
+          expect(source, isNot(contains('brush_canvas_smoke_screen.dart')));
+          expect(source, isNot(contains('interactive_brush_canvas_smoke_host')));
+          expect(source, isNot(contains('BrushCanvasSmokeScreen')));
+          expect(source, isNot(contains('Debug Reset Session')));
+          expect(source, isNot(contains('Brush Host Preview')));
+        }
+
+        expect(hostSource, contains('resolvedActiveFrameKey'));
+        expect(hostSource, contains('selection?.toBrushFrameKey()'));
+        expect(hostSource, contains('main-canvas-brush-host-empty-selection'));
+        expect(hostSource, isNot(contains('brush-host-placeholder-project')));
+        expect(hostSource, isNot(contains('brush-host-placeholder-frame')));
+
+        for (final source in [
+          homePageSource,
+          hostSource,
+          panelSource,
+          viewSource,
+        ]) {
+          for (final forbidden in [
+            'BrushBitmapMaterializationHistoryState',
+            'BrushBitmapMaterializationHistoryEntry',
+            'BrushCommitResult',
+            'undoLatestBrushBitmapMaterialization',
+            'redoLatestBrushBitmapMaterialization',
+            'paintCommands =',
+            'cacheImage',
+            'previewImage',
+          ]) {
+            expect(
+              source,
+              isNot(contains(forbidden)),
+              reason:
+                  'Production brush UI route must not own source payloads, cache images, or internal materialization undo via $forbidden.',
+            );
+          }
+        }
+      },
+    );
+
+    test(
       'HomePage toolbar does not expose legacy CanvasController brush state',
       () {
         final homePageSource = File(
