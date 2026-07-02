@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -131,17 +129,16 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(
-        find.textContaining(
-          'operation: ${BrushEditSessionOperationKind.commit.name}',
-        ),
+        find.textContaining('operation: commit'),
         findsOneWidget,
       );
-      expect(find.textContaining('cacheInvalidations: 1'), findsOneWidget);
+      expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
 
       final view = tester.widget<InteractiveBrushEditCanvasView>(
         find.byType(InteractiveBrushEditCanvasView),
       );
-      expect(view.sessionState.canvasState.currentSurface.tiles, isNotEmpty);
+      expect(view.sessionState.canvasState.currentSurface.tiles, isEmpty);
+      expect(view.committedSourceDabs, hasLength(1));
     });
 
     testWidgets('color presets update host settings and future strokes', (
@@ -173,9 +170,7 @@ void main() {
       expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      final bluePixels = _view(
-        tester,
-      ).sessionState.canvasState.currentSurface.tiles.values.single.pixels;
+      expect(_view(tester).committedSourceDabs.single.color, 0xFF0000FF);
 
       await _tapKey(
         tester,
@@ -188,10 +183,7 @@ void main() {
       expect(_host(tester).inputSettings.color, 0xFF000000);
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
-      final blackPixels = _view(
-        tester,
-      ).sessionState.canvasState.currentSurface.tiles.values.single.pixels;
-      expect(blackPixels, isNot(bluePixels));
+      expect(_view(tester).committedSourceDabs.single.color, 0xFF000000);
     });
 
     testWidgets(
@@ -212,7 +204,7 @@ void main() {
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).committedSourceDabs,
           isNotEmpty,
         );
 
@@ -231,13 +223,13 @@ void main() {
         expect(_host(tester).frameId, const FrameId('frame-b'));
         expect(find.textContaining('operation: reset'), findsOneWidget);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).committedSourceDabs,
           isEmpty,
         );
 
         await tapCanvas(tester, const Offset(3.5, 3.5));
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).committedSourceDabs,
           isNotEmpty,
         );
 
@@ -247,7 +239,7 @@ void main() {
         );
         expect(find.textContaining('operation: undo'), findsOneWidget);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).committedSourceDabs,
           isEmpty,
         );
       },
@@ -267,7 +259,7 @@ void main() {
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isNotEmpty,
       );
 
@@ -277,7 +269,7 @@ void main() {
       );
       expect(find.textContaining('operation: undo'), findsOneWidget);
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isEmpty,
       );
 
@@ -287,7 +279,7 @@ void main() {
       );
       expect(find.textContaining('operation: redo'), findsOneWidget);
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isNotEmpty,
       );
 
@@ -298,7 +290,7 @@ void main() {
       expect(find.textContaining('operation: reset'), findsOneWidget);
       expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isEmpty,
       );
     });
@@ -311,7 +303,7 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tapCanvas(tester, const Offset(3.5, 2.5));
       expect(
-        _view(tester).sessionState.materializationHistoryState.undoEntries,
+        _view(tester).committedSourceDabs,
         hasLength(2),
       );
 
@@ -322,16 +314,8 @@ void main() {
 
       expect(find.textContaining('operation: undo'), findsOneWidget);
       expect(
-        _view(tester).sessionState.materializationHistoryState.undoEntries,
+        _view(tester).committedSourceDabs,
         hasLength(1),
-      );
-      expect(
-        _view(tester).sessionState.materializationHistoryState.redoEntries,
-        hasLength(1),
-      );
-      expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
       );
     });
 
@@ -351,16 +335,8 @@ void main() {
 
       expect(find.textContaining('operation: redo'), findsOneWidget);
       expect(
-        _view(tester).sessionState.materializationHistoryState.undoEntries,
+        _view(tester).committedSourceDabs,
         hasLength(2),
-      );
-      expect(
-        _view(tester).sessionState.materializationHistoryState.redoEntries,
-        isEmpty,
-      );
-      expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
       );
     });
 
@@ -375,8 +351,8 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
       expect(
-        _view(tester).sessionState.materializationHistoryState.redoEntries,
-        hasLength(1),
+        _view(tester).committedSourceDabs,
+        isEmpty,
       );
       await _tapKey(
         tester,
@@ -388,11 +364,7 @@ void main() {
       );
 
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
-        isEmpty,
-      );
-      expect(
-        _view(tester).sessionState.materializationHistoryState.redoEntries,
+        _view(tester).committedSourceDabs,
         isEmpty,
       );
       expect(find.textContaining('operation: redo'), findsOneWidget);
@@ -408,7 +380,7 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isEmpty,
       );
       await _tapKey(
@@ -417,7 +389,7 @@ void main() {
       );
 
       expect(
-        _view(tester).sessionState.canvasState.currentSurface.tiles,
+        _view(tester).committedSourceDabs,
         isEmpty,
       );
       expect(find.textContaining('operation: redo'), findsOneWidget);
@@ -439,14 +411,12 @@ void main() {
 
         expect(_host(tester).inputSettings.color, 0xFF0000FF);
         expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-        expect(blueState.materializationHistoryState.undoEntries, hasLength(2));
+        expect(_view(tester).committedSourceDabs, hasLength(2));
+        expect(identical(blueState, blackState), isTrue);
         expect(
-          blueState.canvasState.currentSurface.tiles.length,
-          greaterThanOrEqualTo(
-            blackState.canvasState.currentSurface.tiles.length,
-          ),
+          _view(tester).committedSourceDabs.map((dab) => dab.color),
+          containsAllInOrder([0xFF000000, 0xFF0000FF]),
         );
-        expect(_surfaceHasRgbaBytes(blueState, const [0, 0, 255, 255]), isTrue);
       },
     );
 
@@ -462,7 +432,7 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
       expect(
         _debugStatus(tester),
-        'operation: commit, cacheInvalidations: 1, color: 0xFF000000',
+        'operation: commit, cacheInvalidations: 0, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -470,7 +440,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: undo, cacheInvalidations: 2, color: 0xFF000000',
+        'operation: undo, cacheInvalidations: 0, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -478,7 +448,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 3, color: 0xFF000000',
+        'operation: redo, cacheInvalidations: 0, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -486,7 +456,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 3, color: 0xFFFF0000',
+        'operation: redo, cacheInvalidations: 0, color: 0xFFFF0000',
       );
       await _tapKey(
         tester,
@@ -578,22 +548,4 @@ String _debugStatus(WidgetTester tester) {
         ),
       )
       .data!;
-}
-
-bool _surfaceHasRgbaBytes(
-  BrushEditSessionState sessionState,
-  List<int> rgbaBytes,
-) {
-  for (final tile in sessionState.canvasState.currentSurface.tiles.values) {
-    final pixels = tile.pixels;
-    for (var i = 0; i <= pixels.length - rgbaBytes.length; i += 4) {
-      if (pixels[i] == rgbaBytes[0] &&
-          pixels[i + 1] == rgbaBytes[1] &&
-          pixels[i + 2] == rgbaBytes[2] &&
-          pixels[i + 3] == rgbaBytes[3]) {
-        return true;
-      }
-    }
-  }
-  return false;
 }

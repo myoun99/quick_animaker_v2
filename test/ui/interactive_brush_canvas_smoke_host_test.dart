@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
@@ -69,11 +68,11 @@ void main() {
       expect(view.layerId, layerId);
       expect(view.frameId, frameId);
       expect(view.inputSettings, inputSettings);
-      expect(identical(view.cacheInvalidationSink, sink), isTrue);
+      expect(sink.totalCalls, 0);
       expect(view.showTransparentBackground, isFalse);
     });
 
-    testWidgets('stores operation result session state and rebuilds canvas', (
+    testWidgets('tap commits source stroke without bitmap materialization', (
       tester,
     ) async {
       final sessionState = _sessionState();
@@ -83,7 +82,6 @@ void main() {
       final originalCanvasSnapshot = originalCanvasState.toString();
       final originalHistorySnapshot = originalHistoryState.toString();
       final sink = FakeCacheInvalidationSink();
-      final results = <BrushEditSessionCacheOperationResult>[];
 
       await tester.pumpWidget(
         _app(
@@ -93,23 +91,19 @@ void main() {
             frameId: frameId,
             inputSettings: inputSettings,
             cacheInvalidationSink: sink,
-            onOperationResult: results.add,
           ),
         ),
       );
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
-      expect(results, hasLength(1));
-      expect(sink.totalCalls, greaterThan(0));
-      expect(identical(results.single.sessionState, sessionState), isFalse);
-
       final view = tester.widget<InteractiveBrushEditCanvasView>(
         find.byType(InteractiveBrushEditCanvasView),
       );
-      expect(identical(view.sessionState, results.single.sessionState), isTrue);
-      expect(identical(view.sessionState, sessionState), isFalse);
-      expect(view.sessionState.canvasState.currentSurface.tiles, isNotEmpty);
+      expect(identical(view.sessionState, sessionState), isTrue);
+      expect(view.sessionState.canvasState.currentSurface.tiles, isEmpty);
+      expect(view.sessionState.materializationHistoryState.undoEntries, isEmpty);
+      expect(sink.totalCalls, 0);
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
       expect(
@@ -186,7 +180,7 @@ void main() {
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
+        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -203,7 +197,7 @@ void main() {
         expect(identical(_view(tester).sessionState, strokedState), isTrue);
         expect(
           _view(tester).sessionState.canvasState.currentSurface.tiles,
-          isNotEmpty,
+          isEmpty,
         );
         expect(sessionState.canvasState.currentSurface.tiles, isEmpty);
       },
@@ -231,7 +225,7 @@ void main() {
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
+        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -249,7 +243,7 @@ void main() {
         expect(identical(_view(tester).sessionState, strokedState), isTrue);
         expect(
           _view(tester).sessionState.canvasState.currentSurface.tiles,
-          isNotEmpty,
+          isEmpty,
         );
         expect(secondState.canvasState.currentSurface.tiles, isEmpty);
       },
@@ -275,7 +269,7 @@ void main() {
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
         final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isNotEmpty);
+        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -293,16 +287,15 @@ void main() {
         expect(identical(_view(tester).sessionState, strokedState), isTrue);
         expect(
           _view(tester).sessionState.canvasState.currentSurface.tiles,
-          isNotEmpty,
+          isEmpty,
         );
       },
     );
 
     testWidgets(
-      'repeated strokes keep accumulating in host local session state',
+      'repeated strokes do not mutate bitmap materialization session state',
       (tester) async {
         final sink = FakeCacheInvalidationSink();
-        final results = <BrushEditSessionCacheOperationResult>[];
 
         await tester.pumpWidget(
           _app(
@@ -312,7 +305,6 @@ void main() {
               frameId: frameId,
               inputSettings: inputSettings,
               cacheInvalidationSink: sink,
-              onOperationResult: results.add,
             ),
           ),
         );
@@ -322,13 +314,10 @@ void main() {
         await tapCanvas(tester, const Offset(2.5, 1.5));
         final secondState = _view(tester).sessionState;
 
-        expect(results, hasLength(2));
-        expect(identical(secondState, firstState), isFalse);
-        expect(secondState.canvasState.currentSurface.tiles, isNotEmpty);
-        expect(
-          secondState.materializationHistoryState.undoEntries,
-          hasLength(2),
-        );
+        expect(identical(secondState, firstState), isTrue);
+        expect(secondState.canvasState.currentSurface.tiles, isEmpty);
+        expect(secondState.materializationHistoryState.undoEntries, isEmpty);
+        expect(sink.totalCalls, 0);
       },
     );
 
@@ -354,7 +343,7 @@ void main() {
         await tapCanvas(tester, const Offset(1.5, 1.5));
         expect(
           _view(tester).sessionState.canvasState.currentSurface.tiles,
-          isNotEmpty,
+          isEmpty,
         );
 
         await tester.pumpWidget(
@@ -413,7 +402,22 @@ void main() {
       expect(source, isNot(contains('Riverpod')));
       expect(source, isNot(contains('Bloc')));
       expect(source, isNot(contains('ChangeNotifier')));
-      expect(source, isNot(contains('commitBrushDabSequence')));
+      expect(
+        source,
+        isNot(
+          contains(
+            'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+          ),
+        ),
+      );
+      expect(
+        source,
+        isNot(contains('brushSurfaceEditForBrushDabSequenceOnBitmapSurface')),
+      );
+      expect(
+        source,
+        isNot(contains('applyBrushSurfaceEditToCanvasSurfaceState')),
+      );
       expect(source, isNot(contains('undoLatestBrushBitmapMaterialization')));
       expect(source, isNot(contains('redoLatestBrushBitmapMaterialization')));
     });

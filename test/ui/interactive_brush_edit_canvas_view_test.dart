@@ -33,7 +33,7 @@ void main() {
               sessionState: sessionState,
               layerId: layerId,
               frameId: frameId,
-              inputSettings: inputSettings,
+              inputSettings: const BrushEditCanvasInputSettings(),
               onSourceStrokeCommitted: (_) {},
               showTransparentBackground: false,
             ),

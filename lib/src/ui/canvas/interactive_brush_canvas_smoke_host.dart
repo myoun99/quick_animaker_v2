@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_edit_session_cache_operation_result.dart';
+import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -22,9 +22,10 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.cacheInvalidationSink,
+    this.committedSourceDabs = const <BrushDab>[],
+    this.onSourceStrokeCommitted,
     this.sessionResetToken,
     this.showTransparentBackground = true,
-    this.onOperationResult,
   });
 
   factory InteractiveBrushCanvasSmokeHost.blank({
@@ -37,7 +38,8 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     int tileSize = 16,
     Object? sessionResetToken,
     bool showTransparentBackground = true,
-    ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult,
+    List<BrushDab> committedSourceDabs = const <BrushDab>[],
+    ValueChanged<List<BrushDab>>? onSourceStrokeCommitted,
   }) {
     final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
     final sessionStore = BrushFrameEditSessionStore(
@@ -59,9 +61,10 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
       frameId: frameId,
       inputSettings: inputSettings,
       cacheInvalidationSink: cacheInvalidationSink,
+      committedSourceDabs: committedSourceDabs,
+      onSourceStrokeCommitted: onSourceStrokeCommitted,
       sessionResetToken: sessionResetToken,
       showTransparentBackground: showTransparentBackground,
-      onOperationResult: onOperationResult,
     );
   }
 
@@ -70,9 +73,10 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
   final CacheInvalidationSink cacheInvalidationSink;
+  final List<BrushDab> committedSourceDabs;
+  final ValueChanged<List<BrushDab>>? onSourceStrokeCommitted;
   final Object? sessionResetToken;
   final bool showTransparentBackground;
-  final ValueChanged<BrushEditSessionCacheOperationResult>? onOperationResult;
 
   @override
   State<InteractiveBrushCanvasSmokeHost> createState() =>
@@ -106,15 +110,9 @@ class _InteractiveBrushCanvasSmokeHostState
       layerId: widget.layerId,
       frameId: widget.frameId,
       inputSettings: widget.inputSettings,
+      committedSourceDabs: widget.committedSourceDabs,
       showTransparentBackground: widget.showTransparentBackground,
-      onSourceStrokeCommitted: (_) {},
+      onSourceStrokeCommitted: widget.onSourceStrokeCommitted ?? (_) {},
     );
-  }
-
-  void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
-    setState(() {
-      _sessionState = result.sessionState;
-    });
-    widget.onOperationResult?.call(result);
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_edit_session_cache_operation_result.dart';
+import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
@@ -47,7 +47,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   late BrushFrameEditingCoordinator _coordinator;
   late BrushEditCanvasInputSettings _inputSettings;
   late _RecordingCacheInvalidationSink _cacheInvalidationSink;
-  BrushEditSessionCacheOperationResult? _latestOperationResult;
   var _sessionRevision = 0;
   String _debugOperation = 'none';
 
@@ -135,7 +134,8 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
             cacheInvalidationSink: _cacheInvalidationSink,
             sessionResetToken: _sessionRevision,
             showTransparentBackground: widget.showTransparentBackground,
-            onOperationResult: _handleOperationResult,
+            committedSourceDabs: _committedSourceDabs,
+            onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
           if (widget.showDebugStatus)
             Text(
@@ -176,9 +176,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   }
 
   String get _debugStatusText {
-    final operation = _latestOperationResult?.kind.name ?? _debugOperation;
-
-    return 'operation: $operation, '
+    return 'operation: $_debugOperation, '
         'cacheInvalidations: ${_cacheInvalidationSink.totalCalls}, '
         'color: ${_colorHex(_inputSettings.color)}';
   }
@@ -186,12 +184,17 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   String _colorHex(int color) =>
       '0x${color.toUnsigned(32).toRadixString(16).padLeft(8, '0').toUpperCase()}';
 
-  void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
+  List<BrushDab> get _committedSourceDabs => _coordinator.frameStore
+      .getOrCreateFrame(_coordinator.activeFrameKey)
+      .visibleActivePaintCommands
+      .expand((command) => command.sourceDabs)
+      .toList(growable: false);
+
+  void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
     setState(() {
-      _coordinator.applyBrushOperationResult(result);
+      _coordinator.commitSourceStroke(sourceDabs: sourceDabs);
       _sessionRevision += 1;
-      _latestOperationResult = result;
-      _debugOperation = result.kind.name;
+      _debugOperation = 'commit';
     });
   }
 
@@ -201,7 +204,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
         cacheInvalidationSink: _cacheInvalidationSink,
       );
       _sessionRevision += 1;
-      _latestOperationResult = null;
       _debugOperation = entry == null ? 'undo-empty' : 'undo';
     });
   }
@@ -212,7 +214,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
         cacheInvalidationSink: _cacheInvalidationSink,
       );
       _sessionRevision += 1;
-      _latestOperationResult = null;
       _debugOperation = entry == null ? 'redo-empty' : 'redo';
     });
   }
@@ -221,7 +222,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
     setState(() {
       _coordinator = _createCoordinator();
       _sessionRevision += 1;
-      _latestOperationResult = null;
       _cacheInvalidationSink = _RecordingCacheInvalidationSink();
       _debugOperation = debugOperation;
     });
