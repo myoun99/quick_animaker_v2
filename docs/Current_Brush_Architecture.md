@@ -228,3 +228,7 @@ Runtime naming now separates production user-facing brush undo from the temporar
 ## Phase 217 brush-frame invalidation boundary note
 
 Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordinator` now mark the affected `BrushFrameKey` dirty through the frame-local `BrushFrameStore` drawing state and may emit a lightweight `BrushFrameCacheInvalidation` through `CacheInvalidationSink`. The invalidation event carries the `BrushFrameKey` plus dirty tiles when the current materialization bridge has them; otherwise it can fall back to whole-frame invalidation. This boundary is only dirty metadata for future derived inactive-preview, playback, save/load, or renderer rebuild work. It does not generate cache images, does not make cache images source of truth, and does not move source brush payload ownership out of `BrushFrameStore`.
+
+## Phase 218 production readiness note
+
+The production main-canvas brush route remains `HomePage -> MainCanvasBrushHost -> BrushCanvasPanel -> InteractiveBrushEditCanvasView -> BrushFrameEditingCoordinator -> BrushFrameStore`. `MainCanvasBrushHost` must resolve a real active `BrushFrameKey` from the editor selection before constructing editable brush state; when no valid active layer/frame selection exists, it shows the safe empty-selection placeholder instead of creating a fake placeholder frame. Production HomePage must not expose brush smoke/debug/tutorial UI, and UI widgets on this route must not own source drawing payloads, command buffers, baked surfaces, cache images, or brush dirty state.

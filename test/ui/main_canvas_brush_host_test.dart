@@ -39,6 +39,44 @@ void main() {
       );
     },
   );
+
+  testWidgets('missing selection does not create fake editable brush state', (
+    tester,
+  ) async {
+    const key = BrushFrameKey(
+      projectId: ProjectId('project-real'),
+      trackId: TrackId('track-real'),
+      cutId: CutId('cut-real'),
+      layerId: LayerId('layer-real'),
+      frameId: FrameId('frame-real'),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: MainCanvasBrushHost())),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: MainCanvasBrushHost(activeFrameKey: key)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('brush-canvas-frame-real')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'explicit fixture data injection embeds reusable brush view without screen',
     (tester) async {
