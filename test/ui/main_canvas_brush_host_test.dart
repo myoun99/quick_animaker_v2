@@ -156,7 +156,9 @@ void main() {
     );
   });
 
-  testWidgets('recreates sessions when active cut canvas size changes', (tester) async {
+  testWidgets('recreates sessions when active cut canvas size changes', (
+    tester,
+  ) async {
     const key = BrushFrameKey(
       projectId: ProjectId('project-real'),
       trackId: TrackId('track-real'),

@@ -52,10 +52,7 @@ class BrushFrameEditingCoordinator {
     _activeFrameKey = key;
   }
 
-
-  BrushPaintCommand commitSourceStroke({
-    required List<BrushDab> sourceDabs,
-  }) {
+  BrushPaintCommand commitSourceStroke({required List<BrushDab> sourceDabs}) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
     }
@@ -194,7 +191,6 @@ class BrushFrameEditingCoordinator {
     }
     return entry;
   }
-
 
   void _pushBrushPaintUndoEntry(
     BrushPaintCommand command,

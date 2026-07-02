@@ -31,9 +31,8 @@ class BrushFrameDrawingState {
   List<BrushPaintCommand> get paintCommands => _paintCommands;
   List<BrushPaintCommand> get commands => paintCommands;
 
-  List<BrushPaintCommand> get livePaintCommands => _visibleByState(
-    BrushPaintCommandState.live,
-  );
+  List<BrushPaintCommand> get livePaintCommands =>
+      _visibleByState(BrushPaintCommandState.live);
 
   List<BrushPaintCommand> get hiddenByUndoPaintCommands =>
       _paintCommands
@@ -41,9 +40,8 @@ class BrushFrameDrawingState {
           .toList()
         ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
 
-  List<BrushPaintCommand> get deferredBakePaintCommands => _visibleByState(
-    BrushPaintCommandState.deferredBake,
-  );
+  List<BrushPaintCommand> get deferredBakePaintCommands =>
+      _visibleByState(BrushPaintCommandState.deferredBake);
 
   bool get hasDeferredBakeCommands => deferredBakePaintCommands.isNotEmpty;
   int get deferredBakeCount => deferredBakePaintCommands.length;

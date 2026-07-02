@@ -7,7 +7,9 @@ void main() {
     final drawingState = File(
       'lib/src/models/brush_frame_drawing_state.dart',
     ).readAsStringSync();
-    final store = File('lib/src/services/brush_frame_store.dart').readAsStringSync();
+    final store = File(
+      'lib/src/services/brush_frame_store.dart',
+    ).readAsStringSync();
 
     expect(drawingState, contains('List<BrushPaintCommand> get commands'));
     expect(drawingState, contains('hiddenCommandIds'));
@@ -34,57 +36,65 @@ void main() {
     }
   });
 
-  test('live active stroke overlay stays a UI overlay and not cache generation', () {
-    final interactiveView = File(
-      'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
-    ).readAsStringSync();
-    final bitmapPainter = File(
-      'lib/src/ui/canvas/bitmap_surface_painter.dart',
-    ).readAsStringSync();
+  test(
+    'live active stroke overlay stays a UI overlay and not cache generation',
+    () {
+      final interactiveView = File(
+        'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
+      ).readAsStringSync();
+      final bitmapPainter = File(
+        'lib/src/ui/canvas/bitmap_surface_painter.dart',
+      ).readAsStringSync();
 
-    expect(interactiveView, contains('activeStrokeOverlay'));
-    expect(interactiveView, contains('BrushDabInterpolator'));
-    expect(
-      interactiveView,
-      isNot(contains('_collectedDabs.add(_dabFromPosition')),
-    );
-    expect(bitmapPainter, contains('_paintActiveStrokeOverlay'));
-    for (final forbidden in [
-      'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
-      'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
-      'applyBrushSurfaceEditToCanvasSurfaceState',
-      'generateCache',
-    ]) {
-      expect(interactiveView, isNot(contains(forbidden)));
-      expect(bitmapPainter, isNot(contains(forbidden)));
-    }
-  });
+      expect(interactiveView, contains('activeStrokeOverlay'));
+      expect(interactiveView, contains('BrushDabInterpolator'));
+      expect(
+        interactiveView,
+        isNot(contains('_collectedDabs.add(_dabFromPosition')),
+      );
+      expect(bitmapPainter, contains('_paintActiveStrokeOverlay'));
+      for (final forbidden in [
+        'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+        'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
+        'applyBrushSurfaceEditToCanvasSurfaceState',
+        'generateCache',
+      ]) {
+        expect(interactiveView, isNot(contains(forbidden)));
+        expect(bitmapPainter, isNot(contains(forbidden)));
+      }
+    },
+  );
 
-  test('Frame remains lightweight and production brush UI has no local undo/debug controls', () {
-  final frame = File('lib/src/models/frame.dart').readAsStringSync();
-  final brushPanel = File('lib/src/ui/brush/brush_canvas_panel.dart').readAsStringSync();
-  final homePage = File('lib/src/ui/home_page.dart').readAsStringSync();
+  test(
+    'Frame remains lightweight and production brush UI has no local undo/debug controls',
+    () {
+      final frame = File('lib/src/models/frame.dart').readAsStringSync();
+      final brushPanel = File(
+        'lib/src/ui/brush/brush_canvas_panel.dart',
+      ).readAsStringSync();
+      final homePage = File('lib/src/ui/home_page.dart').readAsStringSync();
 
-  for (final forbidden in [
-    'BrushFrameDrawing',
-    'BrushPaintCommand',
-    'hiddenCommandIds',
-    'bakedBaseSurface',
-    'playbackPreviewCache',
-    'inactivePreviewCache',
-  ]) {
-    expect(frame, isNot(contains(forbidden)));
-  }
+      for (final forbidden in [
+        'BrushFrameDrawing',
+        'BrushPaintCommand',
+        'hiddenCommandIds',
+        'bakedBaseSurface',
+        'playbackPreviewCache',
+        'inactivePreviewCache',
+      ]) {
+        expect(frame, isNot(contains(forbidden)));
+      }
 
-  for (final forbidden in [
-    'Brush Undo',
-    'Brush Redo',
-    'Debug Reset Session',
-    'brush-workspace-screen',
-    'tutorial',
-  ]) {
-    expect(brushPanel, isNot(contains(forbidden)));
-    expect(homePage, isNot(contains(forbidden)));
-  }
-  });
+      for (final forbidden in [
+        'Brush Undo',
+        'Brush Redo',
+        'Debug Reset Session',
+        'brush-workspace-screen',
+        'tutorial',
+      ]) {
+        expect(brushPanel, isNot(contains(forbidden)));
+        expect(homePage, isNot(contains(forbidden)));
+      }
+    },
+  );
 }

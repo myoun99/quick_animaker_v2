@@ -21,11 +21,9 @@ void main() {
 
   test('fast movement inserts intermediate dabs using brush-size spacing', () {
     const interpolator = BrushDabInterpolator();
-    final first = interpolator.interpolate(
-      previous: null,
-      nextRaw: dab(0, 0),
-      firstSequence: 0,
-    ).single;
+    final first = interpolator
+        .interpolate(previous: null, nextRaw: dab(0, 0), firstSequence: 0)
+        .single;
 
     final sampled = interpolator.interpolate(
       previous: first,
@@ -38,21 +36,24 @@ void main() {
     expect(sampled.last.center.y, 0);
   });
 
-  test('movement just beyond spacing inserts an intermediate dab and endpoint', () {
-    const interpolator = BrushDabInterpolator();
-    final sampled = interpolator.interpolate(
-      previous: dab(0, 0, size: 8, sequence: 0),
-      nextRaw: dab(2.1, 0, size: 8),
-      firstSequence: 1,
-    );
+  test(
+    'movement just beyond spacing inserts an intermediate dab and endpoint',
+    () {
+      const interpolator = BrushDabInterpolator();
+      final sampled = interpolator.interpolate(
+        previous: dab(0, 0, size: 8, sequence: 0),
+        nextRaw: dab(2.1, 0, size: 8),
+        firstSequence: 1,
+      );
 
-    final sequences = sampled.map((item) => item.sequence).toList();
-    expect(sampled, isNotEmpty);
-    expect(sampled.last.center.x, 2.1);
-    expect(sampled.last.center.y, 0);
-    expect(sequences, everyElement(greaterThanOrEqualTo(0)));
-    expect(_isStrictlyIncreasing(sequences), isTrue);
-  });
+      final sequences = sampled.map((item) => item.sequence).toList();
+      expect(sampled, isNotEmpty);
+      expect(sampled.last.center.x, 2.1);
+      expect(sampled.last.center.y, 0);
+      expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+      expect(_isStrictlyIncreasing(sequences), isTrue);
+    },
+  );
 
   test('tiny movement below spacing does not generate duplicate dabs', () {
     const interpolator = BrushDabInterpolator();

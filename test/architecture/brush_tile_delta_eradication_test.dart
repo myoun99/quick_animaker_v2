@@ -125,7 +125,8 @@ void main() {
           expect(
             text,
             isNot(contains(forbidden)),
-            reason: '${file.path} must not call dangerous legacy API $forbidden.',
+            reason:
+                '${file.path} must not call dangerous legacy API $forbidden.',
           );
         }
       }
@@ -316,6 +317,5 @@ void main() {
         }
       },
     );
-
   });
 }

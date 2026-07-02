@@ -94,10 +94,7 @@ class _InteractiveBrushEditCanvasViewState
 
     final nextDabs = widget.dabInterpolator.interpolate(
       previous: _collectedDabs.isEmpty ? null : _collectedDabs.last,
-      nextRaw: _dabFromPosition(
-        event.localPosition,
-        sequence: _nextSequence,
-      ),
+      nextRaw: _dabFromPosition(event.localPosition, sequence: _nextSequence),
       firstSequence: _nextSequence,
     );
     if (nextDabs.isEmpty) {

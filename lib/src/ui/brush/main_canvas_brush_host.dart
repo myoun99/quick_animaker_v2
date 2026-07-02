@@ -112,9 +112,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     return BrushFrameEditingCoordinator(
       initialFrameKey: initialFrameKey,
       frameStore: _frameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: widget.canvasSize,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: widget.canvasSize),
       historyPolicy: const BrushHistoryPolicy(
         userUndoLimit: 24,
         deferredBakeRatio: 0,

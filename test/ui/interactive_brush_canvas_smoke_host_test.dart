@@ -102,7 +102,10 @@ void main() {
       );
       expect(identical(view.sessionState, sessionState), isTrue);
       expect(view.sessionState.canvasState.currentSurface.tiles, isEmpty);
-      expect(view.sessionState.materializationHistoryState.undoEntries, isEmpty);
+      expect(
+        view.sessionState.materializationHistoryState.undoEntries,
+        isEmpty,
+      );
       expect(sink.totalCalls, 0);
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);

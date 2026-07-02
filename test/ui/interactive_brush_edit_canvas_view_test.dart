@@ -110,9 +110,7 @@ void main() {
       expect(results, hasLength(1));
     });
 
-    testWidgets('tap stroke commits source dabs', (
-      tester,
-    ) async {
+    testWidgets('tap stroke commits source dabs', (tester) async {
       final sessionState = _sessionState();
       final results = <List<BrushDab>>[];
 
@@ -128,9 +126,7 @@ void main() {
       tester,
     ) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       await dragCanvas(tester, const [
         Offset(1.5, 1.5),
@@ -211,7 +207,6 @@ void main() {
         _app(
           _view(sessionState, (result) {
             results.add(result);
-
           }),
         ),
       );
@@ -220,7 +215,6 @@ void main() {
         _app(
           _view(sessionState, (result) {
             results.add(result);
-
           }),
         ),
       );
@@ -239,10 +233,7 @@ void main() {
           home: Scaffold(
             body: Padding(
               padding: const EdgeInsets.only(top: 48, left: 24),
-              child: _view(
-                _sessionState(),
-                results.add,
-              ),
+              child: _view(_sessionState(), results.add),
             ),
           ),
         ),
@@ -258,9 +249,7 @@ void main() {
       tester,
     ) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       await tapCanvas(tester, const Offset(9, 9));
 
@@ -269,9 +258,7 @@ void main() {
 
     testWidgets('pointer cancel does not emit a result', (tester) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       final gesture = await tester.startGesture(
         canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
@@ -288,9 +275,7 @@ void main() {
       tester,
     ) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       tester.binding.handlePointerEvent(
         const PointerMoveEvent(position: Offset(1.5, 1.5)),
@@ -307,9 +292,7 @@ void main() {
       tester,
     ) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       final first = await tester.startGesture(
         canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
@@ -328,9 +311,7 @@ void main() {
 
     testWidgets('callback is called at most once per stroke', (tester) async {
       final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), results.add)),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       final gesture = await tester.startGesture(
         canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
@@ -353,9 +334,7 @@ void main() {
       final originalHistorySnapshot = originalHistoryState.toString();
       final results = <List<BrushDab>>[];
 
-      await tester.pumpWidget(
-        _app(_view(sessionState, results.add)),
-      );
+      await tester.pumpWidget(_app(_view(sessionState, results.add)));
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
@@ -388,9 +367,7 @@ void main() {
     testWidgets('does not affect StoryboardPanel or TimelinePanel', (
       tester,
     ) async {
-      await tester.pumpWidget(
-        _app(_view(_sessionState(), (_) {})),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), (_) {})));
 
       expect(find.byType(StoryboardPanel), findsNothing);
       expect(find.byType(TimelinePanel), findsNothing);

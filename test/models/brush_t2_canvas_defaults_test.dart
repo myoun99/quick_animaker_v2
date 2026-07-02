@@ -18,14 +18,17 @@ void main() {
     expect(project.cameraSize, defaultProjectCameraSize);
   });
 
-  test('default Cut and production brush canvas use the Brush T2 canvas size', () {
-    final cut = createDefaultCut(
-      cutId: const CutId('cut'),
-      name: 'Cut',
-      layerId: const LayerId('layer'),
-    );
+  test(
+    'default Cut and production brush canvas use the Brush T2 canvas size',
+    () {
+      final cut = createDefaultCut(
+        cutId: const CutId('cut'),
+        name: 'Cut',
+        layerId: const LayerId('layer'),
+      );
 
-    expect(cut.canvasSize, defaultCutCanvasSize);
-    expect(BrushCanvasDefaults.canvasSize, defaultCutCanvasSize);
-  });
+      expect(cut.canvasSize, defaultCutCanvasSize);
+      expect(BrushCanvasDefaults.canvasSize, defaultCutCanvasSize);
+    },
+  );
 }

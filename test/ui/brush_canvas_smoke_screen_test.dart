@@ -128,10 +128,7 @@ void main() {
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
-      expect(
-        find.textContaining('operation: commit'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('operation: commit'), findsOneWidget);
       expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
 
       final view = tester.widget<InteractiveBrushEditCanvasView>(
@@ -203,10 +200,7 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        expect(
-          _view(tester).committedSourceDabs,
-          isNotEmpty,
-        );
+        expect(_view(tester).committedSourceDabs, isNotEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -222,26 +216,17 @@ void main() {
         expect(_host(tester).layerId, const LayerId('layer-b'));
         expect(_host(tester).frameId, const FrameId('frame-b'));
         expect(find.textContaining('operation: reset'), findsOneWidget);
-        expect(
-          _view(tester).committedSourceDabs,
-          isEmpty,
-        );
+        expect(_view(tester).committedSourceDabs, isEmpty);
 
         await tapCanvas(tester, const Offset(3.5, 3.5));
-        expect(
-          _view(tester).committedSourceDabs,
-          isNotEmpty,
-        );
+        expect(_view(tester).committedSourceDabs, isNotEmpty);
 
         await _tapKey(
           tester,
           const ValueKey<String>('brush-canvas-smoke-screen-undo'),
         );
         expect(find.textContaining('operation: undo'), findsOneWidget);
-        expect(
-          _view(tester).committedSourceDabs,
-          isEmpty,
-        );
+        expect(_view(tester).committedSourceDabs, isEmpty);
       },
     );
 
@@ -258,30 +243,21 @@ void main() {
       );
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      expect(
-        _view(tester).committedSourceDabs,
-        isNotEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isNotEmpty);
 
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
       expect(find.textContaining('operation: undo'), findsOneWidget);
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
 
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
       expect(find.textContaining('operation: redo'), findsOneWidget);
-      expect(
-        _view(tester).committedSourceDabs,
-        isNotEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isNotEmpty);
 
       await _tapKey(
         tester,
@@ -289,10 +265,7 @@ void main() {
       );
       expect(find.textContaining('operation: reset'), findsOneWidget);
       expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
     });
 
     testWidgets('two strokes followed by undo removes only latest stroke', (
@@ -302,10 +275,7 @@ void main() {
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tapCanvas(tester, const Offset(3.5, 2.5));
-      expect(
-        _view(tester).committedSourceDabs,
-        hasLength(2),
-      );
+      expect(_view(tester).committedSourceDabs, hasLength(2));
 
       await _tapKey(
         tester,
@@ -313,10 +283,7 @@ void main() {
       );
 
       expect(find.textContaining('operation: undo'), findsOneWidget);
-      expect(
-        _view(tester).committedSourceDabs,
-        hasLength(1),
-      );
+      expect(_view(tester).committedSourceDabs, hasLength(1));
     });
 
     testWidgets('redo restores the latest undone stroke', (tester) async {
@@ -334,10 +301,7 @@ void main() {
       );
 
       expect(find.textContaining('operation: redo'), findsOneWidget);
-      expect(
-        _view(tester).committedSourceDabs,
-        hasLength(2),
-      );
+      expect(_view(tester).committedSourceDabs, hasLength(2));
     });
 
     testWidgets('reset clears canvas and prevents stale redo restore', (
@@ -350,10 +314,7 @@ void main() {
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-reset'),
@@ -363,10 +324,7 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
 
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
@@ -379,19 +337,13 @@ void main() {
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
 
-      expect(
-        _view(tester).committedSourceDabs,
-        isEmpty,
-      );
+      expect(_view(tester).committedSourceDabs, isEmpty);
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
