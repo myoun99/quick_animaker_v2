@@ -70,11 +70,12 @@ class BrushFrameStore {
     BrushPaintCommandId id, {
     DirtyTileSet? dirtyTiles,
   }) {
-    return _move(
+    return _update(
       key,
-      id,
-      BrushPaintCommandState.hiddenByUndo,
-      dirtyTiles: dirtyTiles,
+      (state) => _markCacheDirty(
+        state.copyWith(hiddenCommandIds: {...state.hiddenCommandIds, id}),
+        dirtyTiles: dirtyTiles,
+      ),
     );
   }
 
@@ -83,7 +84,15 @@ class BrushFrameStore {
     BrushPaintCommandId id, {
     DirtyTileSet? dirtyTiles,
   }) {
-    return _move(key, id, BrushPaintCommandState.live, dirtyTiles: dirtyTiles);
+    return _update(
+      key,
+      (state) => _markCacheDirty(
+        state.copyWith(
+          hiddenCommandIds: {...state.hiddenCommandIds}..remove(id),
+        ),
+        dirtyTiles: dirtyTiles,
+      ),
+    );
   }
 
   BrushFrameDrawingState movePaintCommandToDeferredBake(

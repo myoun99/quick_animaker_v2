@@ -57,6 +57,7 @@ class _InteractiveBrushEditCanvasViewState
       child: BrushEditCanvasView(
         sessionState: widget.sessionState,
         showTransparentBackground: widget.showTransparentBackground,
+        activeStrokeOverlay: List<BrushDab>.unmodifiable(_collectedDabs),
       ),
     );
   }
@@ -68,9 +69,11 @@ class _InteractiveBrushEditCanvasViewState
 
     _activePointer = event.pointer;
     _nextSequence = 0;
-    _collectedDabs
-      ..clear()
-      ..add(_dabFromPosition(event.localPosition));
+    setState(() {
+      _collectedDabs
+        ..clear()
+        ..add(_dabFromPosition(event.localPosition));
+    });
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -79,7 +82,7 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    _collectedDabs.add(_dabFromPosition(event.localPosition));
+    setState(() => _collectedDabs.add(_dabFromPosition(event.localPosition)));
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -135,8 +138,10 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _clearStroke() {
-    _activePointer = null;
-    _nextSequence = 0;
-    _collectedDabs.clear();
+    setState(() {
+      _activePointer = null;
+      _nextSequence = 0;
+      _collectedDabs.clear();
+    });
   }
 }

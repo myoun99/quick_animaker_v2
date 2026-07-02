@@ -1372,6 +1372,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   child: MainCanvasBrushHost(
                     selection: _activeBrushEditorSelection,
+                    canvasSize: _activeCut.canvasSize,
                   ),
                 ),
               ),

@@ -185,6 +185,10 @@ void main() {
       store.getOrCreateFrame(frameKey).visibleActivePaintCommands,
       isEmpty,
     );
+    expect(
+      store.getOrCreateFrame(frameKey).hiddenCommandIds,
+      contains(BrushPaintCommandId('paint-1')),
+    );
     expect(store.getOrCreateFrame(frameKey).deferredBakePaintCommands, isEmpty);
     expect(store.getOrCreateFrame(frameKey).bakedPaintCommandIds, isEmpty);
 
@@ -200,6 +204,7 @@ void main() {
           .map((item) => item.id.value),
       ['paint-1'],
     );
+    expect(store.getOrCreateFrame(frameKey).hiddenCommandIds, isEmpty);
   });
 
   test('deferred commands stay visible when latest live command is undone', () {

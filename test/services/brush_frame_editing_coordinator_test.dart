@@ -161,18 +161,20 @@ void main() {
         .id;
 
     c.undo();
-    var command = c.frameStore
-        .getOrCreateFrame(c.activeFrameKey)
-        .commandById(id)!;
-    expect(command.state, BrushPaintCommandState.hiddenByUndo);
+    var frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    var command = frame.commandById(id)!;
+    expect(command.state, BrushPaintCommandState.live);
+    expect(frame.hiddenCommandIds, contains(id));
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands,
       isEmpty,
     );
 
     c.redo();
-    command = c.frameStore.getOrCreateFrame(c.activeFrameKey).commandById(id)!;
+    frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    command = frame.commandById(id)!;
     expect(command.state, BrushPaintCommandState.live);
+    expect(frame.hiddenCommandIds, isEmpty);
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).deferredBakePaintCommands,
       isEmpty,
@@ -232,8 +234,8 @@ void main() {
     final firstUndo = c.undo();
     expect(firstUndo!.payloadRef.targetKey, frameB);
     expect(
-      c.frameStore.getOrCreateFrame(frameB).commandById(commandB)!.state,
-      BrushPaintCommandState.hiddenByUndo,
+      c.frameStore.getOrCreateFrame(frameB).hiddenCommandIds,
+      contains(commandB),
     );
     expect(
       c.frameStore.getOrCreateFrame(frameA).commandById(commandA)!.state,
@@ -243,8 +245,8 @@ void main() {
     final secondUndo = c.undo();
     expect(secondUndo!.payloadRef.targetKey, frameA);
     expect(
-      c.frameStore.getOrCreateFrame(frameA).commandById(commandA)!.state,
-      BrushPaintCommandState.hiddenByUndo,
+      c.frameStore.getOrCreateFrame(frameA).hiddenCommandIds,
+      contains(commandA),
     );
 
     final firstRedo = c.redo();
@@ -254,8 +256,8 @@ void main() {
       BrushPaintCommandState.live,
     );
     expect(
-      c.frameStore.getOrCreateFrame(frameB).commandById(commandB)!.state,
-      BrushPaintCommandState.hiddenByUndo,
+      c.frameStore.getOrCreateFrame(frameB).hiddenCommandIds,
+      contains(commandB),
     );
 
     final secondRedo = c.redo();
