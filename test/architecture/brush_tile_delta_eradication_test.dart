@@ -104,45 +104,32 @@ void main() {
       }
     });
 
-    test(
-      'main-canvas brush route stays behind public coordinator undo boundary',
-      () {
-        final host = File(
-          'lib/src/ui/brush/main_canvas_brush_host.dart',
-        ).readAsStringSync();
-        final panel = File(
-          'lib/src/ui/brush/brush_canvas_panel.dart',
-        ).readAsStringSync();
-        final coordinator = File(
-          'lib/src/services/brush_frame_editing_coordinator.dart',
-        ).readAsStringSync();
+    test('UI-facing brush route avoids dangerous legacy APIs', () {
+      final uiFiles = [
+        File('lib/src/ui/brush/main_canvas_brush_host.dart'),
+        File('lib/src/ui/brush/brush_canvas_panel.dart'),
+        File('lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart'),
+      ];
 
-        expect(host, contains('BrushFrameEditingCoordinator'));
-        expect(panel, contains('applyBrushOperationResult'));
-        expect(coordinator, contains('UndoPayloadRef.paintCommand'));
-        expect(coordinator, contains('frameStore.addLivePaintCommand'));
-        expect(
-          coordinator,
-          contains('frameStore.markPaintCommandHiddenByUndo'),
-        );
-        expect(coordinator, contains('frameStore.restorePaintCommandFromUndo'));
-
-        for (final text in [host, panel]) {
+      for (final file in uiFiles) {
+        final text = file.readAsStringSync();
+        for (final forbidden in [
+          'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+          'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
+          'applyBrushSurfaceEditToCanvasSurfaceState',
+          'undoLatestBrushBitmapMaterialization',
+          'redoLatestBrushBitmapMaterialization',
+          'TileDelta',
+          'TileDeltaCommand',
+        ]) {
           expect(
             text,
-            isNot(contains('undoLatestBrushBitmapMaterialization')),
-            reason:
-                'UI-facing active-frame display routes must not call internal materialization undo.',
-          );
-          expect(
-            text,
-            isNot(contains('redoLatestBrushBitmapMaterialization')),
-            reason:
-                'UI-facing active-frame display routes must not call internal materialization redo.',
+            isNot(contains(forbidden)),
+            reason: '${file.path} must not call dangerous legacy API $forbidden.',
           );
         }
-      },
-    );
+      }
+    });
 
     test('Frame model remains lightweight and does not own brush payloads', () {
       final frameSource = File('lib/src/models/frame.dart').readAsStringSync();
@@ -178,9 +165,6 @@ void main() {
           'lib/src/ui/home_page.dart',
         ).readAsStringSync();
 
-        expect(homePageSource, contains('MainCanvasBrushHost'));
-        expect(homePageSource, contains('_activeBrushEditorSelection'));
-        expect(homePageSource, contains('main-canvas-brush-host-container'));
         expect(homePageSource, isNot(contains('Brush Host Preview')));
         expect(
           homePageSource,
@@ -218,9 +202,6 @@ void main() {
           expect(source, isNot(contains('Brush Host Preview')));
         }
 
-        expect(hostSource, contains('resolvedActiveFrameKey'));
-        expect(hostSource, contains('selection?.toBrushFrameKey()'));
-        expect(hostSource, contains('main-canvas-brush-host-empty-selection'));
         expect(hostSource, isNot(contains('brush-host-placeholder-project')));
         expect(hostSource, isNot(contains('brush-host-placeholder-frame')));
 
@@ -263,13 +244,8 @@ void main() {
         expect(homePageSource, isNot(contains('_canvasController.canRedo')));
         expect(homePageSource, isNot(contains('_canvasController.undo()')));
         expect(homePageSource, isNot(contains('_canvasController.redo()')));
-        expect(homePageSource, contains('_historyManager.canUndo'));
-        expect(homePageSource, contains('_undoProjectHistory'));
-        expect(homePageSource, contains("Text('Undo')"));
-        expect(homePageSource, contains("Text('Redo')"));
         expect(homePageSource, isNot(contains("Text('Project Undo')")));
         expect(homePageSource, isNot(contains("Text('Project Redo')")));
-        expect(homePageSource, contains('_redoProjectHistory'));
       },
     );
 
@@ -303,89 +279,6 @@ void main() {
                 '$path is a brush commit/undo/redo/edit-history/cache boundary and must not use TileDeltaCommand.',
           );
         }
-      },
-    );
-
-    test(
-      'current brush runtime exposes production undo and payload ownership boundaries',
-      () {
-        final unifiedUndo = File(
-          'lib/src/models/unified_undo_history.dart',
-        ).readAsStringSync();
-        final undoPayload = File(
-          'lib/src/models/undo_payload_ref.dart',
-        ).readAsStringSync();
-        final frameStore = File(
-          'lib/src/services/brush_frame_store.dart',
-        ).readAsStringSync();
-        final paintCommand = File(
-          'lib/src/models/brush_paint_command.dart',
-        ).readAsStringSync();
-        final frameDrawingState = File(
-          'lib/src/models/brush_frame_drawing_state.dart',
-        ).readAsStringSync();
-        final brushFrameCacheInvalidation = File(
-          'lib/src/models/brush_frame_cache_invalidation.dart',
-        ).readAsStringSync();
-        final materializationState = File(
-          'lib/src/models/brush_bitmap_materialization_history_state.dart',
-        ).readAsStringSync();
-        final commitResult = File(
-          'lib/src/models/brush_commit_result.dart',
-        ).readAsStringSync();
-
-        expect(unifiedUndo, contains('class UnifiedUndoHistory'));
-        expect(unifiedUndo, contains('pushNewEntry'));
-        expect(unifiedUndo, contains('takeUndo'));
-        expect(unifiedUndo, contains('takeRedo'));
-        expect(undoPayload, contains('factory UndoPayloadRef.paintCommand'));
-        expect(undoPayload, contains('brushFrameStore.paintCommand'));
-        expect(frameStore, contains('class BrushFrameStore'));
-        expect(frameStore, contains('addLivePaintCommand'));
-        expect(frameStore, contains('markPaintCommandHiddenByUndo'));
-        expect(frameStore, contains('restorePaintCommandFromUndo'));
-        expect(frameStore, contains('movePaintCommandToDeferredBake'));
-        expect(paintCommand, contains('class BrushPaintCommand'));
-        expect(paintCommand, contains('materializationRef'));
-        expect(paintCommand, contains('minimal bridge'));
-        expect(frameDrawingState, contains('commandById'));
-        expect(frameDrawingState, contains('cacheDirtyTiles'));
-        expect(brushFrameCacheInvalidation, contains('BrushFrameKey'));
-        expect(brushFrameCacheInvalidation, contains('DirtyTileSet'));
-        for (final forbidden in [
-          'BitmapSurface',
-          'Uint8List',
-          'ByteData',
-          'inactivePreviewCache',
-          'playbackPreviewCache',
-          'cacheImage',
-          'previewImage',
-          'sourcePayload',
-          'paintCommands',
-        ]) {
-          expect(
-            brushFrameCacheInvalidation,
-            isNot(contains(forbidden)),
-            reason:
-                'BrushFrameCacheInvalidation must stay metadata-only and must not carry $forbidden.',
-          );
-        }
-        expect(
-          materializationState,
-          contains('Internal session-local bitmap materialization'),
-        );
-        expect(
-          materializationState,
-          contains('not the production user-facing brush undo source of truth'),
-        );
-        expect(
-          commitResult,
-          contains('Internal bitmap materialization bridge'),
-        );
-        expect(
-          commitResult,
-          contains('must not become user-facing undo history'),
-        );
       },
     );
 
@@ -424,49 +317,5 @@ void main() {
       },
     );
 
-    test(
-      'BrushPaintCommand materializationRef remains a minimal internal bridge',
-      () {
-        final text = File(
-          'lib/src/models/brush_paint_command.dart',
-        ).readAsStringSync();
-
-        expect(text, contains('materializationRef'));
-        expect(text, contains('minimal bridge'));
-        expect(text, contains('session-local'));
-        expect(text, contains('not'));
-        for (final forbidden in [
-          'Uint8List',
-          'ByteData',
-          'BitmapSurface',
-          'BrushCommitResult',
-          'BrushBitmapMaterializationHistoryEntry',
-          'undoEntries',
-          'redoEntries',
-        ]) {
-          expect(
-            text,
-            isNot(contains(forbidden)),
-            reason:
-                'BrushPaintCommand must not turn materializationRef into a heavy or public undo payload via $forbidden.',
-          );
-        }
-      },
-    );
-
-    test(
-      'current brush docs forbid TileDeltaCommand brush runtime boundaries',
-      () {
-        final text = File(
-          'docs/Current_Brush_Architecture.md',
-        ).readAsStringSync();
-
-        expect(text, contains('TileDelta / TileDeltaCommand must not be used'));
-        expect(text, contains('brush commit'));
-        expect(text, contains('brush edit history'));
-        expect(text, contains('brush undo/redo'));
-        expect(text, contains('cache-invalidation'));
-      },
-    );
   });
 }

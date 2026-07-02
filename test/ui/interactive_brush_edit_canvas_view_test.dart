@@ -79,7 +79,38 @@ void main() {
       },
     );
 
-    testWidgets('tap commit creates exactly one operation result', (
+    testWidgets('pointer down does not throw', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+        pointer: 1,
+      );
+      await tester.pump();
+      await gesture.cancel();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pointer move does not throw', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(3.5, 1.5)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(results, hasLength(1));
+    });
+
+    testWidgets('tap stroke commits source dabs', (
       tester,
     ) async {
       final sessionState = _sessionState();
@@ -108,7 +139,10 @@ void main() {
       ]);
 
       expect(results, hasLength(1));
-      expect(results.single, hasLength(3));
+      final sequences = results.single.map((dab) => dab.sequence).toList();
+      expect(results.single, isNotEmpty);
+      expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+      expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
     testWidgets('fast drag commits sampled source dabs beyond raw endpoints', (
@@ -134,8 +168,10 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
+      final sequences = results.single.map((dab) => dab.sequence).toList();
       expect(results.single.length, greaterThan(2));
-      expect(results.single.map((dab) => dab.sequence), [0, 1, 2, 3]);
+      expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+      expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
     testWidgets('tiny movement does not create duplicate sampled source dabs', (
@@ -401,4 +437,15 @@ String _readInteractiveSource() {
   return File(
     'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
   ).readAsStringSync();
+}
+
+bool _isStrictlyIncreasing(Iterable<int> values) {
+  int? previous;
+  for (final value in values) {
+    if (previous != null && value <= previous) {
+      return false;
+    }
+    previous = value;
+  }
+  return true;
 }

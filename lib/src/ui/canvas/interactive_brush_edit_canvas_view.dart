@@ -75,7 +75,10 @@ class _InteractiveBrushEditCanvasViewState
         ..addAll(
           widget.dabInterpolator.interpolate(
             previous: null,
-            nextRaw: _dabFromPosition(event.localPosition),
+            nextRaw: _dabFromPosition(
+              event.localPosition,
+              sequence: _nextSequence,
+            ),
             firstSequence: _nextSequence,
           ),
         );
@@ -91,7 +94,10 @@ class _InteractiveBrushEditCanvasViewState
 
     final nextDabs = widget.dabInterpolator.interpolate(
       previous: _collectedDabs.isEmpty ? null : _collectedDabs.last,
-      nextRaw: _dabFromPosition(event.localPosition),
+      nextRaw: _dabFromPosition(
+        event.localPosition,
+        sequence: _nextSequence,
+      ),
       firstSequence: _nextSequence,
     );
     if (nextDabs.isEmpty) {
@@ -135,7 +141,7 @@ class _InteractiveBrushEditCanvasViewState
         localPosition.dy < canvasSize.height;
   }
 
-  BrushDab _dabFromPosition(Offset localPosition) {
+  BrushDab _dabFromPosition(Offset localPosition, {required int sequence}) {
     final settings = widget.inputSettings;
     return BrushDab(
       center: CanvasPoint(x: localPosition.dx, y: localPosition.dy),
@@ -146,7 +152,7 @@ class _InteractiveBrushEditCanvasViewState
       hardness: settings.hardness,
       tipShape: settings.tipShape,
       pressure: 1.0,
-      sequence: -1,
+      sequence: sequence,
     );
   }
 

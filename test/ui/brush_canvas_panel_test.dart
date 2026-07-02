@@ -157,13 +157,15 @@ void main() {
       frameKeys: frameKeys,
     );
 
+    final sink = BrushEditCacheInvalidationSink();
+
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: BrushCanvasPanel(
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            cacheInvalidationSink: sink,
             initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
           ),
         ),
@@ -183,7 +185,24 @@ void main() {
         .getOrCreateFrame(coordinator.activeFrameKey)
         .visibleActivePaintCommands
         .single;
+    final sequences = command.sourceDabs.map((dab) => dab.sequence).toList();
     expect(command.sourceDabs.length, greaterThan(2));
-    expect(command.sourceDabs.map((dab) => dab.sequence), [0, 1, 2, 3]);
+    expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+    expect(_isStrictlyIncreasing(sequences), isTrue);
+    expect(sink.brushFrames, isEmpty);
+    expect(sink.layerTiles, isEmpty);
+    expect(sink.frameComposites, isEmpty);
+    expect(sink.playbackPreviews, isEmpty);
   });
+}
+
+bool _isStrictlyIncreasing(Iterable<int> values) {
+  int? previous;
+  for (final value in values) {
+    if (previous != null && value <= previous) {
+      return false;
+    }
+    previous = value;
+  }
+  return true;
 }

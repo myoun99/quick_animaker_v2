@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
+import 'package:quick_animaker_v2/src/core/timeline/timeline_defaults.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -22,7 +23,7 @@ void main() {
       expect(cut.id, const CutId('cut-new'));
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
-      expect(cut.canvasSize, const CanvasSize(width: 1280, height: 720));
+      expect(cut.canvasSize, defaultCutCanvasSize);
       expect(cut.layers, hasLength(1));
 
       final layer = cut.layers.single;
@@ -43,8 +44,8 @@ void main() {
         layerId: const LayerId('layer-new'),
       );
 
-      expect(defaultCutDuration, 24);
-      expect(cut.duration, 24);
+      expect(defaultCutDuration, defaultCutDurationFrames);
+      expect(cut.duration, defaultCutDuration);
     });
 
     test('uses a caller-provided canvas size', () {
