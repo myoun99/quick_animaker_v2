@@ -22,7 +22,7 @@ void main() {
       expect(cut.id, const CutId('cut-new'));
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
-      expect(cut.canvasSize, const CanvasSize(width: 1280, height: 720));
+      expect(cut.canvasSize, defaultCutCanvasSize);
       expect(cut.layers, hasLength(1));
 
       final layer = cut.layers.single;

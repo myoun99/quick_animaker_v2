@@ -79,7 +79,38 @@ void main() {
       },
     );
 
-    testWidgets('tap commit creates exactly one operation result', (
+    testWidgets('pointer down does not throw', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+        pointer: 1,
+      );
+      await tester.pump();
+      await gesture.cancel();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pointer move does not throw', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(3.5, 1.5)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(results, hasLength(1));
+    });
+
+    testWidgets('tap stroke commits source dabs', (
       tester,
     ) async {
       final sessionState = _sessionState();

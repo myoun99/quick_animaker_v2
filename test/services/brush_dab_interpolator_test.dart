@@ -5,7 +5,7 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_dab_interpolator.dart';
 
 void main() {
-  BrushDab dab(double x, double y, {double size = 8, int sequence = -1}) {
+  BrushDab dab(double x, double y, {double size = 8, int sequence = 0}) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
       color: 0xFF000000,
@@ -37,7 +37,6 @@ void main() {
     expect(sampled.last.center.x, 10);
     expect(sampled.last.center.y, 0);
   });
-
 
   test('movement just beyond spacing inserts an intermediate dab and endpoint', () {
     const interpolator = BrushDabInterpolator();
@@ -74,5 +73,25 @@ void main() {
     );
 
     expect(sampled.map((item) => item.sequence), [8, 9, 10, 11, 12]);
+    expect(sampled.every((item) => item.sequence >= 0), isTrue);
+  });
+
+  test('never emits negative sequence numbers', () {
+    const interpolator = BrushDabInterpolator();
+    final first = interpolator.interpolate(
+      previous: null,
+      nextRaw: dab(0, 0),
+      firstSequence: 0,
+    );
+    final sampled = interpolator.interpolate(
+      previous: first.single,
+      nextRaw: dab(10, 0),
+      firstSequence: first.length,
+    );
+
+    expect(
+      [...first, ...sampled].map((item) => item.sequence),
+      everyElement(greaterThanOrEqualTo(0)),
+    );
   });
 }

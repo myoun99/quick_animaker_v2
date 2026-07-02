@@ -153,11 +153,26 @@ void main() {
       for (final term in [
         'playback must not replay live paint commands',
         'cache images are derived not source of truth',
-        'project stroke paintcommand and brushframestore must stay conceptually distinct',
-        'heavy bitmap payloads paint command buffers baked surfaces',
+        'heavy bitmap payloads baked surfaces preview caches playback caches',
+        'cut canvassize',
       ]) {
         expect(normalizedCanvas, contains(term), reason: 'Missing term: $term');
       }
+      for (final concept in [
+        'Project',
+        'Cut',
+        'Frame',
+        'BrushFrameStore',
+        'BrushPaintCommand',
+        'hiddenCommandIds',
+      ]) {
+        expect(canvas, contains(concept), reason: 'Missing concept: $concept');
+      }
+      expect(normalizedCanvas, contains('drawing bounds'));
+      expect(
+        normalizedCanvas,
+        contains('derived from brush frame drawing state'),
+      );
     });
 
     test(

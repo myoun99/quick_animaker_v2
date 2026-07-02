@@ -118,7 +118,9 @@ void main() {
         ).readAsStringSync();
 
         expect(host, contains('BrushFrameEditingCoordinator'));
-        expect(panel, contains('applyBrushOperationResult'));
+        expect(panel, contains('InteractiveBrushEditCanvasView'));
+        expect(panel, contains('onSourceStrokeCommitted'));
+        expect(panel, contains('commitSourceStroke'));
         expect(coordinator, contains('UndoPayloadRef.paintCommand'));
         expect(coordinator, contains('frameStore.addLivePaintCommand'));
         expect(
@@ -128,18 +130,23 @@ void main() {
         expect(coordinator, contains('frameStore.restorePaintCommandFromUndo'));
 
         for (final text in [host, panel]) {
-          expect(
-            text,
-            isNot(contains('undoLatestBrushBitmapMaterialization')),
-            reason:
-                'UI-facing active-frame display routes must not call internal materialization undo.',
-          );
-          expect(
-            text,
-            isNot(contains('redoLatestBrushBitmapMaterialization')),
-            reason:
-                'UI-facing active-frame display routes must not call internal materialization redo.',
-          );
+          for (final forbidden in [
+            'applyBrushOperationResult',
+            'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+            'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
+            'applyBrushSurfaceEditToCanvasSurfaceState',
+            'TileDelta',
+            'TileDeltaCommand',
+            'undoLatestBrushBitmapMaterialization',
+            'redoLatestBrushBitmapMaterialization',
+          ]) {
+            expect(
+              text,
+              isNot(contains(forbidden)),
+              reason:
+                  'UI-facing active-frame display routes must use source stroke commit, not $forbidden.',
+            );
+          }
         }
       },
     );
