@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
@@ -73,6 +76,30 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
     });
 
+    test('connects dabs within each visible source stroke only', () async {
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: 12, height: 3),
+      );
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: surface,
+          showTransparentBackground: false,
+          committedSourceDabStrokes: [
+            [_dab(1, 1), _dab(3, 1)],
+            [_dab(10, 1)],
+          ],
+        ),
+        width: 12,
+        height: 3,
+      );
+
+      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, greaterThan(0));
+      expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
+      expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
+      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
+    });
+
     test('draws deterministic neutral background when enabled', () async {
       final surface = BitmapSurface(
         canvasSize: CanvasSize(width: 1, height: 1),
@@ -128,6 +155,18 @@ List<int> _rgbaAt(
   final offset = (y * width + x) * 4;
   return pixels.sublist(offset, offset + 4);
 }
+
+BrushDab _dab(double x, double y) => BrushDab(
+  center: CanvasPoint(x: x, y: y),
+  color: 0xFF000000,
+  size: 1,
+  opacity: 1,
+  flow: 1,
+  hardness: 1,
+  tipShape: BrushTipShape.round,
+  pressure: 1,
+  sequence: x.round(),
+);
 
 class _Point {
   const _Point(this.x, this.y);

@@ -8,12 +8,14 @@ class BitmapSurfacePainter extends CustomPainter {
     required this.surface,
     this.showTransparentBackground = true,
     this.committedSourceDabs = const <BrushDab>[],
+    this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.activeStrokeOverlay = const <BrushDab>[],
   });
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
   final List<BrushDab> committedSourceDabs;
+  final List<List<BrushDab>> committedSourceDabStrokes;
   final List<BrushDab> activeStrokeOverlay;
 
   @override
@@ -59,15 +61,30 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
 
-    _paintDabs(canvas, committedSourceDabs);
+    _paintCommittedSourceDabs(canvas);
     _paintActiveStrokeOverlay(canvas);
   }
 
-  void _paintActiveStrokeOverlay(Canvas canvas) {
-    _paintDabs(canvas, activeStrokeOverlay);
+  void _paintCommittedSourceDabs(Canvas canvas) {
+    if (committedSourceDabStrokes.isEmpty) {
+      _paintDabs(canvas, committedSourceDabs, connectAdjacentDabs: false);
+      return;
+    }
+
+    for (final stroke in committedSourceDabStrokes) {
+      _paintDabs(canvas, stroke, connectAdjacentDabs: true);
+    }
   }
 
-  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
+  void _paintActiveStrokeOverlay(Canvas canvas) {
+    _paintDabs(canvas, activeStrokeOverlay, connectAdjacentDabs: true);
+  }
+
+  void _paintDabs(
+    Canvas canvas,
+    List<BrushDab> dabs, {
+    required bool connectAdjacentDabs,
+  }) {
     if (dabs.isEmpty) {
       return;
     }
@@ -77,6 +94,7 @@ class BitmapSurfacePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
+    BrushDab? previous;
     for (final dab in dabs) {
       final argb = dab.color;
       final alpha = (argb >> 24) & 0xFF;
@@ -89,11 +107,14 @@ class BitmapSurfacePainter extends CustomPainter {
         green,
         blue,
       );
-      canvas.drawCircle(
-        Offset(dab.center.x, dab.center.y),
-        dab.size / 2,
-        paint,
-      );
+      final center = Offset(dab.center.x, dab.center.y);
+      if (connectAdjacentDabs && previous != null) {
+        final previousCenter = Offset(previous.center.x, previous.center.y);
+        paint.strokeWidth = (previous.size + dab.size) / 2;
+        canvas.drawLine(previousCenter, center, paint);
+      }
+      canvas.drawCircle(center, dab.size / 2, paint);
+      previous = dab;
     }
   }
 
@@ -102,6 +123,7 @@ class BitmapSurfacePainter extends CustomPainter {
     return oldDelegate.surface != surface ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.committedSourceDabs != committedSourceDabs ||
+        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes ||
         oldDelegate.activeStrokeOverlay != activeStrokeOverlay;
   }
 }
