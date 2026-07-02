@@ -16,22 +16,44 @@ The latest policy is:
 1. Brush input creates stroke-like / paint-command information.
 2. User-facing undo is based on recent live paint commands / stroke-like paint commands through `UnifiedUndoHistory`.
 3. A custom `userUndoLimit` controls how many recent brush commands are user-undoable.
-4. A separate `deferredBakePaintCommands` buffer exists for older commands waiting to be baked.
-5. The deferred bake buffer is conceptually about 10% of the user undo limit.
+4. A separate `deferredBakePaintCommands` concept exists for older commands waiting to be baked.
+5. The deferred bake buffer is conceptually about 10% of the user undo limit when implemented.
 6. The deferred bake buffer is not user-facing undo.
-7. Older commands may be compacted into `bakedBaseSurface`.
-8. Active frame display is composed from `bakedBaseSurface + deferredBakePaintCommands + livePaintCommands + activeStrokeOverlay`.
+7. Older commands may eventually be compacted into `bakedBaseSurface`.
+8. Active frame display is composed from `bakedBaseSurface + visible stroke/paint commands + activeStrokeOverlay`; later implementations may split visible commands into `deferredBakePaintCommands + livePaintCommands` internally.
 9. Cache images are derived from brush frame drawing state and are not source of truth.
 10. Playback uses prepared preview/composite bitmap cache images.
 11. Playback must not replay live paint commands.
 12. Playback must not run live brush rasterization.
+13. Brush T2 starts with the lightest practical source-data model: `BrushFrameDrawing.commands + hiddenCommandIds`, with no per-frame `visibleCommandCount`.
+14. Brush-specific undo/redo controls do not exist. Brush stroke undo/redo participates only in global user undo/redo.
+
+## Brush T2 minimum direction
+
+Brush T2 is the next brush milestone after the T1 production-route cleanup.
+
+T2 means the brush becomes basically usable: realtime stroke display is visible while drawing, selected layer/frame drawing is routed through the production brush store, global undo/redo handles brush strokes, and the temporary 320x240 brush canvas default is removed in favor of the active Cut canvas policy.
+
+T2 should stay lightweight. It must not try to implement the full future renderer, save/load, playback cache, real deferred baking, or complete bitmap compaction system in one step.
+
+For T2, discard unnecessary implementation state:
+
+- Do not use a per-frame `visibleCommandCount`.
+- Do not add brush-specific undo/redo.
+- Do not keep drawing source payloads inside `Frame`.
+- Do not add a separate drawable-area model.
+- Do not bake bitmap data in the live editing hot path.
+- Do not generate cache images while the user is actively editing a stroke.
 
 ## Core concepts
 
+- `BrushPaintCommand`: source stroke/paint-command data authored by brush input.
+- `BrushPaintCommandId`: identity for a brush paint command.
+- `BrushFrameDrawing`: lightweight source drawing payload for a single brush frame key. The T2 minimum shape is `commands + hiddenCommandIds`.
+- `hiddenCommandIds`: command ids hidden by global undo but retained for redo while the command remains in the global redo stack.
 - `bakedBaseSurface`: bitmap/tile data containing old confirmed artwork that has been compacted and is no longer individually user-undoable.
-- `deferredBakePaintCommands`: older paint commands that have left user-facing undo but are intentionally not baked immediately.
-- `livePaintCommands`: recent paint/stroke-like commands that remain user-undoable.
-- `hiddenByUndoPaintCommands`: undone recent commands hidden from display and available for redo while still retained by the active edit history.
+- `deferredBakePaintCommands`: older paint commands that have left user-facing undo but are intentionally not baked immediately. This is a future/full-policy concept and does not need to be physically implemented in the T2 minimum model.
+- `livePaintCommands`: recent paint/stroke-like commands that remain user-undoable. In the T2 minimum model, these are represented by visible commands in `BrushFrameDrawing.commands` that are not in `hiddenCommandIds` and are still represented by global undo entries.
 - `activeStrokeOverlay`: temporary in-progress drawing overlay for active input before commit.
 - `inactivePreviewCache`: derived preview/composite image for inactive frame display.
 - `playbackPreviewCache`: derived preview/composite bitmap cache image for playback.
@@ -39,12 +61,12 @@ The latest policy is:
 - `userUndoLimit`: user-configurable number of undoable brush commands.
 - `deferredBakeRatio`: default conceptual ratio used to size the deferred bake buffer, approximately 10%.
 - `deferredBakeLimit`: maximum number of non-user-undoable deferred bake commands retained before baking pressure applies.
-- `UnifiedUndoHistory`: the one global user-facing undo/redo order across brush, project, timeline, and layer changes.
+- `UnifiedUndoHistory`: the one global user-facing undo/redo order across brush, project, timeline, layer, and cut changes.
 - `BrushFrameStore`: frame-keyed owner of brush frame drawing payloads and frame-local paint command state.
 
 ## Brush frame drawing state
 
-A brush frame drawing payload conceptually contains:
+A full brush frame drawing payload conceptually contains:
 
 ```txt
 bakedBaseSurface
@@ -55,11 +77,32 @@ bakedBaseSurface
 + dirty flags
 ```
 
-`BrushFrameStore` owns this frame-local drawing payload, keyed by `BrushFrameKey`. Frame remains lightweight; heavy brush bitmap payloads, command lists, and cache images belong in BrushFrameStore. A `Frame` remains lightweight metadata and should not embed heavy bitmap surfaces, command lists, or cache images directly.
+The T2 minimum runtime/source model should start simpler:
+
+```txt
+BrushFrameDrawing
+- commands: List<BrushPaintCommand>
+- hiddenCommandIds: Set<BrushPaintCommandId>
+```
+
+`commands` stores source stroke/paint-command data. `hiddenCommandIds` records commands hidden by global undo. Visible commands are commands whose ids are not in `hiddenCommandIds` and whose source has not been compacted into a baked base.
+
+`visibleCommandCount` is not part of the T2 model. It is only useful for a brush-local linear history and creates unnecessary duplicated state when user-facing undo is global.
+
+`BrushFrameStore` owns this frame-local drawing payload, keyed by `BrushFrameKey`. Frame remains lightweight; heavy brush bitmap payloads, brush command lists, baked surfaces, dirty state, and cache images belong outside `Frame` in `BrushFrameStore` or an equivalent brush/canvas storage boundary. A `Frame` remains lightweight metadata and should not embed heavy bitmap surfaces, command lists, or cache images directly.
 
 ## Active editing display
 
 The active frame display formula is:
+
+```txt
+activeFrameDisplay =
+  bakedBaseSurface
+  + visible BrushPaintCommands
+  + activeStrokeOverlay
+```
+
+A fuller future implementation may internally split visible commands into `deferredBakePaintCommands + livePaintCommands`, preserving the previous conceptual formula:
 
 ```txt
 activeFrameDisplay =
@@ -71,11 +114,21 @@ activeFrameDisplay =
 
 The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth.
 
+Realtime T2 editing should display the active stroke using stroke/path/point data without baking the stroke into a bitmap while the pointer is moving.
+
 ## User-facing undo / redo
 
-User-facing undo is based on recent live paint commands through `UnifiedUndoHistory`.
+User-facing undo is global only.
 
-Undo should affect `livePaintCommands` / `hiddenByUndoPaintCommands` while the command is still within the `userUndoLimit`.
+Brush-specific undo/redo controls do not exist.
+
+User-facing undo for brush strokes is based on recent live paint commands through `UnifiedUndoHistory` / the global command stack.
+
+A brush stroke undo command should be lightweight. It should reference `BrushFrameKey` plus `BrushPaintCommandId` rather than duplicating the full stroke payload.
+
+Undo should hide the command by adding the command id to `hiddenCommandIds` while the command remains redoable.
+
+Redo should unhide the command by removing the command id from `hiddenCommandIds`.
 
 Deferred bake buffer commands are not user-undoable.
 
@@ -105,13 +158,23 @@ The deferred bake buffer is not an undo buffer.
 The deferred bake buffer is not user-facing undo.
 It exists only to delay baking and keep active drawing responsive.
 
+T2 does not need to physically implement deferred baking immediately. T2 may begin with visible source commands plus hidden command ids only, as long as the code does not block the later deferred-bake and baked-base extension.
+
 ## Baking policy
 
-Older commands beyond the custom user undo limit may move from `livePaintCommands` into `deferredBakePaintCommands`.
+Older commands beyond the custom user undo limit may eventually move from live source commands into deferred-bake candidates.
 
 Old deferred commands may eventually be baked into `bakedBaseSurface`. Once baked, those commands are represented by bitmap/tile data and are not individually user-undoable.
 
 Baking is an internal compaction policy for old artwork. It must not be confused with user-facing undo.
+
+No bitmap baking should happen in the live editing hot path.
+
+Do not bake while the user is drawing.
+Do not fully bake merely because the pointer is released.
+Do not generate cache-baked images during active editing.
+
+Future baking should happen at safe moments such as frame switch, idle processing, explicit cache preparation, or after a command leaves the user undo window.
 
 ## Cache image generation
 
@@ -125,11 +188,19 @@ bakedBaseSurface
 + livePaintCommands
 ```
 
+or from the T2 minimum equivalent:
+
+```txt
+visible BrushPaintCommands
+```
+
 They are used for inactive frame display and playback.
 
 They are not the source of truth.
 
 Cache images may be regenerated when dirty flags indicate that the underlying brush frame state changed.
+
+Cache image generation must not happen in the live stroke editing hot path.
 
 ## Playback policy
 
@@ -142,21 +213,34 @@ Playback must not composite all layers from scratch every frame if a valid previ
 
 If a playback cache is stale or missing, it should be prepared outside the live playback path or treated as dirty according to the renderer/cache policy of a future phase.
 
+T2 may defer playback cache implementation. It must still preserve the rule that future playback should use prepared derived images rather than running live brush rendering in the playback loop.
+
 ## Frame / BrushFrameStore ownership
 
-`Frame` owns identity, timing, and lightweight metadata.
+`Frame` owns identity, timing, name/label, and lightweight metadata.
 
-`BrushFrameStore` owns frame drawing payloads, including `bakedBaseSurface`, `deferredBakePaintCommands`, `livePaintCommands`, `hiddenByUndoPaintCommands`, preview caches, playback caches, and dirty flags.
+`Frame` does not directly own brush source drawing payloads, brush command lists, heavy bitmap surfaces, baked surfaces, preview caches, playback caches, image caches, or dirty state.
+
+`BrushFrameStore` owns frame drawing payloads, including the T2 minimum `BrushFrameDrawing.commands + hiddenCommandIds` model and later `bakedBaseSurface`, deferred-bake commands, preview caches, playback caches, and dirty flags.
 
 `UnifiedUndoHistory` references brush payloads as part of a global undo sequence but does not make cache images or bitmap previews into source-of-truth drawing data.
+
+## Brush input sampling
+
+T2 input should not rely on raw pointer-move events alone.
+
+Brush input should collect pointer points and apply lightweight spacing/interpolation based on brush size so fast strokes do not visually break while avoiding excessive point generation.
+
+A Bresenham-style line fill may be used as a low-level idea for connecting sampled points, but the T2 policy is brush-spacing interpolation rather than a pure one-pixel line algorithm.
 
 ## What is current vs legacy
 
 Current policy:
 
 - Deferred Bake Hybrid Brush History.
-- User-facing undo is recent live paint command / stroke-like command based.
+- User-facing undo is recent live paint command / stroke-like command based through global undo only.
 - The deferred bake buffer is separate from user-facing undo.
+- T2 may implement the brush frame source model as `commands + hiddenCommandIds` before full deferred bake exists.
 - Cache images are derived from brush frame state.
 - Playback uses preview/composite bitmap cache images and avoids live command replay/rasterization.
 
@@ -173,10 +257,12 @@ The current policy is not:
 - Tile delta as the user-facing undo source.
 - User-facing undo as `TileDeltaCommand`.
 - Tile delta as the primary brush undo model.
-- Brush display based on replaying every old stroke.
+- Brush-local undo/redo separate from global undo/redo.
+- Per-frame `visibleCommandCount` as the T2 source of user-facing undo.
+- Brush display based on replaying every old stroke in playback.
 - Playback replaying strokes.
 - Playback running brush rasterization.
-
+- Live editing that bakes bitmap data on every pointer move or pointer release.
 
 ## Phase 213C UI undo route safety note
 
@@ -193,6 +279,8 @@ Those phases must preserve this policy unless a newer canonical architecture doc
 ## Brush V1 implementation snapshot retained as context
 
 Brush V1 completed an internal smoke/dev/test stack with BitmapSurface / BitmapTile storage, BrushDabSequence input, brush pixel blending, commit/undo/redo services, cache invalidation facades, BitmapSurfacePainter display, InteractiveBrushEditCanvasView, and smoke-screen regression coverage. That stack is context only: it is not app-complete and must not be restored into production routes merely to satisfy legacy documentation tests.
+
+The V1-style global command stack idea remains useful as an architectural direction for T2: brush strokes should participate in one global undo/redo order. However, T2 commands should remain lightweight references such as `BrushFrameKey + BrushPaintCommandId`, not large copied payload snapshots.
 
 TileDelta / TileDeltaCommand are not the current brush runtime policy. They must not appear in brush commit, undo, redo, edit history, or cache-invalidation boundaries.
 
@@ -232,3 +320,15 @@ Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordin
 ## Phase 218 production readiness note
 
 The production main-canvas brush route remains `HomePage -> MainCanvasBrushHost -> BrushCanvasPanel -> InteractiveBrushEditCanvasView -> BrushFrameEditingCoordinator -> BrushFrameStore`. `MainCanvasBrushHost` must resolve a real active `BrushFrameKey` from the editor selection before constructing editable brush state; when no valid active layer/frame selection exists, it shows the safe empty-selection placeholder instead of creating a fake placeholder frame. Production HomePage must not expose brush smoke/debug/tutorial UI, and UI widgets on this route must not own source drawing payloads, command buffers, baked surfaces, cache images, or brush dirty state.
+
+## Brush T2 planning note
+
+Brush T2 starts from the simplified source model and global undo decisions captured above:
+
+- `BrushFrameDrawing.commands + hiddenCommandIds` is the minimum source drawing model.
+- `visibleCommandCount` is intentionally excluded.
+- Brush strokes use global undo/redo only.
+- `BrushStrokeCommand`-like history entries should be lightweight references to `BrushFrameKey + BrushPaintCommandId`.
+- `Frame` remains lightweight and does not directly own brush drawing data.
+- Realtime drawing uses `activeStrokeOverlay` and visible source commands, not live bitmap baking.
+- Bitmap baking and cache image generation are future work and must stay outside the live editing hot path.
