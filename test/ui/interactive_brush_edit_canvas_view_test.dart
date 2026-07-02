@@ -213,6 +213,7 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(canvasView.activeStrokePath, isNotNull);
         expect(results, isEmpty);
 
         await gesture.cancel();
@@ -220,7 +221,7 @@ void main() {
     );
 
     testWidgets(
-      'drag stroke shows lightweight live overlay before commit and clears after commit',
+      'drag stroke keeps continuous active path before commit and clears after commit',
       (tester) async {
         final results = <List<BrushDab>>[];
         await tester.pumpWidget(
@@ -244,6 +245,7 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(canvasView.activeStrokePath, isNotNull);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -254,11 +256,12 @@ void main() {
         );
         expect(results, hasLength(1));
         expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokePath, isNull);
       },
     );
 
     testWidgets(
-      'fast drag keeps live feedback bounded while committing full source stroke',
+      'fast drag keeps active display bounded while committing full source stroke',
       (tester) async {
         final results = <List<BrushDab>>[];
         await tester.pumpWidget(
@@ -281,8 +284,14 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, hasLength(2));
+        final activePath = canvasView.activeStrokePath;
+        final activePathLength = activePath!
+            .computeMetrics()
+            .fold<double>(0, (sum, metric) => sum + metric.length);
+
+        expect(canvasView.activeStrokeOverlay, hasLength(1));
         expect(canvasView.activeStrokeOverlay.last.center.x, 7);
+        expect(activePathLength, greaterThan(5));
         expect(results, isEmpty);
 
         await gesture.up();
@@ -292,6 +301,7 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokePath, isNull);
         expect(results, hasLength(1));
         expect(results.single.length, greaterThan(2));
       },
