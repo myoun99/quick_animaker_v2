@@ -197,6 +197,44 @@ void main() {
       expect(results.single.single.sequence, 0);
     });
 
+    testWidgets(
+      'drag stroke shows live overlay before commit and clears after commit',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(size: 4),
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1, 1)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 1)));
+        await tester.pump();
+
+        var canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
+        expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(results, isEmpty);
+
+        await gesture.up();
+        await tester.pump();
+
+        canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
+        expect(results, hasLength(1));
+        expect(canvasView.activeStrokeOverlay, isEmpty);
+      },
+    );
+
     testWidgets('repeated tap strokes produce repeated operation results', (
       tester,
     ) async {

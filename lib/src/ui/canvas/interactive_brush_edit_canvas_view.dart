@@ -18,6 +18,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.inputSettings,
     required this.onSourceStrokeCommitted,
     this.committedSourceDabs = const <BrushDab>[],
+    this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
   });
@@ -28,6 +29,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushEditCanvasInputSettings inputSettings;
   final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
   final List<BrushDab> committedSourceDabs;
+  final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
 
@@ -57,6 +59,7 @@ class _InteractiveBrushEditCanvasViewState
         sessionState: widget.sessionState,
         showTransparentBackground: widget.showTransparentBackground,
         committedSourceDabs: widget.committedSourceDabs,
+        committedSourceDabStrokes: widget.committedSourceDabStrokes,
         activeStrokeOverlay: List<BrushDab>.unmodifiable(_collectedDabs),
       ),
     );

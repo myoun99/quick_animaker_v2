@@ -41,10 +41,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   Widget build(BuildContext context) {
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
-    final committedSourceDabs = widget.coordinator.frameStore
+    final visibleCommands = widget.coordinator.frameStore
         .getOrCreateFrame(activeKey)
-        .visibleActivePaintCommands
-        .expand((command) => command.sourceDabs)
+        .visibleActivePaintCommands;
+    final committedSourceDabStrokes = visibleCommands
+        .map((command) => command.sourceDabs)
+        .where((dabs) => dabs.isNotEmpty)
+        .toList(growable: false);
+    final committedSourceDabs = committedSourceDabStrokes
+        .expand((dabs) => dabs)
         .toList(growable: false);
 
     return Padding(
@@ -62,6 +67,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             frameId: activeKey.frameId,
             inputSettings: _inputSettings,
             committedSourceDabs: committedSourceDabs,
+            committedSourceDabStrokes: committedSourceDabStrokes,
             onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
         ),
