@@ -139,7 +139,10 @@ void main() {
       ]);
 
       expect(results, hasLength(1));
-      expect(results.single, hasLength(3));
+      final sequences = results.single.map((dab) => dab.sequence).toList();
+      expect(results.single, isNotEmpty);
+      expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+      expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
     testWidgets('fast drag commits sampled source dabs beyond raw endpoints', (

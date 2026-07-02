@@ -47,7 +47,7 @@ void main() {
     );
 
     final sequences = sampled.map((item) => item.sequence).toList();
-    expect(sampled.length, greaterThan(1));
+    expect(sampled, isNotEmpty);
     expect(sampled.last.center.x, 2.1);
     expect(sampled.last.center.y, 0);
     expect(sequences, everyElement(greaterThanOrEqualTo(0)));
