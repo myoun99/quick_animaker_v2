@@ -43,6 +43,7 @@ class _InteractiveBrushEditCanvasViewState
   int? _activePointer;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
+  final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +61,7 @@ class _InteractiveBrushEditCanvasViewState
         showTransparentBackground: widget.showTransparentBackground,
         committedSourceDabs: widget.committedSourceDabs,
         committedSourceDabStrokes: widget.committedSourceDabStrokes,
-        activeStrokeOverlay: List<BrushDab>.unmodifiable(_collectedDabs),
+        activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
       ),
     );
   }
@@ -73,18 +74,20 @@ class _InteractiveBrushEditCanvasViewState
     _activePointer = event.pointer;
     _nextSequence = 0;
     setState(() {
+      final initialDabs = widget.dabInterpolator.interpolate(
+        previous: null,
+        nextRaw: _dabFromPosition(
+          event.localPosition,
+          sequence: _nextSequence,
+        ),
+        firstSequence: _nextSequence,
+      );
       _collectedDabs
         ..clear()
-        ..addAll(
-          widget.dabInterpolator.interpolate(
-            previous: null,
-            nextRaw: _dabFromPosition(
-              event.localPosition,
-              sequence: _nextSequence,
-            ),
-            firstSequence: _nextSequence,
-          ),
-        );
+        ..addAll(initialDabs);
+      _liveOverlayDabs
+        ..clear()
+        ..addAll(initialDabs);
       _nextSequence = _collectedDabs.length;
     });
   }
@@ -95,8 +98,9 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
+    final previousDab = _collectedDabs.isEmpty ? null : _collectedDabs.last;
     final nextDabs = widget.dabInterpolator.interpolate(
-      previous: _collectedDabs.isEmpty ? null : _collectedDabs.last,
+      previous: previousDab,
       nextRaw: _dabFromPosition(event.localPosition, sequence: _nextSequence),
       firstSequence: _nextSequence,
     );
@@ -106,6 +110,9 @@ class _InteractiveBrushEditCanvasViewState
 
     setState(() {
       _collectedDabs.addAll(nextDabs);
+      _liveOverlayDabs
+        ..clear()
+        ..addAll(_liveOverlayForLatestSegment(previousDab, nextDabs));
       _nextSequence += nextDabs.length;
     });
   }
@@ -141,6 +148,22 @@ class _InteractiveBrushEditCanvasViewState
         localPosition.dy < canvasSize.height;
   }
 
+  List<BrushDab> _liveOverlayForLatestSegment(
+    BrushDab? previousDab,
+    List<BrushDab> nextDabs,
+  ) {
+    if (nextDabs.isEmpty) {
+      return const <BrushDab>[];
+    }
+
+    final latestDab = nextDabs.last;
+    if (previousDab == null) {
+      return <BrushDab>[latestDab];
+    }
+
+    return <BrushDab>[previousDab, latestDab];
+  }
+
   BrushDab _dabFromPosition(Offset localPosition, {required int sequence}) {
     final settings = widget.inputSettings;
     return BrushDab(
@@ -161,6 +184,7 @@ class _InteractiveBrushEditCanvasViewState
       _activePointer = null;
       _nextSequence = 0;
       _collectedDabs.clear();
+      _liveOverlayDabs.clear();
     });
   }
 }
