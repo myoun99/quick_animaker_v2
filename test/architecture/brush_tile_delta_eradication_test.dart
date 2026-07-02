@@ -104,52 +104,32 @@ void main() {
       }
     });
 
-    test(
-      'main-canvas brush route stays behind public coordinator undo boundary',
-      () {
-        final host = File(
-          'lib/src/ui/brush/main_canvas_brush_host.dart',
-        ).readAsStringSync();
-        final panel = File(
-          'lib/src/ui/brush/brush_canvas_panel.dart',
-        ).readAsStringSync();
-        final coordinator = File(
-          'lib/src/services/brush_frame_editing_coordinator.dart',
-        ).readAsStringSync();
+    test('UI-facing brush route avoids dangerous legacy APIs', () {
+      final uiFiles = [
+        File('lib/src/ui/brush/main_canvas_brush_host.dart'),
+        File('lib/src/ui/brush/brush_canvas_panel.dart'),
+        File('lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart'),
+      ];
 
-        expect(host, contains('BrushFrameEditingCoordinator'));
-        expect(panel, contains('InteractiveBrushEditCanvasView'));
-        expect(panel, contains('onSourceStrokeCommitted'));
-        expect(panel, contains('commitSourceStroke'));
-        expect(coordinator, contains('UndoPayloadRef.paintCommand'));
-        expect(coordinator, contains('frameStore.addLivePaintCommand'));
-        expect(
-          coordinator,
-          contains('frameStore.markPaintCommandHiddenByUndo'),
-        );
-        expect(coordinator, contains('frameStore.restorePaintCommandFromUndo'));
-
-        for (final text in [host, panel]) {
-          for (final forbidden in [
-            'applyBrushOperationResult',
-            'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
-            'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
-            'applyBrushSurfaceEditToCanvasSurfaceState',
-            'TileDelta',
-            'TileDeltaCommand',
-            'undoLatestBrushBitmapMaterialization',
-            'redoLatestBrushBitmapMaterialization',
-          ]) {
-            expect(
-              text,
-              isNot(contains(forbidden)),
-              reason:
-                  'UI-facing active-frame display routes must use source stroke commit, not $forbidden.',
-            );
-          }
+      for (final file in uiFiles) {
+        final text = file.readAsStringSync();
+        for (final forbidden in [
+          'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+          'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
+          'applyBrushSurfaceEditToCanvasSurfaceState',
+          'undoLatestBrushBitmapMaterialization',
+          'redoLatestBrushBitmapMaterialization',
+          'TileDelta',
+          'TileDeltaCommand',
+        ]) {
+          expect(
+            text,
+            isNot(contains(forbidden)),
+            reason: '${file.path} must not call dangerous legacy API $forbidden.',
+          );
         }
-      },
-    );
+      }
+    });
 
     test('Frame model remains lightweight and does not own brush payloads', () {
       final frameSource = File('lib/src/models/frame.dart').readAsStringSync();

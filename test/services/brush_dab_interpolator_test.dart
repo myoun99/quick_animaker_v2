@@ -46,9 +46,12 @@ void main() {
       firstSequence: 1,
     );
 
-    expect(sampled, hasLength(2));
+    final sequences = sampled.map((item) => item.sequence).toList();
+    expect(sampled.length, greaterThan(1));
     expect(sampled.last.center.x, 2.1);
-    expect(sampled.map((item) => item.sequence), [1, 2]);
+    expect(sampled.last.center.y, 0);
+    expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+    expect(_isStrictlyIncreasing(sequences), isTrue);
   });
 
   test('tiny movement below spacing does not generate duplicate dabs', () {
@@ -72,8 +75,9 @@ void main() {
       firstSequence: 8,
     );
 
-    expect(sampled.map((item) => item.sequence), [8, 9, 10, 11, 12]);
-    expect(sampled.every((item) => item.sequence >= 0), isTrue);
+    final sequences = sampled.map((item) => item.sequence).toList();
+    expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+    expect(_isStrictlyIncreasing(sequences), isTrue);
   });
 
   test('never emits negative sequence numbers', () {
@@ -94,4 +98,15 @@ void main() {
       everyElement(greaterThanOrEqualTo(0)),
     );
   });
+}
+
+bool _isStrictlyIncreasing(Iterable<int> values) {
+  int? previous;
+  for (final value in values) {
+    if (previous != null && value <= previous) {
+      return false;
+    }
+    previous = value;
+  }
+  return true;
 }

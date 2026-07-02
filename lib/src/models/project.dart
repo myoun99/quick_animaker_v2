@@ -2,6 +2,8 @@ import 'canvas_size.dart';
 import 'project_id.dart';
 import 'track.dart';
 
+const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
+
 class Project {
   Project({
     required this.id,
@@ -9,7 +11,7 @@ class Project {
     required List<Track> tracks,
     required this.createdAt,
     this.fps = 24,
-    this.cameraSize = const CanvasSize(width: 1920, height: 1080),
+    this.cameraSize = defaultProjectCameraSize,
   }) : tracks = List.unmodifiable(tracks);
 
   final ProjectId id;
@@ -56,7 +58,7 @@ class Project {
       createdAt: DateTime.parse(json['createdAt'] as String),
       fps: json['fps'] as int,
       cameraSize: json['cameraSize'] == null
-          ? const CanvasSize(width: 1920, height: 1080)
+          ? defaultProjectCameraSize
           : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),
     );
   }

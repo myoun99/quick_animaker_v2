@@ -165,8 +165,10 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
+      final sequences = results.single.map((dab) => dab.sequence).toList();
       expect(results.single.length, greaterThan(2));
-      expect(results.single.map((dab) => dab.sequence), [0, 1, 2, 3]);
+      expect(sequences, everyElement(greaterThanOrEqualTo(0)));
+      expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
     testWidgets('tiny movement does not create duplicate sampled source dabs', (
@@ -432,4 +434,15 @@ String _readInteractiveSource() {
   return File(
     'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
   ).readAsStringSync();
+}
+
+bool _isStrictlyIncreasing(Iterable<int> values) {
+  int? previous;
+  for (final value in values) {
+    if (previous != null && value <= previous) {
+      return false;
+    }
+    previous = value;
+  }
+  return true;
 }

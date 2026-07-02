@@ -49,6 +49,29 @@ void main() {
     );
   }
 
+  test('source stroke commit stores dabs and undo redo toggles visibility', () {
+    final c = coordinator();
+    final sourceDabs = [_dab(0), _dab(1).copyWith(sequence: 1)];
+
+    final command = c.commitSourceStroke(sourceDabs: sourceDabs);
+
+    var frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(frame.commandById(command.id), command);
+    expect(frame.visibleActivePaintCommands, [command]);
+    expect(frame.hiddenCommandIds, isEmpty);
+    expect(command.sourceDabs, sourceDabs);
+
+    c.undo();
+    frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(frame.hiddenCommandIds, contains(command.id));
+    expect(frame.visibleActivePaintCommands, isEmpty);
+
+    c.redo();
+    frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(frame.hiddenCommandIds, isEmpty);
+    expect(frame.visibleActivePaintCommands, [command]);
+  });
+
   test('records brush commit in frame store and unified undo history', () {
     final c = coordinator();
 
