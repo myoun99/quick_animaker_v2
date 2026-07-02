@@ -50,9 +50,9 @@ C:\Users\gunoo\Documents\quick_animaker_v2
 2. 사용자: 진행하자
 
 3. AI: 담백하게 실행용 안내만 제공
-    - 만들 문서 파일명
+    - 만들 문서 파일명 (기존 흐름인 Phase_숫자_Codex_Task의 이름 규칙을 지킨다)
     - 문서 내용 (영어)
-    - git add / commit / push
+    - git add / commit / push (명령어 간략하게 안내)
     - Codex 주문서 (영어)
 
 4. 사용자: PR 확인해줘
