@@ -7,11 +7,13 @@ class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
     required this.surface,
     this.showTransparentBackground = true,
+    this.committedSourceDabs = const <BrushDab>[],
     this.activeStrokeOverlay = const <BrushDab>[],
   });
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
+  final List<BrushDab> committedSourceDabs;
   final List<BrushDab> activeStrokeOverlay;
 
   @override
@@ -57,11 +59,16 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
 
+    _paintDabs(canvas, committedSourceDabs);
     _paintActiveStrokeOverlay(canvas);
   }
 
   void _paintActiveStrokeOverlay(Canvas canvas) {
-    if (activeStrokeOverlay.isEmpty) {
+    _paintDabs(canvas, activeStrokeOverlay);
+  }
+
+  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
+    if (dabs.isEmpty) {
       return;
     }
 
@@ -70,7 +77,7 @@ class BitmapSurfacePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    for (final dab in activeStrokeOverlay) {
+    for (final dab in dabs) {
       final argb = dab.color;
       final alpha = (argb >> 24) & 0xFF;
       final red = (argb >> 16) & 0xFF;
@@ -94,6 +101,7 @@ class BitmapSurfacePainter extends CustomPainter {
   bool shouldRepaint(covariant BitmapSurfacePainter oldDelegate) {
     return oldDelegate.surface != surface ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
+        oldDelegate.committedSourceDabs != committedSourceDabs ||
         oldDelegate.activeStrokeOverlay != activeStrokeOverlay;
   }
 }

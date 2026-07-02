@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
@@ -38,8 +37,7 @@ void main() {
               layerId: layerId,
               frameId: frameId,
               inputSettings: const BrushEditCanvasInputSettings(),
-              cacheInvalidationSink: sink,
-              onOperationResult: (_) {},
+              onSourceStrokeCommitted: (_) {},
               showTransparentBackground: false,
             ),
           ),
@@ -89,22 +87,21 @@ void main() {
     ) async {
       final sessionState = _sessionState();
       final sink = FakeCacheInvalidationSink();
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(_app(_view(sessionState, sink, results.add)));
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
-      expect(results.single.kind, BrushEditSessionOperationKind.commit);
-      expect(results.single.didAffectHistory, isTrue);
-      expect(sink.totalCalls, greaterThan(0));
-      expect(identical(results.single.sessionState, sessionState), isFalse);
+      expect(results.single, hasLength(1));
+      expect(sink.totalCalls, 0);
+      expect(identical(sessionState, sessionState), isTrue);
     });
 
     testWidgets('drag commit creates exactly one operation result', (
       tester,
     ) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -116,11 +113,7 @@ void main() {
       ]);
 
       expect(results, hasLength(1));
-      expect(results.single.kind, BrushEditSessionOperationKind.commit);
-      expect(
-        results.single.sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
-      );
+      expect(results.single, hasLength(3));
     });
 
     testWidgets('repeated tap strokes produce repeated operation results', (
@@ -128,13 +121,13 @@ void main() {
     ) async {
       var sessionState = _sessionState();
       final sink = FakeCacheInvalidationSink();
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(
         _app(
           _view(sessionState, sink, (result) {
             results.add(result);
-            sessionState = result.sessionState;
+
           }),
         ),
       );
@@ -143,27 +136,20 @@ void main() {
         _app(
           _view(sessionState, sink, (result) {
             results.add(result);
-            sessionState = result.sessionState;
+
           }),
         ),
       );
       await tapCanvas(tester, const Offset(2.5, 1.5));
 
       expect(results, hasLength(2));
-      expect(
-        results.map((result) => result.kind),
-        everyElement(BrushEditSessionOperationKind.commit),
-      );
-      expect(
-        results.last.sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
-      );
+      expect(results.map((result) => result.length), [1, 1]);
     });
 
     testWidgets('coordinates are interpreted relative to the canvas view', (
       tester,
     ) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -182,16 +168,13 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
-      expect(
-        results.single.sessionState.canvasState.currentSurface.tiles,
-        isNotEmpty,
-      );
+      expect(results.single, hasLength(1));
     });
 
     testWidgets('pointer outside surface does not emit a result', (
       tester,
     ) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -202,7 +185,7 @@ void main() {
     });
 
     testWidgets('pointer cancel does not emit a result', (tester) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -221,7 +204,7 @@ void main() {
     testWidgets('pointer move without pointer down does not emit a result', (
       tester,
     ) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -240,7 +223,7 @@ void main() {
     testWidgets('second pointer is ignored while first pointer is active', (
       tester,
     ) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -261,7 +244,7 @@ void main() {
     });
 
     testWidgets('callback is called at most once per stroke', (tester) async {
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
       );
@@ -285,7 +268,7 @@ void main() {
       final originalSessionSnapshot = sessionState.toString();
       final originalCanvasSnapshot = originalCanvasState.toString();
       final originalHistorySnapshot = originalHistoryState.toString();
-      final results = <BrushEditSessionCacheOperationResult>[];
+      final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(
         _app(_view(sessionState, FakeCacheInvalidationSink(), results.add)),
@@ -347,15 +330,14 @@ BrushEditSessionState _sessionState() {
 InteractiveBrushEditCanvasView _view(
   BrushEditSessionState sessionState,
   CacheInvalidationSink sink,
-  ValueChanged<BrushEditSessionCacheOperationResult> onResult,
+  ValueChanged<List<BrushDab>> onResult,
 ) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
     inputSettings: const BrushEditCanvasInputSettings(),
-    cacheInvalidationSink: sink,
-    onOperationResult: onResult,
+    onSourceStrokeCommitted: onResult,
   );
 }
 

@@ -44,7 +44,42 @@ void main() {
 
     expect(interactiveView, contains('activeStrokeOverlay'));
     expect(bitmapPainter, contains('_paintActiveStrokeOverlay'));
-    expect(interactiveView, isNot(contains('generateCache')));
-    expect(bitmapPainter, isNot(contains('generateCache')));
+    for (final forbidden in [
+      'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
+      'brushSurfaceEditForBrushDabSequenceOnBitmapSurface',
+      'applyBrushSurfaceEditToCanvasSurfaceState',
+      'generateCache',
+    ]) {
+      expect(interactiveView, isNot(contains(forbidden)));
+      expect(bitmapPainter, isNot(contains(forbidden)));
+    }
+  });
+
+  test('Frame remains lightweight and production brush UI has no local undo/debug controls', () {
+  final frame = File('lib/src/models/frame.dart').readAsStringSync();
+  final brushPanel = File('lib/src/ui/brush/brush_canvas_panel.dart').readAsStringSync();
+  final homePage = File('lib/src/ui/home_page.dart').readAsStringSync();
+
+  for (final forbidden in [
+    'BrushFrameDrawing',
+    'BrushPaintCommand',
+    'hiddenCommandIds',
+    'bakedBaseSurface',
+    'playbackPreviewCache',
+    'inactivePreviewCache',
+  ]) {
+    expect(frame, isNot(contains(forbidden)));
+  }
+
+  for (final forbidden in [
+    'Brush Undo',
+    'Brush Redo',
+    'Debug Reset Session',
+    'brush-workspace-screen',
+    'tutorial',
+  ]) {
+    expect(brushPanel, isNot(contains(forbidden)));
+    expect(homePage, isNot(contains(forbidden)));
+  }
   });
 }

@@ -38,6 +38,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
+  final _frameStore = BrushFrameStore();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
   BrushFrameEditingCoordinator? _coordinator;
@@ -52,6 +53,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   void didUpdateWidget(covariant MainCanvasBrushHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     _frameKeys = _resolveFrameKeys();
+    if (widget.canvasSize != oldWidget.canvasSize) {
+      _coordinator = null;
+    }
     _selectResolvedFrame();
   }
 
@@ -107,7 +111,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   }) {
     return BrushFrameEditingCoordinator(
       initialFrameKey: initialFrameKey,
-      frameStore: BrushFrameStore(),
+      frameStore: _frameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: widget.canvasSize,
       ),

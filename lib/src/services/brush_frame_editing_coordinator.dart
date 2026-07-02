@@ -1,4 +1,5 @@
 import '../models/brush_bitmap_materialization_history_entry.dart';
+import '../models/brush_dab.dart';
 import '../models/brush_edit_session_cache_operation_result.dart';
 import '../models/brush_edit_session_operation_kind.dart';
 import '../models/brush_edit_session_state.dart';
@@ -51,6 +52,27 @@ class BrushFrameEditingCoordinator {
     _activeFrameKey = key;
   }
 
+
+  BrushPaintCommand commitSourceStroke({
+    required List<BrushDab> sourceDabs,
+  }) {
+    if (sourceDabs.isEmpty) {
+      throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
+    }
+
+    final sequenceNumber = _nextSequenceNumber++;
+    final command = BrushPaintCommand(
+      id: BrushPaintCommandId('brush-paint-$sequenceNumber'),
+      sequenceNumber: sequenceNumber,
+      kind: BrushPaintCommandKind.paintStroke,
+      debugLabel: 'Paint stroke $sequenceNumber',
+      sourceDabs: List<BrushDab>.unmodifiable(sourceDabs),
+    );
+    frameStore.addLivePaintCommand(_activeFrameKey, command);
+    _pushBrushPaintUndoEntry(command, _activeFrameKey);
+    return command;
+  }
+
   BrushPaintCommand? applyBrushOperationResult(
     BrushEditSessionCacheOperationResult result, {
     CacheInvalidationSink? cacheInvalidationSink,
@@ -91,26 +113,7 @@ class BrushFrameEditingCoordinator {
       _activeFrameKey,
       dirtyTiles: affectedEntry.dirtyTiles,
     );
-    final entry = UndoHistoryEntry(
-      id: UndoHistoryEntryId('undo-${command.id.value}'),
-      sequenceNumber: command.sequenceNumber,
-      kind: UndoHistoryEntryKind.paintStroke,
-      scope: UndoHistoryScope.brushFrame,
-      payloadRef: UndoPayloadRef.paintCommand(
-        frameKey: _activeFrameKey,
-        paintCommandId: command.id,
-      ),
-    );
-    final pushResult = _undoHistory.pushNewEntry(entry);
-    _undoHistory = pushResult.history;
-    for (final trimmed in pushResult.trimmedEntries) {
-      if (trimmed.isPaintPayload && trimmed.payloadRef.targetKey != null) {
-        frameStore.movePaintCommandToDeferredBake(
-          trimmed.payloadRef.targetKey!,
-          trimmed.payloadRef.paintCommandId,
-        );
-      }
-    }
+    _pushBrushPaintUndoEntry(command, _activeFrameKey);
     return command;
   }
 
@@ -190,6 +193,33 @@ class BrushFrameEditingCoordinator {
       _invalidateBrushFrame(cacheInvalidationSink, key);
     }
     return entry;
+  }
+
+
+  void _pushBrushPaintUndoEntry(
+    BrushPaintCommand command,
+    BrushFrameKey frameKey,
+  ) {
+    final entry = UndoHistoryEntry(
+      id: UndoHistoryEntryId('undo-${command.id.value}'),
+      sequenceNumber: command.sequenceNumber,
+      kind: UndoHistoryEntryKind.paintStroke,
+      scope: UndoHistoryScope.brushFrame,
+      payloadRef: UndoPayloadRef.paintCommand(
+        frameKey: frameKey,
+        paintCommandId: command.id,
+      ),
+    );
+    final pushResult = _undoHistory.pushNewEntry(entry);
+    _undoHistory = pushResult.history;
+    for (final trimmed in pushResult.trimmedEntries) {
+      if (trimmed.isPaintPayload && trimmed.payloadRef.targetKey != null) {
+        frameStore.movePaintCommandToDeferredBake(
+          trimmed.payloadRef.targetKey!,
+          trimmed.payloadRef.paintCommandId,
+        );
+      }
+    }
   }
 
   void _invalidateBrushFrame(

@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
-import '../../models/brush_dab_sequence.dart';
-import '../../models/brush_edit_session_cache_operation_result.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
-import '../../services/brush_edit_session_cache_operations.dart';
-import '../../services/cache_invalidation_executor.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
@@ -19,8 +15,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.layerId,
     required this.frameId,
     required this.inputSettings,
-    required this.cacheInvalidationSink,
-    required this.onOperationResult,
+    required this.onSourceStrokeCommitted,
+    this.committedSourceDabs = const <BrushDab>[],
     this.showTransparentBackground = true,
   });
 
@@ -28,8 +24,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final LayerId layerId;
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
-  final CacheInvalidationSink cacheInvalidationSink;
-  final ValueChanged<BrushEditSessionCacheOperationResult> onOperationResult;
+  final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
+  final List<BrushDab> committedSourceDabs;
   final bool showTransparentBackground;
 
   @override
@@ -57,6 +53,7 @@ class _InteractiveBrushEditCanvasViewState
       child: BrushEditCanvasView(
         sessionState: widget.sessionState,
         showTransparentBackground: widget.showTransparentBackground,
+        committedSourceDabs: widget.committedSourceDabs,
         activeStrokeOverlay: List<BrushDab>.unmodifiable(_collectedDabs),
       ),
     );
@@ -91,15 +88,9 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     if (_collectedDabs.isNotEmpty) {
-      final result =
-          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-            sessionState: widget.sessionState,
-            sequence: BrushDabSequence(_collectedDabs),
-            layerId: widget.layerId,
-            frameId: widget.frameId,
-            cacheInvalidationSink: widget.cacheInvalidationSink,
-          );
-      widget.onOperationResult(result);
+      widget.onSourceStrokeCommitted(
+        List<BrushDab>.unmodifiable(_collectedDabs),
+      );
     }
 
     _clearStroke();
