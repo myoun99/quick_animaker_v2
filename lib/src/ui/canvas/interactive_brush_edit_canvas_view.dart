@@ -5,6 +5,7 @@ import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../services/brush_dab_interpolator.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
@@ -17,6 +18,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.inputSettings,
     required this.onSourceStrokeCommitted,
     this.committedSourceDabs = const <BrushDab>[],
+    this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
   });
 
@@ -27,6 +29,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
   final List<BrushDab> committedSourceDabs;
   final bool showTransparentBackground;
+  final BrushDabInterpolator dabInterpolator;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -69,7 +72,14 @@ class _InteractiveBrushEditCanvasViewState
     setState(() {
       _collectedDabs
         ..clear()
-        ..add(_dabFromPosition(event.localPosition));
+        ..addAll(
+          widget.dabInterpolator.interpolate(
+            previous: null,
+            nextRaw: _dabFromPosition(event.localPosition),
+            firstSequence: _nextSequence,
+          ),
+        );
+      _nextSequence = _collectedDabs.length;
     });
   }
 
@@ -79,7 +89,19 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    setState(() => _collectedDabs.add(_dabFromPosition(event.localPosition)));
+    final nextDabs = widget.dabInterpolator.interpolate(
+      previous: _collectedDabs.isEmpty ? null : _collectedDabs.last,
+      nextRaw: _dabFromPosition(event.localPosition),
+      firstSequence: _nextSequence,
+    );
+    if (nextDabs.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _collectedDabs.addAll(nextDabs);
+      _nextSequence += nextDabs.length;
+    });
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -124,7 +146,7 @@ class _InteractiveBrushEditCanvasViewState
       hardness: settings.hardness,
       tipShape: settings.tipShape,
       pressure: 1.0,
-      sequence: _nextSequence++,
+      sequence: -1,
     );
   }
 

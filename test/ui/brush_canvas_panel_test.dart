@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import 'brush_canvas_test_helpers.dart';
 
 void main() {
   testWidgets('renders embedded canvas without temporary debug controls', (
@@ -146,5 +147,43 @@ void main() {
       find.byType(InteractiveBrushEditCanvasView),
     );
     expect(canvas.inputSettings, settings);
+  });
+
+  testWidgets('commits sampled source dabs into the brush frame store', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      canvasGlobalOffset(tester, const Offset(1, 1)),
+      pointer: 1,
+    );
+    await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
+    await gesture.up();
+    await tester.pump();
+
+    final command = coordinator.frameStore
+        .getOrCreateFrame(coordinator.activeFrameKey)
+        .visibleActivePaintCommands
+        .single;
+    expect(command.sourceDabs.length, greaterThan(2));
+    expect(command.sourceDabs.map((dab) => dab.sequence), [0, 1, 2, 3]);
   });
 }

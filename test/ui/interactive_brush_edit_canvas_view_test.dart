@@ -10,7 +10,6 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/services/cache_invalidation_executor.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -28,15 +27,13 @@ void main() {
       'builds Listener and BrushEditCanvasView without GestureDetector',
       (tester) async {
         final sessionState = _sessionState();
-        final sink = FakeCacheInvalidationSink();
-
         await tester.pumpWidget(
           _app(
             InteractiveBrushEditCanvasView(
               sessionState: sessionState,
               layerId: layerId,
               frameId: frameId,
-              inputSettings: const BrushEditCanvasInputSettings(),
+              inputSettings: inputSettings,
               onSourceStrokeCommitted: (_) {},
               showTransparentBackground: false,
             ),
@@ -86,15 +83,13 @@ void main() {
       tester,
     ) async {
       final sessionState = _sessionState();
-      final sink = FakeCacheInvalidationSink();
       final results = <List<BrushDab>>[];
 
-      await tester.pumpWidget(_app(_view(sessionState, sink, results.add)));
+      await tester.pumpWidget(_app(_view(sessionState, results.add)));
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(results, hasLength(1));
       expect(results.single, hasLength(1));
-      expect(sink.totalCalls, 0);
       expect(identical(sessionState, sessionState), isTrue);
     });
 
@@ -103,7 +98,7 @@ void main() {
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       await dragCanvas(tester, const [
@@ -116,16 +111,69 @@ void main() {
       expect(results.single, hasLength(3));
     });
 
+    testWidgets('fast drag commits sampled source dabs beyond raw endpoints', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single.length, greaterThan(2));
+      expect(results.single.map((dab) => dab.sequence), [0, 1, 2, 3]);
+    });
+
+    testWidgets('tiny movement does not create duplicate sampled source dabs', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(1.5, 1)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single, hasLength(1));
+      expect(results.single.single.sequence, 0);
+    });
+
     testWidgets('repeated tap strokes produce repeated operation results', (
       tester,
     ) async {
       var sessionState = _sessionState();
-      final sink = FakeCacheInvalidationSink();
       final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(
         _app(
-          _view(sessionState, sink, (result) {
+          _view(sessionState, (result) {
             results.add(result);
 
           }),
@@ -134,7 +182,7 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tester.pumpWidget(
         _app(
-          _view(sessionState, sink, (result) {
+          _view(sessionState, (result) {
             results.add(result);
 
           }),
@@ -157,7 +205,6 @@ void main() {
               padding: const EdgeInsets.only(top: 48, left: 24),
               child: _view(
                 _sessionState(),
-                FakeCacheInvalidationSink(),
                 results.add,
               ),
             ),
@@ -176,7 +223,7 @@ void main() {
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       await tapCanvas(tester, const Offset(9, 9));
@@ -187,7 +234,7 @@ void main() {
     testWidgets('pointer cancel does not emit a result', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       final gesture = await tester.startGesture(
@@ -206,7 +253,7 @@ void main() {
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       tester.binding.handlePointerEvent(
@@ -225,7 +272,7 @@ void main() {
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       final first = await tester.startGesture(
@@ -246,7 +293,7 @@ void main() {
     testWidgets('callback is called at most once per stroke', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), results.add)),
+        _app(_view(_sessionState(), results.add)),
       );
 
       final gesture = await tester.startGesture(
@@ -271,7 +318,7 @@ void main() {
       final results = <List<BrushDab>>[];
 
       await tester.pumpWidget(
-        _app(_view(sessionState, FakeCacheInvalidationSink(), results.add)),
+        _app(_view(sessionState, results.add)),
       );
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
@@ -306,7 +353,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _app(_view(_sessionState(), FakeCacheInvalidationSink(), (_) {})),
+        _app(_view(_sessionState(), (_) {})),
       );
 
       expect(find.byType(StoryboardPanel), findsNothing);
@@ -329,14 +376,15 @@ BrushEditSessionState _sessionState() {
 
 InteractiveBrushEditCanvasView _view(
   BrushEditSessionState sessionState,
-  CacheInvalidationSink sink,
-  ValueChanged<List<BrushDab>> onResult,
-) {
+  ValueChanged<List<BrushDab>> onResult, {
+  BrushEditCanvasInputSettings inputSettings =
+      const BrushEditCanvasInputSettings(),
+}) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
-    inputSettings: const BrushEditCanvasInputSettings(),
+    inputSettings: inputSettings,
     onSourceStrokeCommitted: onResult,
   );
 }
