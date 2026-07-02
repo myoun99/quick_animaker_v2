@@ -45,7 +45,7 @@ void main() {
 
       expect(
         interactiveView,
-        isNot(contains('_collectedDabs.add(_dabFromPosition'))),
+        isNot(contains('_collectedDabs.add(_dabFromPosition)')),
       );
       for (final forbidden in [
         'commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation',
