@@ -106,6 +106,7 @@ For detailed current architecture policy, read the matching `Current_*` document
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 - UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
+- Test architecture / test policy: `docs/Current_Test_Architecture.md`
 
 Before working on a module, read the matching Current document directly rather than relying on this handoff summary.
 
@@ -115,7 +116,7 @@ Before working on a module, read the matching Current document directly rather t
 
 ## 7. Documentation test rule
 
-Documentation and handoff tests should protect stable project rules, not exact long-term memo wording. Prefer tests for file existence, Current-doc links, lightweight handoff shape, and forbidden runtime architecture reintroduction. Do not make tests fail only because policy wording or continuation notes were rewritten.
+Regular tests should not check exact documentation prose, normalized documentation phrases, headings, or long-form policy wording. Current test policy lives in `docs/Current_Test_Architecture.md`. Tests should focus on behavior, stable boundaries, shared constants, and narrow forbidden legacy paths rather than making `flutter test` fail because documentation prose was rewritten more clearly.
 
 ## 8. Latest continuation note
 

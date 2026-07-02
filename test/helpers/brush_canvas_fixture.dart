@@ -1,6 +1,6 @@
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
@@ -23,7 +23,7 @@ class BrushCanvasFixture {
   static const trackId = TrackId('brush-workspace-track');
   static const cutId = CutId('brush-workspace-cut');
   static const layerId = LayerId('brush-workspace-layer');
-  static const canvasSize = CanvasSize(width: 320, height: 240);
+  static const canvasSize = defaultCutCanvasSize;
 
   static const frameIds = [
     FrameId('frame-1'),
@@ -46,7 +46,7 @@ class BrushCanvasFixture {
   static BrushFrameEditingCoordinator createCoordinator({
     List<BrushFrameKey>? frameKeys,
     BrushHistoryPolicy historyPolicy = const BrushHistoryPolicy(
-      userUndoLimit: 24,
+      userUndoLimit: defaultCutDuration,
       deferredBakeRatio: 0,
     ),
   }) {

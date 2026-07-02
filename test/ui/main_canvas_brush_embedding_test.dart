@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -136,8 +136,8 @@ Project _projectWithActiveFrame() {
           Cut(
             id: const CutId('editor-cut'),
             name: 'Editor Cut',
-            duration: 24,
-            canvasSize: const CanvasSize(width: 320, height: 240),
+            duration: defaultCutDuration,
+            canvasSize: defaultCutCanvasSize,
             layers: [
               Layer(
                 id: const LayerId('editor-layer'),

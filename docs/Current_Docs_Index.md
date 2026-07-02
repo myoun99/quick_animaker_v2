@@ -12,6 +12,7 @@
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`
 - Storyboard: `docs/Current_Storyboard_Architecture.md`
 - UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
+- Test architecture / test policy: `docs/Current_Test_Architecture.md`
 
 ## AI reading rule
 
