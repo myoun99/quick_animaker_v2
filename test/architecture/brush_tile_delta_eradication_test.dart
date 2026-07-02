@@ -209,7 +209,10 @@ void main() {
 
         for (final source in [homePageSource, hostSource, panelSource]) {
           expect(source, isNot(contains('brush_canvas_smoke_screen.dart')));
-          expect(source, isNot(contains('interactive_brush_canvas_smoke_host')));
+          expect(
+            source,
+            isNot(contains('interactive_brush_canvas_smoke_host')),
+          );
           expect(source, isNot(contains('BrushCanvasSmokeScreen')));
           expect(source, isNot(contains('Debug Reset Session')));
           expect(source, isNot(contains('Brush Host Preview')));
