@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import 'bitmap_surface_painter.dart';
 
@@ -8,10 +9,14 @@ class BrushEditCanvasView extends StatelessWidget {
     super.key,
     required this.sessionState,
     this.showTransparentBackground = true,
+    this.committedSourceDabs = const <BrushDab>[],
+    this.activeStrokeOverlay = const <BrushDab>[],
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
+  final List<BrushDab> committedSourceDabs;
+  final List<BrushDab> activeStrokeOverlay;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +32,8 @@ class BrushEditCanvasView extends StatelessWidget {
           painter: BitmapSurfacePainter(
             surface: surface,
             showTransparentBackground: showTransparentBackground,
+            committedSourceDabs: committedSourceDabs,
+            activeStrokeOverlay: activeStrokeOverlay,
           ),
         ),
       ),

@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_dab.dart';
 
 class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
     required this.surface,
     this.showTransparentBackground = true,
+    this.committedSourceDabs = const <BrushDab>[],
+    this.activeStrokeOverlay = const <BrushDab>[],
   });
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
+  final List<BrushDab> committedSourceDabs;
+  final List<BrushDab> activeStrokeOverlay;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -53,11 +58,50 @@ class BitmapSurfacePainter extends CustomPainter {
         }
       }
     }
+
+    _paintDabs(canvas, committedSourceDabs);
+    _paintActiveStrokeOverlay(canvas);
+  }
+
+  void _paintActiveStrokeOverlay(Canvas canvas) {
+    _paintDabs(canvas, activeStrokeOverlay);
+  }
+
+  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
+    if (dabs.isEmpty) {
+      return;
+    }
+
+    final paint = Paint()
+      ..style = PaintingStyle.fill
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    for (final dab in dabs) {
+      final argb = dab.color;
+      final alpha = (argb >> 24) & 0xFF;
+      final red = (argb >> 16) & 0xFF;
+      final green = (argb >> 8) & 0xFF;
+      final blue = argb & 0xFF;
+      paint.color = Color.fromARGB(
+        (alpha * dab.opacity).clamp(0, 255).round(),
+        red,
+        green,
+        blue,
+      );
+      canvas.drawCircle(
+        Offset(dab.center.x, dab.center.y),
+        dab.size / 2,
+        paint,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant BitmapSurfacePainter oldDelegate) {
     return oldDelegate.surface != surface ||
-        oldDelegate.showTransparentBackground != showTransparentBackground;
+        oldDelegate.showTransparentBackground != showTransparentBackground ||
+        oldDelegate.committedSourceDabs != committedSourceDabs ||
+        oldDelegate.activeStrokeOverlay != activeStrokeOverlay;
   }
 }

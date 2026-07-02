@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_edit_session_cache_operation_result.dart';
+import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -41,6 +41,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   Widget build(BuildContext context) {
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
+    final committedSourceDabs = widget.coordinator.frameStore
+        .getOrCreateFrame(activeKey)
+        .visibleActivePaintCommands
+        .expand((command) => command.sourceDabs)
+        .toList(growable: false);
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -56,20 +61,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             layerId: activeKey.layerId,
             frameId: activeKey.frameId,
             inputSettings: _inputSettings,
-            cacheInvalidationSink: widget.cacheInvalidationSink,
-            onOperationResult: _handleOperationResult,
+            committedSourceDabs: committedSourceDabs,
+            onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
         ),
       ),
     );
   }
 
-  void _handleOperationResult(BrushEditSessionCacheOperationResult result) {
-    setState(
-      () => widget.coordinator.applyBrushOperationResult(
-        result,
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      ),
-    );
+  void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
+    setState(() {
+      widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+    });
   }
 }

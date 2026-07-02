@@ -1,3 +1,4 @@
+import 'canvas_size.dart';
 import 'project_id.dart';
 import 'track.dart';
 
@@ -8,6 +9,7 @@ class Project {
     required List<Track> tracks,
     required this.createdAt,
     this.fps = 24,
+    this.cameraSize = const CanvasSize(width: 1920, height: 1080),
   }) : tracks = List.unmodifiable(tracks);
 
   final ProjectId id;
@@ -15,6 +17,7 @@ class Project {
   final List<Track> tracks;
   final DateTime createdAt;
   final int fps;
+  final CanvasSize cameraSize;
 
   Project copyWith({
     ProjectId? id,
@@ -22,6 +25,7 @@ class Project {
     List<Track>? tracks,
     DateTime? createdAt,
     int? fps,
+    CanvasSize? cameraSize,
   }) {
     return Project(
       id: id ?? this.id,
@@ -29,6 +33,7 @@ class Project {
       tracks: tracks ?? this.tracks,
       createdAt: createdAt ?? this.createdAt,
       fps: fps ?? this.fps,
+      cameraSize: cameraSize ?? this.cameraSize,
     );
   }
 
@@ -38,6 +43,7 @@ class Project {
     'tracks': tracks.map((track) => track.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
     'fps': fps,
+    'cameraSize': cameraSize.toJson(),
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -49,6 +55,9 @@ class Project {
           .toList(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       fps: json['fps'] as int,
+      cameraSize: json['cameraSize'] == null
+          ? const CanvasSize(width: 1920, height: 1080)
+          : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),
     );
   }
 
@@ -60,15 +69,16 @@ class Project {
           other.name == name &&
           _listEquals(other.tracks, tracks) &&
           other.createdAt == createdAt &&
-          other.fps == fps;
+          other.fps == fps &&
+          other.cameraSize == cameraSize;
 
   @override
   int get hashCode =>
-      Object.hash(id, name, Object.hashAll(tracks), createdAt, fps);
+      Object.hash(id, name, Object.hashAll(tracks), createdAt, fps, cameraSize);
 
   @override
   String toString() =>
-      'Project(id: $id, name: $name, tracks: $tracks, createdAt: $createdAt, fps: $fps)';
+      'Project(id: $id, name: $name, tracks: $tracks, createdAt: $createdAt, fps: $fps, cameraSize: $cameraSize)';
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {

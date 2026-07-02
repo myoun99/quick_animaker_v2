@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
+import '../../models/canvas_size.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -21,11 +22,13 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.activeFrameKey,
     this.selection,
     this.availableFrameKeys,
+    this.canvasSize = BrushCanvasDefaults.canvasSize,
   });
 
   final BrushFrameKey? activeFrameKey;
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
+  final CanvasSize canvasSize;
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -35,6 +38,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
+  final _frameStore = BrushFrameStore();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
   BrushFrameEditingCoordinator? _coordinator;
@@ -49,6 +53,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   void didUpdateWidget(covariant MainCanvasBrushHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     _frameKeys = _resolveFrameKeys();
+    if (widget.canvasSize != oldWidget.canvasSize) {
+      _coordinator = null;
+    }
     _selectResolvedFrame();
   }
 
@@ -67,6 +74,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       coordinator: coordinator,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
+      canvasSize: widget.canvasSize,
     );
   }
 
@@ -103,9 +111,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   }) {
     return BrushFrameEditingCoordinator(
       initialFrameKey: initialFrameKey,
-      frameStore: BrushFrameStore(),
+      frameStore: _frameStore,
       sessionStore: BrushFrameEditSessionStore(
-        canvasSize: BrushCanvasDefaults.canvasSize,
+        canvasSize: widget.canvasSize,
       ),
       historyPolicy: const BrushHistoryPolicy(
         userUndoLimit: 24,

@@ -1,3 +1,4 @@
+import 'brush_dab.dart';
 import 'brush_paint_command_id.dart';
 import 'brush_paint_command_state.dart';
 
@@ -18,6 +19,7 @@ class BrushPaintCommand {
     this.affectedBoundsRef,
     this.materializationRef,
     this.metadataRef,
+    this.sourceDabs = const <BrushDab>[],
   });
 
   final BrushPaintCommandId id;
@@ -39,7 +41,17 @@ class BrushPaintCommand {
   final String? materializationRef;
   final String? metadataRef;
 
-  BrushPaintCommand copyWith({BrushPaintCommandState? state}) {
+  /// T2 source stroke payload authored by live brush input.
+  ///
+  /// This is source data, not a bitmap bake/cache image. Older transitional
+  /// commands may have an empty list while legacy materialization bridges are
+  /// still used by internal tests.
+  final List<BrushDab> sourceDabs;
+
+  BrushPaintCommand copyWith({
+    BrushPaintCommandState? state,
+    List<BrushDab>? sourceDabs,
+  }) {
     return BrushPaintCommand(
       id: id,
       sequenceNumber: sequenceNumber,
@@ -49,6 +61,7 @@ class BrushPaintCommand {
       affectedBoundsRef: affectedBoundsRef,
       materializationRef: materializationRef,
       metadataRef: metadataRef,
+      sourceDabs: sourceDabs ?? this.sourceDabs,
     );
   }
 
@@ -63,7 +76,8 @@ class BrushPaintCommand {
           other.debugLabel == debugLabel &&
           other.affectedBoundsRef == affectedBoundsRef &&
           other.materializationRef == materializationRef &&
-          other.metadataRef == metadataRef;
+          other.metadataRef == metadataRef &&
+          _listEquals(other.sourceDabs, sourceDabs);
 
   @override
   int get hashCode => Object.hash(
@@ -75,10 +89,21 @@ class BrushPaintCommand {
     affectedBoundsRef,
     materializationRef,
     metadataRef,
+    Object.hashAll(sourceDabs),
   );
 
   @override
   String toString() =>
       'BrushPaintCommand(id: $id, sequenceNumber: $sequenceNumber, '
       'kind: $kind, state: $state, materializationRef: $materializationRef)';
+}
+
+
+bool _listEquals<T>(List<T> a, List<T> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i += 1) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }

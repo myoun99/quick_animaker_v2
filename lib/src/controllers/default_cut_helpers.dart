@@ -5,7 +5,7 @@ import '../models/layer_id.dart';
 import '../core/timeline/timeline_defaults.dart';
 import 'default_layer_helpers.dart';
 
-const defaultCutCanvasSize = CanvasSize(width: 1280, height: 720);
+const defaultCutCanvasSize = CanvasSize(width: 2340, height: 1654);
 const defaultCutDuration = defaultCutDurationFrames;
 
 Cut createDefaultCut({

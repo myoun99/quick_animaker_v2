@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -152,6 +153,54 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
       findsNothing,
+    );
+  });
+
+  testWidgets('recreates sessions when active cut canvas size changes', (tester) async {
+    const key = BrushFrameKey(
+      projectId: ProjectId('project-real'),
+      trackId: TrackId('track-real'),
+      cutId: CutId('cut-real'),
+      layerId: LayerId('layer-real'),
+      frameId: FrameId('frame-real'),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: key,
+            canvasSize: CanvasSize(width: 64, height: 48),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    var view = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    expect(
+      view.sessionState.canvasState.currentSurface.canvasSize,
+      const CanvasSize(width: 64, height: 48),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: key,
+            canvasSize: CanvasSize(width: 96, height: 72),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    view = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    expect(
+      view.sessionState.canvasState.currentSurface.canvasSize,
+      const CanvasSize(width: 96, height: 72),
     );
   });
 

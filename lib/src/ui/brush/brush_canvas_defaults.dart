@@ -4,5 +4,5 @@ import '../../models/canvas_size.dart';
 class BrushCanvasDefaults {
   const BrushCanvasDefaults._();
 
-  static const canvasSize = CanvasSize(width: 320, height: 240);
+  static const canvasSize = CanvasSize(width: 2340, height: 1654);
 }

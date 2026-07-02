@@ -39,9 +39,9 @@ void main() {
             id: BrushPaintCommandId('2'),
             sequenceNumber: 2,
             kind: BrushPaintCommandKind.paintStroke,
-            state: BrushPaintCommandState.hiddenByUndo,
           ),
         ],
+        hiddenCommandIds: {BrushPaintCommandId('2')},
       );
 
       expect(state.hasDeferredBakeCommands, isTrue);
