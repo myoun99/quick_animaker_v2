@@ -5,15 +5,39 @@ QuickAnimaker v2 is a Flutter/Dart 2D bitmap animation tool targeting a TVPaint-
 ## Core domain hierarchy
 
 ```txt
-Project -> Track -> Cut -> Layer -> Frame -> Stroke
+Project -> Track -> Cut -> Layer -> Frame
 ```
 
-- `Project` owns project metadata, FPS, and tracks; it must not directly own rendering, UI, saving, undo, or brush logic.
+Brush drawing source data is not embedded directly in this hierarchy. It is owned by brush/canvas storage such as `BrushFrameStore`, keyed by the relevant frame identity context.
+
+- `Project` owns project metadata, FPS, tracks, and project-wide camera settings; it must not directly own rendering, UI, saving, undo, or brush runtime logic.
 - `Track` owns ordered cuts.
 - `Cut` owns its canvas settings, duration, metadata, and layers.
 - `Layer` owns frames plus layer display metadata such as visibility, opacity, name, and kind.
-- `Frame` owns lightweight timing/metadata and stroke references; heavy brush bitmap payloads belong outside the frame model.
-- `Stroke` represents drawing/action data where appropriate, but current brush architecture separates transient paint commands and bitmap payload storage from durable frame metadata.
+- `Frame` owns lightweight identity, timing, name/label, and storyboard metadata. It does not directly own brush drawing source payloads, heavy bitmap payloads, baked surfaces, preview caches, playback caches, image caches, or dirty state.
+- `Stroke` / `BrushPaintCommand` represents drawing/action source data where appropriate, but current brush architecture stores brush source payloads outside `Frame` through `BrushFrameStore` or an equivalent brush/canvas storage boundary.
+
+## Project camera and Cut canvas
+
+Brush T2 separates project camera size from cut canvas size.
+
+```txt
+Project.cameraSize = 1920 x 1080 by default
+Cut.canvasSize = 2340 x 1654 by default
+```
+
+`Project.cameraSize` is the project-wide camera/output frame size. All Cuts in the Project share this camera output size unless a future explicit camera-output architecture changes the rule.
+
+`Cut.canvasSize` is the drawing/storage canvas bounds for that Cut. Cuts may have different canvas sizes.
+
+Brush T2 does not add a separate drawable-area model. Drawing bounds equal the active `Cut.canvasSize`.
+
+Planned output size concepts:
+
+- Canvas export: output the active `Cut.canvasSize`.
+- Camera export: output the `Project.cameraSize` frame.
+
+Storyboard-style output, TDTS output, XDTS output, and other timesheet/storyboard output formats are future export/sheet features.
 
 ## Lightweight domain and value-object boundaries
 
@@ -22,8 +46,31 @@ This summary preserves current model context without turning the handoff into an
 - Core IDs are identity/value objects: `ProjectId`, `TrackId`, `CutId`, `LayerId`, `FrameId`, and `StrokeId`. Display names are labels, not identity.
 - Canvas coordinates are explicit value objects: `CanvasPoint` is canvas-space, `ViewportPoint` is viewport/widget-local space, and `CanvasViewport` performs pure coordinate conversion.
 - `CanvasViewport` must remain independent from Flutter rendering/input types such as `Offset`, `PointerEvent`, `Canvas`, `Paint`, and `CustomPainter`.
-- Brush context remains lightweight at the domain boundary: `BrushSettings` is a frozen/value snapshot stored with `Stroke`; `BrushPreset` is reusable preset metadata; `BrushPreset.name` is a display label; and `BrushPresetId` is preset identity.
-- `Stroke` should not directly reference `BrushPreset`. `BrushInputSample` is pre-stroke input data, while `StrokePoint` is stored coordinate data inside `Stroke`.
+- Brush context remains lightweight at the domain boundary: `BrushSettings` is a frozen/value snapshot stored with stroke-like source commands; `BrushPreset` is reusable preset metadata; `BrushPreset.name` is a display label; and `BrushPresetId` is preset identity.
+- `Stroke` / `BrushPaintCommand` should not directly reference `BrushPreset`. `BrushInputSample` is pre-stroke input data, while `StrokePoint` or equivalent stored command points are stored coordinate data inside source drawing commands.
+
+## Brush T2 source data boundary
+
+Brush T2 should use the simplest source-data model that does not block future optimization:
+
+```txt
+BrushFrameStore
+- BrushFrameKey -> BrushFrameDrawing
+
+BrushFrameDrawing
+- commands: List<BrushPaintCommand>
+- hiddenCommandIds: Set<BrushPaintCommandId>
+
+BrushStrokeCommand
+- BrushFrameKey
+- BrushPaintCommandId
+```
+
+Brush stroke undo/redo participates in the single global user undo/redo stack. Brush-specific undo/redo controls do not exist.
+
+`visibleCommandCount` is intentionally not part of the T2 brush model. It is unnecessary when undo/redo is global and would duplicate history state.
+
+`BrushStrokeCommand`-like history entries should remain lightweight references to `BrushFrameKey + BrushPaintCommandId` rather than carrying large copied stroke payloads.
 
 ## Ownership and module boundaries
 
@@ -52,9 +99,10 @@ QuickAnimaker v2 keeps Photoshop-class layer capability as a long-term quality t
 - UI / product interaction policy: `docs/Current_UI_Product_Policy.md`
 - Roadmap: `docs/Current_Implementation_Roadmap.md`
 
-
 ## Frame material identity
 
 Same frame name means same drawing material inside the relevant layer. A non-empty frame name is a material identity label, and duplicate independent `FrameId`s with the same non-empty name in the same layer should be prevented or resolved by linking rather than preserved as separate materials.
 
 Linked frames share drawing material/source identity through the same `FrameId`, drawing strokes/material, and frame name. Linked material identity must stay separate from authored timeline placement.
+
+Future linked drawing-material work may introduce a dedicated drawing/material/source id. Do not add that shortcut before brush/canvas storage ownership, save/load source-payload boundaries, and linked Cut/Layer policy are explicitly designed.
