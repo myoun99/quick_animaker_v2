@@ -16,11 +16,14 @@ This roadmap records current future direction only. Old phase-by-phase documents
    - Keep active brush display on visible source dabs plus sampled `BrushDab` stamp overlay.
    - Do not restore active drawPath display, active `displayPreviewSurface` editing, source-destroying bake-on-release, or `TileDelta` / `TileDeltaCommand`.
    - Keep brush strokes in app-level global undo/redo through `HistoryManager`, `BrushStrokeHistoryCommand`, and source command visibility.
-2. Phase 226: Canvas viewport foundation:
-   - Add pan, zoom, fit-to-view, and reset-view behavior.
-   - Separate viewport transforms from drawing coordinates.
-   - Keep `Cut.canvasSize` as drawing/storage bounds.
-   - Keep viewport state out of drawing source data and do not introduce broad app-wide state management.
+2. Phase 226: Canvas viewport foundation is the current baseline for production brush editing:
+   - Pan, zoom, fit-to-view, and reset-view are local canvas editor viewport behavior.
+   - The visible editor viewport area is separate from the inner drawing canvas.
+   - `CanvasViewport` remains UI-only pan/zoom state that converts viewport/widget coordinates to canvas coordinates.
+   - Brush source dabs remain canvas-space source data.
+   - `Cut.canvasSize` remains drawing/storage bounds and is not changed by viewport actions.
+   - `Project.cameraSize` remains the project-wide camera/output frame size and is not changed by viewport actions.
+   - Camera T1 remains a future candidate, not Phase 226 implementation scope.
 3. Phase 227 candidate: Cut canvas size editing after viewport foundation.
 4. Canvas/cache/storage foundation before heavy playback or save/load work:
    - Establish clear ownership for frame-local drawing payloads outside lightweight `Frame` metadata.
@@ -48,6 +51,7 @@ These ideas are intentionally preserved as long-term candidates. They are not cu
 - Future storyboard audio views and timeline playback audio should share the same project audio/sound source model rather than duplicating storyboard-only audio persistence.
 - Photoshop-class layer capabilities remain long-term candidates, including blend modes, masks, clipping-like relationships, adjustment/effect-style behavior, richer compositing, and PSD-oriented import/export compatibility. Folder/group-style organization must be designed separately for QuickAnimaker's animation workflow and must not be assumed to copy Photoshop folders by default.
 - UI should remain compact and production-tool-oriented. When UI policy changes, update `docs/Current_UI_Product_Policy.md` rather than scattering UI principles through phase task docs.
+- Future Camera T1 candidate: a camera layer or camera-like track, camera view rectangle, darkened outside-camera editing area, playback cropped to camera frame, and editable camera position, size, and rotation. This is not implemented by the Phase 226 viewport foundation.
 
 ## Not yet
 

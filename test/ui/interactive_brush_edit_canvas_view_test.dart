@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
@@ -8,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
@@ -350,6 +352,76 @@ void main() {
       expect(results.single, hasLength(1));
     });
 
+    testWidgets(
+      'viewport transform keeps committed dabs in canvas coordinates',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              viewport: CanvasViewport(zoom: 2),
+            ),
+          ),
+        );
+
+        await tapCanvas(tester, const Offset(3, 3));
+
+        expect(results, hasLength(1));
+        expect(results.single.single.center.x, 1.5);
+        expect(results.single.single.center.y, 1.5);
+      },
+    );
+
+    testWidgets(
+      'viewport pan and zoom keep committed dabs in canvas coordinates',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              viewport: CanvasViewport(zoom: 2, panX: 4, panY: 6),
+            ),
+          ),
+        );
+
+        await tapCanvas(tester, const Offset(7, 9));
+
+        expect(results, hasLength(1));
+        expect(results.single.single.center.x, 1.5);
+        expect(results.single.single.center.y, 1.5);
+      },
+    );
+
+    testWidgets('middle mouse drag pans viewport without committing dabs', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(
+        _app(
+          _view(_sessionState(), results.add, onViewportChanged: viewports.add),
+        ),
+      );
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+        buttons: kMiddleMouseButton,
+      );
+      await gesture.down(canvasGlobalOffset(tester, const Offset(1, 1)));
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(4, 6)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, isEmpty);
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.panX, 3);
+      expect(viewports.last.panY, 5);
+    });
+
     testWidgets('pointer outside surface does not emit a result', (
       tester,
     ) async {
@@ -497,12 +569,16 @@ InteractiveBrushEditCanvasView _view(
   ValueChanged<List<BrushDab>> onResult, {
   BrushEditCanvasInputSettings inputSettings =
       const BrushEditCanvasInputSettings(),
+  CanvasViewport? viewport,
+  ValueChanged<CanvasViewport>? onViewportChanged,
 }) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
     inputSettings: inputSettings,
+    viewport: viewport,
+    onViewportChanged: onViewportChanged,
     onSourceStrokeCommitted: onResult,
   );
 }

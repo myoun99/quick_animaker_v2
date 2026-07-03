@@ -1,6 +1,7 @@
 import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -45,6 +46,7 @@ class BrushCanvasFixture {
 
   static BrushFrameEditingCoordinator createCoordinator({
     List<BrushFrameKey>? frameKeys,
+    CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
     BrushHistoryPolicy historyPolicy = const BrushHistoryPolicy(
       userUndoLimit: defaultCutDuration,
       deferredBakeRatio: 0,

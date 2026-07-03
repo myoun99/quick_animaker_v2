@@ -32,6 +32,12 @@ Cut.canvasSize = 2340 x 1654 by default
 
 Brush T2 does not add a separate drawable-area model. Drawing bounds equal the active `Cut.canvasSize`.
 
+Phase 226 adds a canvas viewport foundation for brush editing. The visible editor viewport area is UI/layout space, not storage space. `CanvasViewport` pan/zoom/fit/reset state is temporary UI-only view state used to display the inner `Cut.canvasSize` drawing canvas and convert pointer positions between viewport/widget-local coordinates and canvas-space coordinates. Viewport state must not become drawing source data, save/load data, playback data, camera transform data, or cache identity.
+
+Brush source dabs remain committed in canvas-space coordinates. Pan/zoom changes how the drawing canvas is viewed, not what coordinates are stored.
+
+Future Camera T1 remains only a candidate: camera layer or camera-like track, camera view rectangle, darkened outside-camera editing area, playback cropped to camera frame, and editable camera position, size, and rotation. Phase 226 does not implement camera source data, camera keyframes, camera persistence, playback cropping, or camera export behavior.
+
 Planned output size concepts:
 
 - Canvas export: output the active `Cut.canvasSize`.

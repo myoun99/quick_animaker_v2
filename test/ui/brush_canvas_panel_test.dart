@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -86,9 +88,7 @@ void main() {
     expect(find.text('Red'), findsNothing);
   });
 
-  testWidgets('uses default embedded canvas size when canvasSize is omitted', (
-    tester,
-  ) async {
+  testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -106,16 +106,97 @@ void main() {
       ),
     );
 
-    final sizedBox = tester.widget<SizedBox>(
-      find
-          .ancestor(
-            of: find.byType(InteractiveBrushEditCanvasView),
-            matching: find.byType(SizedBox),
-          )
-          .first,
+    final drawingCanvasSize = tester.getSize(find.byType(BrushEditCanvasView));
+    expect(drawingCanvasSize.width, BrushCanvasDefaults.canvasSize.width);
+    expect(drawingCanvasSize.height, BrushCanvasDefaults.canvasSize.height);
+  });
+
+  testWidgets('fit action uses the available editor viewport size', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: const CanvasSize(width: 100, height: 50),
     );
-    expect(sizedBox.width, BrushCanvasDefaults.canvasSize.width.toDouble());
-    expect(sizedBox.height, BrushCanvasDefaults.canvasSize.height.toDouble());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: const CanvasSize(width: 100, height: 50),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final viewportSize = tester.getSize(
+      find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-viewport-fit')));
+    await tester.pump();
+
+    final canvas = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    final expected = CanvasViewport.fitToView(
+      canvasWidth: 100,
+      canvasHeight: 50,
+      viewportWidth: viewportSize.width,
+      viewportHeight: viewportSize.height,
+    );
+
+    expect(canvas.viewport.zoom, expected.zoom);
+    expect(canvas.viewport.panX, expected.panX);
+    expect(canvas.viewport.panY, expected.panY);
+  });
+
+  testWidgets('reset action restores the identity viewport', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: const CanvasSize(width: 100, height: 50),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: const CanvasSize(width: 100, height: 50),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-viewport-fit')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+    );
+    await tester.pump();
+
+    final canvas = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+
+    expect(canvas.viewport, CanvasViewport());
   });
 
   testWidgets('passes custom initial input settings to canvas view', (
