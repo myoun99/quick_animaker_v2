@@ -2,12 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../core/timeline/timeline_defaults.dart';
+import '../controllers/default_cut_helpers.dart';
 import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -19,7 +18,6 @@ import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
-import '../models/timeline_exposure.dart';
 import '../services/clipboard/layer_copy_payload.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -1471,19 +1469,10 @@ class _HomePageState extends State<HomePage> {
           id: const TrackId('sample-track'),
           name: 'Video Track',
           cuts: [
-            Cut(
-              id: _sampleCutId,
+            createDefaultCut(
+              cutId: _sampleCutId,
               name: 'Cut 1',
-              duration: defaultCutDurationFrames,
-              canvasSize: const CanvasSize(width: 1280, height: 720),
-              layers: [
-                Layer(
-                  id: const LayerId('sample-layer-1'),
-                  name: 'A',
-                  frames: const [],
-                  timeline: const {0: TimelineExposure.blank()},
-                ),
-              ],
+              layerId: const LayerId('sample-layer-1'),
             ),
           ],
         ),
