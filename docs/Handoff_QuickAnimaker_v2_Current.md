@@ -122,6 +122,7 @@ Current active work remains the brush part. Continue brush work until the brush 
 
 Recent brush cleanup status:
 
+- Phase 225 records PR #294 as the current Brush T2 baseline and PR #293 only as a failed reference. PR #294 keeps active display on visible source dabs plus a sampled `BrushDab` stamp overlay, avoids active drawPath and active `displayPreviewSurface` routes, routes brush strokes through app-level global undo/redo, and preserves timeline frame selection after undo/redo.
 - Phase 213A removed `TileDelta` / `TileDeltaCommand` from brush runtime boundaries.
 - Phase 213B cleaned up brush history/source-of-truth boundaries:
     - `UnifiedUndoHistory` is the production-facing user undo/redo order.
@@ -153,10 +154,13 @@ Next preferred brush direction:
 - Keep cache images derived, not source of truth.
 - Do not implement save/load, playback cache, real deferred bake, or large UI rewrites unless a new phase explicitly targets them.
 
-Likely next brush phases:
+Likely next phase:
 
-1. Brush runtime/display stabilization.
-2. Brush command payload/materialization boundary strengthening.
-3. Brush active-frame drawing display correctness.
-4. Brush cache/storage preparation.
-5. Only after that, move toward save/load or playback/cache phases.
+1. Phase 226: Canvas viewport foundation.
+   - pan / zoom
+   - fit to view / reset view
+   - separate viewport transform from drawing coordinates
+   - keep `Cut.canvasSize` as drawing bounds
+   - keep viewport state out of drawing source data
+2. Likely Phase 227: Cut canvas size editing after viewport foundation.
+3. Save/load and playback/cache remain later work.

@@ -11,23 +11,30 @@ This roadmap records current future direction only. Old phase-by-phase documents
 
 ## Near-term order
 
-1. Brush production integration / implementation direction:
-   - Preserve Brush V1 smoke/dev context without wiring old smoke routes or debug UI back into production navigation.
-   - Continue moving production brush editing toward Deferred Bake Hybrid Brush History with `UnifiedUndoHistory`, `BrushFrameStore`, live paint commands, deferred bake commands, and baked base surfaces.
-   - Keep user-facing undo based on recent live paint/stroke-like commands, not tile deltas.
-2. Canvas/cache/storage foundation before heavy playback or save/load work:
+1. Brush T2 stabilization / current baseline:
+   - Treat PR #294 as the current Brush T2 baseline and PR #293 only as a failed reference.
+   - Keep active brush display on visible source dabs plus sampled `BrushDab` stamp overlay.
+   - Do not restore active drawPath display, active `displayPreviewSurface` editing, source-destroying bake-on-release, or `TileDelta` / `TileDeltaCommand`.
+   - Keep brush strokes in app-level global undo/redo through `HistoryManager`, `BrushStrokeHistoryCommand`, and source command visibility.
+2. Phase 226: Canvas viewport foundation:
+   - Add pan, zoom, fit-to-view, and reset-view behavior.
+   - Separate viewport transforms from drawing coordinates.
+   - Keep `Cut.canvasSize` as drawing/storage bounds.
+   - Keep viewport state out of drawing source data and do not introduce broad app-wide state management.
+3. Phase 227 candidate: Cut canvas size editing after viewport foundation.
+4. Canvas/cache/storage foundation before heavy playback or save/load work:
    - Establish clear ownership for frame-local drawing payloads outside lightweight `Frame` metadata.
    - Treat preview/composite cache images as derived data that can be invalidated and rebuilt.
    - Keep timeline range semantics out of storage validity decisions.
-3. Storyboard panel work:
+5. Storyboard panel work:
    - Improve overview/planning interactions only after preserving storyboard-as-layer semantics.
    - Keep storyboard data inside ordinary `Layer(kind: storyboard)` entries in `Cut.layers`.
    - Derive storyboard panel segmentation from ordinary storyboard-layer drawing heads / authored exposures rather than adding a separate persisted panel tree.
    - Do not turn `StoryboardPanel` into a brush drawing canvas unless a future current document explicitly changes the policy.
-4. Save/load foundation:
+6. Save/load foundation:
    - Persist project data and source drawing payloads through explicit repository/storage boundaries.
    - Distinguish durable source payloads from derived caches that may be rebuilt.
-5. Playback/cache implementation:
+7. Playback/cache implementation:
    - Use prepared preview/composite bitmap cache images for playback.
    - Do not replay live paint commands, rerun brush rasterization, or composite every layer from scratch when a valid cache exists.
 
@@ -50,6 +57,7 @@ These ideas are intentionally preserved as long-term candidates. They are not cu
 - Do not add `Cut.storyboardLayer.panels` or a separate storyboard persistence system.
 - Do not add storyboard-only audio persistence that can diverge from timeline/project audio source data.
 - Do not make tile delta the user-facing brush undo model.
+- Do not restore PR #293-style active brush display paths that mix preview cache into active editing or use smooth drawPath display.
 - Do not persist undo/redo history in project save files.
 - Do not implement Linked Cut, Linked Layer, cross-layer linked paste, cross-cut linked paste, or project-level material/source ownership without a dedicated current architecture update.
 - Do not implement layer groups, folders, masks, blend modes, clipping, adjustment layers, or PSD import/export without a dedicated current architecture update and task plan.
