@@ -224,36 +224,42 @@ class _CanvasViewportToolbar extends StatelessWidget {
     final zoomPercent = (viewport.zoom * 100).round();
     return SizedBox(
       height: height,
-      child: Wrap(
-        key: const ValueKey<String>('canvas-viewport-toolbar'),
-        spacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            '$zoomPercent%',
-            key: const ValueKey<String>('canvas-viewport-zoom-label'),
-          ),
-          OutlinedButton(
-            key: const ValueKey<String>('canvas-viewport-zoom-out'),
-            onPressed: onZoomOut,
-            child: const Text('Zoom out'),
-          ),
-          OutlinedButton(
-            key: const ValueKey<String>('canvas-viewport-zoom-in'),
-            onPressed: onZoomIn,
-            child: const Text('Zoom in'),
-          ),
-          OutlinedButton(
-            key: const ValueKey<String>('canvas-viewport-fit'),
-            onPressed: onFit,
-            child: const Text('Fit'),
-          ),
-          OutlinedButton(
-            key: const ValueKey<String>('canvas-viewport-reset'),
-            onPressed: onReset,
-            child: const Text('Reset'),
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          key: const ValueKey<String>('canvas-viewport-toolbar'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$zoomPercent%',
+              key: const ValueKey<String>('canvas-viewport-zoom-label'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const ValueKey<String>('canvas-viewport-zoom-out'),
+              onPressed: onZoomOut,
+              child: const Text('Zoom out'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const ValueKey<String>('canvas-viewport-zoom-in'),
+              onPressed: onZoomIn,
+              child: const Text('Zoom in'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const ValueKey<String>('canvas-viewport-fit'),
+              onPressed: onFit,
+              child: const Text('Fit'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const ValueKey<String>('canvas-viewport-reset'),
+              onPressed: onReset,
+              child: const Text('Reset'),
+            ),
+          ],
+        ),
       ),
     );
   }

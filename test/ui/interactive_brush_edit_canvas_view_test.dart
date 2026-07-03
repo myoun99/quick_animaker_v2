@@ -352,47 +352,49 @@ void main() {
       expect(results.single, hasLength(1));
     });
 
-    testWidgets('viewport transform keeps committed dabs in canvas coordinates', (
-      tester,
-    ) async {
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(
-          _view(
-            _sessionState(),
-            results.add,
-            viewport: CanvasViewport(zoom: 2),
+    testWidgets(
+      'viewport transform keeps committed dabs in canvas coordinates',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              viewport: CanvasViewport(zoom: 2),
+            ),
           ),
-        ),
-      );
+        );
 
-      await tapCanvas(tester, const Offset(3, 3));
+        await tapCanvas(tester, const Offset(3, 3));
 
-      expect(results, hasLength(1));
-      expect(results.single.single.center.x, 1.5);
-      expect(results.single.single.center.y, 1.5);
-    });
+        expect(results, hasLength(1));
+        expect(results.single.single.center.x, 1.5);
+        expect(results.single.single.center.y, 1.5);
+      },
+    );
 
-    testWidgets('viewport pan and zoom keep committed dabs in canvas coordinates', (
-      tester,
-    ) async {
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(
-          _view(
-            _sessionState(),
-            results.add,
-            viewport: CanvasViewport(zoom: 2, panX: 4, panY: 6),
+    testWidgets(
+      'viewport pan and zoom keep committed dabs in canvas coordinates',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              viewport: CanvasViewport(zoom: 2, panX: 4, panY: 6),
+            ),
           ),
-        ),
-      );
+        );
 
-      await tapCanvas(tester, const Offset(7, 9));
+        await tapCanvas(tester, const Offset(7, 9));
 
-      expect(results, hasLength(1));
-      expect(results.single.single.center.x, 1.5);
-      expect(results.single.single.center.y, 1.5);
-    });
+        expect(results, hasLength(1));
+        expect(results.single.single.center.x, 1.5);
+        expect(results.single.single.center.y, 1.5);
+      },
+    );
 
     testWidgets('middle mouse drag pans viewport without committing dabs', (
       tester,
@@ -401,11 +403,7 @@ void main() {
       final viewports = <CanvasViewport>[];
       await tester.pumpWidget(
         _app(
-          _view(
-            _sessionState(),
-            results.add,
-            onViewportChanged: viewports.add,
-          ),
+          _view(_sessionState(), results.add, onViewportChanged: viewports.add),
         ),
       );
 

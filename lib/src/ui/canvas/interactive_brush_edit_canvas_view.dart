@@ -60,7 +60,8 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   Widget build(BuildContext context) {
-    final canvasSize = widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize =
+        widget.sessionState.canvasState.currentSurface.canvasSize;
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportWidth = constraints.hasBoundedWidth
@@ -96,8 +97,18 @@ class _InteractiveBrushEditCanvasViewState
                     maxHeight: double.infinity,
                     child: Transform(
                       transform: Matrix4.identity()
-                        ..translate(widget.viewport.panX, widget.viewport.panY)
-                        ..scale(widget.viewport.zoom),
+                        ..translateByDouble(
+                          widget.viewport.panX,
+                          widget.viewport.panY,
+                          0.0,
+                          1.0,
+                        )
+                        ..scaleByDouble(
+                          widget.viewport.zoom,
+                          widget.viewport.zoom,
+                          1.0,
+                          1.0,
+                        ),
                       alignment: Alignment.topLeft,
                       child: BrushEditCanvasView(
                         sessionState: widget.sessionState,
@@ -255,7 +266,10 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  BrushDab _dabFromPosition(CanvasPoint localPosition, {required int sequence}) {
+  BrushDab _dabFromPosition(
+    CanvasPoint localPosition, {
+    required int sequence,
+  }) {
     final settings = widget.inputSettings;
     return BrushDab(
       center: localPosition,

@@ -88,9 +88,7 @@ void main() {
     expect(find.text('Red'), findsNothing);
   });
 
-  testWidgets('keeps inner drawing canvas at Cut canvas size', (
-    tester,
-  ) async {
+  testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -126,8 +124,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 300,
-            height: 240,
+            width: 640,
+            height: 360,
             child: BrushCanvasPanel(
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
@@ -173,8 +171,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 300,
-            height: 240,
+            width: 640,
+            height: 360,
             child: BrushCanvasPanel(
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
