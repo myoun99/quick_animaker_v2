@@ -31,7 +31,8 @@ class BitmapSurfaceCompositor {
       if (overlayTile == null || overlayTile.isFullyTransparent) {
         continue;
       }
-      final baseTile = surface.tileAt(coord) ??
+      final baseTile =
+          surface.tileAt(coord) ??
           BitmapTile.blank(coord: coord, size: surface.tileSize);
       surface = surface.putTile(_compositeTile(baseTile, overlayTile));
     }
@@ -64,9 +65,7 @@ class BitmapSurfaceCompositor {
       final ba = out[offset + 3];
       final alpha = oa / 255.0;
       final inverse = 1.0 - alpha;
-      out[offset] = _clampByte(
-        (or * alpha + out[offset] * inverse).round(),
-      );
+      out[offset] = _clampByte((or * alpha + out[offset] * inverse).round());
       out[offset + 1] = _clampByte(
         (og * alpha + out[offset + 1] * inverse).round(),
       );
@@ -79,12 +78,11 @@ class BitmapSurfaceCompositor {
   }
 
   List<TileCoord> _sortedCoords(Iterable<TileCoord> coords) {
-    return coords.toList()
-      ..sort((a, b) {
-        final y = a.y.compareTo(b.y);
-        if (y != 0) return y;
-        return a.x.compareTo(b.x);
-      });
+    return coords.toList()..sort((a, b) {
+      final y = a.y.compareTo(b.y);
+      if (y != 0) return y;
+      return a.x.compareTo(b.x);
+    });
   }
 }
 

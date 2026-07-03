@@ -196,49 +196,50 @@ void main() {
     expect(sink.playbackPreviews, isEmpty);
   });
 
-  testWidgets('does not prepare inactive display cache from active panel build', (
-    tester,
-  ) async {
-    final frameKeys = BrushCanvasFixture.createFrameKeys();
-    final coordinator = BrushCanvasFixture.createCoordinator(
-      frameKeys: frameKeys,
-    );
+  testWidgets(
+    'does not prepare inactive display cache from active panel build',
+    (tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
-            canvasSize: BrushCanvasFixture.canvasSize,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
+              canvasSize: BrushCanvasFixture.canvasSize,
+            ),
           ),
         ),
-      ),
-    );
-
-    final gesture = await tester.startGesture(
-      canvasGlobalOffset(tester, const Offset(1, 1)),
-      pointer: 1,
-    );
-    await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
-    await gesture.up();
-
-    for (var i = 0; i < 3; i += 1) {
-      await tester.pump();
-      expect(
-        coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
-        isNull,
       );
-    }
 
-    final canvasView = tester.widget<BrushEditCanvasView>(
-      find.byType(BrushEditCanvasView),
-    );
-    expect(canvasView.displayPreviewSurface, isNull);
-    expect(canvasView.activeEditCompositeSurface.tiles, isNotEmpty);
-  });
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
+      await gesture.up();
+
+      for (var i = 0; i < 3; i += 1) {
+        await tester.pump();
+        expect(
+          coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
+          isNull,
+        );
+      }
+
+      final canvasView = tester.widget<BrushEditCanvasView>(
+        find.byType(BrushEditCanvasView),
+      );
+      expect(canvasView.displayPreviewSurface, isNull);
+      expect(canvasView.activeEditCompositeSurface.tiles, isNotEmpty);
+    },
+  );
 }
 
 bool _isStrictlyIncreasing(Iterable<int> values) {

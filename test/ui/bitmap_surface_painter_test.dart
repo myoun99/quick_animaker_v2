@@ -110,29 +110,32 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
     });
 
-    test('ignores source dab vectors because visible display is bitmap surface only', () async {
-      final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 12, height: 3),
-      );
+    test(
+      'ignores source dab vectors because visible display is bitmap surface only',
+      () async {
+        final surface = BitmapSurface(
+          canvasSize: CanvasSize(width: 12, height: 3),
+        );
 
-      final pixels = await _paintPixels(
-        BitmapSurfacePainter(
-          surface: surface,
-          showTransparentBackground: false,
-          committedSourceDabStrokes: [
-            [_dab(1, 1), _dab(3, 1)],
-            [_dab(10, 1)],
-          ],
-        ),
-        width: 12,
-        height: 3,
-      );
+        final pixels = await _paintPixels(
+          BitmapSurfacePainter(
+            surface: surface,
+            showTransparentBackground: false,
+            committedSourceDabStrokes: [
+              [_dab(1, 1), _dab(3, 1)],
+              [_dab(10, 1)],
+            ],
+          ),
+          width: 12,
+          height: 3,
+        );
 
-      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, 0);
-    });
+        expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, 0);
+      },
+    );
 
     test(
       'does not draw active stroke path vectors for live feedback',

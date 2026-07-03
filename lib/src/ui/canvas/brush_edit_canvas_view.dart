@@ -62,7 +62,9 @@ class BrushEditCanvasView extends StatelessWidget {
             ),
             if (activeStrokeTempSurface != null)
               RepaintBoundary(
-                key: const ValueKey<String>('brush-edit-canvas-active-boundary'),
+                key: const ValueKey<String>(
+                  'brush-edit-canvas-active-boundary',
+                ),
                 child: CustomPaint(
                   key: const ValueKey<String>(
                     'brush-edit-canvas-active-custom-paint',

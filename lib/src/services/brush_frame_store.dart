@@ -55,7 +55,9 @@ class BrushFrameStore {
   BrushFrameEditComposite? editCompositeOrNull(BrushFrameKey key) =>
       _editComposites[key];
 
-  BrushFrameEditComposite storeEditComposite(BrushFrameEditComposite composite) {
+  BrushFrameEditComposite storeEditComposite(
+    BrushFrameEditComposite composite,
+  ) {
     _editComposites[composite.frameKey] = composite;
     return composite;
   }

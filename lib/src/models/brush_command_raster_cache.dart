@@ -27,7 +27,9 @@ class BrushCommandRasterCache {
   BrushCommandRasterEntry? entryFor(BrushPaintCommandId id) => _entries[id];
 
   BrushCommandRasterCache put(BrushCommandRasterEntry entry) {
-    return BrushCommandRasterCache(entries: {..._entries, entry.commandId: entry});
+    return BrushCommandRasterCache(
+      entries: {..._entries, entry.commandId: entry},
+    );
   }
 
   BrushCommandRasterCache remove(BrushPaintCommandId id) {

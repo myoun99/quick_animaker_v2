@@ -27,7 +27,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     BitmapSurface? activeEditCompositeSurface,
     this.onActiveStrokeChanged,
   }) : activeEditCompositeSurface =
-           activeEditCompositeSurface ?? sessionState.canvasState.currentSurface;
+           activeEditCompositeSurface ??
+           sessionState.canvasState.currentSurface;
 
   final BrushEditSessionState sessionState;
   final LayerId layerId;
@@ -165,7 +166,9 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  ActiveStrokeRasterOverlay _appendDabsToActiveOverlay(List<BrushDab> nextDabs) {
+  ActiveStrokeRasterOverlay _appendDabsToActiveOverlay(
+    List<BrushDab> nextDabs,
+  ) {
     final current = _activeStrokeRasterOverlay;
     if (current == null) {
       return _rasterOverlayForDabs(nextDabs);

@@ -70,33 +70,36 @@ void main() {
       expect(rasterizer.commandRasterizeCount, 2);
     });
 
-    test('undo and redo stale composite is recomposed from visible commands', () {
-      final store = BrushFrameStore();
-      final service = BrushFrameEditCompositeService(
-        frameStore: store,
-        canvasSize: CanvasSize(width: 16, height: 16),
-        tileSize: 4,
-      );
-      final key = _key();
-      final command = _command('a', sequence: 1, x: 2, y: 2);
-      store.addLivePaintCommand(key, command);
-      final visibleComposite = service.rebuildComposite(key);
-      expect(visibleComposite.compositeSurface.tiles, isNotEmpty);
+    test(
+      'undo and redo stale composite is recomposed from visible commands',
+      () {
+        final store = BrushFrameStore();
+        final service = BrushFrameEditCompositeService(
+          frameStore: store,
+          canvasSize: CanvasSize(width: 16, height: 16),
+          tileSize: 4,
+        );
+        final key = _key();
+        final command = _command('a', sequence: 1, x: 2, y: 2);
+        store.addLivePaintCommand(key, command);
+        final visibleComposite = service.rebuildComposite(key);
+        expect(visibleComposite.compositeSurface.tiles, isNotEmpty);
 
-      store.markPaintCommandHiddenByUndo(key, command.id);
-      expect(
-        store.editCompositeOrNull(key)!.isValidForRevision(
-          store.getOrCreateFrame(key).sourceRevision,
-        ),
-        isFalse,
-      );
-      final hiddenComposite = service.ensureComposite(key);
-      expect(hiddenComposite.compositeSurface.tiles, isEmpty);
+        store.markPaintCommandHiddenByUndo(key, command.id);
+        expect(
+          store
+              .editCompositeOrNull(key)!
+              .isValidForRevision(store.getOrCreateFrame(key).sourceRevision),
+          isFalse,
+        );
+        final hiddenComposite = service.ensureComposite(key);
+        expect(hiddenComposite.compositeSurface.tiles, isEmpty);
 
-      store.restorePaintCommandFromUndo(key, command.id);
-      final restoredComposite = service.ensureComposite(key);
-      expect(restoredComposite.compositeSurface.tiles, isNotEmpty);
-    });
+        store.restorePaintCommandFromUndo(key, command.id);
+        final restoredComposite = service.ensureComposite(key);
+        expect(restoredComposite.compositeSurface.tiles, isNotEmpty);
+      },
+    );
   });
 }
 

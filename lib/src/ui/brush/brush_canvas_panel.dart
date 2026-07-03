@@ -54,7 +54,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   Widget build(BuildContext context) {
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
-    final activeEditComposite = _editCompositeService.ensureComposite(activeKey);
+    final activeEditComposite = _editCompositeService.ensureComposite(
+      activeKey,
+    );
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
       padding: const EdgeInsets.all(16),
