@@ -5,9 +5,9 @@
 This is the canonical current brush architecture source of truth for QuickAnimaker v2.
 Older brush documents and phase task documents are historical unless they explicitly defer to this file.
 
-The current brush architecture uses **Deferred Bake Hybrid Brush History**.
+The current brush architecture uses **Deferred Bake Hybrid Brush History** as the long-term policy. The current accepted Brush T2 runtime baseline is the Phase 224 / PR #294 production route.
 
-Runtime code has not necessarily implemented every item described here. This document defines the current architecture policy and future implementation direction without changing runtime behavior.
+Runtime code has not necessarily implemented every future item described here. This document defines current architecture policy and future implementation direction without changing runtime behavior.
 
 ## Latest policy summary
 
@@ -20,13 +20,13 @@ The latest policy is:
 5. The deferred bake buffer is conceptually about 10% of the user undo limit when implemented.
 6. The deferred bake buffer is not user-facing undo.
 7. Older commands may eventually be compacted into `bakedBaseSurface`.
-8. Active frame display is composed from `bakedBaseSurface + visible stroke/paint commands + activeStrokeOverlay`; later implementations may split visible commands into `deferredBakePaintCommands + livePaintCommands` internally.
+8. The current active edit display is composed from visible `BrushPaintCommand` source dabs plus an active sampled `BrushDab` overlay; future baked-base work may extend this to `bakedBaseSurface + visible stroke/paint commands + activeStrokeOverlay`.
 9. Cache images are derived from brush frame drawing state and are not source of truth.
 10. Playback uses prepared preview/composite bitmap cache images.
 11. Playback must not replay live paint commands.
 12. Playback must not run live brush rasterization.
 13. Brush T2 starts with the lightest practical source-data model: `BrushFrameDrawing.commands + hiddenCommandIds`, with no per-frame `visibleCommandCount`.
-14. Brush-specific undo/redo controls do not exist. Brush stroke undo/redo participates only in global user undo/redo.
+14. Brush-specific undo/redo controls do not exist. Brush stroke undo/redo participates only in app-level global undo/redo through `HistoryManager`, `BrushStrokeHistoryCommand`, `BrushFrameEditingCoordinator`, and `BrushFrameStore.hiddenCommandIds`.
 
 ## Brush T2 minimum direction
 
@@ -114,7 +114,9 @@ activeFrameDisplay =
 
 The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth.
 
-Realtime T2 editing should display the active stroke using stroke/path/point data without baking the stroke into a bitmap while the pointer is moving.
+The Phase 224 / PR #294 T2 baseline displays active editing with sampled `BrushDab` stamp-style rendering. The active editor base is the visible `BrushPaintCommand` source dabs for the selected frame, plus the in-progress sampled dab overlay. Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display, per-pixel accumulated `BitmapSurface` repaint during pointer movement, source-destroying bake on pointer release, or `TileDelta` / `TileDeltaCommand`.
+
+Realtime T2 editing should display active input from source dab samples without baking the stroke into a bitmap while the pointer is moving.
 
 ## User-facing undo / redo
 
@@ -122,7 +124,7 @@ User-facing undo is global only.
 
 Brush-specific undo/redo controls do not exist.
 
-User-facing undo for brush strokes is based on recent live paint commands through `UnifiedUndoHistory` / the global command stack.
+User-facing undo for brush strokes is based on recent live paint commands through the app-level global command stack. In the current production route, `HistoryManager` executes `BrushStrokeHistoryCommand`; the command commits through `BrushFrameEditingCoordinator`, and undo/redo hide or restore source commands through `BrushFrameStore.hiddenCommandIds`. Internal `UnifiedUndoHistory` remains below that app-level boundary and must not become a separate brush-local user control.
 
 A brush stroke undo command should be lightweight. It should reference `BrushFrameKey` plus `BrushPaintCommandId` rather than duplicating the full stroke payload.
 
@@ -134,7 +136,20 @@ Deferred bake buffer commands are not user-undoable.
 
 Baked commands are not user-undoable as individual commands.
 
-`UnifiedUndoHistory` owns global user-facing undo order. `BrushFrameStore` owns frame-local payload movement for brush commands but does not decide the global undo order.
+The app-level history owns global user-facing undo order. `BrushFrameStore` owns frame-local payload movement for brush commands but does not decide the global undo order.
+
+## Phase 224 / PR #294 Brush T2 baseline
+
+PR #294 superseded PR #293 and established the current Brush T2 baseline:
+
+- Active display uses visible `BrushPaintCommand.sourceDabs` plus a sampled `BrushDab` stamp overlay.
+- The active route must not use an active drawPath brush display.
+- The active route must not use `displayPreviewSurface` or inactive/playback preview cache images as the active editor base.
+- Brush strokes participate in app-level global undo/redo through `HistoryManager` and `BrushStrokeHistoryCommand`.
+- Undo/redo hides and restores source commands with `BrushFrameEditingCoordinator` / `BrushFrameStore.hiddenCommandIds`.
+- Timeline frame selection must remain stable after brush undo/redo.
+
+PR #293 is only a failed reference. It failed manual testing because active drawing became unusably slow, app-level undo did not undo brush strokes correctly, and the active edit display risked mixing preview cache into the active editing path. Do not reuse PR #293 as an architecture direction.
 
 ## User undo limit and deferred bake buffer
 

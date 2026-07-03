@@ -8,10 +8,10 @@ Runtime may not yet implement every item in this document. This file defines cur
 
 ## Current policy
 
-- Cache images are derived from source drawing payloads; they are not the source of truth.
+- Cache images are derived from source drawing payloads; they are not the source of truth and must not become the active editor base.
 - Heavy bitmap payloads, baked surfaces, preview caches, playback caches, image caches, dirty flags, and similar frame-local drawing/cache data belong in brush/canvas storage such as `BrushFrameStore`, not directly inside lightweight `Frame` metadata.
 - `BrushFrameStore` or an equivalent brush/canvas storage boundary owns frame-local brush source drawing payloads keyed by frame identity.
-- For Brush T2, the minimum source drawing payload is `BrushFrameDrawing.commands + hiddenCommandIds`.
+- For Brush T2, the current source drawing payload is `BrushFrameDrawing.commands + hiddenCommandIds`. The active edit display uses visible source dabs plus the active sampled `BrushDab` overlay.
 - `Project`, `Cut`, `Frame`, `Stroke` / `BrushPaintCommand`, and `BrushFrameStore` must stay conceptually distinct:
   - `Project` owns lightweight project structure such as tracks and project-wide camera settings.
   - `Cut` owns playback/export duration, cut metadata, layers, and cut canvas size.
@@ -122,7 +122,7 @@ Do not add project-level material/source ownership as a shortcut before brush/ca
 
 ## Tile delta wording
 
-TileDelta / TileDeltaCommand are not current brush runtime architecture. They must not be used as brush commit results, brush undo/redo payloads, brush edit history entries, or cache-invalidation inputs. Sparse tile storage remains valid; dirty-region/dirty-tile APIs are the cache invalidation boundary.
+TileDelta / TileDeltaCommand are not current brush runtime architecture and must not return. They must not be used as brush commit results, brush undo/redo payloads, brush edit history entries, active-display inputs, or cache-invalidation inputs. Sparse tile storage remains valid; dirty-region/dirty-tile APIs are the cache invalidation boundary.
 
 ## Phase 217 brush-frame invalidation boundary note
 
@@ -133,7 +133,7 @@ Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordin
 
 Brush frame display now has a first derived preview-cache boundary owned by `BrushFrameStore` adjacent to the source drawing payload. The cache is keyed by `BrushFrameKey`, stores a rebuildable `BitmapSurface` preview plus dirty/revision metadata, and remains derived data rather than source of truth. Source artwork remains in `BrushFrameDrawing.commands + hiddenCommandIds`; `Frame` remains lightweight and does not own brush source payloads or preview/cache payloads.
 
-Brush source commits, undo, redo, and deferred-bake state moves mark the matching display cache dirty and advance source revision metadata. Rebuilding is explicit through the display-cache service/renderer and is not performed by live pointer movement. Display routes can prefer a valid preview surface and layer the active stroke overlay over it, avoiding repeated source-command replay when a prepared preview exists. The production brush canvas panel also schedules explicit post-frame preview preparation when the active frame has visible source commands and no active stroke is being dragged, so cache rebuilding stays outside pointer-move and synchronous scrub/display hot paths. Full save/load, playback renderer integration, onion skin, and dirty-region partial rebuilds remain deferred.
+Brush source commits, undo, redo, and deferred-bake state moves mark the matching display cache dirty and advance source revision metadata. Rebuilding is explicit through the display-cache service/renderer and is not performed by live pointer movement. Inactive display, scrub display, or future playback routes may consume valid derived previews, but the active editor must not pass `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` into `BrushEditCanvasView` / `InteractiveBrushEditCanvasView` as the active editing base. The active route uses source dabs plus the sampled dab overlay so source edits remain independent from derived cache images. Full save/load, playback renderer integration, onion skin, and dirty-region partial rebuilds remain deferred.
 
 ## Brush T2 canvas/storage planning note
 

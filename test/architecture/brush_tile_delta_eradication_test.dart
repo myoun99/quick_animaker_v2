@@ -133,7 +133,7 @@ void main() {
     });
 
     test(
-      'active brush display avoids smooth path and bitmap surface hot path',
+      'active brush display avoids smooth path preview cache and bitmap hot paths',
       () {
         final activePainter = File(
           'lib/src/ui/canvas/active_stroke_overlay_painter.dart',
@@ -141,9 +141,20 @@ void main() {
         final interactiveView = File(
           'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
         ).readAsStringSync();
+        final brushView = File(
+          'lib/src/ui/canvas/brush_edit_canvas_view.dart',
+        ).readAsStringSync();
+        final brushPanel = File(
+          'lib/src/ui/brush/brush_canvas_panel.dart',
+        ).readAsStringSync();
 
         expect(activePainter, isNot(contains('drawPath')));
         expect(interactiveView, isNot(contains('BitmapSurfacePainter')));
+        for (final source in [interactiveView, brushView, brushPanel]) {
+          expect(source, isNot(contains('displayPreviewSurface')));
+          expect(source, isNot(contains('inactivePreviewCache')));
+          expect(source, isNot(contains('playbackPreviewCache')));
+        }
         expect(activePainter, contains('isAntiAlias = false'));
         expect(activePainter, contains('drawRect'));
       },

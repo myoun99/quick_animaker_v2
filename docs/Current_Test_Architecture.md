@@ -88,8 +88,12 @@ Brush tests should focus on:
 - live editing does not generate cache invalidation
 - live editing does not bake bitmap data
 - active stroke overlay is temporary
-- global undo hides commands using `hiddenCommandIds`
-- global redo restores commands
+- app-level global undo hides brush commands using `hiddenCommandIds`
+- app-level global redo restores brush commands
+- undo/redo keeps the selected timeline frame stable
+- active brush display avoids drawPath-based smooth vector rendering
+- active brush edit routes do not pass `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` into active editor widgets
+- active brush runtime boundaries do not reintroduce `TileDelta` / `TileDeltaCommand`
 - sequence values are non-negative and strictly increasing where appropriate
 - fast drag creates enough sampled dabs to avoid broken strokes
 - tiny movement does not create excessive duplicate dabs
@@ -104,7 +108,9 @@ Architecture guard tests should protect stable boundaries:
 - brush source payloads live in `BrushFrameStore` or equivalent storage boundary
 - cache images are derived, not source of truth
 - production UI does not call internal bitmap materialization undo/redo
-- global undo/redo remains the user-facing undo path
+- app-level global undo/redo remains the user-facing brush undo path
+- `TileDelta` / `TileDeltaCommand` stay out of brush runtime, undo/redo, active display, and cache-invalidation boundaries
+- active editing remains source-dab based rather than preview-cache based
 - app-wide Provider/Riverpod/Bloc/ChangeNotifier style state management is not introduced without an explicit architecture phase
 
-Architecture guard tests should not freeze temporary implementation names.
+Architecture guard tests should not freeze temporary implementation names. Prefer narrow forbidden-string checks only for legacy paths that must not return, such as active drawPath brush display, active preview-cache editor bases, and tile-delta brush boundaries.

@@ -32,3 +32,7 @@ Useful current content was moved into the `Current_*` documents and obsolete non
 ## Current-doc maintenance rule
 
 If a module has a `Current_*` document, update that document when architecture policy changes. Old phase/task docs may explain why a phase happened, but they must not override current docs.
+
+## Latest brush baseline note
+
+For brush work, `docs/Current_Brush_Architecture.md` and `docs/Current_Canvas_Cache_Storage_Architecture.md` record PR #294 as the current Brush T2 baseline. PR #293 is superseded and should be read only as a failed reference.
