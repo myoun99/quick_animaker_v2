@@ -20,7 +20,9 @@ class BrushEditCanvasView extends StatelessWidget {
     this.activeStrokePathVersion = 0,
     BitmapSurface? displayPreviewSurface,
   }) : activeEditCompositeSurface =
-           activeEditCompositeSurface ?? displayPreviewSurface ?? sessionState.canvasState.currentSurface;
+           activeEditCompositeSurface ??
+           displayPreviewSurface ??
+           sessionState.canvasState.currentSurface;
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;

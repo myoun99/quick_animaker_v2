@@ -196,7 +196,9 @@ void main() {
     expect(sink.playbackPreviews, isEmpty);
   });
 
-  testWidgets('prepares display cache after drawing', (tester) async {
+  testWidgets('does not prepare inactive display cache from active panel build', (
+    tester,
+  ) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -223,24 +225,19 @@ void main() {
     await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
     await gesture.up();
 
-    expect(
-      coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
-      isNull,
-    );
+    for (var i = 0; i < 3; i += 1) {
+      await tester.pump();
+      expect(
+        coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
+        isNull,
+      );
+    }
 
-    await tester.pump();
-    final cache = coordinator.frameStore.displayCacheOrNull(
-      coordinator.activeFrameKey,
-    );
-    expect(cache, isNotNull);
-    expect(cache!.isValid, isTrue);
-
-    await tester.pump();
     final canvasView = tester.widget<BrushEditCanvasView>(
       find.byType(BrushEditCanvasView),
     );
     expect(canvasView.displayPreviewSurface, isNull);
-    expect(canvasView.activeEditCompositeSurface, isNot(cache.previewSurface));
+    expect(canvasView.activeEditCompositeSurface.tiles, isNotEmpty);
   });
 }
 

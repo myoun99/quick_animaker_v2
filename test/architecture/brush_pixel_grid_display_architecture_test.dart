@@ -27,6 +27,8 @@ void main() {
       expect(panel, contains('activeEditCompositeSurface'));
       expect(panel, isNot(contains('displayPreviewSurface:')));
       expect(panel, isNot(contains('validPreviewSurfaceOrNull')));
+      expect(panel, isNot(contains('prepareFramePreview')));
+      expect(panel, isNot(contains('addPostFrameCallback')));
     });
 
     test('frame model remains free of brush display/cache payload ownership', () {

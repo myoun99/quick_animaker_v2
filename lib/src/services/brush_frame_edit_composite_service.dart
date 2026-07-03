@@ -6,6 +6,7 @@ import '../models/brush_frame_key.dart';
 import '../models/brush_paint_command.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_tile_set.dart';
+import 'bitmap_surface_compositor.dart';
 import 'brush_frame_store.dart';
 import 'brush_pixel_grid_rasterizer.dart';
 
@@ -18,17 +19,20 @@ class BrushFrameEditCompositeService {
     required this.canvasSize,
     this.tileSize = 256,
     this.rasterizer = const BrushPixelGridRasterizer(),
+    this.compositor = const BitmapSurfaceCompositor(),
   });
 
   final BrushFrameStore frameStore;
   final CanvasSize canvasSize;
   final int tileSize;
   final BrushPixelGridRasterizer rasterizer;
+  final BitmapSurfaceCompositor compositor;
 
   BrushFrameEditComposite ensureComposite(BrushFrameKey key) {
     final drawing = frameStore.getOrCreateFrame(key);
     final existing = frameStore.editCompositeOrNull(key);
-    if (existing != null && existing.isValidForRevision(drawing.sourceRevision)) {
+    if (existing != null &&
+        existing.isValidForRevision(drawing.sourceRevision)) {
       return existing;
     }
     return rebuildComposite(key, drawing: drawing);
@@ -41,17 +45,19 @@ class BrushFrameEditCompositeService {
     final source = drawing ?? frameStore.getOrCreateFrame(key);
     var surface = BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
     var dirtyTiles = DirtyTileSet.empty();
-    var cache = frameStore.commandRasterCacheOrNull(key) ?? const BrushCommandRasterCache();
+    var cache =
+        frameStore.commandRasterCacheOrNull(key) ??
+        const BrushCommandRasterCache();
 
     for (final command in source.allPaintCommandsInDisplayOrder) {
       final entry = _entryFor(command, source.sourceRevision, cache);
       cache = cache.put(entry);
-      final materialized = rasterizer.rasterizeCommand(
+      surface = compositor.compositeTiles(
         baseSurface: surface,
-        command: command,
+        overlaySurface: entry.surface,
+        dirtyTiles: entry.dirtyTiles,
       );
-      surface = materialized.surface;
-      dirtyTiles = dirtyTiles.union(materialized.dirtyTiles);
+      dirtyTiles = dirtyTiles.union(entry.dirtyTiles);
     }
 
     frameStore.storeCommandRasterCache(key: key, cache: cache);
@@ -73,27 +79,21 @@ class BrushFrameEditCompositeService {
     if (existingComposite == null) {
       return rebuildComposite(key, drawing: drawing);
     }
-    final materialized = rasterizer.rasterizeCommand(
-      baseSurface: existingComposite.compositeSurface,
-      command: command,
-    );
-    final commandEntry = rasterizer.rasterizeCommand(
-      baseSurface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
-      command: command,
-    );
-    final cache = (frameStore.commandRasterCacheOrNull(key) ?? const BrushCommandRasterCache()).put(
-      BrushCommandRasterEntry(
-        commandId: command.id,
-        surface: commandEntry.surface,
-        dirtyTiles: commandEntry.dirtyTiles,
-        sourceRevision: drawing.sourceRevision,
-      ),
-    );
+    var cache =
+        frameStore.commandRasterCacheOrNull(key) ??
+        const BrushCommandRasterCache();
+    final entry = _entryFor(command, drawing.sourceRevision, cache);
+    cache = cache.put(entry);
     frameStore.storeCommandRasterCache(key: key, cache: cache);
+    final compositeSurface = compositor.compositeTiles(
+      baseSurface: existingComposite.compositeSurface,
+      overlaySurface: entry.surface,
+      dirtyTiles: entry.dirtyTiles,
+    );
     final composite = BrushFrameEditComposite(
       frameKey: key,
-      compositeSurface: materialized.surface,
-      dirtyTiles: materialized.dirtyTiles,
+      compositeSurface: compositeSurface,
+      dirtyTiles: entry.dirtyTiles,
       sourceRevision: drawing.sourceRevision,
     );
     return frameStore.storeEditComposite(composite);

@@ -28,12 +28,12 @@ Runtime may not yet implement every item in this document. This file defines cur
 Brush display storage is separated into these layers:
 
 - Source data: `BrushFrameDrawing.commands + hiddenCommandIds` in `BrushFrameStore` or an equivalent brush/canvas storage boundary. This is the undoable/rebuildable source payload.
-- Command raster cache: derived per-command rasterized tile/surface data keyed by `BrushPaintCommandId`.
+- Command raster cache: derived per-command rasterized tile/surface data keyed by `BrushPaintCommandId`; active composite rebuilds reuse these bitmap entries when available instead of replaying source commands through the rasterizer.
 - Active edit composite: derived active-frame bitmap surface composed from any baked base plus visible command raster cache output. Active editing displays this surface plus the active stroke raster overlay.
 - Inactive preview cache: derived preview surface for inactive frame/layer display, thumbnails, frame-switch preparation, and idle preparation.
 - Playback preview cache: derived playback-oriented preview surface for future playback/export display paths.
 
-Active editing display must not switch between an inactive preview cache and source replay while drawing. It must not use a valid inactive preview as the active display path in a way that causes committed strokes to change visual style during a new stroke. Display/composite surfaces may be cache images, but they remain derived and rebuildable from source data; they are never the source of truth.
+Active editing display must not schedule inactive preview preparation from the active panel build path and must not switch between an inactive preview cache and source replay while drawing. It must not use a valid inactive preview as the active display path in a way that causes committed strokes to change visual style during a new stroke. Display/composite surfaces may be cache images, but they remain derived and rebuildable from source data; they are never the source of truth.
 
 ## Project camera and Cut canvas policy
 

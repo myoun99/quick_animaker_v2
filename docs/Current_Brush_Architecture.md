@@ -106,7 +106,7 @@ activeFrameDisplay =
   + ActiveStrokeRasterOverlay.tempSurface
 ```
 
-`BrushFrameEditComposite` is derived from any future `bakedBaseSurface` plus visible command raster cache output. The current implementation may rebuild broader regions than the final tile optimizer, but it must keep the display as rasterized bitmap surfaces and must be rebuildable from `BrushFrameDrawing.commands + hiddenCommandIds`.
+`BrushFrameEditComposite` is derived from any future `bakedBaseSurface` plus visible command raster cache output. Composite rebuilds should reuse `BrushCommandRasterCache` entries and composite their bitmap surfaces instead of re-rasterizing source commands that already have cache entries. The current implementation may rebuild broader regions than the final tile optimizer, but it must keep the display as rasterized bitmap surfaces and must be rebuildable from `BrushFrameDrawing.commands + hiddenCommandIds`.
 
 `ActiveStrokeRasterOverlay` is an editing-only temporary bitmap surface updated by pointer movement. Pointer movement updates the overlay/dirty region only; it must not rebuild inactive preview caches, replay all committed source commands for display, or switch committed strokes to a vector/path renderer.
 

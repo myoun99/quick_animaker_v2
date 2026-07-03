@@ -226,7 +226,6 @@ class BrushFrameStore {
           : state.cacheDirtyTiles.union(dirtyTiles),
     );
     final existing = _displayCaches[state.key];
-    _editComposites.remove(state.key);
     if (existing != null) {
       _displayCaches[state.key] = existing.copyWith(
         dirty: true,
