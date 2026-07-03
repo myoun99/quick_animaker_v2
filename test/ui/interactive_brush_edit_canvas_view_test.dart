@@ -197,28 +197,27 @@ void main() {
       expect(results.single.single.sequence, 0);
     });
 
-    testWidgets(
-      'pointer down shows active overlay before movement',
-      (tester) async {
-        final results = <List<BrushDab>>[];
-        await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+    testWidgets('pointer down shows active overlay before movement', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
-        final gesture = await tester.startGesture(
-          canvasGlobalOffset(tester, const Offset(1, 1)),
-          pointer: 1,
-        );
-        await tester.pump();
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await tester.pump();
 
-        final canvasView = tester.widget<BrushEditCanvasView>(
-          find.byType(BrushEditCanvasView),
-        );
-        expect(canvasView.activeStrokeOverlay, isNotEmpty);
-        expect(canvasView.activeStrokePath, isNotNull);
-        expect(results, isEmpty);
+      final canvasView = tester.widget<BrushEditCanvasView>(
+        find.byType(BrushEditCanvasView),
+      );
+      expect(canvasView.activeStrokeOverlay, isNotEmpty);
+      expect(canvasView.activeStrokePath, isNotNull);
+      expect(results, isEmpty);
 
-        await gesture.cancel();
-      },
-    );
+      await gesture.cancel();
+    });
 
     testWidgets(
       'drag stroke keeps continuous active path before commit and clears after commit',
