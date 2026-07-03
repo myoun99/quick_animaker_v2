@@ -1,3 +1,5 @@
+import '../models/bitmap_surface.dart';
+import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_paint_command.dart';
@@ -28,12 +30,43 @@ class BrushFrameStore {
   BrushFrameStore();
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
+  final Map<BrushFrameKey, BrushFrameDisplayCache> _displayCaches = {};
 
   BrushFrameDrawingState getOrCreateFrame(BrushFrameKey key) {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
+
+  BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
+      _displayCaches[key];
+
+  bool hasValidDisplayCache(BrushFrameKey key) =>
+      _displayCaches[key]?.isValid ?? false;
+
+  BitmapSurface? validPreviewSurfaceOrNull(BrushFrameKey key) {
+    final cache = _displayCaches[key];
+    return cache != null && cache.isValid ? cache.previewSurface : null;
+  }
+
+  BrushFrameDisplayCache storeRebuiltDisplayCache({
+    required BrushFrameKey key,
+    required BitmapSurface previewSurface,
+  }) {
+    final state = getOrCreateFrame(key);
+    final cache = BrushFrameDisplayCache(
+      frameKey: key,
+      previewSurface: previewSurface,
+      sourceRevision: state.sourceRevision,
+      dirty: false,
+    );
+    _displayCaches[key] = cache;
+    _frames[key] = state.copyWith(
+      inactivePreviewDirty: false,
+      cacheDirtyTiles: DirtyTileSet.empty(),
+    );
+    return cache;
+  }
 
   /// Resolves the production-facing user undo payload reference back to the
   /// frame-local brush command payload owned by this store.
@@ -122,10 +155,11 @@ class BrushFrameStore {
                 : command,
           )
           .toList();
-      return state.copyWith(
-        paintCommands: commands,
-        bakedPaintCommandIds: {...state.bakedPaintCommandIds, ...deferredIds},
-        inactivePreviewDirty: true,
+      return _markCacheDirty(
+        state.copyWith(
+          paintCommands: commands,
+          bakedPaintCommandIds: {...state.bakedPaintCommandIds, ...deferredIds},
+        ),
       );
     });
   }
@@ -162,12 +196,24 @@ class BrushFrameStore {
     BrushFrameDrawingState state, {
     DirtyTileSet? dirtyTiles,
   }) {
-    return state.copyWith(
+    final next = state.copyWith(
       inactivePreviewDirty: true,
+      sourceRevision: state.sourceRevision + 1,
       cacheDirtyTiles: dirtyTiles == null
           ? state.cacheDirtyTiles
           : state.cacheDirtyTiles.union(dirtyTiles),
     );
+    final existing = _displayCaches[state.key];
+    if (existing != null) {
+      _displayCaches[state.key] = existing.copyWith(
+        dirty: true,
+        sourceRevision: next.sourceRevision,
+        dirtyTiles: dirtyTiles == null
+            ? existing.dirtyTiles
+            : existing.dirtyTiles.union(dirtyTiles),
+      );
+    }
+    return next;
   }
 
   BrushFrameDrawingState _update(

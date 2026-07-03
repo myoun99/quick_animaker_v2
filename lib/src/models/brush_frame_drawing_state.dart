@@ -16,6 +16,7 @@ class BrushFrameDrawingState {
     Set<BrushPaintCommandId> hiddenCommandIds = const {},
     this.bakedPaintCommandIds = const {},
     this.inactivePreviewDirty = false,
+    this.sourceRevision = 0,
     DirtyTileSet? cacheDirtyTiles,
   }) : cacheDirtyTiles = cacheDirtyTiles ?? DirtyTileSet.empty(),
        _paintCommands = List.unmodifiable(paintCommands),
@@ -26,6 +27,7 @@ class BrushFrameDrawingState {
   final Set<BrushPaintCommandId> hiddenCommandIds;
   final Set<BrushPaintCommandId> bakedPaintCommandIds;
   final bool inactivePreviewDirty;
+  final int sourceRevision;
   final DirtyTileSet cacheDirtyTiles;
 
   List<BrushPaintCommand> get paintCommands => _paintCommands;
@@ -65,6 +67,7 @@ class BrushFrameDrawingState {
     Set<BrushPaintCommandId>? hiddenCommandIds,
     Set<BrushPaintCommandId>? bakedPaintCommandIds,
     bool? inactivePreviewDirty,
+    int? sourceRevision,
     DirtyTileSet? cacheDirtyTiles,
   }) {
     return BrushFrameDrawingState(
@@ -73,6 +76,7 @@ class BrushFrameDrawingState {
       hiddenCommandIds: hiddenCommandIds ?? this.hiddenCommandIds,
       bakedPaintCommandIds: bakedPaintCommandIds ?? this.bakedPaintCommandIds,
       inactivePreviewDirty: inactivePreviewDirty ?? this.inactivePreviewDirty,
+      sourceRevision: sourceRevision ?? this.sourceRevision,
       cacheDirtyTiles: cacheDirtyTiles ?? this.cacheDirtyTiles,
     );
   }

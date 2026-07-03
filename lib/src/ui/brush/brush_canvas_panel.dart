@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/brush_paint_command.dart';
 import '../../models/canvas_size.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -41,9 +42,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   Widget build(BuildContext context) {
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
-    final visibleCommands = widget.coordinator.frameStore
-        .getOrCreateFrame(activeKey)
-        .visibleActivePaintCommands;
+    final displayPreviewSurface = widget.coordinator.frameStore
+        .validPreviewSurfaceOrNull(activeKey);
+    final visibleCommands = displayPreviewSurface == null
+        ? widget.coordinator.frameStore
+            .getOrCreateFrame(activeKey)
+            .visibleActivePaintCommands
+        : const <BrushPaintCommand>[];
     final committedSourceDabStrokes = visibleCommands
         .map((command) => command.sourceDabs)
         .where((dabs) => dabs.isNotEmpty)
@@ -68,6 +73,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             inputSettings: _inputSettings,
             committedSourceDabs: committedSourceDabs,
             committedSourceDabStrokes: committedSourceDabStrokes,
+            displayPreviewSurface: displayPreviewSurface,
             onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
         ),
