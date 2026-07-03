@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
@@ -21,6 +22,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
+    this.displayPreviewSurface,
+    this.onActiveStrokeChanged,
   });
 
   final BrushEditSessionState sessionState;
@@ -32,6 +35,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
+  final BitmapSurface? displayPreviewSurface;
+  final ValueChanged<bool>? onActiveStrokeChanged;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -68,6 +73,7 @@ class _InteractiveBrushEditCanvasViewState
         activeStrokePath: _liveStrokePath,
         activeStrokePathDab: _liveStrokePathDab,
         activeStrokePathVersion: _liveStrokePathVersion,
+        displayPreviewSurface: widget.displayPreviewSurface,
       ),
     );
   }
@@ -78,6 +84,7 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _activePointer = event.pointer;
+    widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     setState(() {
       final initialDabs = widget.dabInterpolator.interpolate(
@@ -213,6 +220,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _clearStroke() {
+    widget.onActiveStrokeChanged?.call(false);
     setState(() {
       _activePointer = null;
       _nextSequence = 0;
