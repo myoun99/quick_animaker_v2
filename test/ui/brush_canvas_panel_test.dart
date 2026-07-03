@@ -196,57 +196,54 @@ void main() {
     expect(sink.playbackPreviews, isEmpty);
   });
 
-  testWidgets(
-    'prepares display cache after drawing becomes inactive and then uses preview',
-    (tester) async {
-      final frameKeys = BrushCanvasFixture.createFrameKeys();
-      final coordinator = BrushCanvasFixture.createCoordinator(
-        frameKeys: frameKeys,
-      );
+  testWidgets('prepares display cache after inactive drawing', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: BrushCanvasPanel(
-              coordinator: coordinator,
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              initialInputSettings: const BrushEditCanvasInputSettings(
-                size: 8,
-              ),
-              canvasSize: BrushCanvasFixture.canvasSize,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            initialInputSettings: const BrushEditCanvasInputSettings(
+              size: 8,
             ),
+            canvasSize: BrushCanvasFixture.canvasSize,
           ),
         ),
-      );
+      ),
+    );
 
-      final gesture = await tester.startGesture(
-        canvasGlobalOffset(tester, const Offset(1, 1)),
-        pointer: 1,
-      );
-      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
-      await gesture.up();
+    final gesture = await tester.startGesture(
+      canvasGlobalOffset(tester, const Offset(1, 1)),
+      pointer: 1,
+    );
+    await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
+    await gesture.up();
 
-      expect(
-        coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
-        isNull,
-      );
+    expect(
+      coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
+      isNull,
+    );
 
-      await tester.pump();
-      final cache = coordinator.frameStore.displayCacheOrNull(
-        coordinator.activeFrameKey,
-      );
-      expect(cache, isNotNull);
-      expect(cache!.isValid, isTrue);
+    await tester.pump();
+    final cache = coordinator.frameStore.displayCacheOrNull(
+      coordinator.activeFrameKey,
+    );
+    expect(cache, isNotNull);
+    expect(cache!.isValid, isTrue);
 
-      await tester.pump();
-      final canvasView = tester.widget<BrushEditCanvasView>(
-        find.byType(BrushEditCanvasView),
-      );
-      expect(canvasView.displayPreviewSurface, cache.previewSurface);
-      expect(canvasView.committedSourceDabStrokes, isEmpty);
-    },
-  );
+    await tester.pump();
+    final canvasView = tester.widget<BrushEditCanvasView>(
+      find.byType(BrushEditCanvasView),
+    );
+    expect(canvasView.displayPreviewSurface, cache.previewSurface);
+    expect(canvasView.committedSourceDabStrokes, isEmpty);
+  });
 }
 
 bool _isStrictlyIncreasing(Iterable<int> values) {

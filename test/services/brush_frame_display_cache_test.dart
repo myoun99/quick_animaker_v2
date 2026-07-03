@@ -52,22 +52,19 @@ void main() {
     );
   }
 
-  test(
-    'display cache is derived and source commands remain source of truth',
-    () {
-      final c = coordinator();
-      final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)]);
+  test('display cache stays derived from source commands', () {
+    final c = coordinator();
+    final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)]);
 
-      final cache = serviceFor(c.frameStore).prepareFramePreview(key);
-      final drawing = c.frameStore.getOrCreateFrame(key);
+    final cache = serviceFor(c.frameStore).prepareFramePreview(key);
+    final drawing = c.frameStore.getOrCreateFrame(key);
 
-      expect(cache.isValid, isTrue);
-      expect(cache.previewSurface.tiles, isNotEmpty);
-      expect(drawing.commands, [command]);
-      expect(drawing.commandById(command.id)!.sourceDabs, hasLength(1));
-      expect(drawing.inactivePreviewDirty, isFalse);
-    },
-  );
+    expect(cache.isValid, isTrue);
+    expect(cache.previewSurface.tiles, isNotEmpty);
+    expect(drawing.commands, [command]);
+    expect(drawing.commandById(command.id)!.sourceDabs, hasLength(1));
+    expect(drawing.inactivePreviewDirty, isFalse);
+  });
 
   test('committing and undo redo dirty an existing display cache', () {
     final c = coordinator();
@@ -127,16 +124,13 @@ void main() {
     ]);
   });
 
-  test(
-    'live pointer movement path does not generate display cache images',
-    () {
-      final c = coordinator();
+  test('live pointer path does not generate display cache images', () {
+    final c = coordinator();
 
-      c.activeSessionState;
+    c.activeSessionState;
 
-      expect(c.frameStore.displayCacheOrNull(key), isNull);
-    },
-  );
+    expect(c.frameStore.displayCacheOrNull(key), isNull);
+  });
 }
 
 BrushDab _dab(double x, double y, int sequence) {
