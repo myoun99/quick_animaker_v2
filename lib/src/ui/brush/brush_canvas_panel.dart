@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_paint_command.dart';
 import '../../models/canvas_size.dart';
 import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/brush_frame_display_cache_service.dart';
+import '../../services/brush_frame_edit_composite_service.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
@@ -41,6 +41,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   late final _inputSettings = widget.initialInputSettings;
   late BrushFrameDisplayCacheService _displayCacheService =
       _createDisplayCacheService();
+  late BrushFrameEditCompositeService _editCompositeService =
+      _createEditCompositeService();
   bool _isDrawing = false;
   bool _cachePreparationScheduled = false;
 
@@ -50,6 +52,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     if (widget.coordinator != oldWidget.coordinator ||
         widget.canvasSize != oldWidget.canvasSize) {
       _displayCacheService = _createDisplayCacheService();
+      _editCompositeService = _createEditCompositeService();
     }
   }
 
@@ -59,24 +62,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     final session = widget.coordinator.activeSessionState;
     final frameStore = widget.coordinator.frameStore;
     final drawing = frameStore.getOrCreateFrame(activeKey);
-    final displayPreviewSurface = frameStore.validPreviewSurfaceOrNull(
-      activeKey,
-    );
-    if (displayPreviewSurface == null &&
-        !_isDrawing &&
-        drawing.visibleActivePaintCommands.isNotEmpty) {
+    final activeEditComposite = _editCompositeService.ensureComposite(activeKey);
+    if (!_isDrawing && drawing.visibleActivePaintCommands.isNotEmpty) {
       _scheduleDisplayCachePreparation(activeKey);
     }
-    final visibleCommands = displayPreviewSurface == null
-        ? drawing.visibleActivePaintCommands
-        : const <BrushPaintCommand>[];
-    final committedSourceDabStrokes = visibleCommands
-        .map((command) => command.sourceDabs)
-        .where((dabs) => dabs.isNotEmpty)
-        .toList(growable: false);
-    final committedSourceDabs = committedSourceDabStrokes
-        .expand((dabs) => dabs)
-        .toList(growable: false);
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -92,9 +81,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             layerId: activeKey.layerId,
             frameId: activeKey.frameId,
             inputSettings: _inputSettings,
-            committedSourceDabs: committedSourceDabs,
-            committedSourceDabStrokes: committedSourceDabStrokes,
-            displayPreviewSurface: displayPreviewSurface,
+            activeEditCompositeSurface: activeEditComposite.compositeSurface,
             onActiveStrokeChanged: _handleActiveStrokeChanged,
             onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
@@ -105,7 +92,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
     setState(() {
-      widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+      final command = widget.coordinator.commitSourceStroke(
+        sourceDabs: sourceDabs,
+      );
+      _editCompositeService.updateAfterCommandCommit(
+        key: widget.coordinator.activeFrameKey,
+        command: command,
+      );
     });
   }
 
@@ -116,6 +109,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     setState(() {
       _isDrawing = isDrawing;
     });
+  }
+
+  BrushFrameEditCompositeService _createEditCompositeService() {
+    return BrushFrameEditCompositeService(
+      frameStore: widget.coordinator.frameStore,
+      canvasSize: widget.canvasSize,
+    );
   }
 
   BrushFrameDisplayCacheService _createDisplayCacheService() {

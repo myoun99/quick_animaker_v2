@@ -212,8 +212,8 @@ void main() {
       final canvasView = tester.widget<BrushEditCanvasView>(
         find.byType(BrushEditCanvasView),
       );
-      expect(canvasView.activeStrokeOverlay, isNotEmpty);
-      expect(canvasView.activeStrokePath, isNotNull);
+      expect(canvasView.activeStrokeTempSurface, isNotNull);
+      expect(canvasView.activeStrokePath, isNull);
       expect(results, isEmpty);
 
       await gesture.cancel();
@@ -243,8 +243,8 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isNotEmpty);
-        expect(canvasView.activeStrokePath, isNotNull);
+        expect(canvasView.activeStrokeTempSurface, isNotNull);
+        expect(canvasView.activeStrokePath, isNull);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -254,7 +254,7 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(results, hasLength(1));
-        expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokeTempSurface, isNull);
         expect(canvasView.activeStrokePath, isNull);
       },
     );
@@ -283,15 +283,8 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        final activePath = canvasView.activeStrokePath;
-        final activePathLength = activePath!.computeMetrics().fold<double>(
-          0,
-          (sum, metric) => sum + metric.length,
-        );
-
-        expect(canvasView.activeStrokeOverlay, hasLength(1));
-        expect(canvasView.activeStrokeOverlay.last.center.x, 7);
-        expect(activePathLength, greaterThan(5));
+        expect(canvasView.activeStrokeTempSurface, isNotNull);
+        expect(canvasView.activeStrokePath, isNull);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -300,7 +293,7 @@ void main() {
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokeTempSurface, isNull);
         expect(canvasView.activeStrokePath, isNull);
         expect(results, hasLength(1));
         expect(results.single.length, greaterThan(2));

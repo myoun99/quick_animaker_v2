@@ -76,35 +76,21 @@ void main() {
       );
     });
 
-    testWidgets('splits committed base layer from active overlay layer', (
+    testWidgets('splits raster base layer from active raster overlay layer', (
       tester,
     ) async {
       final sessionState = _sessionState(
         BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
       );
-      final path = Path()
-        ..moveTo(1, 1)
-        ..lineTo(4, 1);
-      final activeDab = BrushDab(
-        center: CanvasPoint(x: 4, y: 1),
-        color: 0xFF000000,
-        size: 1,
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.round,
-        pressure: 1,
-        sequence: 1,
+      final activeSurface = BitmapSurface(
+        canvasSize: CanvasSize(width: 12, height: 8),
       );
 
       await tester.pumpWidget(
         _app(
           BrushEditCanvasView(
             sessionState: sessionState,
-            activeStrokeOverlay: [activeDab],
-            activeStrokePath: path,
-            activeStrokePathDab: activeDab,
-            activeStrokePathVersion: 1,
+            activeStrokeTempSurface: activeSurface,
           ),
         ),
       );
@@ -130,12 +116,11 @@ void main() {
       );
 
       final basePainter = basePaint.painter! as BitmapSurfacePainter;
-      final activePainter = activePaint.painter! as ActiveStrokeOverlayPainter;
+      final activePainter = activePaint.painter! as BitmapSurfacePainter;
 
       expect(basePainter.committedSourceDabs, isEmpty);
       expect(basePainter.committedSourceDabStrokes, isEmpty);
-      expect(activePainter.activeStrokeOverlay, [activeDab]);
-      expect(activePainter.activeStrokePath, same(path));
+      expect(identical(activePainter.surface, activeSurface), isTrue);
     });
 
     testWidgets('passes current surface and background setting to painter', (

@@ -6,7 +6,7 @@
 - Handoff / conversation flow: `docs/Handoff_QuickAnimaker_v2_Current.md`
 - Project architecture: `docs/Current_Project_Architecture.md`
 - Implementation roadmap: `docs/Current_Implementation_Roadmap.md`
-- Brush: `docs/Current_Brush_Architecture.md`
+- Brush: `docs/Current_Brush_Architecture.md` (Phase 223 pixel-grid active brush display policy)
 - Timeline: `docs/Current_Timeline_Architecture.md`
 - Cut management: `docs/Current_Cut_Management_Architecture.md`
 - Canvas / cache / storage: `docs/Current_Canvas_Cache_Storage_Architecture.md`

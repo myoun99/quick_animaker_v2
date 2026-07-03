@@ -1,5 +1,7 @@
 import '../models/bitmap_surface.dart';
+import '../models/brush_command_raster_cache.dart';
 import '../models/brush_frame_display_cache.dart';
+import '../models/brush_frame_edit_composite.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_paint_command.dart';
@@ -31,12 +33,32 @@ class BrushFrameStore {
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
   final Map<BrushFrameKey, BrushFrameDisplayCache> _displayCaches = {};
+  final Map<BrushFrameKey, BrushCommandRasterCache> _commandRasterCaches = {};
+  final Map<BrushFrameKey, BrushFrameEditComposite> _editComposites = {};
 
   BrushFrameDrawingState getOrCreateFrame(BrushFrameKey key) {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
+
+  BrushCommandRasterCache? commandRasterCacheOrNull(BrushFrameKey key) =>
+      _commandRasterCaches[key];
+
+  void storeCommandRasterCache({
+    required BrushFrameKey key,
+    required BrushCommandRasterCache cache,
+  }) {
+    _commandRasterCaches[key] = cache;
+  }
+
+  BrushFrameEditComposite? editCompositeOrNull(BrushFrameKey key) =>
+      _editComposites[key];
+
+  BrushFrameEditComposite storeEditComposite(BrushFrameEditComposite composite) {
+    _editComposites[composite.frameKey] = composite;
+    return composite;
+  }
 
   BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
       _displayCaches[key];
@@ -204,6 +226,7 @@ class BrushFrameStore {
           : state.cacheDirtyTiles.union(dirtyTiles),
     );
     final existing = _displayCaches[state.key];
+    _editComposites.remove(state.key);
     if (existing != null) {
       _displayCaches[state.key] = existing.copyWith(
         dirty: true,

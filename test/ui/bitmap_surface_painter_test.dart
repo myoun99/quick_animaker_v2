@@ -110,7 +110,7 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
     });
 
-    test('connects dabs within each visible source stroke only', () async {
+    test('ignores source dab vectors because visible display is bitmap surface only', () async {
       final surface = BitmapSurface(
         canvasSize: CanvasSize(width: 12, height: 3),
       );
@@ -128,14 +128,14 @@ void main() {
         height: 3,
       );
 
-      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, greaterThan(0));
+      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, 0);
       expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
       expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
+      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, 0);
     });
 
     test(
-      'draws active stroke path plus latest dab for live feedback',
+      'does not draw active stroke path vectors for live feedback',
       () async {
         final pixels = await _paintPixels(
           ActiveStrokeOverlayPainter(
@@ -150,8 +150,8 @@ void main() {
           height: 3,
         );
 
-        expect(_rgbaAt(pixels, width: 8, x: 3, y: 1).last, greaterThan(0));
-        expect(_rgbaAt(pixels, width: 8, x: 6, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 8, x: 3, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 8, x: 6, y: 1).last, 0);
       },
     );
 

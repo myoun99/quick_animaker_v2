@@ -122,6 +122,7 @@ Current active work remains the brush part. Continue brush work until the brush 
 
 Recent brush cleanup status:
 
+- Phase 223 corrects active brush display architecture: source commands remain undoable source data, while visible active editing uses pixel-grid rasterized `BrushFrameEditComposite + ActiveStrokeRasterOverlay`; inactive preview caches are derived inactive/idle/playback data and must not replace the active editing display path.
 - Phase 213A removed `TileDelta` / `TileDeltaCommand` from brush runtime boundaries.
 - Phase 213B cleaned up brush history/source-of-truth boundaries:
     - `UnifiedUndoHistory` is the production-facing user undo/redo order.

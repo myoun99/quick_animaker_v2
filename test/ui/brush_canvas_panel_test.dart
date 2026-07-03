@@ -239,8 +239,8 @@ void main() {
     final canvasView = tester.widget<BrushEditCanvasView>(
       find.byType(BrushEditCanvasView),
     );
-    expect(canvasView.displayPreviewSurface, cache.previewSurface);
-    expect(canvasView.committedSourceDabStrokes, isEmpty);
+    expect(canvasView.displayPreviewSurface, isNull);
+    expect(canvasView.activeEditCompositeSurface, isNot(cache.previewSurface));
   });
 }
 

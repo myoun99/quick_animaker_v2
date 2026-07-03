@@ -2,7 +2,7 @@
 
 ## Source-of-truth rule
 
-Canvas/cache/storage must align with current brush architecture without treating timeline range semantics as storage policy. Cache images are derived, not source of truth.
+Canvas/cache/storage must align with current brush architecture without treating timeline range semantics as storage policy. Cache images and display composites are derived, not source of truth.
 
 Runtime may not yet implement every item in this document. This file defines current policy and future implementation direction.
 
@@ -21,6 +21,19 @@ Runtime may not yet implement every item in this document. This file defines cur
 - Timeline range semantics must not decide storage validity.
 - `Cut.duration` is playback/export duration only.
 - Authored drawing data can exist beyond `Cut.duration`.
+
+
+## Brush display/cache layers
+
+Brush display storage is separated into these layers:
+
+- Source data: `BrushFrameDrawing.commands + hiddenCommandIds` in `BrushFrameStore` or an equivalent brush/canvas storage boundary. This is the undoable/rebuildable source payload.
+- Command raster cache: derived per-command rasterized tile/surface data keyed by `BrushPaintCommandId`.
+- Active edit composite: derived active-frame bitmap surface composed from any baked base plus visible command raster cache output. Active editing displays this surface plus the active stroke raster overlay.
+- Inactive preview cache: derived preview surface for inactive frame/layer display, thumbnails, frame-switch preparation, and idle preparation.
+- Playback preview cache: derived playback-oriented preview surface for future playback/export display paths.
+
+Active editing display must not switch between an inactive preview cache and source replay while drawing. It must not use a valid inactive preview as the active display path in a way that causes committed strokes to change visual style during a new stroke. Display/composite surfaces may be cache images, but they remain derived and rebuildable from source data; they are never the source of truth.
 
 ## Project camera and Cut canvas policy
 
@@ -131,9 +144,9 @@ Brush edit commits, brush undo, and brush redo through `BrushFrameEditingCoordin
 
 ## Phase 222 brush frame display-cache foundation
 
-Brush frame display now has a first derived preview-cache boundary owned by `BrushFrameStore` adjacent to the source drawing payload. The cache is keyed by `BrushFrameKey`, stores a rebuildable `BitmapSurface` preview plus dirty/revision metadata, and remains derived data rather than source of truth. Source artwork remains in `BrushFrameDrawing.commands + hiddenCommandIds`; `Frame` remains lightweight and does not own brush source payloads or preview/cache payloads.
+Phase 222 introduced a first derived preview-cache boundary, but active editing must not use that inactive preview cache as its display path. Source artwork remains in `BrushFrameDrawing.commands + hiddenCommandIds`; `Frame` remains lightweight and does not own brush source payloads or preview/cache payloads.
 
-Brush source commits, undo, redo, and deferred-bake state moves mark the matching display cache dirty and advance source revision metadata. Rebuilding is explicit through the display-cache service/renderer and is not performed by live pointer movement. Display routes can prefer a valid preview surface and layer the active stroke overlay over it, avoiding repeated source-command replay when a prepared preview exists. The production brush canvas panel also schedules explicit post-frame preview preparation when the active frame has visible source commands and no active stroke is being dragged, so cache rebuilding stays outside pointer-move and synchronous scrub/display hot paths. Full save/load, playback renderer integration, onion skin, and dirty-region partial rebuilds remain deferred.
+Brush source commits, undo, redo, and deferred-bake state moves mark inactive/playback previews dirty and advance source revision metadata. The active editing route uses the active edit composite plus active stroke raster overlay. Preview-cache rebuilding remains explicit and outside pointer-move hot paths; it is for inactive/idle/playback preparation, not for replacing the active edit display immediately after each commit.
 
 ## Brush T2 canvas/storage planning note
 
