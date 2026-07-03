@@ -86,10 +86,8 @@ void main() {
     c.redo();
     expect(c.frameStore.displayCacheOrNull(key)!.dirty, isTrue);
     expect(c.frameStore.getOrCreateFrame(key).hiddenCommandIds, isEmpty);
-    expect(
-      c.frameStore.getOrCreateFrame(key).commandById(command.id),
-      command,
-    );
+    final restoredFrame = c.frameStore.getOrCreateFrame(key);
+    expect(restoredFrame.commandById(command.id), command);
   });
 
   test('valid preview is reused', () {
@@ -101,10 +99,7 @@ void main() {
     final second = service.prepareFramePreview(key);
 
     expect(identical(first, second), isTrue);
-    expect(
-      c.frameStore.validPreviewSurfaceOrNull(key),
-      first.previewSurface,
-    );
+    expect(c.frameStore.validPreviewSurfaceOrNull(key), first.previewSurface);
   });
 
   test('active overlay is not cached', () {
