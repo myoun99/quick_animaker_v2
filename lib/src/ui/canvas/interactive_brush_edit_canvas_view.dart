@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/active_stroke_raster_overlay.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -7,6 +8,7 @@ import '../../models/canvas_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/brush_pixel_grid_rasterizer.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
@@ -18,24 +20,22 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.onSourceStrokeCommitted,
-    this.committedSourceDabs = const <BrushDab>[],
-    this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
-    this.displayPreviewSurface,
+    BitmapSurface? activeEditCompositeSurface,
     this.onActiveStrokeChanged,
-  });
+  }) : activeEditCompositeSurface =
+           activeEditCompositeSurface ??
+           sessionState.canvasState.currentSurface;
 
   final BrushEditSessionState sessionState;
   final LayerId layerId;
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
   final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
-  final List<BrushDab> committedSourceDabs;
-  final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
-  final BitmapSurface? displayPreviewSurface;
+  final BitmapSurface activeEditCompositeSurface;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
   @override
@@ -48,10 +48,8 @@ class _InteractiveBrushEditCanvasViewState
   int? _activePointer;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
-  final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
-  Path? _liveStrokePath;
-  BrushDab? _liveStrokePathDab;
-  var _liveStrokePathVersion = 0;
+  ActiveStrokeRasterOverlay? _activeStrokeRasterOverlay;
+  final _rasterizer = const BrushPixelGridRasterizer();
 
   @override
   Widget build(BuildContext context) {
@@ -67,13 +65,8 @@ class _InteractiveBrushEditCanvasViewState
       child: BrushEditCanvasView(
         sessionState: widget.sessionState,
         showTransparentBackground: widget.showTransparentBackground,
-        committedSourceDabs: widget.committedSourceDabs,
-        committedSourceDabStrokes: widget.committedSourceDabStrokes,
-        activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
-        activeStrokePath: _liveStrokePath,
-        activeStrokePathDab: _liveStrokePathDab,
-        activeStrokePathVersion: _liveStrokePathVersion,
-        displayPreviewSurface: widget.displayPreviewSurface,
+        activeEditCompositeSurface: widget.activeEditCompositeSurface,
+        activeStrokeTempSurface: _activeStrokeRasterOverlay?.tempSurface,
       ),
     );
   }
@@ -95,10 +88,7 @@ class _InteractiveBrushEditCanvasViewState
       _collectedDabs
         ..clear()
         ..addAll(initialDabs);
-      _liveOverlayDabs
-        ..clear()
-        ..addAll(initialDabs);
-      _resetLiveStrokePath(initialDabs);
+      _activeStrokeRasterOverlay = _rasterOverlayForDabs(initialDabs);
       _nextSequence = _collectedDabs.length;
     });
   }
@@ -121,10 +111,7 @@ class _InteractiveBrushEditCanvasViewState
 
     setState(() {
       _collectedDabs.addAll(nextDabs);
-      _liveOverlayDabs
-        ..clear()
-        ..addAll(_liveOverlayForLatestDab(nextDabs));
-      _extendLiveStrokePath(previousDab, nextDabs);
+      _activeStrokeRasterOverlay = _appendDabsToActiveOverlay(nextDabs);
       _nextSequence += nextDabs.length;
     });
   }
@@ -160,48 +147,34 @@ class _InteractiveBrushEditCanvasViewState
         localPosition.dy < canvasSize.height;
   }
 
-  List<BrushDab> _liveOverlayForLatestDab(List<BrushDab> nextDabs) {
-    if (nextDabs.isEmpty) {
-      return const <BrushDab>[];
-    }
-
-    return <BrushDab>[nextDabs.last];
+  ActiveStrokeRasterOverlay _rasterOverlayForDabs(List<BrushDab> dabs) {
+    final blank = BitmapSurface(
+      canvasSize: widget.sessionState.canvasState.currentSurface.canvasSize,
+      tileSize: widget.sessionState.canvasState.currentSurface.tileSize,
+    );
+    final materialized = _rasterizer.rasterizeDabs(
+      baseSurface: blank,
+      dabs: dabs,
+    );
+    return ActiveStrokeRasterOverlay(
+      tempSurface: materialized.surface,
+      dirtyTiles: materialized.dirtyTiles,
+    );
   }
 
-  void _resetLiveStrokePath(List<BrushDab> dabs) {
-    _liveStrokePath = null;
-    _liveStrokePathDab = null;
-    if (dabs.isEmpty) {
-      _liveStrokePathVersion += 1;
-      return;
+  ActiveStrokeRasterOverlay _appendDabsToActiveOverlay(List<BrushDab> nextDabs) {
+    final current = _activeStrokeRasterOverlay;
+    if (current == null) {
+      return _rasterOverlayForDabs(nextDabs);
     }
-
-    final firstDab = dabs.first;
-    final path = Path()..moveTo(firstDab.center.x, firstDab.center.y);
-    for (final dab in dabs.skip(1)) {
-      path.lineTo(dab.center.x, dab.center.y);
-    }
-    _liveStrokePath = path;
-    _liveStrokePathDab = firstDab;
-    _liveStrokePathVersion += 1;
-  }
-
-  void _extendLiveStrokePath(BrushDab? previousDab, List<BrushDab> nextDabs) {
-    if (nextDabs.isEmpty) {
-      return;
-    }
-
-    final path = _liveStrokePath ?? Path();
-    if (_liveStrokePath == null) {
-      final startDab = previousDab ?? nextDabs.first;
-      path.moveTo(startDab.center.x, startDab.center.y);
-    }
-    for (final dab in nextDabs) {
-      path.lineTo(dab.center.x, dab.center.y);
-    }
-    _liveStrokePath = path;
-    _liveStrokePathDab = _liveStrokePathDab ?? previousDab ?? nextDabs.first;
-    _liveStrokePathVersion += 1;
+    final materialized = _rasterizer.rasterizeDabs(
+      baseSurface: current.tempSurface,
+      dabs: nextDabs,
+    );
+    return ActiveStrokeRasterOverlay(
+      tempSurface: materialized.surface,
+      dirtyTiles: current.dirtyTiles.union(materialized.dirtyTiles),
+    );
   }
 
   BrushDab _dabFromPosition(Offset localPosition, {required int sequence}) {
@@ -225,10 +198,7 @@ class _InteractiveBrushEditCanvasViewState
       _activePointer = null;
       _nextSequence = 0;
       _collectedDabs.clear();
-      _liveOverlayDabs.clear();
-      _liveStrokePath = null;
-      _liveStrokePathDab = null;
-      _liveStrokePathVersion += 1;
+      _activeStrokeRasterOverlay = null;
     });
   }
 }

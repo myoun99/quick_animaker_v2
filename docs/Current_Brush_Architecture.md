@@ -20,7 +20,7 @@ The latest policy is:
 5. The deferred bake buffer is conceptually about 10% of the user undo limit when implemented.
 6. The deferred bake buffer is not user-facing undo.
 7. Older commands may eventually be compacted into `bakedBaseSurface`.
-8. Active frame display is composed from `bakedBaseSurface + visible stroke/paint commands + activeStrokeOverlay`; later implementations may split visible commands into `deferredBakePaintCommands + livePaintCommands` internally.
+8. Active frame display is composed from `BrushFrameEditComposite.compositeSurface + ActiveStrokeRasterOverlay.tempSurface`. The source commands may be stroke-like, but every visible brush display must be pixel-grid bitmap rasterized.
 9. Cache images are derived from brush frame drawing state and are not source of truth.
 10. Playback uses prepared preview/composite bitmap cache images.
 11. Playback must not replay live paint commands.
@@ -54,7 +54,10 @@ For T2, discard unnecessary implementation state:
 - `bakedBaseSurface`: bitmap/tile data containing old confirmed artwork that has been compacted and is no longer individually user-undoable.
 - `deferredBakePaintCommands`: older paint commands that have left user-facing undo but are intentionally not baked immediately. This is a future/full-policy concept and does not need to be physically implemented in the T2 minimum model.
 - `livePaintCommands`: recent paint/stroke-like commands that remain user-undoable. In the T2 minimum model, these are represented by visible commands in `BrushFrameDrawing.commands` that are not in `hiddenCommandIds` and are still represented by global undo entries.
-- `activeStrokeOverlay`: temporary in-progress drawing overlay for active input before commit.
+- `BrushCommandRasterCache`: derived `BrushPaintCommandId -> rasterized command surface/tiles` cache. It is not source of truth.
+- `BrushFrameEditComposite`: derived active-frame composite surface built from any baked base plus visible command rasterization. It is the active editing display base, not an inactive preview.
+- `ActiveStrokeRasterOverlay`: temporary in-progress pixel-grid bitmap overlay for active input before commit.
+- `BrushFramePreviewCache`: derived preview/composite image for inactive frame display. It is not the active editing path.
 - `inactivePreviewCache`: derived preview/composite image for inactive frame display.
 - `playbackPreviewCache`: derived preview/composite bitmap cache image for playback.
 - `dirty flags`: metadata marking which previews, composites, or cached images need refresh.
@@ -93,28 +96,23 @@ BrushFrameDrawing
 
 ## Active editing display
 
+Brush source commands may remain stroke-like/vector-like as source data for undo, redo, future save/load, and cache rebuilds. Visible brush display must not render those commands directly as smooth paths, anti-aliased vector strokes, or subpixel-looking brush paths. All visible brush output is pixel-grid bitmap rasterized into surfaces/tiles.
+
 The active frame display formula is:
 
 ```txt
 activeFrameDisplay =
-  bakedBaseSurface
-  + visible BrushPaintCommands
-  + activeStrokeOverlay
+  BrushFrameEditComposite.compositeSurface
+  + ActiveStrokeRasterOverlay.tempSurface
 ```
 
-A fuller future implementation may internally split visible commands into `deferredBakePaintCommands + livePaintCommands`, preserving the previous conceptual formula:
+`BrushFrameEditComposite` is derived from any future `bakedBaseSurface` plus visible command raster cache output. Composite rebuilds should reuse `BrushCommandRasterCache` entries and composite their bitmap surfaces instead of re-rasterizing source commands that already have cache entries. The current implementation may rebuild broader regions than the final tile optimizer, but it must keep the display as rasterized bitmap surfaces and must be rebuildable from `BrushFrameDrawing.commands + hiddenCommandIds`.
 
-```txt
-activeFrameDisplay =
-  bakedBaseSurface
-  + deferredBakePaintCommands
-  + livePaintCommands
-  + activeStrokeOverlay
-```
+`ActiveStrokeRasterOverlay` is an editing-only temporary bitmap surface updated by pointer movement. Pointer movement updates the overlay/dirty region only; it must not rebuild inactive preview caches, replay all committed source commands for display, or switch committed strokes to a vector/path renderer.
 
-The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth.
+Pointer release stores the source `BrushPaintCommand`, adds the global undo entry, rasterizes the command through the same pixel-grid rasterizer, updates the derived active edit composite, clears the temporary overlay, and marks inactive/playback previews dirty. Pointer release must not flatten the source command into the only bitmap source of truth and must not replace the active editing display with an inactive preview cache.
 
-Realtime T2 editing should display the active stroke using stroke/path/point data without baking the stroke into a bitmap while the pointer is moving.
+Inactive frames, timeline thumbnails, idle preparation, and future playback may use `BrushFramePreviewCache` / playback preview surfaces. The active editing path must not prefer a valid inactive preview surface while the user is drawing or immediately after pointer release in a way that changes committed stroke visual style.
 
 ## User-facing undo / redo
 
@@ -330,5 +328,5 @@ Brush T2 starts from the simplified source model and global undo decisions captu
 - Brush strokes use global undo/redo only.
 - `BrushStrokeCommand`-like history entries should be lightweight references to `BrushFrameKey + BrushPaintCommandId`.
 - `Frame` remains lightweight and does not directly own brush drawing data.
-- Realtime drawing uses `activeStrokeOverlay` and visible source commands, not live bitmap baking.
+- Realtime drawing uses `ActiveStrokeRasterOverlay` plus the active edit composite, not live bitmap baking or inactive preview-cache display.
 - Bitmap baking and cache image generation are future work and must stay outside the live editing hot path.

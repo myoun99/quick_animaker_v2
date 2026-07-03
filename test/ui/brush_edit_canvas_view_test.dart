@@ -3,12 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
 
@@ -76,35 +72,21 @@ void main() {
       );
     });
 
-    testWidgets('splits committed base layer from active overlay layer', (
+    testWidgets('splits raster base layer from active raster overlay layer', (
       tester,
     ) async {
       final sessionState = _sessionState(
         BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
       );
-      final path = Path()
-        ..moveTo(1, 1)
-        ..lineTo(4, 1);
-      final activeDab = BrushDab(
-        center: CanvasPoint(x: 4, y: 1),
-        color: 0xFF000000,
-        size: 1,
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.round,
-        pressure: 1,
-        sequence: 1,
+      final activeSurface = BitmapSurface(
+        canvasSize: CanvasSize(width: 12, height: 8),
       );
 
       await tester.pumpWidget(
         _app(
           BrushEditCanvasView(
             sessionState: sessionState,
-            activeStrokeOverlay: [activeDab],
-            activeStrokePath: path,
-            activeStrokePathDab: activeDab,
-            activeStrokePathVersion: 1,
+            activeStrokeTempSurface: activeSurface,
           ),
         ),
       );
@@ -118,24 +100,15 @@ void main() {
         findsOneWidget,
       );
 
-      final basePaint = tester.widget<CustomPaint>(
-        find.byKey(
-          const ValueKey<String>('brush-edit-canvas-base-custom-paint'),
-        ),
-      );
       final activePaint = tester.widget<CustomPaint>(
         find.byKey(
           const ValueKey<String>('brush-edit-canvas-active-custom-paint'),
         ),
       );
 
-      final basePainter = basePaint.painter! as BitmapSurfacePainter;
-      final activePainter = activePaint.painter! as ActiveStrokeOverlayPainter;
+      final activePainter = activePaint.painter! as BitmapSurfacePainter;
 
-      expect(basePainter.committedSourceDabs, isEmpty);
-      expect(basePainter.committedSourceDabStrokes, isEmpty);
-      expect(activePainter.activeStrokeOverlay, [activeDab]);
-      expect(activePainter.activeStrokePath, same(path));
+      expect(identical(activePainter.surface, activeSurface), isTrue);
     });
 
     testWidgets('passes current surface and background setting to painter', (
