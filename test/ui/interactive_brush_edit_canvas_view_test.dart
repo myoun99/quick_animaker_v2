@@ -285,9 +285,10 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         final activePath = canvasView.activeStrokePath;
-        final activePathLength = activePath!
-            .computeMetrics()
-            .fold<double>(0, (sum, metric) => sum + metric.length);
+        final activePathLength = activePath!.computeMetrics().fold<double>(
+          0,
+          (sum, metric) => sum + metric.length,
+        );
 
         expect(canvasView.activeStrokeOverlay, hasLength(1));
         expect(canvasView.activeStrokeOverlay.last.center.x, 7);
