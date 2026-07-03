@@ -129,6 +129,30 @@ void main() {
       expect(roundTrip.y, closeTo(point.y, 0.000000000001));
     });
 
+    test('fitToView centers canvas and preserves aspect ratio', () {
+      final viewport = CanvasViewport.fitToView(
+        canvasWidth: 100,
+        canvasHeight: 50,
+        viewportWidth: 300,
+        viewportHeight: 200,
+        padding: 0,
+      );
+
+      expect(viewport.zoom, 3);
+      expect(viewport.panX, 0);
+      expect(viewport.panY, 25);
+    });
+
+    test('zoomedAround preserves the canvas point under the anchor', () {
+      final viewport = CanvasViewport(zoom: 2, panX: 10, panY: 20);
+      final anchor = ViewportPoint(x: 30, y: 60);
+      final before = viewport.viewportToCanvas(anchor);
+      final after = viewport.zoomedAround(nextZoom: 4, anchor: anchor);
+
+      expect(after.viewportToCanvas(anchor).x, closeTo(before.x, 0.000001));
+      expect(after.viewportToCanvas(anchor).y, closeTo(before.y, 0.000001));
+    });
+
     test('zero zoom throws', () {
       expect(() => CanvasViewport(zoom: 0), throwsArgumentError);
     });

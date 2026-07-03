@@ -53,6 +53,16 @@ class BrushEditCanvasView extends StatelessWidget {
                 ),
               ),
             ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  key: const ValueKey<String>('brush-edit-canvas-bounds'),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.blueGrey, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
             RepaintBoundary(
               key: const ValueKey<String>('brush-edit-canvas-active-boundary'),
               child: CustomPaint(

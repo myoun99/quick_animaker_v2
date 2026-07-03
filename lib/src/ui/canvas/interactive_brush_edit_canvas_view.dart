@@ -1,8 +1,12 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_viewport.dart';
+import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
@@ -10,7 +14,7 @@ import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
-  const InteractiveBrushEditCanvasView({
+  InteractiveBrushEditCanvasView({
     super.key,
     required this.sessionState,
     required this.layerId,
@@ -22,7 +26,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
-  });
+    CanvasViewport? viewport,
+    this.onViewportChanged,
+  }) : viewport = viewport ?? CanvasViewport();
 
   final BrushEditSessionState sessionState;
   final LayerId layerId;
@@ -34,6 +40,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
   final ValueChanged<bool>? onActiveStrokeChanged;
+  final CanvasViewport viewport;
+  final ValueChanged<CanvasViewport>? onViewportChanged;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -58,18 +66,34 @@ class _InteractiveBrushEditCanvasViewState
       onPointerMove: _handlePointerMove,
       onPointerUp: _handlePointerUp,
       onPointerCancel: _handlePointerCancel,
-      child: BrushEditCanvasView(
-        sessionState: widget.sessionState,
-        showTransparentBackground: widget.showTransparentBackground,
-        committedSourceDabs: widget.committedSourceDabs,
-        committedSourceDabStrokes: widget.committedSourceDabStrokes,
-        activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
+      onPointerSignal: _handlePointerSignal,
+      child: ClipRect(
+        key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
+        child: Transform(
+          transform: Matrix4.identity()
+            ..translate(widget.viewport.panX, widget.viewport.panY)
+            ..scale(widget.viewport.zoom),
+          alignment: Alignment.topLeft,
+          child: BrushEditCanvasView(
+            sessionState: widget.sessionState,
+            showTransparentBackground: widget.showTransparentBackground,
+            committedSourceDabs: widget.committedSourceDabs,
+            committedSourceDabStrokes: widget.committedSourceDabStrokes,
+            activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
+          ),
+        ),
       ),
     );
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (_activePointer != null || !_isInsideSurface(event.localPosition)) {
+    if (_isPanButton(event.buttons)) {
+      _activePointer = event.pointer;
+      return;
+    }
+
+    final canvasPosition = _canvasPositionFromLocal(event.localPosition);
+    if (_activePointer != null || !_isInsideSurface(canvasPosition)) {
       return;
     }
 
@@ -79,7 +103,7 @@ class _InteractiveBrushEditCanvasViewState
     setState(() {
       final initialDabs = widget.dabInterpolator.interpolate(
         previous: null,
-        nextRaw: _dabFromPosition(event.localPosition, sequence: _nextSequence),
+        nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,
       );
       _collectedDabs
@@ -93,15 +117,26 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (event.pointer != _activePointer ||
-        !_isInsideSurface(event.localPosition)) {
+    if (event.pointer != _activePointer) {
+      return;
+    }
+
+    if (_isPanButton(event.buttons)) {
+      _emitViewport(
+        widget.viewport.translated(dx: event.delta.dx, dy: event.delta.dy),
+      );
+      return;
+    }
+
+    final canvasPosition = _canvasPositionFromLocal(event.localPosition);
+    if (!_isInsideSurface(canvasPosition)) {
       return;
     }
 
     final previousDab = _collectedDabs.isEmpty ? null : _collectedDabs.last;
     final nextDabs = widget.dabInterpolator.interpolate(
       previous: previousDab,
-      nextRaw: _dabFromPosition(event.localPosition, sequence: _nextSequence),
+      nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
       firstSequence: _nextSequence,
     );
     if (nextDabs.isEmpty) {
@@ -137,19 +172,44 @@ class _InteractiveBrushEditCanvasViewState
     _clearStroke();
   }
 
-  bool _isInsideSurface(Offset localPosition) {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
-    return localPosition.dx >= 0 &&
-        localPosition.dy >= 0 &&
-        localPosition.dx < canvasSize.width &&
-        localPosition.dy < canvasSize.height;
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        widget.onViewportChanged == null ||
+        !_hasZoomModifier()) {
+      return;
+    }
+
+    final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
+    _emitViewport(
+      widget.viewport.zoomedAround(
+        nextZoom: widget.viewport.zoom * factor,
+        anchor: ViewportPoint(
+          x: event.localPosition.dx,
+          y: event.localPosition.dy,
+        ),
+      ),
+    );
   }
 
-  BrushDab _dabFromPosition(Offset localPosition, {required int sequence}) {
+  bool _isInsideSurface(CanvasPoint localPosition) {
+    final canvasSize =
+        widget.sessionState.canvasState.currentSurface.canvasSize;
+    return localPosition.x >= 0 &&
+        localPosition.y >= 0 &&
+        localPosition.x < canvasSize.width &&
+        localPosition.y < canvasSize.height;
+  }
+
+  CanvasPoint _canvasPositionFromLocal(Offset localPosition) {
+    return widget.viewport.viewportToCanvas(
+      ViewportPoint(x: localPosition.dx, y: localPosition.dy),
+    );
+  }
+
+  BrushDab _dabFromPosition(CanvasPoint localPosition, {required int sequence}) {
     final settings = widget.inputSettings;
     return BrushDab(
-      center: CanvasPoint(x: localPosition.dx, y: localPosition.dy),
+      center: localPosition,
       color: settings.color,
       size: settings.size,
       opacity: settings.opacity,
@@ -159,6 +219,22 @@ class _InteractiveBrushEditCanvasViewState
       pressure: 1.0,
       sequence: sequence,
     );
+  }
+
+  bool _isPanButton(int buttons) {
+    return buttons == kMiddleMouseButton || buttons == kSecondaryMouseButton;
+  }
+
+  bool _hasZoomModifier() {
+    final keys = HardwareKeyboard.instance.logicalKeysPressed;
+    return keys.contains(LogicalKeyboardKey.controlLeft) ||
+        keys.contains(LogicalKeyboardKey.controlRight) ||
+        keys.contains(LogicalKeyboardKey.metaLeft) ||
+        keys.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  void _emitViewport(CanvasViewport viewport) {
+    widget.onViewportChanged?.call(viewport.clamped());
   }
 
   void _clearStroke() {
