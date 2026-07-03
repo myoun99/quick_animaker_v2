@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
+import 'active_stroke_overlay_painter.dart';
 import 'bitmap_surface_painter.dart';
 
 class BrushEditCanvasView extends StatelessWidget {
@@ -35,18 +36,38 @@ class BrushEditCanvasView extends StatelessWidget {
       child: SizedBox(
         width: surface.canvasSize.width.toDouble(),
         height: surface.canvasSize.height.toDouble(),
-        child: CustomPaint(
-          key: const ValueKey<String>('brush-edit-canvas-view-custom-paint'),
-          painter: BitmapSurfacePainter(
-            surface: surface,
-            showTransparentBackground: showTransparentBackground,
-            committedSourceDabs: committedSourceDabs,
-            committedSourceDabStrokes: committedSourceDabStrokes,
-            activeStrokeOverlay: activeStrokeOverlay,
-            activeStrokePath: activeStrokePath,
-            activeStrokePathDab: activeStrokePathDab,
-            activeStrokePathVersion: activeStrokePathVersion,
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            RepaintBoundary(
+              key: const ValueKey<String>('brush-edit-canvas-base-boundary'),
+              child: CustomPaint(
+                key: const ValueKey<String>(
+                  'brush-edit-canvas-base-custom-paint',
+                ),
+                painter: BitmapSurfacePainter(
+                  surface: surface,
+                  showTransparentBackground: showTransparentBackground,
+                  committedSourceDabs: committedSourceDabs,
+                  committedSourceDabStrokes: committedSourceDabStrokes,
+                ),
+              ),
+            ),
+            RepaintBoundary(
+              key: const ValueKey<String>('brush-edit-canvas-active-boundary'),
+              child: CustomPaint(
+                key: const ValueKey<String>(
+                  'brush-edit-canvas-active-custom-paint',
+                ),
+                painter: ActiveStrokeOverlayPainter(
+                  activeStrokeOverlay: activeStrokeOverlay,
+                  activeStrokePath: activeStrokePath,
+                  activeStrokePathDab: activeStrokePathDab,
+                  activeStrokePathVersion: activeStrokePathVersion,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

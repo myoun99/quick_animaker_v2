@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 
 void main() {
@@ -41,24 +42,31 @@ void main() {
       );
     });
 
-    test('repaints when active stroke path version changes', () {
+    test('does not depend on active stroke path or overlay state', () {
       final surface = BitmapSurface(
         canvasSize: CanvasSize(width: 2, height: 2),
       );
+      final painter = BitmapSurfacePainter(surface: surface);
+
+      expect(
+        painter.shouldRepaint(BitmapSurfacePainter(surface: surface)),
+        isFalse,
+      );
+    });
+
+    test('active overlay repaints when active stroke path version changes', () {
       final path = Path()
         ..moveTo(0, 0)
         ..lineTo(1, 1);
       final dab = _dab(0, 0);
-      final oldPainter = BitmapSurfacePainter(
-        surface: surface,
+      final oldPainter = ActiveStrokeOverlayPainter(
         activeStrokePath: path,
         activeStrokePathDab: dab,
         activeStrokePathVersion: 1,
       );
 
       expect(
-        BitmapSurfacePainter(
-          surface: surface,
+        ActiveStrokeOverlayPainter(
           activeStrokePath: path,
           activeStrokePathDab: dab,
           activeStrokePathVersion: 2,
@@ -129,14 +137,8 @@ void main() {
     test(
       'draws active stroke path plus latest dab for live feedback',
       () async {
-        final surface = BitmapSurface(
-          canvasSize: CanvasSize(width: 8, height: 3),
-        );
-
         final pixels = await _paintPixels(
-          BitmapSurfacePainter(
-            surface: surface,
-            showTransparentBackground: false,
+          ActiveStrokeOverlayPainter(
             activeStrokePath: Path()
               ..moveTo(1, 1)
               ..lineTo(6, 1),
@@ -187,7 +189,7 @@ BitmapTile _tile({
 }
 
 Future<Uint8List> _paintPixels(
-  BitmapSurfacePainter painter, {
+  CustomPainter painter, {
   required int width,
   required int height,
 }) async {
