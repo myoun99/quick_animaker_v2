@@ -118,7 +118,16 @@ Regular tests should not check exact documentation prose, normalized documentati
 
 ## 8. Latest continuation note
 
-Current active work remains the brush part. Continue brush work until the brush area is temporarily production-safe enough to move on.
+Current active work remains the brush/canvas editing part. Continue brush and canvas viewport work until the brush editing area is temporarily production-safe enough to move on.
+
+Recent canvas viewport status:
+
+- Phase 226 introduced the `CanvasViewport` pan / zoom / fit-to-view / reset-view foundation for the production brush editing route.
+- Viewport state is UI-only and must not become drawing source data, brush source payload architecture, save/load data, playback behavior, cache identity, or broad app-wide state.
+- Brush source dabs remain committed in canvas-space coordinates after viewport pan/zoom.
+- `Cut.canvasSize` remains drawing/storage bounds.
+- `Project.cameraSize` remains the project-wide camera/output frame size.
+- Future Camera T1 remains a candidate only: camera layer or camera-like track, camera view rectangle, darkened outside-camera editing area, playback cropped to camera frame, and editable camera position, size, and rotation. Do not implement Camera T1 until a dedicated phase designs it.
 
 Recent brush cleanup status:
 
@@ -156,9 +165,10 @@ Next preferred brush direction:
 
 Likely next phase:
 
-1. Phase 226: Canvas viewport foundation.
+1. Phase 226: Canvas viewport foundation baseline.
    - pan / zoom
    - fit to view / reset view
+   - visible editor viewport separate from the inner `Cut.canvasSize` drawing canvas
    - separate viewport transform from drawing coordinates
    - keep `Cut.canvasSize` as drawing bounds
    - keep viewport state out of drawing source data

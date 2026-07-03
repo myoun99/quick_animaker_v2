@@ -43,6 +43,9 @@ The UI should feel closer to a compact production tool than an onboarding demo.
 - `TimelinePanel` remains the public timeline entry point and should not be refactored for unrelated UI work without a test-proven reason or explicitly planned phase.
 - `StoryboardPanel` remains an overview/planning surface, not a brush drawing canvas, unless a future current document explicitly changes that policy.
 - Brush editing UI must respect the current brush architecture and must not reintroduce deleted Brush V1 smoke workspace routes into production navigation.
+- Canvas viewport controls should remain compact and local to the editor surface: pan, zoom, fit-to-view, and reset-view are UI-only operations and must not mutate drawing source data, `Cut.canvasSize`, `Project.cameraSize`, save/load data, playback behavior, or cache identity.
+- The visible editor viewport area is separate from the inner `Cut.canvasSize` drawing canvas. Fit and zoom controls should use the visible editor viewport size, while brush dabs remain canvas-space coordinates.
+- Camera T1 is future work only: do not add editable camera layers, camera keyframes, camera transform source data, playback cropping, or export changes through canvas viewport UI.
 - Playback UI should consume prepared preview/composite cache policy rather than encouraging live brush command replay during playback.
 
 ## Manual check expectations

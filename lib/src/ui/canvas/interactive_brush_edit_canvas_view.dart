@@ -50,54 +50,95 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
-  int? _activePointer;
+  int? _activeDrawingPointer;
+  int? _activePanPointer;
+  Offset? _panStartLocalPosition;
+  CanvasViewport? _panStartViewport;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      key: const ValueKey<String>(
-        'interactive-brush-edit-canvas-view-listener',
-      ),
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: _handlePointerDown,
-      onPointerMove: _handlePointerMove,
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
-      onPointerSignal: _handlePointerSignal,
-      child: ClipRect(
-        key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
-        child: Transform(
-          transform: Matrix4.identity()
-            ..translate(widget.viewport.panX, widget.viewport.panY)
-            ..scale(widget.viewport.zoom),
-          alignment: Alignment.topLeft,
-          child: BrushEditCanvasView(
-            sessionState: widget.sessionState,
-            showTransparentBackground: widget.showTransparentBackground,
-            committedSourceDabs: widget.committedSourceDabs,
-            committedSourceDabStrokes: widget.committedSourceDabStrokes,
-            activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
+    final canvasSize = widget.sessionState.canvasState.currentSurface.canvasSize;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : canvasSize.width.toDouble();
+        final viewportHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : canvasSize.height.toDouble();
+
+        return SizedBox(
+          width: viewportWidth,
+          height: viewportHeight,
+          child: Listener(
+            key: const ValueKey<String>(
+              'interactive-brush-edit-canvas-view-listener',
+            ),
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
+            onPointerSignal: _handlePointerSignal,
+            child: ClipRect(
+              key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  OverflowBox(
+                    alignment: Alignment.topLeft,
+                    minWidth: 0,
+                    minHeight: 0,
+                    maxWidth: double.infinity,
+                    maxHeight: double.infinity,
+                    child: Transform(
+                      transform: Matrix4.identity()
+                        ..translate(widget.viewport.panX, widget.viewport.panY)
+                        ..scale(widget.viewport.zoom),
+                      alignment: Alignment.topLeft,
+                      child: BrushEditCanvasView(
+                        sessionState: widget.sessionState,
+                        showTransparentBackground:
+                            widget.showTransparentBackground,
+                        committedSourceDabs: widget.committedSourceDabs,
+                        committedSourceDabStrokes:
+                            widget.committedSourceDabStrokes,
+                        activeStrokeOverlay: List<BrushDab>.unmodifiable(
+                          _liveOverlayDabs,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   void _handlePointerDown(PointerDownEvent event) {
     if (_isPanButton(event.buttons)) {
-      _activePointer = event.pointer;
+      _startPan(event);
+      return;
+    }
+
+    if (_activePanPointer != null ||
+        _activeDrawingPointer != null ||
+        !_isPrimaryButton(event.buttons)) {
       return;
     }
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
-    if (_activePointer != null || !_isInsideSurface(canvasPosition)) {
+    if (!_isInsideSurface(canvasPosition)) {
       return;
     }
 
-    _activePointer = event.pointer;
+    _activeDrawingPointer = event.pointer;
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     setState(() {
@@ -117,14 +158,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (event.pointer != _activePointer) {
+    if (event.pointer == _activePanPointer) {
+      _updatePan(event.localPosition);
       return;
     }
 
-    if (_isPanButton(event.buttons)) {
-      _emitViewport(
-        widget.viewport.translated(dx: event.delta.dx, dy: event.delta.dy),
-      );
+    if (event.pointer != _activeDrawingPointer) {
       return;
     }
 
@@ -151,7 +190,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (event.pointer != _activePointer) {
+    if (event.pointer == _activePanPointer) {
+      _clearPan();
+      return;
+    }
+
+    if (event.pointer != _activeDrawingPointer) {
       return;
     }
 
@@ -165,7 +209,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (event.pointer != _activePointer) {
+    if (event.pointer == _activePanPointer) {
+      _clearPan();
+      return;
+    }
+
+    if (event.pointer != _activeDrawingPointer) {
       return;
     }
 
@@ -222,7 +271,36 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   bool _isPanButton(int buttons) {
-    return buttons == kMiddleMouseButton || buttons == kSecondaryMouseButton;
+    return buttons == kMiddleMouseButton;
+  }
+
+  bool _isPrimaryButton(int buttons) {
+    return buttons == kPrimaryMouseButton;
+  }
+
+  void _startPan(PointerDownEvent event) {
+    if (_activePanPointer != null || _activeDrawingPointer != null) {
+      return;
+    }
+    _activePanPointer = event.pointer;
+    _panStartLocalPosition = event.localPosition;
+    _panStartViewport = widget.viewport;
+  }
+
+  void _updatePan(Offset localPosition) {
+    final startPosition = _panStartLocalPosition;
+    final startViewport = _panStartViewport;
+    if (startPosition == null || startViewport == null) {
+      return;
+    }
+    final delta = localPosition - startPosition;
+    _emitViewport(startViewport.translated(dx: delta.dx, dy: delta.dy));
+  }
+
+  void _clearPan() {
+    _activePanPointer = null;
+    _panStartLocalPosition = null;
+    _panStartViewport = null;
   }
 
   bool _hasZoomModifier() {
@@ -240,7 +318,7 @@ class _InteractiveBrushEditCanvasViewState
   void _clearStroke() {
     widget.onActiveStrokeChanged?.call(false);
     setState(() {
-      _activePointer = null;
+      _activeDrawingPointer = null;
       _nextSequence = 0;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
