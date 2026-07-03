@@ -74,63 +74,52 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
               : fallbackSize.width;
           final boundedHeight = constraints.hasBoundedHeight
               ? constraints.maxHeight
-              : fallbackSize.height + _CanvasViewportToolbar.height + 8;
+              : fallbackSize.height +
+                    _CanvasEditorPanelShell.topBarHeight +
+                    _CanvasViewportToolbar.height;
 
           return SizedBox(
             width: boundedWidth,
             height: boundedHeight,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CanvasViewportToolbar(
-                  viewport: _viewport,
-                  onZoomIn: () => _zoomAroundCenter(1.25),
-                  onZoomOut: () => _zoomAroundCenter(0.8),
-                  onFit: _fitToView,
-                  onReset: _resetView,
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, viewportConstraints) {
-                        final viewportSize = Size(
-                          viewportConstraints.maxWidth,
-                          viewportConstraints.maxHeight,
-                        );
-                        _rememberEditorViewportSize(viewportSize);
+            child: _CanvasEditorPanelShell(
+              title: 'Canvas · Cut ${activeKey.frameId.value} · '
+                  'Layer ${activeKey.layerId.value}',
+              bottomBar: _CanvasViewportToolbar(
+                viewport: _viewport,
+                onZoomIn: () => _zoomAroundCenter(1.25),
+                onZoomOut: () => _zoomAroundCenter(0.8),
+                onFit: _fitToView,
+                onReset: _resetView,
+              ),
+              child: LayoutBuilder(
+                builder: (context, viewportConstraints) {
+                  final viewportSize = Size(
+                    viewportConstraints.maxWidth,
+                    viewportConstraints.maxHeight,
+                  );
+                  _rememberEditorViewportSize(viewportSize);
 
-                        return SizedBox.expand(
-                          key: const ValueKey<String>(
-                            'brush-canvas-editor-viewport',
-                          ),
-                          child: InteractiveBrushEditCanvasView(
-                            key: ValueKey<String>(
-                              'brush-canvas-${activeKey.frameId.value}',
-                            ),
-                            sessionState: session,
-                            layerId: activeKey.layerId,
-                            frameId: activeKey.frameId,
-                            inputSettings: _inputSettings,
-                            committedSourceDabs: committedSourceDabs,
-                            committedSourceDabStrokes:
-                                committedSourceDabStrokes,
-                            viewport: _viewport,
-                            onViewportChanged: (viewport) {
-                              setState(() => _viewport = viewport);
-                            },
-                            onSourceStrokeCommitted:
-                                _handleSourceStrokeCommitted,
-                          ),
-                        );
+                  return SizedBox.expand(
+                    key: const ValueKey<String>('brush-canvas-editor-viewport'),
+                    child: InteractiveBrushEditCanvasView(
+                      key: ValueKey<String>(
+                        'brush-canvas-${activeKey.frameId.value}',
+                      ),
+                      sessionState: session,
+                      layerId: activeKey.layerId,
+                      frameId: activeKey.frameId,
+                      inputSettings: _inputSettings,
+                      committedSourceDabs: committedSourceDabs,
+                      committedSourceDabStrokes: committedSourceDabStrokes,
+                      viewport: _viewport,
+                      onViewportChanged: (viewport) {
+                        setState(() => _viewport = viewport);
                       },
+                      onSourceStrokeCommitted: _handleSourceStrokeCommitted,
                     ),
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
           );
         },
@@ -199,6 +188,84 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
         ),
       );
     });
+  }
+}
+
+class _CanvasEditorPanelShell extends StatelessWidget {
+  static const double topBarHeight = 32;
+  static const double rightStripWidth = 18;
+
+  const _CanvasEditorPanelShell({
+    required this.title,
+    required this.child,
+    required this.bottomBar,
+  });
+
+  final String title;
+  final Widget child;
+  final Widget bottomBar;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      key: const ValueKey<String>('canvas-editor-panel-shell'),
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        color: colorScheme.surface,
+      ),
+      child: Column(
+        children: [
+          Container(
+            key: const ValueKey<String>('canvas-editor-panel-title-bar'),
+            height: topBarHeight,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: colorScheme.surfaceContainerHighest,
+            child: Text(
+              title,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: DecoratedBox(
+                    key: const ValueKey<String>('canvas-editor-panel-content'),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: child,
+                  ),
+                ),
+                Container(
+                  key: const ValueKey<String>('canvas-editor-panel-right-strip'),
+                  width: rightStripWidth,
+                  alignment: Alignment.center,
+                  color: colorScheme.surfaceContainerHighest,
+                  child: const RotatedBox(
+                    quarterTurns: 1,
+                    child: Text('Pan'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          DecoratedBox(
+            key: const ValueKey<String>('canvas-editor-panel-bottom-bar'),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              border: Border(
+                top: BorderSide(color: colorScheme.outlineVariant),
+              ),
+            ),
+            child: bottomBar,
+          ),
+        ],
+      ),
+    );
   }
 }
 

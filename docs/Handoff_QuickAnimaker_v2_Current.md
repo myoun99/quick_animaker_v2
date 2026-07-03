@@ -122,6 +122,9 @@ Current active work remains the brush/canvas editing part. Continue brush and ca
 
 Recent canvas viewport status:
 
+- Phase 227 adds stable canvas boundary behavior and a compact local canvas editor shell around the existing brush viewport.
+- Active brush/canvas display is clipped to `Cut.canvasSize`; pointer-down outside canvas can start a stroke session, outside movement collects no visible dabs, re-entering starts a new visible segment without connecting across the outside gap, and pointer-up commits only if in-canvas dabs were collected.
+- The canvas editor shell is UI-only: top title/status bar, center viewport content, right strip, and bottom zoom/fit/reset controls. It does not implement Cut canvas size editing, Camera T1, playback crop, save/load, or broad state management.
 - Phase 226 introduced the `CanvasViewport` pan / zoom / fit-to-view / reset-view foundation for the production brush editing route.
 - Viewport state is UI-only and must not become drawing source data, brush source payload architecture, save/load data, playback behavior, cache identity, or broad app-wide state.
 - Brush source dabs remain committed in canvas-space coordinates after viewport pan/zoom.
@@ -163,7 +166,7 @@ Next preferred brush direction:
 - Keep cache images derived, not source of truth.
 - Do not implement save/load, playback cache, real deferred bake, or large UI rewrites unless a new phase explicitly targets them.
 
-Likely next phase:
+Latest canvas baseline:
 
 1. Phase 226: Canvas viewport foundation baseline.
    - pan / zoom
@@ -172,5 +175,10 @@ Likely next phase:
    - separate viewport transform from drawing coordinates
    - keep `Cut.canvasSize` as drawing bounds
    - keep viewport state out of drawing source data
-2. Likely Phase 227: Cut canvas size editing after viewport foundation.
-3. Save/load and playback/cache remain later work.
+2. Phase 227: Canvas boundary behavior and editor panel shell.
+   - clip active display to `Cut.canvasSize`
+   - keep pointer stroke sessions alive outside the canvas until pointer-up
+   - re-enter with a new visible segment rather than connecting across outside gaps
+   - keep the canvas editor shell local UI only
+3. Cut canvas size editing remains later work.
+4. Save/load and playback/cache remain later work.

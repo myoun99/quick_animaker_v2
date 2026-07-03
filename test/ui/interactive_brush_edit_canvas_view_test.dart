@@ -433,6 +433,120 @@ void main() {
       expect(results, isEmpty);
     });
 
+    testWidgets('clips the drawing canvas display to Cut canvas size', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(_view(_sessionState(), (_) {})));
+
+      final clipFinder = find.byKey(
+        const ValueKey<String>('brush-edit-canvas-cut-size-clip'),
+      );
+
+      expect(clipFinder, findsOneWidget);
+      expect(
+        find.ancestor(
+          of: clipFinder,
+          matching: find.byType(BrushEditCanvasView),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('pointer down outside then entering commits in-canvas dabs', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: _view(_sessionState(), results.add),
+          ),
+        ),
+      );
+
+      final origin = tester.getTopLeft(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
+      final gesture = await tester.startGesture(
+        origin + const Offset(12, 1),
+        pointer: 1,
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(2, 1));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single, hasLength(1));
+      expect(results.single.single.center.x, 2);
+      expect(results.single.single.center.y, 1);
+    });
+
+    testWidgets('pointer down outside and staying outside commits nothing', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: _view(_sessionState(), results.add),
+          ),
+        ),
+      );
+
+      final origin = tester.getTopLeft(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
+      final gesture = await tester.startGesture(
+        origin + const Offset(12, 1),
+        pointer: 1,
+      );
+      await gesture.moveTo(origin + const Offset(14, 1));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, isEmpty);
+    });
+
+    testWidgets('leaving and re-entering does not connect across outside gap', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: _view(_sessionState(), results.add),
+          ),
+        ),
+      );
+
+      final origin = tester.getTopLeft(find.byType(InteractiveBrushEditCanvasView));
+      final gesture = await tester.startGesture(
+        origin + const Offset(1, 1),
+        pointer: 1,
+      );
+      await gesture.moveTo(origin + const Offset(3, 1));
+      await gesture.moveTo(origin + const Offset(12, 1));
+      await tester.pump();
+      expect(results, isEmpty);
+
+      await gesture.moveTo(origin + const Offset(6, 1));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      final xs = results.single.map((dab) => dab.center.x).toList();
+      expect(xs, isNot(contains(4)));
+      expect(xs, isNot(contains(5)));
+      expect(xs.last, 6);
+    });
+
     testWidgets('pointer cancel does not emit a result', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));

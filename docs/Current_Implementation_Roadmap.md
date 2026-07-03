@@ -24,8 +24,13 @@ This roadmap records current future direction only. Old phase-by-phase documents
    - `Cut.canvasSize` remains drawing/storage bounds and is not changed by viewport actions.
    - `Project.cameraSize` remains the project-wide camera/output frame size and is not changed by viewport actions.
    - Camera T1 remains a future candidate, not Phase 226 implementation scope.
-3. Phase 227 candidate: Cut canvas size editing after viewport foundation.
-4. Canvas/cache/storage foundation before heavy playback or save/load work:
+3. Phase 227: Canvas boundary behavior and editor panel shell is the current canvas editing baseline:
+   - The active brush/canvas display is clipped to the active `Cut.canvasSize` so visible marks do not leak outside drawing bounds.
+   - Pointer-down outside the canvas may begin a stroke session, but the session commits only if in-canvas dabs are collected.
+   - Leaving `Cut.canvasSize` while drawing does not cancel or commit the stroke; re-entering starts a new visible segment and must not connect across the outside gap.
+   - The compact canvas editor shell is local UI around the brush viewport, not source data or app-wide state.
+4. Cut canvas size editing is a later candidate after boundary behavior is stable.
+5. Canvas/cache/storage foundation before heavy playback or save/load work:
    - Establish clear ownership for frame-local drawing payloads outside lightweight `Frame` metadata.
    - Treat preview/composite cache images as derived data that can be invalidated and rebuilt.
    - Keep timeline range semantics out of storage validity decisions.
