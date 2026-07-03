@@ -3,9 +3,15 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/dirty_tile_set.dart';
+import '../models/rgba_color.dart';
 import '../models/tile_coord.dart';
+import 'rgba_blend.dart';
 
 /// Composites derived bitmap surfaces without re-rasterizing source commands.
+///
+/// This compositor uses the same straight-alpha source-over semantics as the
+/// brush rasterizer. Command raster cache surfaces must composite to the same
+/// visible result as direct sequential brush rasterization.
 class BitmapSurfaceCompositor {
   const BitmapSurfaceCompositor();
 
@@ -31,9 +37,11 @@ class BitmapSurfaceCompositor {
       if (overlayTile == null || overlayTile.isFullyTransparent) {
         continue;
       }
+
       final baseTile =
           surface.tileAt(coord) ??
           BitmapTile.blank(coord: coord, size: surface.tileSize);
+
       surface = surface.putTile(_compositeTile(baseTile, overlayTile));
     }
     return surface;
@@ -49,31 +57,43 @@ class BitmapSurfaceCompositor {
       offset < out.length;
       offset += BitmapTile.bytesPerPixel
     ) {
-      final oa = overlayPixels[offset + 3];
-      if (oa == 0) continue;
-      final or = overlayPixels[offset];
-      final og = overlayPixels[offset + 1];
-      final ob = overlayPixels[offset + 2];
-      if (oa == 255) {
-        out[offset] = or;
-        out[offset + 1] = og;
-        out[offset + 2] = ob;
-        out[offset + 3] = oa;
+      final sourceAlpha = overlayPixels[offset + 3];
+      if (sourceAlpha == 0) {
         continue;
       }
 
-      final ba = out[offset + 3];
-      final alpha = oa / 255.0;
-      final inverse = 1.0 - alpha;
-      out[offset] = _clampByte((or * alpha + out[offset] * inverse).round());
-      out[offset + 1] = _clampByte(
-        (og * alpha + out[offset + 1] * inverse).round(),
+      // Fully opaque source-over always replaces the destination pixel.
+      if (sourceAlpha == 255) {
+        out[offset] = overlayPixels[offset];
+        out[offset + 1] = overlayPixels[offset + 1];
+        out[offset + 2] = overlayPixels[offset + 2];
+        out[offset + 3] = sourceAlpha;
+        continue;
+      }
+
+      final result = rgbaSourceOver(
+        source: RgbaColor(
+          r: overlayPixels[offset],
+          g: overlayPixels[offset + 1],
+          b: overlayPixels[offset + 2],
+          a: sourceAlpha,
+        ),
+        destination: RgbaColor(
+          r: out[offset],
+          g: out[offset + 1],
+          b: out[offset + 2],
+          a: out[offset + 3],
+        ),
+        opacity: 1.0,
+        flow: 1.0,
       );
-      out[offset + 2] = _clampByte(
-        (ob * alpha + out[offset + 2] * inverse).round(),
-      );
-      out[offset + 3] = _clampByte((oa + ba * inverse).round());
+
+      out[offset] = result.r;
+      out[offset + 1] = result.g;
+      out[offset + 2] = result.b;
+      out[offset + 3] = result.a;
     }
+
     return baseTile.copyWith(pixels: out);
   }
 
@@ -85,5 +105,3 @@ class BitmapSurfaceCompositor {
     });
   }
 }
-
-int _clampByte(int value) => value < 0 ? 0 : (value > 255 ? 255 : value);

@@ -236,7 +236,6 @@ void main() {
       final canvasView = tester.widget<BrushEditCanvasView>(
         find.byType(BrushEditCanvasView),
       );
-      expect(canvasView.displayPreviewSurface, isNull);
       expect(canvasView.activeEditCompositeSurface.tiles, isNotEmpty);
     },
   );

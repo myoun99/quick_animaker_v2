@@ -13,7 +13,7 @@ import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
-  const InteractiveBrushEditCanvasView({
+  InteractiveBrushEditCanvasView({
     super.key,
     required this.sessionState,
     required this.layerId,

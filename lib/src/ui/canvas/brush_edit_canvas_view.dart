@@ -6,7 +6,7 @@ import '../../models/brush_edit_session_state.dart';
 import 'bitmap_surface_painter.dart';
 
 class BrushEditCanvasView extends StatelessWidget {
-  const BrushEditCanvasView({
+  BrushEditCanvasView({
     super.key,
     required this.sessionState,
     BitmapSurface? activeEditCompositeSurface,
@@ -18,10 +18,8 @@ class BrushEditCanvasView extends StatelessWidget {
     this.activeStrokePath,
     this.activeStrokePathDab,
     this.activeStrokePathVersion = 0,
-    BitmapSurface? displayPreviewSurface,
   }) : activeEditCompositeSurface =
            activeEditCompositeSurface ??
-           displayPreviewSurface ??
            sessionState.canvasState.currentSurface;
 
   final BrushEditSessionState sessionState;
@@ -34,7 +32,6 @@ class BrushEditCanvasView extends StatelessWidget {
   final BrushDab? activeStrokePathDab;
   final int activeStrokePathVersion;
   final BitmapSurface? activeStrokeTempSurface;
-  BitmapSurface? get displayPreviewSurface => null;
 
   @override
   Widget build(BuildContext context) {

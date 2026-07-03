@@ -111,6 +111,7 @@ class _InteractiveBrushCanvasSmokeHostState
       frameId: widget.frameId,
       inputSettings: widget.inputSettings,
       activeEditCompositeSurface: _sessionState.canvasState.currentSurface,
+      committedSourceDabs: widget.committedSourceDabs,
       showTransparentBackground: widget.showTransparentBackground,
       onSourceStrokeCommitted: widget.onSourceStrokeCommitted ?? (_) {},
     );
