@@ -52,7 +52,7 @@ void main() {
     );
   }
 
-  test('display cache stays derived from source commands', () {
+  test('display cache is derived', () {
     final c = coordinator();
     final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)]);
 
@@ -66,7 +66,7 @@ void main() {
     expect(drawing.inactivePreviewDirty, isFalse);
   });
 
-  test('committing and undo redo dirty an existing display cache', () {
+  test('commit undo redo dirty display cache', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
     final command = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)]);
@@ -92,7 +92,7 @@ void main() {
     );
   });
 
-  test('valid preview can be reused without rebuilding source strokes', () {
+  test('valid preview is reused', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
     c.commitSourceStroke(sourceDabs: [_dab(3, 3, 0)]);
@@ -107,7 +107,7 @@ void main() {
     );
   });
 
-  test('active stroke overlay is not stored in preview cache', () {
+  test('active overlay is not cached', () {
     final c = coordinator();
     c.commitSourceStroke(sourceDabs: [_dab(3, 3, 0)]);
     final cache = serviceFor(c.frameStore).prepareFramePreview(key);
@@ -124,7 +124,7 @@ void main() {
     ]);
   });
 
-  test('live pointer path does not generate display cache images', () {
+  test('live pointer path skips cache generation', () {
     final c = coordinator();
 
     c.activeSessionState;

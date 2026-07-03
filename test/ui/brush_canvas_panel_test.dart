@@ -196,7 +196,7 @@ void main() {
     expect(sink.playbackPreviews, isEmpty);
   });
 
-  testWidgets('prepares display cache after inactive drawing', (tester) async {
+  testWidgets('prepares display cache after drawing', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
