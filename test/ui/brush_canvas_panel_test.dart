@@ -209,9 +209,7 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            initialInputSettings: const BrushEditCanvasInputSettings(
-              size: 8,
-            ),
+            initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
             canvasSize: BrushCanvasFixture.canvasSize,
           ),
         ),

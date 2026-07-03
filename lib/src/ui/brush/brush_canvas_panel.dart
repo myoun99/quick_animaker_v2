@@ -121,9 +121,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   BrushFrameDisplayCacheService _createDisplayCacheService() {
     return BrushFrameDisplayCacheService(
       frameStore: widget.coordinator.frameStore,
-      renderer: BrushFrameDisplayCacheRenderer(
-        canvasSize: widget.canvasSize,
-      ),
+      renderer: BrushFrameDisplayCacheRenderer(canvasSize: widget.canvasSize),
     );
   }
 
