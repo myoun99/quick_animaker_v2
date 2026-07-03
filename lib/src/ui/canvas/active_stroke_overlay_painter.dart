@@ -17,52 +17,29 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _paintActiveStrokePath(canvas);
-    _paintDabs(canvas, activeStrokeOverlay, connectAdjacentDabs: true);
+    _paintDabs(canvas, activeStrokeOverlay);
   }
 
-  void _paintActiveStrokePath(Canvas canvas) {
-    final path = activeStrokePath;
-    final dab = activeStrokePathDab;
-    if (path == null || dab == null) {
-      return;
-    }
-
-    final paint = Paint()
-      ..color = _colorForDab(dab)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = dab.size;
-    canvas.drawPath(path, paint);
-  }
-
-  void _paintDabs(
-    Canvas canvas,
-    List<BrushDab> dabs, {
-    required bool connectAdjacentDabs,
-  }) {
+  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
     if (dabs.isEmpty) {
       return;
     }
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..isAntiAlias = false;
 
-    BrushDab? previous;
     for (final dab in dabs) {
       paint.color = _colorForDab(dab);
-      final center = Offset(dab.center.x, dab.center.y);
-      if (connectAdjacentDabs && previous != null) {
-        final previousCenter = Offset(previous.center.x, previous.center.y);
-        paint.strokeWidth = (previous.size + dab.size) / 2;
-        canvas.drawLine(previousCenter, center, paint);
-      }
-      canvas.drawCircle(center, dab.size / 2, paint);
-      previous = dab;
+      _paintPixelGridStamp(canvas, paint, dab);
     }
+  }
+
+  void _paintPixelGridStamp(Canvas canvas, Paint paint, BrushDab dab) {
+    final diameter = dab.size.clamp(1, double.infinity).ceilToDouble();
+    final left = (dab.center.x - diameter / 2).roundToDouble();
+    final top = (dab.center.y - diameter / 2).roundToDouble();
+    canvas.drawRect(Rect.fromLTWH(left, top, diameter, diameter), paint);
   }
 
   Color _colorForDab(BrushDab dab) {

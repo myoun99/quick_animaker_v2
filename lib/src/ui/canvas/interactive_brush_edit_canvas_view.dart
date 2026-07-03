@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
@@ -22,7 +21,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
-    this.displayPreviewSurface,
     this.onActiveStrokeChanged,
   });
 
@@ -35,7 +33,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
-  final BitmapSurface? displayPreviewSurface;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
   @override
@@ -49,9 +46,6 @@ class _InteractiveBrushEditCanvasViewState
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
-  Path? _liveStrokePath;
-  BrushDab? _liveStrokePathDab;
-  var _liveStrokePathVersion = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -70,10 +64,6 @@ class _InteractiveBrushEditCanvasViewState
         committedSourceDabs: widget.committedSourceDabs,
         committedSourceDabStrokes: widget.committedSourceDabStrokes,
         activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
-        activeStrokePath: _liveStrokePath,
-        activeStrokePathDab: _liveStrokePathDab,
-        activeStrokePathVersion: _liveStrokePathVersion,
-        displayPreviewSurface: widget.displayPreviewSurface,
       ),
     );
   }
@@ -98,7 +88,6 @@ class _InteractiveBrushEditCanvasViewState
       _liveOverlayDabs
         ..clear()
         ..addAll(initialDabs);
-      _resetLiveStrokePath(initialDabs);
       _nextSequence = _collectedDabs.length;
     });
   }
@@ -121,10 +110,7 @@ class _InteractiveBrushEditCanvasViewState
 
     setState(() {
       _collectedDabs.addAll(nextDabs);
-      _liveOverlayDabs
-        ..clear()
-        ..addAll(_liveOverlayForLatestDab(nextDabs));
-      _extendLiveStrokePath(previousDab, nextDabs);
+      _liveOverlayDabs.addAll(nextDabs);
       _nextSequence += nextDabs.length;
     });
   }
@@ -160,50 +146,6 @@ class _InteractiveBrushEditCanvasViewState
         localPosition.dy < canvasSize.height;
   }
 
-  List<BrushDab> _liveOverlayForLatestDab(List<BrushDab> nextDabs) {
-    if (nextDabs.isEmpty) {
-      return const <BrushDab>[];
-    }
-
-    return <BrushDab>[nextDabs.last];
-  }
-
-  void _resetLiveStrokePath(List<BrushDab> dabs) {
-    _liveStrokePath = null;
-    _liveStrokePathDab = null;
-    if (dabs.isEmpty) {
-      _liveStrokePathVersion += 1;
-      return;
-    }
-
-    final firstDab = dabs.first;
-    final path = Path()..moveTo(firstDab.center.x, firstDab.center.y);
-    for (final dab in dabs.skip(1)) {
-      path.lineTo(dab.center.x, dab.center.y);
-    }
-    _liveStrokePath = path;
-    _liveStrokePathDab = firstDab;
-    _liveStrokePathVersion += 1;
-  }
-
-  void _extendLiveStrokePath(BrushDab? previousDab, List<BrushDab> nextDabs) {
-    if (nextDabs.isEmpty) {
-      return;
-    }
-
-    final path = _liveStrokePath ?? Path();
-    if (_liveStrokePath == null) {
-      final startDab = previousDab ?? nextDabs.first;
-      path.moveTo(startDab.center.x, startDab.center.y);
-    }
-    for (final dab in nextDabs) {
-      path.lineTo(dab.center.x, dab.center.y);
-    }
-    _liveStrokePath = path;
-    _liveStrokePathDab = _liveStrokePathDab ?? previousDab ?? nextDabs.first;
-    _liveStrokePathVersion += 1;
-  }
-
   BrushDab _dabFromPosition(Offset localPosition, {required int sequence}) {
     final settings = widget.inputSettings;
     return BrushDab(
@@ -226,9 +168,6 @@ class _InteractiveBrushEditCanvasViewState
       _nextSequence = 0;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
-      _liveStrokePath = null;
-      _liveStrokePathDab = null;
-      _liveStrokePathVersion += 1;
     });
   }
 }

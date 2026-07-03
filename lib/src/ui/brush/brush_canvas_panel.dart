@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_paint_command.dart';
 import '../../models/canvas_size.dart';
-import '../../services/brush_frame_display_cache_renderer.dart';
-import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
+import '../../services/history_manager.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_canvas_defaults.dart';
@@ -25,6 +24,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.initialInputSettings = const BrushEditCanvasInputSettings(size: 10),
+    this.historyManager,
   });
 
   final BrushFrameEditingCoordinator coordinator;
@@ -32,6 +32,7 @@ class BrushCanvasPanel extends StatefulWidget {
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
   final BrushEditCanvasInputSettings initialInputSettings;
+  final HistoryManager? historyManager;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -39,19 +40,6 @@ class BrushCanvasPanel extends StatefulWidget {
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   late final _inputSettings = widget.initialInputSettings;
-  late BrushFrameDisplayCacheService _displayCacheService =
-      _createDisplayCacheService();
-  bool _isDrawing = false;
-  bool _cachePreparationScheduled = false;
-
-  @override
-  void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.coordinator != oldWidget.coordinator ||
-        widget.canvasSize != oldWidget.canvasSize) {
-      _displayCacheService = _createDisplayCacheService();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,17 +47,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     final session = widget.coordinator.activeSessionState;
     final frameStore = widget.coordinator.frameStore;
     final drawing = frameStore.getOrCreateFrame(activeKey);
-    final displayPreviewSurface = frameStore.validPreviewSurfaceOrNull(
-      activeKey,
-    );
-    if (displayPreviewSurface == null &&
-        !_isDrawing &&
-        drawing.visibleActivePaintCommands.isNotEmpty) {
-      _scheduleDisplayCachePreparation(activeKey);
-    }
-    final visibleCommands = displayPreviewSurface == null
-        ? drawing.visibleActivePaintCommands
-        : const <BrushPaintCommand>[];
+    final visibleCommands = drawing.visibleActivePaintCommands;
     final committedSourceDabStrokes = visibleCommands
         .map((command) => command.sourceDabs)
         .where((dabs) => dabs.isNotEmpty)
@@ -94,8 +72,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             inputSettings: _inputSettings,
             committedSourceDabs: committedSourceDabs,
             committedSourceDabStrokes: committedSourceDabStrokes,
-            displayPreviewSurface: displayPreviewSurface,
-            onActiveStrokeChanged: _handleActiveStrokeChanged,
             onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
         ),
@@ -105,44 +81,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
     setState(() {
-      widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
-    });
-  }
-
-  void _handleActiveStrokeChanged(bool isDrawing) {
-    if (_isDrawing == isDrawing) {
-      return;
-    }
-    setState(() {
-      _isDrawing = isDrawing;
-    });
-  }
-
-  BrushFrameDisplayCacheService _createDisplayCacheService() {
-    return BrushFrameDisplayCacheService(
-      frameStore: widget.coordinator.frameStore,
-      renderer: BrushFrameDisplayCacheRenderer(canvasSize: widget.canvasSize),
-    );
-  }
-
-  void _scheduleDisplayCachePreparation(BrushFrameKey key) {
-    if (_cachePreparationScheduled) {
-      return;
-    }
-    _cachePreparationScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _cachePreparationScheduled = false;
-      if (!mounted || _isDrawing || widget.coordinator.activeFrameKey != key) {
+      final historyManager = widget.historyManager;
+      if (historyManager == null) {
+        widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
         return;
       }
-      final drawing = widget.coordinator.frameStore.getOrCreateFrame(key);
-      if (drawing.visibleActivePaintCommands.isEmpty) {
-        return;
-      }
-      final cache = _displayCacheService.prepareFramePreview(key);
-      if (mounted && cache.isValid) {
-        setState(() {});
-      }
+      historyManager.execute(
+        BrushStrokeHistoryCommand(
+          coordinator: widget.coordinator,
+          sourceDabs: sourceDabs,
+          cacheInvalidationSink: widget.cacheInvalidationSink,
+        ),
+      );
     });
   }
 }

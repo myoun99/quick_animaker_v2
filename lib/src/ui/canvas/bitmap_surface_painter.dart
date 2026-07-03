@@ -64,41 +64,35 @@ class BitmapSurfacePainter extends CustomPainter {
 
   void _paintCommittedSourceDabs(Canvas canvas) {
     if (committedSourceDabStrokes.isEmpty) {
-      _paintDabs(canvas, committedSourceDabs, connectAdjacentDabs: false);
+      _paintDabs(canvas, committedSourceDabs);
       return;
     }
 
     for (final stroke in committedSourceDabStrokes) {
-      _paintDabs(canvas, stroke, connectAdjacentDabs: true);
+      _paintDabs(canvas, stroke);
     }
   }
 
-  void _paintDabs(
-    Canvas canvas,
-    List<BrushDab> dabs, {
-    required bool connectAdjacentDabs,
-  }) {
+  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
     if (dabs.isEmpty) {
       return;
     }
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..isAntiAlias = false;
 
-    BrushDab? previous;
     for (final dab in dabs) {
       paint.color = _colorForDab(dab);
-      final center = Offset(dab.center.x, dab.center.y);
-      if (connectAdjacentDabs && previous != null) {
-        final previousCenter = Offset(previous.center.x, previous.center.y);
-        paint.strokeWidth = (previous.size + dab.size) / 2;
-        canvas.drawLine(previousCenter, center, paint);
-      }
-      canvas.drawCircle(center, dab.size / 2, paint);
-      previous = dab;
+      _paintPixelGridStamp(canvas, paint, dab);
     }
+  }
+
+  void _paintPixelGridStamp(Canvas canvas, Paint paint, BrushDab dab) {
+    final diameter = dab.size.clamp(1, double.infinity).ceilToDouble();
+    final left = (dab.center.x - diameter / 2).roundToDouble();
+    final top = (dab.center.y - diameter / 2).roundToDouble();
+    canvas.drawRect(Rect.fromLTWH(left, top, diameter, diameter), paint);
   }
 
   Color _colorForDab(BrushDab dab) {

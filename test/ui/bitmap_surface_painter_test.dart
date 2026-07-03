@@ -110,48 +110,50 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
     });
 
-    test('connects dabs within each visible source stroke only', () async {
-      final surface = BitmapSurface(
-        canvasSize: CanvasSize(width: 12, height: 3),
-      );
+    test(
+      'paints sampled source dabs without connecting separate strokes',
+      () async {
+        final surface = BitmapSurface(
+          canvasSize: CanvasSize(width: 12, height: 3),
+        );
 
-      final pixels = await _paintPixels(
-        BitmapSurfacePainter(
-          surface: surface,
-          showTransparentBackground: false,
-          committedSourceDabStrokes: [
-            [_dab(1, 1), _dab(3, 1)],
-            [_dab(10, 1)],
-          ],
-        ),
-        width: 12,
-        height: 3,
-      );
+        final pixels = await _paintPixels(
+          BitmapSurfacePainter(
+            surface: surface,
+            showTransparentBackground: false,
+            committedSourceDabStrokes: [
+              [_dab(1, 1), _dab(2, 1), _dab(3, 1)],
+              [_dab(10, 1)],
+            ],
+          ),
+          width: 12,
+          height: 3,
+        );
 
-      expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, greaterThan(0));
-      expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
-      expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
-    });
+        expect(_rgbaAt(pixels, width: 12, x: 1, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 12, x: 2, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 12, x: 3, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 12, x: 5, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
+        expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
+      },
+    );
 
     test(
-      'draws active stroke path plus latest dab for live feedback',
+      'draws sampled active stroke overlay dabs for live feedback',
       () async {
         final pixels = await _paintPixels(
           ActiveStrokeOverlayPainter(
-            activeStrokePath: Path()
-              ..moveTo(1, 1)
-              ..lineTo(6, 1),
-            activeStrokePathDab: _dab(1, 1),
-            activeStrokePathVersion: 1,
-            activeStrokeOverlay: [_dab(6, 1)],
+            activeStrokeOverlay: [_dab(1, 1), _dab(3, 1), _dab(6, 1)],
           ),
           width: 8,
           height: 3,
         );
 
+        expect(_rgbaAt(pixels, width: 8, x: 1, y: 1).last, greaterThan(0));
         expect(_rgbaAt(pixels, width: 8, x: 3, y: 1).last, greaterThan(0));
         expect(_rgbaAt(pixels, width: 8, x: 6, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 8, x: 4, y: 1).last, 0);
       },
     );
 

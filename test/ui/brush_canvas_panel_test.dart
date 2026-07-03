@@ -229,18 +229,18 @@ void main() {
     );
 
     await tester.pump();
-    final cache = coordinator.frameStore.displayCacheOrNull(
-      coordinator.activeFrameKey,
-    );
-    expect(cache, isNotNull);
-    expect(cache!.isValid, isTrue);
 
-    await tester.pump();
+    expect(
+      coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
+      isNull,
+    );
+
     final canvasView = tester.widget<BrushEditCanvasView>(
       find.byType(BrushEditCanvasView),
     );
-    expect(canvasView.displayPreviewSurface, cache.previewSurface);
-    expect(canvasView.committedSourceDabStrokes, isEmpty);
+
+    expect(canvasView.committedSourceDabStrokes, hasLength(1));
+    expect(canvasView.committedSourceDabStrokes.single, isNotEmpty);
   });
 }
 
