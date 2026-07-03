@@ -137,10 +137,6 @@ void main() {
     test(
       'draws active stroke path plus latest dab for live feedback',
       () async {
-        final surface = BitmapSurface(
-          canvasSize: CanvasSize(width: 8, height: 3),
-        );
-
         final pixels = await _paintPixels(
           ActiveStrokeOverlayPainter(
             activeStrokePath: Path()
