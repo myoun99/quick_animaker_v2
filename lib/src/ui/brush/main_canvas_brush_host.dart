@@ -6,6 +6,7 @@ import '../../models/canvas_size.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/history_manager.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
@@ -23,12 +24,14 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selection,
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
+    this.historyManager,
   });
 
   final BrushFrameKey? activeFrameKey;
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
   final CanvasSize canvasSize;
+  final HistoryManager? historyManager;
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -75,6 +78,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
+      historyManager: widget.historyManager,
     );
   }
 

@@ -84,21 +84,49 @@ class BitmapSurfacePainter extends CustomPainter {
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..isAntiAlias = false;
 
     BrushDab? previous;
     for (final dab in dabs) {
       paint.color = _colorForDab(dab);
-      final center = Offset(dab.center.x, dab.center.y);
       if (connectAdjacentDabs && previous != null) {
-        final previousCenter = Offset(previous.center.x, previous.center.y);
-        paint.strokeWidth = (previous.size + dab.size) / 2;
-        canvas.drawLine(previousCenter, center, paint);
+        _paintPixelGridSegment(canvas, paint, previous, dab);
       }
-      canvas.drawCircle(center, dab.size / 2, paint);
+      _paintPixelGridStamp(canvas, paint, dab);
       previous = dab;
     }
+  }
+
+  void _paintPixelGridSegment(
+    Canvas canvas,
+    Paint paint,
+    BrushDab previous,
+    BrushDab next,
+  ) {
+    final dx = next.center.x - previous.center.x;
+    final dy = next.center.y - previous.center.y;
+    final steps = dx.abs() > dy.abs() ? dx.abs().ceil() : dy.abs().ceil();
+    if (steps <= 0) {
+      return;
+    }
+    for (var i = 1; i <= steps; i += 1) {
+      final t = i / steps;
+      final dab = next.copyWith(
+        center: previous.center.copyWith(
+          x: previous.center.x + dx * t,
+          y: previous.center.y + dy * t,
+        ),
+        size: previous.size + (next.size - previous.size) * t,
+      );
+      _paintPixelGridStamp(canvas, paint, dab);
+    }
+  }
+
+  void _paintPixelGridStamp(Canvas canvas, Paint paint, BrushDab dab) {
+    final diameter = dab.size.clamp(1, double.infinity).ceilToDouble();
+    final left = (dab.center.x - diameter / 2).roundToDouble();
+    final top = (dab.center.y - diameter / 2).roundToDouble();
+    canvas.drawRect(Rect.fromLTWH(left, top, diameter, diameter), paint);
   }
 
   Color _colorForDab(BrushDab dab) {

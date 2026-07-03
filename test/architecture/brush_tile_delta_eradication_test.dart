@@ -132,6 +132,20 @@ void main() {
       }
     });
 
+    test('active brush display avoids smooth path and bitmap surface hot path', () {
+      final activePainter = File(
+        'lib/src/ui/canvas/active_stroke_overlay_painter.dart',
+      ).readAsStringSync();
+      final interactiveView = File(
+        'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
+      ).readAsStringSync();
+
+      expect(activePainter, isNot(contains('drawPath')));
+      expect(interactiveView, isNot(contains('BitmapSurfacePainter')));
+      expect(activePainter, contains('isAntiAlias = false'));
+      expect(activePainter, contains('drawRect'));
+    });
+
     test('Frame model remains lightweight and does not own brush payloads', () {
       final frameSource = File('lib/src/models/frame.dart').readAsStringSync();
 
