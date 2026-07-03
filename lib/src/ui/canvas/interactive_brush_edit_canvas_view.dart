@@ -23,6 +23,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
     this.displayPreviewSurface,
+    this.onActiveStrokeChanged,
   });
 
   final BrushEditSessionState sessionState;
@@ -35,6 +36,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
   final BitmapSurface? displayPreviewSurface;
+  final ValueChanged<bool>? onActiveStrokeChanged;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -82,6 +84,7 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _activePointer = event.pointer;
+    widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     setState(() {
       final initialDabs = widget.dabInterpolator.interpolate(
@@ -220,6 +223,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _clearStroke() {
+    widget.onActiveStrokeChanged?.call(false);
     setState(() {
       _activePointer = null;
       _nextSequence = 0;

@@ -158,7 +158,10 @@ class BrushFrameStore {
       return _markCacheDirty(
         state.copyWith(
           paintCommands: commands,
-          bakedPaintCommandIds: {...state.bakedPaintCommandIds, ...deferredIds},
+          bakedPaintCommandIds: {
+            ...state.bakedPaintCommandIds,
+            ...deferredIds,
+          },
         ),
       );
     });
@@ -181,8 +184,9 @@ class BrushFrameStore {
     return _update(key, (state) {
       final commands = state.paintCommands
           .map(
-            (command) =>
-                command.id == id ? command.copyWith(state: nextState) : command,
+            (command) => command.id == id
+                ? command.copyWith(state: nextState)
+                : command,
           )
           .toList();
       return _markCacheDirty(
