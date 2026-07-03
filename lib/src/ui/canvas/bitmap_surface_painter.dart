@@ -9,20 +9,12 @@ class BitmapSurfacePainter extends CustomPainter {
     this.showTransparentBackground = true,
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
-    this.activeStrokeOverlay = const <BrushDab>[],
-    this.activeStrokePath,
-    this.activeStrokePathDab,
-    this.activeStrokePathVersion = 0,
   });
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
   final List<BrushDab> committedSourceDabs;
   final List<List<BrushDab>> committedSourceDabStrokes;
-  final List<BrushDab> activeStrokeOverlay;
-  final Path? activeStrokePath;
-  final BrushDab? activeStrokePathDab;
-  final int activeStrokePathVersion;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -68,8 +60,6 @@ class BitmapSurfacePainter extends CustomPainter {
     }
 
     _paintCommittedSourceDabs(canvas);
-    _paintActiveStrokePath(canvas);
-    _paintActiveStrokeOverlay(canvas);
   }
 
   void _paintCommittedSourceDabs(Canvas canvas) {
@@ -81,25 +71,6 @@ class BitmapSurfacePainter extends CustomPainter {
     for (final stroke in committedSourceDabStrokes) {
       _paintDabs(canvas, stroke, connectAdjacentDabs: true);
     }
-  }
-
-  void _paintActiveStrokePath(Canvas canvas) {
-    final path = activeStrokePath;
-    final dab = activeStrokePathDab;
-    if (path == null || dab == null) {
-      return;
-    }
-
-    final paint = _paintForDab(dab)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = dab.size;
-    canvas.drawPath(path, paint);
-  }
-
-  void _paintActiveStrokeOverlay(Canvas canvas) {
-    _paintDabs(canvas, activeStrokeOverlay, connectAdjacentDabs: true);
   }
 
   void _paintDabs(
@@ -130,10 +101,6 @@ class BitmapSurfacePainter extends CustomPainter {
     }
   }
 
-  Paint _paintForDab(BrushDab dab) {
-    return Paint()..color = _colorForDab(dab);
-  }
-
   Color _colorForDab(BrushDab dab) {
     final argb = dab.color;
     final alpha = (argb >> 24) & 0xFF;
@@ -153,10 +120,6 @@ class BitmapSurfacePainter extends CustomPainter {
     return oldDelegate.surface != surface ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.committedSourceDabs != committedSourceDabs ||
-        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes ||
-        oldDelegate.activeStrokeOverlay != activeStrokeOverlay ||
-        oldDelegate.activeStrokePath != activeStrokePath ||
-        oldDelegate.activeStrokePathDab != activeStrokePathDab ||
-        oldDelegate.activeStrokePathVersion != activeStrokePathVersion;
+        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes;
   }
 }
