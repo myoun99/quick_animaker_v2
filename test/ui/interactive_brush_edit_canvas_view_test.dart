@@ -197,8 +197,30 @@ void main() {
       expect(results.single.single.sequence, 0);
     });
 
+    testWidgets('pointer down shows active overlay before movement', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await tester.pump();
+
+      final canvasView = tester.widget<BrushEditCanvasView>(
+        find.byType(BrushEditCanvasView),
+      );
+      expect(canvasView.activeStrokeOverlay, isNotEmpty);
+      expect(canvasView.activeStrokePath, isNotNull);
+      expect(results, isEmpty);
+
+      await gesture.cancel();
+    });
+
     testWidgets(
-      'drag stroke shows live overlay before commit and clears after commit',
+      'drag stroke keeps continuous active path before commit and clears after commit',
       (tester) async {
         final results = <List<BrushDab>>[];
         await tester.pumpWidget(
@@ -222,6 +244,7 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(canvasView.activeStrokePath, isNotNull);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -232,6 +255,55 @@ void main() {
         );
         expect(results, hasLength(1));
         expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokePath, isNull);
+      },
+    );
+
+    testWidgets(
+      'fast drag keeps active display bounded while committing full source stroke',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(size: 1),
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1, 1)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
+        await tester.pump();
+
+        var canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
+        final activePath = canvasView.activeStrokePath;
+        final activePathLength = activePath!.computeMetrics().fold<double>(
+          0,
+          (sum, metric) => sum + metric.length,
+        );
+
+        expect(canvasView.activeStrokeOverlay, hasLength(1));
+        expect(canvasView.activeStrokeOverlay.last.center.x, 7);
+        expect(activePathLength, greaterThan(5));
+        expect(results, isEmpty);
+
+        await gesture.up();
+        await tester.pump();
+
+        canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
+        expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.activeStrokePath, isNull);
+        expect(results, hasLength(1));
+        expect(results.single.length, greaterThan(2));
       },
     );
 

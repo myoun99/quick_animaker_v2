@@ -41,6 +41,32 @@ void main() {
       );
     });
 
+    test('repaints when active stroke path version changes', () {
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: 2, height: 2),
+      );
+      final path = Path()
+        ..moveTo(0, 0)
+        ..lineTo(1, 1);
+      final dab = _dab(0, 0);
+      final oldPainter = BitmapSurfacePainter(
+        surface: surface,
+        activeStrokePath: path,
+        activeStrokePathDab: dab,
+        activeStrokePathVersion: 1,
+      );
+
+      expect(
+        BitmapSurfacePainter(
+          surface: surface,
+          activeStrokePath: path,
+          activeStrokePathDab: dab,
+          activeStrokePathVersion: 2,
+        ).shouldRepaint(oldPainter),
+        isTrue,
+      );
+    });
+
     test('draws RGBA tile pixels at global tile coordinates', () async {
       final firstTile = _tile(
         coord: TileCoord(x: 0, y: 0),
@@ -99,6 +125,33 @@ void main() {
       expect(_rgbaAt(pixels, width: 12, x: 7, y: 1).last, 0);
       expect(_rgbaAt(pixels, width: 12, x: 10, y: 1).last, greaterThan(0));
     });
+
+    test(
+      'draws active stroke path plus latest dab for live feedback',
+      () async {
+        final surface = BitmapSurface(
+          canvasSize: CanvasSize(width: 8, height: 3),
+        );
+
+        final pixels = await _paintPixels(
+          BitmapSurfacePainter(
+            surface: surface,
+            showTransparentBackground: false,
+            activeStrokePath: Path()
+              ..moveTo(1, 1)
+              ..lineTo(6, 1),
+            activeStrokePathDab: _dab(1, 1),
+            activeStrokePathVersion: 1,
+            activeStrokeOverlay: [_dab(6, 1)],
+          ),
+          width: 8,
+          height: 3,
+        );
+
+        expect(_rgbaAt(pixels, width: 8, x: 3, y: 1).last, greaterThan(0));
+        expect(_rgbaAt(pixels, width: 8, x: 6, y: 1).last, greaterThan(0));
+      },
+    );
 
     test('draws deterministic neutral background when enabled', () async {
       final surface = BitmapSurface(

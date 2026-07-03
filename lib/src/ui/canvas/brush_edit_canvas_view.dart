@@ -12,6 +12,9 @@ class BrushEditCanvasView extends StatelessWidget {
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.activeStrokeOverlay = const <BrushDab>[],
+    this.activeStrokePath,
+    this.activeStrokePathDab,
+    this.activeStrokePathVersion = 0,
   });
 
   final BrushEditSessionState sessionState;
@@ -19,6 +22,9 @@ class BrushEditCanvasView extends StatelessWidget {
   final List<BrushDab> committedSourceDabs;
   final List<List<BrushDab>> committedSourceDabStrokes;
   final List<BrushDab> activeStrokeOverlay;
+  final Path? activeStrokePath;
+  final BrushDab? activeStrokePathDab;
+  final int activeStrokePathVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +43,9 @@ class BrushEditCanvasView extends StatelessWidget {
             committedSourceDabs: committedSourceDabs,
             committedSourceDabStrokes: committedSourceDabStrokes,
             activeStrokeOverlay: activeStrokeOverlay,
+            activeStrokePath: activeStrokePath,
+            activeStrokePathDab: activeStrokePathDab,
+            activeStrokePathVersion: activeStrokePathVersion,
           ),
         ),
       ),
