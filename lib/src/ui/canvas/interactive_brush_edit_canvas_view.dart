@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
@@ -22,7 +21,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.showTransparentBackground = true,
-    this.displayPreviewSurface,
     this.onActiveStrokeChanged,
   });
 
@@ -35,7 +33,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
-  final BitmapSurface? displayPreviewSurface;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
   @override
@@ -67,7 +64,6 @@ class _InteractiveBrushEditCanvasViewState
         committedSourceDabs: widget.committedSourceDabs,
         committedSourceDabStrokes: widget.committedSourceDabStrokes,
         activeStrokeOverlay: List<BrushDab>.unmodifiable(_liveOverlayDabs),
-        displayPreviewSurface: widget.displayPreviewSurface,
       ),
     );
   }

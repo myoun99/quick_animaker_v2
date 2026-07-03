@@ -64,20 +64,16 @@ class BitmapSurfacePainter extends CustomPainter {
 
   void _paintCommittedSourceDabs(Canvas canvas) {
     if (committedSourceDabStrokes.isEmpty) {
-      _paintDabs(canvas, committedSourceDabs, connectAdjacentDabs: false);
+      _paintDabs(canvas, committedSourceDabs);
       return;
     }
 
     for (final stroke in committedSourceDabStrokes) {
-      _paintDabs(canvas, stroke, connectAdjacentDabs: true);
+      _paintDabs(canvas, stroke);
     }
   }
 
-  void _paintDabs(
-    Canvas canvas,
-    List<BrushDab> dabs, {
-    required bool connectAdjacentDabs,
-  }) {
+  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
     if (dabs.isEmpty) {
       return;
     }
@@ -86,38 +82,8 @@ class BitmapSurfacePainter extends CustomPainter {
       ..style = PaintingStyle.fill
       ..isAntiAlias = false;
 
-    BrushDab? previous;
     for (final dab in dabs) {
       paint.color = _colorForDab(dab);
-      if (connectAdjacentDabs && previous != null) {
-        _paintPixelGridSegment(canvas, paint, previous, dab);
-      }
-      _paintPixelGridStamp(canvas, paint, dab);
-      previous = dab;
-    }
-  }
-
-  void _paintPixelGridSegment(
-    Canvas canvas,
-    Paint paint,
-    BrushDab previous,
-    BrushDab next,
-  ) {
-    final dx = next.center.x - previous.center.x;
-    final dy = next.center.y - previous.center.y;
-    final steps = dx.abs() > dy.abs() ? dx.abs().ceil() : dy.abs().ceil();
-    if (steps <= 0) {
-      return;
-    }
-    for (var i = 1; i <= steps; i += 1) {
-      final t = i / steps;
-      final dab = next.copyWith(
-        center: previous.center.copyWith(
-          x: previous.center.x + dx * t,
-          y: previous.center.y + dy * t,
-        ),
-        size: previous.size + (next.size - previous.size) * t,
-      );
       _paintPixelGridStamp(canvas, paint, dab);
     }
   }

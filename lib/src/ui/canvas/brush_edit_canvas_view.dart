@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import 'active_stroke_overlay_painter.dart';
@@ -17,7 +16,6 @@ class BrushEditCanvasView extends StatelessWidget {
     this.activeStrokePath,
     this.activeStrokePathDab,
     this.activeStrokePathVersion = 0,
-    this.displayPreviewSurface,
   });
 
   final BrushEditSessionState sessionState;
@@ -28,13 +26,10 @@ class BrushEditCanvasView extends StatelessWidget {
   final Path? activeStrokePath;
   final BrushDab? activeStrokePathDab;
   final int activeStrokePathVersion;
-  final BitmapSurface? displayPreviewSurface;
 
   @override
   Widget build(BuildContext context) {
-    final sessionSurface = sessionState.canvasState.currentSurface;
-    final surface = displayPreviewSurface ?? sessionSurface;
-    final usePreview = displayPreviewSurface != null;
+    final surface = sessionState.canvasState.currentSurface;
 
     return RepaintBoundary(
       key: const ValueKey<String>('brush-edit-canvas-view-boundary'),
@@ -53,12 +48,8 @@ class BrushEditCanvasView extends StatelessWidget {
                 painter: BitmapSurfacePainter(
                   surface: surface,
                   showTransparentBackground: showTransparentBackground,
-                  committedSourceDabs: usePreview
-                      ? const <BrushDab>[]
-                      : committedSourceDabs,
-                  committedSourceDabStrokes: usePreview
-                      ? const <List<BrushDab>>[]
-                      : committedSourceDabStrokes,
+                  committedSourceDabs: committedSourceDabs,
+                  committedSourceDabStrokes: committedSourceDabStrokes,
                 ),
               ),
             ),

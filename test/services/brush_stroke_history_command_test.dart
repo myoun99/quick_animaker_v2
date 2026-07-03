@@ -42,10 +42,10 @@ void main() {
     history.redo();
     frame = coordinator.frameStore.getOrCreateFrame(coordinator.activeFrameKey);
     expect(frame.visibleActivePaintCommands, hasLength(1));
-    expect(
-      frame.visibleActivePaintCommands.single.sourceDabs,
-      [_dab(0), _dab(1)],
-    );
+    expect(frame.visibleActivePaintCommands.single.sourceDabs, [
+      _dab(0),
+      _dab(1),
+    ]);
   });
 }
 

@@ -87,7 +87,10 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void _rebuildActiveCutControllers({LayerId? preferredActiveLayerId}) {
+  void _rebuildActiveCutControllers({
+    LayerId? preferredActiveLayerId,
+    int preferredFrameIndex = 0,
+  }) {
     final activeCutId = _editingSession.activeCutId;
     final initialActiveLayerId = _activeCutHasLayer(preferredActiveLayerId)
         ? preferredActiveLayerId
@@ -104,7 +107,13 @@ class _HomePageState extends State<HomePage> {
       repository: _repository,
       historyManager: _historyManager,
       cutId: activeCutId,
+      initialFrameIndex: _clampedFrameIndex(preferredFrameIndex),
     );
+  }
+
+  int _clampedFrameIndex(int frameIndex) {
+    final maxIndex = math.max(0, _activeCutPlaybackFrameCount - 1);
+    return frameIndex.clamp(0, maxIndex);
   }
 
   TrackId get _activeCutTrackId {
@@ -122,10 +131,15 @@ class _HomePageState extends State<HomePage> {
     return project.tracks.first.id;
   }
 
-  void _refreshAfterCutCommand({LayerId? preferredActiveLayerId}) {
+  void _refreshAfterCutCommand({
+    LayerId? preferredActiveLayerId,
+    int? preferredFrameIndex,
+  }) {
     _copiedFrame = null;
     _rebuildActiveCutControllers(
       preferredActiveLayerId: preferredActiveLayerId,
+      preferredFrameIndex:
+          preferredFrameIndex ?? _timelineController.currentFrameIndex,
     );
   }
 
@@ -317,6 +331,8 @@ class _HomePageState extends State<HomePage> {
   void _undoProjectHistory() {
     final beforeLayers = List<Layer>.of(_activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;
+    final previousFrameIndex = _timelineController.currentFrameIndex;
+
     setState(() {
       _historyManager.undo();
       final preferredLayerId = _preferredLayerAfterLayerListChange(
@@ -324,13 +340,18 @@ class _HomePageState extends State<HomePage> {
         afterLayers: _activeCut.layers,
         previousActiveLayerId: previousActiveLayerId,
       );
-      _refreshAfterCutCommand(preferredActiveLayerId: preferredLayerId);
+      _refreshAfterCutCommand(
+        preferredActiveLayerId: preferredLayerId,
+        preferredFrameIndex: previousFrameIndex,
+      );
     });
   }
 
   void _redoProjectHistory() {
     final beforeLayers = List<Layer>.of(_activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;
+    final previousFrameIndex = _timelineController.currentFrameIndex;
+
     setState(() {
       _historyManager.redo();
       final preferredLayerId = _preferredLayerAfterLayerListChange(
@@ -338,7 +359,10 @@ class _HomePageState extends State<HomePage> {
         afterLayers: _activeCut.layers,
         previousActiveLayerId: previousActiveLayerId,
       );
-      _refreshAfterCutCommand(preferredActiveLayerId: preferredLayerId);
+      _refreshAfterCutCommand(
+        preferredActiveLayerId: preferredLayerId,
+        preferredFrameIndex: previousFrameIndex,
+      );
     });
   }
 
