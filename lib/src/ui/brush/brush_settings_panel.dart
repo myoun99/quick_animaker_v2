@@ -117,10 +117,7 @@ class _PanelSlider extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
+              child: Text(label, style: Theme.of(context).textTheme.labelSmall),
             ),
             Text(valueLabel, style: Theme.of(context).textTheme.labelSmall),
           ],

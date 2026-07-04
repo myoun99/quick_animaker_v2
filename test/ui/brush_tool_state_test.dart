@@ -48,7 +48,6 @@ void main() {
       );
     });
 
-
     test('public constructor and copyWith clamp spacing', () {
       expect(BrushToolState().spacing, BrushToolState.defaultSpacing);
       expect(BrushToolState(spacing: -1).spacing, BrushToolState.minSpacing);
@@ -70,10 +69,7 @@ void main() {
         BrushToolState.defaults.copyWith(spacing: double.nan).spacing,
         BrushToolState.defaultSpacing,
       );
-      expect(
-        BrushToolState(spacing: 0.75).toInputSettings().spacing,
-        0.75,
-      );
+      expect(BrushToolState(spacing: 0.75).toInputSettings().spacing, 0.75);
     });
 
     test('color updates remain stable', () {

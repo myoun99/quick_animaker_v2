@@ -572,13 +572,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _app(
-          _view(
-            sessionState,
-            results.add,
-            inputSettings: initialSettings,
-          ),
-        ),
+        _app(_view(sessionState, results.add, inputSettings: initialSettings)),
       );
 
       final gesture = await tester.startGesture(
@@ -588,13 +582,7 @@ void main() {
       await tester.pump();
 
       await tester.pumpWidget(
-        _app(
-          _view(
-            sessionState,
-            results.add,
-            inputSettings: rebuiltSettings,
-          ),
-        ),
+        _app(_view(sessionState, results.add, inputSettings: rebuiltSettings)),
       );
       await tester.pump();
 

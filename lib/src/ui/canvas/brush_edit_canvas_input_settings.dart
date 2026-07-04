@@ -22,7 +22,10 @@ class BrushEditCanvasInputSettings {
          hardness >= 0.0 && hardness <= 1.0,
          'BrushEditCanvasInputSettings.hardness must be between 0 and 1.',
        ),
-       assert(spacing > 0.0, 'BrushEditCanvasInputSettings.spacing must be > 0.');
+       assert(
+         spacing > 0.0,
+         'BrushEditCanvasInputSettings.spacing must be > 0.',
+       );
 
   final int color;
   final double size;
