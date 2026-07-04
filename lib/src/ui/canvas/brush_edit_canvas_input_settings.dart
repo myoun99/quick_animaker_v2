@@ -8,6 +8,7 @@ class BrushEditCanvasInputSettings {
     this.flow = 1.0,
     this.hardness = 1.0,
     this.tipShape = BrushTipShape.round,
+    this.spacing = 0.25,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
        assert(
          opacity >= 0.0 && opacity <= 1.0,
@@ -20,7 +21,8 @@ class BrushEditCanvasInputSettings {
        assert(
          hardness >= 0.0 && hardness <= 1.0,
          'BrushEditCanvasInputSettings.hardness must be between 0 and 1.',
-       );
+       ),
+       assert(spacing > 0.0, 'BrushEditCanvasInputSettings.spacing must be > 0.');
 
   final int color;
   final double size;
@@ -28,6 +30,7 @@ class BrushEditCanvasInputSettings {
   final double flow;
   final double hardness;
   final BrushTipShape tipShape;
+  final double spacing;
 
   BrushEditCanvasInputSettings copyWith({
     int? color,
@@ -36,6 +39,7 @@ class BrushEditCanvasInputSettings {
     double? flow,
     double? hardness,
     BrushTipShape? tipShape,
+    double? spacing,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -44,6 +48,7 @@ class BrushEditCanvasInputSettings {
       flow: flow ?? this.flow,
       hardness: hardness ?? this.hardness,
       tipShape: tipShape ?? this.tipShape,
+      spacing: spacing ?? this.spacing,
     );
   }
 
@@ -56,15 +61,16 @@ class BrushEditCanvasInputSettings {
           other.opacity == opacity &&
           other.flow == flow &&
           other.hardness == hardness &&
-          other.tipShape == tipShape;
+          other.tipShape == tipShape &&
+          other.spacing == spacing;
 
   @override
   int get hashCode =>
-      Object.hash(color, size, opacity, flow, hardness, tipShape);
+      Object.hash(color, size, opacity, flow, hardness, tipShape, spacing);
 
   @override
   String toString() =>
       'BrushEditCanvasInputSettings(color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
-      'tipShape: $tipShape)';
+      'tipShape: $tipShape, spacing: $spacing)';
 }

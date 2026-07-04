@@ -167,6 +167,7 @@ class _InteractiveBrushEditCanvasViewState
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,
+        spacingRatio: widget.inputSettings.spacing,
       );
       _collectedDabs.addAll(initialDabs);
       _liveOverlayDabs.addAll(initialDabs);
@@ -220,6 +221,7 @@ class _InteractiveBrushEditCanvasViewState
               sequence: _nextSequence,
             ),
             firstSequence: _nextSequence,
+            spacingRatio: widget.inputSettings.spacing,
           )
         : const <BrushDab>[];
     final firstEndSequence = _nextSequence + segmentStartDabs.length;
@@ -230,6 +232,7 @@ class _InteractiveBrushEditCanvasViewState
       previous: endPrevious,
       nextRaw: _dabFromPosition(clippedSegment.end, sequence: firstEndSequence),
       firstSequence: firstEndSequence,
+      spacingRatio: widget.inputSettings.spacing,
     );
     final nextDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
     if (nextDabs.isEmpty) {

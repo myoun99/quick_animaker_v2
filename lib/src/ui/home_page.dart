@@ -25,6 +25,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
+import 'brush/brush_settings_panel.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_tool_state.dart';
 import 'cut/cut_list_bar.dart';
@@ -33,6 +34,7 @@ import 'storyboard_panel.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'panels/editor_panel_dock.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
@@ -1385,32 +1387,48 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFBDBDBD)),
-                ),
-                child: KeyedSubtree(
-                  key: const ValueKey<String>(
-                    'main-canvas-brush-host-container',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFBDBDBD)),
+                      ),
+                      child: KeyedSubtree(
+                        key: const ValueKey<String>(
+                          'main-canvas-brush-host-container',
+                        ),
+                        child: MainCanvasBrushHost(
+                          selection: _activeBrushEditorSelection,
+                          canvasSize: _activeCut.canvasSize,
+                          historyManager: _historyManager,
+                          viewport: _canvasViewport,
+                          onViewportChanged: (viewport) {
+                            setState(() => _canvasViewport = viewport);
+                          },
+                          selectionLabels: _canvasSelectionLabels,
+                          brushToolState: _brushToolState,
+                          onBrushToolStateChanged: (state) {
+                            setState(() => _brushToolState = state);
+                          },
+                        ),
+                      ),
+                    ),
                   ),
-                  child: MainCanvasBrushHost(
-                    selection: _activeBrushEditorSelection,
-                    canvasSize: _activeCut.canvasSize,
-                    historyManager: _historyManager,
-                    viewport: _canvasViewport,
-                    onViewportChanged: (viewport) {
-                      setState(() => _canvasViewport = viewport);
-                    },
-                    selectionLabels: _canvasSelectionLabels,
-                    brushToolState: _brushToolState,
-                    onBrushToolStateChanged: (state) {
-                      setState(() => _brushToolState = state);
-                    },
-                  ),
                 ),
-              ),
+                EditorPanelDock(
+                  children: [
+                    BrushSettingsPanel(
+                      state: _brushToolState,
+                      onChanged: (state) {
+                        setState(() => _brushToolState = state);
+                      },
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           StoryboardPanel(

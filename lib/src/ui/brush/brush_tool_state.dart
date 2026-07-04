@@ -9,21 +9,34 @@ class BrushToolState {
     double size = defaultSize,
     double opacity = defaultOpacity,
     int color = defaultColor,
+    double spacing = defaultSpacing,
   }) {
-    return BrushToolState.clamped(size: size, opacity: opacity, color: color);
+    return BrushToolState.clamped(
+      size: size,
+      opacity: opacity,
+      color: color,
+      spacing: spacing,
+    );
   }
 
   const BrushToolState._raw({
     required this.size,
     required this.opacity,
     required this.color,
+    required this.spacing,
   });
 
-  factory BrushToolState.clamped({double? size, double? opacity, int? color}) {
+  factory BrushToolState.clamped({
+    double? size,
+    double? opacity,
+    int? color,
+    double? spacing,
+  }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
       opacity: clampOpacity(opacity ?? defaultOpacity),
       color: color ?? defaultColor,
+      spacing: clampSpacing(spacing ?? defaultSpacing),
     );
   }
 
@@ -32,29 +45,41 @@ class BrushToolState {
   static const double defaultSize = 10.0;
   static const double defaultOpacity = 1.0;
   static const int defaultColor = 0xFF000000;
+  static const double minSpacing = 0.05;
+  static const double maxSpacing = 4.0;
+  static const double defaultSpacing = 0.25;
   static const BrushToolState defaults = BrushToolState._raw(
     size: defaultSize,
     opacity: defaultOpacity,
     color: defaultColor,
+    spacing: defaultSpacing,
   );
 
   final double size;
   final double opacity;
   final int color;
+  final double spacing;
 
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(
       color: color,
       size: size,
       opacity: opacity,
+      spacing: spacing,
     );
   }
 
-  BrushToolState copyWith({double? size, double? opacity, int? color}) {
+  BrushToolState copyWith({
+    double? size,
+    double? opacity,
+    int? color,
+    double? spacing,
+  }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
       opacity: opacity ?? this.opacity,
       color: color ?? this.color,
+      spacing: spacing ?? this.spacing,
     );
   }
 
@@ -72,14 +97,22 @@ class BrushToolState {
     return value.clamp(0.0, 1.0).toDouble();
   }
 
+  static double clampSpacing(double value) {
+    if (!value.isFinite) {
+      return defaultSpacing;
+    }
+    return value.clamp(minSpacing, maxSpacing).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BrushToolState &&
           other.size == size &&
           other.opacity == opacity &&
-          other.color == color;
+          other.color == color &&
+          other.spacing == spacing;
 
   @override
-  int get hashCode => Object.hash(size, opacity, color);
+  int get hashCode => Object.hash(size, opacity, color, spacing);
 }

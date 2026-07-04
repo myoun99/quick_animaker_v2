@@ -97,28 +97,21 @@ void main() {
     expect(find.text('Red'), findsNothing);
   });
 
-  testWidgets('renders production brush tool options and updates settings', (
+  testWidgets('canvas panel does not expose editable brush settings', (
     tester,
   ) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
-    var toolState = BrushToolState.defaults;
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) => BrushCanvasPanel(
-              coordinator: coordinator,
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              brushToolState: toolState,
-              onBrushToolStateChanged: (state) {
-                setState(() => toolState = state);
-              },
-            ),
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           ),
         ),
       ),
@@ -127,41 +120,16 @@ void main() {
 
     expect(
       find.byKey(const ValueKey<String>('brush-tool-options-bar')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('brush-tool-current-display')),
-      findsOneWidget,
-    );
-    expect(find.text('Brush 10px / 100%'), findsOneWidget);
-
-    await tester.drag(
       find.byKey(const ValueKey<String>('brush-tool-size-slider')),
-      const Offset(60, 0),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(toolState.size, greaterThan(10));
-
-    await tester.drag(
+    expect(
       find.byKey(const ValueKey<String>('brush-tool-opacity-slider')),
-      const Offset(-80, 0),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(toolState.opacity, lessThan(1));
-
-    final blueSwatch = find.byKey(
-      const ValueKey<String>('brush-tool-color-swatch-Blue'),
-    );
-
-    await tester.ensureVisible(blueSwatch);
-    await tester.pumpAndSettle();
-
-    await tester.tap(blueSwatch);
-    await tester.pumpAndSettle();
-
-    expect(toolState.color, 0xFF1E88E5);
-    expect(find.text('Black'), findsNothing);
-    expect(find.text('Red'), findsNothing);
   });
 
   testWidgets(

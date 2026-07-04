@@ -6,16 +6,13 @@ import '../models/canvas_point.dart';
 /// Lightweight Brush T2 dab spacing/interpolation.
 ///
 /// This keeps input sampling independent from Flutter pointer types. The spacing
-/// is intentionally simple: one quarter of brush size, clamped to at least one
-/// canvas unit. It fills fast pointer gaps without generating duplicate dabs for
-/// tiny movement below the spacing threshold.
+/// interval is based on the materialized brush size and editor-session spacing
+/// ratio, clamped to at least one canvas unit to prevent excessive dab counts.
 class BrushDabInterpolator {
-  const BrushDabInterpolator({this.spacingRatio = 0.25});
+  const BrushDabInterpolator();
 
-  final double spacingRatio;
-
-  double spacingForBrushSize(double brushSize) {
-    if (!brushSize.isFinite || brushSize <= 0) {
+  double spacingForBrushSize(double brushSize, double spacingRatio) {
+    if (!brushSize.isFinite || brushSize <= 0 || !spacingRatio.isFinite) {
       return 1.0;
     }
     return math.max(1.0, brushSize * spacingRatio);
@@ -25,12 +22,13 @@ class BrushDabInterpolator {
     required BrushDab? previous,
     required BrushDab nextRaw,
     required int firstSequence,
+    double spacingRatio = 0.25,
   }) {
     if (previous == null) {
       return [nextRaw.copyWith(sequence: firstSequence)];
     }
 
-    final spacing = spacingForBrushSize(nextRaw.size);
+    final spacing = spacingForBrushSize(nextRaw.size, spacingRatio);
     final dx = nextRaw.center.x - previous.center.x;
     final dy = nextRaw.center.y - previous.center.y;
     final distance = math.sqrt(dx * dx + dy * dy);
