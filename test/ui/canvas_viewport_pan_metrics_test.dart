@@ -1,0 +1,75 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
+import 'package:quick_animaker_v2/src/ui/brush/canvas_viewport_pan_metrics.dart';
+
+void main() {
+  group('CanvasViewportPanMetrics', () {
+    test('tiny track extent produces finite thumb values within bounds', () {
+      for (final trackExtent in <double>[0, 0.5, 1, 12, 23.9]) {
+        final metrics = CanvasViewportPanMetrics(
+          axis: Axis.horizontal,
+          viewport: CanvasViewport(zoom: 4, panX: -10),
+          editorViewportSize: const Size(100, 80),
+          canvasSize: const CanvasSize(width: 300, height: 200),
+          trackExtent: trackExtent,
+        );
+
+        expect(metrics.thumbExtent.isFinite, isTrue);
+        expect(metrics.thumbStart.isFinite, isTrue);
+        expect(metrics.thumbTravel.isFinite, isTrue);
+        expect(metrics.thumbExtent, inInclusiveRange(0, trackExtent));
+        expect(metrics.thumbStart, inInclusiveRange(0, metrics.thumbTravel));
+      }
+    });
+
+    test('no-scroll content cannot scroll and drag preserves centered fit pan', () {
+      final viewport = CanvasViewport(zoom: 0.5, panX: 25, panY: 30);
+      final metrics = CanvasViewportPanMetrics(
+        axis: Axis.horizontal,
+        viewport: viewport,
+        editorViewportSize: const Size(300, 300),
+        canvasSize: const CanvasSize(width: 100, height: 100),
+        trackExtent: 200,
+      );
+
+      expect(metrics.canScroll, isFalse);
+      expect(metrics.maxScroll, 0);
+      expect(metrics.thumbDeltaToPanDelta(100), viewport);
+      expect(metrics.panToThumb(50), viewport);
+    });
+
+    test('horizontal drag maps thumb delta to meaningful panX movement', () {
+      final metrics = CanvasViewportPanMetrics(
+        axis: Axis.horizontal,
+        viewport: CanvasViewport(zoom: 2),
+        editorViewportSize: const Size(100, 100),
+        canvasSize: const CanvasSize(width: 300, height: 300),
+        trackExtent: 100,
+      );
+
+      final next = metrics.thumbDeltaToPanDelta(20);
+
+      expect(metrics.maxScroll, 500);
+      expect(next.panX, lessThan(-100));
+      expect(next.panY, 0);
+    });
+
+    test('vertical drag maps thumb delta to meaningful panY movement', () {
+      final metrics = CanvasViewportPanMetrics(
+        axis: Axis.vertical,
+        viewport: CanvasViewport(zoom: 2),
+        editorViewportSize: const Size(100, 100),
+        canvasSize: const CanvasSize(width: 300, height: 300),
+        trackExtent: 100,
+      );
+
+      final next = metrics.thumbDeltaToPanDelta(20);
+
+      expect(metrics.maxScroll, 500);
+      expect(next.panY, lessThan(-100));
+      expect(next.panX, 0);
+    });
+  });
+}
