@@ -82,8 +82,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             width: boundedWidth,
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
-              title: 'Canvas · Cut ${activeKey.frameId.value} · '
-                  'Layer ${activeKey.layerId.value}',
+              title:
+                  'Canvas · Cut ${activeKey.cutId.value} · '
+                  'Layer ${activeKey.layerId.value} · '
+                  'Frame ${activeKey.frameId.value}',
               bottomBar: _CanvasViewportToolbar(
                 viewport: _viewport,
                 onZoomIn: () => _zoomAroundCenter(1.25),
@@ -241,14 +243,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  key: const ValueKey<String>('canvas-editor-panel-right-strip'),
+                  key: const ValueKey<String>(
+                    'canvas-editor-panel-right-strip',
+                  ),
                   width: rightStripWidth,
                   alignment: Alignment.center,
                   color: colorScheme.surfaceContainerHighest,
-                  child: const RotatedBox(
-                    quarterTurns: 1,
-                    child: Text('Pan'),
-                  ),
+                  child: const RotatedBox(quarterTurns: 1, child: Text('Pan')),
                 ),
               ],
             ),

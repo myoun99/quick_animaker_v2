@@ -88,67 +88,68 @@ void main() {
     expect(find.text('Red'), findsNothing);
   });
 
-  testWidgets('renders compact canvas editor panel shell and viewport controls', (
-    tester,
-  ) async {
-    final frameKeys = BrushCanvasFixture.createFrameKeys();
-    final coordinator = BrushCanvasFixture.createCoordinator(
-      frameKeys: frameKeys,
-    );
+  testWidgets(
+    'renders compact canvas editor panel shell and viewport controls',
+    (tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-shell')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-title-bar')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-right-strip')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-bottom-bar')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.byKey(const ValueKey<String>('canvas-editor-panel-shell')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-editor-panel-title-bar')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-editor-panel-right-strip')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-editor-panel-bottom-bar')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();

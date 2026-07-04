@@ -526,7 +526,9 @@ void main() {
         ),
       );
 
-      final origin = tester.getTopLeft(find.byType(InteractiveBrushEditCanvasView));
+      final origin = tester.getTopLeft(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
       final gesture = await tester.startGesture(
         origin + const Offset(1, 1),
         pointer: 1,
