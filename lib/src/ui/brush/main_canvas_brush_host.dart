@@ -10,6 +10,7 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/history_manager.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
+import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 
@@ -29,6 +30,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewport,
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
+    this.brushToolState = const BrushToolState(),
+    this.onBrushToolStateChanged,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -39,6 +42,8 @@ class MainCanvasBrushHost extends StatefulWidget {
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
+  final BrushToolState brushToolState;
+  final ValueChanged<BrushToolState>? onBrushToolStateChanged;
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -89,6 +94,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
       selectionLabels: widget.selectionLabels,
+      brushToolState: widget.brushToolState,
+      onBrushToolStateChanged: widget.onBrushToolStateChanged ?? (_) {},
     );
   }
 

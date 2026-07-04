@@ -191,3 +191,9 @@ Latest canvas baseline:
 - Panbar drag uses normal scrollbar mapping: thumb delta over thumb travel maps to scroll delta over max scroll, while viewport pan is the negative scroll value. Horizontal drag updates `panX`; vertical drag updates `panY`.
 - Panbar drags update the local `BrushCanvasPanel` live viewport during movement and synchronize the parent editor-session viewport once when the drag ends or is canceled. Zoom, fit, reset, and direct canvas viewport changes still synchronize immediately.
 - When there is no scroll range, panbar drag is ignored so fit-centered positive pan values are preserved and the canvas does not snap to the top-left. `CanvasViewport` remains editor-session UI state only and is not stored in source, project, playback/cache, save/load, or camera data.
+
+## 5. Phase 302 brush tool controls
+
+Phase 302 adds a compact production brush options strip to the canvas editor panel. The strip displays and edits brush size, opacity, and color through editor-session `BrushToolState` owned by `HomePage` and passed down to the brush host/panel.
+
+This state remains separate from source data and save/load schema. New strokes use the current settings when sampled; existing committed strokes retain their materialized dab values. The same boundary is intended to support later brush presets, eraser, pressure, picker, and shortcut work without broad state management.

@@ -132,3 +132,9 @@ The canvas panel shell has an explicit small-height layout contract: the title b
 Canvas viewport panbars use `CanvasViewportPanMetrics` for pure, testable scrollbar math. Metrics are based on the painted panbar track extent on the active axis, not the cross-axis size. Thumb extent, thumb travel, and thumb start are always finite and constrained to the track. When content has no scroll range, `canScroll` is false and panbar drag is a no-op so a centered fit pan is preserved instead of snapping to the top-left.
 
 Panbar drag maps like a normal scrollbar: `thumbDelta / thumbTravel = scrollDelta / maxScroll`, and canvas pan is the negative of scroll. Horizontal panbar movement controls `panX`; vertical panbar movement controls `panY`. During panbar drag, `BrushCanvasPanel` updates its local live viewport for responsive repainting and synchronizes the parent editor-session viewport once at drag end or cancel. Non-drag viewport actions such as zoom, fit, reset, and direct canvas panning still synchronize immediately.
+
+## Phase 302 editor brush tool state
+
+The main editor now treats brush size, opacity, and color as editor-session UI/tool state. `HomePage` owns the current brush settings and passes them by constructor/callback through `MainCanvasBrushHost` and `BrushCanvasPanel`; no Provider, Riverpod, ChangeNotifier, Bloc, or app-wide state layer is involved.
+
+Brush tool settings are kept out of Project, Cut, Layer, Frame, Stroke, cache, playback, camera, and save/load formats. Selection changes for cut/layer/frame retarget the brush host while preserving the current editor-session brush settings, and viewport pan/zoom remains a separate `CanvasViewport` state.

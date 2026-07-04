@@ -347,3 +347,13 @@ Brush T2 starts from the simplified source model and global undo decisions captu
 - `Frame` remains lightweight and does not directly own brush drawing data.
 - Realtime drawing uses `activeStrokeOverlay` and visible source commands, not live bitmap baking.
 - Bitmap baking and cache image generation are future work and must stay outside the live editing hot path.
+
+## Phase 302 brush tool state and options UI
+
+Brush size, opacity, and color are editor-session tool settings owned by the UI/editor session, not source data. `HomePage` owns the current `BrushToolState` and passes it through `MainCanvasBrushHost` into `BrushCanvasPanel`, where the state is converted to `BrushEditCanvasInputSettings` for `InteractiveBrushEditCanvasView` when new dabs are sampled.
+
+The compact production brush options bar lives in the canvas editor panel directly below the canvas title/status row. It exposes size, opacity, color swatches, and a concise current-setting display while keeping viewport, panbar, boundary clipping, and undo/redo responsibilities in their existing canvas/editor components.
+
+Committed source dabs continue to carry the materialized brush values needed to render the stroke that was drawn. Changing the editor brush tool state only affects future strokes and does not rewrite existing strokes. The state is intentionally not serialized in Project, Cut, Layer, Frame, Stroke, cache, playback, camera, or save/load data.
+
+Future brush work can expand this editor-session boundary with presets, eraser mode, pressure controls, color picker, and shortcuts without moving transient tool options into source models or adopting broad app-wide state management.
