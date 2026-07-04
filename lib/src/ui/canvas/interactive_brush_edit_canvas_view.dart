@@ -10,6 +10,7 @@ import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/canvas_segment_clipper.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 
@@ -24,6 +25,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.dabInterpolator = const BrushDabInterpolator(),
+    this.segmentClipper = const CanvasSegmentClipper(),
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     CanvasViewport? viewport,
@@ -39,6 +41,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final List<List<BrushDab>> committedSourceDabStrokes;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
+  final CanvasSegmentClipper segmentClipper;
   final ValueChanged<bool>? onActiveStrokeChanged;
   final CanvasViewport viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
@@ -58,6 +61,7 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
+  CanvasPoint? _previousRawCanvasPosition;
 
   @override
   Widget build(BuildContext context) {
@@ -152,6 +156,7 @@ class _InteractiveBrushEditCanvasViewState
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
+    _previousRawCanvasPosition = canvasPosition;
     setState(() {
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
@@ -180,19 +185,45 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
-    if (!_isInsideSurface(canvasPosition)) {
+    final previousRaw = _previousRawCanvasPosition;
+    _previousRawCanvasPosition = canvasPosition;
+    if (previousRaw == null) {
+      return;
+    }
+
+    final canvasSize = widget.sessionState.canvasState.currentSurface.canvasSize;
+    final clippedSegment = widget.segmentClipper.clip(
+      previous: previousRaw,
+      current: canvasPosition,
+      canvasSize: canvasSize,
+    );
+    if (clippedSegment == null) {
       _breakCurrentVisibleSegment = true;
       return;
     }
 
-    final previousDab = _breakCurrentVisibleSegment || _collectedDabs.isEmpty
+    final previousDab = _breakCurrentVisibleSegment ||
+            clippedSegment.startsNewVisibleSegment ||
+            _collectedDabs.isEmpty
         ? null
         : _collectedDabs.last;
-    final nextDabs = widget.dabInterpolator.interpolate(
-      previous: previousDab,
-      nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
-      firstSequence: _nextSequence,
+    final segmentStartDabs = clippedSegment.startsNewVisibleSegment ||
+            _breakCurrentVisibleSegment ||
+            _collectedDabs.isEmpty
+        ? widget.dabInterpolator.interpolate(
+            previous: null,
+            nextRaw: _dabFromPosition(clippedSegment.start, sequence: _nextSequence),
+            firstSequence: _nextSequence,
+          )
+        : const <BrushDab>[];
+    final firstEndSequence = _nextSequence + segmentStartDabs.length;
+    final endPrevious = segmentStartDabs.isNotEmpty ? segmentStartDabs.last : previousDab;
+    final segmentEndDabs = widget.dabInterpolator.interpolate(
+      previous: endPrevious,
+      nextRaw: _dabFromPosition(clippedSegment.end, sequence: firstEndSequence),
+      firstSequence: firstEndSequence,
     );
+    final nextDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
     if (nextDabs.isEmpty) {
       return;
     }
@@ -340,6 +371,7 @@ class _InteractiveBrushEditCanvasViewState
       _activeDrawingPointer = null;
       _nextSequence = 0;
       _breakCurrentVisibleSegment = false;
+      _previousRawCanvasPosition = null;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
     });

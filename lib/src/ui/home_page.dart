@@ -3,26 +3,28 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../controllers/default_cut_helpers.dart';
+import '../controllers/default_project_helpers.dart';
+import '../controllers/default_layer_helpers.dart';
 import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/canvas_viewport.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
-import '../models/project_id.dart';
-import '../models/track.dart';
 import '../models/track_id.dart';
 import '../services/clipboard/layer_copy_payload.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
+import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'cut/cut_list_bar.dart';
@@ -43,8 +45,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const CutId _sampleCutId = CutId('sample-cut');
-  static const FrameId _frameId = FrameId('sample-frame');
+  static const FrameId _frameId = FrameId('default-frame');
 
   late final EditingSessionState _editingSession;
 
@@ -61,11 +62,12 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _topToolbarScrollController = ScrollController();
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
+  CanvasViewport _canvasViewport = CanvasViewport();
 
   @override
   void initState() {
     super.initState();
-    final project = widget.initialProject ?? _createSampleProject();
+    final project = widget.initialProject ?? createDefaultProject();
     _editingSession = EditingSessionState.forProject(project);
 
     _repository = ProjectRepository(initialProject: project);
@@ -1396,6 +1398,11 @@ class _HomePageState extends State<HomePage> {
                     selection: _activeBrushEditorSelection,
                     canvasSize: _activeCut.canvasSize,
                     historyManager: _historyManager,
+                    viewport: _canvasViewport,
+                    onViewportChanged: (viewport) {
+                      setState(() => _canvasViewport = viewport);
+                    },
+                    selectionLabels: _canvasSelectionLabels,
                   ),
                 ),
               ),
@@ -1425,7 +1432,7 @@ class _HomePageState extends State<HomePage> {
               setState(() {
                 _layerSequence += 1;
                 _layerController.addLayerWithDefaults(
-                  layerId: LayerId('sample-layer-$_layerSequence'),
+                  layerId: defaultLayerIdForSequence(_layerSequence),
                 );
               });
             },
@@ -1459,26 +1466,42 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Project _createSampleProject() {
-    return Project(
-      id: const ProjectId('sample-project'),
-      name: 'Sample Project',
-      createdAt: DateTime.utc(2026),
-      tracks: [
-        Track(
-          id: const TrackId('sample-track'),
-          name: 'Video Track',
-          cuts: [
-            createDefaultCut(
-              cutId: _sampleCutId,
-              name: 'Cut 1',
-              layerId: const LayerId('sample-layer-1'),
-            ),
-          ],
-        ),
-      ],
+  CanvasEditorSelectionLabels get _canvasSelectionLabels {
+    final project = _repository.requireProject();
+    final cut = _activeCut;
+    final layer = _layerController.activeLayer;
+    final frame = _selectedFrame;
+    return CanvasEditorSelectionLabels(
+      projectLabel: project.name,
+      cutLabel: cut.name,
+      layerLabel: layer?.name ?? '-',
+      frameLabel: _currentFrameDisplayLabel(layer, frame),
     );
   }
+
+  String _currentFrameDisplayLabel(Layer? layer, Frame? frame) {
+    if (layer == null) {
+      return '-';
+    }
+    final frameIndex = _timelineController.currentFrameIndex;
+    final frameName = frame?.name;
+    final exposureState = _exposureStateForLayer(layer, frameIndex);
+    final hasMark = _hasMarkForLayer(layer, frameIndex);
+    final baseLabel = switch (exposureState) {
+      TimelineCellExposureState.drawingStart =>
+        frameName == null || frameName.isEmpty ? '○' : frameName,
+      TimelineCellExposureState.heldExposure =>
+        frameName == null || frameName.isEmpty ? '' : frameName,
+      TimelineCellExposureState.blankStart => 'X',
+      TimelineCellExposureState.blankHeld => '',
+      TimelineCellExposureState.empty => '-',
+    };
+    if (!hasMark) {
+      return baseLabel;
+    }
+    return baseLabel.isEmpty ? '●' : '$baseLabel ●';
+  }
+
 }
 
 class _DeleteLayerDialog extends StatelessWidget {

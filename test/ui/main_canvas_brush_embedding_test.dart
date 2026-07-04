@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -11,8 +14,10 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -68,7 +73,7 @@ void main() {
       expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
-        find.byKey(const ValueKey<String>('brush-canvas-sample-frame')),
+        find.byKey(const ValueKey<String>('brush-canvas-default-frame')),
         findsNothing,
       );
       expect(
@@ -110,6 +115,276 @@ void main() {
     },
   );
 
+
+
+  testWidgets('runtime-created production layers do not use sample ids', (
+    tester,
+  ) async {
+    ProjectRepository? repository;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(onRepositoryCreated: (created) => repository = created),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addLayerButton = find.byKey(
+      const ValueKey<String>('timeline-toolbar-add-layer-button'),
+    );
+    await tester.ensureVisible(addLayerButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addLayerButton);
+    await tester.pumpAndSettle();
+
+    final project = repository!.requireProject();
+    final layerIds = project.tracks
+        .expand((track) => track.cuts)
+        .expand((cut) => cut.layers)
+        .map((layer) => layer.id.value);
+    expect(layerIds, isNot(contains(startsWith('sample-'))));
+    expect(layerIds, contains('default-layer-2'));
+  });
+
+  testWidgets('canvas title uses source labels and timeline frame display label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Project: Editor Project · Cut: Editor Cut · Layer: Editor Layer · Frame: Source Frame',
+      ),
+      findsOneWidget,
+    );
+  });
+
+
+
+  testWidgets('marked named frame title keeps frame name and appends mark', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame(name: 'Named Material'))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material ●',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('marked unnamed drawing title keeps unnamed display label and appends mark', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○ ●',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('horizontal and vertical panbars update viewport pan', (tester) async {
+    var viewport = CanvasViewport(zoom: 2);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Column(
+            children: [
+              CanvasViewportHorizontalScrollbar(
+                viewport: viewport,
+                editorViewportSize: const Size(100, 100),
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
+              SizedBox(
+                height: 100,
+                child: CanvasViewportVerticalScrollbar(
+                  viewport: viewport,
+                  editorViewportSize: const Size(100, 100),
+                  canvasSize: const CanvasSize(width: 300, height: 300),
+                  onViewportChanged: (next) => setState(() => viewport = next),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      const Offset(20, 0),
+    );
+    await tester.pump();
+    expect(viewport.panX, isNot(0));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
+      const Offset(0, 20),
+    );
+    await tester.pump();
+    expect(viewport.panY, isNot(0));
+  });
+
+
+
+  testWidgets('panbar drag clamps viewport pan to valid range', (tester) async {
+    var viewport = CanvasViewport(zoom: 2);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Column(
+            children: [
+              CanvasViewportHorizontalScrollbar(
+                viewport: viewport,
+                editorViewportSize: const Size(100, 100),
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
+              SizedBox(
+                height: 100,
+                child: CanvasViewportVerticalScrollbar(
+                  viewport: viewport,
+                  editorViewportSize: const Size(100, 100),
+                  canvasSize: const CanvasSize(width: 300, height: 300),
+                  onViewportChanged: (next) => setState(() => viewport = next),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      const Offset(1000, 0),
+    );
+    await tester.pump();
+    expect(viewport.panX, -500);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      const Offset(-1000, 0),
+    );
+    await tester.pump();
+    expect(viewport.panX, 0);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
+      const Offset(0, 1000),
+    );
+    await tester.pump();
+    expect(viewport.panY, -500);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
+      const Offset(0, -1000),
+    );
+    await tester.pump();
+    expect(viewport.panY, 0);
+  });
+
+  testWidgets('viewport survives frame layer and cut selection changes', (
+    tester,
+  ) async {
+    var activeKey = const BrushFrameKey(
+      projectId: ProjectId('project'),
+      trackId: TrackId('track'),
+      cutId: CutId('cut-a'),
+      layerId: LayerId('layer-a'),
+      frameId: FrameId('frame-a'),
+    );
+    final viewport = CanvasViewport(zoom: 2, panX: -25, panY: -30);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Column(
+            children: [
+              TextButton(
+                onPressed: () => setState(
+                  () => activeKey = const BrushFrameKey(
+                    projectId: ProjectId('project'),
+                    trackId: TrackId('track'),
+                    cutId: CutId('cut-b'),
+                    layerId: LayerId('layer-b'),
+                    frameId: FrameId('frame-b'),
+                  ),
+                ),
+                child: const Text('Switch selection'),
+              ),
+              Expanded(
+                child: MainCanvasBrushHost(
+                  activeFrameKey: activeKey,
+                  availableFrameKeys: const [
+                    BrushFrameKey(
+                      projectId: ProjectId('project'),
+                      trackId: TrackId('track'),
+                      cutId: CutId('cut-a'),
+                      layerId: LayerId('layer-a'),
+                      frameId: FrameId('frame-a'),
+                    ),
+                    BrushFrameKey(
+                      projectId: ProjectId('project'),
+                      trackId: TrackId('track'),
+                      cutId: CutId('cut-b'),
+                      layerId: LayerId('layer-b'),
+                      frameId: FrameId('frame-b'),
+                    ),
+                  ],
+                  viewport: viewport,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .viewport,
+      viewport,
+    );
+    await tester.tap(find.text('Switch selection'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .viewport,
+      viewport,
+    );
+  });
+
   testWidgets('separate Brush Workspace route entry is retired', (
     tester,
   ) async {
@@ -121,6 +396,47 @@ void main() {
     );
     expect(find.text('Brush Workspace'), findsNothing);
   });
+}
+
+
+Project _projectWithMarkedFrame({String? name}) {
+  return Project(
+    id: const ProjectId('marked-project'),
+    name: 'Marked Project',
+    createdAt: DateTime.utc(2026),
+    tracks: [
+      Track(
+        id: const TrackId('marked-track'),
+        name: 'Track 1',
+        cuts: [
+          Cut(
+            id: const CutId('marked-cut'),
+            name: 'Marked Cut',
+            duration: defaultCutDuration,
+            canvasSize: defaultCutCanvasSize,
+            layers: [
+              Layer(
+                id: const LayerId('marked-layer'),
+                name: 'Marked Layer',
+                frames: [
+                  Frame(
+                    id: const FrameId('marked-frame'),
+                    name: name,
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(const FrameId('marked-frame')),
+                },
+                marks: const {0: TimelineMark.inbetween()},
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 Project _projectWithActiveFrame() {
@@ -145,6 +461,7 @@ Project _projectWithActiveFrame() {
                 frames: [
                   Frame(
                     id: const FrameId('editor-frame-1'),
+                    name: 'Source Frame',
                     duration: 1,
                     strokes: const [],
                   ),

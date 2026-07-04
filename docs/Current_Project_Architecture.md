@@ -114,3 +114,11 @@ Same frame name means same drawing material inside the relevant layer. A non-emp
 Linked frames share drawing material/source identity through the same `FrameId`, drawing strokes/material, and frame name. Linked material identity must stay separate from authored timeline placement.
 
 Future linked drawing-material work may introduce a dedicated drawing/material/source id. Do not add that shortcut before brush/canvas storage ownership, save/load source-payload boundaries, and linked Cut/Layer policy are explicitly designed.
+
+## Phase 228 canvas viewport and startup policy
+
+Canvas brush input clips each raw pointer segment against the active `Cut.canvasSize` before generating visible source dabs. This lets fast inside/outside boundary crossings draw to the edge, start at the edge on re-entry, and avoid connecting outside gaps.
+
+`CanvasViewport` remains editor-session UI state. The production brush route can keep the same viewport across frame, layer, and cut selection changes, while local canvas viewport panbars update only pan/zoom UI state and never mutate project, cut, frame, source dabs, playback, cache, save/load, or camera data. The vertical panbar belongs in the canvas editor shell right strip, and the horizontal panbar belongs in the bottom bar rather than overlaying the drawing canvas.
+
+Production startup uses the default project/track/cut/layer helper flow instead of sample-only project data. The default cut canvas size remains sourced from the default cut helper.

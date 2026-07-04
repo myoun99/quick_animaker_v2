@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
+import '../../models/canvas_viewport.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -25,6 +26,9 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.historyManager,
+    this.viewport,
+    this.onViewportChanged,
+    this.selectionLabels = const CanvasEditorSelectionLabels(),
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -32,6 +36,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   final List<BrushFrameKey>? availableFrameKeys;
   final CanvasSize canvasSize;
   final HistoryManager? historyManager;
+  final CanvasViewport? viewport;
+  final ValueChanged<CanvasViewport>? onViewportChanged;
+  final CanvasEditorSelectionLabels selectionLabels;
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -79,6 +86,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
       historyManager: widget.historyManager,
+      viewport: widget.viewport,
+      onViewportChanged: widget.onViewportChanged,
+      selectionLabels: widget.selectionLabels,
     );
   }
 

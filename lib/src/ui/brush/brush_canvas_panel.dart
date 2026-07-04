@@ -27,6 +27,9 @@ class BrushCanvasPanel extends StatefulWidget {
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.initialInputSettings = const BrushEditCanvasInputSettings(size: 10),
     this.historyManager,
+    this.viewport,
+    this.onViewportChanged,
+    this.selectionLabels = const CanvasEditorSelectionLabels(),
   });
 
   final BrushFrameEditingCoordinator coordinator;
@@ -35,6 +38,9 @@ class BrushCanvasPanel extends StatefulWidget {
   final CanvasSize canvasSize;
   final BrushEditCanvasInputSettings initialInputSettings;
   final HistoryManager? historyManager;
+  final CanvasViewport? viewport;
+  final ValueChanged<CanvasViewport>? onViewportChanged;
+  final CanvasEditorSelectionLabels selectionLabels;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -42,11 +48,14 @@ class BrushCanvasPanel extends StatefulWidget {
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   late final _inputSettings = widget.initialInputSettings;
-  CanvasViewport _viewport = CanvasViewport();
+  late CanvasViewport _viewport = widget.viewport ?? CanvasViewport();
   Size? _editorViewportSize;
 
   @override
   Widget build(BuildContext context) {
+    if (widget.viewport != null && widget.viewport != _viewport) {
+      _viewport = widget.viewport!;
+    }
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
     final frameStore = widget.coordinator.frameStore;
@@ -76,18 +85,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
               ? constraints.maxHeight
               : fallbackSize.height +
                     _CanvasEditorPanelShell.topBarHeight +
-                    _CanvasViewportToolbar.height;
+                    _CanvasViewportBottomBar.height;
 
           return SizedBox(
             width: boundedWidth,
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
-              title:
-                  'Canvas · Cut ${activeKey.cutId.value} · '
-                  'Layer ${activeKey.layerId.value} · '
-                  'Frame ${activeKey.frameId.value}',
-              bottomBar: _CanvasViewportToolbar(
+              title: widget.selectionLabels.title,
+              rightStripBar: CanvasViewportVerticalScrollbar(
                 viewport: _viewport,
+                editorViewportSize: _resolvedEditorViewportSize(),
+                canvasSize: widget.canvasSize,
+                onViewportChanged: _setViewport,
+              ),
+              bottomBar: _CanvasViewportBottomBar(
+                viewport: _viewport,
+                editorViewportSize: _resolvedEditorViewportSize(),
+                canvasSize: widget.canvasSize,
+                onViewportChanged: _setViewport,
                 onZoomIn: () => _zoomAroundCenter(1.25),
                 onZoomOut: () => _zoomAroundCenter(0.8),
                 onFit: _fitToView,
@@ -114,9 +129,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       committedSourceDabs: committedSourceDabs,
                       committedSourceDabStrokes: committedSourceDabStrokes,
                       viewport: _viewport,
-                      onViewportChanged: (viewport) {
-                        setState(() => _viewport = viewport);
-                      },
+                      onViewportChanged: _setViewport,
                       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
                     ),
                   );
@@ -133,7 +146,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     if (size.width <= 0 || size.height <= 0) {
       return;
     }
+    if (_editorViewportSize == size) {
+      return;
+    }
     _editorViewportSize = size;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  void _setViewport(CanvasViewport viewport) {
+    setState(() => _viewport = viewport.clamped());
+    widget.onViewportChanged?.call(_viewport);
   }
 
   void _zoomAroundCenter(double factor) {
@@ -148,6 +174,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
         anchor: anchor,
       );
     });
+    widget.onViewportChanged?.call(_viewport);
   }
 
   void _fitToView() {
@@ -161,6 +188,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
         viewportHeight: viewportSize.height,
       );
     });
+    widget.onViewportChanged?.call(_viewport);
   }
 
   Size _resolvedEditorViewportSize() {
@@ -172,7 +200,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   void _resetView() {
-    setState(() => _viewport = CanvasViewport());
+    _setViewport(CanvasViewport());
   }
 
   void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
@@ -201,11 +229,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.title,
     required this.child,
     required this.bottomBar,
+    required this.rightStripBar,
   });
 
   final String title;
   final Widget child;
   final Widget bottomBar;
+  final Widget rightStripBar;
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +279,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                   width: rightStripWidth,
                   alignment: Alignment.center,
                   color: colorScheme.surfaceContainerHighest,
-                  child: const RotatedBox(quarterTurns: 1, child: Text('Pan')),
+                  child: rightStripBar,
                 ),
               ],
             ),
@@ -263,6 +293,55 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               ),
             ),
             child: bottomBar,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _CanvasViewportBottomBar extends StatelessWidget {
+  static const double height = _CanvasViewportToolbar.height + 14;
+
+  const _CanvasViewportBottomBar({
+    required this.viewport,
+    required this.editorViewportSize,
+    required this.canvasSize,
+    required this.onViewportChanged,
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onFit,
+    required this.onReset,
+  });
+
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final ValueChanged<CanvasViewport> onViewportChanged;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onFit;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: Column(
+        children: [
+          _CanvasViewportToolbar(
+            viewport: viewport,
+            onZoomIn: onZoomIn,
+            onZoomOut: onZoomOut,
+            onFit: onFit,
+            onReset: onReset,
+          ),
+          CanvasViewportHorizontalScrollbar(
+            viewport: viewport,
+            editorViewportSize: editorViewportSize,
+            canvasSize: canvasSize,
+            onViewportChanged: onViewportChanged,
           ),
         ],
       ),
@@ -331,4 +410,162 @@ class _CanvasViewportToolbar extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class CanvasEditorSelectionLabels {
+  const CanvasEditorSelectionLabels({
+    this.projectLabel = '-',
+    this.cutLabel = '-',
+    this.layerLabel = '-',
+    this.frameLabel = '-',
+  });
+
+  final String projectLabel;
+  final String cutLabel;
+  final String layerLabel;
+  final String frameLabel;
+
+  String get title =>
+      'Project: $projectLabel · Cut: $cutLabel · Layer: $layerLabel · Frame: $frameLabel';
+}
+
+class CanvasViewportHorizontalScrollbar extends StatelessWidget {
+  const CanvasViewportHorizontalScrollbar({super.key, required this.viewport, required this.editorViewportSize, required this.canvasSize, required this.onViewportChanged});
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final ValueChanged<CanvasViewport> onViewportChanged;
+  @override
+  Widget build(BuildContext context) => _CanvasViewportPanbar(axis: Axis.horizontal, viewport: viewport, editorViewportSize: editorViewportSize, canvasSize: canvasSize, onViewportChanged: onViewportChanged);
+}
+
+class CanvasViewportVerticalScrollbar extends StatelessWidget {
+  const CanvasViewportVerticalScrollbar({super.key, required this.viewport, required this.editorViewportSize, required this.canvasSize, required this.onViewportChanged});
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final ValueChanged<CanvasViewport> onViewportChanged;
+  @override
+  Widget build(BuildContext context) => _CanvasViewportPanbar(axis: Axis.vertical, viewport: viewport, editorViewportSize: editorViewportSize, canvasSize: canvasSize, onViewportChanged: onViewportChanged);
+}
+
+class _CanvasViewportPanbar extends StatelessWidget {
+  const _CanvasViewportPanbar({required this.axis, required this.viewport, required this.editorViewportSize, required this.canvasSize, required this.onViewportChanged});
+  final Axis axis;
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final ValueChanged<CanvasViewport> onViewportChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isHorizontal = axis == Axis.horizontal;
+    return GestureDetector(
+      key: ValueKey<String>(isHorizontal ? 'canvas-viewport-horizontal-scrollbar' : 'canvas-viewport-vertical-scrollbar'),
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: isHorizontal ? (details) => _drag(details.delta.dx) : null,
+      onVerticalDragUpdate: isHorizontal ? null : (details) => _drag(details.delta.dy),
+      child: SizedBox(
+        height: isHorizontal ? 14 : double.infinity,
+        width: isHorizontal ? double.infinity : 14,
+        child: CustomPaint(
+          painter: _CanvasViewportPanbarPainter(axis: axis, viewport: viewport, editorViewportSize: editorViewportSize, canvasSize: canvasSize, color: Theme.of(context).colorScheme.primary),
+        ),
+      ),
+    );
+  }
+
+  void _drag(double delta) {
+    final metrics = _CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
+    final panDelta = -(delta / metrics.thumbTravel) * metrics.maxScroll;
+    final nextViewport = axis == Axis.horizontal
+        ? viewport.copyWith(panX: viewport.panX + panDelta)
+        : viewport.copyWith(panY: viewport.panY + panDelta);
+    onViewportChanged(
+      clampCanvasViewportPan(
+        viewport: nextViewport,
+        editorViewportSize: editorViewportSize,
+        canvasSize: canvasSize,
+      ),
+    );
+  }
+}
+
+CanvasViewport clampCanvasViewportPan({
+  required CanvasViewport viewport,
+  required Size editorViewportSize,
+  required CanvasSize canvasSize,
+}) {
+  final horizontalMaxScroll = (canvasSize.width * viewport.zoom - editorViewportSize.width)
+      .clamp(0.0, double.infinity);
+  final verticalMaxScroll = (canvasSize.height * viewport.zoom - editorViewportSize.height)
+      .clamp(0.0, double.infinity);
+  return viewport.copyWith(
+    panX: viewport.panX.clamp(-horizontalMaxScroll, 0.0).toDouble(),
+    panY: viewport.panY.clamp(-verticalMaxScroll, 0.0).toDouble(),
+  );
+}
+
+class _CanvasViewportPanMetrics {
+  const _CanvasViewportPanMetrics({
+    required this.axis,
+    required this.viewport,
+    required this.editorViewportSize,
+    required this.canvasSize,
+  });
+
+  final Axis axis;
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+
+  double get scaledExtent =>
+      (axis == Axis.horizontal ? canvasSize.width : canvasSize.height) * viewport.zoom;
+  double get viewportExtent =>
+      axis == Axis.horizontal ? editorViewportSize.width : editorViewportSize.height;
+  double get trackExtent => viewportExtent.clamp(1.0, double.infinity).toDouble();
+  double get maxScroll => (scaledExtent - viewportExtent).clamp(0.0, double.infinity).toDouble();
+  double get thumbExtent => maxScroll == 0
+      ? trackExtent
+      : (viewportExtent / scaledExtent * trackExtent).clamp(24.0, trackExtent).toDouble();
+  double get thumbTravel => (trackExtent - thumbExtent).clamp(1.0, double.infinity).toDouble();
+}
+
+class _CanvasViewportPanbarPainter extends CustomPainter {
+  const _CanvasViewportPanbarPainter({required this.axis, required this.viewport, required this.editorViewportSize, required this.canvasSize, required this.color});
+  final Axis axis;
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final isHorizontal = axis == Axis.horizontal;
+    final trackExtent = isHorizontal ? size.width : size.height;
+    final metrics = _CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
+    final pan = isHorizontal ? viewport.panX : viewport.panY;
+    final scroll = (-pan).clamp(0.0, metrics.maxScroll);
+    final thumbStart = metrics.maxScroll == 0
+        ? 0.0
+        : scroll / metrics.maxScroll * (trackExtent - metrics.thumbExtent).clamp(0.0, double.infinity);
+    final trackPaint = Paint()..color = color.withOpacity(0.16);
+    final thumbPaint = Paint()..color = color.withOpacity(0.72);
+    final track = Offset.zero & size;
+    canvas.drawRRect(RRect.fromRectAndRadius(track, const Radius.circular(7)), trackPaint);
+    final thumb = isHorizontal ? Rect.fromLTWH(thumbStart, 0, metrics.thumbExtent, size.height) : Rect.fromLTWH(0, thumbStart, size.width, metrics.thumbExtent);
+    canvas.drawRRect(RRect.fromRectAndRadius(thumb, const Radius.circular(7)), thumbPaint);
+  }
+  @override
+  bool shouldRepaint(covariant _CanvasViewportPanbarPainter oldDelegate) => oldDelegate.viewport != viewport || oldDelegate.editorViewportSize != editorViewportSize || oldDelegate.canvasSize != canvasSize || oldDelegate.color != color;
 }
