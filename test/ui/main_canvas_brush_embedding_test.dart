@@ -19,6 +19,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
+import 'package:quick_animaker_v2/src/ui/brush/canvas_viewport_pan_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
@@ -254,6 +255,112 @@ void main() {
     );
     await tester.pump();
     expect(viewport.panY, isNot(0));
+  });
+
+  testWidgets('horizontal panbar thumb follows pointer delta 1:1', (
+    tester,
+  ) async {
+    var viewport = CanvasViewport(zoom: 2);
+    const trackWidth = 300.0;
+    const editorViewportSize = Size(100, 100);
+    const canvasSize = CanvasSize(width: 500, height: 500);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => SizedBox(
+            width: trackWidth,
+            child: CanvasViewportHorizontalScrollbar(
+              viewport: viewport,
+              editorViewportSize: editorViewportSize,
+              canvasSize: canvasSize,
+              onViewportChanged: (next) => setState(() => viewport = next),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final initialMetrics = CanvasViewportPanMetrics(
+      axis: Axis.horizontal,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+      trackExtent: trackWidth,
+    );
+
+    await tester.drag(
+      find.byKey(
+        const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+      ),
+      const Offset(100, 0),
+    );
+    await tester.pump();
+
+    final finalMetrics = CanvasViewportPanMetrics(
+      axis: Axis.horizontal,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+      trackExtent: trackWidth,
+    );
+
+    expect(
+      finalMetrics.thumbStart - initialMetrics.thumbStart,
+      closeTo(100, 0.001),
+    );
+  });
+
+  testWidgets('vertical panbar thumb follows pointer delta 1:1', (
+    tester,
+  ) async {
+    var viewport = CanvasViewport(zoom: 2);
+    const trackHeight = 300.0;
+    const editorViewportSize = Size(100, 100);
+    const canvasSize = CanvasSize(width: 500, height: 500);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => SizedBox(
+            height: trackHeight,
+            child: CanvasViewportVerticalScrollbar(
+              viewport: viewport,
+              editorViewportSize: editorViewportSize,
+              canvasSize: canvasSize,
+              onViewportChanged: (next) => setState(() => viewport = next),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final initialMetrics = CanvasViewportPanMetrics(
+      axis: Axis.vertical,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+      trackExtent: trackHeight,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
+      const Offset(0, 100),
+    );
+    await tester.pump();
+
+    final finalMetrics = CanvasViewportPanMetrics(
+      axis: Axis.vertical,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+      trackExtent: trackHeight,
+    );
+
+    expect(
+      finalMetrics.thumbStart - initialMetrics.thumbStart,
+      closeTo(100, 0.001),
+    );
   });
 
   testWidgets('panbar drag clamps viewport pan to valid range', (tester) async {
