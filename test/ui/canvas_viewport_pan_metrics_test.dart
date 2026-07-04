@@ -24,21 +24,24 @@ void main() {
       }
     });
 
-    test('no-scroll content cannot scroll and drag preserves centered fit pan', () {
-      final viewport = CanvasViewport(zoom: 0.5, panX: 25, panY: 30);
-      final metrics = CanvasViewportPanMetrics(
-        axis: Axis.horizontal,
-        viewport: viewport,
-        editorViewportSize: const Size(300, 300),
-        canvasSize: const CanvasSize(width: 100, height: 100),
-        trackExtent: 200,
-      );
+    test(
+      'no-scroll content cannot scroll and drag preserves centered fit pan',
+      () {
+        final viewport = CanvasViewport(zoom: 0.5, panX: 25, panY: 30);
+        final metrics = CanvasViewportPanMetrics(
+          axis: Axis.horizontal,
+          viewport: viewport,
+          editorViewportSize: const Size(300, 300),
+          canvasSize: const CanvasSize(width: 100, height: 100),
+          trackExtent: 200,
+        );
 
-      expect(metrics.canScroll, isFalse);
-      expect(metrics.maxScroll, 0);
-      expect(metrics.thumbDeltaToPanDelta(100), viewport);
-      expect(metrics.panToThumb(50), viewport);
-    });
+        expect(metrics.canScroll, isFalse);
+        expect(metrics.maxScroll, 0);
+        expect(metrics.thumbDeltaToPanDelta(100), viewport);
+        expect(metrics.panToThumb(50), viewport);
+      },
+    );
 
     test('horizontal drag maps thumb delta to meaningful panX movement', () {
       final metrics = CanvasViewportPanMetrics(

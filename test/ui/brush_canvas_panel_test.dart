@@ -478,7 +478,6 @@ void main() {
     expect(syncedViewports.single.panX, isNot(0));
   });
 
-
   testWidgets('panbar drag cancel syncs parent once with final viewport', (
     tester,
   ) async {
@@ -527,7 +526,6 @@ void main() {
     expect(syncedViewports, hasLength(1));
     expect(syncedViewports.single.panX, isNot(0));
   });
-
 }
 
 bool _isStrictlyIncreasing(Iterable<int> values) {

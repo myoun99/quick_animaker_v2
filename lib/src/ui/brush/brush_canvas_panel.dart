@@ -330,23 +330,30 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               SizedBox(
                 height: bottomRoom,
                 child: ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: bottomRoom == 0
-                        ? 0.0
-                        : bottomRoom / _CanvasViewportBottomBar.height,
-                    child: DecoratedBox(
-                      key: const ValueKey<String>(
-                        'canvas-editor-panel-bottom-bar',
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        border: Border(
-                          top: BorderSide(color: colorScheme.outlineVariant),
+                  child: LayoutBuilder(
+                    builder: (context, bottomConstraints) {
+                      return OverflowBox(
+                        alignment: Alignment.topCenter,
+                        minWidth: bottomConstraints.maxWidth,
+                        maxWidth: bottomConstraints.maxWidth,
+                        minHeight: _CanvasViewportBottomBar.height,
+                        maxHeight: _CanvasViewportBottomBar.height,
+                        child: DecoratedBox(
+                          key: const ValueKey<String>(
+                            'canvas-editor-panel-bottom-bar',
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            border: Border(
+                              top: BorderSide(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                          child: bottomBar,
                         ),
-                      ),
-                      child: bottomBar,
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),
