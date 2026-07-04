@@ -11,7 +11,7 @@ void main() {
 
         expect(
           state.toInputSettings(),
-          const BrushEditCanvasInputSettings(size: 10),
+          const BrushEditCanvasInputSettings(size: 10, spacing: 0.25),
         );
       },
     );
@@ -35,9 +35,45 @@ void main() {
       );
     });
 
-    test('clamped factory keeps size and opacity in safe ranges', () {
+    test('clamped factory keeps size opacity and spacing in safe ranges', () {
       expect(BrushToolState.clamped(size: -10).size, BrushToolState.minSize);
       expect(BrushToolState.clamped(opacity: 2).opacity, 1);
+      expect(
+        BrushToolState.clamped(spacing: -1).spacing,
+        BrushToolState.minSpacing,
+      );
+      expect(
+        BrushToolState.clamped(spacing: 100).spacing,
+        BrushToolState.maxSpacing,
+      );
+    });
+
+
+    test('public constructor and copyWith clamp spacing', () {
+      expect(BrushToolState().spacing, BrushToolState.defaultSpacing);
+      expect(BrushToolState(spacing: -1).spacing, BrushToolState.minSpacing);
+      expect(BrushToolState(spacing: 100).spacing, BrushToolState.maxSpacing);
+      expect(
+        BrushToolState(spacing: double.nan).spacing,
+        BrushToolState.defaultSpacing,
+      );
+      expect(
+        BrushToolState(spacing: double.infinity).spacing,
+        BrushToolState.defaultSpacing,
+      );
+
+      expect(
+        BrushToolState.defaults.copyWith(spacing: 100).spacing,
+        BrushToolState.maxSpacing,
+      );
+      expect(
+        BrushToolState.defaults.copyWith(spacing: double.nan).spacing,
+        BrushToolState.defaultSpacing,
+      );
+      expect(
+        BrushToolState(spacing: 0.75).toInputSettings().spacing,
+        0.75,
+      );
     });
 
     test('color updates remain stable', () {

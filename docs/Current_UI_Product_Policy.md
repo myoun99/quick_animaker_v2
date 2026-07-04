@@ -40,6 +40,14 @@ The UI should feel closer to a compact production tool than an onboarding demo.
 
 ## Panel-specific boundaries
 
+Phase 303 establishes the first long-term editor panel frame direction. Reusable panel primitives now include `EditorPanelFrame`, `EditorPanelHeader`, `EditorPanelBody`, and `EditorPanelDock`. These primitives are intended to be reused by future Brush, Color, Layers, Navigator, Timeline, Storyboard, Brush Preset, and tool-property panels instead of creating one-off panel chrome for each feature.
+
+The right-side `EditorPanelDock` is the first durable panel dock direction, not a full docking framework. It should remain compact editor UI and must not add drag-to-dock, floating panels, workspace persistence, source-data changes, save/load schema changes, or broad app-wide state management unless a later phase explicitly designs those systems.
+
+`BrushSettingsPanel` is now the primary editable brush settings UI. `BrushCanvasPanel` should stay focused on the canvas viewport, panbars, zoom/fit/reset controls, and drawing input. Do not reintroduce duplicate editable brush settings into the canvas panel or route brush setting mutation callbacks through the canvas/host layer.
+
+This is a Photoshop-like panel and brush-settings structure, but it is not Photoshop ABR compatibility and does not claim exact Photoshop brush engine parity.
+
 - `TimelinePanel` remains the public timeline entry point and should not be refactored for unrelated UI work without a test-proven reason or explicitly planned phase.
 - `StoryboardPanel` remains an overview/planning surface, not a brush drawing canvas, unless a future current document explicitly changes that policy.
 - Brush editing UI must respect the current brush architecture and must not reintroduce deleted Brush V1 smoke workspace routes into production navigation.

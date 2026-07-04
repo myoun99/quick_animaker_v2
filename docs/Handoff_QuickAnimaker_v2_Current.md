@@ -192,8 +192,12 @@ Latest canvas baseline:
 - Panbar drags update the local `BrushCanvasPanel` live viewport during movement and synchronize the parent editor-session viewport once when the drag ends or is canceled. Zoom, fit, reset, and direct canvas viewport changes still synchronize immediately.
 - When there is no scroll range, panbar drag is ignored so fit-centered positive pan values are preserved and the canvas does not snap to the top-left. `CanvasViewport` remains editor-session UI state only and is not stored in source, project, playback/cache, save/load, or camera data.
 
-## 5. Phase 302 brush tool controls
+## 5. Phase 303 editor panel dock and brush settings notes
 
-Phase 302 adds a compact production brush options strip to the canvas editor panel. The strip displays and edits brush size, opacity, and color through editor-session `BrushToolState` owned by `HomePage` and passed down to the brush host/panel.
+Phase 303 replaces the temporary canvas-local brush options strip with a right-side `BrushSettingsPanel`. `BrushSettingsPanel` is now the primary editable brush settings UI; `BrushCanvasPanel` should remain focused on canvas viewport display, panbars, zoom/fit/reset, canvas clipping, and drawing input.
 
-This state remains separate from source data and save/load schema. New strokes use the current settings when sampled; existing committed strokes retain their materialized dab values. The same boundary is intended to support later brush presets, eraser, pressure, picker, and shortcut work without broad state management.
+Reusable editor panel primitives now exist for the long-term panel direction: `EditorPanelFrame`, `EditorPanelHeader`, `EditorPanelBody`, and `EditorPanelDock`. The right-side `EditorPanelDock` is the first durable dock direction for future Brush, Color, Layers, Navigator, Timeline, Storyboard, Brush Preset, and tool-property panels. This is not a full docking framework and must not introduce source data, project data, save/load schema, workspace persistence, or broad app-wide state management.
+
+`BrushToolState` remains editor-session tool state owned by `HomePage` / the editor session. It now includes spacing in addition to size, opacity, and color. Spacing affects future dab sampling only; existing committed strokes retain their materialized dab values and are not rewritten. Active strokes snapshot input settings at pointer down, so mid-stroke UI changes affect future strokes only.
+
+The panel and brush-settings direction is Photoshop-like, but it is not Photoshop ABR compatibility and does not claim exact Photoshop brush engine parity. Source models and save/load schema remain unchanged.

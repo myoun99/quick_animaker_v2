@@ -11,7 +11,6 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_canvas_defaults.dart';
-import 'brush_tool_options_bar.dart';
 import 'brush_tool_state.dart';
 import 'canvas_viewport_pan_metrics.dart';
 
@@ -28,7 +27,6 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.brushToolState = BrushToolState.defaults,
-    this.onBrushToolStateChanged,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
@@ -40,7 +38,6 @@ class BrushCanvasPanel extends StatefulWidget {
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
   final BrushToolState brushToolState;
-  final ValueChanged<BrushToolState>? onBrushToolStateChanged;
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
@@ -90,7 +87,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
               ? constraints.maxHeight
               : fallbackSize.height +
                     _CanvasEditorPanelShell.topBarHeight +
-                    _CanvasEditorPanelShell.toolOptionsBarHeight +
                     _CanvasViewportBottomBar.height;
 
           return SizedBox(
@@ -98,10 +94,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
               title: widget.selectionLabels.title,
-              toolOptionsBar: BrushToolOptionsBar(
-                state: widget.brushToolState,
-                onChanged: widget.onBrushToolStateChanged ?? (_) {},
-              ),
               rightStripBar: CanvasViewportVerticalScrollbar(
                 viewport: _viewport,
                 editorViewportSize: _resolvedEditorViewportSize(),
@@ -244,30 +236,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
 class _CanvasEditorPanelShell extends StatelessWidget {
   static const double topBarHeight = 32;
-  static const double toolOptionsBarHeight = 44;
   static const double rightStripWidth = 18;
 
   const _CanvasEditorPanelShell({
     required this.title,
     required this.child,
-    required this.toolOptionsBar,
     required this.bottomBar,
     required this.rightStripBar,
   });
 
   final String title;
   final Widget child;
-  final Widget toolOptionsBar;
   final Widget bottomBar;
   final Widget rightStripBar;
-
-  static double _remainingHeightForToolOptions(
-    double maxHeight,
-    double titleHeight,
-  ) {
-    final available = (maxHeight - titleHeight).clamp(0.0, double.infinity);
-    return toolOptionsBarHeight.clamp(0.0, available).toDouble();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -276,15 +257,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       builder: (context, constraints) {
         final maxHeight = constraints.hasBoundedHeight
             ? constraints.maxHeight.clamp(0.0, double.infinity).toDouble()
-            : topBarHeight +
-                  toolOptionsBarHeight +
-                  _CanvasViewportBottomBar.height;
+            : topBarHeight + _CanvasViewportBottomBar.height;
         final titleHeight = topBarHeight.clamp(0.0, maxHeight).toDouble();
-        final toolOptionsHeight = _remainingHeightForToolOptions(
-          maxHeight,
-          titleHeight,
-        );
-        final remainingHeight = (maxHeight - titleHeight - toolOptionsHeight)
+        final remainingHeight = (maxHeight - titleHeight)
             .clamp(0.0, double.infinity)
             .toDouble();
         final compactBottomHeight = remainingHeight == 0
@@ -323,10 +298,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              SizedBox(
-                height: toolOptionsHeight,
-                child: ClipRect(child: toolOptionsBar),
               ),
               SizedBox(
                 height: contentHeight,

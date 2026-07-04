@@ -81,6 +81,26 @@ void main() {
     expect(_isStrictlyIncreasing(sequences), isTrue);
   });
 
+  test('smaller spacing creates more sampled dabs than larger spacing', () {
+    const interpolator = BrushDabInterpolator();
+    final previous = dab(0, 0, size: 20, sequence: 0);
+
+    final dense = interpolator.interpolate(
+      previous: previous,
+      nextRaw: dab(100, 0, size: 20),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+    final sparse = interpolator.interpolate(
+      previous: previous,
+      nextRaw: dab(100, 0, size: 20),
+      firstSequence: 1,
+      spacingRatio: 1.0,
+    );
+
+    expect(dense.length, greaterThan(sparse.length));
+  });
+
   test('never emits negative sequence numbers', () {
     const interpolator = BrushDabInterpolator();
     final first = interpolator.interpolate(

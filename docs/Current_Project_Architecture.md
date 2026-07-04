@@ -133,8 +133,10 @@ Canvas viewport panbars use `CanvasViewportPanMetrics` for pure, testable scroll
 
 Panbar drag maps like a normal scrollbar: `thumbDelta / thumbTravel = scrollDelta / maxScroll`, and canvas pan is the negative of scroll. Horizontal panbar movement controls `panX`; vertical panbar movement controls `panY`. During panbar drag, `BrushCanvasPanel` updates its local live viewport for responsive repainting and synchronizes the parent editor-session viewport once at drag end or cancel. Non-drag viewport actions such as zoom, fit, reset, and direct canvas panning still synchronize immediately.
 
-## Phase 302 editor brush tool state
+## Phase 303 editor brush tool state and right-side panel boundary
 
-The main editor now treats brush size, opacity, and color as editor-session UI/tool state. `HomePage` owns the current brush settings and passes them by constructor/callback through `MainCanvasBrushHost` and `BrushCanvasPanel`; no Provider, Riverpod, ChangeNotifier, Bloc, or app-wide state layer is involved.
+The main editor treats brush size, opacity, color, and spacing as editor-session UI/tool state. `HomePage` owns the current `BrushToolState` and passes it to `MainCanvasBrushHost` / `BrushCanvasPanel` as drawing input. Brush setting mutation belongs to the right-side `BrushSettingsPanel`, not the canvas or host layer; no Provider, Riverpod, ChangeNotifier, Bloc, or app-wide state layer is involved.
 
-Brush tool settings are kept out of Project, Cut, Layer, Frame, Stroke, cache, playback, camera, and save/load formats. Selection changes for cut/layer/frame retarget the brush host while preserving the current editor-session brush settings, and viewport pan/zoom remains a separate `CanvasViewport` state.
+Brush tool settings are kept out of Project, Cut, Layer, Frame, Stroke, cache, playback, camera, and save/load formats. Selection changes for cut/layer/frame retarget the brush host while preserving the current editor-session brush settings, and viewport pan/zoom remains a separate `CanvasViewport` state. Spacing affects future dab sampling only, and active strokes snapshot input settings at pointer down so mid-stroke UI changes affect future strokes rather than the current stroke.
+
+Phase 303 also introduces reusable editor panel primitives (`EditorPanelFrame`, `EditorPanelHeader`, `EditorPanelBody`, and `EditorPanelDock`) plus the first right-side `EditorPanelDock` direction. The dock is UI layout state only and must not become project/source/save-load data. It is intended to support future Brush, Color, Layers, Navigator, Timeline, Storyboard, and Brush Preset panels without changing domain ownership.

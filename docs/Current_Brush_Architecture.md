@@ -91,6 +91,18 @@ BrushFrameDrawing
 
 `BrushFrameStore` owns this frame-local drawing payload, keyed by `BrushFrameKey`. Frame remains lightweight; heavy brush bitmap payloads, brush command lists, baked surfaces, dirty state, and cache images belong outside `Frame` in `BrushFrameStore` or an equivalent brush/canvas storage boundary. A `Frame` remains lightweight metadata and should not embed heavy bitmap surfaces, command lists, or cache images directly.
 
+## Phase 303 brush settings panel and spacing policy
+
+Phase 303 keeps brush size, opacity, color, and spacing as editor-session tool state in `BrushToolState`, owned by the editor session / `HomePage` boundary. This state is not Project, Cut, Layer, Frame, Stroke, brush command, cache, playback, camera, persistence, or save/load schema data.
+
+`BrushToolState.spacing` is a brush dab sampling ratio, where the effective sampling interval is based on brush size multiplied by spacing. Smaller spacing produces denser future dabs; larger spacing produces wider future dab intervals. Spacing affects future sampling only. Existing committed strokes are not rewritten when spacing changes because committed source dabs already carry the materialized rendering values for the stroke that was drawn.
+
+`BrushSettingsPanel` is the primary editable brush settings UI. `BrushCanvasPanel` should receive brush tool state for drawing input only and should remain focused on viewport display, panbars, zoom/fit/reset, canvas clipping, and drawing input. It should not own brush setting mutation callbacks or duplicate editable brush controls.
+
+Active strokes snapshot brush input settings at pointer down. Size, opacity, color, spacing, flow, hardness, and tip shape used by an in-progress stroke must come from that active-stroke snapshot until pointer up/cancel. Mid-stroke UI changes therefore affect future strokes only and must not alter the currently active stroke or already committed strokes.
+
+This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as hardness, flow, angle, roundness, pressure, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+
 ## Active editing display
 
 The active frame display formula is:
