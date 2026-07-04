@@ -546,7 +546,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
   );
 }
 
-class _CanvasViewportPanbar extends StatelessWidget {
+class _CanvasViewportPanbar extends StatefulWidget {
   const _CanvasViewportPanbar({
     required this.axis,
     required this.viewport,
@@ -563,8 +563,16 @@ class _CanvasViewportPanbar extends StatelessWidget {
   final VoidCallback? onViewportChangeEnd;
 
   @override
+  State<_CanvasViewportPanbar> createState() => _CanvasViewportPanbarState();
+}
+
+class _CanvasViewportPanbarState extends State<_CanvasViewportPanbar> {
+  double? _dragStartThumbStart;
+  double? _dragStartPointerAxisPosition;
+
+  @override
   Widget build(BuildContext context) {
-    final isHorizontal = axis == Axis.horizontal;
+    final isHorizontal = widget.axis == Axis.horizontal;
     return LayoutBuilder(
       builder: (context, constraints) {
         final trackExtent = isHorizontal
@@ -577,33 +585,45 @@ class _CanvasViewportPanbar extends StatelessWidget {
                 : 'canvas-viewport-vertical-scrollbar',
           ),
           behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: isHorizontal
+              ? (details) => _dragStart(details.localPosition.dx, trackExtent)
+              : null,
+          onVerticalDragStart: isHorizontal
+              ? null
+              : (details) => _dragStart(details.localPosition.dy, trackExtent),
           onHorizontalDragUpdate: isHorizontal
-              ? (details) => _drag(details.delta.dx, trackExtent)
+              ? (details) => _dragUpdate(
+                  details.localPosition.dx,
+                  trackExtent,
+                )
               : null,
           onVerticalDragUpdate: isHorizontal
               ? null
-              : (details) => _drag(details.delta.dy, trackExtent),
+              : (details) => _dragUpdate(
+                  details.localPosition.dy,
+                  trackExtent,
+                ),
           onHorizontalDragEnd: isHorizontal
-              ? (_) => onViewportChangeEnd?.call()
+              ? (_) => _dragEnd()
               : null,
           onVerticalDragEnd: isHorizontal
               ? null
-              : (_) => onViewportChangeEnd?.call(),
+              : (_) => _dragEnd(),
           onHorizontalDragCancel: isHorizontal
-              ? () => onViewportChangeEnd?.call()
+              ? _dragEnd
               : null,
           onVerticalDragCancel: isHorizontal
               ? null
-              : () => onViewportChangeEnd?.call(),
+              : _dragEnd,
           child: SizedBox(
             height: isHorizontal ? 14 : double.infinity,
             width: isHorizontal ? double.infinity : 14,
             child: CustomPaint(
               painter: _CanvasViewportPanbarPainter(
-                axis: axis,
-                viewport: viewport,
-                editorViewportSize: editorViewportSize,
-                canvasSize: canvasSize,
+                axis: widget.axis,
+                viewport: widget.viewport,
+                editorViewportSize: widget.editorViewportSize,
+                canvasSize: widget.canvasSize,
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
@@ -613,12 +633,31 @@ class _CanvasViewportPanbar extends StatelessWidget {
     );
   }
 
-  void _drag(double delta, double trackExtent) {
+  void _dragStart(double pointerAxisPosition, double trackExtent) {
     final metrics = CanvasViewportPanMetrics(
-      axis: axis,
-      viewport: viewport,
-      editorViewportSize: editorViewportSize,
-      canvasSize: canvasSize,
+      axis: widget.axis,
+      viewport: widget.viewport,
+      editorViewportSize: widget.editorViewportSize,
+      canvasSize: widget.canvasSize,
+      trackExtent: trackExtent,
+    );
+
+    _dragStartThumbStart = metrics.thumbStart;
+    _dragStartPointerAxisPosition = pointerAxisPosition;
+  }
+
+  void _dragUpdate(double pointerAxisPosition, double trackExtent) {
+    final dragStartThumbStart = _dragStartThumbStart;
+    final dragStartPointerAxisPosition = _dragStartPointerAxisPosition;
+    if (dragStartThumbStart == null || dragStartPointerAxisPosition == null) {
+      return;
+    }
+
+    final metrics = CanvasViewportPanMetrics(
+      axis: widget.axis,
+      viewport: widget.viewport,
+      editorViewportSize: widget.editorViewportSize,
+      canvasSize: widget.canvasSize,
       trackExtent: trackExtent,
     );
 
@@ -626,13 +665,24 @@ class _CanvasViewportPanbar extends StatelessWidget {
       return;
     }
 
-    onViewportChanged(
+    final pointerDelta = pointerAxisPosition - dragStartPointerAxisPosition;
+    final nextThumbStart = (dragStartThumbStart + pointerDelta)
+        .clamp(0.0, metrics.thumbTravel)
+        .toDouble();
+
+    widget.onViewportChanged(
       clampCanvasViewportPan(
-        viewport: metrics.thumbDeltaToPanDelta(delta),
-        editorViewportSize: editorViewportSize,
-        canvasSize: canvasSize,
+        viewport: metrics.panToThumb(nextThumbStart),
+        editorViewportSize: widget.editorViewportSize,
+        canvasSize: widget.canvasSize,
       ),
     );
+  }
+
+  void _dragEnd() {
+    _dragStartThumbStart = null;
+    _dragStartPointerAxisPosition = null;
+    widget.onViewportChangeEnd?.call();
   }
 }
 
