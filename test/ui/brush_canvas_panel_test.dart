@@ -478,6 +478,56 @@ void main() {
     expect(syncedViewports.single.panX, isNot(0));
   });
 
+
+  testWidgets('panbar drag cancel syncs parent once with final viewport', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: const CanvasSize(width: 300, height: 300),
+    );
+    final syncedViewports = <CanvasViewport>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: const CanvasSize(width: 300, height: 300),
+              viewport: CanvasViewport(zoom: 2),
+              onViewportChanged: syncedViewports.add,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(
+          const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+        ),
+      ),
+    );
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+
+    expect(syncedViewports, isEmpty);
+
+    await gesture.cancel();
+    await tester.pump();
+
+    expect(syncedViewports, hasLength(1));
+    expect(syncedViewports.single.panX, isNot(0));
+  });
+
 }
 
 bool _isStrictlyIncreasing(Iterable<int> values) {

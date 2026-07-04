@@ -558,45 +558,55 @@ class _CanvasViewportPanbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHorizontal = axis == Axis.horizontal;
-    return GestureDetector(
-      key: ValueKey<String>(
-        isHorizontal
-            ? 'canvas-viewport-horizontal-scrollbar'
-            : 'canvas-viewport-vertical-scrollbar',
-      ),
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragUpdate: isHorizontal
-          ? (details) => _drag(details.delta.dx, context)
-          : null,
-      onVerticalDragUpdate: isHorizontal
-          ? null
-          : (details) => _drag(details.delta.dy, context),
-      onHorizontalDragEnd: isHorizontal
-          ? (_) => onViewportChangeEnd?.call()
-          : null,
-      onVerticalDragEnd: isHorizontal
-          ? null
-          : (_) => onViewportChangeEnd?.call(),
-      child: SizedBox(
-        height: isHorizontal ? 14 : double.infinity,
-        width: isHorizontal ? double.infinity : 14,
-        child: CustomPaint(
-          painter: _CanvasViewportPanbarPainter(
-            axis: axis,
-            viewport: viewport,
-            editorViewportSize: editorViewportSize,
-            canvasSize: canvasSize,
-            color: Theme.of(context).colorScheme.primary,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trackExtent = isHorizontal
+            ? constraints.maxWidth
+            : constraints.maxHeight;
+        return GestureDetector(
+          key: ValueKey<String>(
+            isHorizontal
+                ? 'canvas-viewport-horizontal-scrollbar'
+                : 'canvas-viewport-vertical-scrollbar',
           ),
-        ),
-      ),
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: isHorizontal
+              ? (details) => _drag(details.delta.dx, trackExtent)
+              : null,
+          onVerticalDragUpdate: isHorizontal
+              ? null
+              : (details) => _drag(details.delta.dy, trackExtent),
+          onHorizontalDragEnd: isHorizontal
+              ? (_) => onViewportChangeEnd?.call()
+              : null,
+          onVerticalDragEnd: isHorizontal
+              ? null
+              : (_) => onViewportChangeEnd?.call(),
+          onHorizontalDragCancel: isHorizontal
+              ? () => onViewportChangeEnd?.call()
+              : null,
+          onVerticalDragCancel: isHorizontal
+              ? null
+              : () => onViewportChangeEnd?.call(),
+          child: SizedBox(
+            height: isHorizontal ? 14 : double.infinity,
+            width: isHorizontal ? double.infinity : 14,
+            child: CustomPaint(
+              painter: _CanvasViewportPanbarPainter(
+                axis: axis,
+                viewport: viewport,
+                editorViewportSize: editorViewportSize,
+                canvasSize: canvasSize,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  void _drag(double delta, BuildContext context) {
-    final box = context.findRenderObject() as RenderBox?;
-    final size = box?.size ?? Size.zero;
-    final trackExtent = axis == Axis.horizontal ? size.width : size.height;
+  void _drag(double delta, double trackExtent) {
     final metrics = CanvasViewportPanMetrics(
       axis: axis,
       viewport: viewport,
