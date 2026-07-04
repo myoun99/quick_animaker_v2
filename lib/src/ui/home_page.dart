@@ -1487,10 +1487,7 @@ class _HomePageState extends State<HomePage> {
     final frameName = frame?.name;
     final exposureState = _exposureStateForLayer(layer, frameIndex);
     final hasMark = _hasMarkForLayer(layer, frameIndex);
-    if (hasMark) {
-      return '●';
-    }
-    return switch (exposureState) {
+    final baseLabel = switch (exposureState) {
       TimelineCellExposureState.drawingStart =>
         frameName == null || frameName.isEmpty ? '○' : frameName,
       TimelineCellExposureState.heldExposure =>
@@ -1499,6 +1496,10 @@ class _HomePageState extends State<HomePage> {
       TimelineCellExposureState.blankHeld => '',
       TimelineCellExposureState.empty => '-',
     };
+    if (!hasMark) {
+      return baseLabel;
+    }
+    return baseLabel.isEmpty ? '●' : '$baseLabel ●';
   }
 
 }

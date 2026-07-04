@@ -477,15 +477,64 @@ class _CanvasViewportPanbar extends StatelessWidget {
   }
 
   void _drag(double delta) {
-    final scaledExtent = (axis == Axis.horizontal ? canvasSize.width : canvasSize.height) * viewport.zoom;
-    final viewportExtent = axis == Axis.horizontal ? editorViewportSize.width : editorViewportSize.height;
-    final trackExtent = (axis == Axis.horizontal ? editorViewportSize.width : editorViewportSize.height).clamp(1.0, double.infinity);
-    final maxScroll = (scaledExtent - viewportExtent).clamp(0.0, double.infinity);
-    final thumbExtent = maxScroll == 0 ? trackExtent : (viewportExtent / scaledExtent * trackExtent).clamp(24.0, trackExtent);
-    final travel = (trackExtent - thumbExtent).clamp(1.0, double.infinity);
-    final panDelta = -(delta / travel) * maxScroll;
-    onViewportChanged(axis == Axis.horizontal ? viewport.copyWith(panX: viewport.panX + panDelta) : viewport.copyWith(panY: viewport.panY + panDelta));
+    final metrics = _CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
+    final panDelta = -(delta / metrics.thumbTravel) * metrics.maxScroll;
+    final nextViewport = axis == Axis.horizontal
+        ? viewport.copyWith(panX: viewport.panX + panDelta)
+        : viewport.copyWith(panY: viewport.panY + panDelta);
+    onViewportChanged(
+      clampCanvasViewportPan(
+        viewport: nextViewport,
+        editorViewportSize: editorViewportSize,
+        canvasSize: canvasSize,
+      ),
+    );
   }
+}
+
+CanvasViewport clampCanvasViewportPan({
+  required CanvasViewport viewport,
+  required Size editorViewportSize,
+  required CanvasSize canvasSize,
+}) {
+  final horizontalMaxScroll = (canvasSize.width * viewport.zoom - editorViewportSize.width)
+      .clamp(0.0, double.infinity);
+  final verticalMaxScroll = (canvasSize.height * viewport.zoom - editorViewportSize.height)
+      .clamp(0.0, double.infinity);
+  return viewport.copyWith(
+    panX: viewport.panX.clamp(-horizontalMaxScroll, 0.0).toDouble(),
+    panY: viewport.panY.clamp(-verticalMaxScroll, 0.0).toDouble(),
+  );
+}
+
+class _CanvasViewportPanMetrics {
+  const _CanvasViewportPanMetrics({
+    required this.axis,
+    required this.viewport,
+    required this.editorViewportSize,
+    required this.canvasSize,
+  });
+
+  final Axis axis;
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+
+  double get scaledExtent =>
+      (axis == Axis.horizontal ? canvasSize.width : canvasSize.height) * viewport.zoom;
+  double get viewportExtent =>
+      axis == Axis.horizontal ? editorViewportSize.width : editorViewportSize.height;
+  double get trackExtent => viewportExtent.clamp(1.0, double.infinity).toDouble();
+  double get maxScroll => (scaledExtent - viewportExtent).clamp(0.0, double.infinity).toDouble();
+  double get thumbExtent => maxScroll == 0
+      ? trackExtent
+      : (viewportExtent / scaledExtent * trackExtent).clamp(24.0, trackExtent).toDouble();
+  double get thumbTravel => (trackExtent - thumbExtent).clamp(1.0, double.infinity).toDouble();
 }
 
 class _CanvasViewportPanbarPainter extends CustomPainter {
@@ -499,19 +548,22 @@ class _CanvasViewportPanbarPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final isHorizontal = axis == Axis.horizontal;
     final trackExtent = isHorizontal ? size.width : size.height;
-    final viewportExtent = isHorizontal ? editorViewportSize.width : editorViewportSize.height;
-    final scaledExtent = (isHorizontal ? canvasSize.width : canvasSize.height) * viewport.zoom;
-    final maxScroll = (scaledExtent - viewportExtent).clamp(0.0, double.infinity);
-    final thumbExtent = maxScroll == 0 ? trackExtent : (viewportExtent / scaledExtent * trackExtent).clamp(24.0, trackExtent);
-    final travel = (trackExtent - thumbExtent).clamp(0.0, double.infinity);
+    final metrics = _CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+    );
     final pan = isHorizontal ? viewport.panX : viewport.panY;
-    final scroll = (-pan).clamp(0.0, maxScroll);
-    final thumbStart = maxScroll == 0 ? 0.0 : scroll / maxScroll * travel;
+    final scroll = (-pan).clamp(0.0, metrics.maxScroll);
+    final thumbStart = metrics.maxScroll == 0
+        ? 0.0
+        : scroll / metrics.maxScroll * (trackExtent - metrics.thumbExtent).clamp(0.0, double.infinity);
     final trackPaint = Paint()..color = color.withOpacity(0.16);
     final thumbPaint = Paint()..color = color.withOpacity(0.72);
     final track = Offset.zero & size;
     canvas.drawRRect(RRect.fromRectAndRadius(track, const Radius.circular(7)), trackPaint);
-    final thumb = isHorizontal ? Rect.fromLTWH(thumbStart, 0, thumbExtent, size.height) : Rect.fromLTWH(0, thumbStart, size.width, thumbExtent);
+    final thumb = isHorizontal ? Rect.fromLTWH(thumbStart, 0, metrics.thumbExtent, size.height) : Rect.fromLTWH(0, thumbStart, size.width, metrics.thumbExtent);
     canvas.drawRRect(RRect.fromRectAndRadius(thumb, const Radius.circular(7)), thumbPaint);
   }
   @override
