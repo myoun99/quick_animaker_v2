@@ -182,3 +182,12 @@ Latest canvas baseline:
    - keep the canvas editor shell local UI only
 3. Cut canvas size editing remains later work.
 4. Save/load and playback/cache remain later work.
+
+
+## 5. Phase 229 canvas panel layout and panbar interaction notes
+
+- The brush canvas panel shell now has an explicit small-height layout contract. The shell clips title/bottom decoration as needed, guarantees the central canvas/right-strip row receives a non-negative height, and keeps title/content/right-strip/bottom regions structurally present instead of allowing a vertical overflow.
+- Panbar geometry is centralized in `CanvasViewportPanMetrics`, which uses the actual painted track extent on the scrollbar axis. Thumb sizes and starts remain finite and inside the track, including tracks smaller than the nominal minimum thumb size.
+- Panbar drag uses normal scrollbar mapping: thumb delta over thumb travel maps to scroll delta over max scroll, while viewport pan is the negative scroll value. Horizontal drag updates `panX`; vertical drag updates `panY`.
+- Panbar drags update the local `BrushCanvasPanel` live viewport during movement and synchronize the parent editor-session viewport once when the drag ends or is canceled. Zoom, fit, reset, and direct canvas viewport changes still synchronize immediately.
+- When there is no scroll range, panbar drag is ignored so fit-centered positive pan values are preserved and the canvas does not snap to the top-left. `CanvasViewport` remains editor-session UI state only and is not stored in source, project, playback/cache, save/load, or camera data.
