@@ -45,6 +45,8 @@ The UI should feel closer to a compact production tool than an onboarding demo.
 - Brush editing UI must respect the current brush architecture and must not reintroduce deleted Brush V1 smoke workspace routes into production navigation.
 - Canvas viewport controls should remain compact and local to the editor surface: pan, zoom, fit-to-view, and reset-view are UI-only operations and must not mutate drawing source data, `Cut.canvasSize`, `Project.cameraSize`, save/load data, playback behavior, or cache identity.
 - The visible editor viewport area is separate from the inner `Cut.canvasSize` drawing canvas. Fit and zoom controls should use the visible editor viewport size, while brush dabs remain canvas-space coordinates.
+- Canvas drawing display should be clipped to the inner `Cut.canvasSize`; pointer sessions may begin outside that canvas, but outside movement is not visible source data and re-entry starts a new visible segment without connecting across the outside gap.
+- The compact canvas editor shell is local canvas UI: top status/title bar, center viewport content, right pan/scroll strip, and bottom zoom/fit/reset controls. It must not introduce source data, persistence, playback, camera, or app-wide state-management changes.
 - Camera T1 is future work only: do not add editable camera layers, camera keyframes, camera transform source data, playback cropping, or export changes through canvas viewport UI.
 - Playback UI should consume prepared preview/composite cache policy rather than encouraging live brush command replay during playback.
 

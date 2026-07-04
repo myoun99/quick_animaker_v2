@@ -57,6 +57,7 @@ class _InteractiveBrushEditCanvasViewState
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
+  var _breakCurrentVisibleSegment = false;
 
   @override
   Widget build(BuildContext context) {
@@ -145,25 +146,25 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
-    if (!_isInsideSurface(canvasPosition)) {
-      return;
-    }
+    final startsInsideSurface = _isInsideSurface(canvasPosition);
 
     _activeDrawingPointer = event.pointer;
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
+    _breakCurrentVisibleSegment = !startsInsideSurface;
     setState(() {
+      _collectedDabs.clear();
+      _liveOverlayDabs.clear();
+      if (!startsInsideSurface) {
+        return;
+      }
       final initialDabs = widget.dabInterpolator.interpolate(
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,
       );
-      _collectedDabs
-        ..clear()
-        ..addAll(initialDabs);
-      _liveOverlayDabs
-        ..clear()
-        ..addAll(initialDabs);
+      _collectedDabs.addAll(initialDabs);
+      _liveOverlayDabs.addAll(initialDabs);
       _nextSequence = _collectedDabs.length;
     });
   }
@@ -180,10 +181,13 @@ class _InteractiveBrushEditCanvasViewState
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
     if (!_isInsideSurface(canvasPosition)) {
+      _breakCurrentVisibleSegment = true;
       return;
     }
 
-    final previousDab = _collectedDabs.isEmpty ? null : _collectedDabs.last;
+    final previousDab = _breakCurrentVisibleSegment || _collectedDabs.isEmpty
+        ? null
+        : _collectedDabs.last;
     final nextDabs = widget.dabInterpolator.interpolate(
       previous: previousDab,
       nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
@@ -197,6 +201,7 @@ class _InteractiveBrushEditCanvasViewState
       _collectedDabs.addAll(nextDabs);
       _liveOverlayDabs.addAll(nextDabs);
       _nextSequence += nextDabs.length;
+      _breakCurrentVisibleSegment = false;
     });
   }
 
@@ -334,6 +339,7 @@ class _InteractiveBrushEditCanvasViewState
     setState(() {
       _activeDrawingPointer = null;
       _nextSequence = 0;
+      _breakCurrentVisibleSegment = false;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
     });

@@ -36,48 +36,53 @@ class BrushEditCanvasView extends StatelessWidget {
       child: SizedBox(
         width: surface.canvasSize.width.toDouble(),
         height: surface.canvasSize.height.toDouble(),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            RepaintBoundary(
-              key: const ValueKey<String>('brush-edit-canvas-base-boundary'),
-              child: CustomPaint(
-                key: const ValueKey<String>(
-                  'brush-edit-canvas-base-custom-paint',
-                ),
-                painter: BitmapSurfacePainter(
-                  surface: surface,
-                  showTransparentBackground: showTransparentBackground,
-                  committedSourceDabs: committedSourceDabs,
-                  committedSourceDabStrokes: committedSourceDabStrokes,
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  key: const ValueKey<String>('brush-edit-canvas-bounds'),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.blueGrey, width: 1.5),
+        child: ClipRect(
+          key: const ValueKey<String>('brush-edit-canvas-cut-size-clip'),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              RepaintBoundary(
+                key: const ValueKey<String>('brush-edit-canvas-base-boundary'),
+                child: CustomPaint(
+                  key: const ValueKey<String>(
+                    'brush-edit-canvas-base-custom-paint',
+                  ),
+                  painter: BitmapSurfacePainter(
+                    surface: surface,
+                    showTransparentBackground: showTransparentBackground,
+                    committedSourceDabs: committedSourceDabs,
+                    committedSourceDabStrokes: committedSourceDabStrokes,
                   ),
                 ),
               ),
-            ),
-            RepaintBoundary(
-              key: const ValueKey<String>('brush-edit-canvas-active-boundary'),
-              child: CustomPaint(
-                key: const ValueKey<String>(
-                  'brush-edit-canvas-active-custom-paint',
-                ),
-                painter: ActiveStrokeOverlayPainter(
-                  activeStrokeOverlay: activeStrokeOverlay,
-                  activeStrokePath: activeStrokePath,
-                  activeStrokePathDab: activeStrokePathDab,
-                  activeStrokePathVersion: activeStrokePathVersion,
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    key: const ValueKey<String>('brush-edit-canvas-bounds'),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blueGrey, width: 1.5),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              RepaintBoundary(
+                key: const ValueKey<String>(
+                  'brush-edit-canvas-active-boundary',
+                ),
+                child: CustomPaint(
+                  key: const ValueKey<String>(
+                    'brush-edit-canvas-active-custom-paint',
+                  ),
+                  painter: ActiveStrokeOverlayPainter(
+                    activeStrokeOverlay: activeStrokeOverlay,
+                    activeStrokePath: activeStrokePath,
+                    activeStrokePathDab: activeStrokePathDab,
+                    activeStrokePathVersion: activeStrokePathVersion,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -36,6 +36,8 @@ Phase 226 adds a canvas viewport foundation for brush editing. The visible edito
 
 Brush source dabs remain committed in canvas-space coordinates. Pan/zoom changes how the drawing canvas is viewed, not what coordinates are stored.
 
+The active canvas display is clipped to the active `Cut.canvasSize`. Pointer-down outside the canvas may start a stroke session, but only in-canvas source dabs are collected and committed. Leaving `Cut.canvasSize` while drawing does not cancel or commit the stroke session; re-entering starts a new visible stroke segment so the previous in-canvas dab is not connected to the re-entry dab across the outside gap.
+
 Future Camera T1 remains only a candidate: camera layer or camera-like track, camera view rectangle, darkened outside-camera editing area, playback cropped to camera frame, and editable camera position, size, and rotation. Phase 226 does not implement camera source data, camera keyframes, camera persistence, playback cropping, or camera export behavior.
 
 Planned output size concepts:
