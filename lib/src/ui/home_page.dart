@@ -1410,9 +1410,6 @@ class _HomePageState extends State<HomePage> {
                           },
                           selectionLabels: _canvasSelectionLabels,
                           brushToolState: _brushToolState,
-                          onBrushToolStateChanged: (state) {
-                            setState(() => _brushToolState = state);
-                          },
                         ),
                       ),
                     ),

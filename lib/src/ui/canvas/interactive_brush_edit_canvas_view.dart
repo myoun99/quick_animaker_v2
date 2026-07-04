@@ -62,6 +62,7 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _liveOverlayDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
   CanvasPoint? _previousRawCanvasPosition;
+  BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +154,7 @@ class _InteractiveBrushEditCanvasViewState
     final startsInsideSurface = _isInsideSurface(canvasPosition);
 
     _activeDrawingPointer = event.pointer;
+    _activeStrokeInputSettings = widget.inputSettings;
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
@@ -167,7 +169,7 @@ class _InteractiveBrushEditCanvasViewState
         previous: null,
         nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
         firstSequence: _nextSequence,
-        spacingRatio: widget.inputSettings.spacing,
+        spacingRatio: _activeStrokeSpacing,
       );
       _collectedDabs.addAll(initialDabs);
       _liveOverlayDabs.addAll(initialDabs);
@@ -221,7 +223,7 @@ class _InteractiveBrushEditCanvasViewState
               sequence: _nextSequence,
             ),
             firstSequence: _nextSequence,
-            spacingRatio: widget.inputSettings.spacing,
+            spacingRatio: _activeStrokeSpacing,
           )
         : const <BrushDab>[];
     final firstEndSequence = _nextSequence + segmentStartDabs.length;
@@ -232,7 +234,7 @@ class _InteractiveBrushEditCanvasViewState
       previous: endPrevious,
       nextRaw: _dabFromPosition(clippedSegment.end, sequence: firstEndSequence),
       firstSequence: firstEndSequence,
-      spacingRatio: widget.inputSettings.spacing,
+      spacingRatio: _activeStrokeSpacing,
     );
     final nextDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
     if (nextDabs.isEmpty) {
@@ -317,7 +319,7 @@ class _InteractiveBrushEditCanvasViewState
     CanvasPoint localPosition, {
     required int sequence,
   }) {
-    final settings = widget.inputSettings;
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
     return BrushDab(
       center: localPosition,
       color: settings.color,
@@ -330,6 +332,9 @@ class _InteractiveBrushEditCanvasViewState
       sequence: sequence,
     );
   }
+
+  double get _activeStrokeSpacing =>
+      (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
 
   bool _isPanButton(int buttons) {
     return buttons == kMiddleMouseButton;
@@ -383,6 +388,7 @@ class _InteractiveBrushEditCanvasViewState
       _nextSequence = 0;
       _breakCurrentVisibleSegment = false;
       _previousRawCanvasPosition = null;
+      _activeStrokeInputSettings = null;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
     });

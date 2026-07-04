@@ -31,7 +31,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.brushToolState = BrushToolState.defaults,
-    this.onBrushToolStateChanged,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -43,7 +42,6 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
   final BrushToolState brushToolState;
-  final ValueChanged<BrushToolState>? onBrushToolStateChanged;
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -95,7 +93,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onViewportChanged: widget.onViewportChanged,
       selectionLabels: widget.selectionLabels,
       brushToolState: widget.brushToolState,
-      onBrushToolStateChanged: widget.onBrushToolStateChanged ?? (_) {},
     );
   }
 

@@ -555,6 +555,59 @@ void main() {
       expect(xs.last, 6);
     });
 
+    testWidgets('active stroke snapshots input settings until pointer up', (
+      tester,
+    ) async {
+      final sessionState = _sessionState(width: 200, height: 32);
+      final results = <List<BrushDab>>[];
+      const initialSettings = BrushEditCanvasInputSettings(
+        color: 0xFFE53935,
+        size: 20,
+        spacing: 0.25,
+      );
+      const rebuiltSettings = BrushEditCanvasInputSettings(
+        color: 0xFF1E88E5,
+        size: 20,
+        spacing: 4.0,
+      );
+
+      await tester.pumpWidget(
+        _app(
+          _view(
+            sessionState,
+            results.add,
+            inputSettings: initialSettings,
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      await tester.pump();
+
+      await tester.pumpWidget(
+        _app(
+          _view(
+            sessionState,
+            results.add,
+            inputSettings: rebuiltSettings,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(101, 1)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single, hasLength(greaterThan(10)));
+      expect(results.single.map((dab) => dab.color).toSet(), {0xFFE53935});
+      expect(results.single.map((dab) => dab.size).toSet(), {20});
+    });
+
     testWidgets('pointer cancel does not emit a result', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
@@ -674,11 +727,11 @@ void main() {
   });
 }
 
-BrushEditSessionState _sessionState() {
+BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
   return BrushEditSessionState(
     canvasState: CanvasSurfaceState(
       currentSurface: BitmapSurface(
-        canvasSize: CanvasSize(width: 8, height: 8),
+        canvasSize: CanvasSize(width: width, height: height),
         tileSize: 2,
       ),
     ),

@@ -27,7 +27,6 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.brushToolState = BrushToolState.defaults,
-    this.onBrushToolStateChanged,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
@@ -39,7 +38,6 @@ class BrushCanvasPanel extends StatefulWidget {
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
   final BrushToolState brushToolState;
-  final ValueChanged<BrushToolState>? onBrushToolStateChanged;
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
