@@ -618,29 +618,15 @@ class _CanvasViewportPanbarState extends State<_CanvasViewportPanbar> {
               ? null
               : (details) => _dragStart(details.localPosition.dy, trackExtent),
           onHorizontalDragUpdate: isHorizontal
-              ? (details) => _dragUpdate(
-                  details.localPosition.dx,
-                  trackExtent,
-                )
+              ? (details) => _dragUpdate(details.localPosition.dx, trackExtent)
               : null,
           onVerticalDragUpdate: isHorizontal
               ? null
-              : (details) => _dragUpdate(
-                  details.localPosition.dy,
-                  trackExtent,
-                ),
-          onHorizontalDragEnd: isHorizontal
-              ? (_) => _dragEnd()
-              : null,
-          onVerticalDragEnd: isHorizontal
-              ? null
-              : (_) => _dragEnd(),
-          onHorizontalDragCancel: isHorizontal
-              ? _dragEnd
-              : null,
-          onVerticalDragCancel: isHorizontal
-              ? null
-              : _dragEnd,
+              : (details) => _dragUpdate(details.localPosition.dy, trackExtent),
+          onHorizontalDragEnd: isHorizontal ? (_) => _dragEnd() : null,
+          onVerticalDragEnd: isHorizontal ? null : (_) => _dragEnd(),
+          onHorizontalDragCancel: isHorizontal ? _dragEnd : null,
+          onVerticalDragCancel: isHorizontal ? null : _dragEnd,
           child: SizedBox(
             height: isHorizontal ? 14 : double.infinity,
             width: isHorizontal ? double.infinity : 14,
