@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
+import '../../models/brush_paint_command.dart';
 
 class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
@@ -9,12 +10,14 @@ class BitmapSurfacePainter extends CustomPainter {
     this.showTransparentBackground = true,
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
+    this.committedSourceCommands = const <BrushPaintCommand>[],
   });
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
   final List<BrushDab> committedSourceDabs;
   final List<List<BrushDab>> committedSourceDabStrokes;
+  final List<BrushPaintCommand> committedSourceCommands;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -59,7 +62,24 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
 
-    _paintCommittedSourceDabs(canvas);
+    _paintCommittedSourceCommands(canvas, size);
+  }
+
+  void _paintCommittedSourceCommands(Canvas canvas, Size size) {
+    if (committedSourceCommands.isEmpty) {
+      _paintCommittedSourceDabs(canvas);
+      return;
+    }
+
+    canvas.saveLayer(Offset.zero & size, Paint());
+    for (final command in committedSourceCommands) {
+      _paintDabs(
+        canvas,
+        command.sourceDabs,
+        isErase: command.kind == BrushPaintCommandKind.eraseStroke,
+      );
+    }
+    canvas.restore();
   }
 
   void _paintCommittedSourceDabs(Canvas canvas) {
@@ -73,17 +93,22 @@ class BitmapSurfacePainter extends CustomPainter {
     }
   }
 
-  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
+  void _paintDabs(
+    Canvas canvas,
+    List<BrushDab> dabs, {
+    bool isErase = false,
+  }) {
     if (dabs.isEmpty) {
       return;
     }
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..isAntiAlias = false;
+      ..isAntiAlias = false
+      ..blendMode = isErase ? BlendMode.clear : BlendMode.srcOver;
 
     for (final dab in dabs) {
-      paint.color = _colorForDab(dab);
+      paint.color = isErase ? const Color(0xFFFFFFFF) : _colorForDab(dab);
       _paintPixelGridStamp(canvas, paint, dab);
     }
   }
@@ -114,6 +139,7 @@ class BitmapSurfacePainter extends CustomPainter {
     return oldDelegate.surface != surface ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.committedSourceDabs != committedSourceDabs ||
-        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes;
+        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes ||
+        oldDelegate.committedSourceCommands != committedSourceCommands;
   }
 }

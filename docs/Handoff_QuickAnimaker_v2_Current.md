@@ -201,3 +201,15 @@ Reusable editor panel primitives now exist for the long-term panel direction: `E
 `BrushToolState` remains editor-session tool state owned by `HomePage` / the editor session. It now includes spacing in addition to size, opacity, and color. Spacing affects future dab sampling only; existing committed strokes retain their materialized dab values and are not rewritten. Active strokes snapshot input settings at pointer down, so mid-stroke UI changes affect future strokes only.
 
 The panel and brush-settings direction is Photoshop-like, but it is not Photoshop ABR compatibility and does not claim exact Photoshop brush engine parity. Source models and save/load schema remain unchanged.
+
+## 5. Phase 304 brush tool mode and eraser notes
+
+Phase 304 adds an editor-session tool mode foundation with Brush and Eraser selected from a compact left-side tool palette. `HomePage` owns the selected tool mode next to `BrushToolState`; neither tool mode nor brush settings are written into Project, Cut, Layer, Frame, cache, playback, camera, or save/load data.
+
+Brush input snapshots tool mode at pointer down, just like brush settings. Changing Brush/Eraser or changing brush settings mid-stroke affects future strokes only.
+
+Eraser is implemented as a source operation (`BrushPaintCommandKind.eraseStroke`) with source dabs. It is not white paint and it does not destructively delete or mutate earlier paint commands. Visible commands replay in source order, and eraser rendering clears previous marks through a local canvas layer.
+
+Eraser strokes use the existing global undo/redo model. Undo hides the eraser command through `BrushFrameStore.hiddenCommandIds`, restoring earlier paint appearance without changing old source data; redo restores the eraser command.
+
+The preferred high-level order remains brush finishing, panel system expansion, canvas/cache/storage foundation, Camera T1, playback/cache, timeline, storyboard, then layer/save-load and larger systems later.

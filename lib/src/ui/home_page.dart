@@ -35,6 +35,8 @@ import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'panels/editor_panel_dock.dart';
+import 'tools/editor_tool_mode.dart';
+import 'tools/editor_tool_palette.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
@@ -66,6 +68,7 @@ class _HomePageState extends State<HomePage> {
   LayerCopyPayload? _layerClipboard;
   CanvasViewport _canvasViewport = CanvasViewport();
   BrushToolState _brushToolState = BrushToolState.defaults;
+  EditorToolMode _toolMode = EditorToolMode.brush;
 
   @override
   void initState() {
@@ -1389,6 +1392,12 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: Row(
               children: [
+                EditorToolPalette(
+                  selectedToolMode: _toolMode,
+                  onToolModeSelected: (mode) {
+                    setState(() => _toolMode = mode);
+                  },
+                ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -1410,6 +1419,7 @@ class _HomePageState extends State<HomePage> {
                           },
                           selectionLabels: _canvasSelectionLabels,
                           brushToolState: _brushToolState,
+                          toolMode: _toolMode,
                         ),
                       ),
                     ),

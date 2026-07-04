@@ -78,3 +78,9 @@ These ideas are intentionally preserved as long-term candidates. They are not cu
 - Save/load must persist source project data and source drawing payloads; derived preview/playback caches may be stored as optimization metadata only if they can be safely invalidated and rebuilt.
 - Playback depends on prepared cache/composite generation. The live playback path should consume valid preview/composite images, not execute brush editing commands.
 - Storyboard export should begin with Primary Track output by default; selected-track export and full composite output are future optional features.
+
+## Phase 304 status note
+
+Brush finishing now includes the editor tool mode foundation and the first eraser source operation. The selected Brush/Eraser mode is editor-session UI state, active strokes snapshot tool mode at pointer down, and eraser strokes are command operations that participate in global undo/redo without mutating older paint commands.
+
+The preferred high-level order remains: brush finishing; panel system expansion; canvas/cache/storage foundation; Camera T1; playback/cache; timeline; storyboard; layer/save-load and larger systems later.

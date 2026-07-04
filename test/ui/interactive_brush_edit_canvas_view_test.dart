@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/brush_source_stroke.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
@@ -742,7 +743,9 @@ InteractiveBrushEditCanvasView _view(
     inputSettings: inputSettings,
     viewport: viewport,
     onViewportChanged: onViewportChanged,
-    onSourceStrokeCommitted: onResult,
+    onSourceStrokeCommitted: (BrushSourceStroke stroke) {
+      onResult(stroke.sourceDabs);
+    },
   );
 }
 

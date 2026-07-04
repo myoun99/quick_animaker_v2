@@ -1,4 +1,5 @@
 import '../../models/brush_dab.dart';
+import '../../models/brush_paint_command.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
@@ -13,16 +14,20 @@ class BrushStrokeHistoryCommand implements Command {
   BrushStrokeHistoryCommand({
     required this.coordinator,
     required List<BrushDab> sourceDabs,
+    this.kind = BrushPaintCommandKind.paintStroke,
     this.cacheInvalidationSink,
   }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
 
   final BrushFrameEditingCoordinator coordinator;
   final List<BrushDab> sourceDabs;
+  final BrushPaintCommandKind kind;
   final CacheInvalidationSink? cacheInvalidationSink;
   bool _hasCommitted = false;
 
   @override
-  String get description => 'Brush stroke';
+  String get description => kind == BrushPaintCommandKind.eraseStroke
+      ? 'Eraser stroke'
+      : 'Brush stroke';
 
   @override
   void execute() {
@@ -30,7 +35,7 @@ class BrushStrokeHistoryCommand implements Command {
       coordinator.redo(cacheInvalidationSink: cacheInvalidationSink);
       return;
     }
-    coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+    coordinator.commitSourceStroke(sourceDabs: sourceDabs, kind: kind);
     _hasCommitted = true;
   }
 

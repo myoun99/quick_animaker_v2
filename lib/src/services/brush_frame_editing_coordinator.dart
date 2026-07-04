@@ -52,7 +52,10 @@ class BrushFrameEditingCoordinator {
     _activeFrameKey = key;
   }
 
-  BrushPaintCommand commitSourceStroke({required List<BrushDab> sourceDabs}) {
+  BrushPaintCommand commitSourceStroke({
+    required List<BrushDab> sourceDabs,
+    BrushPaintCommandKind kind = BrushPaintCommandKind.paintStroke,
+  }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
     }
@@ -61,8 +64,10 @@ class BrushFrameEditingCoordinator {
     final command = BrushPaintCommand(
       id: BrushPaintCommandId('brush-paint-$sequenceNumber'),
       sequenceNumber: sequenceNumber,
-      kind: BrushPaintCommandKind.paintStroke,
-      debugLabel: 'Paint stroke $sequenceNumber',
+      kind: kind,
+      debugLabel: kind == BrushPaintCommandKind.eraseStroke
+          ? 'Erase stroke $sequenceNumber'
+          : 'Paint stroke $sequenceNumber',
       sourceDabs: List<BrushDab>.unmodifiable(sourceDabs),
     );
     frameStore.addLivePaintCommand(_activeFrameKey, command);

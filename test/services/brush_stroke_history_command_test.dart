@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
+import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -17,6 +18,49 @@ import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_com
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 
 void main() {
+  test('eraser strokes are source operations hidden and restored by undo', () {
+    final coordinator = _coordinator();
+    final history = HistoryManager();
+
+    history.execute(
+      BrushStrokeHistoryCommand(
+        coordinator: coordinator,
+        sourceDabs: [_dab(0)],
+      ),
+    );
+    history.execute(
+      BrushStrokeHistoryCommand(
+        coordinator: coordinator,
+        sourceDabs: [_dab(1)],
+        kind: BrushPaintCommandKind.eraseStroke,
+      ),
+    );
+
+    var frame = coordinator.frameStore.getOrCreateFrame(
+      coordinator.activeFrameKey,
+    );
+    expect(frame.paintCommands.map((command) => command.kind), [
+      BrushPaintCommandKind.paintStroke,
+      BrushPaintCommandKind.eraseStroke,
+    ]);
+    expect(frame.visibleActivePaintCommands, hasLength(2));
+
+    history.undo();
+    frame = coordinator.frameStore.getOrCreateFrame(coordinator.activeFrameKey);
+    expect(frame.paintCommands, hasLength(2));
+    expect(frame.visibleActivePaintCommands.map((command) => command.kind), [
+      BrushPaintCommandKind.paintStroke,
+    ]);
+    expect(frame.hiddenCommandIds, contains(frame.paintCommands.last.id));
+
+    history.redo();
+    frame = coordinator.frameStore.getOrCreateFrame(coordinator.activeFrameKey);
+    expect(frame.visibleActivePaintCommands.map((command) => command.kind), [
+      BrushPaintCommandKind.paintStroke,
+      BrushPaintCommandKind.eraseStroke,
+    ]);
+  });
+
   test('app-level undo and redo hide and restore the latest brush stroke', () {
     final coordinator = _coordinator();
     final history = HistoryManager();

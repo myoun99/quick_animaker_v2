@@ -1,0 +1,1 @@
+enum EditorToolMode { brush, eraser }

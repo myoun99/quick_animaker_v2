@@ -140,3 +140,9 @@ The main editor treats brush size, opacity, color, and spacing as editor-session
 Brush tool settings are kept out of Project, Cut, Layer, Frame, Stroke, cache, playback, camera, and save/load formats. Selection changes for cut/layer/frame retarget the brush host while preserving the current editor-session brush settings, and viewport pan/zoom remains a separate `CanvasViewport` state. Spacing affects future dab sampling only, and active strokes snapshot input settings at pointer down so mid-stroke UI changes affect future strokes rather than the current stroke.
 
 Phase 303 also introduces reusable editor panel primitives (`EditorPanelFrame`, `EditorPanelHeader`, `EditorPanelBody`, and `EditorPanelDock`) plus the first right-side `EditorPanelDock` direction. The dock is UI layout state only and must not become project/source/save-load data. It is intended to support future Brush, Color, Layers, Navigator, Timeline, Storyboard, and Brush Preset panels without changing domain ownership.
+
+## Phase 304 brush operation boundary
+
+Brush source commands can now distinguish paint and erase operations through `BrushPaintCommandKind`. This is a source-operation boundary owned by the brush frame drawing store, not Project/Cut/Layer/Frame metadata and not a save/load schema implementation.
+
+Eraser commands are replayed in drawing order and hidden/restored by the same command visibility model as paint commands. Future save/load work must preserve the operation kind for source brush commands, but Phase 304 does not add persistence, cache baking, playback, camera, or layer-panel systems.

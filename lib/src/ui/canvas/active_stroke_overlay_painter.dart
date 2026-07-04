@@ -8,16 +8,24 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
     this.activeStrokePath,
     this.activeStrokePathDab,
     this.activeStrokePathVersion = 0,
+    this.isErase = false,
   });
 
   final List<BrushDab> activeStrokeOverlay;
   final Path? activeStrokePath;
   final BrushDab? activeStrokePathDab;
   final int activeStrokePathVersion;
+  final bool isErase;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (isErase) {
+      canvas.saveLayer(Offset.zero & size, Paint());
+    }
     _paintDabs(canvas, activeStrokeOverlay);
+    if (isErase) {
+      canvas.restore();
+    }
   }
 
   void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
@@ -27,10 +35,11 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..isAntiAlias = false;
+      ..isAntiAlias = false
+      ..blendMode = isErase ? BlendMode.clear : BlendMode.srcOver;
 
     for (final dab in dabs) {
-      paint.color = _colorForDab(dab);
+      paint.color = isErase ? const Color(0xFFFFFFFF) : _colorForDab(dab);
       _paintPixelGridStamp(canvas, paint, dab);
     }
   }
@@ -61,6 +70,7 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
     return oldDelegate.activeStrokeOverlay != activeStrokeOverlay ||
         oldDelegate.activeStrokePath != activeStrokePath ||
         oldDelegate.activeStrokePathDab != activeStrokePathDab ||
-        oldDelegate.activeStrokePathVersion != activeStrokePathVersion;
+        oldDelegate.activeStrokePathVersion != activeStrokePathVersion ||
+        oldDelegate.isErase != isErase;
   }
 }

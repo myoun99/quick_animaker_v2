@@ -69,3 +69,9 @@ When a UI phase changes visible behavior, manual checks should confirm:
 5. Stable UI keys expected by tests remain preserved unless the phase explicitly updates those tests.
 
 For documentation-only or internal command/helper phases, manual UI checks may be optional, but PR review should still state whether visible behavior is expected to change.
+
+## Phase 304 left tool palette policy
+
+The first left-side editor tool palette is a compact UI foundation for selecting Brush or Eraser. It should remain production-oriented icon UI with tooltips and a clear selected state, not a tutorial surface, debug panel, floating palette, full docking framework, workspace-persistence system, or source-data owner.
+
+`BrushSettingsPanel` remains the primary settings UI for brush size, opacity, color, and spacing. The left palette selects tool mode only; Brush and Eraser are editor-session selected tools and must not introduce Provider, Riverpod, Bloc, ChangeNotifier, or broad app-wide state management.

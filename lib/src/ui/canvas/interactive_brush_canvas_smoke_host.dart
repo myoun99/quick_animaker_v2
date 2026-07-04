@@ -12,6 +12,7 @@ import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import 'brush_edit_canvas_input_settings.dart';
+import 'brush_source_stroke.dart';
 import 'interactive_brush_edit_canvas_view.dart';
 
 class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
@@ -112,7 +113,9 @@ class _InteractiveBrushCanvasSmokeHostState
       inputSettings: widget.inputSettings,
       committedSourceDabs: widget.committedSourceDabs,
       showTransparentBackground: widget.showTransparentBackground,
-      onSourceStrokeCommitted: widget.onSourceStrokeCommitted ?? (_) {},
+      onSourceStrokeCommitted: (BrushSourceStroke stroke) {
+        widget.onSourceStrokeCommitted?.call(stroke.sourceDabs);
+      },
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
+import '../../models/brush_paint_command.dart';
 import 'active_stroke_overlay_painter.dart';
 import 'bitmap_surface_painter.dart';
 
@@ -12,20 +13,24 @@ class BrushEditCanvasView extends StatelessWidget {
     this.showTransparentBackground = true,
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
+    this.committedSourceCommands = const <BrushPaintCommand>[],
     this.activeStrokeOverlay = const <BrushDab>[],
     this.activeStrokePath,
     this.activeStrokePathDab,
     this.activeStrokePathVersion = 0,
+    this.activeStrokeIsErase = false,
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
   final List<BrushDab> committedSourceDabs;
   final List<List<BrushDab>> committedSourceDabStrokes;
+  final List<BrushPaintCommand> committedSourceCommands;
   final List<BrushDab> activeStrokeOverlay;
   final Path? activeStrokePath;
   final BrushDab? activeStrokePathDab;
   final int activeStrokePathVersion;
+  final bool activeStrokeIsErase;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +57,7 @@ class BrushEditCanvasView extends StatelessWidget {
                     showTransparentBackground: showTransparentBackground,
                     committedSourceDabs: committedSourceDabs,
                     committedSourceDabStrokes: committedSourceDabStrokes,
+                    committedSourceCommands: committedSourceCommands,
                   ),
                 ),
               ),
@@ -78,6 +84,7 @@ class BrushEditCanvasView extends StatelessWidget {
                     activeStrokePath: activeStrokePath,
                     activeStrokePathDab: activeStrokePathDab,
                     activeStrokePathVersion: activeStrokePathVersion,
+                    isErase: activeStrokeIsErase,
                   ),
                 ),
               ),

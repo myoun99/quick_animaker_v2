@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -9,7 +8,9 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/brush_source_stroke.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../tools/editor_tool_mode.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import 'canvas_viewport_pan_metrics.dart';
@@ -27,6 +28,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.brushToolState = BrushToolState.defaults,
+    this.toolMode = EditorToolMode.brush,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
@@ -38,6 +40,7 @@ class BrushCanvasPanel extends StatefulWidget {
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
   final BrushToolState brushToolState;
+  final EditorToolMode toolMode;
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
@@ -63,6 +66,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     final frameStore = widget.coordinator.frameStore;
     final drawing = frameStore.getOrCreateFrame(activeKey);
     final visibleCommands = drawing.visibleActivePaintCommands;
+    final committedSourceCommands = visibleCommands
+        .where((command) => command.sourceDabs.isNotEmpty)
+        .toList(growable: false);
     final committedSourceDabStrokes = visibleCommands
         .map((command) => command.sourceDabs)
         .where((dabs) => dabs.isNotEmpty)
@@ -132,6 +138,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       inputSettings: widget.brushToolState.toInputSettings(),
                       committedSourceDabs: committedSourceDabs,
                       committedSourceDabStrokes: committedSourceDabStrokes,
+                      committedSourceCommands: committedSourceCommands,
+                      toolMode: widget.toolMode,
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
                       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
@@ -216,17 +224,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     _setViewport(CanvasViewport());
   }
 
-  void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
+  void _handleSourceStrokeCommitted(BrushSourceStroke stroke) {
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
-        widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+        widget.coordinator.commitSourceStroke(
+          sourceDabs: stroke.sourceDabs,
+          kind: stroke.kind,
+        );
         return;
       }
       historyManager.execute(
         BrushStrokeHistoryCommand(
           coordinator: widget.coordinator,
-          sourceDabs: sourceDabs,
+          sourceDabs: stroke.sourceDabs,
+          kind: stroke.kind,
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),
       );

@@ -369,3 +369,15 @@ The compact production brush options bar lives in the canvas editor panel direct
 Committed source dabs continue to carry the materialized brush values needed to render the stroke that was drawn. Changing the editor brush tool state only affects future strokes and does not rewrite existing strokes. The state is intentionally not serialized in Project, Cut, Layer, Frame, Stroke, cache, playback, camera, or save/load data.
 
 Future brush work can expand this editor-session boundary with presets, eraser mode, pressure controls, color picker, and shortcuts without moving transient tool options into source models or adopting broad app-wide state management.
+
+## Phase 304 brush tool mode and eraser source operation
+
+The editor now has an editor-session `EditorToolMode` with Brush and Eraser. `HomePage` owns the selected mode alongside `BrushToolState`; it is not Project, Cut, Layer, Frame, cache, playback, or save/load metadata.
+
+Active brush input snapshots both brush input settings and tool mode at pointer down. Changing Brush/Eraser or changing brush settings while a pointer stroke is active affects future strokes only.
+
+Eraser strokes are represented as `BrushPaintCommandKind.eraseStroke` commands with source dabs. They are not white paint and they do not delete or mutate earlier paint commands. The active display replays visible paint and erase commands in source order, using a local canvas layer for clear blending where eraser commands are present.
+
+Brush and eraser strokes use the same global undo/redo bridge. Undo hides the latest `BrushPaintCommand` through `BrushFrameStore.hiddenCommandIds`; undoing an eraser reveals previous paint by hiding the eraser command rather than rewriting old source data. Redo restores the same command visibility.
+
+The high-level implementation order remains: brush finishing, panel system expansion, canvas/cache/storage foundation, Camera T1, playback/cache, timeline, storyboard, then layer/save-load and larger systems.

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
+import '../../models/brush_paint_command.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
@@ -12,7 +13,9 @@ import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/canvas_segment_clipper.dart';
 import 'brush_edit_canvas_input_settings.dart';
+import '../tools/editor_tool_mode.dart';
 import 'brush_edit_canvas_view.dart';
+import 'brush_source_stroke.dart';
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   InteractiveBrushEditCanvasView({
@@ -22,8 +25,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.onSourceStrokeCommitted,
+    this.toolMode = EditorToolMode.brush,
     this.committedSourceDabs = const <BrushDab>[],
     this.committedSourceDabStrokes = const <List<BrushDab>>[],
+    this.committedSourceCommands = const <BrushPaintCommand>[],
     this.dabInterpolator = const BrushDabInterpolator(),
     this.segmentClipper = const CanvasSegmentClipper(),
     this.showTransparentBackground = true,
@@ -36,9 +41,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final LayerId layerId;
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
-  final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
+  final ValueChanged<BrushSourceStroke> onSourceStrokeCommitted;
+  final EditorToolMode toolMode;
   final List<BrushDab> committedSourceDabs;
   final List<List<BrushDab>> committedSourceDabStrokes;
+  final List<BrushPaintCommand> committedSourceCommands;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
   final CanvasSegmentClipper segmentClipper;
@@ -63,6 +70,7 @@ class _InteractiveBrushEditCanvasViewState
   var _breakCurrentVisibleSegment = false;
   CanvasPoint? _previousRawCanvasPosition;
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
+  EditorToolMode? _activeStrokeToolMode;
 
   @override
   Widget build(BuildContext context) {
@@ -123,9 +131,12 @@ class _InteractiveBrushEditCanvasViewState
                         committedSourceDabs: widget.committedSourceDabs,
                         committedSourceDabStrokes:
                             widget.committedSourceDabStrokes,
+                        committedSourceCommands: widget.committedSourceCommands,
                         activeStrokeOverlay: List<BrushDab>.unmodifiable(
                           _liveOverlayDabs,
                         ),
+                        activeStrokeIsErase:
+                            _activeStrokeToolMode == EditorToolMode.eraser,
                       ),
                     ),
                   ),
@@ -155,6 +166,7 @@ class _InteractiveBrushEditCanvasViewState
 
     _activeDrawingPointer = event.pointer;
     _activeStrokeInputSettings = widget.inputSettings;
+    _activeStrokeToolMode = widget.toolMode;
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
@@ -261,7 +273,12 @@ class _InteractiveBrushEditCanvasViewState
 
     if (_collectedDabs.isNotEmpty) {
       widget.onSourceStrokeCommitted(
-        List<BrushDab>.unmodifiable(_collectedDabs),
+        BrushSourceStroke(
+          sourceDabs: _collectedDabs,
+          kind: _activeStrokeToolMode == EditorToolMode.eraser
+              ? BrushPaintCommandKind.eraseStroke
+              : BrushPaintCommandKind.paintStroke,
+        ),
       );
     }
 
@@ -389,6 +406,7 @@ class _InteractiveBrushEditCanvasViewState
       _breakCurrentVisibleSegment = false;
       _previousRawCanvasPosition = null;
       _activeStrokeInputSettings = null;
+      _activeStrokeToolMode = null;
       _collectedDabs.clear();
       _liveOverlayDabs.clear();
     });
