@@ -9,8 +9,8 @@ void main() {
 
   test('inside to outside fast movement clips to canvas edge', () {
     final segment = clipper.clip(
-      previous: const CanvasPoint(x: 50, y: 40),
-      current: const CanvasPoint(x: 150, y: 40),
+      previous: CanvasPoint(x: 50, y: 40),
+      current: CanvasPoint(x: 150, y: 40),
       canvasSize: size,
     );
 
@@ -22,8 +22,8 @@ void main() {
 
   test('outside to inside fast movement starts at canvas edge', () {
     final segment = clipper.clip(
-      previous: const CanvasPoint(x: -50, y: 40),
-      current: const CanvasPoint(x: 50, y: 40),
+      previous: CanvasPoint(x: -50, y: 40),
+      current: CanvasPoint(x: 50, y: 40),
       canvasSize: size,
     );
 
@@ -33,23 +33,26 @@ void main() {
     expect(segment.startsNewVisibleSegment, isTrue);
   });
 
-  test('outside to outside crossing canvas produces in-canvas segment only', () {
-    final segment = clipper.clip(
-      previous: const CanvasPoint(x: -50, y: 40),
-      current: const CanvasPoint(x: 150, y: 40),
-      canvasSize: size,
-    );
+  test(
+    'outside to outside crossing canvas produces in-canvas segment only',
+    () {
+      final segment = clipper.clip(
+        previous: CanvasPoint(x: -50, y: 40),
+        current: CanvasPoint(x: 150, y: 40),
+        canvasSize: size,
+      );
 
-    expect(segment, isNotNull);
-    expect(segment!.start.x, 0);
-    expect(segment.end.x, 100);
-    expect(segment.startsNewVisibleSegment, isTrue);
-  });
+      expect(segment, isNotNull);
+      expect(segment!.start.x, 0);
+      expect(segment.end.x, 100);
+      expect(segment.startsNewVisibleSegment, isTrue);
+    },
+  );
 
   test('outside to outside without crossing produces no segment', () {
     final segment = clipper.clip(
-      previous: const CanvasPoint(x: -50, y: -40),
-      current: const CanvasPoint(x: -10, y: -20),
+      previous: CanvasPoint(x: -50, y: -40),
+      current: CanvasPoint(x: -10, y: -20),
       canvasSize: size,
     );
 

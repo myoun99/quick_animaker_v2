@@ -15,7 +15,10 @@ Project createDefaultProject({DateTime? createdAt}) {
   );
 }
 
-Track createDefaultTrack({TrackId trackId = const TrackId('default-track'), String name = 'Track 1'}) {
+Track createDefaultTrack({
+  TrackId trackId = const TrackId('default-track'),
+  String name = 'Track 1',
+}) {
   return Track(
     id: trackId,
     name: name,

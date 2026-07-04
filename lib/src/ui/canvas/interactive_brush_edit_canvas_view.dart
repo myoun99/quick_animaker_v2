@@ -191,7 +191,8 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    final canvasSize = widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize =
+        widget.sessionState.canvasState.currentSurface.canvasSize;
     final clippedSegment = widget.segmentClipper.clip(
       previous: previousRaw,
       current: canvasPosition,
@@ -202,22 +203,29 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    final previousDab = _breakCurrentVisibleSegment ||
+    final previousDab =
+        _breakCurrentVisibleSegment ||
             clippedSegment.startsNewVisibleSegment ||
             _collectedDabs.isEmpty
         ? null
         : _collectedDabs.last;
-    final segmentStartDabs = clippedSegment.startsNewVisibleSegment ||
+    final segmentStartDabs =
+        clippedSegment.startsNewVisibleSegment ||
             _breakCurrentVisibleSegment ||
             _collectedDabs.isEmpty
         ? widget.dabInterpolator.interpolate(
             previous: null,
-            nextRaw: _dabFromPosition(clippedSegment.start, sequence: _nextSequence),
+            nextRaw: _dabFromPosition(
+              clippedSegment.start,
+              sequence: _nextSequence,
+            ),
             firstSequence: _nextSequence,
           )
         : const <BrushDab>[];
     final firstEndSequence = _nextSequence + segmentStartDabs.length;
-    final endPrevious = segmentStartDabs.isNotEmpty ? segmentStartDabs.last : previousDab;
+    final endPrevious = segmentStartDabs.isNotEmpty
+        ? segmentStartDabs.last
+        : previousDab;
     final segmentEndDabs = widget.dabInterpolator.interpolate(
       previous: endPrevious,
       nextRaw: _dabFromPosition(clippedSegment.end, sequence: firstEndSequence),

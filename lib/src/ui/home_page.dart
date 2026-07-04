@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../controllers/default_cut_helpers.dart';
 import '../controllers/default_project_helpers.dart';
 import '../controllers/default_layer_helpers.dart';
 import '../controllers/cut_list_helpers.dart';
@@ -1501,7 +1500,6 @@ class _HomePageState extends State<HomePage> {
     }
     return baseLabel.isEmpty ? '●' : '$baseLabel ●';
   }
-
 }
 
 class _DeleteLayerDialog extends StatelessWidget {

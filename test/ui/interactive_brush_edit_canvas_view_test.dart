@@ -479,9 +479,10 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
-      expect(results.single, hasLength(1));
-      expect(results.single.single.center.x, 2);
-      expect(results.single.single.center.y, 1);
+
+      final dabs = results.single;
+      expect(dabs.map((dab) => dab.center.x).toList(), [8, 7, 6, 5, 4, 3, 2]);
+      expect(dabs.map((dab) => dab.center.y).toSet(), {1});
     });
 
     testWidgets('pointer down outside and staying outside commits nothing', (
@@ -543,9 +544,14 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
+
       final xs = results.single.map((dab) => dab.center.x).toList();
-      expect(xs, isNot(contains(4)));
-      expect(xs, isNot(contains(5)));
+
+      expect(xs, containsAll([1, 2, 3, 4, 5, 6, 7, 8]));
+      expect(xs, isNot(contains(9)));
+      expect(xs, isNot(contains(10)));
+      expect(xs, isNot(contains(11)));
+      expect(xs, isNot(contains(12)));
       expect(xs.last, 6);
     });
 

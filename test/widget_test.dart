@@ -462,7 +462,11 @@ void main() {
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
     _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
-    await _dragCutOnto(tester, sourceCutId: 'cut-1', targetCutId: 'default-cut-1');
+    await _dragCutOnto(
+      tester,
+      sourceCutId: 'cut-1',
+      targetCutId: 'default-cut-1',
+    );
 
     _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
@@ -479,7 +483,11 @@ void main() {
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
-    await _dragCutOnto(tester, sourceCutId: 'default-cut-1', targetCutId: 'cut-1');
+    await _dragCutOnto(
+      tester,
+      sourceCutId: 'default-cut-1',
+      targetCutId: 'cut-1',
+    );
 
     _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);

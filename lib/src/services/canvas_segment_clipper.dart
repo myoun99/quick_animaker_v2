@@ -2,7 +2,11 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 
 class ClippedCanvasSegment {
-  const ClippedCanvasSegment({required this.start, required this.end, required this.startsNewVisibleSegment});
+  const ClippedCanvasSegment({
+    required this.start,
+    required this.end,
+    required this.startsNewVisibleSegment,
+  });
 
   final CanvasPoint start;
   final CanvasPoint end;
@@ -12,7 +16,11 @@ class ClippedCanvasSegment {
 class CanvasSegmentClipper {
   const CanvasSegmentClipper();
 
-  ClippedCanvasSegment? clip({required CanvasPoint previous, required CanvasPoint current, required CanvasSize canvasSize}) {
+  ClippedCanvasSegment? clip({
+    required CanvasPoint previous,
+    required CanvasPoint current,
+    required CanvasSize canvasSize,
+  }) {
     final xMin = 0.0;
     final yMin = 0.0;
     final xMax = canvasSize.width.toDouble();
@@ -51,6 +59,9 @@ class CanvasSegmentClipper {
   }
 
   bool _inside(CanvasPoint point, CanvasSize canvasSize) {
-    return point.x >= 0 && point.y >= 0 && point.x <= canvasSize.width && point.y <= canvasSize.height;
+    return point.x >= 0 &&
+        point.y >= 0 &&
+        point.x <= canvasSize.width &&
+        point.y <= canvasSize.height;
   }
 }

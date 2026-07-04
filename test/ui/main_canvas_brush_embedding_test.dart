@@ -115,8 +115,6 @@ void main() {
     },
   );
 
-
-
   testWidgets('runtime-created production layers do not use sample ids', (
     tester,
   ) async {
@@ -145,29 +143,32 @@ void main() {
     expect(layerIds, contains('default-layer-2'));
   });
 
-  testWidgets('canvas title uses source labels and timeline frame display label', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'canvas title uses source labels and timeline frame display label',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text(
-        'Project: Editor Project · Cut: Editor Cut · Layer: Editor Layer · Frame: Source Frame',
-      ),
-      findsOneWidget,
-    );
-  });
-
-
+      expect(
+        find.text(
+          'Project: Editor Project · Cut: Editor Cut · Layer: Editor Layer · Frame: Source Frame',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('marked named frame title keeps frame name and appends mark', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame(name: 'Named Material'))),
+      MaterialApp(
+        home: HomePage(
+          initialProject: _projectWithMarkedFrame(name: 'Named Material'),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -185,29 +186,32 @@ void main() {
     );
   });
 
-  testWidgets('marked unnamed drawing title keeps unnamed display label and appends mark', (
+  testWidgets(
+    'marked unnamed drawing title keeps unnamed display label and appends mark',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○ ●',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('horizontal and vertical panbars update viewport pan', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○ ●',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
-      ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('horizontal and vertical panbars update viewport pan', (tester) async {
     var viewport = CanvasViewport(zoom: 2);
     await tester.pumpWidget(
       MaterialApp(
@@ -236,7 +240,9 @@ void main() {
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      find.byKey(
+        const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+      ),
       const Offset(20, 0),
     );
     await tester.pump();
@@ -249,8 +255,6 @@ void main() {
     await tester.pump();
     expect(viewport.panY, isNot(0));
   });
-
-
 
   testWidgets('panbar drag clamps viewport pan to valid range', (tester) async {
     var viewport = CanvasViewport(zoom: 2);
@@ -281,14 +285,18 @@ void main() {
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      find.byKey(
+        const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+      ),
       const Offset(1000, 0),
     );
     await tester.pump();
     expect(viewport.panX, -500);
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      find.byKey(
+        const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+      ),
       const Offset(-1000, 0),
     );
     await tester.pump();
@@ -307,6 +315,58 @@ void main() {
     );
     await tester.pump();
     expect(viewport.panY, 0);
+  });
+
+  testWidgets('panbar drag is ignored when there is no scroll range', (
+    tester,
+  ) async {
+    var viewport = CanvasViewport(zoom: 0.5, panX: 25, panY: 30);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Column(
+            children: [
+              CanvasViewportHorizontalScrollbar(
+                viewport: viewport,
+                editorViewportSize: const Size(300, 300),
+                canvasSize: const CanvasSize(width: 100, height: 100),
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
+              SizedBox(
+                height: 100,
+                child: CanvasViewportVerticalScrollbar(
+                  viewport: viewport,
+                  editorViewportSize: const Size(300, 300),
+                  canvasSize: const CanvasSize(width: 100, height: 100),
+                  onViewportChanged: (next) => setState(() => viewport = next),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(
+        const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
+      ),
+      const Offset(100, 0),
+    );
+    await tester.pump();
+
+    expect(viewport.panX, 25);
+    expect(viewport.panY, 30);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
+      const Offset(0, 100),
+    );
+    await tester.pump();
+
+    expect(viewport.panX, 25);
+    expect(viewport.panY, 30);
   });
 
   testWidgets('viewport survives frame layer and cut selection changes', (
@@ -397,7 +457,6 @@ void main() {
     expect(find.text('Brush Workspace'), findsNothing);
   });
 }
-
 
 Project _projectWithMarkedFrame({String? name}) {
   return Project(

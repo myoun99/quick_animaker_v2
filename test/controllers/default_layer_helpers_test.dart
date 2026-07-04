@@ -52,7 +52,6 @@ void main() {
     });
   });
 
-
   group('defaultLayerIdForSequence', () {
     test('creates production default layer ids', () {
       expect(defaultLayerIdForSequence(2), const LayerId('default-layer-2'));
