@@ -3,6 +3,18 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_exposure.dart';
 
+
+LayerId defaultLayerIdForSequence(int sequence) {
+  if (sequence < 1) {
+    throw ArgumentError.value(
+      sequence,
+      'sequence',
+      'Default layer id sequence must be positive.',
+    );
+  }
+  return LayerId('default-layer-$sequence');
+}
+
 String celLayerNameForIndex(int index) {
   if (index < 0) {
     throw ArgumentError.value(

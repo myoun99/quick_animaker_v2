@@ -1032,7 +1032,7 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
@@ -1063,11 +1063,11 @@ Line 8''';
 
     expect(
       find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-sample-layer-2'),
+        const ValueKey<String>('timeline-layer-kind-icon-default-layer-2'),
       ),
       findsOneWidget,
     );
-    expect(_layerKindIcon(tester, 'sample-layer-2'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-2'), Icons.brush_outlined);
     expect(find.text('Layer: B'), findsOneWidget);
     expect(find.bySemanticsLabel('Animation layer'), findsNWidgets(2));
   });
@@ -1120,7 +1120,7 @@ Line 8''';
 
     expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
     expect(
-      _layerKindIcon(tester, 'sample-layer-2'),
+      _layerKindIcon(tester, 'default-layer-2'),
       Icons.auto_stories_outlined,
     );
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
@@ -1151,7 +1151,7 @@ Line 8''';
     expect(find.text('Layer: A'), findsOneWidget);
     expect(find.text('Layer: B'), findsNothing);
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-sample-layer-2')),
+      find.byKey(const ValueKey<String>('timeline-layer-row-default-layer-2')),
       findsNothing,
     );
 
@@ -1159,19 +1159,19 @@ Line 8''';
 
     expect(find.text('Layer: B'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
     );
-    _expectCellText('sample-layer-2', 0, 'X');
+    _expectCellText('default-layer-2', 0, 'X');
 
     var layerBTop = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('timeline-layer-row-sample-layer-2'),
+            const ValueKey<String>('timeline-layer-row-default-layer-2'),
           ),
         )
         .dy;
@@ -1188,22 +1188,22 @@ Line 8''';
 
     expect(find.text('Layer: C'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-3-0')),
+      find.byKey(const ValueKey<String>('timeline-cell-default-layer-3-0')),
       findsOneWidget,
     );
-    _expectCellText('sample-layer-3', 0, 'X');
+    _expectCellText('default-layer-3', 0, 'X');
 
     final layerCTop = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('timeline-layer-row-sample-layer-3'),
+            const ValueKey<String>('timeline-layer-row-default-layer-3'),
           ),
         )
         .dy;
     layerBTop = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('timeline-layer-row-sample-layer-2'),
+            const ValueKey<String>('timeline-layer-row-default-layer-2'),
           ),
         )
         .dy;
@@ -1219,7 +1219,7 @@ Line 8''';
     expect(layerBTop, lessThan(layerATop));
     expect(
       find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-sample-layer-3'),
+        const ValueKey<String>('timeline-layer-kind-icon-default-layer-3'),
       ),
       findsOneWidget,
     );
@@ -1247,14 +1247,14 @@ Line 8''';
     final layerBLeft = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('xsheet-layer-header-sample-layer-2'),
+            const ValueKey<String>('xsheet-layer-header-default-layer-2'),
           ),
         )
         .dx;
     final layerCLeft = tester
         .getTopLeft(
           find.byKey(
-            const ValueKey<String>('xsheet-layer-header-sample-layer-3'),
+            const ValueKey<String>('xsheet-layer-header-default-layer-3'),
           ),
         )
         .dx;
@@ -1266,11 +1266,11 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-2-0')),
+      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-2-0')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-sample-layer-3-0')),
+      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-3-0')),
       findsOneWidget,
     );
 
@@ -1789,7 +1789,7 @@ Line 8''';
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-sample-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
     expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
@@ -2002,7 +2002,7 @@ Line 8''';
         const ValueKey<String>('timeline-cell-default-layer-1-0'),
       );
       final layer2FirstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-sample-layer-2-0'),
+        const ValueKey<String>('timeline-cell-default-layer-2-0'),
       );
 
       expect(
@@ -2382,7 +2382,7 @@ Line 8''';
 
     await _tapTimelineCell(
       tester,
-      const ValueKey<String>('timeline-cell-sample-layer-2-0'),
+      const ValueKey<String>('timeline-cell-default-layer-2-0'),
     );
     expect(
       _isActionButtonEnabled(

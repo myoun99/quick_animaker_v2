@@ -52,6 +52,18 @@ void main() {
     });
   });
 
+
+  group('defaultLayerIdForSequence', () {
+    test('creates production default layer ids', () {
+      expect(defaultLayerIdForSequence(2), const LayerId('default-layer-2'));
+      expect(defaultLayerIdForSequence(3).value, isNot(startsWith('sample-')));
+    });
+
+    test('rejects non-positive sequences', () {
+      expect(() => defaultLayerIdForSequence(0), throwsArgumentError);
+    });
+  });
+
   test('createDefaultAnimationLayer creates blank exposure without frames', () {
     final cut = _cut(layers: [_layer('A'), _layer('B')]);
 

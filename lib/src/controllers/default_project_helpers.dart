@@ -1,10 +1,10 @@
 import '../models/cut_id.dart';
-import '../models/layer_id.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import 'default_cut_helpers.dart';
+import 'default_layer_helpers.dart';
 
 Project createDefaultProject({DateTime? createdAt}) {
   return Project(
@@ -23,7 +23,7 @@ Track createDefaultTrack({TrackId trackId = const TrackId('default-track'), Stri
       createDefaultCut(
         cutId: const CutId('default-cut-1'),
         name: 'Cut 1',
-        layerId: const LayerId('default-layer-1'),
+        layerId: defaultLayerIdForSequence(1),
       ),
     ],
   );

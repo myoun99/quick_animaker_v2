@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/default_cut_helpers.dart';
 import '../controllers/default_project_helpers.dart';
+import '../controllers/default_layer_helpers.dart';
 import '../controllers/cut_list_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
@@ -1431,7 +1432,7 @@ class _HomePageState extends State<HomePage> {
               setState(() {
                 _layerSequence += 1;
                 _layerController.addLayerWithDefaults(
-                  layerId: LayerId('sample-layer-$_layerSequence'),
+                  layerId: defaultLayerIdForSequence(_layerSequence),
                 );
               });
             },
@@ -1474,16 +1475,30 @@ class _HomePageState extends State<HomePage> {
       projectLabel: project.name,
       cutLabel: cut.name,
       layerLabel: layer?.name ?? '-',
-      frameLabel: _frameDisplayLabel(frame),
+      frameLabel: _currentFrameDisplayLabel(layer, frame),
     );
   }
 
-  String _frameDisplayLabel(Frame? frame) {
-    final name = frame?.name;
-    if (name != null && name.isNotEmpty) {
-      return name;
+  String _currentFrameDisplayLabel(Layer? layer, Frame? frame) {
+    if (layer == null) {
+      return '-';
     }
-    return '•';
+    final frameIndex = _timelineController.currentFrameIndex;
+    final frameName = frame?.name;
+    final exposureState = _exposureStateForLayer(layer, frameIndex);
+    final hasMark = _hasMarkForLayer(layer, frameIndex);
+    if (hasMark) {
+      return '●';
+    }
+    return switch (exposureState) {
+      TimelineCellExposureState.drawingStart =>
+        frameName == null || frameName.isEmpty ? '○' : frameName,
+      TimelineCellExposureState.heldExposure =>
+        frameName == null || frameName.isEmpty ? '' : frameName,
+      TimelineCellExposureState.blankStart => 'X',
+      TimelineCellExposureState.blankHeld => '',
+      TimelineCellExposureState.empty => '-',
+    };
   }
 
 }

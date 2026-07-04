@@ -85,15 +85,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
               ? constraints.maxHeight
               : fallbackSize.height +
                     _CanvasEditorPanelShell.topBarHeight +
-                    _CanvasViewportToolbar.height;
+                    _CanvasViewportBottomBar.height;
 
           return SizedBox(
             width: boundedWidth,
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
               title: widget.selectionLabels.title,
-              bottomBar: _CanvasViewportToolbar(
+              rightStripBar: CanvasViewportVerticalScrollbar(
                 viewport: _viewport,
+                editorViewportSize: _resolvedEditorViewportSize(),
+                canvasSize: widget.canvasSize,
+                onViewportChanged: _setViewport,
+              ),
+              bottomBar: _CanvasViewportBottomBar(
+                viewport: _viewport,
+                editorViewportSize: _resolvedEditorViewportSize(),
+                canvasSize: widget.canvasSize,
+                onViewportChanged: _setViewport,
                 onZoomIn: () => _zoomAroundCenter(1.25),
                 onZoomOut: () => _zoomAroundCenter(0.8),
                 onFit: _fitToView,
@@ -109,47 +118,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: InteractiveBrushEditCanvasView(
-                            key: ValueKey<String>(
-                              'brush-canvas-${activeKey.frameId.value}',
-                            ),
-                            sessionState: session,
-                            layerId: activeKey.layerId,
-                            frameId: activeKey.frameId,
-                            inputSettings: _inputSettings,
-                            committedSourceDabs: committedSourceDabs,
-                            committedSourceDabStrokes: committedSourceDabStrokes,
-                            viewport: _viewport,
-                            onViewportChanged: _setViewport,
-                            onSourceStrokeCommitted: _handleSourceStrokeCommitted,
-                          ),
-                        ),
-                        Positioned(
-                          left: 8,
-                          right: 8,
-                          bottom: 8,
-                          child: CanvasViewportHorizontalScrollbar(
-                            viewport: _viewport,
-                            editorViewportSize: viewportSize,
-                            canvasSize: widget.canvasSize,
-                            onViewportChanged: _setViewport,
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          bottom: 28,
-                          child: CanvasViewportVerticalScrollbar(
-                            viewport: _viewport,
-                            editorViewportSize: viewportSize,
-                            canvasSize: widget.canvasSize,
-                            onViewportChanged: _setViewport,
-                          ),
-                        ),
-                      ],
+                    child: InteractiveBrushEditCanvasView(
+                      key: ValueKey<String>(
+                        'brush-canvas-${activeKey.frameId.value}',
+                      ),
+                      sessionState: session,
+                      layerId: activeKey.layerId,
+                      frameId: activeKey.frameId,
+                      inputSettings: _inputSettings,
+                      committedSourceDabs: committedSourceDabs,
+                      committedSourceDabStrokes: committedSourceDabStrokes,
+                      viewport: _viewport,
+                      onViewportChanged: _setViewport,
+                      onSourceStrokeCommitted: _handleSourceStrokeCommitted,
                     ),
                   );
                 },
@@ -165,7 +146,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     if (size.width <= 0 || size.height <= 0) {
       return;
     }
+    if (_editorViewportSize == size) {
+      return;
+    }
     _editorViewportSize = size;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   void _setViewport(CanvasViewport viewport) {
@@ -240,11 +229,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.title,
     required this.child,
     required this.bottomBar,
+    required this.rightStripBar,
   });
 
   final String title;
   final Widget child;
   final Widget bottomBar;
+  final Widget rightStripBar;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +279,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                   width: rightStripWidth,
                   alignment: Alignment.center,
                   color: colorScheme.surfaceContainerHighest,
-                  child: const RotatedBox(quarterTurns: 1, child: Text('Pan')),
+                  child: rightStripBar,
                 ),
               ],
             ),
@@ -302,6 +293,55 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               ),
             ),
             child: bottomBar,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _CanvasViewportBottomBar extends StatelessWidget {
+  static const double height = _CanvasViewportToolbar.height + 14;
+
+  const _CanvasViewportBottomBar({
+    required this.viewport,
+    required this.editorViewportSize,
+    required this.canvasSize,
+    required this.onViewportChanged,
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onFit,
+    required this.onReset,
+  });
+
+  final CanvasViewport viewport;
+  final Size editorViewportSize;
+  final CanvasSize canvasSize;
+  final ValueChanged<CanvasViewport> onViewportChanged;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onFit;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: Column(
+        children: [
+          _CanvasViewportToolbar(
+            viewport: viewport,
+            onZoomIn: onZoomIn,
+            onZoomOut: onZoomOut,
+            onFit: onFit,
+            onReset: onReset,
+          ),
+          CanvasViewportHorizontalScrollbar(
+            viewport: viewport,
+            editorViewportSize: editorViewportSize,
+            canvasSize: canvasSize,
+            onViewportChanged: onViewportChanged,
           ),
         ],
       ),
