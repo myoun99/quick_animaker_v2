@@ -30,7 +30,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewport,
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
-    this.brushToolState = const BrushToolState(),
+    this.brushToolState = BrushToolState.defaults,
     this.onBrushToolStateChanged,
   });
 

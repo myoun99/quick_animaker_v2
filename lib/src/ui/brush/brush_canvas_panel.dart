@@ -27,7 +27,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
-    this.brushToolState = const BrushToolState(),
+    this.brushToolState = BrushToolState.defaults,
     this.onBrushToolStateChanged,
     this.historyManager,
     this.viewport,

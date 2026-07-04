@@ -63,7 +63,7 @@ class _HomePageState extends State<HomePage> {
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
   CanvasViewport _canvasViewport = CanvasViewport();
-  BrushToolState _brushToolState = const BrushToolState();
+  BrushToolState _brushToolState = BrushToolState.defaults;
 
   @override
   void initState() {

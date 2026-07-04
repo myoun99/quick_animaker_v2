@@ -5,16 +5,22 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 /// This is UI/tool state owned by the editor session. It is intentionally
 /// separate from project, cut, layer, frame, stroke, cache, and save/load data.
 class BrushToolState {
-  const BrushToolState({
+  factory BrushToolState({
     double size = defaultSize,
     double opacity = defaultOpacity,
     int color = defaultColor,
-  }) : size = size,
-       opacity = opacity,
-       color = color;
+  }) {
+    return BrushToolState.clamped(size: size, opacity: opacity, color: color);
+  }
+
+  const BrushToolState._raw({
+    required this.size,
+    required this.opacity,
+    required this.color,
+  });
 
   factory BrushToolState.clamped({double? size, double? opacity, int? color}) {
-    return BrushToolState(
+    return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
       opacity: clampOpacity(opacity ?? defaultOpacity),
       color: color ?? defaultColor,
@@ -26,6 +32,11 @@ class BrushToolState {
   static const double defaultSize = 10.0;
   static const double defaultOpacity = 1.0;
   static const int defaultColor = 0xFF000000;
+  static const BrushToolState defaults = BrushToolState._raw(
+    size: defaultSize,
+    opacity: defaultOpacity,
+    color: defaultColor,
+  );
 
   final double size;
   final double opacity;
@@ -34,8 +45,8 @@ class BrushToolState {
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(
       color: color,
-      size: clampSize(size),
-      opacity: clampOpacity(opacity),
+      size: size,
+      opacity: opacity,
     );
   }
 

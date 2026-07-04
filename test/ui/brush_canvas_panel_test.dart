@@ -41,6 +41,14 @@ void main() {
     );
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(
+      tester
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .inputSettings,
+      const BrushEditCanvasInputSettings(size: 10),
+    );
+    expect(
       find.byKey(
         const ValueKey<String>('interactive-brush-edit-canvas-view-listener'),
       ),
@@ -96,7 +104,7 @@ void main() {
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
-    var toolState = const BrushToolState();
+    var toolState = BrushToolState.defaults;
 
     await tester.pumpWidget(
       MaterialApp(
