@@ -68,7 +68,7 @@ void main() {
       expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
-        find.byKey(const ValueKey<String>('brush-canvas-sample-frame')),
+        find.byKey(const ValueKey<String>('brush-canvas-default-frame')),
         findsNothing,
       );
       expect(
