@@ -74,7 +74,8 @@ class BrushToolOptionsBar extends StatelessWidget {
                   label: swatch.label,
                   color: swatch.color,
                   selected: state.color == swatch.color,
-                  onSelected: (color) => onChanged(state.copyWith(color: color)),
+                  onSelected: (color) =>
+                      onChanged(state.copyWith(color: color)),
                 ),
               const SizedBox(width: 12),
             ],

@@ -149,10 +149,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolState.opacity, lessThan(1));
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-tool-color-swatch-Blue')),
+    final blueSwatch = find.byKey(
+      const ValueKey<String>('brush-tool-color-swatch-Blue'),
     );
+
+    await tester.ensureVisible(blueSwatch);
     await tester.pumpAndSettle();
+
+    await tester.tap(blueSwatch);
+    await tester.pumpAndSettle();
+
     expect(toolState.color, 0xFF1E88E5);
     expect(find.text('Black'), findsNothing);
     expect(find.text('Red'), findsNothing);

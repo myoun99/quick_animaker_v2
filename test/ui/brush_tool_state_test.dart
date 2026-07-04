@@ -4,22 +4,22 @@ import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings
 
 void main() {
   group('BrushToolState', () {
-    test('default brush tool state maps to production brush input settings', () {
-      const state = BrushToolState.defaults;
+    test(
+      'default brush tool state maps to production brush input settings',
+      () {
+        const state = BrushToolState.defaults;
 
-      expect(
-        state.toInputSettings(),
-        const BrushEditCanvasInputSettings(size: 10),
-      );
-    });
+        expect(
+          state.toInputSettings(),
+          const BrushEditCanvasInputSettings(size: 10),
+        );
+      },
+    );
 
     test('public constructor always stores a clamped size', () {
       expect(BrushToolState(size: -10).size, BrushToolState.minSize);
       expect(BrushToolState(size: 10000).size, BrushToolState.maxSize);
-      expect(
-        BrushToolState(size: double.nan).size,
-        BrushToolState.defaultSize,
-      );
+      expect(BrushToolState(size: double.nan).size, BrushToolState.defaultSize);
       expect(
         BrushToolState(size: double.infinity).size,
         BrushToolState.defaultSize,

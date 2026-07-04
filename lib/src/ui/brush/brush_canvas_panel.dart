@@ -276,7 +276,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       builder: (context, constraints) {
         final maxHeight = constraints.hasBoundedHeight
             ? constraints.maxHeight.clamp(0.0, double.infinity).toDouble()
-            : topBarHeight + toolOptionsBarHeight + _CanvasViewportBottomBar.height;
+            : topBarHeight +
+                  toolOptionsBarHeight +
+                  _CanvasViewportBottomBar.height;
         final titleHeight = topBarHeight.clamp(0.0, maxHeight).toDouble();
         final toolOptionsHeight = _remainingHeightForToolOptions(
           maxHeight,
