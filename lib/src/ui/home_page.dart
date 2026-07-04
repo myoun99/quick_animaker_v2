@@ -26,6 +26,7 @@ import '../services/project_repository.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/main_canvas_brush_host.dart';
+import 'brush/brush_tool_state.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'storyboard_panel.dart';
@@ -62,6 +63,7 @@ class _HomePageState extends State<HomePage> {
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
   CanvasViewport _canvasViewport = CanvasViewport();
+  BrushToolState _brushToolState = BrushToolState.defaults;
 
   @override
   void initState() {
@@ -1402,6 +1404,10 @@ class _HomePageState extends State<HomePage> {
                       setState(() => _canvasViewport = viewport);
                     },
                     selectionLabels: _canvasSelectionLabels,
+                    brushToolState: _brushToolState,
+                    onBrushToolStateChanged: (state) {
+                      setState(() => _brushToolState = state);
+                    },
                   ),
                 ),
               ),

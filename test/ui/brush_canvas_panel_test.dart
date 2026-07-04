@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -39,6 +40,14 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
+    expect(
+      tester
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .inputSettings,
+      const BrushEditCanvasInputSettings(size: 10),
+    );
     expect(
       find.byKey(
         const ValueKey<String>('interactive-brush-edit-canvas-view-listener'),
@@ -84,6 +93,67 @@ void main() {
     expect(find.text('Debug Reset Session'), findsNothing);
     expect(find.text('Undo'), findsNothing);
     expect(find.text('Redo'), findsNothing);
+    expect(find.text('Black'), findsNothing);
+    expect(find.text('Red'), findsNothing);
+  });
+
+  testWidgets('renders production brush tool options and updates settings', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    var toolState = BrushToolState.defaults;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: toolState,
+              onBrushToolStateChanged: (state) {
+                setState(() => toolState = state);
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-options-bar')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-current-display')),
+      findsOneWidget,
+    );
+    expect(find.text('Brush 10px / 100%'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('brush-tool-size-slider')),
+      const Offset(60, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(toolState.size, greaterThan(10));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('brush-tool-opacity-slider')),
+      const Offset(-80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(toolState.opacity, lessThan(1));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-tool-color-swatch-Blue')),
+    );
+    await tester.pumpAndSettle();
+    expect(toolState.color, 0xFF1E88E5);
     expect(find.text('Black'), findsNothing);
     expect(find.text('Red'), findsNothing);
   });
@@ -282,7 +352,11 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            initialInputSettings: settings,
+            brushToolState: BrushToolState.clamped(
+              color: settings.color,
+              size: settings.size,
+              opacity: settings.opacity,
+            ),
           ),
         ),
       ),
@@ -311,7 +385,7 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: sink,
-            initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
+            brushToolState: BrushToolState.clamped(size: 8),
           ),
         ),
       ),
@@ -353,7 +427,7 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            initialInputSettings: const BrushEditCanvasInputSettings(size: 8),
+            brushToolState: BrushToolState.clamped(size: 8),
             canvasSize: BrushCanvasFixture.canvasSize,
           ),
         ),
