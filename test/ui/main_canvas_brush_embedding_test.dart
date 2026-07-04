@@ -268,13 +268,17 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: StatefulBuilder(
-          builder: (context, setState) => SizedBox(
-            width: trackWidth,
-            child: CanvasViewportHorizontalScrollbar(
-              viewport: viewport,
-              editorViewportSize: editorViewportSize,
-              canvasSize: canvasSize,
-              onViewportChanged: (next) => setState(() => viewport = next),
+          builder: (context, setState) => Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: trackWidth,
+              height: 14,
+              child: CanvasViewportHorizontalScrollbar(
+                viewport: viewport,
+                editorViewportSize: editorViewportSize,
+                canvasSize: canvasSize,
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
             ),
           ),
         ),
@@ -322,13 +326,17 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: StatefulBuilder(
-          builder: (context, setState) => SizedBox(
-            height: trackHeight,
-            child: CanvasViewportVerticalScrollbar(
-              viewport: viewport,
-              editorViewportSize: editorViewportSize,
-              canvasSize: canvasSize,
-              onViewportChanged: (next) => setState(() => viewport = next),
+          builder: (context, setState) => Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 14,
+              height: trackHeight,
+              child: CanvasViewportVerticalScrollbar(
+                viewport: viewport,
+                editorViewportSize: editorViewportSize,
+                canvasSize: canvasSize,
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
             ),
           ),
         ),
