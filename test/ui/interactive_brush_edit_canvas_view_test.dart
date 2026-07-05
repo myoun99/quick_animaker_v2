@@ -604,6 +604,95 @@ void main() {
       expect(results.single.map((dab) => dab.size).toSet(), {20});
     });
 
+    testWidgets('pen pressure scales committed dab size when enabled', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 200, height: 16),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(
+              size: 8,
+              pressureSize: true,
+            ),
+          ),
+        ),
+      );
+
+      await _pressureStroke(
+        tester,
+        canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+        pressure: 0.5,
+      );
+
+      expect(results, hasLength(1));
+      // Constant 0.5 pressure with pressureSize on halves every dab's size.
+      for (final dab in results.single) {
+        expect(dab.size, closeTo(4.0, 1e-6));
+      }
+    });
+
+    testWidgets('pen pressure is ignored when the size toggle is off', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 200, height: 16),
+            results.add,
+            // pressureSize defaults off: pressure must not change the size.
+            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+          ),
+        ),
+      );
+
+      await _pressureStroke(
+        tester,
+        canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+        pressure: 0.5,
+      );
+
+      expect(results, hasLength(1));
+      expect(results.single.map((dab) => dab.size).toSet(), {8.0});
+    });
+
+    testWidgets('pen pressure ramps dab size across a stroke', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 200, height: 16),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(
+              size: 8,
+              pressureSize: true,
+            ),
+          ),
+        ),
+      );
+
+      // Pen-down at full pressure, drag to a light-pressure sample: size
+      // should decrease monotonically along the interpolated stroke.
+      await _pressureStroke(
+        tester,
+        canvasPoints: const [Offset(2, 1), Offset(120, 1)],
+        pressure: 0.25,
+        downPressure: 1.0,
+      );
+
+      expect(results, hasLength(1));
+      final sizes = results.single.map((dab) => dab.size).toList();
+      expect(sizes.length, greaterThan(3));
+      expect(sizes.first, greaterThan(sizes.last));
+      expect(sizes.first, closeTo(8.0, 1e-6));
+      // Every dab stays within the base size envelope.
+      expect(sizes, everyElement(lessThanOrEqualTo(8.0 + 1e-6)));
+      expect(sizes, everyElement(greaterThanOrEqualTo(0.0)));
+    });
+
     testWidgets('pointer cancel does not emit a result', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
@@ -762,6 +851,53 @@ Widget _app(Widget child) {
       body: Align(alignment: Alignment.topLeft, child: child),
     ),
   );
+}
+
+/// Drives a stroke through raw pointer events carrying a specific pressure
+/// (test gestures cannot set pressure). [downPressure] defaults to
+/// [pressure] so a flat-pressure stroke needs only one value.
+Future<void> _pressureStroke(
+  WidgetTester tester, {
+  required List<Offset> canvasPoints,
+  required double pressure,
+  double? downPressure,
+  int pointer = 1,
+}) async {
+  final globals = [
+    for (final point in canvasPoints) canvasGlobalOffset(tester, point),
+  ];
+  tester.binding.handlePointerEvent(
+    PointerDownEvent(
+      pointer: pointer,
+      position: globals.first,
+      pressure: downPressure ?? pressure,
+      pressureMin: 0,
+      pressureMax: 1,
+    ),
+  );
+  await tester.pump();
+  for (final global in globals.skip(1)) {
+    tester.binding.handlePointerEvent(
+      PointerMoveEvent(
+        pointer: pointer,
+        position: global,
+        pressure: pressure,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+  }
+  tester.binding.handlePointerEvent(
+    PointerUpEvent(
+      pointer: pointer,
+      position: globals.last,
+      pressure: 0,
+      pressureMin: 0,
+      pressureMax: 1,
+    ),
+  );
+  await tester.pump();
 }
 
 String _readInteractiveSource() {

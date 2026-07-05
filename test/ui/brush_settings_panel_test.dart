@@ -147,4 +147,49 @@ void main() {
     expect(inputSettings.flow, state.flow);
     expect(inputSettings.tipShape, BrushTipShape.square);
   });
+
+  testWidgets('BrushSettingsPanel toggles pen-pressure size and opacity', (
+    tester,
+  ) async {
+    var state = BrushToolState.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(state.pressureSize, isFalse);
+    expect(state.pressureOpacity, isFalse);
+
+    final sizeToggle = find.byKey(
+      const ValueKey<String>('brush-tool-pressure-size-toggle'),
+    );
+    await tester.ensureVisible(sizeToggle);
+    await tester.tap(sizeToggle);
+    await tester.pumpAndSettle();
+    expect(state.pressureSize, isTrue);
+    expect(state.pressureOpacity, isFalse);
+
+    final opacityToggle = find.byKey(
+      const ValueKey<String>('brush-tool-pressure-opacity-toggle'),
+    );
+    await tester.ensureVisible(opacityToggle);
+    await tester.tap(opacityToggle);
+    await tester.pumpAndSettle();
+    expect(state.pressureOpacity, isTrue);
+
+    // Both toggles reach the sampled canvas input settings.
+    final inputSettings = state.toInputSettings();
+    expect(inputSettings.pressureSize, isTrue);
+    expect(inputSettings.pressureOpacity, isTrue);
+  });
 }

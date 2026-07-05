@@ -113,6 +113,23 @@ class BrushSettingsPanel extends StatelessWidget {
                 onChanged(state.copyWith(tipShape: selection.single)),
           ),
           const SizedBox(height: 8),
+          Text('Pen Pressure', style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 2),
+          _PanelSwitch(
+            label: 'Size',
+            value: state.pressureSize,
+            keyValue: 'brush-tool-pressure-size-toggle',
+            onChanged: (value) =>
+                onChanged(state.copyWith(pressureSize: value)),
+          ),
+          _PanelSwitch(
+            label: 'Opacity',
+            value: state.pressureOpacity,
+            keyValue: 'brush-tool-pressure-opacity-toggle',
+            onChanged: (value) =>
+                onChanged(state.copyWith(pressureOpacity: value)),
+          ),
+          const SizedBox(height: 8),
           Text('Color', style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 6),
           Wrap(
@@ -173,6 +190,37 @@ class _PanelSlider extends StatelessWidget {
           value: value,
           min: min,
           max: max,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _PanelSwitch extends StatelessWidget {
+  const _PanelSwitch({
+    required this.label,
+    required this.value,
+    required this.keyValue,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final String keyValue;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ),
+        Switch(
+          key: ValueKey<String>(keyValue),
+          value: value,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           onChanged: onChanged,
         ),
       ],
