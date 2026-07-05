@@ -45,11 +45,11 @@ undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
   final undoResult = undoLatestBrushBitmapMaterializationInSessionState(
     sessionState: sessionState,
   );
-  final undoneMaterializationEntry = undoResult.undoneMaterializationEntry;
+  final undoneMaterializationEntry = undoResult.materializationEntry;
 
   return BrushEditSessionCacheOperationResult(
     kind: BrushEditSessionOperationKind.undo,
-    sessionState: sessionStateFromUndoResult(undoResult),
+    sessionState: sessionStateFromStepResult(undoResult),
     affectedEntry: undoneMaterializationEntry,
     cacheInvalidationResult: undoneMaterializationEntry == null
         ? _zeroCacheInvalidationResult()
@@ -68,11 +68,11 @@ redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
   final redoResult = redoLatestBrushBitmapMaterializationInSessionState(
     sessionState: sessionState,
   );
-  final redoneMaterializationEntry = redoResult.redoneMaterializationEntry;
+  final redoneMaterializationEntry = redoResult.materializationEntry;
 
   return BrushEditSessionCacheOperationResult(
     kind: BrushEditSessionOperationKind.redo,
-    sessionState: sessionStateFromRedoResult(redoResult),
+    sessionState: sessionStateFromStepResult(redoResult),
     affectedEntry: redoneMaterializationEntry,
     cacheInvalidationResult: redoneMaterializationEntry == null
         ? _zeroCacheInvalidationResult()
