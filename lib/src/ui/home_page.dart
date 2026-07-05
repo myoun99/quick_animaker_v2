@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
-import '../models/canvas_viewport.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
-import 'brush/brush_settings_panel.dart';
-import 'brush/main_canvas_brush_host.dart';
-import 'brush/brush_tool_state.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
@@ -14,12 +10,12 @@ import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
+import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
-import 'panels/editor_panel_dock.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
@@ -36,8 +32,6 @@ class _HomePageState extends State<HomePage> {
 
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   final ScrollController _topToolbarScrollController = ScrollController();
-  CanvasViewport _canvasViewport = CanvasViewport();
-  BrushToolState _brushToolState = BrushToolState.defaults;
 
   @override
   void initState() {
@@ -209,48 +203,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFBDBDBD)),
-                      ),
-                      child: KeyedSubtree(
-                        key: const ValueKey<String>(
-                          'main-canvas-brush-host-container',
-                        ),
-                        child: MainCanvasBrushHost(
-                          selection: _session.activeBrushEditorSelection,
-                          canvasSize: _session.activeCut.canvasSize,
-                          historyManager: _session.historyManager,
-                          viewport: _canvasViewport,
-                          onViewportChanged: (viewport) {
-                            setState(() => _canvasViewport = viewport);
-                          },
-                          selectionLabels: _session.canvasSelectionLabels,
-                          brushToolState: _brushToolState,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                EditorPanelDock(
-                  children: [
-                    BrushSettingsPanel(
-                      state: _brushToolState,
-                      onChanged: (state) {
-                        setState(() => _brushToolState = state);
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          Expanded(child: EditorCanvasArea(session: _session)),
           StoryboardPanel(
             project: _session.repository.requireProject(),
             activeCutId: _session.activeCutId,
