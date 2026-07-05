@@ -122,40 +122,15 @@ class _InteractiveBrushEditCanvasViewState
             onPointerSignal: _handlePointerSignal,
             child: ClipRect(
               key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  OverflowBox(
-                    alignment: Alignment.topLeft,
-                    minWidth: 0,
-                    minHeight: 0,
-                    maxWidth: double.infinity,
-                    maxHeight: double.infinity,
-                    child: Transform(
-                      transform: Matrix4.identity()
-                        ..translateByDouble(
-                          widget.viewport.panX,
-                          widget.viewport.panY,
-                          0.0,
-                          1.0,
-                        )
-                        ..scaleByDouble(
-                          widget.viewport.zoom,
-                          widget.viewport.zoom,
-                          1.0,
-                          1.0,
-                        ),
-                      alignment: Alignment.topLeft,
-                      child: BrushEditCanvasView(
-                        sessionState: widget.sessionState,
-                        showTransparentBackground:
-                            widget.showTransparentBackground,
-                        overlayModel: _overlayModel,
-                        staleScope: (widget.layerId, widget.frameId),
-                      ),
-                    ),
-                  ),
-                ],
+              // The viewport transform is applied inside the painter (not by
+              // a Transform widget) so the canvas rasterizes at final device
+              // resolution in one picture — pixel-stable at fractional zoom.
+              child: BrushEditCanvasView(
+                sessionState: widget.sessionState,
+                viewport: widget.viewport,
+                showTransparentBackground: widget.showTransparentBackground,
+                overlayModel: _overlayModel,
+                staleScope: (widget.layerId, widget.frameId),
               ),
             ),
           ),

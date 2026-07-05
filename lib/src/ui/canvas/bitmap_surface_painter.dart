@@ -2,23 +2,47 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/canvas_viewport.dart';
+import 'active_stroke_overlay_painter.dart';
 import 'bitmap_tile_image_cache.dart';
 
-/// Paints the committed brush artwork from the session bitmap surface.
+/// Paints the brush canvas — committed artwork plus the in-progress stroke —
+/// with the viewport transform applied INSIDE the picture.
 ///
-/// Committed strokes are materialized into the surface on commit, so this
-/// painter is the WYSIWYG base layer; the in-progress stroke renders above it
-/// through `ActiveStrokeOverlayPainter`.
+/// The zoom/pan used to live in a Transform widget above the paint layers.
+/// Under a fractional zoom the compositor then resampled each rasterized
+/// layer texture through the transform, and starting/stopping the overlay's
+/// per-move repaints changed how that resampling landed — boundary pixels of
+/// every line on the canvas visibly jittered while drawing (stable at 100% /
+/// 200% where texel edges align with device pixels). Applying
+/// `canvas.translate/scale` here means every frame rasterizes the canvas
+/// content directly at final resolution through one code path, so idle and
+/// drawing frames are pixel-identical at any zoom by construction.
 class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
     required this.surface,
+    this.viewport,
+    this.overlayModel,
     this.showTransparentBackground = true,
     this.staleScope,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
-       super(repaint: tileImageCache ?? BitmapTileImageCache.instance);
+       super(
+         repaint: Listenable.merge([
+           tileImageCache ?? BitmapTileImageCache.instance,
+           ?overlayModel,
+         ]),
+       );
 
   final BitmapSurface surface;
+
+  /// Zoom/pan applied inside the picture; `null` paints at identity.
+  final CanvasViewport? viewport;
+
+  /// Live in-progress stroke; drawn above the committed tiles with plain
+  /// source-over. Its notifications repaint this painter directly.
+  final ActiveStrokeOverlayModel? overlayModel;
+
   final bool showTransparentBackground;
 
   /// Identifies this surface's lineage (e.g. the brush frame) so the stale
@@ -30,22 +54,24 @@ class BitmapSurfacePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final canvasWidth = surface.canvasSize.width.toDouble();
+    final canvasHeight = surface.canvasSize.height.toDouble();
+
+    canvas.save();
+    final resolvedViewport = viewport;
+    if (resolvedViewport != null) {
+      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
+      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+    }
+    canvas.clipRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
+
     if (showTransparentBackground) {
       final backgroundPaint = Paint()..color = const Color(0xFFEDEDED);
-      canvas.drawRect(Offset.zero & size, backgroundPaint);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
+        backgroundPaint,
+      );
     }
-
-    // Tiles can only carry pixels inside the canvas, but clip anyway so a
-    // decoded tile image can never bleed past the canvas edge.
-    canvas.save();
-    canvas.clipRect(
-      Rect.fromLTWH(
-        0,
-        0,
-        surface.canvasSize.width.toDouble(),
-        surface.canvasSize.height.toDouble(),
-      ),
-    );
 
     final tileImagePaint = Paint()
       ..filterQuality = FilterQuality.none
@@ -74,6 +100,11 @@ class BitmapSurfacePainter extends CustomPainter {
         // per pixel for this frame only.
         _paintTilePixels(canvas, tile);
       }
+    }
+
+    final overlayImage = overlayModel?.overlayImage;
+    if (overlayImage != null) {
+      canvas.drawImage(overlayImage, Offset.zero, tileImagePaint);
     }
 
     canvas.restore();
@@ -122,6 +153,8 @@ class BitmapSurfacePainter extends CustomPainter {
     // deep `!=` compared every tile's pixel bytes on each rebuild (megabytes
     // per pointer move while drawing).
     return !identical(oldDelegate.surface, surface) ||
-        oldDelegate.showTransparentBackground != showTransparentBackground;
+        oldDelegate.showTransparentBackground != showTransparentBackground ||
+        oldDelegate.viewport != viewport ||
+        !identical(oldDelegate.overlayModel, overlayModel);
   }
 }

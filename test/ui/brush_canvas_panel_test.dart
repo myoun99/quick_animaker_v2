@@ -213,9 +213,16 @@ void main() {
       ),
     );
 
-    final drawingCanvasSize = tester.getSize(find.byType(BrushEditCanvasView));
-    expect(drawingCanvasSize.width, BrushCanvasDefaults.canvasSize.width);
-    expect(drawingCanvasSize.height, BrushCanvasDefaults.canvasSize.height);
+    // The view now fills the editor viewport and renders the Cut-sized
+    // canvas inside the painter (viewport transform is in-picture); the
+    // drawing area therefore comes from the session surface.
+    final canvasView = tester.widget<BrushEditCanvasView>(
+      find.byType(BrushEditCanvasView),
+    );
+    expect(
+      canvasView.sessionState.canvasState.currentSurface.canvasSize,
+      BrushCanvasDefaults.canvasSize,
+    );
   });
 
   testWidgets('fit action uses the available editor viewport size', (
