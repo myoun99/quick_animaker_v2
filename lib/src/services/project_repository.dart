@@ -11,6 +11,7 @@ import '../models/project.dart';
 import '../models/stroke.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
+import 'project_tree_editor.dart';
 
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
@@ -50,18 +51,11 @@ class ProjectRepository {
 
   void replaceTrack(Track track) {
     updateProject((project) {
-      final index = project.tracks.indexWhere(
-        (existingTrack) => existingTrack.id == track.id,
-      );
-
-      if (index == -1) {
+      final next = updateTrackById(project, track.id, (_) => track);
+      if (next == null) {
         throw StateError('Track not found: ${track.id}');
       }
-
-      final tracks = [...project.tracks];
-      tracks[index] = track;
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -85,31 +79,19 @@ class ProjectRepository {
 
   void insertCut({required TrackId trackId, required Cut cut, int? index}) {
     updateProject((project) {
-      var foundTrack = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            if (track.id != trackId) {
-              return track;
-            }
-
-            foundTrack = true;
-            final cuts = [...track.cuts];
-            if (index == null) {
-              cuts.add(cut);
-            } else {
-              cuts.insert(index, cut);
-            }
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundTrack) {
+      final next = updateTrackById(project, trackId, (track) {
+        final cuts = [...track.cuts];
+        if (index == null) {
+          cuts.add(cut);
+        } else {
+          cuts.insert(index, cut);
+        }
+        return track.copyWith(cuts: cuts);
+      });
+      if (next == null) {
         throw StateError('Track not found: $trackId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -119,38 +101,21 @@ class ProjectRepository {
     required int newIndex,
   }) {
     updateProject((project) {
-      var foundTrack = false;
-      var foundCut = false;
+      final next = updateTrackById(project, trackId, (track) {
+        final cuts = [...track.cuts];
+        final oldIndex = cuts.indexWhere((cut) => cut.id == cutId);
+        if (oldIndex == -1) {
+          throw StateError('Cut not found in track $trackId: $cutId');
+        }
 
-      final tracks = project.tracks
-          .map((track) {
-            if (track.id != trackId) {
-              return track;
-            }
-
-            foundTrack = true;
-            final cuts = [...track.cuts];
-            final oldIndex = cuts.indexWhere((cut) => cut.id == cutId);
-            if (oldIndex == -1) {
-              return track;
-            }
-
-            foundCut = true;
-            final cut = cuts.removeAt(oldIndex);
-            cuts.insert(newIndex, cut);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundTrack) {
+        final cut = cuts.removeAt(oldIndex);
+        cuts.insert(newIndex, cut);
+        return track.copyWith(cuts: cuts);
+      });
+      if (next == null) {
         throw StateError('Track not found: $trackId');
       }
-      if (!foundCut) {
-        throw StateError('Cut not found in track $trackId: $cutId');
-      }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -184,30 +149,15 @@ class ProjectRepository {
 
   void renameCut({required CutId cutId, required String name}) {
     updateProject((project) {
-      var foundCut = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  return cut.copyWith(name: name);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(name: name),
+      );
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -216,30 +166,15 @@ class ProjectRepository {
     required CutMetadata metadata,
   }) {
     updateProject((project) {
-      var foundCut = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  return cut.copyWith(metadata: metadata);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(metadata: metadata),
+      );
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -251,42 +186,23 @@ class ProjectRepository {
     Layer? deletedLayer;
 
     updateProject((project) {
-      var foundCut = false;
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final index = cut.layers.indexWhere((layer) => layer.id == layerId);
+        if (index == -1) {
+          return cut;
+        }
 
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  final index = cut.layers.indexWhere(
-                    (layer) => layer.id == layerId,
-                  );
-                  if (index == -1) {
-                    return cut;
-                  }
-
-                  deletedLayer = cut.layers[index];
-                  final layers = [...cut.layers]..removeAt(index);
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+        deletedLayer = cut.layers[index];
+        final layers = [...cut.layers]..removeAt(index);
+        return cut.copyWith(layers: layers);
+      });
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
       if (deletedLayer == null) {
         throw StateError('Layer not found in cut $cutId: $layerId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
 
     return deletedLayer!;
@@ -294,36 +210,19 @@ class ProjectRepository {
 
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
     updateProject((project) {
-      var foundCut = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  final layers = [...cut.layers];
-                  if (index == null) {
-                    layers.add(layer);
-                  } else {
-                    layers.insert(index.clamp(0, layers.length).toInt(), layer);
-                  }
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final layers = [...cut.layers];
+        if (index == null) {
+          layers.add(layer);
+        } else {
+          layers.insert(index.clamp(0, layers.length).toInt(), layer);
+        }
+        return cut.copyWith(layers: layers);
+      });
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -336,36 +235,11 @@ class ProjectRepository {
     required Layer Function(Layer layer) update,
   }) {
     updateProject((project) {
-      var foundLayer = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  final layers = cut.layers
-                      .map((layer) {
-                        if (layer.id != layerId) {
-                          return layer;
-                        }
-
-                        foundLayer = true;
-                        return update(layer);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundLayer) {
+      final next = updateLayerAnywhere(project, layerId, update);
+      if (next == null) {
         throw StateError('Layer not found: $layerId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -375,45 +249,21 @@ class ProjectRepository {
     required String name,
   }) {
     updateProject((project) {
-      var foundCut = false;
-      var foundLayer = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  final layers = cut.layers
-                      .map((layer) {
-                        if (layer.id != layerId) {
-                          return layer;
-                        }
-
-                        foundLayer = true;
-                        return layer.copyWith(name: name);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(name: name),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-      if (!foundLayer) {
-        throw StateError('Layer not found in cut $cutId: $layerId');
-      }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -423,99 +273,38 @@ class ProjectRepository {
     required LayerKind kind,
   }) {
     updateProject((project) {
-      var foundCut = false;
-      var foundLayer = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  Layer? targetLayer;
-                  for (final layer in cut.layers) {
-                    if (layer.id == layerId) {
-                      targetLayer = layer;
-                      break;
-                    }
-                  }
-                  if (targetLayer == null) {
-                    return cut;
-                  }
-
-                  foundLayer = true;
-                  if (kind == LayerKind.storyboard &&
-                      targetLayer.kind != LayerKind.storyboard &&
-                      cut.layers.any(
-                        (layer) => layer.kind == LayerKind.storyboard,
-                      )) {
-                    throw StateError(
-                      'Cut $cutId already has a storyboard layer.',
-                    );
-                  }
-
-                  final layers = cut.layers
-                      .map(
-                        (layer) => layer.id == layerId
-                            ? layer.copyWith(kind: kind)
-                            : layer,
-                      )
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(cut, layerId, (layer) {
+          if (kind == LayerKind.storyboard &&
+              layer.kind != LayerKind.storyboard &&
+              cut.layers.any((other) => other.kind == LayerKind.storyboard)) {
+            throw StateError('Cut $cutId already has a storyboard layer.');
+          }
+          return layer.copyWith(kind: kind);
+        });
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-      if (!foundLayer) {
-        throw StateError('Layer not found in cut $cutId: $layerId');
-      }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
   void addFrame({required LayerId layerId, required Frame frame}) {
     updateProject((project) {
-      var foundLayer = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  final layers = cut.layers
-                      .map((layer) {
-                        if (layer.id != layerId) {
-                          return layer;
-                        }
-
-                        foundLayer = true;
-                        return layer.copyWith(frames: [...layer.frames, frame]);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundLayer) {
+      final next = updateLayerAnywhere(
+        project,
+        layerId,
+        (layer) => layer.copyWith(frames: [...layer.frames, frame]),
+      );
+      if (next == null) {
         throw StateError('Layer not found: $layerId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -524,42 +313,11 @@ class ProjectRepository {
     required Frame Function(Frame frame) update,
   }) {
     updateProject((project) {
-      var foundFrame = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  final layers = cut.layers
-                      .map((layer) {
-                        final frames = layer.frames
-                            .map((frame) {
-                              if (frame.id != frameId) {
-                                return frame;
-                              }
-
-                              foundFrame = true;
-                              return update(frame);
-                            })
-                            .toList(growable: false);
-
-                        return layer.copyWith(frames: frames);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundFrame) {
+      final next = updateFrameAnywhere(project, frameId, update);
+      if (next == null) {
         throw StateError('Frame not found: $frameId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
@@ -570,105 +328,41 @@ class ProjectRepository {
     required StoryboardFrameMetadata metadata,
   }) {
     updateProject((project) {
-      var foundCut = false;
-      var foundLayer = false;
-      var foundFrame = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  if (cut.id != cutId) {
-                    return cut;
-                  }
-
-                  foundCut = true;
-                  final layers = cut.layers
-                      .map((layer) {
-                        if (layer.id != layerId) {
-                          return layer;
-                        }
-
-                        foundLayer = true;
-                        final frames = layer.frames
-                            .map((frame) {
-                              if (frame.id != frameId) {
-                                return frame;
-                              }
-
-                              foundFrame = true;
-                              return frame.copyWith(
-                                storyboardMetadata: metadata,
-                              );
-                            })
-                            .toList(growable: false);
-
-                        return layer.copyWith(frames: frames);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundCut) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(cut, layerId, (layer) {
+          final updatedLayer = updateFrameInLayer(
+            layer,
+            frameId,
+            (frame) => frame.copyWith(storyboardMetadata: metadata),
+          );
+          if (updatedLayer == null) {
+            throw StateError('Frame not found in layer $layerId: $frameId');
+          }
+          return updatedLayer;
+        });
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
         throw StateError('Cut not found: $cutId');
       }
-      if (!foundLayer) {
-        throw StateError('Layer not found in cut $cutId: $layerId');
-      }
-      if (!foundFrame) {
-        throw StateError('Frame not found in layer $layerId: $frameId');
-      }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 
   void addStroke({required FrameId frameId, required Stroke stroke}) {
     updateProject((project) {
-      var foundFrame = false;
-
-      final tracks = project.tracks
-          .map((track) {
-            final cuts = track.cuts
-                .map((cut) {
-                  final layers = cut.layers
-                      .map((layer) {
-                        final frames = layer.frames
-                            .map((frame) {
-                              if (frame.id != frameId) {
-                                return frame;
-                              }
-
-                              foundFrame = true;
-                              return frame.copyWith(
-                                strokes: [...frame.strokes, stroke],
-                              );
-                            })
-                            .toList(growable: false);
-
-                        return layer.copyWith(frames: frames);
-                      })
-                      .toList(growable: false);
-
-                  return cut.copyWith(layers: layers);
-                })
-                .toList(growable: false);
-
-            return track.copyWith(cuts: cuts);
-          })
-          .toList(growable: false);
-
-      if (!foundFrame) {
+      final next = updateFrameAnywhere(
+        project,
+        frameId,
+        (frame) => frame.copyWith(strokes: [...frame.strokes, stroke]),
+      );
+      if (next == null) {
         throw StateError('Frame not found: $frameId');
       }
-
-      return project.copyWith(tracks: tracks);
+      return next;
     });
   }
 }
