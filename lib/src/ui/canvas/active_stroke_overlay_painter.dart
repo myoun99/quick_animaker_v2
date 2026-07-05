@@ -6,62 +6,39 @@ import 'package:flutter/material.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 
-/// One pre-rendered piece of the in-progress stroke: an exact GPU copy of a
-/// dirty region of the live CPU stroke buffer.
-class ActiveStrokeOverlaySegment {
-  ActiveStrokeOverlaySegment({required this.image, required this.offset});
-
-  final ui.Image image;
-  final Offset offset;
-
-  void dispose() => image.dispose();
-}
-
 /// Mutable state of the in-progress stroke overlay.
 ///
 /// A lightweight editor-local [ChangeNotifier]: the interactive view blends
-/// new dabs into its live CPU stroke buffer, converts the touched region to a
-/// segment sprite, and notifies — the overlay painter listens through the
+/// new dabs into its live CPU stroke buffer, folds the touched region into
+/// [overlayImage], and notifies — the overlay painter listens through the
 /// `CustomPainter.repaint` hook, so pointer moves repaint the overlay layer
 /// directly without rebuilding any widgets.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// Dabs of the current stroke, kept for observability and tests; rendering
-  /// uses [segments]/[flattened], which carry the exact rasterized pixels.
+  /// uses [overlayImage], which carries the exact rasterized pixels.
   final List<BrushDab> dabs = <BrushDab>[];
 
-  /// Region sprites in paint order. Later segments contain the accumulated
-  /// buffer content for their region, so they are drawn with
-  /// [BlendMode.src] and the overlay always equals the live buffer.
-  final List<ActiveStrokeOverlaySegment> segments =
-      <ActiveStrokeOverlaySegment>[];
-
-  /// Older segments folded into one canvas-sized image so repaints and
-  /// flattens never re-touch the whole stroke.
-  ui.Image? flattened;
+  /// Canvas-sized image equal to the live stroke buffer. Composition happens
+  /// off-screen in image space (integer pixel grid), so the on-screen painter
+  /// only ever draws this image with plain source-over — replacement blending
+  /// on the screen canvas would clip along fractional-zoom device pixels.
+  ui.Image? overlayImage;
 
   /// Notifies listeners after the owner mutated the overlay content.
   void markChanged() => notifyListeners();
 
-  /// Clears the overlay and disposes all images.
+  /// Clears the overlay and disposes the image.
   void reset() {
-    flattened?.dispose();
-    flattened = null;
-    for (final segment in segments) {
-      segment.dispose();
-    }
-    segments.clear();
+    overlayImage?.dispose();
+    overlayImage = null;
     dabs.clear();
     notifyListeners();
   }
 
   @override
   void dispose() {
-    flattened?.dispose();
-    flattened = null;
-    for (final segment in segments) {
-      segment.dispose();
-    }
-    segments.clear();
+    overlayImage?.dispose();
+    overlayImage = null;
     super.dispose();
   }
 }
@@ -127,13 +104,45 @@ ui.Image strokeRegionSprite({
   return image;
 }
 
+/// Folds a freshly rasterized region into the canvas-sized overlay image.
+///
+/// Runs entirely in image space (no view transform), so the src replacement
+/// of the region lands on exact integer pixels regardless of the on-screen
+/// zoom. Returns the new overlay image; the caller owns disposal of the
+/// previous one.
+ui.Image composeOverlayImage({
+  required ui.Image? previous,
+  required ui.Image regionSprite,
+  required Offset regionOffset,
+  required int canvasWidth,
+  required int canvasHeight,
+}) {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  final basePaint = Paint()
+    ..isAntiAlias = false
+    ..filterQuality = FilterQuality.none;
+  if (previous != null) {
+    canvas.drawImage(previous, Offset.zero, basePaint);
+  }
+  final regionPaint = Paint()
+    ..isAntiAlias = false
+    ..filterQuality = FilterQuality.none
+    ..blendMode = BlendMode.src;
+  canvas.drawImage(regionSprite, regionOffset, regionPaint);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(canvasWidth, canvasHeight);
+  picture.dispose();
+  return image;
+}
+
 /// Paints the in-progress stroke from its exact rasterized pixels.
 ///
 /// The live stroke is CPU-rasterized incrementally with the same math as the
 /// commit path (`BrushLiveStrokeRasterizer`), so what this painter shows is
 /// byte-identical to what pen-up commits — the fundamental unification of
-/// live and committed pixels. No bitmap work happens per repaint: it draws
-/// the flattened image plus a bounded number of region sprites.
+/// live and committed pixels. The painter itself is trivial: one plain
+/// source-over image draw, which is stable at any fractional zoom.
 class ActiveStrokeOverlayPainter extends CustomPainter {
   ActiveStrokeOverlayPainter({this.model}) : super(repaint: model);
 
@@ -143,31 +152,17 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final overlayModel = model;
-    if (overlayModel == null) {
+    final overlayImage = model?.overlayImage;
+    if (overlayImage == null) {
       return;
     }
-
-    final flattened = overlayModel.flattened;
-    if (flattened != null) {
-      canvas.drawImage(
-        flattened,
-        Offset.zero,
-        Paint()
-          ..isAntiAlias = false
-          ..filterQuality = FilterQuality.none,
-      );
-    }
-    // Each segment carries the accumulated buffer for its region, so src
-    // replacement keeps the overlay exactly equal to the live buffer even
-    // where segments overlap.
-    final segmentPaint = Paint()
-      ..isAntiAlias = false
-      ..filterQuality = FilterQuality.none
-      ..blendMode = BlendMode.src;
-    for (final segment in overlayModel.segments) {
-      canvas.drawImage(segment.image, segment.offset, segmentPaint);
-    }
+    canvas.drawImage(
+      overlayImage,
+      Offset.zero,
+      Paint()
+        ..isAntiAlias = false
+        ..filterQuality = FilterQuality.none,
+    );
   }
 
   @override
