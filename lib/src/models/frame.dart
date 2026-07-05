@@ -1,8 +1,8 @@
+import '../core/collection_equality.dart';
 import 'frame_id.dart';
 import 'storyboard_frame_metadata.dart';
+import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
-
-const Object _unchangedName = Object();
 
 class Frame {
   Frame({
@@ -23,14 +23,14 @@ class Frame {
     FrameId? id,
     int? duration,
     List<Stroke>? strokes,
-    Object? name = _unchangedName,
+    Object? name = copyWithSentinel,
     StoryboardFrameMetadata? storyboardMetadata,
   }) {
     return Frame(
       id: id ?? this.id,
       duration: duration ?? this.duration,
       strokes: strokes ?? this.strokes,
-      name: identical(name, _unchangedName) ? this.name : name as String?,
+      name: identical(name, copyWithSentinel) ? this.name : name as String?,
       storyboardMetadata: storyboardMetadata ?? this.storyboardMetadata,
     );
   }
@@ -67,7 +67,7 @@ class Frame {
           other.duration == duration &&
           other.name == name &&
           other.storyboardMetadata == storyboardMetadata &&
-          _listEquals(other.strokes, strokes);
+          listEquals(other.strokes, strokes);
 
   @override
   int get hashCode => Object.hash(
@@ -81,13 +81,4 @@ class Frame {
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, strokes: $strokes, storyboardMetadata: $storyboardMetadata)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

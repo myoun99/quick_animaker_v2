@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'brush_settings.dart';
 import 'stroke_id.dart';
 import 'stroke_point.dart';
@@ -48,7 +49,7 @@ class Stroke {
       identical(this, other) ||
       other is Stroke &&
           other.id == id &&
-          _listEquals(other.points, points) &&
+          listEquals(other.points, points) &&
           other.brushSettings == brushSettings;
 
   @override
@@ -57,13 +58,4 @@ class Stroke {
   @override
   String toString() =>
       'Stroke(id: $id, points: $points, brushSettings: $brushSettings)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

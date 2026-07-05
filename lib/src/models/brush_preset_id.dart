@@ -1,21 +1,8 @@
-class BrushPresetId {
-  const BrushPresetId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class BrushPresetId extends StringId {
+  const BrushPresetId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory BrushPresetId.fromJson(Map<String, dynamic> json) {
-    return BrushPresetId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is BrushPresetId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory BrushPresetId.fromJson(Map<String, dynamic> json) =>
+      BrushPresetId(json['value'] as String);
 }

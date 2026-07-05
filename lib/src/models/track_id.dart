@@ -1,21 +1,8 @@
-class TrackId {
-  const TrackId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class TrackId extends StringId {
+  const TrackId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory TrackId.fromJson(Map<String, dynamic> json) {
-    return TrackId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is TrackId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory TrackId.fromJson(Map<String, dynamic> json) =>
+      TrackId(json['value'] as String);
 }

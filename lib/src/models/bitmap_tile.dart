@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../core/collection_equality.dart';
 import 'tile_coord.dart';
 
 class BitmapTile {
@@ -88,7 +89,7 @@ class BitmapTile {
       other is BitmapTile &&
           other.coord == coord &&
           other.size == size &&
-          _listEquals(other._pixels, _pixels);
+          listEquals(other._pixels, _pixels);
 
   @override
   int get hashCode => Object.hash(coord, size, Object.hashAll(_pixels));
@@ -117,12 +118,4 @@ void _validatePixelLength(int length, int size) {
       'BitmapTile.pixels length must equal size * size * 4 ($expected).',
     );
   }
-}
-
-bool _listEquals(Uint8List a, Uint8List b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

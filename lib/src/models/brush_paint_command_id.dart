@@ -1,16 +1,5 @@
-class BrushPaintCommandId {
-  const BrushPaintCommandId(this.value);
+import 'string_id.dart';
 
-  final String value;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BrushPaintCommandId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+final class BrushPaintCommandId extends StringId {
+  const BrushPaintCommandId(super.value);
 }

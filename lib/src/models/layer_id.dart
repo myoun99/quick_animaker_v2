@@ -1,21 +1,8 @@
-class LayerId {
-  const LayerId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class LayerId extends StringId {
+  const LayerId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory LayerId.fromJson(Map<String, dynamic> json) {
-    return LayerId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is LayerId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory LayerId.fromJson(Map<String, dynamic> json) =>
+      LayerId(json['value'] as String);
 }

@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'cut.dart';
 import 'track_id.dart';
 
@@ -54,7 +55,7 @@ class Track {
       other is Track &&
           other.id == id &&
           other.name == name &&
-          _listEquals(other.cuts, cuts) &&
+          listEquals(other.cuts, cuts) &&
           other.type == type;
 
   @override
@@ -62,13 +63,4 @@ class Track {
 
   @override
   String toString() => 'Track(id: $id, name: $name, cuts: $cuts, type: $type)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

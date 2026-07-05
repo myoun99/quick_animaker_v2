@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../core/collection_equality.dart';
 import 'frame.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
@@ -95,9 +96,9 @@ class Layer {
       other is Layer &&
           other.id == id &&
           other.name == name &&
-          _listEquals(other.frames, frames) &&
-          _mapEquals(other.timeline, timeline) &&
-          _mapEquals(other.marks, marks) &&
+          listEquals(other.frames, frames) &&
+          mapEquals(other.timeline, timeline) &&
+          mapEquals(other.marks, marks) &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
           other.kind == kind;
@@ -242,24 +243,4 @@ SplayTreeMap<int, TimelineMark> _marksFromJson(Object? json) {
   }
 
   throw const FormatException('Layer marks must be a list or object.');
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
-}
-
-bool _mapEquals<K, V>(Map<K, V> a, Map<K, V> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (final entry in a.entries) {
-    if (!b.containsKey(entry.key) || b[entry.key] != entry.value) {
-      return false;
-    }
-  }
-  return true;
 }

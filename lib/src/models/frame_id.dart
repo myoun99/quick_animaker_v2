@@ -1,21 +1,8 @@
-class FrameId {
-  const FrameId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class FrameId extends StringId {
+  const FrameId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory FrameId.fromJson(Map<String, dynamic> json) {
-    return FrameId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is FrameId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory FrameId.fromJson(Map<String, dynamic> json) =>
+      FrameId(json['value'] as String);
 }

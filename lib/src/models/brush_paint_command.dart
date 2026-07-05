@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'brush_dab.dart';
 import 'brush_paint_command_id.dart';
 import 'brush_paint_command_state.dart';
@@ -77,7 +78,7 @@ class BrushPaintCommand {
           other.affectedBoundsRef == affectedBoundsRef &&
           other.materializationRef == materializationRef &&
           other.metadataRef == metadataRef &&
-          _listEquals(other.sourceDabs, sourceDabs);
+          listEquals(other.sourceDabs, sourceDabs);
 
   @override
   int get hashCode => Object.hash(
@@ -96,13 +97,4 @@ class BrushPaintCommand {
   String toString() =>
       'BrushPaintCommand(id: $id, sequenceNumber: $sequenceNumber, '
       'kind: $kind, state: $state, materializationRef: $materializationRef)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

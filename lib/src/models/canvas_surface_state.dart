@@ -1,7 +1,6 @@
+import '../core/copy_with_sentinel.dart';
 import 'bitmap_surface.dart';
 import 'brush_surface_edit.dart';
-
-const Object _copyWithSentinel = Object();
 
 class CanvasSurfaceState {
   CanvasSurfaceState({required this.currentSurface, this.lastEdit});
@@ -13,11 +12,11 @@ class CanvasSurfaceState {
 
   CanvasSurfaceState copyWith({
     BitmapSurface? currentSurface,
-    Object? lastEdit = _copyWithSentinel,
+    Object? lastEdit = copyWithSentinel,
   }) {
     return CanvasSurfaceState(
       currentSurface: currentSurface ?? this.currentSurface,
-      lastEdit: identical(lastEdit, _copyWithSentinel)
+      lastEdit: identical(lastEdit, copyWithSentinel)
           ? this.lastEdit
           : lastEdit as BrushSurfaceEdit?,
     );
