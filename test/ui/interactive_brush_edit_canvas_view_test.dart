@@ -214,7 +214,7 @@ void main() {
       final canvasView = tester.widget<BrushEditCanvasView>(
         find.byType(BrushEditCanvasView),
       );
-      expect(canvasView.activeStrokeOverlay, isNotEmpty);
+      expect(canvasView.overlayModel!.dabs, isNotEmpty);
       expect(results, isEmpty);
 
       await gesture.cancel();
@@ -244,7 +244,7 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(canvasView.overlayModel!.dabs, isNotEmpty);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -257,13 +257,13 @@ void main() {
         // The overlay settles (stays visible) until the committed tiles
         // decode or the settling window elapses, so the stroke never flashes
         // away during the handoff to the materialized bitmap.
-        expect(canvasView.activeStrokeOverlay, isNotEmpty);
+        expect(canvasView.overlayModel!.dabs, isNotEmpty);
 
         await tester.pump(const Duration(milliseconds: 350));
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.overlayModel!.dabs, isEmpty);
       },
     );
 
@@ -291,9 +291,9 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isNotEmpty);
-        expect(canvasView.activeStrokeOverlay.length, greaterThan(2));
-        expect(canvasView.activeStrokeOverlay.last.center.x, 7);
+        expect(canvasView.overlayModel!.dabs, isNotEmpty);
+        expect(canvasView.overlayModel!.dabs.length, greaterThan(2));
+        expect(canvasView.overlayModel!.dabs.last.center.x, 7);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -303,7 +303,7 @@ void main() {
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokeOverlay, isEmpty);
+        expect(canvasView.overlayModel!.dabs, isEmpty);
         expect(results, hasLength(1));
         expect(results.single.length, greaterThan(2));
       },

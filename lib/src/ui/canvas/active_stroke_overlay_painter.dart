@@ -5,56 +5,84 @@ import 'package:flutter/material.dart';
 import '../../models/brush_dab.dart';
 import 'brush_tip_mask_cache.dart';
 
+/// Mutable state of the in-progress stroke overlay.
+///
+/// A lightweight editor-local [ChangeNotifier]: the interactive view appends
+/// dabs and notifies, and the overlay painter listens through the
+/// `CustomPainter.repaint` hook — so pointer moves repaint the overlay layer
+/// directly without rebuilding any widgets.
+class ActiveStrokeOverlayModel extends ChangeNotifier {
+  final List<BrushDab> dabs = <BrushDab>[];
+
+  /// Pre-rendered stamps for `dabs[0..paintFrom)`; older stamps are folded
+  /// into this image so repaints and flattens never re-touch the whole
+  /// stroke.
+  ui.Image? flattened;
+  int paintFrom = 0;
+
+  /// Notifies listeners after the owner mutated [dabs]/[flattened].
+  void markChanged() => notifyListeners();
+
+  /// Clears the overlay and disposes the flattened image.
+  void reset() {
+    flattened?.dispose();
+    flattened = null;
+    paintFrom = 0;
+    dabs.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    flattened?.dispose();
+    flattened = null;
+    super.dispose();
+  }
+}
+
 /// Paints the in-progress stroke as sequential tip-mask stamps.
 ///
 /// Each dab draws its cached tip alpha mask (soft round / hard square —
-/// matching the commit rasterizer's coverage) tinted with the dab color at
-/// `alpha * opacity * flow`. Because the committed rasterizer also blends
-/// dabs sequentially with source-over, this preview visually matches the
-/// committed result and is replaced by the exact materialized bitmap once
-/// the commit's tiles are decoded. No bitmap is baked while the pointer
-/// moves.
-///
-/// Long strokes stay O(1) per repaint: the interactive view periodically
-/// flattens already-stamped dabs into [flattenedOverlay] (via
-/// `Picture.toImageSync`), so this painter draws one image plus only the
-/// dabs stamped since the last flatten ([paintFrom] onwards).
+/// matching the commit rasterizer's coverage, including the dab's subpixel
+/// phase) tinted with the dab color at `alpha * opacity * flow`. Because the
+/// committed rasterizer also blends dabs sequentially with source-over, this
+/// preview visually matches the committed result and is replaced by the
+/// exact materialized bitmap once the commit's tiles are decoded. No bitmap
+/// is baked while the pointer moves.
 class ActiveStrokeOverlayPainter extends CustomPainter {
   ActiveStrokeOverlayPainter({
+    this.model,
     this.activeStrokeOverlay = const <BrushDab>[],
-    this.flattenedOverlay,
-    this.paintFrom = 0,
-    this.overlayRevision = 0,
     BrushTipMaskCache? tipMaskCache,
-  }) : tipMaskCache = tipMaskCache ?? BrushTipMaskCache.instance;
+  }) : tipMaskCache = tipMaskCache ?? BrushTipMaskCache.instance,
+       super(repaint: model);
 
+  /// Live overlay state; when set, pointer moves repaint this painter through
+  /// the model's notifications without any widget rebuild.
+  final ActiveStrokeOverlayModel? model;
+
+  /// Static dab list used when no [model] is provided (tests, previews).
   final List<BrushDab> activeStrokeOverlay;
-
-  /// Pre-rendered stamps for `activeStrokeOverlay[0..paintFrom)`, drawn at the
-  /// canvas origin. Owned by the interactive view.
-  final ui.Image? flattenedOverlay;
-
-  /// Index of the first dab not yet included in [flattenedOverlay].
-  final int paintFrom;
-
-  /// Monotonic revision bumped by the view whenever the overlay content
-  /// changes; used instead of deep/list-identity comparisons so the view can
-  /// append into one growable list without copying it per pointer move.
-  final int overlayRevision;
 
   final BrushTipMaskCache tipMaskCache;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final flattened = flattenedOverlay;
+    final overlayModel = model;
+    if (overlayModel == null) {
+      paintDabStamps(canvas, activeStrokeOverlay, tipMaskCache);
+      return;
+    }
+
+    final flattened = overlayModel.flattened;
     if (flattened != null) {
       canvas.drawImage(flattened, Offset.zero, _imagePaint());
     }
     paintDabStamps(
       canvas,
-      activeStrokeOverlay,
+      overlayModel.dabs,
       tipMaskCache,
-      from: flattened == null ? 0 : paintFrom,
+      from: flattened == null ? 0 : overlayModel.paintFrom,
     );
   }
 
@@ -73,26 +101,26 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
     final stampPaint = _imagePaint();
     for (var index = from; index < dabs.length; index += 1) {
       final dab = dabs[index];
+      // Draw at the floored anchor; the anchor's subpixel remainder is baked
+      // into the mask itself so the stamped coverage matches the rasterizer's
+      // pixel-center sampling of the true fractional dab center.
+      final halfDimension = BrushTipMaskCache.dimensionFor(dab.size) / 2.0;
+      final anchorX = dab.center.x - halfDimension;
+      final anchorY = dab.center.y - halfDimension;
+      final flooredX = anchorX.floorToDouble();
+      final flooredY = anchorY.floorToDouble();
       final mask = tipMaskCache.maskFor(
         size: dab.size,
         hardness: dab.hardness,
         tipShape: dab.tipShape,
+        phaseX: anchorX - flooredX,
+        phaseY: anchorY - flooredY,
       );
       stampPaint.colorFilter = ColorFilter.mode(
         _tintForDab(dab),
         BlendMode.srcIn,
       );
-      // Integer-snapped offsets keep mask texels aligned with canvas pixels,
-      // so edges stay stable while drawing instead of shimmering at subpixel
-      // offsets, and match the rasterizer's pixel-center coverage grid.
-      canvas.drawImage(
-        mask,
-        Offset(
-          (dab.center.x - mask.width / 2.0).roundToDouble(),
-          (dab.center.y - mask.height / 2.0).roundToDouble(),
-        ),
-        stampPaint,
-      );
+      canvas.drawImage(mask, Offset(flooredX, flooredY), stampPaint);
     }
   }
 
@@ -116,8 +144,7 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ActiveStrokeOverlayPainter oldDelegate) {
-    return oldDelegate.overlayRevision != overlayRevision ||
-        oldDelegate.activeStrokeOverlay != activeStrokeOverlay ||
-        !identical(oldDelegate.flattenedOverlay, flattenedOverlay);
+    return !identical(oldDelegate.model, model) ||
+        oldDelegate.activeStrokeOverlay != activeStrokeOverlay;
   }
 }

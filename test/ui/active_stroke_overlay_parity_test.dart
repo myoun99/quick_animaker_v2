@@ -111,11 +111,12 @@ void _expectClose(
   Uint8List expected, {
   required int width,
   required String reason,
+  int tolerance = channelTolerance,
 }) {
   expect(actual.length, expected.length);
   for (var index = 0; index < actual.length; index += 1) {
     final difference = (actual[index] - expected[index]).abs();
-    if (difference > channelTolerance) {
+    if (difference > tolerance) {
       final pixel = index ~/ 4;
       fail(
         '$reason: channel ${index % 4} at pixel '
@@ -131,10 +132,17 @@ Future<void> _expectStampParity(
   required String reason,
   int width = 40,
   int height = 40,
+  int tolerance = channelTolerance,
 }) async {
   final stamped = await _stampedPixels(dabs, width: width, height: height);
   final rasterized = _rasterizedPixels(dabs, width: width, height: height);
-  _expectClose(stamped, rasterized, width: width, reason: reason);
+  _expectClose(
+    stamped,
+    rasterized,
+    width: width,
+    reason: reason,
+    tolerance: tolerance,
+  );
 }
 
 void main() {
@@ -174,6 +182,37 @@ void main() {
         _dab(x: 10.5, y: 10.5, color: 0x8040A0C0, sequence: 0),
         _dab(x: 13.5, y: 11.5, color: 0x8040A0C0, sequence: 1),
       ], reason: 'translucent stroke');
+    });
+
+    // Fractional dab centers exercise the subpixel-phase masks: the stamp
+    // coverage must track the rasterizer's true-center sampling instead of
+    // snapping to the pixel grid (which fizzed along live stroke edges).
+    // Soft tips keep the residual 1/8px phase-quantization error to a small
+    // alpha delta; hard tips can flip full boundary pixels, so they are
+    // covered by the visual-stability design rather than byte parity.
+    test('fractional-center soft dab tracks the rasterizer', () async {
+      await _expectStampParity(
+        [_dab(x: 9.13, y: 8.62, size: 14, hardness: 0.3)],
+        reason: 'fractional center dab',
+        tolerance: 32,
+      );
+    });
+
+    test('fractional-center soft stroke tracks the rasterizer', () async {
+      await _expectStampParity(
+        [
+          for (var i = 0; i < 5; i += 1)
+            _dab(
+              x: 7.37 + i * 3.21,
+              y: 9.81 + i * 1.43,
+              size: 12,
+              hardness: 0.2,
+              sequence: i,
+            ),
+        ],
+        reason: 'fractional center stroke',
+        tolerance: 32,
+      );
     });
   });
 }

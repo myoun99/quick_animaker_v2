@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
@@ -13,20 +11,23 @@ class BrushEditCanvasView extends StatelessWidget {
     required this.sessionState,
     this.showTransparentBackground = true,
     this.activeStrokeOverlay = const <BrushDab>[],
-    this.activeOverlayFlattened,
-    this.activeOverlayPaintFrom = 0,
-    this.activeOverlayRevision = 0,
+    this.overlayModel,
+    this.staleScope,
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
+
+  /// Static overlay dab list used when no [overlayModel] is provided.
   final List<BrushDab> activeStrokeOverlay;
 
-  /// Older overlay stamps pre-rendered by the interactive view; see
-  /// [ActiveStrokeOverlayPainter.flattenedOverlay].
-  final ui.Image? activeOverlayFlattened;
-  final int activeOverlayPaintFrom;
-  final int activeOverlayRevision;
+  /// Live overlay state owned by the interactive view; pointer moves repaint
+  /// the overlay layer through this model without rebuilding widgets.
+  final ActiveStrokeOverlayModel? overlayModel;
+
+  /// Surface lineage identity for the stale tile fallback; see
+  /// [BitmapSurfacePainter.staleScope].
+  final Object? staleScope;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +52,7 @@ class BrushEditCanvasView extends StatelessWidget {
                   painter: BitmapSurfacePainter(
                     surface: surface,
                     showTransparentBackground: showTransparentBackground,
+                    staleScope: staleScope,
                   ),
                 ),
               ),
@@ -73,10 +75,8 @@ class BrushEditCanvasView extends StatelessWidget {
                     'brush-edit-canvas-active-custom-paint',
                   ),
                   painter: ActiveStrokeOverlayPainter(
+                    model: overlayModel,
                     activeStrokeOverlay: activeStrokeOverlay,
-                    flattenedOverlay: activeOverlayFlattened,
-                    paintFrom: activeOverlayPaintFrom,
-                    overlayRevision: activeOverlayRevision,
                   ),
                 ),
               ),

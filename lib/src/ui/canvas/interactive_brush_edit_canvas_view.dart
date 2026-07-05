@@ -65,17 +65,15 @@ class _InteractiveBrushEditCanvasViewState
   CanvasViewport? _panStartViewport;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
-  List<BrushDab> _liveOverlayDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
   CanvasPoint? _previousRawCanvasPosition;
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
-  // Incremental overlay accumulation: older stamps live in a flattened image
-  // so repainting a long stroke never re-stamps every dab (O(1) amortized per
-  // pointer move instead of O(stroke length)).
-  ui.Image? _flattenedOverlay;
-  int _flattenedDabCount = 0;
-  int _overlayRevision = 0;
+  /// Live overlay state. Pointer moves append dabs and notify the overlay
+  /// painter directly through this model — no widget rebuild per move.
+  /// Older stamps are folded into the model's flattened image every
+  /// [_flattenBatchSize] dabs so repaints never re-touch the whole stroke.
+  final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
 
   // After pointer-up the overlay stays visible ("settling") until the
   // committed tiles finish decoding, so the stroke never flashes away while
@@ -93,7 +91,7 @@ class _InteractiveBrushEditCanvasViewState
   void dispose() {
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingFallbackTimer?.cancel();
-    _flattenedOverlay?.dispose();
+    _overlayModel.dispose();
     super.dispose();
   }
 
@@ -153,10 +151,8 @@ class _InteractiveBrushEditCanvasViewState
                         sessionState: widget.sessionState,
                         showTransparentBackground:
                             widget.showTransparentBackground,
-                        activeStrokeOverlay: _liveOverlayDabs,
-                        activeOverlayFlattened: _flattenedOverlay,
-                        activeOverlayPaintFrom: _flattenedDabCount,
-                        activeOverlayRevision: _overlayRevision,
+                        overlayModel: _overlayModel,
+                        staleScope: (widget.layerId, widget.frameId),
                       ),
                     ),
                   ),
@@ -190,23 +186,21 @@ class _InteractiveBrushEditCanvasViewState
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
     _previousRawCanvasPosition = canvasPosition;
-    setState(() {
-      _resetOverlay();
-      _collectedDabs.clear();
-      if (!startsInsideSurface) {
-        return;
-      }
-      final initialDabs = widget.dabInterpolator.interpolate(
-        previous: null,
-        nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
-        firstSequence: _nextSequence,
-        spacingRatio: _activeStrokeSpacing,
-      );
-      _collectedDabs.addAll(initialDabs);
-      _liveOverlayDabs.addAll(initialDabs);
-      _overlayRevision += 1;
-      _nextSequence = _collectedDabs.length;
-    });
+    _resetOverlay();
+    _collectedDabs.clear();
+    if (!startsInsideSurface) {
+      return;
+    }
+    final initialDabs = widget.dabInterpolator.interpolate(
+      previous: null,
+      nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
+      firstSequence: _nextSequence,
+      spacingRatio: _activeStrokeSpacing,
+    );
+    _collectedDabs.addAll(initialDabs);
+    _overlayModel.dabs.addAll(initialDabs);
+    _overlayModel.markChanged();
+    _nextSequence = _collectedDabs.length;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -273,22 +267,21 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    setState(() {
-      // Append directly instead of materializing a temporary combined list on
-      // every pointer move (this runs at pointer-sample frequency).
-      if (segmentStartDabs.isNotEmpty) {
-        _collectedDabs.addAll(segmentStartDabs);
-        _liveOverlayDabs.addAll(segmentStartDabs);
-      }
-      if (segmentEndDabs.isNotEmpty) {
-        _collectedDabs.addAll(segmentEndDabs);
-        _liveOverlayDabs.addAll(segmentEndDabs);
-      }
-      _overlayRevision += 1;
-      _nextSequence += addedDabCount;
-      _breakCurrentVisibleSegment = false;
-      _maybeFlattenOverlay();
-    });
+    // No setState: pointer moves mutate the overlay model and repaint the
+    // overlay layer directly, skipping the widget rebuild entirely (this
+    // runs at pointer-sample frequency).
+    if (segmentStartDabs.isNotEmpty) {
+      _collectedDabs.addAll(segmentStartDabs);
+      _overlayModel.dabs.addAll(segmentStartDabs);
+    }
+    if (segmentEndDabs.isNotEmpty) {
+      _collectedDabs.addAll(segmentEndDabs);
+      _overlayModel.dabs.addAll(segmentEndDabs);
+    }
+    _nextSequence += addedDabCount;
+    _breakCurrentVisibleSegment = false;
+    _maybeFlattenOverlay();
+    _overlayModel.markChanged();
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -315,7 +308,7 @@ class _InteractiveBrushEditCanvasViewState
     if (hadDabs) {
       _beginSettling();
     } else {
-      setState(_resetOverlay);
+      _resetOverlay();
     }
   }
 
@@ -330,7 +323,7 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _endStrokeInput();
-    setState(_resetOverlay);
+    _resetOverlay();
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -448,25 +441,17 @@ class _InteractiveBrushEditCanvasViewState
     _settling = false;
     _settlingFallbackTimer?.cancel();
     _settlingFallbackTimer = null;
-    _flattenedOverlay?.dispose();
-    _flattenedOverlay = null;
-    _flattenedDabCount = 0;
-    // Replace rather than clear: the previous list instance may still be
-    // referenced by the painter of the frame in flight.
-    _liveOverlayDabs = <BrushDab>[];
-    _overlayRevision += 1;
+    _overlayModel.reset();
   }
 
   void _beginSettling() {
-    setState(() {
-      _settling = true;
-    });
+    _settling = true;
     // Fallback so a missed decode notification can never leave a stale
     // overlay stuck on screen.
     _settlingFallbackTimer?.cancel();
     _settlingFallbackTimer = Timer(const Duration(milliseconds: 300), () {
       if (mounted && _settling) {
-        setState(_resetOverlay);
+        _resetOverlay();
       }
     });
     // Check after the parent rebuild delivers the post-commit session state;
@@ -483,21 +468,23 @@ class _InteractiveBrushEditCanvasViewState
     }
     final tiles = widget.sessionState.canvasState.currentSurface.tiles.values;
     if (BitmapTileImageCache.instance.allDecoded(tiles)) {
-      setState(_resetOverlay);
+      _resetOverlay();
     }
   }
 
-  /// Folds stamped dabs into [_flattenedOverlay] once enough accumulate, so
-  /// neither repaints nor flattens ever touch the whole stroke again.
+  /// Folds stamped dabs into the model's flattened image once enough
+  /// accumulate, so neither repaints nor flattens ever touch the whole
+  /// stroke again.
   void _maybeFlattenOverlay() {
-    if (_liveOverlayDabs.length - _flattenedDabCount < _flattenBatchSize) {
+    if (_overlayModel.dabs.length - _overlayModel.paintFrom <
+        _flattenBatchSize) {
       return;
     }
     final canvasSize =
         widget.sessionState.canvasState.currentSurface.canvasSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final previous = _flattenedOverlay;
+    final previous = _overlayModel.flattened;
     if (previous != null) {
       canvas.drawImage(
         previous,
@@ -509,15 +496,15 @@ class _InteractiveBrushEditCanvasViewState
     }
     ActiveStrokeOverlayPainter.paintDabStamps(
       canvas,
-      _liveOverlayDabs,
+      _overlayModel.dabs,
       BrushTipMaskCache.instance,
-      from: _flattenedDabCount,
+      from: _overlayModel.paintFrom,
     );
     final picture = recorder.endRecording();
     final flattened = picture.toImageSync(canvasSize.width, canvasSize.height);
     picture.dispose();
     previous?.dispose();
-    _flattenedOverlay = flattened;
-    _flattenedDabCount = _liveOverlayDabs.length;
+    _overlayModel.flattened = flattened;
+    _overlayModel.paintFrom = _overlayModel.dabs.length;
   }
 }
