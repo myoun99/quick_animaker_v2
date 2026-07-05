@@ -101,7 +101,13 @@ Phase 303 keeps brush size, opacity, color, and spacing as editor-session tool s
 
 Active strokes snapshot brush input settings at pointer down. Size, opacity, color, spacing, flow, hardness, tip shape, and the pen-pressure toggles used by an in-progress stroke must come from that active-stroke snapshot until pointer up/cancel. Mid-stroke UI changes therefore affect future strokes only and must not alter the currently active stroke or already committed strokes.
 
-This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as smoothing, texture, and dual brush should fit this boundary without forcing source/save schema changes for editor-session UI state.
+
+## Brush presets (P16)
+
+A preset is a named `BrushSettings` snapshot (`BrushPreset` model). The library is app-level editor state, NOT project data: it persists in a per-user JSON file (`%APPDATA%/quick_animaker_v2/brush_presets.json` via `BrushPresetFileService`, no extra dependencies) and never enters the project save schema. A missing or corrupt library file falls back to the built-in defaults (`defaultBrushPresets`: Pencil, Ink Pen, Soft Brush, Calligraphy, Marker — seeded only in memory; the file is written on the first user save). An explicitly saved empty library stays empty.
+
+`EditorCanvasArea` owns the loaded preset list alongside `BrushToolState`, converts through `BrushToolState.fromBrushSettings` / `toBrushSettings` (clamping into panel ranges on apply), and persists mutations fire-and-forget (a failed write must never block or crash the editor). `BrushSettingsPanel` shows the presets as `InputChip`s — tap applies, the chip's close affordance deletes, and a `+` button saves the current settings under an auto-generated `Preset N` name. Applying a preset only changes future strokes (the usual pointer-down snapshot rule).
 
 ## Tip roundness and angle (P15)
 

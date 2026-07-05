@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_settings.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 
@@ -151,6 +153,46 @@ void main() {
       // Omitted copyWith args keep the existing values.
       expect(state.copyWith(size: 5).roundness, 0.4);
       expect(state.copyWith(size: 5).angleDegrees, 45.0);
+    });
+
+    test('toBrushSettings/fromBrushSettings round-trips every field', () {
+      final state = BrushToolState(
+        size: 14,
+        opacity: 0.7,
+        color: 0xFF1E88E5,
+        spacing: 0.3,
+        hardness: 0.6,
+        flow: 0.5,
+        tipShape: BrushTipShape.square,
+        pressureSize: true,
+        pressureOpacity: true,
+        roundness: 0.4,
+        angleDegrees: 60,
+      );
+
+      final settings = state.toBrushSettings();
+      expect(settings.size, 14.0);
+      expect(settings.opacity, 0.7);
+      expect(settings.color, 0xFF1E88E5);
+      expect(settings.spacing, 0.3);
+      expect(settings.hardness, 0.6);
+      expect(settings.flow, 0.5);
+      expect(settings.tipShape, BrushTipShape.square);
+      expect(settings.pressureSize, isTrue);
+      expect(settings.pressureOpacity, isTrue);
+      expect(settings.roundness, 0.4);
+      expect(settings.angleDegrees, 60.0);
+
+      expect(BrushToolState.fromBrushSettings(settings), state);
+    });
+
+    test('fromBrushSettings clamps out-of-range preset values', () {
+      final state = BrushToolState.fromBrushSettings(
+        BrushSettings(size: 5000, spacing: 100, angleDegrees: 720),
+      );
+      expect(state.size, BrushToolState.maxSize);
+      expect(state.spacing, BrushToolState.maxSpacing);
+      expect(state.angleDegrees, BrushToolState.maxAngleDegrees);
     });
   });
 }
