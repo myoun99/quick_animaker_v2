@@ -117,6 +117,14 @@ All three coverage implementations (the commit rasterizer, `BrushLiveStrokeRaste
 
 `dirtyRegionForBrushDab` expands the bounds for rotated rectangle tips (half-extents `r*|cos| + r*roundness*|sin|` per axis — at 45 degrees the half-diagonal reaches `radius * sqrt(2)`, past the radius box that would otherwise clip the corners). Round tips never exceed the radius circle, and the axis-aligned square is exactly the radius box, so their bounds are unchanged.
 
+## Sampled (bitmap) brush tips (P17)
+
+`BrushTipMask` is a square grayscale alpha mask — the engine primitive Photoshop ABR "sampled brush" tips map onto (ABR import pads arbitrary tip bitmaps to square). `BrushSettings`/`BrushToolState`/`BrushEditCanvasInputSettings`/`BrushDab` carry an optional `tipMask`; when set it overrides `tipShape` and `hardness`. Committed dabs reference the mask OBJECT directly (commands are session-local, not persisted), so a stroke keeps rendering identically even if the tip is later removed from the library — the "dabs carry materialized rendering values" doctrine. JSON embeds the mask as base64, so presets persist their tips.
+
+Coverage: the pixel offset goes through the SAME tip-space transform as parametric elliptical tips (rotate by angle, stretch minor axis by `1/roundness`), the mask maps onto `[-radius, radius]^2` in tip space, and coverage comes from `sampleBrushTipMaskCoverage` — ONE shared bilinear-sampling function that the commit rasterizer, the live rasterizer, and the coverage oracle all call (texels outside the mask read as zero). Dirty bounds use the rotated-rect projection (a rotated mask's footprint is the rotated size box). A `null` mask leaves every pre-P17 code path untouched.
+
+Built-in sampled tips (`brush_tip_mask_defaults.dart`: Chalk grain disc, Splatter droplets) are generated with a fixed-seed LCG so the same bytes are produced on every run — fingerprint-locked by test, because changing them would re-render existing strokes. They ship as the Chalk/Splatter presets; the preset library file version bumped to 2, and older library files gain newly added built-ins once on load (deletions within the current version are respected). There is no direct mask picker in the panel yet — masks arrive via presets, and later ABR import.
+
 ## Pen pressure dynamics (P14)
 
 `BrushToolState`/`BrushEditCanvasInputSettings` carry `pressureSize` and `pressureOpacity` toggles (both default false, so a mouse or a stroke with the toggles off behaves exactly as before). `BrushSettingsPanel` exposes them under a "Pen Pressure" section as `brush-tool-pressure-size-toggle` / `brush-tool-pressure-opacity-toggle`.

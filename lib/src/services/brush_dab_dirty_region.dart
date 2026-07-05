@@ -16,12 +16,14 @@ DirtyRegion? dirtyRegionForBrushDab(BrushDab dab) {
   var halfExtentY = radius;
   // A rotated rectangle tip extends past the radius box (its half-diagonal
   // reaches radius * sqrt(2) at 45 degrees), so its bounds come from the
-  // rotated-rect projection. Round tips never exceed the radius circle
-  // (roundness only shrinks them), and the axis-aligned square IS the
-  // radius box — both keep the original bounds so existing dabs produce
-  // identical regions.
-  if (dab.tipShape == BrushTipShape.square &&
-      (dab.angleDegrees != 0.0 || dab.roundness < 1.0)) {
+  // rotated-rect projection. Sampled (bitmap) tips span the same rotated
+  // rect: their mask maps onto the size box in tip space. Round parametric
+  // tips never exceed the radius circle (roundness only shrinks them), and
+  // the axis-aligned square IS the radius box — both keep the original
+  // bounds so existing dabs produce identical regions.
+  if (dab.tipMask != null ||
+      (dab.tipShape == BrushTipShape.square &&
+          (dab.angleDegrees != 0.0 || dab.roundness < 1.0))) {
     final angleRadians = dab.angleDegrees * (math.pi / 180.0);
     final cosAbs = math.cos(angleRadians).abs();
     final sinAbs = math.sin(angleRadians).abs();

@@ -1,3 +1,4 @@
+import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_shape.dart';
 
 class BrushEditCanvasInputSettings {
@@ -13,6 +14,7 @@ class BrushEditCanvasInputSettings {
     this.pressureOpacity = false,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
+    this.tipMask,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
        assert(
          roundness > 0.0 && roundness <= 1.0,
@@ -57,6 +59,9 @@ class BrushEditCanvasInputSettings {
   /// horizontal, in degrees.
   final double angleDegrees;
 
+  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
+  final BrushTipMask? tipMask;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -69,6 +74,7 @@ class BrushEditCanvasInputSettings {
     bool? pressureOpacity,
     double? roundness,
     double? angleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -82,6 +88,7 @@ class BrushEditCanvasInputSettings {
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
+      tipMask: tipMask ?? this.tipMask,
     );
   }
 
@@ -99,7 +106,8 @@ class BrushEditCanvasInputSettings {
           other.pressureSize == pressureSize &&
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
-          other.angleDegrees == angleDegrees;
+          other.angleDegrees == angleDegrees &&
+          other.tipMask == tipMask;
 
   @override
   int get hashCode => Object.hash(
@@ -114,6 +122,7 @@ class BrushEditCanvasInputSettings {
     pressureOpacity,
     roundness,
     angleDegrees,
+    tipMask,
   );
 
   @override
@@ -122,5 +131,6 @@ class BrushEditCanvasInputSettings {
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
       'tipShape: $tipShape, spacing: $spacing, '
       'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity, '
-      'roundness: $roundness, angleDegrees: $angleDegrees)';
+      'roundness: $roundness, angleDegrees: $angleDegrees, '
+      'tipMask: $tipMask)';
 }

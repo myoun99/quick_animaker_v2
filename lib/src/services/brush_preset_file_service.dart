@@ -32,6 +32,12 @@ class BrushPresetFileService {
         'quick_animaker_v2${separator}brush_presets.json';
   }
 
+  /// Library file format version. Bump when a release adds new built-in
+  /// presets: libraries saved with an older version get the new built-ins
+  /// merged in once on load (an explicitly deleted built-in stays deleted
+  /// within the same version).
+  static const int libraryVersion = 2;
+
   /// Reads the preset library; a missing or unreadable file yields the
   /// built-in defaults (nothing is written back until the next save).
   Future<List<BrushPreset>> loadOrDefaults() async {
@@ -44,10 +50,19 @@ class BrushPresetFileService {
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final entries = decoded['presets'] as List<dynamic>;
       // An empty saved library is a valid user choice (all presets deleted).
-      return [
+      final presets = [
         for (final entry in entries)
           BrushPreset.fromJson(entry as Map<String, dynamic>),
       ];
+      final savedVersion = decoded['version'] as int? ?? 1;
+      if (savedVersion < libraryVersion) {
+        final knownIds = {for (final preset in presets) preset.id};
+        presets.addAll([
+          for (final builtin in defaultBrushPresets)
+            if (!knownIds.contains(builtin.id)) builtin,
+        ]);
+      }
+      return presets;
     } catch (_) {
       // A corrupt library must not fail the editor: fall back to the
       // defaults; the file is replaced on the next save.
@@ -61,7 +76,7 @@ class BrushPresetFileService {
     await file.parent.create(recursive: true);
     await file.writeAsString(
       jsonEncode({
-        'version': 1,
+        'version': libraryVersion,
         'presets': [for (final preset in presets) preset.toJson()],
       }),
     );

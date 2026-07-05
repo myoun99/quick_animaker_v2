@@ -4,6 +4,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
 import '../models/brush_tip_shape.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_tip_mask_sampling.dart';
 
 List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   final dirtyRegion = dirtyRegionForBrushDab(dab);
@@ -22,13 +23,16 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   // square keep their original code path so existing strokes stay
   // byte-identical. Must match the commit and live rasterizers exactly.
   final isRound = dab.tipShape == BrushTipShape.round;
-  final isEllipse = isRound && dab.roundness < 1.0;
+  final tipMask = dab.tipMask;
+  final isEllipse = tipMask == null && isRound && dab.roundness < 1.0;
   final isRotatedRect =
-      !isRound && (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
+      tipMask == null &&
+      !isRound &&
+      (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
   var tipCos = 1.0;
   var tipSin = 0.0;
   var inverseRoundness = 1.0;
-  if (isEllipse || isRotatedRect) {
+  if (isEllipse || isRotatedRect || tipMask != null) {
     final angleRadians = dab.angleDegrees * (math.pi / 180.0);
     tipCos = math.cos(angleRadians);
     tipSin = math.sin(angleRadians);
@@ -38,6 +42,26 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
 
   for (var y = dirtyRegion.top; y < dirtyRegion.bottomExclusive; y += 1) {
     for (var x = dirtyRegion.left; x < dirtyRegion.rightExclusive; x += 1) {
+      if (tipMask != null) {
+        final dx = x + 0.5 - dab.center.x;
+        final dy = y + 0.5 - dab.center.y;
+        final tipU = dx * tipCos - dy * tipSin;
+        final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+        if (tipU.abs() > radius || tipV.abs() > radius) {
+          continue;
+        }
+        final coverage = sampleBrushTipMaskCoverage(
+          mask: tipMask,
+          tipU: tipU,
+          tipV: tipV,
+          radius: radius,
+        );
+        if (coverage <= 0.0) {
+          continue;
+        }
+        coverages.add(BrushPixelCoverage(x: x, y: y, coverage: coverage));
+        continue;
+      }
       switch (dab.tipShape) {
         case BrushTipShape.square:
           if (isRotatedRect) {

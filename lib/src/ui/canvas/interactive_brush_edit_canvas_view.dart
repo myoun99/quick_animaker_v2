@@ -376,6 +376,7 @@ class _InteractiveBrushEditCanvasViewState
       sequence: sequence,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
+      tipMask: settings.tipMask,
     );
   }
 

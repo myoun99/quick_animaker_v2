@@ -85,6 +85,52 @@ void main() {
       expect(await service.loadOrDefaults(), defaultBrushPresets);
     });
 
+    test('older library versions gain newly added built-ins on load', () async {
+      final path = pathIn('v1.json');
+      // A version-1 library saved before the sampled-tip built-ins existed:
+      // it holds one user preset and one (kept) old built-in.
+      final userPreset = BrushPreset(
+        id: const BrushPresetId('user-1'),
+        name: 'Mine',
+        settings: BrushSettings(size: 3),
+      );
+      await File(path).writeAsString(
+        jsonEncode({
+          'version': 1,
+          'presets': [
+            userPreset.toJson(),
+            defaultBrushPresets.first.toJson(),
+          ],
+        }),
+      );
+      final service = BrushPresetFileService(filePath: path);
+
+      final loaded = await service.loadOrDefaults();
+
+      // Existing entries stay first and unduplicated; the built-ins the old
+      // file lacks (e.g. Chalk/Splatter) are appended.
+      expect(loaded.first, userPreset);
+      expect(loaded.where((p) => p.id == defaultBrushPresets.first.id), [
+        defaultBrushPresets.first,
+      ]);
+      final loadedIds = loaded.map((p) => p.id).toSet();
+      for (final builtin in defaultBrushPresets) {
+        expect(loadedIds, contains(builtin.id));
+      }
+    });
+
+    test('current-version libraries do not resurrect deleted built-ins', () async {
+      final path = pathIn('v_current.json');
+      final service = BrushPresetFileService(filePath: path);
+      // Save a library missing most built-ins at the CURRENT version: the
+      // user deleted them, so loading must not bring them back.
+      await service.save([defaultBrushPresets.last]);
+
+      final loaded = await service.loadOrDefaults();
+
+      expect(loaded, [defaultBrushPresets.last]);
+    });
+
     test('default path points into the per-user app-data directory', () {
       final path = BrushPresetFileService.defaultBrushPresetFilePath();
       expect(path, endsWith('quick_animaker_v2/brush_presets.json'));
@@ -104,6 +150,19 @@ void main() {
       for (final preset in defaultBrushPresets) {
         expect(BrushPreset.fromJson(preset.toJson()), preset);
       }
+    });
+
+    test('include sampled-tip presets carrying their masks', () {
+      final chalk = defaultBrushPresets.firstWhere(
+        (preset) => preset.name == 'Chalk',
+      );
+      final splatter = defaultBrushPresets.firstWhere(
+        (preset) => preset.name == 'Splatter',
+      );
+      expect(chalk.settings.tipMask, isNotNull);
+      expect(chalk.settings.tipMask!.id, 'builtin-chalk');
+      expect(splatter.settings.tipMask, isNotNull);
+      expect(splatter.settings.tipMask!.id, 'builtin-splatter');
     });
   });
 }

@@ -1,6 +1,7 @@
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_settings.dart';
+import 'brush_tip_mask_defaults.dart';
 
 /// Built-in brush presets seeded when no user preset library exists yet.
 ///
@@ -60,6 +61,26 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.7,
       flow: 0.6,
       spacing: 0.1,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-chalk-preset'),
+    name: 'Chalk',
+    settings: BrushSettings(
+      size: 20,
+      flow: 0.85,
+      spacing: 0.2,
+      tipMask: chalkBrushTipMask,
+      pressureSize: true,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-splatter-preset'),
+    name: 'Splatter',
+    settings: BrushSettings(
+      size: 28,
+      spacing: 0.9,
+      tipMask: splatterBrushTipMask,
     ),
   ),
 ]);

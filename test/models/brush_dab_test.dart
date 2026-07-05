@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 
@@ -283,6 +286,33 @@ void main() {
       );
       expect(value.roundness, 0.6);
       expect(value.angleDegrees, 30.0);
+    });
+
+    test('tipMask round-trips through json and equality', () {
+      final mask = BrushTipMask(
+        id: 'tip',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 255, 64]),
+      );
+      final value = dab().copyWith(tipMask: mask);
+      expect(value.tipMask, mask);
+      expect(BrushDab.fromJson(value.toJson()), value);
+      // Legacy json without a mask stays maskless.
+      expect(BrushDab.fromJson(dab().toJson()).tipMask, isNull);
+    });
+
+    test('fromInputSample carries the settings tip mask', () {
+      final mask = BrushTipMask(
+        id: 'tip',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 255, 64]),
+      );
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0),
+        settings: BrushSettings(tipMask: mask),
+        sequence: 0,
+      );
+      expect(value.tipMask, mask);
     });
   });
 }

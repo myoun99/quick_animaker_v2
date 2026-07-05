@@ -1,5 +1,6 @@
 import 'brush_input_sample.dart';
 import 'brush_settings.dart';
+import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
 import 'canvas_point.dart';
 
@@ -16,6 +17,7 @@ class BrushDab {
     required this.sequence,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
+    this.tipMask,
   }) {
     _validateColor(color);
     _validateNonNegativeFinite(size, 'size');
@@ -49,6 +51,7 @@ class BrushDab {
       sequence: sequence,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
+      tipMask: settings.tipMask,
     );
   }
 
@@ -70,6 +73,10 @@ class BrushDab {
   /// horizontal, in degrees. Meaningless for a full-round circle.
   final double angleDegrees;
 
+  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness]
+  /// and coverage comes from bilinear-sampling the mask in tip space.
+  final BrushTipMask? tipMask;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -82,6 +89,7 @@ class BrushDab {
     int? sequence,
     double? roundness,
     double? angleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -95,6 +103,7 @@ class BrushDab {
       sequence: sequence ?? this.sequence,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
+      tipMask: tipMask ?? this.tipMask,
     );
   }
 
@@ -110,6 +119,7 @@ class BrushDab {
     'sequence': sequence,
     'roundness': roundness,
     'angleDegrees': angleDegrees,
+    if (tipMask != null) 'tipMask': tipMask!.toJson(),
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -125,6 +135,9 @@ class BrushDab {
       sequence: json['sequence'] as int,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
+      tipMask: json['tipMask'] == null
+          ? null
+          : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
     );
   }
 
@@ -142,7 +155,8 @@ class BrushDab {
           other.pressure == pressure &&
           other.sequence == sequence &&
           other.roundness == roundness &&
-          other.angleDegrees == angleDegrees;
+          other.angleDegrees == angleDegrees &&
+          other.tipMask == tipMask;
 
   @override
   int get hashCode => Object.hash(
@@ -157,6 +171,7 @@ class BrushDab {
     sequence,
     roundness,
     angleDegrees,
+    tipMask,
   );
 
   @override
@@ -164,7 +179,8 @@ class BrushDab {
       'BrushDab(center: $center, color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
       'tipShape: $tipShape, pressure: $pressure, sequence: $sequence, '
-      'roundness: $roundness, angleDegrees: $angleDegrees)';
+      'roundness: $roundness, angleDegrees: $angleDegrees, '
+      'tipMask: $tipMask)';
 }
 
 void _validateColor(int value) {
