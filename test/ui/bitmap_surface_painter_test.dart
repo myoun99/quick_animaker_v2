@@ -121,9 +121,17 @@ void main() {
     test(
       'draws sampled active stroke overlay dabs for live feedback',
       () async {
+        // Dab centers sit on pixel centers (x + 0.5): the tip-mask overlay
+        // previews the commit rasterizer's pixel-center coverage, under which
+        // a size-1 hard dab centered on a pixel corner covers nothing. The
+        // previous square-stamp painter snapped to the pixel grid instead.
         final pixels = await _paintPixels(
           ActiveStrokeOverlayPainter(
-            activeStrokeOverlay: [_dab(1, 1), _dab(3, 1), _dab(6, 1)],
+            activeStrokeOverlay: [
+              _dab(1.5, 1.5),
+              _dab(3.5, 1.5),
+              _dab(6.5, 1.5),
+            ],
           ),
           width: 8,
           height: 3,
