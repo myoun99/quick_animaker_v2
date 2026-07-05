@@ -20,7 +20,7 @@ The latest policy is:
 5. The deferred bake buffer is conceptually about 10% of the user undo limit when implemented.
 6. The deferred bake buffer is not user-facing undo.
 7. Older commands may eventually be compacted into `bakedBaseSurface`.
-8. The active edit display is WYSIWYG: committed strokes render from the materialized session `BitmapSurface` (via the tile-image display cache), and the in-progress stroke renders as a tip alpha-mask stamp overlay that previews the commit rasterizer result. Future baked-base work extends the same surface-based display.
+8. The active edit display is WYSIWYG and exact: committed strokes render from the materialized session `BitmapSurface` (via the tile-image display cache), and the in-progress stroke is CPU-rasterized incrementally by `BrushLiveStrokeRasterizer` with the same math as the commit path, displayed as one overlay image. Committed pixels equal on-screen pixels by construction.
 9. Cache images are derived from brush frame drawing state and are not source of truth.
 10. Playback uses prepared preview/composite bitmap cache images.
 11. Playback must not replay live paint commands.
@@ -103,25 +103,32 @@ Active strokes snapshot brush input settings at pointer down. Size, opacity, col
 
 This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as hardness, flow, angle, roundness, pressure, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
 
-## Active editing display (WYSIWYG, post-P4)
+## Active editing display (exact live rasterization, post-P7/P9)
 
 The active frame display formula is:
 
 ```txt
 activeFrameDisplay =
   materialized session BitmapSurface (committed strokes)
-  + activeStrokeOverlay (tip alpha-mask stamps for the in-progress stroke)
+  + live stroke overlay image (exact incremental CPU rasterization)
 ```
 
-Committed strokes are rasterized into the session `BitmapSurface` at commit time (`commitSourceStroke` materializes and stores the source-dab command in one step) and displayed through the identity-keyed `BitmapTileImageCache` as one `drawImage` per tile - O(tiles), independent of stroke count. The in-progress stroke is stamped from `BrushTipMaskCache` alpha masks (same coverage math as the commit rasterizer: hard core to `radius * hardness`, linear falloff to the radius), tinted at `alpha * opacity * flow`. Sequential source-over stamping matches the rasterizer sequential blend, so what the user sees while drawing is what commits on pointer-up. `BrushTipMaskCache` is the substrate for future custom/ABR tip shapes.
+Committed strokes are rasterized into the session `BitmapSurface` at commit time (`commitSourceStroke` stores the source-dab command and materializes in one step) and displayed through the identity-keyed `BitmapTileImageCache` — O(tiles), independent of stroke count.
 
-The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth. No bitmap is baked while the pointer is moving: the overlay is pure stamping, and rasterization happens once per stroke at commit.
+The in-progress stroke is rasterized incrementally by `BrushLiveStrokeRasterizer`: each pointer move blends only the new dabs into a canvas-sized straight-alpha buffer using the exact per-dab math of the commit rasterizer (byte-identical, locked by `active_stroke_overlay_parity_test.dart`). The touched region becomes a run-length-compacted sprite that is folded off-screen into one overlay image (`composeOverlayImage`, image-space integer offsets); the on-screen painter draws that single image with plain source-over. Pointer moves repaint through the `ActiveStrokeOverlayModel` ChangeNotifier without rebuilding widgets.
 
-Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display or `TileDelta` / `TileDeltaCommand`.
+On pen-up, `BrushStrokeCommitData` hands the finished stroke buffer to the commit route and `compositeStrokePixelsOntoBitmapSurface` merges it over the base in one pass — no re-rasterization hiccup, and the committed pixels are by construction exactly the pixels that were on screen. The per-dab materialize path remains as fallback when no pre-rasterized buffer is provided.
+
+Display stability rules (learned from fractional-zoom artifacts):
+
+- Never use replacement blend modes (`BlendMode.src`) on the transformed view canvas; region replacement happens only off-screen in image space.
+- The viewport zoom/pan is applied INSIDE `BitmapSurfacePainter` (`canvas.translate/scale`), not by a Transform widget: compositing rasterized layers through a fractional widget transform resamples texel edges differently between idle and drawing frames.
+
+The live overlay is an editing-only display for current input. It is not a playback mechanism and is not a durable source of truth. Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display or `TileDelta` / `TileDeltaCommand`.
 
 A stroke that changes no pixels commits to nothing: no paint command, no undo entry. Creating an undo entry without a matching bitmap materialization entry would desynchronize the command history from the bitmap history.
 
-Historical note: the Phase 224 / PR #294 T2 baseline displayed committed strokes as square source-dab stamps because materialize-on-commit cost up to 8.5s per stroke (the reason PR #293 failed). The P1 commit-path rewrite (~800x) made materialization at commit time cheap (~10ms worst case), which is what enabled this WYSIWYG display model.
+Historical note: the Phase 224 / PR #294 T2 baseline displayed committed strokes as square source-dab stamps because materialize-on-commit cost up to 8.5s per stroke (the reason PR #293 failed). The P1 commit-path rewrite (~800x) enabled materialize-on-commit (P4); tip-mask stamp previews (P4–P6) were then superseded by exact live rasterization (P7) because stamp approximations cannot match a hard tip's binary boundary.
 
 ## User-facing undo / redo
 
@@ -145,8 +152,8 @@ The app-level history owns global user-facing undo order. `BrushFrameStore` owns
 
 ## Current production display/commit baseline (P4, supersedes the PR #294 square-stamp baseline)
 
-- Committed strokes display from the materialized session `BitmapSurface`; the in-progress stroke displays as tip alpha-mask stamps.
-- `commitSourceStroke` stores source dabs as the durable `BrushPaintCommand` AND materializes the stroke into the session surface in one step; no-op strokes (no pixel changes) create no command and no undo entry.
+- Committed strokes display from the materialized session `BitmapSurface`; the in-progress stroke displays from its exact incremental rasterization (`BrushLiveStrokeRasterizer` -> overlay image).
+- `commitSourceStroke` stores source dabs as the durable `BrushPaintCommand` AND materializes the stroke into the session surface in one step (compositing the pre-rasterized live buffer when provided); no-op strokes (no pixel changes) create no command and no undo entry.
 - The active route must not use an active drawPath brush display.
 - The active route must not use `displayPreviewSurface` or inactive/playback preview cache images as the active editor base.
 - Brush strokes participate in app-level global undo/redo through `HistoryManager` and `BrushStrokeHistoryCommand`.
