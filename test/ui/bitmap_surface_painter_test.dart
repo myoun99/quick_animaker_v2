@@ -54,27 +54,6 @@ void main() {
       );
     });
 
-    test('active overlay repaints when active stroke path version changes', () {
-      final path = Path()
-        ..moveTo(0, 0)
-        ..lineTo(1, 1);
-      final dab = _dab(0, 0);
-      final oldPainter = ActiveStrokeOverlayPainter(
-        activeStrokePath: path,
-        activeStrokePathDab: dab,
-        activeStrokePathVersion: 1,
-      );
-
-      expect(
-        ActiveStrokeOverlayPainter(
-          activeStrokePath: path,
-          activeStrokePathDab: dab,
-          activeStrokePathVersion: 2,
-        ).shouldRepaint(oldPainter),
-        isTrue,
-      );
-    });
-
     test('draws RGBA tile pixels at global tile coordinates', () async {
       final firstTile = _tile(
         coord: TileCoord(x: 0, y: 0),

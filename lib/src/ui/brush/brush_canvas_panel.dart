@@ -60,13 +60,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
-    final frameStore = widget.coordinator.frameStore;
-    final drawing = frameStore.getOrCreateFrame(activeKey);
-    final visibleCommands = drawing.visibleActivePaintCommands;
-    final committedSourceDabStrokes = visibleCommands
-        .map((command) => command.sourceDabs)
-        .where((dabs) => dabs.isNotEmpty)
-        .toList(growable: false);
+    final committedSourceDabStrokes = widget.coordinator
+        .visibleCommittedSourceDabStrokes(activeKey);
     final committedSourceDabs = committedSourceDabStrokes
         .expand((dabs) => dabs)
         .toList(growable: false);

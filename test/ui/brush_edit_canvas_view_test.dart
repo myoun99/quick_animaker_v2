@@ -82,9 +82,6 @@ void main() {
       final sessionState = _sessionState(
         BitmapSurface(canvasSize: CanvasSize(width: 12, height: 8)),
       );
-      final path = Path()
-        ..moveTo(1, 1)
-        ..lineTo(4, 1);
       final activeDab = BrushDab(
         center: CanvasPoint(x: 4, y: 1),
         color: 0xFF000000,
@@ -102,9 +99,6 @@ void main() {
           BrushEditCanvasView(
             sessionState: sessionState,
             activeStrokeOverlay: [activeDab],
-            activeStrokePath: path,
-            activeStrokePathDab: activeDab,
-            activeStrokePathVersion: 1,
           ),
         ),
       );
@@ -135,7 +129,6 @@ void main() {
       expect(basePainter.committedSourceDabs, isEmpty);
       expect(basePainter.committedSourceDabStrokes, isEmpty);
       expect(activePainter.activeStrokeOverlay, [activeDab]);
-      expect(activePainter.activeStrokePath, same(path));
     });
 
     testWidgets('passes current surface and background setting to painter', (

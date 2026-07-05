@@ -215,7 +215,6 @@ void main() {
         find.byType(BrushEditCanvasView),
       );
       expect(canvasView.activeStrokeOverlay, isNotEmpty);
-      expect(canvasView.activeStrokePath, isNull);
       expect(results, isEmpty);
 
       await gesture.cancel();
@@ -246,7 +245,6 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isNotEmpty);
-        expect(canvasView.activeStrokePath, isNull);
         expect(results, isEmpty);
 
         await gesture.up();
@@ -257,7 +255,6 @@ void main() {
         );
         expect(results, hasLength(1));
         expect(canvasView.activeStrokeOverlay, isEmpty);
-        expect(canvasView.activeStrokePath, isNull);
       },
     );
 
@@ -285,7 +282,6 @@ void main() {
         var canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
-        expect(canvasView.activeStrokePath, isNull);
         expect(canvasView.activeStrokeOverlay, isNotEmpty);
         expect(canvasView.activeStrokeOverlay.length, greaterThan(2));
         expect(canvasView.activeStrokeOverlay.last.center.x, 7);
@@ -298,7 +294,6 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.activeStrokeOverlay, isEmpty);
-        expect(canvasView.activeStrokePath, isNull);
         expect(results, hasLength(1));
         expect(results.single.length, greaterThan(2));
       },
