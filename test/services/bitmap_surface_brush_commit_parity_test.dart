@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_pixel_blend_operation.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -106,6 +109,7 @@ BrushDab dab({
   int sequence = 0,
   double roundness = 1.0,
   double angleDegrees = 0.0,
+  BrushTipMask? tipMask,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -119,8 +123,19 @@ BrushDab dab({
     sequence: sequence,
     roundness: roundness,
     angleDegrees: angleDegrees,
+    tipMask: tipMask,
   );
 }
+
+/// Deterministic 8x8 gradient-with-holes mask for parity scenarios.
+final BrushTipMask _testTipMask = BrushTipMask(
+  id: 'parity-test-tip',
+  size: 8,
+  alpha: Uint8List.fromList([
+    for (var index = 0; index < 64; index += 1)
+      index % 7 == 0 ? 0 : ((index * 4 + 16) % 256),
+  ]),
+);
 
 BrushDabSequence strokeOf(List<BrushDab> dabs) => BrushDabSequence(dabs);
 
@@ -329,6 +344,43 @@ void main() {
           ),
         ]),
         reason: 'rotated rectangle tip',
+      );
+    });
+
+    test('sampled tip stroke on fractional centers', () {
+      expect(_testTipMask.alpha.any((value) => value > 0), isTrue);
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (var i = 0; i < 5; i += 1)
+            dab(
+              x: 40.37 + i * 6.13,
+              y: 44.81 + i * 3.41,
+              size: 18,
+              tipMask: _testTipMask,
+              sequence: i,
+            ),
+        ]),
+        reason: 'sampled tip',
+      );
+    });
+
+    test('sampled tip rotated, squashed, and crossing tiles', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (var i = 0; i < 6; i += 1)
+            dab(
+              x: 50.0 + i * 12.0,
+              y: 58.0 + i * 5.0,
+              size: 22,
+              roundness: 0.5,
+              angleDegrees: 30,
+              tipMask: _testTipMask,
+              sequence: i,
+            ),
+        ]),
+        reason: 'sampled tip rotated across tiles',
       );
     });
 

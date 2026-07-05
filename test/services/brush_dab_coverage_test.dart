@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_pixel_coverage.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_dab_coverage.dart';
@@ -17,6 +20,7 @@ void main() {
     int sequence = 0,
     double roundness = 1.0,
     double angleDegrees = 0.0,
+    BrushTipMask? tipMask,
   }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
@@ -30,8 +34,19 @@ void main() {
       sequence: sequence,
       roundness: roundness,
       angleDegrees: angleDegrees,
+      tipMask: tipMask,
     );
   }
+
+  // Left half fully opaque, right half transparent: orientation-revealing.
+  final halfMask = BrushTipMask(
+    id: 'half',
+    size: 8,
+    alpha: Uint8List.fromList([
+      for (var y = 0; y < 8; y += 1)
+        for (var x = 0; x < 8; x += 1) x < 4 ? 255 : 0,
+    ]),
+  );
 
   group('brushPixelCoveragesForDab', () {
     test('returns empty list for zero-size dab', () {
@@ -208,6 +223,47 @@ void main() {
       expect(coords, contains((13, 10))); // dx=+3 within the major half-width
       expect(coords, isNot(contains((10, 13)))); // dy=+3 beyond minor radius 1
       expect(coords, contains((10, 11))); // dy=+1 within minor radius
+    });
+
+    test('sampled tip covers only where the mask has alpha', () {
+      // Size 8 (radius 4), half-opaque mask at angle 0: pixels left of the
+      // center are covered, pixels right of it are not.
+      final values = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((8, 10))); // dx=-2 -> opaque left half
+      expect(coords, isNot(contains((13, 10)))); // dx=+3 -> transparent half
+      expect(values.every((value) => value.coverage > 0), isTrue);
+    });
+
+    test('sampled tip rotates with angle', () {
+      // At 90 degrees (visual CCW) the opaque half turns to face
+      // downward in y-down screen coordinates: tipU = -dy for dx=0, so
+      // pixels BELOW the center map to the mask's opaque (negative-u) half.
+      final values = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask, angleDegrees: 90),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((10, 12))); // below center -> covered
+      expect(coords, isNot(contains((10, 8)))); // above center -> transparent
+    });
+
+    test('sampled tip ignores hardness and tipShape', () {
+      final soft = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask, hardness: 0.0),
+      );
+      final hardSquare = brushPixelCoveragesForDab(
+        dab(
+          x: 10.5,
+          y: 10.5,
+          size: 8,
+          tipMask: halfMask,
+          hardness: 1.0,
+          tipShape: BrushTipShape.square,
+        ),
+      );
+      expect(soft, hardSquare);
     });
 
     test('fractional center includes pixels exactly on radius boundary', () {

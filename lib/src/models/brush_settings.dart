@@ -1,3 +1,4 @@
+import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
 
 class BrushSettings {
@@ -13,6 +14,7 @@ class BrushSettings {
     this.pressureOpacity = false,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
+    this.tipMask,
   }) {
     _validatePositive(size, 'size');
     _validateUnitInterval(opacity, 'opacity');
@@ -41,6 +43,9 @@ class BrushSettings {
   /// horizontal, in degrees.
   final double angleDegrees;
 
+  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
+  final BrushTipMask? tipMask;
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -53,6 +58,7 @@ class BrushSettings {
     bool? pressureOpacity,
     double? roundness,
     double? angleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -66,6 +72,7 @@ class BrushSettings {
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
+      tipMask: tipMask ?? this.tipMask,
     );
   }
 
@@ -81,6 +88,7 @@ class BrushSettings {
     'pressureOpacity': pressureOpacity,
     'roundness': roundness,
     'angleDegrees': angleDegrees,
+    if (tipMask != null) 'tipMask': tipMask!.toJson(),
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -98,6 +106,9 @@ class BrushSettings {
       pressureOpacity: json['pressureOpacity'] as bool? ?? false,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
+      tipMask: json['tipMask'] == null
+          ? null
+          : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
     );
   }
 
@@ -115,7 +126,8 @@ class BrushSettings {
           other.pressureSize == pressureSize &&
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
-          other.angleDegrees == angleDegrees;
+          other.angleDegrees == angleDegrees &&
+          other.tipMask == tipMask;
 
   @override
   int get hashCode => Object.hash(
@@ -130,6 +142,7 @@ class BrushSettings {
     pressureOpacity,
     roundness,
     angleDegrees,
+    tipMask,
   );
 
   @override
@@ -138,7 +151,7 @@ class BrushSettings {
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'tipShape: $tipShape, pressureSize: $pressureSize, '
       'pressureOpacity: $pressureOpacity, roundness: $roundness, '
-      'angleDegrees: $angleDegrees)';
+      'angleDegrees: $angleDegrees, tipMask: $tipMask)';
 }
 
 void _validatePositive(double value, String fieldName) {

@@ -6,6 +6,7 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_tip_mask_sampling.dart';
 
 /// Rasterizes the in-progress stroke incrementally into a canvas-sized
 /// straight-alpha RGBA buffer.
@@ -106,13 +107,16 @@ class BrushLiveStrokeRasterizer {
     // classic circle (roundness == 1, rotation-invariant) and axis-aligned
     // square keep their original code path so existing strokes stay
     // byte-identical.
-    final isEllipse = isRound && dab.roundness < 1.0;
+    final tipMask = dab.tipMask;
+    final isEllipse = tipMask == null && isRound && dab.roundness < 1.0;
     final isRotatedRect =
-        !isRound && (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
+        tipMask == null &&
+        !isRound &&
+        (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
     var tipCos = 1.0;
     var tipSin = 0.0;
     var inverseRoundness = 1.0;
-    if (isEllipse || isRotatedRect) {
+    if (isEllipse || isRotatedRect || tipMask != null) {
       final angleRadians = dab.angleDegrees * (math.pi / 180.0);
       tipCos = math.cos(angleRadians);
       tipSin = math.sin(angleRadians);
@@ -140,7 +144,23 @@ class BrushLiveStrokeRasterizer {
 
       for (var x = left; x < rightExclusive; x += 1) {
         double coverage;
-        if (isRound) {
+        if (tipMask != null) {
+          final dx = x + 0.5 - centerX;
+          final tipU = dx * tipCos - dy * tipSin;
+          final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+          if (tipU.abs() > radius || tipV.abs() > radius) {
+            continue;
+          }
+          coverage = sampleBrushTipMaskCoverage(
+            mask: tipMask,
+            tipU: tipU,
+            tipV: tipV,
+            radius: radius,
+          );
+          if (coverage <= 0.0) {
+            continue;
+          }
+        } else if (isRound) {
           final dx = x + 0.5 - centerX;
           double distance;
           if (isEllipse) {

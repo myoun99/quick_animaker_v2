@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -41,6 +42,7 @@ BrushDab _dab({
   int sequence = 0,
   double roundness = 1.0,
   double angleDegrees = 0.0,
+  BrushTipMask? tipMask,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -54,8 +56,19 @@ BrushDab _dab({
     sequence: sequence,
     roundness: roundness,
     angleDegrees: angleDegrees,
+    tipMask: tipMask,
   );
 }
+
+/// Deterministic 8x8 gradient-with-holes mask for parity scenarios.
+final BrushTipMask _testTipMask = BrushTipMask(
+  id: 'parity-test-tip',
+  size: 8,
+  alpha: Uint8List.fromList([
+    for (var index = 0; index < 64; index += 1)
+      index % 7 == 0 ? 0 : ((index * 4 + 16) % 256),
+  ]),
+);
 
 const int _canvasWidth = 40;
 const int _canvasHeight = 40;
@@ -188,6 +201,22 @@ void main() {
           roundness: 0.5,
           angleDegrees: 45,
         ),
+      ],
+      'sampled tip on fractional center': [
+        _dab(x: 14.37, y: 12.81, size: 16, tipMask: _testTipMask),
+      ],
+      'sampled tip rotated and squashed, overlapping stroke': [
+        for (var i = 0; i < 4; i += 1)
+          _dab(
+            x: 9.2 + i * 4.3,
+            y: 11.6 + i * 2.1,
+            size: 14,
+            color: 0x9040A0C0,
+            roundness: 0.6,
+            angleDegrees: 30,
+            tipMask: _testTipMask,
+            sequence: i,
+          ),
       ],
     };
 

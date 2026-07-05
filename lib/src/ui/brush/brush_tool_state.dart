@@ -1,4 +1,5 @@
 import '../../models/brush_settings.dart';
+import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_shape.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
@@ -20,6 +21,7 @@ class BrushToolState {
     bool pressureOpacity = defaultPressureOpacity,
     double roundness = defaultRoundness,
     double angleDegrees = defaultAngleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -33,6 +35,7 @@ class BrushToolState {
       pressureOpacity: pressureOpacity,
       roundness: roundness,
       angleDegrees: angleDegrees,
+      tipMask: tipMask,
     );
   }
 
@@ -48,6 +51,7 @@ class BrushToolState {
     required this.pressureOpacity,
     required this.roundness,
     required this.angleDegrees,
+    this.tipMask,
   });
 
   factory BrushToolState.clamped({
@@ -62,6 +66,7 @@ class BrushToolState {
     bool? pressureOpacity,
     double? roundness,
     double? angleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -75,6 +80,7 @@ class BrushToolState {
       pressureOpacity: pressureOpacity ?? defaultPressureOpacity,
       roundness: clampRoundness(roundness ?? defaultRoundness),
       angleDegrees: clampAngleDegrees(angleDegrees ?? defaultAngleDegrees),
+      tipMask: tipMask,
     );
   }
 
@@ -140,6 +146,13 @@ class BrushToolState {
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
   final double angleDegrees;
 
+  /// Sampled (bitmap) tip applied by a preset; `null` uses the parametric
+  /// [tipShape]. The panel has no direct mask picker yet — masks arrive via
+  /// presets (and later ABR import). Cleared only by applying a preset
+  /// without one ([BrushToolState.fromBrushSettings]); [copyWith] preserves
+  /// it so slider tweaks keep the textured tip.
+  final BrushTipMask? tipMask;
+
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) {
@@ -155,6 +168,7 @@ class BrushToolState {
       pressureOpacity: settings.pressureOpacity,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
+      tipMask: settings.tipMask,
     );
   }
 
@@ -173,6 +187,7 @@ class BrushToolState {
       pressureOpacity: pressureOpacity,
       roundness: roundness,
       angleDegrees: angleDegrees,
+      tipMask: tipMask,
     );
   }
 
@@ -189,6 +204,7 @@ class BrushToolState {
       pressureOpacity: pressureOpacity,
       roundness: roundness,
       angleDegrees: angleDegrees,
+      tipMask: tipMask,
     );
   }
 
@@ -204,6 +220,7 @@ class BrushToolState {
     bool? pressureOpacity,
     double? roundness,
     double? angleDegrees,
+    BrushTipMask? tipMask,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -217,6 +234,7 @@ class BrushToolState {
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
+      tipMask: tipMask ?? this.tipMask,
     );
   }
 
@@ -280,7 +298,8 @@ class BrushToolState {
           other.pressureSize == pressureSize &&
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
-          other.angleDegrees == angleDegrees;
+          other.angleDegrees == angleDegrees &&
+          other.tipMask == tipMask;
 
   @override
   int get hashCode => Object.hash(
@@ -295,5 +314,6 @@ class BrushToolState {
     pressureOpacity,
     roundness,
     angleDegrees,
+    tipMask,
   );
 }
