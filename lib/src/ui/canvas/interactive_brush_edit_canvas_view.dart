@@ -13,12 +13,13 @@ import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/brush_live_stroke_rasterizer.dart';
+import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
 import 'active_stroke_overlay_painter.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
-import 'brush_tip_mask_cache.dart';
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   InteractiveBrushEditCanvasView({
@@ -40,7 +41,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final LayerId layerId;
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
-  final ValueChanged<List<BrushDab>> onSourceStrokeCommitted;
+  final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
   final BrushDabInterpolator dabInterpolator;
   final CanvasSegmentClipper segmentClipper;
@@ -55,9 +56,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
-  /// Dabs stamped since the last flatten before the overlay is folded into
-  /// [_flattenedOverlay]; keeps per-repaint and per-flatten work bounded.
-  static const int _flattenBatchSize = 128;
+  /// Segment sprites accumulated before the overlay folds them into one
+  /// flattened image; keeps per-repaint and per-flatten work bounded.
+  static const int _flattenSegmentLimit = 24;
 
   int? _activeDrawingPointer;
   int? _activePanPointer;
@@ -69,11 +70,14 @@ class _InteractiveBrushEditCanvasViewState
   CanvasPoint? _previousRawCanvasPosition;
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
-  /// Live overlay state. Pointer moves append dabs and notify the overlay
-  /// painter directly through this model — no widget rebuild per move.
-  /// Older stamps are folded into the model's flattened image every
-  /// [_flattenBatchSize] dabs so repaints never re-touch the whole stroke.
+  /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
+  /// (the exact commit-rasterizer math), convert the touched region into a
+  /// segment sprite, and notify the overlay painter directly through this
+  /// model — no widget rebuild per move, and the pixels on screen are the
+  /// pixels the commit will keep.
   final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
+
+  BrushLiveStrokeRasterizer? _liveRasterizer;
 
   // After pointer-up the overlay stays visible ("settling") until the
   // committed tiles finish decoding, so the stroke never flashes away while
@@ -188,6 +192,7 @@ class _InteractiveBrushEditCanvasViewState
     _previousRawCanvasPosition = canvasPosition;
     _resetOverlay();
     _collectedDabs.clear();
+    _prepareLiveRasterizer();
     if (!startsInsideSurface) {
       return;
     }
@@ -198,8 +203,7 @@ class _InteractiveBrushEditCanvasViewState
       spacingRatio: _activeStrokeSpacing,
     );
     _collectedDabs.addAll(initialDabs);
-    _overlayModel.dabs.addAll(initialDabs);
-    _overlayModel.markChanged();
+    _appendOverlayDabs(initialDabs);
     _nextSequence = _collectedDabs.length;
   }
 
@@ -267,21 +271,18 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    // No setState: pointer moves mutate the overlay model and repaint the
+    // No setState: pointer moves rasterize the new dabs and repaint the
     // overlay layer directly, skipping the widget rebuild entirely (this
     // runs at pointer-sample frequency).
     if (segmentStartDabs.isNotEmpty) {
       _collectedDabs.addAll(segmentStartDabs);
-      _overlayModel.dabs.addAll(segmentStartDabs);
     }
     if (segmentEndDabs.isNotEmpty) {
       _collectedDabs.addAll(segmentEndDabs);
-      _overlayModel.dabs.addAll(segmentEndDabs);
     }
+    _appendOverlayDabs([...segmentStartDabs, ...segmentEndDabs]);
     _nextSequence += addedDabCount;
     _breakCurrentVisibleSegment = false;
-    _maybeFlattenOverlay();
-    _overlayModel.markChanged();
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -296,8 +297,15 @@ class _InteractiveBrushEditCanvasViewState
 
     final hadDabs = _collectedDabs.isNotEmpty;
     if (hadDabs) {
+      final rasterizer = _liveRasterizer;
       widget.onSourceStrokeCommitted(
-        List<BrushDab>.unmodifiable(_collectedDabs),
+        BrushStrokeCommitData(
+          sourceDabs: _collectedDabs,
+          strokePixels: rasterizer?.strokeBounds == null
+              ? null
+              : rasterizer!.pixels,
+          strokeBounds: rasterizer?.strokeBounds,
+        ),
       );
     }
 
@@ -472,12 +480,51 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  /// Folds stamped dabs into the model's flattened image once enough
-  /// accumulate, so neither repaints nor flattens ever touch the whole
-  /// stroke again.
+  /// Creates or recycles the live stroke rasterizer for the current canvas.
+  void _prepareLiveRasterizer() {
+    final canvasSize =
+        widget.sessionState.canvasState.currentSurface.canvasSize;
+    final existing = _liveRasterizer;
+    if (existing == null || existing.canvasSize != canvasSize) {
+      _liveRasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    } else {
+      existing.clear();
+    }
+  }
+
+  /// Rasterizes [newDabs] into the live buffer (exact commit math), turns
+  /// the touched region into a segment sprite, and repaints the overlay.
+  void _appendOverlayDabs(List<BrushDab> newDabs) {
+    if (newDabs.isEmpty) {
+      return;
+    }
+    final rasterizer = _liveRasterizer;
+    if (rasterizer == null) {
+      return;
+    }
+    final from = _overlayModel.dabs.length;
+    _overlayModel.dabs.addAll(newDabs);
+    final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
+    if (region != null) {
+      _overlayModel.segments.add(
+        ActiveStrokeOverlaySegment(
+          image: strokeRegionSprite(
+            pixels: rasterizer.pixels,
+            canvasWidth: rasterizer.canvasSize.width,
+            region: region,
+          ),
+          offset: Offset(region.left.toDouble(), region.top.toDouble()),
+        ),
+      );
+      _maybeFlattenOverlay();
+    }
+    _overlayModel.markChanged();
+  }
+
+  /// Folds accumulated segments into the model's flattened image once enough
+  /// pile up, so repaints stay bounded regardless of stroke length.
   void _maybeFlattenOverlay() {
-    if (_overlayModel.dabs.length - _overlayModel.paintFrom <
-        _flattenBatchSize) {
+    if (_overlayModel.segments.length < _flattenSegmentLimit) {
       return;
     }
     final canvasSize =
@@ -485,26 +532,27 @@ class _InteractiveBrushEditCanvasViewState
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final previous = _overlayModel.flattened;
+    final basePaint = Paint()
+      ..isAntiAlias = false
+      ..filterQuality = FilterQuality.none;
     if (previous != null) {
-      canvas.drawImage(
-        previous,
-        Offset.zero,
-        Paint()
-          ..isAntiAlias = false
-          ..filterQuality = FilterQuality.none,
-      );
+      canvas.drawImage(previous, Offset.zero, basePaint);
     }
-    ActiveStrokeOverlayPainter.paintDabStamps(
-      canvas,
-      _overlayModel.dabs,
-      BrushTipMaskCache.instance,
-      from: _overlayModel.paintFrom,
-    );
+    final segmentPaint = Paint()
+      ..isAntiAlias = false
+      ..filterQuality = FilterQuality.none
+      ..blendMode = BlendMode.src;
+    for (final segment in _overlayModel.segments) {
+      canvas.drawImage(segment.image, segment.offset, segmentPaint);
+    }
     final picture = recorder.endRecording();
     final flattened = picture.toImageSync(canvasSize.width, canvasSize.height);
     picture.dispose();
     previous?.dispose();
+    for (final segment in _overlayModel.segments) {
+      segment.dispose();
+    }
+    _overlayModel.segments.clear();
     _overlayModel.flattened = flattened;
-    _overlayModel.paintFrom = _overlayModel.dabs.length;
   }
 }

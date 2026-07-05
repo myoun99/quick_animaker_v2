@@ -94,11 +94,14 @@ void main() {
         sequence: 1,
       );
 
+      final overlayModel = ActiveStrokeOverlayModel()..dabs.add(activeDab);
+      addTearDown(overlayModel.dispose);
+
       await tester.pumpWidget(
         _app(
           BrushEditCanvasView(
             sessionState: sessionState,
-            activeStrokeOverlay: [activeDab],
+            overlayModel: overlayModel,
           ),
         ),
       );
@@ -130,7 +133,8 @@ void main() {
         identical(basePainter.surface, sessionState.canvasState.currentSurface),
         isTrue,
       );
-      expect(activePainter.activeStrokeOverlay, [activeDab]);
+      expect(identical(activePainter.model, overlayModel), isTrue);
+      expect(activePainter.model!.dabs, [activeDab]);
     });
 
     testWidgets('passes current surface and background setting to painter', (

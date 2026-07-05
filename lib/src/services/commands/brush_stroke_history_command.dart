@@ -1,23 +1,24 @@
-import '../../models/brush_dab.dart';
 import '../brush_frame_editing_coordinator.dart';
+import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
 
 /// Bridges a brush source stroke into the app-level [HistoryManager].
 ///
-/// The first execute commits the source dabs as a BrushPaintCommand. Later
-/// execute calls are redo operations that restore that same command through the
-/// coordinator's unified brush undo history. The command never stores bitmap
-/// deltas or cache payloads as user-facing undo state.
+/// The first execute commits the stroke as a BrushPaintCommand (with the
+/// pen-up composite fast path when the stroke arrives pre-rasterized). Later
+/// execute calls are redo operations that restore that same command through
+/// the coordinator's unified brush undo history. The command never stores
+/// bitmap deltas or cache payloads as user-facing undo state.
 class BrushStrokeHistoryCommand implements Command {
   BrushStrokeHistoryCommand({
     required this.coordinator,
-    required List<BrushDab> sourceDabs,
+    required this.strokeData,
     this.cacheInvalidationSink,
-  }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
+  });
 
   final BrushFrameEditingCoordinator coordinator;
-  final List<BrushDab> sourceDabs;
+  final BrushStrokeCommitData strokeData;
   final CacheInvalidationSink? cacheInvalidationSink;
   bool _hasCommitted = false;
   bool _committedChanges = false;
@@ -38,8 +39,10 @@ class BrushStrokeHistoryCommand implements Command {
     // unrelated brush entry.
     _committedChanges =
         coordinator.commitSourceStroke(
-          sourceDabs: sourceDabs,
+          sourceDabs: strokeData.sourceDabs,
           cacheInvalidationSink: cacheInvalidationSink,
+          prerasterizedStrokePixels: strokeData.strokePixels,
+          prerasterizedStrokeBounds: strokeData.strokeBounds,
         ) !=
         null;
     _hasCommitted = true;

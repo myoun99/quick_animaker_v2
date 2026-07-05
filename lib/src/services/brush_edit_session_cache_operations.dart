@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import '../models/brush_dab_sequence.dart';
+import '../models/dirty_region.dart';
 import '../models/brush_edit_session_cache_operation_result.dart';
 import '../models/brush_edit_session_operation_kind.dart';
 import '../models/brush_edit_session_state.dart';
@@ -15,12 +18,16 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   required LayerId layerId,
   required FrameId frameId,
   required CacheInvalidationSink cacheInvalidationSink,
+  Uint8List? prerasterizedStrokePixels,
+  DirtyRegion? prerasterizedStrokeBounds,
 }) {
   final commitResult = commitBrushDabSequenceToBrushEditSessionState(
     sessionState: sessionState,
     sequence: sequence,
     layerId: layerId,
     frameId: frameId,
+    prerasterizedStrokePixels: prerasterizedStrokePixels,
+    prerasterizedStrokeBounds: prerasterizedStrokeBounds,
   );
   final historyEntry = commitResult.historyEntry;
 

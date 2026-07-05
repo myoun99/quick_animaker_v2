@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import 'active_stroke_overlay_painter.dart';
 import 'bitmap_surface_painter.dart';
@@ -10,16 +9,12 @@ class BrushEditCanvasView extends StatelessWidget {
     super.key,
     required this.sessionState,
     this.showTransparentBackground = true,
-    this.activeStrokeOverlay = const <BrushDab>[],
     this.overlayModel,
     this.staleScope,
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
-
-  /// Static overlay dab list used when no [overlayModel] is provided.
-  final List<BrushDab> activeStrokeOverlay;
 
   /// Live overlay state owned by the interactive view; pointer moves repaint
   /// the overlay layer through this model without rebuilding widgets.
@@ -74,10 +69,7 @@ class BrushEditCanvasView extends StatelessWidget {
                   key: const ValueKey<String>(
                     'brush-edit-canvas-active-custom-paint',
                   ),
-                  painter: ActiveStrokeOverlayPainter(
-                    model: overlayModel,
-                    activeStrokeOverlay: activeStrokeOverlay,
-                  ),
+                  painter: ActiveStrokeOverlayPainter(model: overlayModel),
                 ),
               ),
             ],
