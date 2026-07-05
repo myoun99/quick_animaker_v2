@@ -254,6 +254,15 @@ void main() {
           find.byType(BrushEditCanvasView),
         );
         expect(results, hasLength(1));
+        // The overlay settles (stays visible) until the committed tiles
+        // decode or the settling window elapses, so the stroke never flashes
+        // away during the handoff to the materialized bitmap.
+        expect(canvasView.activeStrokeOverlay, isNotEmpty);
+
+        await tester.pump(const Duration(milliseconds: 350));
+        canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
         expect(canvasView.activeStrokeOverlay, isEmpty);
       },
     );
@@ -288,7 +297,8 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-        await tester.pump();
+        // Let the settling window elapse before checking the cleared state.
+        await tester.pump(const Duration(milliseconds: 350));
 
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),

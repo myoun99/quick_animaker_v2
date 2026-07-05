@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../models/bitmap_tile.dart';
+import '../../models/tile_coord.dart';
 
 /// Identity-keyed cache converting immutable [BitmapTile] pixel bytes into
 /// GPU-ready [ui.Image]s for display.
@@ -32,8 +33,23 @@ class BitmapTileImageCache extends ChangeNotifier {
     (image) => image.dispose(),
   );
 
+  /// Latest decoded tile per coordinate, held strongly so its image stays
+  /// alive (the [Finalizer] only disposes an image once its tile is
+  /// unreferenced everywhere). Lets the painter show slightly stale content
+  /// for a just-changed tile instead of falling back to a per-pixel redraw,
+  /// which froze the UI for large strokes.
+  final Map<TileCoord, BitmapTile> _latestDecodedTileByCoord =
+      <TileCoord, BitmapTile>{};
+
   /// The decoded image for [tile], or `null` while the decode is pending.
   ui.Image? imageFor(BitmapTile tile) => _images[tile];
+
+  /// The most recently decoded image at [coord] (possibly for an older tile
+  /// version), or `null` if nothing decoded there yet.
+  ui.Image? latestImageForCoord(TileCoord coord) {
+    final tile = _latestDecodedTileByCoord[coord];
+    return tile == null ? null : _images[tile];
+  }
 
   /// Starts decoding [tile] once; notifies listeners when the image is ready.
   void ensureDecoded(BitmapTile tile) {
@@ -71,9 +87,20 @@ class BitmapTileImageCache extends ChangeNotifier {
       (image) {
         _images[tile] = image;
         _imageFinalizer.attach(tile, image);
+        _latestDecodedTileByCoord[tile.coord] = tile;
         notifyListeners();
       },
     );
+  }
+
+  /// Whether every tile of [tiles] has a decoded image ready.
+  bool allDecoded(Iterable<BitmapTile> tiles) {
+    for (final tile in tiles) {
+      if (_images[tile] == null) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.

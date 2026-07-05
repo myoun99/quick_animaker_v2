@@ -45,7 +45,14 @@ class BitmapSurfacePainter extends CustomPainter {
       ..isAntiAlias = false;
     for (final tile in surface.tiles.values) {
       tileImageCache.ensureDecoded(tile);
-      final tileImage = tileImageCache.imageFor(tile);
+      // While this tile version's decode is pending, show the latest decoded
+      // image at the same coordinate (slightly stale content) instead of a
+      // per-pixel redraw: scanning up to 65k pixels per changed tile froze
+      // the UI after large strokes. The active overlay keeps the in-progress
+      // stroke visible until the new tiles are decoded.
+      final tileImage =
+          tileImageCache.imageFor(tile) ??
+          tileImageCache.latestImageForCoord(tile.coord);
       if (tileImage != null) {
         canvas.drawImage(
           tileImage,
@@ -56,7 +63,8 @@ class BitmapSurfacePainter extends CustomPainter {
           tileImagePaint,
         );
       } else {
-        // Decode still pending: draw this tile per pixel for this frame.
+        // First-ever content at this coordinate and not decoded yet: draw
+        // per pixel for this frame only.
         _paintTilePixels(canvas, tile);
       }
     }
