@@ -15,6 +15,8 @@ class BrushToolState {
     double hardness = defaultHardness,
     double flow = defaultFlow,
     BrushTipShape tipShape = defaultTipShape,
+    bool pressureSize = defaultPressureSize,
+    bool pressureOpacity = defaultPressureOpacity,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -24,6 +26,8 @@ class BrushToolState {
       hardness: hardness,
       flow: flow,
       tipShape: tipShape,
+      pressureSize: pressureSize,
+      pressureOpacity: pressureOpacity,
     );
   }
 
@@ -35,6 +39,8 @@ class BrushToolState {
     required this.hardness,
     required this.flow,
     required this.tipShape,
+    required this.pressureSize,
+    required this.pressureOpacity,
   });
 
   factory BrushToolState.clamped({
@@ -45,6 +51,8 @@ class BrushToolState {
     double? hardness,
     double? flow,
     BrushTipShape? tipShape,
+    bool? pressureSize,
+    bool? pressureOpacity,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -54,6 +62,8 @@ class BrushToolState {
       hardness: clampUnit(hardness ?? defaultHardness),
       flow: clampUnit(flow ?? defaultFlow),
       tipShape: tipShape ?? defaultTipShape,
+      pressureSize: pressureSize ?? defaultPressureSize,
+      pressureOpacity: pressureOpacity ?? defaultPressureOpacity,
     );
   }
 
@@ -68,6 +78,8 @@ class BrushToolState {
   static const double defaultHardness = 1.0;
   static const double defaultFlow = 1.0;
   static const BrushTipShape defaultTipShape = BrushTipShape.round;
+  static const bool defaultPressureSize = false;
+  static const bool defaultPressureOpacity = false;
   static const BrushToolState defaults = BrushToolState._raw(
     size: defaultSize,
     opacity: defaultOpacity,
@@ -76,6 +88,8 @@ class BrushToolState {
     hardness: defaultHardness,
     flow: defaultFlow,
     tipShape: defaultTipShape,
+    pressureSize: defaultPressureSize,
+    pressureOpacity: defaultPressureOpacity,
   );
 
   final double size;
@@ -94,6 +108,12 @@ class BrushToolState {
 
   final BrushTipShape tipShape;
 
+  /// When true, pen/tablet pressure scales each dab's size (linear response).
+  final bool pressureSize;
+
+  /// When true, pen/tablet pressure scales each dab's opacity (linear).
+  final bool pressureOpacity;
+
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(
       color: color,
@@ -103,6 +123,8 @@ class BrushToolState {
       hardness: hardness,
       flow: flow,
       tipShape: tipShape,
+      pressureSize: pressureSize,
+      pressureOpacity: pressureOpacity,
     );
   }
 
@@ -114,6 +136,8 @@ class BrushToolState {
     double? hardness,
     double? flow,
     BrushTipShape? tipShape,
+    bool? pressureSize,
+    bool? pressureOpacity,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -123,6 +147,8 @@ class BrushToolState {
       hardness: hardness ?? this.hardness,
       flow: flow ?? this.flow,
       tipShape: tipShape ?? this.tipShape,
+      pressureSize: pressureSize ?? this.pressureSize,
+      pressureOpacity: pressureOpacity ?? this.pressureOpacity,
     );
   }
 
@@ -165,9 +191,20 @@ class BrushToolState {
           other.spacing == spacing &&
           other.hardness == hardness &&
           other.flow == flow &&
-          other.tipShape == tipShape;
+          other.tipShape == tipShape &&
+          other.pressureSize == pressureSize &&
+          other.pressureOpacity == pressureOpacity;
 
   @override
-  int get hashCode =>
-      Object.hash(size, opacity, color, spacing, hardness, flow, tipShape);
+  int get hashCode => Object.hash(
+    size,
+    opacity,
+    color,
+    spacing,
+    hardness,
+    flow,
+    tipShape,
+    pressureSize,
+    pressureOpacity,
+  );
 }

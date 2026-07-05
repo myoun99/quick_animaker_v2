@@ -13,6 +13,8 @@ void main() {
       expect(settings.flow, 1.0);
       expect(settings.hardness, 1.0);
       expect(settings.tipShape, BrushTipShape.round);
+      expect(settings.pressureSize, isFalse);
+      expect(settings.pressureOpacity, isFalse);
     });
 
     test('stores custom values', () {
@@ -81,6 +83,27 @@ void main() {
         () => BrushEditCanvasInputSettings(hardness: 1.1),
         throwsAssertionError,
       );
+    });
+
+    test('stores and copies pressure toggles', () {
+      const settings = BrushEditCanvasInputSettings(
+        pressureSize: true,
+        pressureOpacity: true,
+      );
+      expect(settings.pressureSize, isTrue);
+      expect(settings.pressureOpacity, isTrue);
+
+      final toggledOff = settings.copyWith(pressureOpacity: false);
+      expect(toggledOff.pressureSize, isTrue);
+      expect(toggledOff.pressureOpacity, isFalse);
+
+      const a = BrushEditCanvasInputSettings(pressureSize: true);
+      const b = BrushEditCanvasInputSettings(pressureSize: true);
+      const c = BrushEditCanvasInputSettings();
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a == c, isFalse);
+      expect(a.toString(), contains('pressureSize: true'));
     });
 
     test('copyWith preserves omitted values', () {

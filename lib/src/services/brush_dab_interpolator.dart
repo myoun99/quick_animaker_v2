@@ -37,6 +37,8 @@ class BrushDabInterpolator {
     }
 
     final stepCount = math.max(1, (distance / spacing).ceil());
+    final previousPressure = previous.pressure;
+    final pressureDelta = nextRaw.pressure - previousPressure;
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
@@ -44,6 +46,10 @@ class BrushDabInterpolator {
           x: previous.center.x + dx * fraction,
           y: previous.center.y + dy * fraction,
         ),
+        // Interpolate pressure along the segment so pressure-driven size or
+        // opacity ramps smoothly between input samples instead of snapping
+        // to the endpoint value on every inserted dab.
+        pressure: previousPressure + pressureDelta * fraction,
         sequence: firstSequence + index,
       );
     });

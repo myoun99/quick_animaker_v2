@@ -99,9 +99,17 @@ Phase 303 keeps brush size, opacity, color, and spacing as editor-session tool s
 
 `BrushSettingsPanel` is the primary editable brush settings UI. `BrushCanvasPanel` should receive brush tool state for drawing input only and should remain focused on viewport display, panbars, zoom/fit/reset, canvas clipping, and drawing input. It should not own brush setting mutation callbacks or duplicate editable brush controls.
 
-Active strokes snapshot brush input settings at pointer down. Size, opacity, color, spacing, flow, hardness, and tip shape used by an in-progress stroke must come from that active-stroke snapshot until pointer up/cancel. Mid-stroke UI changes therefore affect future strokes only and must not alter the currently active stroke or already committed strokes.
+Active strokes snapshot brush input settings at pointer down. Size, opacity, color, spacing, flow, hardness, tip shape, and the pen-pressure toggles used by an in-progress stroke must come from that active-stroke snapshot until pointer up/cancel. Mid-stroke UI changes therefore affect future strokes only and must not alter the currently active stroke or already committed strokes.
 
-This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as hardness, flow, angle, roundness, pressure, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as angle, roundness, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+
+## Pen pressure dynamics (P14)
+
+`BrushToolState`/`BrushEditCanvasInputSettings` carry `pressureSize` and `pressureOpacity` toggles (both default false, so a mouse or a stroke with the toggles off behaves exactly as before). `BrushSettingsPanel` exposes them under a "Pen Pressure" section as `brush-tool-pressure-size-toggle` / `brush-tool-pressure-opacity-toggle`.
+
+The interactive canvas view reads each pointer sample's normalized pressure — `(pressure - pressureMin) / (pressureMax - pressureMin)`, clamped to 0..1, and treated as full pressure when the device reports a zero/non-finite range (mouse). `_dabFromPosition` builds each dab with the base tool size/opacity and that raw pressure; `BrushDabInterpolator` interpolates the `pressure` field linearly across inserted dabs; then `applyBrushPressureDynamics` (services) scales `size`/`opacity` per dab to `base * pressure` for whichever toggle is on. Scaling is applied AFTER interpolation so each inserted dab scales by its own interpolated pressure rather than the segment endpoint's — a pre-interpolation scale would step the size across a segment. Spacing uses the base (un-scaled) size, so dab density stays consistent regardless of pressure and low-pressure strokes never gap.
+
+Response is linear for now (raw pressure). An adjustable transfer curve is a later step. The scaling formula mirrors `BrushDab.fromInputSample`, which the offline placement path uses when building dabs from raw `BrushInputSample`s.
 
 ## Active editing display (exact live rasterization, post-P7/P9)
 

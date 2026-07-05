@@ -79,5 +79,39 @@ void main() {
       expect(state.color, color);
       expect(state.toInputSettings().color, color);
     });
+
+    test('pressure toggles default off and preserve prior behavior', () {
+      const state = BrushToolState.defaults;
+      expect(state.pressureSize, isFalse);
+      expect(state.pressureOpacity, isFalse);
+      expect(state.toInputSettings().pressureSize, isFalse);
+      expect(state.toInputSettings().pressureOpacity, isFalse);
+    });
+
+    test('pressure toggles round-trip through copyWith and input settings', () {
+      final state = BrushToolState.defaults.copyWith(
+        pressureSize: true,
+        pressureOpacity: true,
+      );
+      expect(state.pressureSize, isTrue);
+      expect(state.pressureOpacity, isTrue);
+
+      final settings = state.toInputSettings();
+      expect(settings.pressureSize, isTrue);
+      expect(settings.pressureOpacity, isTrue);
+
+      // Omitted copyWith args keep the existing toggle values.
+      expect(state.copyWith(size: 5).pressureSize, isTrue);
+      expect(state.copyWith(size: 5).pressureOpacity, isTrue);
+    });
+
+    test('pressure toggles participate in equality', () {
+      final a = BrushToolState.defaults.copyWith(pressureSize: true);
+      final b = BrushToolState.defaults.copyWith(pressureSize: true);
+      const c = BrushToolState.defaults;
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a == c, isFalse);
+    });
   });
 }

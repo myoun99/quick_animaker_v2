@@ -9,6 +9,8 @@ class BrushEditCanvasInputSettings {
     this.hardness = 1.0,
     this.tipShape = BrushTipShape.round,
     this.spacing = 0.25,
+    this.pressureSize = false,
+    this.pressureOpacity = false,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
        assert(
          opacity >= 0.0 && opacity <= 1.0,
@@ -35,6 +37,12 @@ class BrushEditCanvasInputSettings {
   final BrushTipShape tipShape;
   final double spacing;
 
+  /// When true, each dab's size is scaled by the input pressure (linear).
+  final bool pressureSize;
+
+  /// When true, each dab's opacity is scaled by the input pressure (linear).
+  final bool pressureOpacity;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -43,6 +51,8 @@ class BrushEditCanvasInputSettings {
     double? hardness,
     BrushTipShape? tipShape,
     double? spacing,
+    bool? pressureSize,
+    bool? pressureOpacity,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -52,6 +62,8 @@ class BrushEditCanvasInputSettings {
       hardness: hardness ?? this.hardness,
       tipShape: tipShape ?? this.tipShape,
       spacing: spacing ?? this.spacing,
+      pressureSize: pressureSize ?? this.pressureSize,
+      pressureOpacity: pressureOpacity ?? this.pressureOpacity,
     );
   }
 
@@ -65,15 +77,27 @@ class BrushEditCanvasInputSettings {
           other.flow == flow &&
           other.hardness == hardness &&
           other.tipShape == tipShape &&
-          other.spacing == spacing;
+          other.spacing == spacing &&
+          other.pressureSize == pressureSize &&
+          other.pressureOpacity == pressureOpacity;
 
   @override
-  int get hashCode =>
-      Object.hash(color, size, opacity, flow, hardness, tipShape, spacing);
+  int get hashCode => Object.hash(
+    color,
+    size,
+    opacity,
+    flow,
+    hardness,
+    tipShape,
+    spacing,
+    pressureSize,
+    pressureOpacity,
+  );
 
   @override
   String toString() =>
       'BrushEditCanvasInputSettings(color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
-      'tipShape: $tipShape, spacing: $spacing)';
+      'tipShape: $tipShape, spacing: $spacing, '
+      'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity)';
 }

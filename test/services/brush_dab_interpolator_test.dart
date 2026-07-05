@@ -5,7 +5,13 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_dab_interpolator.dart';
 
 void main() {
-  BrushDab dab(double x, double y, {double size = 8, int sequence = 0}) {
+  BrushDab dab(
+    double x,
+    double y, {
+    double size = 8,
+    int sequence = 0,
+    double pressure = 1,
+  }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
       color: 0xFF000000,
@@ -14,7 +20,7 @@ void main() {
       flow: 1,
       hardness: 1,
       tipShape: BrushTipShape.round,
-      pressure: 1,
+      pressure: pressure,
       sequence: sequence,
     );
   }
@@ -99,6 +105,38 @@ void main() {
     );
 
     expect(dense.length, greaterThan(sparse.length));
+  });
+
+  test('interpolates pressure linearly across inserted dabs', () {
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0, size: 8, pressure: 0.0),
+      nextRaw: dab(8, 0, size: 8, pressure: 1.0),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+
+    expect(sampled.length, greaterThan(1));
+    // Pressure rises monotonically from just above the previous sample to
+    // exactly the next sample's pressure at the endpoint.
+    final pressures = sampled.map((dab) => dab.pressure).toList();
+    expect(pressures.last, closeTo(1.0, 1e-9));
+    expect(pressures.first, greaterThan(0.0));
+    for (var i = 1; i < pressures.length; i += 1) {
+      expect(pressures[i], greaterThan(pressures[i - 1]));
+    }
+  });
+
+  test('a single seed dab keeps the raw pressure', () {
+    const interpolator = BrushDabInterpolator();
+    final seeded = interpolator
+        .interpolate(
+          previous: null,
+          nextRaw: dab(0, 0, pressure: 0.42),
+          firstSequence: 0,
+        )
+        .single;
+    expect(seeded.pressure, 0.42);
   });
 
   test('never emits negative sequence numbers', () {

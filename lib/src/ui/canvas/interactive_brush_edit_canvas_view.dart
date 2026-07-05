@@ -13,6 +13,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
+import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
 import 'active_stroke_overlay.dart';
@@ -64,6 +65,11 @@ class _InteractiveBrushEditCanvasViewState
   var _breakCurrentVisibleSegment = false;
   CanvasPoint? _previousRawCanvasPosition;
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
+
+  /// Normalized pressure (0..1) of the latest pointer sample. Devices without
+  /// pressure report a zero range and are treated as full pressure, so a
+  /// mouse draws exactly as before.
+  double _currentPressure = 1.0;
 
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
   /// (the exact commit-rasterizer math) and re-decode the touched overlay
@@ -156,6 +162,7 @@ class _InteractiveBrushEditCanvasViewState
 
     _activeDrawingPointer = event.pointer;
     _activeStrokeInputSettings = widget.inputSettings;
+    _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
@@ -166,11 +173,13 @@ class _InteractiveBrushEditCanvasViewState
     if (!startsInsideSurface) {
       return;
     }
-    final initialDabs = widget.dabInterpolator.interpolate(
-      previous: null,
-      nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
-      firstSequence: _nextSequence,
-      spacingRatio: _activeStrokeSpacing,
+    final initialDabs = _withPressureDynamics(
+      widget.dabInterpolator.interpolate(
+        previous: null,
+        nextRaw: _dabFromPosition(canvasPosition, sequence: _nextSequence),
+        firstSequence: _nextSequence,
+        spacingRatio: _activeStrokeSpacing,
+      ),
     );
     _collectedDabs.addAll(initialDabs);
     _appendOverlayDabs(initialDabs);
@@ -187,6 +196,7 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
+    _currentPressure = _normalizedPressure(event);
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
     final previousRaw = _previousRawCanvasPosition;
     _previousRawCanvasPosition = canvasPosition;
@@ -216,25 +226,32 @@ class _InteractiveBrushEditCanvasViewState
         clippedSegment.startsNewVisibleSegment ||
             _breakCurrentVisibleSegment ||
             _collectedDabs.isEmpty
-        ? widget.dabInterpolator.interpolate(
-            previous: null,
-            nextRaw: _dabFromPosition(
-              clippedSegment.start,
-              sequence: _nextSequence,
+        ? _withPressureDynamics(
+            widget.dabInterpolator.interpolate(
+              previous: null,
+              nextRaw: _dabFromPosition(
+                clippedSegment.start,
+                sequence: _nextSequence,
+              ),
+              firstSequence: _nextSequence,
+              spacingRatio: _activeStrokeSpacing,
             ),
-            firstSequence: _nextSequence,
-            spacingRatio: _activeStrokeSpacing,
           )
         : const <BrushDab>[];
     final firstEndSequence = _nextSequence + segmentStartDabs.length;
     final endPrevious = segmentStartDabs.isNotEmpty
         ? segmentStartDabs.last
         : previousDab;
-    final segmentEndDabs = widget.dabInterpolator.interpolate(
-      previous: endPrevious,
-      nextRaw: _dabFromPosition(clippedSegment.end, sequence: firstEndSequence),
-      firstSequence: firstEndSequence,
-      spacingRatio: _activeStrokeSpacing,
+    final segmentEndDabs = _withPressureDynamics(
+      widget.dabInterpolator.interpolate(
+        previous: endPrevious,
+        nextRaw: _dabFromPosition(
+          clippedSegment.end,
+          sequence: firstEndSequence,
+        ),
+        firstSequence: firstEndSequence,
+        spacingRatio: _activeStrokeSpacing,
+      ),
     );
     final addedDabCount = segmentStartDabs.length + segmentEndDabs.length;
     if (addedDabCount == 0) {
@@ -338,6 +355,10 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
+  /// Builds a dab carrying the base tool size/opacity and the current input
+  /// pressure. Pressure scaling is applied after interpolation (see
+  /// [_withPressureDynamics]) so each inserted dab scales by its own
+  /// interpolated pressure rather than the segment endpoint's.
   BrushDab _dabFromPosition(
     CanvasPoint localPosition, {
     required int sequence,
@@ -351,9 +372,37 @@ class _InteractiveBrushEditCanvasViewState
       flow: settings.flow,
       hardness: settings.hardness,
       tipShape: settings.tipShape,
-      pressure: 1.0,
+      pressure: _currentPressure,
       sequence: sequence,
     );
+  }
+
+  /// Scales freshly interpolated dabs by their pressure per the active
+  /// stroke's pressure toggles. Returns the input unchanged when neither
+  /// toggle is on, so the common no-pressure path stays allocation-free.
+  List<BrushDab> _withPressureDynamics(List<BrushDab> dabs) {
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
+    if (!settings.pressureSize && !settings.pressureOpacity) {
+      return dabs;
+    }
+    return <BrushDab>[
+      for (final dab in dabs)
+        applyBrushPressureDynamics(
+          dab,
+          pressureSize: settings.pressureSize,
+          pressureOpacity: settings.pressureOpacity,
+        ),
+    ];
+  }
+
+  /// Normalizes a pointer's pressure into 0..1. A zero or non-finite range
+  /// (mouse and other devices without pressure) maps to full pressure.
+  double _normalizedPressure(PointerEvent event) {
+    final range = event.pressureMax - event.pressureMin;
+    if (!range.isFinite || range <= 0.0) {
+      return 1.0;
+    }
+    return ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0);
   }
 
   double get _activeStrokeSpacing =>
@@ -411,6 +460,7 @@ class _InteractiveBrushEditCanvasViewState
     _breakCurrentVisibleSegment = false;
     _previousRawCanvasPosition = null;
     _activeStrokeInputSettings = null;
+    _currentPressure = 1.0;
     _collectedDabs.clear();
   }
 
