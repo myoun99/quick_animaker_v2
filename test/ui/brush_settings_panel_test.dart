@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_dock.dart';
@@ -98,5 +99,52 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(state.color, 0xFF1E88E5);
+  });
+
+  testWidgets('BrushSettingsPanel updates hardness flow and tip shape', (
+    tester,
+  ) async {
+    var state = BrushToolState.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('brush-tool-hardness-slider')),
+      const Offset(-80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(state.hardness, lessThan(BrushToolState.defaultHardness));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('brush-tool-flow-slider')),
+      const Offset(-80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(state.flow, lessThan(BrushToolState.defaultFlow));
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('brush-tool-tip-shape-toggle')),
+    );
+    await tester.tap(find.text('Square'));
+    await tester.pumpAndSettle();
+    expect(state.tipShape, BrushTipShape.square);
+
+    // The sampled input settings carry every tool option to the canvas.
+    final inputSettings = state.toInputSettings();
+    expect(inputSettings.hardness, state.hardness);
+    expect(inputSettings.flow, state.flow);
+    expect(inputSettings.tipShape, BrushTipShape.square);
   });
 }

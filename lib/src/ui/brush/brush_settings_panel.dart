@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/brush_tip_shape.dart';
 import '../panels/editor_panel_frame.dart';
 import 'brush_tool_color_swatch.dart';
 import 'brush_tool_state.dart';
@@ -26,6 +27,8 @@ class BrushSettingsPanel extends StatelessWidget {
     final sizeLabel = '${state.size.round()} px';
     final opacityLabel = '${(state.opacity * 100).round()}%';
     final spacingLabel = '${(state.spacing * 100).round()}%';
+    final hardnessLabel = '${(state.hardness * 100).round()}%';
+    final flowLabel = '${(state.flow * 100).round()}%';
     return EditorPanelFrame(
       title: 'Brush Settings',
       child: Column(
@@ -58,6 +61,24 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
           ),
           _PanelSlider(
+            label: 'Hardness',
+            valueLabel: hardnessLabel,
+            value: BrushToolState.clampUnit(state.hardness),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-hardness-slider',
+            onChanged: (value) => onChanged(state.copyWith(hardness: value)),
+          ),
+          _PanelSlider(
+            label: 'Flow',
+            valueLabel: flowLabel,
+            value: BrushToolState.clampUnit(state.flow),
+            min: 0,
+            max: 1,
+            keyValue: 'brush-tool-flow-slider',
+            onChanged: (value) => onChanged(state.copyWith(flow: value)),
+          ),
+          _PanelSlider(
             label: 'Spacing',
             valueLabel: spacingLabel,
             value: BrushToolState.clampSpacing(state.spacing),
@@ -65,6 +86,31 @@ class BrushSettingsPanel extends StatelessWidget {
             max: BrushToolState.maxSpacing,
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+          ),
+          const SizedBox(height: 8),
+          Text('Tip Shape', style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 6),
+          SegmentedButton<BrushTipShape>(
+            key: const ValueKey<String>('brush-tool-tip-shape-toggle'),
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            segments: const [
+              ButtonSegment(
+                value: BrushTipShape.round,
+                icon: Icon(Icons.circle, size: 14),
+                label: Text('Round'),
+              ),
+              ButtonSegment(
+                value: BrushTipShape.square,
+                icon: Icon(Icons.square, size: 14),
+                label: Text('Square'),
+              ),
+            ],
+            selected: {state.tipShape},
+            onSelectionChanged: (selection) =>
+                onChanged(state.copyWith(tipShape: selection.single)),
           ),
           const SizedBox(height: 8),
           Text('Color', style: Theme.of(context).textTheme.labelSmall),

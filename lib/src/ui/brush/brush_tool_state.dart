@@ -1,21 +1,29 @@
+import '../../models/brush_tip_shape.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
 /// Editor-session state for the active brush tool options.
 ///
 /// This is UI/tool state owned by the editor session. It is intentionally
-/// separate from project, cut, layer, frame, stroke, cache, and save/load data.
+/// separate from project, cut, layer, frame, stroke, cache, and save/load
+/// data.
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
     double opacity = defaultOpacity,
     int color = defaultColor,
     double spacing = defaultSpacing,
+    double hardness = defaultHardness,
+    double flow = defaultFlow,
+    BrushTipShape tipShape = defaultTipShape,
   }) {
     return BrushToolState.clamped(
       size: size,
       opacity: opacity,
       color: color,
       spacing: spacing,
+      hardness: hardness,
+      flow: flow,
+      tipShape: tipShape,
     );
   }
 
@@ -24,6 +32,9 @@ class BrushToolState {
     required this.opacity,
     required this.color,
     required this.spacing,
+    required this.hardness,
+    required this.flow,
+    required this.tipShape,
   });
 
   factory BrushToolState.clamped({
@@ -31,12 +42,18 @@ class BrushToolState {
     double? opacity,
     int? color,
     double? spacing,
+    double? hardness,
+    double? flow,
+    BrushTipShape? tipShape,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
       opacity: clampOpacity(opacity ?? defaultOpacity),
       color: color ?? defaultColor,
       spacing: clampSpacing(spacing ?? defaultSpacing),
+      hardness: clampUnit(hardness ?? defaultHardness),
+      flow: clampUnit(flow ?? defaultFlow),
+      tipShape: tipShape ?? defaultTipShape,
     );
   }
 
@@ -48,11 +65,17 @@ class BrushToolState {
   static const double minSpacing = 0.05;
   static const double maxSpacing = 4.0;
   static const double defaultSpacing = 0.25;
+  static const double defaultHardness = 1.0;
+  static const double defaultFlow = 1.0;
+  static const BrushTipShape defaultTipShape = BrushTipShape.round;
   static const BrushToolState defaults = BrushToolState._raw(
     size: defaultSize,
     opacity: defaultOpacity,
     color: defaultColor,
     spacing: defaultSpacing,
+    hardness: defaultHardness,
+    flow: defaultFlow,
+    tipShape: defaultTipShape,
   );
 
   final double size;
@@ -60,12 +83,26 @@ class BrushToolState {
   final int color;
   final double spacing;
 
+  /// Tip edge falloff: 1.0 paints a hard edge, lower values fade linearly
+  /// from `radius * hardness` to the radius (same coverage model as the
+  /// commit rasterizer).
+  final double hardness;
+
+  /// Per-dab paint strength; combined multiplicatively with [opacity] when a
+  /// dab is sampled.
+  final double flow;
+
+  final BrushTipShape tipShape;
+
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(
       color: color,
       size: size,
       opacity: opacity,
       spacing: spacing,
+      hardness: hardness,
+      flow: flow,
+      tipShape: tipShape,
     );
   }
 
@@ -74,12 +111,18 @@ class BrushToolState {
     double? opacity,
     int? color,
     double? spacing,
+    double? hardness,
+    double? flow,
+    BrushTipShape? tipShape,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
       opacity: opacity ?? this.opacity,
       color: color ?? this.color,
       spacing: spacing ?? this.spacing,
+      hardness: hardness ?? this.hardness,
+      flow: flow ?? this.flow,
+      tipShape: tipShape ?? this.tipShape,
     );
   }
 
@@ -104,6 +147,14 @@ class BrushToolState {
     return value.clamp(minSpacing, maxSpacing).toDouble();
   }
 
+  /// Clamps unit-interval settings (hardness, flow) to [0, 1].
+  static double clampUnit(double value) {
+    if (!value.isFinite) {
+      return 1.0;
+    }
+    return value.clamp(0.0, 1.0).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -111,8 +162,12 @@ class BrushToolState {
           other.size == size &&
           other.opacity == opacity &&
           other.color == color &&
-          other.spacing == spacing;
+          other.spacing == spacing &&
+          other.hardness == hardness &&
+          other.flow == flow &&
+          other.tipShape == tipShape;
 
   @override
-  int get hashCode => Object.hash(size, opacity, color, spacing);
+  int get hashCode =>
+      Object.hash(size, opacity, color, spacing, hardness, flow, tipShape);
 }
