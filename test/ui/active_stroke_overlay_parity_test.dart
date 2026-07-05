@@ -286,24 +286,27 @@ void main() {
     });
 
     test(
-      'painter draws flattened image and segments with src replacement',
+      'painter draws the composed overlay image with plain source-over',
       () async {
         final dabs = [_dab(x: 8.5, y: 8.5, opacity: 1.0, flow: 1.0)];
         final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
         final region = rasterizer.blendFrom(dabs, from: 0)!;
 
+        final sprite = strokeRegionSprite(
+          pixels: rasterizer.pixels,
+          canvasWidth: _canvasWidth,
+          region: region,
+        );
         final model = ActiveStrokeOverlayModel();
         model.dabs.addAll(dabs);
-        model.segments.add(
-          ActiveStrokeOverlaySegment(
-            image: strokeRegionSprite(
-              pixels: rasterizer.pixels,
-              canvasWidth: _canvasWidth,
-              region: region,
-            ),
-            offset: Offset(region.left.toDouble(), region.top.toDouble()),
-          ),
+        model.overlayImage = composeOverlayImage(
+          previous: null,
+          regionSprite: sprite,
+          regionOffset: Offset(region.left.toDouble(), region.top.toDouble()),
+          canvasWidth: _canvasWidth,
+          canvasHeight: _canvasHeight,
         );
+        sprite.dispose();
 
         final recorder = ui.PictureRecorder();
         ActiveStrokeOverlayPainter(model: model).paint(
@@ -323,6 +326,68 @@ void main() {
         final centerOffset = (8 * _canvasWidth + 8) * 4;
         expect(painted[centerOffset + 3], greaterThan(0));
         model.dispose();
+      },
+    );
+
+    test(
+      'overlay image region replacement keeps earlier stroke content',
+      () async {
+        // Two batches whose regions overlap: the second compose must keep
+        // the first batch's pixels inside the shared rect (the sprite crops
+        // the accumulated buffer) and outside it (source-over base draw).
+        final firstBatch = [_dab(x: 8.5, y: 8.5, opacity: 1.0, flow: 1.0)];
+        final secondBatch = [
+          _dab(x: 12.5, y: 8.5, opacity: 1.0, flow: 1.0, sequence: 1),
+        ];
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+
+        final firstRegion = rasterizer.blendFrom(firstBatch, from: 0)!;
+        final firstSprite = strokeRegionSprite(
+          pixels: rasterizer.pixels,
+          canvasWidth: _canvasWidth,
+          region: firstRegion,
+        );
+        var overlay = composeOverlayImage(
+          previous: null,
+          regionSprite: firstSprite,
+          regionOffset: Offset(
+            firstRegion.left.toDouble(),
+            firstRegion.top.toDouble(),
+          ),
+          canvasWidth: _canvasWidth,
+          canvasHeight: _canvasHeight,
+        );
+        firstSprite.dispose();
+
+        final allDabs = [...firstBatch, ...secondBatch];
+        final secondRegion = rasterizer.blendFrom(allDabs, from: 1)!;
+        final secondSprite = strokeRegionSprite(
+          pixels: rasterizer.pixels,
+          canvasWidth: _canvasWidth,
+          region: secondRegion,
+        );
+        final previousOverlay = overlay;
+        overlay = composeOverlayImage(
+          previous: previousOverlay,
+          regionSprite: secondSprite,
+          regionOffset: Offset(
+            secondRegion.left.toDouble(),
+            secondRegion.top.toDouble(),
+          ),
+          canvasWidth: _canvasWidth,
+          canvasHeight: _canvasHeight,
+        );
+        secondSprite.dispose();
+        previousOverlay.dispose();
+
+        final byteData = await overlay.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        final bytes = byteData!.buffer.asUint8List();
+        // Both dab centers remain painted after the second compose.
+        expect(bytes[(8 * _canvasWidth + 8) * 4 + 3], greaterThan(0));
+        expect(bytes[(8 * _canvasWidth + 12) * 4 + 3], greaterThan(0));
+        overlay.dispose();
       },
     );
   });

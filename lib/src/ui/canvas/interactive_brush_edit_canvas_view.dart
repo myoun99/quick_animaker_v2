@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -56,10 +55,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
-  /// Segment sprites accumulated before the overlay folds them into one
-  /// flattened image; keeps per-repaint and per-flatten work bounded.
-  static const int _flattenSegmentLimit = 24;
-
   int? _activeDrawingPointer;
   int? _activePanPointer;
   Offset? _panStartLocalPosition;
@@ -492,8 +487,12 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  /// Rasterizes [newDabs] into the live buffer (exact commit math), turns
-  /// the touched region into a segment sprite, and repaints the overlay.
+  /// Rasterizes [newDabs] into the live buffer (exact commit math), folds
+  /// the touched region into the overlay image off-screen, and repaints.
+  ///
+  /// The region replacement happens in image space (integer pixel grid);
+  /// the on-screen painter only draws the finished image with source-over,
+  /// which stays artifact-free at fractional zoom levels.
   void _appendOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {
       return;
@@ -506,53 +505,22 @@ class _InteractiveBrushEditCanvasViewState
     _overlayModel.dabs.addAll(newDabs);
     final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
     if (region != null) {
-      _overlayModel.segments.add(
-        ActiveStrokeOverlaySegment(
-          image: strokeRegionSprite(
-            pixels: rasterizer.pixels,
-            canvasWidth: rasterizer.canvasSize.width,
-            region: region,
-          ),
-          offset: Offset(region.left.toDouble(), region.top.toDouble()),
-        ),
+      final sprite = strokeRegionSprite(
+        pixels: rasterizer.pixels,
+        canvasWidth: rasterizer.canvasSize.width,
+        region: region,
       );
-      _maybeFlattenOverlay();
+      final previous = _overlayModel.overlayImage;
+      _overlayModel.overlayImage = composeOverlayImage(
+        previous: previous,
+        regionSprite: sprite,
+        regionOffset: Offset(region.left.toDouble(), region.top.toDouble()),
+        canvasWidth: rasterizer.canvasSize.width,
+        canvasHeight: rasterizer.canvasSize.height,
+      );
+      sprite.dispose();
+      previous?.dispose();
     }
     _overlayModel.markChanged();
-  }
-
-  /// Folds accumulated segments into the model's flattened image once enough
-  /// pile up, so repaints stay bounded regardless of stroke length.
-  void _maybeFlattenOverlay() {
-    if (_overlayModel.segments.length < _flattenSegmentLimit) {
-      return;
-    }
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final previous = _overlayModel.flattened;
-    final basePaint = Paint()
-      ..isAntiAlias = false
-      ..filterQuality = FilterQuality.none;
-    if (previous != null) {
-      canvas.drawImage(previous, Offset.zero, basePaint);
-    }
-    final segmentPaint = Paint()
-      ..isAntiAlias = false
-      ..filterQuality = FilterQuality.none
-      ..blendMode = BlendMode.src;
-    for (final segment in _overlayModel.segments) {
-      canvas.drawImage(segment.image, segment.offset, segmentPaint);
-    }
-    final picture = recorder.endRecording();
-    final flattened = picture.toImageSync(canvasSize.width, canvasSize.height);
-    picture.dispose();
-    previous?.dispose();
-    for (final segment in _overlayModel.segments) {
-      segment.dispose();
-    }
-    _overlayModel.segments.clear();
-    _overlayModel.flattened = flattened;
   }
 }
