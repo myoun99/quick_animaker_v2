@@ -20,6 +20,7 @@ class BrushStrokeHistoryCommand implements Command {
   final List<BrushDab> sourceDabs;
   final CacheInvalidationSink? cacheInvalidationSink;
   bool _hasCommitted = false;
+  bool _committedChanges = false;
 
   @override
   String get description => 'Brush stroke';
@@ -27,15 +28,28 @@ class BrushStrokeHistoryCommand implements Command {
   @override
   void execute() {
     if (_hasCommitted) {
-      coordinator.redo(cacheInvalidationSink: cacheInvalidationSink);
+      if (_committedChanges) {
+        coordinator.redo(cacheInvalidationSink: cacheInvalidationSink);
+      }
       return;
     }
-    coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+    // A stroke that changes no pixels creates no brush undo entry; this
+    // app-level command then stays inert so undo/redo never pops an
+    // unrelated brush entry.
+    _committedChanges =
+        coordinator.commitSourceStroke(
+          sourceDabs: sourceDabs,
+          cacheInvalidationSink: cacheInvalidationSink,
+        ) !=
+        null;
     _hasCommitted = true;
   }
 
   @override
   void undo() {
+    if (!_committedChanges) {
+      return;
+    }
     coordinator.undo(cacheInvalidationSink: cacheInvalidationSink);
   }
 }

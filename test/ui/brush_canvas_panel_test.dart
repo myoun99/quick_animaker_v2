@@ -382,10 +382,10 @@ void main() {
     expect(command.sourceDabs.length, greaterThan(2));
     expect(sequences, everyElement(greaterThanOrEqualTo(0)));
     expect(_isStrictlyIncreasing(sequences), isTrue);
-    expect(sink.brushFrames, isEmpty);
-    expect(sink.layerTiles, isEmpty);
-    expect(sink.frameComposites, isEmpty);
-    expect(sink.playbackPreviews, isEmpty);
+    // Commit materializes the stroke and invalidates the affected frame and
+    // derived layer-tile caches so previews/playback refresh.
+    expect(sink.brushFrames, hasLength(1));
+    expect(sink.layerTiles, isNotEmpty);
   });
 
   testWidgets('prepares display cache after drawing', (tester) async {
@@ -427,12 +427,21 @@ void main() {
       isNull,
     );
 
+    // The committed stroke is materialized into the session surface and
+    // displayed from the bitmap (WYSIWYG), not as source-dab stamps.
     final canvasView = tester.widget<BrushEditCanvasView>(
       find.byType(BrushEditCanvasView),
     );
-
-    expect(canvasView.committedSourceDabStrokes, hasLength(1));
-    expect(canvasView.committedSourceDabStrokes.single, isNotEmpty);
+    expect(
+      canvasView.sessionState.canvasState.currentSurface.tiles,
+      isNotEmpty,
+    );
+    expect(
+      coordinator.frameStore
+          .getOrCreateFrame(coordinator.activeFrameKey)
+          .visibleActivePaintCommands,
+      hasLength(1),
+    );
   });
 
   testWidgets('canvas editor panel shell remains safe at very small heights', (

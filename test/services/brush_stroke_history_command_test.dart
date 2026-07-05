@@ -72,7 +72,9 @@ BrushFrameEditingCoordinator _coordinator() {
 
 BrushDab _dab(int sequence) {
   return BrushDab(
-    center: CanvasPoint(x: sequence.toDouble(), y: sequence.toDouble()),
+    // Pixel-center coordinates: the commit rasterizer samples pixel centers,
+    // so a size-1 dab must sit on x.5 to paint (WYSIWYG semantics).
+    center: CanvasPoint(x: sequence + 0.5, y: sequence + 0.5),
     color: 0xFF000000,
     size: 1,
     opacity: 1,

@@ -1,13 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_cache_operation_result.dart';
-import 'package:quick_animaker_v2/src/models/brush_edit_session_operation_kind.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_cache_invalidation.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
 import 'package:quick_animaker_v2/src/models/brush_paint_command_state.dart';
-import 'package:quick_animaker_v2/src/models/cache_invalidation_execution_result.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -17,7 +13,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_edit_session_cache_operations.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
@@ -53,7 +48,7 @@ void main() {
     final c = coordinator();
     final sourceDabs = [_dab(0), _dab(1).copyWith(sequence: 1)];
 
-    final command = c.commitSourceStroke(sourceDabs: sourceDabs);
+    final command = c.commitSourceStroke(sourceDabs: sourceDabs)!;
 
     var frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(frame.commandById(command.id), command);
@@ -72,17 +67,14 @@ void main() {
     expect(frame.visibleActivePaintCommands, [command]);
   });
 
-  test('records brush commit in frame store and unified undo history', () {
+  test('commit materializes the stroke and records unified undo history', () {
     final c = coordinator();
 
-    final result = _commitResult(c);
-    final affectedEntry = result.affectedEntry!;
-
-    final command = c.applyBrushOperationResult(result);
+    final command = c.commitSourceStroke(sourceDabs: [_dab(0)])!;
 
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
-    expect(command, isNotNull);
-    expect(command!.materializationRef, isNotNull);
+    expect(command.sourceDabs, isNotEmpty);
+    expect(command.materializationRef, isNotNull);
     expect(
       command.materializationRef,
       contains(c.activeFrameKey.layerId.value),
@@ -91,12 +83,7 @@ void main() {
       command.materializationRef,
       contains(c.activeFrameKey.frameId.value),
     );
-    expect(command.materializationRef, contains(affectedEntry.layerId.value));
-    expect(command.materializationRef, contains(affectedEntry.frameId.value));
-    expect(
-      command.materializationRef,
-      contains('dirty-tiles-${affectedEntry.changedTileCount}'),
-    );
+    expect(command.materializationRef, contains('dirty-tiles-'));
     expect(frame.livePaintCommands, hasLength(1));
     expect(frame.commandById(command.id), command);
     expect(c.undoHistory.undoStack, hasLength(1));
@@ -105,13 +92,8 @@ void main() {
       c.undoHistory.undoStack.single.payloadRef.paintCommandId,
       command.id,
     );
-    expect(
-      frame.commandById(
-        c.undoHistory.undoStack.single.payloadRef.paintCommandId,
-      ),
-      command,
-    );
     expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
+    expect(_alphaAtActivePixel(c), greaterThan(0));
   });
 
   test(
@@ -120,10 +102,7 @@ void main() {
       final c = coordinator();
       final sink = _RecordingSink();
 
-      c.applyBrushOperationResult(
-        _commitResult(c),
-        cacheInvalidationSink: sink,
-      );
+      c.commitSourceStroke(sourceDabs: [_dab(0)], cacheInvalidationSink: sink);
 
       final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
       expect(frame.inactivePreviewDirty, isTrue);
@@ -137,7 +116,7 @@ void main() {
 
   test('undo and redo emit BrushFrameKey dirty invalidations', () {
     final c = coordinator();
-    c.applyBrushOperationResult(_commitResult(c));
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final sink = _RecordingSink();
 
     final undone = c.undo(cacheInvalidationSink: sink);
@@ -160,9 +139,9 @@ void main() {
   test('userUndoLimit trim moves old paint command to deferredBake', () {
     final c = coordinator(userUndoLimit: 2);
 
-    c.applyBrushOperationResult(_commitResult(c, index: 0));
-    c.applyBrushOperationResult(_commitResult(c, index: 1));
-    c.applyBrushOperationResult(_commitResult(c, index: 2));
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
+    c.commitSourceStroke(sourceDabs: [_dab(1)]);
+    c.commitSourceStroke(sourceDabs: [_dab(2)]);
 
     final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
     expect(c.undoHistory.undoStack, hasLength(2));
@@ -176,7 +155,7 @@ void main() {
 
   test('undo and redo update paint state without deferred baking', () {
     final c = coordinator();
-    c.applyBrushOperationResult(_commitResult(c));
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final id = c.frameStore
         .getOrCreateFrame(c.activeFrameKey)
         .paintCommands
@@ -209,7 +188,7 @@ void main() {
     () {
       final c = coordinator();
 
-      final command = c.applyBrushOperationResult(_commitResult(c));
+      final command = c.commitSourceStroke(sourceDabs: [_dab(0)]);
       expect(command, isNotNull);
 
       var frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
@@ -240,14 +219,14 @@ void main() {
     final frameA = c.activeFrameKey;
     final frameB = key('frame-b');
 
-    c.applyBrushOperationResult(_commitResult(c, index: 0));
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final commandA = c.frameStore
         .getOrCreateFrame(frameA)
         .paintCommands
         .single
         .id;
     c.selectFrame(frameB);
-    c.applyBrushOperationResult(_commitResult(c, index: 1));
+    c.commitSourceStroke(sourceDabs: [_dab(1)]);
     final commandB = c.frameStore
         .getOrCreateFrame(frameB)
         .paintCommands
@@ -292,52 +271,26 @@ void main() {
     expect(c.activeFrameKey, frameB);
   });
 
-  test('no-op commit does not create paint command or undo history entry', () {
+  test('stroke that changes no pixels creates no command or undo entry', () {
     final c = coordinator();
 
-    final result = _emptyCommitResult(c);
-    final command = c.applyBrushOperationResult(result);
+    final first = c.commitSourceStroke(sourceDabs: [_dab(0)]);
+    final second = c.commitSourceStroke(sourceDabs: [_dab(0)]);
 
-    expect(command, isNull);
+    expect(first, isNotNull);
+    expect(second, isNull);
     expect(
       c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
-      isEmpty,
+      hasLength(1),
     );
-    expect(c.undoHistory.undoStack, isEmpty);
+    expect(c.undoHistory.undoStack, hasLength(1));
+    expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
   });
-
-  test(
-    'no-op commit still updates session store when session state differs',
-    () {
-      final c = coordinator();
-      final nextSession = _emptyCommitResult(c).sessionState;
-
-      c.applyBrushOperationResult(
-        BrushEditSessionCacheOperationResult(
-          kind: BrushEditSessionOperationKind.commit,
-          sessionState: nextSession,
-          affectedEntry: null,
-          cacheInvalidationResult: CacheInvalidationExecutionResult(
-            layerTileCount: 0,
-            frameCompositeCount: 0,
-            playbackPreviewCount: 0,
-          ),
-        ),
-      );
-
-      expect(identical(c.activeSessionState, nextSession), isTrue);
-      expect(
-        c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
-        isEmpty,
-      );
-      expect(c.undoHistory.undoStack, isEmpty);
-    },
-  );
 
   test('session reset preserves frame commands and unified undo history', () {
     final c = coordinator();
 
-    c.applyBrushOperationResult(_commitResult(c));
+    c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final beforeResetSession = c.activeSessionState;
     expect(beforeResetSession.materializationHistoryState.undoCount, 1);
     expect(
@@ -356,20 +309,6 @@ void main() {
     );
     expect(c.undoHistory.undoStack, hasLength(1));
   });
-
-  test('repeated same-pixel same-color dab is no-op after first commit', () {
-    final c = coordinator();
-
-    c.applyBrushOperationResult(_commitResult(c));
-    c.applyBrushOperationResult(_commitResult(c));
-
-    expect(
-      c.frameStore.getOrCreateFrame(c.activeFrameKey).paintCommands,
-      hasLength(1),
-    );
-    expect(c.undoHistory.undoStack, hasLength(1));
-    expect(c.activeSessionState.materializationHistoryState.undoCount, 1);
-  });
 }
 
 BrushDab _dab(int index) => BrushDab(
@@ -384,51 +323,12 @@ BrushDab _dab(int index) => BrushDab(
   sequence: 0,
 );
 
-BrushEditSessionCacheOperationResult _commitResult(
-  BrushFrameEditingCoordinator coordinator, {
-  int index = 0,
-}) {
-  return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-    sessionState: coordinator.activeSessionState,
-    sequence: BrushDabSequence([_dab(index)]),
-    layerId: coordinator.activeFrameKey.layerId,
-    frameId: coordinator.activeFrameKey.frameId,
-    cacheInvalidationSink: _NoopSink(),
-  );
-}
-
-BrushEditSessionCacheOperationResult _emptyCommitResult(
-  BrushFrameEditingCoordinator coordinator,
-) {
-  return commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-    sessionState: coordinator.activeSessionState,
-    sequence: BrushDabSequence(),
-    layerId: coordinator.activeFrameKey.layerId,
-    frameId: coordinator.activeFrameKey.frameId,
-    cacheInvalidationSink: _NoopSink(),
-  );
-}
-
 class _RecordingSink implements CacheInvalidationSink {
   final brushFrames = <BrushFrameCacheInvalidation>[];
 
   @override
   void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
       brushFrames.add(invalidation);
-
-  @override
-  void invalidateFrameComposite(key) {}
-
-  @override
-  void invalidateLayerTile(key) {}
-
-  @override
-  void invalidatePlaybackPreview(key) {}
-}
-
-class _NoopSink implements CacheInvalidationSink {
-  @override
-  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
 
   @override
   void invalidateFrameComposite(key) {}

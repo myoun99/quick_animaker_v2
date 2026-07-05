@@ -134,7 +134,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
             cacheInvalidationSink: _cacheInvalidationSink,
             sessionResetToken: _sessionRevision,
             showTransparentBackground: widget.showTransparentBackground,
-            committedSourceDabs: _committedSourceDabs,
             onSourceStrokeCommitted: _handleSourceStrokeCommitted,
           ),
           if (widget.showDebugStatus)
@@ -183,12 +182,6 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
 
   String _colorHex(int color) =>
       '0x${color.toUnsigned(32).toRadixString(16).padLeft(8, '0').toUpperCase()}';
-
-  List<BrushDab> get _committedSourceDabs => _coordinator.frameStore
-      .getOrCreateFrame(_coordinator.activeFrameKey)
-      .visibleActivePaintCommands
-      .expand((command) => command.sourceDabs)
-      .toList(growable: false);
 
   void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
     setState(() {

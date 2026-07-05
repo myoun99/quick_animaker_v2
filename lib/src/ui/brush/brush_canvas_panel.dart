@@ -60,11 +60,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     final activeKey = widget.coordinator.activeFrameKey;
     final session = widget.coordinator.activeSessionState;
-    final committedSourceDabStrokes = widget.coordinator
-        .visibleCommittedSourceDabStrokes(activeKey);
-    final committedSourceDabs = committedSourceDabStrokes
-        .expand((dabs) => dabs)
-        .toList(growable: false);
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -125,8 +120,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       layerId: activeKey.layerId,
                       frameId: activeKey.frameId,
                       inputSettings: widget.brushToolState.toInputSettings(),
-                      committedSourceDabs: committedSourceDabs,
-                      committedSourceDabStrokes: committedSourceDabStrokes,
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
                       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
@@ -215,7 +208,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
-        widget.coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+        widget.coordinator.commitSourceStroke(
+          sourceDabs: sourceDabs,
+          cacheInvalidationSink: widget.cacheInvalidationSink,
+        );
         return;
       }
       historyManager.execute(
