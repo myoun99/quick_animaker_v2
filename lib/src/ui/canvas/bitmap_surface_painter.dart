@@ -2,23 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
-import '../../models/brush_dab.dart';
 import 'bitmap_tile_image_cache.dart';
 
+/// Paints the committed brush artwork from the session bitmap surface.
+///
+/// Committed strokes are materialized into the surface on commit, so this
+/// painter is the WYSIWYG base layer; the in-progress stroke renders above it
+/// through `ActiveStrokeOverlayPainter`.
 class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
     required this.surface,
     this.showTransparentBackground = true,
-    this.committedSourceDabs = const <BrushDab>[],
-    this.committedSourceDabStrokes = const <List<BrushDab>>[],
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(repaint: tileImageCache ?? BitmapTileImageCache.instance);
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
-  final List<BrushDab> committedSourceDabs;
-  final List<List<BrushDab>> committedSourceDabStrokes;
   final BitmapTileImageCache tileImageCache;
 
   @override
@@ -62,8 +62,6 @@ class BitmapSurfacePainter extends CustomPainter {
     }
 
     canvas.restore();
-
-    _paintCommittedSourceDabs(canvas);
   }
 
   void _paintTilePixels(Canvas canvas, BitmapTile tile) {
@@ -102,53 +100,6 @@ class BitmapSurfacePainter extends CustomPainter {
     }
   }
 
-  void _paintCommittedSourceDabs(Canvas canvas) {
-    if (committedSourceDabStrokes.isEmpty) {
-      _paintDabs(canvas, committedSourceDabs);
-      return;
-    }
-
-    for (final stroke in committedSourceDabStrokes) {
-      _paintDabs(canvas, stroke);
-    }
-  }
-
-  void _paintDabs(Canvas canvas, List<BrushDab> dabs) {
-    if (dabs.isEmpty) {
-      return;
-    }
-
-    final paint = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = false;
-
-    for (final dab in dabs) {
-      paint.color = _colorForDab(dab);
-      _paintPixelGridStamp(canvas, paint, dab);
-    }
-  }
-
-  void _paintPixelGridStamp(Canvas canvas, Paint paint, BrushDab dab) {
-    final diameter = dab.size.clamp(1, double.infinity).ceilToDouble();
-    final left = (dab.center.x - diameter / 2).roundToDouble();
-    final top = (dab.center.y - diameter / 2).roundToDouble();
-    canvas.drawRect(Rect.fromLTWH(left, top, diameter, diameter), paint);
-  }
-
-  Color _colorForDab(BrushDab dab) {
-    final argb = dab.color;
-    final alpha = (argb >> 24) & 0xFF;
-    final red = (argb >> 16) & 0xFF;
-    final green = (argb >> 8) & 0xFF;
-    final blue = argb & 0xFF;
-    return Color.fromARGB(
-      (alpha * dab.opacity).clamp(0, 255).round(),
-      red,
-      green,
-      blue,
-    );
-  }
-
   @override
   bool shouldRepaint(covariant BitmapSurfacePainter oldDelegate) {
     // Identity comparison: BitmapSurface is immutable with structural tile
@@ -156,8 +107,6 @@ class BitmapSurfacePainter extends CustomPainter {
     // deep `!=` compared every tile's pixel bytes on each rebuild (megabytes
     // per pointer move while drawing).
     return !identical(oldDelegate.surface, surface) ||
-        oldDelegate.showTransparentBackground != showTransparentBackground ||
-        oldDelegate.committedSourceDabs != committedSourceDabs ||
-        oldDelegate.committedSourceDabStrokes != committedSourceDabStrokes;
+        oldDelegate.showTransparentBackground != showTransparentBackground;
   }
 }

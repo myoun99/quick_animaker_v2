@@ -54,7 +54,7 @@ void main() {
 
   test('display cache is derived', () {
     final c = coordinator();
-    final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)]);
+    final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)])!;
 
     final cache = serviceFor(c.frameStore).prepareFramePreview(key);
     final drawing = c.frameStore.getOrCreateFrame(key);
@@ -69,7 +69,7 @@ void main() {
   test('commit undo redo dirty display cache', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
-    final command = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)]);
+    final command = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)])!;
     service.prepareFramePreview(key);
     expect(c.frameStore.hasValidDisplayCache(key), isTrue);
 

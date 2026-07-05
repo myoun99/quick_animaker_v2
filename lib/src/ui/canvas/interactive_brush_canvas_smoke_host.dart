@@ -22,7 +22,6 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     required this.frameId,
     required this.inputSettings,
     required this.cacheInvalidationSink,
-    this.committedSourceDabs = const <BrushDab>[],
     this.onSourceStrokeCommitted,
     this.sessionResetToken,
     this.showTransparentBackground = true,
@@ -38,7 +37,6 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     int tileSize = 16,
     Object? sessionResetToken,
     bool showTransparentBackground = true,
-    List<BrushDab> committedSourceDabs = const <BrushDab>[],
     ValueChanged<List<BrushDab>>? onSourceStrokeCommitted,
   }) {
     final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
@@ -61,7 +59,6 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
       frameId: frameId,
       inputSettings: inputSettings,
       cacheInvalidationSink: cacheInvalidationSink,
-      committedSourceDabs: committedSourceDabs,
       onSourceStrokeCommitted: onSourceStrokeCommitted,
       sessionResetToken: sessionResetToken,
       showTransparentBackground: showTransparentBackground,
@@ -73,7 +70,6 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
   final CacheInvalidationSink cacheInvalidationSink;
-  final List<BrushDab> committedSourceDabs;
   final ValueChanged<List<BrushDab>>? onSourceStrokeCommitted;
   final Object? sessionResetToken;
   final bool showTransparentBackground;
@@ -110,7 +106,6 @@ class _InteractiveBrushCanvasSmokeHostState
       layerId: widget.layerId,
       frameId: widget.frameId,
       inputSettings: widget.inputSettings,
-      committedSourceDabs: widget.committedSourceDabs,
       showTransparentBackground: widget.showTransparentBackground,
       onSourceStrokeCommitted: widget.onSourceStrokeCommitted ?? (_) {},
     );

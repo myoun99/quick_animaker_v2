@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_canvas_smoke_screen.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_canvas_smoke_host.dart';
@@ -131,11 +132,8 @@ void main() {
       expect(find.textContaining('operation: commit'), findsOneWidget);
       expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
 
-      final view = tester.widget<InteractiveBrushEditCanvasView>(
-        find.byType(InteractiveBrushEditCanvasView),
-      );
-      expect(view.sessionState.canvasState.currentSurface.tiles, isEmpty);
-      expect(view.committedSourceDabs, hasLength(1));
+      // The committed stroke is materialized into the session surface.
+      expect(_alphaAt(tester, 1, 1), 255);
     });
 
     testWidgets('color presets update host settings and future strokes', (
@@ -167,7 +165,7 @@ void main() {
       expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      expect(_view(tester).committedSourceDabs.single.color, 0xFF0000FF);
+      expect(_surfaceRgbaAt(tester, 1, 1), [0, 0, 255, 255]);
 
       await _tapKey(
         tester,
@@ -180,7 +178,7 @@ void main() {
       expect(_host(tester).inputSettings.color, 0xFF000000);
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
-      expect(_view(tester).committedSourceDabs.single.color, 0xFF000000);
+      expect(_surfaceRgbaAt(tester, 1, 1), [0, 0, 0, 255]);
     });
 
     testWidgets(
@@ -200,7 +198,7 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        expect(_view(tester).committedSourceDabs, isNotEmpty);
+        expect(_alphaAt(tester, 1, 1), 255);
 
         await tester.pumpWidget(
           _app(
@@ -216,17 +214,17 @@ void main() {
         expect(_host(tester).layerId, const LayerId('layer-b'));
         expect(_host(tester).frameId, const FrameId('frame-b'));
         expect(find.textContaining('operation: reset'), findsOneWidget);
-        expect(_view(tester).committedSourceDabs, isEmpty);
+        expect(_surfaceIsBlank(tester), isTrue);
 
         await tapCanvas(tester, const Offset(3.5, 3.5));
-        expect(_view(tester).committedSourceDabs, isNotEmpty);
+        expect(_alphaAt(tester, 3, 3), 255);
 
         await _tapKey(
           tester,
           const ValueKey<String>('brush-canvas-smoke-screen-undo'),
         );
         expect(find.textContaining('operation: undo'), findsOneWidget);
-        expect(_view(tester).committedSourceDabs, isEmpty);
+        expect(_surfaceIsBlank(tester), isTrue);
       },
     );
 
@@ -243,21 +241,21 @@ void main() {
       );
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
-      expect(_view(tester).committedSourceDabs, isNotEmpty);
+      expect(_alphaAt(tester, 1, 1), 255);
 
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
       expect(find.textContaining('operation: undo'), findsOneWidget);
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
 
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
       expect(find.textContaining('operation: redo'), findsOneWidget);
-      expect(_view(tester).committedSourceDabs, isNotEmpty);
+      expect(_alphaAt(tester, 1, 1), 255);
 
       await _tapKey(
         tester,
@@ -265,7 +263,7 @@ void main() {
       );
       expect(find.textContaining('operation: reset'), findsOneWidget);
       expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
     });
 
     testWidgets('two strokes followed by undo removes only latest stroke', (
@@ -275,7 +273,8 @@ void main() {
 
       await tapCanvas(tester, const Offset(1.5, 1.5));
       await tapCanvas(tester, const Offset(3.5, 2.5));
-      expect(_view(tester).committedSourceDabs, hasLength(2));
+      expect(_alphaAt(tester, 1, 1), 255);
+      expect(_alphaAt(tester, 3, 2), 255);
 
       await _tapKey(
         tester,
@@ -283,7 +282,8 @@ void main() {
       );
 
       expect(find.textContaining('operation: undo'), findsOneWidget);
-      expect(_view(tester).committedSourceDabs, hasLength(1));
+      expect(_alphaAt(tester, 1, 1), 255);
+      expect(_alphaAt(tester, 3, 2), 0);
     });
 
     testWidgets('redo restores the latest undone stroke', (tester) async {
@@ -301,7 +301,8 @@ void main() {
       );
 
       expect(find.textContaining('operation: redo'), findsOneWidget);
-      expect(_view(tester).committedSourceDabs, hasLength(2));
+      expect(_alphaAt(tester, 1, 1), 255);
+      expect(_alphaAt(tester, 3, 2), 255);
     });
 
     testWidgets('reset clears canvas and prevents stale redo restore', (
@@ -314,7 +315,7 @@ void main() {
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-reset'),
@@ -324,7 +325,7 @@ void main() {
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
 
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
@@ -337,13 +338,13 @@ void main() {
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-undo'),
       );
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
       await _tapKey(
         tester,
         const ValueKey<String>('brush-canvas-smoke-screen-redo'),
       );
 
-      expect(_view(tester).committedSourceDabs, isEmpty);
+      expect(_surfaceIsBlank(tester), isTrue);
       expect(find.textContaining('operation: redo'), findsOneWidget);
     });
 
@@ -363,12 +364,11 @@ void main() {
 
         expect(_host(tester).inputSettings.color, 0xFF0000FF);
         expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-        expect(_view(tester).committedSourceDabs, hasLength(2));
-        expect(identical(blueState, blackState), isTrue);
-        expect(
-          _view(tester).committedSourceDabs.map((dab) => dab.color),
-          containsAllInOrder([0xFF000000, 0xFF0000FF]),
-        );
+        // Each commit materializes into a new session state instance and
+        // the earlier stroke's pixels remain untouched.
+        expect(identical(blueState, blackState), isFalse);
+        expect(_surfaceRgbaAt(tester, 1, 1), [0, 0, 0, 255]);
+        expect(_surfaceRgbaAt(tester, 3, 2), [0, 0, 255, 255]);
       },
     );
 
@@ -392,7 +392,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: undo, cacheInvalidations: 0, color: 0xFF000000',
+        'operation: undo, cacheInvalidations: 1, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -400,7 +400,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 0, color: 0xFF000000',
+        'operation: redo, cacheInvalidations: 2, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -408,7 +408,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 0, color: 0xFFFF0000',
+        'operation: redo, cacheInvalidations: 2, color: 0xFFFF0000',
       );
       await _tapKey(
         tester,
@@ -472,6 +472,31 @@ InteractiveBrushCanvasSmokeHost _host(WidgetTester tester) {
   return tester.widget<InteractiveBrushCanvasSmokeHost>(
     find.byType(InteractiveBrushCanvasSmokeHost),
   );
+}
+
+List<int> _surfaceRgbaAt(WidgetTester tester, int x, int y) {
+  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  final tileSize = surface.tileSize;
+  final tile = surface.tileAt(TileCoord(x: x ~/ tileSize, y: y ~/ tileSize));
+  if (tile == null) {
+    return const [0, 0, 0, 0];
+  }
+  final pixels = tile.pixels;
+  final offset = tile.byteOffsetForPixel(x: x % tileSize, y: y % tileSize);
+  return [
+    pixels[offset],
+    pixels[offset + 1],
+    pixels[offset + 2],
+    pixels[offset + 3],
+  ];
+}
+
+int _alphaAt(WidgetTester tester, int x, int y) =>
+    _surfaceRgbaAt(tester, x, y)[3];
+
+bool _surfaceIsBlank(WidgetTester tester) {
+  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  return surface.tiles.values.every((tile) => tile.isFullyTransparent);
 }
 
 InteractiveBrushEditCanvasView _view(WidgetTester tester) {

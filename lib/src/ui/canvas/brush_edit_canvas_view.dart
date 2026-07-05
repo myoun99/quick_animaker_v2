@@ -10,15 +10,11 @@ class BrushEditCanvasView extends StatelessWidget {
     super.key,
     required this.sessionState,
     this.showTransparentBackground = true,
-    this.committedSourceDabs = const <BrushDab>[],
-    this.committedSourceDabStrokes = const <List<BrushDab>>[],
     this.activeStrokeOverlay = const <BrushDab>[],
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
-  final List<BrushDab> committedSourceDabs;
-  final List<List<BrushDab>> committedSourceDabStrokes;
   final List<BrushDab> activeStrokeOverlay;
 
   @override
@@ -44,8 +40,6 @@ class BrushEditCanvasView extends StatelessWidget {
                   painter: BitmapSurfacePainter(
                     surface: surface,
                     showTransparentBackground: showTransparentBackground,
-                    committedSourceDabs: committedSourceDabs,
-                    committedSourceDabStrokes: committedSourceDabStrokes,
                   ),
                 ),
               ),

@@ -126,8 +126,10 @@ void main() {
       final basePainter = basePaint.painter! as BitmapSurfacePainter;
       final activePainter = activePaint.painter! as ActiveStrokeOverlayPainter;
 
-      expect(basePainter.committedSourceDabs, isEmpty);
-      expect(basePainter.committedSourceDabStrokes, isEmpty);
+      expect(
+        identical(basePainter.surface, sessionState.canvasState.currentSurface),
+        isTrue,
+      );
       expect(activePainter.activeStrokeOverlay, [activeDab]);
     });
 

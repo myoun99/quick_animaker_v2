@@ -1,7 +1,6 @@
 import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_dab.dart';
-import '../models/brush_edit_session_cache_operation_result.dart';
-import '../models/brush_edit_session_operation_kind.dart';
+import '../models/brush_dab_sequence.dart';
 import '../models/brush_edit_session_state.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
@@ -46,27 +45,42 @@ class BrushFrameEditingCoordinator {
   BrushEditSessionState get activeSessionState =>
       sessionStore.getOrCreate(_activeFrameKey);
 
-  /// Visible committed source-dab strokes for [key], in display order.
-  ///
-  /// Display-only projection for the editor canvas: it reads visible source
-  /// commands through the store boundary and does not mutate drawing state.
-  List<List<BrushDab>> visibleCommittedSourceDabStrokes(BrushFrameKey key) =>
-      frameStore
-          .getOrCreateFrame(key)
-          .visibleActivePaintCommands
-          .map((command) => command.sourceDabs)
-          .where((dabs) => dabs.isNotEmpty)
-          .toList(growable: false);
-
   void selectFrame(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
     sessionStore.getOrCreate(key);
     _activeFrameKey = key;
   }
 
-  BrushPaintCommand commitSourceStroke({required List<BrushDab> sourceDabs}) {
+  /// Commits a finished stroke: stores the source dabs as the durable
+  /// [BrushPaintCommand] (source of truth) and materializes the stroke into
+  /// the session bitmap surface so the canvas displays exactly what was
+  /// committed and undo/redo can revert the bitmap alongside the command.
+  ///
+  /// Returns `null` when the stroke changed no pixels: creating a paint
+  /// command and undo entry without a matching bitmap materialization entry
+  /// would desynchronize the two histories, making a later undo revert the
+  /// previous stroke's bitmap while hiding the no-op command.
+  BrushPaintCommand? commitSourceStroke({
+    required List<BrushDab> sourceDabs,
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
+    }
+
+    final result =
+        commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+          sessionState: activeSessionState,
+          sequence: BrushDabSequence(sourceDabs),
+          layerId: _activeFrameKey.layerId,
+          frameId: _activeFrameKey.frameId,
+          cacheInvalidationSink:
+              cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+        );
+    sessionStore.update(_activeFrameKey, result.sessionState);
+    final affectedEntry = result.affectedEntry;
+    if (affectedEntry == null) {
+      return null;
     }
 
     final sequenceNumber = _nextSequenceNumber++;
@@ -76,36 +90,6 @@ class BrushFrameEditingCoordinator {
       kind: BrushPaintCommandKind.paintStroke,
       debugLabel: 'Paint stroke $sequenceNumber',
       sourceDabs: List<BrushDab>.unmodifiable(sourceDabs),
-    );
-    frameStore.addLivePaintCommand(_activeFrameKey, command);
-    _pushBrushPaintUndoEntry(command, _activeFrameKey);
-    return command;
-  }
-
-  BrushPaintCommand? applyBrushOperationResult(
-    BrushEditSessionCacheOperationResult result, {
-    CacheInvalidationSink? cacheInvalidationSink,
-  }) {
-    final previousUndoCount =
-        activeSessionState.materializationHistoryState.undoCount;
-    sessionStore.update(_activeFrameKey, result.sessionState);
-    if (result.kind != BrushEditSessionOperationKind.commit) {
-      return null;
-    }
-
-    final nextUndoCount =
-        result.sessionState.materializationHistoryState.undoCount;
-    final affectedEntry = result.affectedEntry;
-    if (nextUndoCount <= previousUndoCount || affectedEntry == null) {
-      return null;
-    }
-
-    final sequenceNumber = _nextSequenceNumber++;
-    final command = BrushPaintCommand(
-      id: BrushPaintCommandId('brush-paint-$sequenceNumber'),
-      sequenceNumber: sequenceNumber,
-      kind: BrushPaintCommandKind.paintStroke,
-      debugLabel: 'Paint stroke $sequenceNumber',
       materializationRef: _materializationRefFor(
         frameKey: _activeFrameKey,
         sequenceNumber: sequenceNumber,
