@@ -135,8 +135,8 @@ void main() {
     test(
       'active brush display avoids smooth path preview cache and bitmap hot paths',
       () {
-        final activePainter = File(
-          'lib/src/ui/canvas/active_stroke_overlay_painter.dart',
+        final activeOverlay = File(
+          'lib/src/ui/canvas/active_stroke_overlay.dart',
         ).readAsStringSync();
         final interactiveView = File(
           'lib/src/ui/canvas/interactive_brush_edit_canvas_view.dart',
@@ -147,18 +147,28 @@ void main() {
         final brushPanel = File(
           'lib/src/ui/brush/brush_canvas_panel.dart',
         ).readAsStringSync();
+        final surfacePainter = File(
+          'lib/src/ui/canvas/bitmap_surface_painter.dart',
+        ).readAsStringSync();
 
-        expect(activePainter, isNot(contains('drawPath')));
+        expect(activeOverlay, isNot(contains('drawPath')));
         expect(interactiveView, isNot(contains('BitmapSurfacePainter')));
         for (final source in [interactiveView, brushView, brushPanel]) {
           expect(source, isNot(contains('displayPreviewSurface')));
           expect(source, isNot(contains('inactivePreviewCache')));
           expect(source, isNot(contains('playbackPreviewCache')));
         }
+        // The live overlay must stay picture-based: `toImageSync` images are
+        // GPU-context-backed textures that flash garbage for a frame when
+        // the context is lost or the image is created/disposed (e.g. app
+        // focus switches). Pictures replay at final device resolution every
+        // frame and survive context loss.
+        for (final source in [activeOverlay, interactiveView, surfacePainter]) {
+          expect(source, isNot(contains('toImageSync')));
+        }
         // Intentionally no positive implementation-string checks here (per
-        // Current_Test_Architecture source-string policy): the active painter
-        // stamps tip alpha-mask images to preview the committed rasterizer
-        // result; only drawPath-style vector smoothing is banned.
+        // Current_Test_Architecture source-string policy): only drawPath
+        // vector smoothing and GPU-texture-backed overlay images are banned.
       },
     );
 

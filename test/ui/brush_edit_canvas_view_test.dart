@@ -9,7 +9,7 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay_painter.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
 
@@ -88,6 +88,10 @@ void main() {
         );
         final painter = customPaint.painter! as BitmapSurfacePainter;
 
+        // The Skia raster cache must never bake the canvas picture: the
+        // cached layer's integer-snapped origin shifts the artwork by a
+        // subpixel against direct rendering at fractional zoom.
+        expect(customPaint.willChange, isTrue);
         expect(identical(painter.surface, surface), isTrue);
         expect(painter.viewport, viewport);
         expect(identical(painter.overlayModel, overlayModel), isTrue);

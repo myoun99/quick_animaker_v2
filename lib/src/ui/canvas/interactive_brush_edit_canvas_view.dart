@@ -15,7 +15,7 @@ import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
-import 'active_stroke_overlay_painter.dart';
+import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
@@ -66,11 +66,15 @@ class _InteractiveBrushEditCanvasViewState
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
-  /// (the exact commit-rasterizer math), convert the touched region into a
-  /// segment sprite, and notify the overlay painter directly through this
-  /// model — no widget rebuild per move, and the pixels on screen are the
-  /// pixels the commit will keep.
+  /// (the exact commit-rasterizer math), record the touched region as a
+  /// picture, and notify the canvas painter directly through this model —
+  /// no widget rebuild per move, and the pixels on screen are the pixels
+  /// the commit will keep.
   final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
+
+  /// Region-picture count that triggers re-recording the whole stroke as one
+  /// flat picture, capping the per-frame replay cost of long strokes.
+  static const int _overlayFlattenPictureCount = 64;
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
@@ -414,7 +418,7 @@ class _InteractiveBrushEditCanvasViewState
     _collectedDabs.clear();
   }
 
-  /// Clears the visible overlay (live or settling) and its flattened image.
+  /// Clears the visible overlay (live or settling) and its pictures.
   void _resetOverlay() {
     _settling = false;
     _settlingFallbackTimer?.cancel();
@@ -462,12 +466,13 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  /// Rasterizes [newDabs] into the live buffer (exact commit math), folds
-  /// the touched region into the overlay image off-screen, and repaints.
+  /// Rasterizes [newDabs] into the live buffer (exact commit math), records
+  /// the touched region as a picture on the overlay model, and repaints.
   ///
-  /// The region replacement happens in image space (integer pixel grid);
-  /// the on-screen painter only draws the finished image with source-over,
-  /// which stays artifact-free at fractional zoom levels.
+  /// Pictures hold no GPU textures (context-loss immune) and are replayed
+  /// at final device resolution each frame; once enough accumulate, the
+  /// whole stroke is re-recorded as one flat picture so replay cost stays
+  /// bounded.
   void _appendOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {
       return;
@@ -480,21 +485,24 @@ class _InteractiveBrushEditCanvasViewState
     _overlayModel.dabs.addAll(newDabs);
     final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
     if (region != null) {
-      final sprite = strokeRegionSprite(
-        pixels: rasterizer.pixels,
-        canvasWidth: rasterizer.canvasSize.width,
-        region: region,
-      );
-      final previous = _overlayModel.overlayImage;
-      _overlayModel.overlayImage = composeOverlayImage(
-        previous: previous,
-        regionSprite: sprite,
-        regionOffset: Offset(region.left.toDouble(), region.top.toDouble()),
-        canvasWidth: rasterizer.canvasSize.width,
-        canvasHeight: rasterizer.canvasSize.height,
-      );
-      sprite.dispose();
-      previous?.dispose();
+      if (_overlayModel.pictures.length + 1 >= _overlayFlattenPictureCount) {
+        // strokeBounds already includes the region blended above.
+        _overlayModel.replaceWithFlattened(
+          strokeRegionPicture(
+            pixels: rasterizer.pixels,
+            canvasWidth: rasterizer.canvasSize.width,
+            region: rasterizer.strokeBounds!,
+          ),
+        );
+      } else {
+        _overlayModel.addRegionPicture(
+          strokeRegionPicture(
+            pixels: rasterizer.pixels,
+            canvasWidth: rasterizer.canvasSize.width,
+            region: region,
+          ),
+        );
+      }
     }
     _overlayModel.markChanged();
   }

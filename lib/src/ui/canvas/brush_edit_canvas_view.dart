@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_viewport.dart';
-import 'active_stroke_overlay_painter.dart';
+import 'active_stroke_overlay.dart';
 import 'bitmap_surface_painter.dart';
 
 /// Displays the brush canvas: committed artwork from the session surface
@@ -47,6 +47,14 @@ class BrushEditCanvasView extends StatelessWidget {
         children: [
           CustomPaint(
             key: const ValueKey<String>('brush-edit-canvas-custom-paint'),
+            // Keep the Skia raster cache from baking this picture while
+            // idle: the cached layer's origin snaps to integer device
+            // pixels while direct rendering uses the fractional layout
+            // offset, so the cached<->live transition shifted the artwork
+            // by a subpixel at fractional zoom (and a focus switch purges
+            // the cache, which is why the shift appeared after switching
+            // apps).
+            willChange: true,
             painter: BitmapSurfacePainter(
               surface: sessionState.canvasState.currentSurface,
               viewport: viewport,
