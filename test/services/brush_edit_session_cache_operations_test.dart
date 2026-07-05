@@ -236,8 +236,8 @@ void main() {
             );
 
         expect(cacheAware.kind, BrushEditSessionOperationKind.undo);
-        expect(cacheAware.sessionState, sessionStateFromUndoResult(normal));
-        expect(cacheAware.affectedEntry, normal.undoneMaterializationEntry);
+        expect(cacheAware.sessionState, sessionStateFromStepResult(normal));
+        expect(cacheAware.affectedEntry, normal.materializationEntry);
       },
     );
 
@@ -297,7 +297,7 @@ void main() {
         final undone = undoLatestBrushBitmapMaterializationInSessionState(
           sessionState: sessionStateFromCommitResult(committed),
         );
-        final sessionState = sessionStateFromUndoResult(undone);
+        final sessionState = sessionStateFromStepResult(undone);
         final normal = redoLatestBrushBitmapMaterializationInSessionState(
           sessionState: sessionState,
         );
@@ -308,8 +308,8 @@ void main() {
             );
 
         expect(cacheAware.kind, BrushEditSessionOperationKind.redo);
-        expect(cacheAware.sessionState, sessionStateFromRedoResult(normal));
-        expect(cacheAware.affectedEntry, normal.redoneMaterializationEntry);
+        expect(cacheAware.sessionState, sessionStateFromStepResult(normal));
+        expect(cacheAware.affectedEntry, normal.materializationEntry);
       },
     );
 
