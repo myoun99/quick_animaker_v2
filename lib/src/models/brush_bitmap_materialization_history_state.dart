@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'brush_bitmap_materialization_history_entry.dart';
 
 /// Internal session-local bitmap materialization undo/redo state.
@@ -54,8 +55,8 @@ class BrushBitmapMaterializationHistoryState {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BrushBitmapMaterializationHistoryState &&
-          _listEquals(other._undoEntries, _undoEntries) &&
-          _listEquals(other._redoEntries, _redoEntries);
+          listEquals(other._undoEntries, _undoEntries) &&
+          listEquals(other._redoEntries, _redoEntries);
 
   @override
   int get hashCode =>
@@ -65,12 +66,4 @@ class BrushBitmapMaterializationHistoryState {
   String toString() =>
       'BrushBitmapMaterializationHistoryState(undoEntries: $_undoEntries, '
       'redoEntries: $_redoEntries)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

@@ -1,9 +1,8 @@
 import 'brush_bitmap_materialization_history_entry.dart';
 import 'brush_edit_session_operation_kind.dart';
 import 'brush_edit_session_state.dart';
+import '../core/copy_with_sentinel.dart';
 import 'cache_invalidation_execution_result.dart';
-
-const Object _copyWithSentinel = Object();
 
 class BrushEditSessionCacheOperationResult {
   BrushEditSessionCacheOperationResult({
@@ -25,13 +24,13 @@ class BrushEditSessionCacheOperationResult {
   BrushEditSessionCacheOperationResult copyWith({
     BrushEditSessionOperationKind? kind,
     BrushEditSessionState? sessionState,
-    Object? affectedEntry = _copyWithSentinel,
+    Object? affectedEntry = copyWithSentinel,
     CacheInvalidationExecutionResult? cacheInvalidationResult,
   }) {
     return BrushEditSessionCacheOperationResult(
       kind: kind ?? this.kind,
       sessionState: sessionState ?? this.sessionState,
-      affectedEntry: identical(affectedEntry, _copyWithSentinel)
+      affectedEntry: identical(affectedEntry, copyWithSentinel)
           ? this.affectedEntry
           : affectedEntry as BrushBitmapMaterializationHistoryEntry?,
       cacheInvalidationResult:

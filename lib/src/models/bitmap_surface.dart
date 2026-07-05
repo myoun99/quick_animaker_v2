@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
 import 'tile_coord.dart';
@@ -98,7 +99,7 @@ class BitmapSurface {
       other is BitmapSurface &&
           other.canvasSize == canvasSize &&
           other.tileSize == tileSize &&
-          _mapEquals(other._tiles, _tiles);
+          mapEquals(other._tiles, _tiles);
 
   @override
   int get hashCode => Object.hash(
@@ -166,12 +167,4 @@ void _validateTileEntry(TileCoord key, BitmapTile tile, BitmapSurface surface) {
       'BitmapSurface tile coord must be inside surface tile bounds.',
     );
   }
-}
-
-bool _mapEquals(Map<TileCoord, BitmapTile> a, Map<TileCoord, BitmapTile> b) {
-  if (a.length != b.length) return false;
-  for (final entry in a.entries) {
-    if (b[entry.key] != entry.value) return false;
-  }
-  return true;
 }

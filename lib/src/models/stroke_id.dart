@@ -1,21 +1,8 @@
-class StrokeId {
-  const StrokeId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class StrokeId extends StringId {
+  const StrokeId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory StrokeId.fromJson(Map<String, dynamic> json) {
-    return StrokeId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is StrokeId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory StrokeId.fromJson(Map<String, dynamic> json) =>
+      StrokeId(json['value'] as String);
 }

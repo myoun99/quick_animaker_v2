@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'canvas_size.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
@@ -70,7 +71,7 @@ class Cut {
       other is Cut &&
           other.id == id &&
           other.name == name &&
-          _listEquals(other.layers, layers) &&
+          listEquals(other.layers, layers) &&
           other.duration == duration &&
           other.canvasSize == canvasSize &&
           other.metadata == metadata;
@@ -88,13 +89,4 @@ class Cut {
   @override
   String toString() =>
       'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

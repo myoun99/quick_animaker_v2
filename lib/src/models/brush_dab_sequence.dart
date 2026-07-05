@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'brush_dab.dart';
 
 class BrushDabSequence {
@@ -38,19 +39,11 @@ class BrushDabSequence {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BrushDabSequence && _listEquals(other._dabs, _dabs);
+      other is BrushDabSequence && listEquals(other._dabs, _dabs);
 
   @override
   int get hashCode => Object.hashAll(_dabs);
 
   @override
   String toString() => 'BrushDabSequence(length: $length, dabs: $_dabs)';
-}
-
-bool _listEquals(List<BrushDab> a, List<BrushDab> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

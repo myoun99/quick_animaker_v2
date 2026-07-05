@@ -1,16 +1,5 @@
-class UndoHistoryEntryId {
-  const UndoHistoryEntryId(this.value);
+import 'string_id.dart';
 
-  final String value;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is UndoHistoryEntryId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+final class UndoHistoryEntryId extends StringId {
+  const UndoHistoryEntryId(super.value);
 }

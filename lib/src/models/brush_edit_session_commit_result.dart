@@ -1,8 +1,7 @@
 import 'brush_bitmap_materialization_history_entry.dart';
 import 'brush_bitmap_materialization_history_state.dart';
+import '../core/copy_with_sentinel.dart';
 import 'canvas_surface_state.dart';
-
-const Object _copyWithSentinel = Object();
 
 class BrushEditSessionCommitResult {
   BrushEditSessionCommitResult({
@@ -20,13 +19,13 @@ class BrushEditSessionCommitResult {
   BrushEditSessionCommitResult copyWith({
     CanvasSurfaceState? canvasState,
     BrushBitmapMaterializationHistoryState? materializationHistoryState,
-    Object? historyEntry = _copyWithSentinel,
+    Object? historyEntry = copyWithSentinel,
   }) {
     return BrushEditSessionCommitResult(
       canvasState: canvasState ?? this.canvasState,
       materializationHistoryState:
           materializationHistoryState ?? this.materializationHistoryState,
-      historyEntry: identical(historyEntry, _copyWithSentinel)
+      historyEntry: identical(historyEntry, copyWithSentinel)
           ? this.historyEntry
           : historyEntry as BrushBitmapMaterializationHistoryEntry?,
     );

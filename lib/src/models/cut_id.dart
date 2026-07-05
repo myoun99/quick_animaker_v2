@@ -1,21 +1,8 @@
-class CutId {
-  const CutId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class CutId extends StringId {
+  const CutId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory CutId.fromJson(Map<String, dynamic> json) {
-    return CutId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is CutId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory CutId.fromJson(Map<String, dynamic> json) =>
+      CutId(json['value'] as String);
 }

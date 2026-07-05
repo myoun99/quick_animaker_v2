@@ -1,8 +1,7 @@
 import 'brush_bitmap_materialization_history_entry.dart';
 import 'brush_bitmap_materialization_history_state.dart';
+import '../core/copy_with_sentinel.dart';
 import 'canvas_surface_state.dart';
-
-const Object _copyWithSentinel = Object();
 
 class BrushBitmapMaterializationRedoResult {
   BrushBitmapMaterializationRedoResult({
@@ -20,14 +19,14 @@ class BrushBitmapMaterializationRedoResult {
   BrushBitmapMaterializationRedoResult copyWith({
     CanvasSurfaceState? canvasState,
     BrushBitmapMaterializationHistoryState? materializationHistoryState,
-    Object? redoneMaterializationEntry = _copyWithSentinel,
+    Object? redoneMaterializationEntry = copyWithSentinel,
   }) {
     return BrushBitmapMaterializationRedoResult(
       canvasState: canvasState ?? this.canvasState,
       materializationHistoryState:
           materializationHistoryState ?? this.materializationHistoryState,
       redoneMaterializationEntry:
-          identical(redoneMaterializationEntry, _copyWithSentinel)
+          identical(redoneMaterializationEntry, copyWithSentinel)
           ? this.redoneMaterializationEntry
           : redoneMaterializationEntry
                 as BrushBitmapMaterializationHistoryEntry?,

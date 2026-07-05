@@ -1,21 +1,8 @@
-class ProjectId {
-  const ProjectId(this.value);
+import 'string_id.dart';
 
-  final String value;
+final class ProjectId extends StringId {
+  const ProjectId(super.value);
 
-  Map<String, dynamic> toJson() => {'value': value};
-
-  factory ProjectId.fromJson(Map<String, dynamic> json) {
-    return ProjectId(json['value'] as String);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is ProjectId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
+  factory ProjectId.fromJson(Map<String, dynamic> json) =>
+      ProjectId(json['value'] as String);
 }

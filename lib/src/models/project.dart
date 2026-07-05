@@ -1,3 +1,4 @@
+import '../core/collection_equality.dart';
 import 'canvas_size.dart';
 import 'project_id.dart';
 import 'track.dart';
@@ -69,7 +70,7 @@ class Project {
       other is Project &&
           other.id == id &&
           other.name == name &&
-          _listEquals(other.tracks, tracks) &&
+          listEquals(other.tracks, tracks) &&
           other.createdAt == createdAt &&
           other.fps == fps &&
           other.cameraSize == cameraSize;
@@ -81,13 +82,4 @@ class Project {
   @override
   String toString() =>
       'Project(id: $id, name: $name, tracks: $tracks, createdAt: $createdAt, fps: $fps, cameraSize: $cameraSize)';
-}
-
-bool _listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }
