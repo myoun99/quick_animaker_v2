@@ -20,7 +20,7 @@ The latest policy is:
 5. The deferred bake buffer is conceptually about 10% of the user undo limit when implemented.
 6. The deferred bake buffer is not user-facing undo.
 7. Older commands may eventually be compacted into `bakedBaseSurface`.
-8. The current active edit display is composed from visible `BrushPaintCommand` source dabs plus an active sampled `BrushDab` overlay; future baked-base work may extend this to `bakedBaseSurface + visible stroke/paint commands + activeStrokeOverlay`.
+8. The active edit display is WYSIWYG: committed strokes render from the materialized session `BitmapSurface` (via the tile-image display cache), and the in-progress stroke renders as a tip alpha-mask stamp overlay that previews the commit rasterizer result. Future baked-base work extends the same surface-based display.
 9. Cache images are derived from brush frame drawing state and are not source of truth.
 10. Playback uses prepared preview/composite bitmap cache images.
 11. Playback must not replay live paint commands.
@@ -103,32 +103,25 @@ Active strokes snapshot brush input settings at pointer down. Size, opacity, col
 
 This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as hardness, flow, angle, roundness, pressure, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
 
-## Active editing display
+## Active editing display (WYSIWYG, post-P4)
 
 The active frame display formula is:
 
 ```txt
 activeFrameDisplay =
-  bakedBaseSurface
-  + visible BrushPaintCommands
-  + activeStrokeOverlay
+  materialized session BitmapSurface (committed strokes)
+  + activeStrokeOverlay (tip alpha-mask stamps for the in-progress stroke)
 ```
 
-A fuller future implementation may internally split visible commands into `deferredBakePaintCommands + livePaintCommands`, preserving the previous conceptual formula:
+Committed strokes are rasterized into the session `BitmapSurface` at commit time (`commitSourceStroke` materializes and stores the source-dab command in one step) and displayed through the identity-keyed `BitmapTileImageCache` as one `drawImage` per tile - O(tiles), independent of stroke count. The in-progress stroke is stamped from `BrushTipMaskCache` alpha masks (same coverage math as the commit rasterizer: hard core to `radius * hardness`, linear falloff to the radius), tinted at `alpha * opacity * flow`. Sequential source-over stamping matches the rasterizer sequential blend, so what the user sees while drawing is what commits on pointer-up. `BrushTipMaskCache` is the substrate for future custom/ABR tip shapes.
 
-```txt
-activeFrameDisplay =
-  bakedBaseSurface
-  + deferredBakePaintCommands
-  + livePaintCommands
-  + activeStrokeOverlay
-```
+The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth. No bitmap is baked while the pointer is moving: the overlay is pure stamping, and rasterization happens once per stroke at commit.
 
-The active stroke overlay is an editing-only layer for current input. It is not a playback mechanism and is not a durable source of truth.
+Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display or `TileDelta` / `TileDeltaCommand`.
 
-The Phase 224 / PR #294 T2 baseline displays active editing with sampled `BrushDab` stamp-style rendering. The active editor base is the visible `BrushPaintCommand` source dabs for the selected frame, plus the in-progress sampled dab overlay. Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display, per-pixel accumulated `BitmapSurface` repaint during pointer movement, source-destroying bake on pointer release, or `TileDelta` / `TileDeltaCommand`.
+A stroke that changes no pixels commits to nothing: no paint command, no undo entry. Creating an undo entry without a matching bitmap materialization entry would desynchronize the command history from the bitmap history.
 
-Realtime T2 editing should display active input from source dab samples without baking the stroke into a bitmap while the pointer is moving.
+Historical note: the Phase 224 / PR #294 T2 baseline displayed committed strokes as square source-dab stamps because materialize-on-commit cost up to 8.5s per stroke (the reason PR #293 failed). The P1 commit-path rewrite (~800x) made materialization at commit time cheap (~10ms worst case), which is what enabled this WYSIWYG display model.
 
 ## User-facing undo / redo
 
@@ -150,18 +143,17 @@ Baked commands are not user-undoable as individual commands.
 
 The app-level history owns global user-facing undo order. `BrushFrameStore` owns frame-local payload movement for brush commands but does not decide the global undo order.
 
-## Phase 224 / PR #294 Brush T2 baseline
+## Current production display/commit baseline (P4, supersedes the PR #294 square-stamp baseline)
 
-PR #294 superseded PR #293 and established the current Brush T2 baseline:
-
-- Active display uses visible `BrushPaintCommand.sourceDabs` plus a sampled `BrushDab` stamp overlay.
+- Committed strokes display from the materialized session `BitmapSurface`; the in-progress stroke displays as tip alpha-mask stamps.
+- `commitSourceStroke` stores source dabs as the durable `BrushPaintCommand` AND materializes the stroke into the session surface in one step; no-op strokes (no pixel changes) create no command and no undo entry.
 - The active route must not use an active drawPath brush display.
 - The active route must not use `displayPreviewSurface` or inactive/playback preview cache images as the active editor base.
 - Brush strokes participate in app-level global undo/redo through `HistoryManager` and `BrushStrokeHistoryCommand`.
-- Undo/redo hides and restores source commands with `BrushFrameEditingCoordinator` / `BrushFrameStore.hiddenCommandIds`.
+- Undo/redo hides and restores source commands with `BrushFrameEditingCoordinator` / `BrushFrameStore.hiddenCommandIds`, and reverts/reapplies the materialized bitmap through the session materialization history in the same operation.
 - Timeline frame selection must remain stable after brush undo/redo.
 
-PR #293 is only a failed reference. It failed manual testing because active drawing became unusably slow, app-level undo did not undo brush strokes correctly, and the active edit display risked mixing preview cache into the active editing path. Do not reuse PR #293 as an architecture direction.
+Historical: PR #294 square-stamp display was the T2 baseline before the P1-P4 performance work; PR #293 failed because pre-P1 materialization was unusably slow and its undo route was wrong. Neither is a current reference.
 
 ## User undo limit and deferred bake buffer
 
@@ -267,7 +259,7 @@ Current policy:
 - Deferred Bake Hybrid Brush History.
 - User-facing undo is recent live paint command / stroke-like command based through global undo only.
 - The deferred bake buffer is separate from user-facing undo.
-- T2 may implement the brush frame source model as `commands + hiddenCommandIds` before full deferred bake exists.
+- The brush frame source model is `commands + hiddenCommandIds`; source dabs remain the durable source of truth even though commits also materialize into the session surface for display.
 - Cache images are derived from brush frame state.
 - Playback uses preview/composite bitmap cache images and avoids live command replay/rasterization.
 
@@ -289,7 +281,8 @@ The current policy is not:
 - Brush display based on replaying every old stroke in playback.
 - Playback replaying strokes.
 - Playback running brush rasterization.
-- Live editing that bakes bitmap data on every pointer move or pointer release.
+- Live editing that bakes bitmap data on every pointer move. (Rasterizing once per stroke at commit/pointer-up is the current model; per-move baking remains banned.)
+- Committed-stroke display that re-renders per-dab stamps every frame instead of using the materialized surface.
 
 ## Phase 213C UI undo route safety note
 
