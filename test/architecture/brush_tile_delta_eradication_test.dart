@@ -155,8 +155,10 @@ void main() {
           expect(source, isNot(contains('inactivePreviewCache')));
           expect(source, isNot(contains('playbackPreviewCache')));
         }
-        expect(activePainter, contains('isAntiAlias = false'));
-        expect(activePainter, contains('drawRect'));
+        // Intentionally no positive implementation-string checks here (per
+        // Current_Test_Architecture source-string policy): the active painter
+        // stamps tip alpha-mask images to preview the committed rasterizer
+        // result; only drawPath-style vector smoothing is banned.
       },
     );
 
