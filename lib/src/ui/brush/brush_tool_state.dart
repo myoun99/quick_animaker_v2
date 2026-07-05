@@ -17,6 +17,8 @@ class BrushToolState {
     BrushTipShape tipShape = defaultTipShape,
     bool pressureSize = defaultPressureSize,
     bool pressureOpacity = defaultPressureOpacity,
+    double roundness = defaultRoundness,
+    double angleDegrees = defaultAngleDegrees,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -28,6 +30,8 @@ class BrushToolState {
       tipShape: tipShape,
       pressureSize: pressureSize,
       pressureOpacity: pressureOpacity,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
     );
   }
 
@@ -41,6 +45,8 @@ class BrushToolState {
     required this.tipShape,
     required this.pressureSize,
     required this.pressureOpacity,
+    required this.roundness,
+    required this.angleDegrees,
   });
 
   factory BrushToolState.clamped({
@@ -53,6 +59,8 @@ class BrushToolState {
     BrushTipShape? tipShape,
     bool? pressureSize,
     bool? pressureOpacity,
+    double? roundness,
+    double? angleDegrees,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -64,6 +72,8 @@ class BrushToolState {
       tipShape: tipShape ?? defaultTipShape,
       pressureSize: pressureSize ?? defaultPressureSize,
       pressureOpacity: pressureOpacity ?? defaultPressureOpacity,
+      roundness: clampRoundness(roundness ?? defaultRoundness),
+      angleDegrees: clampAngleDegrees(angleDegrees ?? defaultAngleDegrees),
     );
   }
 
@@ -80,6 +90,11 @@ class BrushToolState {
   static const BrushTipShape defaultTipShape = BrushTipShape.round;
   static const bool defaultPressureSize = false;
   static const bool defaultPressureOpacity = false;
+  static const double minRoundness = 0.05;
+  static const double defaultRoundness = 1.0;
+  static const double minAngleDegrees = 0.0;
+  static const double maxAngleDegrees = 180.0;
+  static const double defaultAngleDegrees = 0.0;
   static const BrushToolState defaults = BrushToolState._raw(
     size: defaultSize,
     opacity: defaultOpacity,
@@ -90,6 +105,8 @@ class BrushToolState {
     tipShape: defaultTipShape,
     pressureSize: defaultPressureSize,
     pressureOpacity: defaultPressureOpacity,
+    roundness: defaultRoundness,
+    angleDegrees: defaultAngleDegrees,
   );
 
   final double size;
@@ -114,6 +131,14 @@ class BrushToolState {
   /// When true, pen/tablet pressure scales each dab's opacity (linear).
   final bool pressureOpacity;
 
+  /// Minor-to-major axis ratio of the tip; 1.0 keeps the classic
+  /// circle/square, smaller values flatten it into an ellipse/rectangle.
+  final double roundness;
+
+  /// Visual counterclockwise rotation of the tip's major axis from the
+  /// horizontal, in degrees (0-180; an ellipse repeats every 180).
+  final double angleDegrees;
+
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(
       color: color,
@@ -125,6 +150,8 @@ class BrushToolState {
       tipShape: tipShape,
       pressureSize: pressureSize,
       pressureOpacity: pressureOpacity,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
     );
   }
 
@@ -138,6 +165,8 @@ class BrushToolState {
     BrushTipShape? tipShape,
     bool? pressureSize,
     bool? pressureOpacity,
+    double? roundness,
+    double? angleDegrees,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -149,6 +178,8 @@ class BrushToolState {
       tipShape: tipShape ?? this.tipShape,
       pressureSize: pressureSize ?? this.pressureSize,
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      roundness: roundness ?? this.roundness,
+      angleDegrees: angleDegrees ?? this.angleDegrees,
     );
   }
 
@@ -181,6 +212,23 @@ class BrushToolState {
     return value.clamp(0.0, 1.0).toDouble();
   }
 
+  /// Clamps roundness to [minRoundness, 1] so the tip never degenerates to
+  /// zero width.
+  static double clampRoundness(double value) {
+    if (!value.isFinite) {
+      return defaultRoundness;
+    }
+    return value.clamp(minRoundness, 1.0).toDouble();
+  }
+
+  /// Clamps the tip angle to [0, 180] degrees (an ellipse repeats every 180).
+  static double clampAngleDegrees(double value) {
+    if (!value.isFinite) {
+      return defaultAngleDegrees;
+    }
+    return value.clamp(minAngleDegrees, maxAngleDegrees).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -193,7 +241,9 @@ class BrushToolState {
           other.flow == flow &&
           other.tipShape == tipShape &&
           other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity;
+          other.pressureOpacity == pressureOpacity &&
+          other.roundness == roundness &&
+          other.angleDegrees == angleDegrees;
 
   @override
   int get hashCode => Object.hash(
@@ -206,5 +256,7 @@ class BrushToolState {
     tipShape,
     pressureSize,
     pressureOpacity,
+    roundness,
+    angleDegrees,
   );
 }

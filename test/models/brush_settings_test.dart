@@ -16,6 +16,8 @@ void main() {
       expect(brush.tipShape, BrushTipShape.round);
       expect(brush.pressureSize, isFalse);
       expect(brush.pressureOpacity, isFalse);
+      expect(brush.roundness, 1.0);
+      expect(brush.angleDegrees, 0.0);
     });
 
     test('copyWith updates each field independently', () {
@@ -33,6 +35,8 @@ void main() {
       );
       expect(brush.copyWith(pressureSize: true).pressureSize, isTrue);
       expect(brush.copyWith(pressureOpacity: true).pressureOpacity, isTrue);
+      expect(brush.copyWith(roundness: 0.5).roundness, 0.5);
+      expect(brush.copyWith(angleDegrees: 45).angleDegrees, 45.0);
       expect(brush, BrushSettings());
     });
 
@@ -45,6 +49,8 @@ void main() {
       expect(brush.copyWith(tipShape: BrushTipShape.square), isNot(brush));
       expect(brush.copyWith(pressureSize: true), isNot(brush));
       expect(brush.copyWith(pressureOpacity: true), isNot(brush));
+      expect(brush.copyWith(roundness: 0.5), isNot(brush));
+      expect(brush.copyWith(angleDegrees: 45), isNot(brush));
     });
 
     test('toJson includes new fields', () {
@@ -62,6 +68,8 @@ void main() {
           'tipShape',
           'pressureSize',
           'pressureOpacity',
+          'roundness',
+          'angleDegrees',
         ]),
       );
     });
@@ -77,6 +85,8 @@ void main() {
         tipShape: BrushTipShape.square,
         pressureSize: true,
         pressureOpacity: true,
+        roundness: 0.35,
+        angleDegrees: 120,
       );
 
       expect(BrushSettings.fromJson(brush.toJson()), brush);
@@ -96,10 +106,25 @@ void main() {
       expect(brush.tipShape, BrushTipShape.round);
       expect(brush.pressureSize, isFalse);
       expect(brush.pressureOpacity, isFalse);
+      expect(brush.roundness, 1.0);
+      expect(brush.angleDegrees, 0.0);
     });
 
     test('invalid size throws', () {
       expect(() => BrushSettings(size: 0), throwsArgumentError);
+    });
+
+    test('invalid roundness throws', () {
+      expect(() => BrushSettings(roundness: 0), throwsArgumentError);
+      expect(() => BrushSettings(roundness: 1.1), throwsArgumentError);
+      expect(() => BrushSettings(roundness: double.nan), throwsArgumentError);
+    });
+
+    test('non-finite angle throws', () {
+      expect(
+        () => BrushSettings(angleDegrees: double.infinity),
+        throwsArgumentError,
+      );
     });
 
     test('invalid opacity throws', () {

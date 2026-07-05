@@ -113,5 +113,44 @@ void main() {
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
     });
+
+    test('roundness and angle default to the classic full-round tip', () {
+      const state = BrushToolState.defaults;
+      expect(state.roundness, 1.0);
+      expect(state.angleDegrees, 0.0);
+      expect(state.toInputSettings().roundness, 1.0);
+      expect(state.toInputSettings().angleDegrees, 0.0);
+    });
+
+    test('roundness and angle are clamped and round-trip', () {
+      expect(
+        BrushToolState(roundness: 0.0).roundness,
+        BrushToolState.minRoundness,
+      );
+      expect(BrushToolState(roundness: 2.0).roundness, 1.0);
+      expect(
+        BrushToolState(roundness: double.nan).roundness,
+        BrushToolState.defaultRoundness,
+      );
+      expect(BrushToolState(angleDegrees: -10).angleDegrees, 0.0);
+      expect(BrushToolState(angleDegrees: 361).angleDegrees, 180.0);
+      expect(
+        BrushToolState(angleDegrees: double.nan).angleDegrees,
+        BrushToolState.defaultAngleDegrees,
+      );
+
+      final state = BrushToolState.defaults.copyWith(
+        roundness: 0.4,
+        angleDegrees: 45,
+      );
+      expect(state.roundness, 0.4);
+      expect(state.angleDegrees, 45.0);
+      final settings = state.toInputSettings();
+      expect(settings.roundness, 0.4);
+      expect(settings.angleDegrees, 45.0);
+      // Omitted copyWith args keep the existing values.
+      expect(state.copyWith(size: 5).roundness, 0.4);
+      expect(state.copyWith(size: 5).angleDegrees, 45.0);
+    });
   });
 }

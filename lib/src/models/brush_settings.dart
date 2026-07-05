@@ -11,12 +11,16 @@ class BrushSettings {
     this.tipShape = BrushTipShape.round,
     this.pressureSize = false,
     this.pressureOpacity = false,
+    this.roundness = 1.0,
+    this.angleDegrees = 0.0,
   }) {
     _validatePositive(size, 'size');
     _validateUnitInterval(opacity, 'opacity');
     _validateUnitInterval(flow, 'flow');
     _validateUnitInterval(hardness, 'hardness');
     _validatePositive(spacing, 'spacing');
+    _validateRoundness(roundness);
+    _validateFinite(angleDegrees, 'angleDegrees');
   }
 
   final int color;
@@ -29,6 +33,14 @@ class BrushSettings {
   final bool pressureSize;
   final bool pressureOpacity;
 
+  /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
+  /// circle/square.
+  final double roundness;
+
+  /// Visual counterclockwise rotation of the tip's major axis from the
+  /// horizontal, in degrees.
+  final double angleDegrees;
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -39,6 +51,8 @@ class BrushSettings {
     BrushTipShape? tipShape,
     bool? pressureSize,
     bool? pressureOpacity,
+    double? roundness,
+    double? angleDegrees,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -50,6 +64,8 @@ class BrushSettings {
       tipShape: tipShape ?? this.tipShape,
       pressureSize: pressureSize ?? this.pressureSize,
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      roundness: roundness ?? this.roundness,
+      angleDegrees: angleDegrees ?? this.angleDegrees,
     );
   }
 
@@ -63,6 +79,8 @@ class BrushSettings {
     'tipShape': tipShape.toJson(),
     'pressureSize': pressureSize,
     'pressureOpacity': pressureOpacity,
+    'roundness': roundness,
+    'angleDegrees': angleDegrees,
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -78,6 +96,8 @@ class BrushSettings {
           : BrushTipShape.round,
       pressureSize: json['pressureSize'] as bool? ?? false,
       pressureOpacity: json['pressureOpacity'] as bool? ?? false,
+      roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
+      angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -93,7 +113,9 @@ class BrushSettings {
           other.spacing == spacing &&
           other.tipShape == tipShape &&
           other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity;
+          other.pressureOpacity == pressureOpacity &&
+          other.roundness == roundness &&
+          other.angleDegrees == angleDegrees;
 
   @override
   int get hashCode => Object.hash(
@@ -106,6 +128,8 @@ class BrushSettings {
     tipShape,
     pressureSize,
     pressureOpacity,
+    roundness,
+    angleDegrees,
   );
 
   @override
@@ -113,7 +137,8 @@ class BrushSettings {
       'BrushSettings(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'tipShape: $tipShape, pressureSize: $pressureSize, '
-      'pressureOpacity: $pressureOpacity)';
+      'pressureOpacity: $pressureOpacity, roundness: $roundness, '
+      'angleDegrees: $angleDegrees)';
 }
 
 void _validatePositive(double value, String fieldName) {
@@ -132,6 +157,26 @@ void _validateUnitInterval(double value, String fieldName) {
       value,
       fieldName,
       'BrushSettings.$fieldName must be between 0.0 and 1.0 inclusive.',
+    );
+  }
+}
+
+void _validateRoundness(double value) {
+  if (!value.isFinite || value <= 0.0 || value > 1.0) {
+    throw ArgumentError.value(
+      value,
+      'roundness',
+      'BrushSettings.roundness must be finite and in (0.0, 1.0].',
+    );
+  }
+}
+
+void _validateFinite(double value, String fieldName) {
+  if (!value.isFinite) {
+    throw ArgumentError.value(
+      value,
+      fieldName,
+      'BrushSettings.$fieldName must be finite.',
     );
   }
 }

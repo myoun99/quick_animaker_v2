@@ -85,6 +85,35 @@ void main() {
       );
     });
 
+    test('stores and copies roundness and angle', () {
+      const settings = BrushEditCanvasInputSettings(
+        roundness: 0.4,
+        angleDegrees: 30,
+      );
+      expect(settings.roundness, 0.4);
+      expect(settings.angleDegrees, 30.0);
+
+      final updated = settings.copyWith(angleDegrees: 90);
+      expect(updated.roundness, 0.4);
+      expect(updated.angleDegrees, 90.0);
+
+      const defaults = BrushEditCanvasInputSettings();
+      expect(defaults.roundness, 1.0);
+      expect(defaults.angleDegrees, 0.0);
+      expect(settings == defaults, isFalse);
+    });
+
+    test('rejects roundness outside (0, 1]', () {
+      expect(
+        () => BrushEditCanvasInputSettings(roundness: 0),
+        throwsAssertionError,
+      );
+      expect(
+        () => BrushEditCanvasInputSettings(roundness: 1.1),
+        throwsAssertionError,
+      );
+    });
+
     test('stores and copies pressure toggles', () {
       const settings = BrushEditCanvasInputSettings(
         pressureSize: true,

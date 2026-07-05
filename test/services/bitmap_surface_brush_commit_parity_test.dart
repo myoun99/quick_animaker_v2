@@ -104,6 +104,8 @@ BrushDab dab({
   double hardness = 0.5,
   BrushTipShape tipShape = BrushTipShape.round,
   int sequence = 0,
+  double roundness = 1.0,
+  double angleDegrees = 0.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -115,6 +117,8 @@ BrushDab dab({
     tipShape: tipShape,
     pressure: 1.0,
     sequence: sequence,
+    roundness: roundness,
+    angleDegrees: angleDegrees,
   );
 }
 
@@ -253,6 +257,78 @@ void main() {
           dab(x: 70, y: 40, size: 0, sequence: 3),
         ]),
         reason: 'non-effective dabs',
+      );
+    });
+
+    test('elliptical soft tip stroke on fractional centers', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (var i = 0; i < 6; i += 1)
+            dab(
+              x: 40.37 + i * 7.13,
+              y: 44.81 + i * 3.41,
+              size: 18,
+              roundness: 0.4,
+              angleDegrees: 30,
+              sequence: i,
+            ),
+        ]),
+        reason: 'elliptical soft tip',
+      );
+    });
+
+    test('hard elliptical tip and thin roundness extremes', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 60.5,
+            y: 60.5,
+            size: 24,
+            hardness: 1.0,
+            roundness: 0.05,
+            angleDegrees: 137.0,
+            sequence: 0,
+          ),
+          dab(
+            x: 100.2,
+            y: 70.7,
+            size: 24,
+            hardness: 0.0,
+            roundness: 0.6,
+            angleDegrees: 90.0,
+            sequence: 1,
+          ),
+        ]),
+        reason: 'elliptical extremes',
+      );
+    });
+
+    test('rotated rectangle tip stroke', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 50.4,
+            y: 50.6,
+            size: 20,
+            tipShape: BrushTipShape.square,
+            roundness: 0.5,
+            angleDegrees: 45,
+            sequence: 0,
+          ),
+          dab(
+            x: 58.1,
+            y: 55.9,
+            size: 20,
+            tipShape: BrushTipShape.square,
+            roundness: 0.5,
+            angleDegrees: 45,
+            sequence: 1,
+          ),
+        ]),
+        reason: 'rotated rectangle tip',
       );
     });
 

@@ -11,7 +11,13 @@ class BrushEditCanvasInputSettings {
     this.spacing = 0.25,
     this.pressureSize = false,
     this.pressureOpacity = false,
+    this.roundness = 1.0,
+    this.angleDegrees = 0.0,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
+       assert(
+         roundness > 0.0 && roundness <= 1.0,
+         'BrushEditCanvasInputSettings.roundness must be in (0, 1].',
+       ),
        assert(
          opacity >= 0.0 && opacity <= 1.0,
          'BrushEditCanvasInputSettings.opacity must be between 0 and 1.',
@@ -43,6 +49,14 @@ class BrushEditCanvasInputSettings {
   /// When true, each dab's opacity is scaled by the input pressure (linear).
   final bool pressureOpacity;
 
+  /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
+  /// circle/square.
+  final double roundness;
+
+  /// Visual counterclockwise rotation of the tip's major axis from the
+  /// horizontal, in degrees.
+  final double angleDegrees;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -53,6 +67,8 @@ class BrushEditCanvasInputSettings {
     double? spacing,
     bool? pressureSize,
     bool? pressureOpacity,
+    double? roundness,
+    double? angleDegrees,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -64,6 +80,8 @@ class BrushEditCanvasInputSettings {
       spacing: spacing ?? this.spacing,
       pressureSize: pressureSize ?? this.pressureSize,
       pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      roundness: roundness ?? this.roundness,
+      angleDegrees: angleDegrees ?? this.angleDegrees,
     );
   }
 
@@ -79,7 +97,9 @@ class BrushEditCanvasInputSettings {
           other.tipShape == tipShape &&
           other.spacing == spacing &&
           other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity;
+          other.pressureOpacity == pressureOpacity &&
+          other.roundness == roundness &&
+          other.angleDegrees == angleDegrees;
 
   @override
   int get hashCode => Object.hash(
@@ -92,6 +112,8 @@ class BrushEditCanvasInputSettings {
     spacing,
     pressureSize,
     pressureOpacity,
+    roundness,
+    angleDegrees,
   );
 
   @override
@@ -99,5 +121,6 @@ class BrushEditCanvasInputSettings {
       'BrushEditCanvasInputSettings(color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
       'tipShape: $tipShape, spacing: $spacing, '
-      'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity)';
+      'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity, '
+      'roundness: $roundness, angleDegrees: $angleDegrees)';
 }

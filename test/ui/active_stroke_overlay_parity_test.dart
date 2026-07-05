@@ -39,6 +39,8 @@ BrushDab _dab({
   double hardness = 0.5,
   BrushTipShape tipShape = BrushTipShape.round,
   int sequence = 0,
+  double roundness = 1.0,
+  double angleDegrees = 0.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -50,6 +52,8 @@ BrushDab _dab({
     tipShape: tipShape,
     pressure: 1.0,
     sequence: sequence,
+    roundness: roundness,
+    angleDegrees: angleDegrees,
   );
 }
 
@@ -152,6 +156,38 @@ void main() {
       'canvas edge overhang': [
         _dab(x: 0.6, y: 0.4, size: 14, sequence: 0),
         _dab(x: 38.7, y: 38.9, size: 14, sequence: 1),
+      ],
+      'soft elliptical tip on fractional center': [
+        _dab(
+          x: 14.37,
+          y: 12.81,
+          size: 16,
+          hardness: 0.3,
+          roundness: 0.4,
+          angleDegrees: 30,
+        ),
+      ],
+      'hard thin elliptical tip': [
+        _dab(
+          x: 19.5,
+          y: 19.5,
+          size: 24,
+          hardness: 1.0,
+          opacity: 1.0,
+          flow: 1.0,
+          roundness: 0.05,
+          angleDegrees: 137,
+        ),
+      ],
+      'rotated rectangle tip': [
+        _dab(
+          x: 18.4,
+          y: 17.7,
+          size: 16,
+          tipShape: BrushTipShape.square,
+          roundness: 0.5,
+          angleDegrees: 45,
+        ),
       ],
     };
 
