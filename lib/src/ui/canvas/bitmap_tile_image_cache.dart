@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
+import 'deferred_image_disposal.dart';
 
 /// Identity-keyed cache converting immutable [BitmapTile] pixel bytes into
 /// GPU-ready [ui.Image]s for display.
@@ -29,8 +30,13 @@ class BitmapTileImageCache extends ChangeNotifier {
   final Expando<ui.Image> _images = Expando<ui.Image>('bitmapTileImages');
   final Expando<Object> _inFlight = Expando<Object>('bitmapTileImageDecodes');
   static const Object _inFlightMarker = Object();
+  // Deferred, not direct, disposal: the finalizer runs at GC time — pen-up
+  // commits allocate heavily and collect right when a replaced tile's image
+  // is still referenced by the frame on screen. Disposing it there raced
+  // the raster thread and intermittently flashed the tile as a black square
+  // for one frame.
   static final Finalizer<ui.Image> _imageFinalizer = Finalizer<ui.Image>(
-    (image) => image.dispose(),
+    (image) => DeferredImageDisposer.instance.retire(image),
   );
 
   /// Latest decoded tile per (scope, coordinate), held strongly so its image
