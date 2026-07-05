@@ -35,10 +35,41 @@ class BenchmarkScenario {
 }
 
 const scenarios = [
-  BenchmarkScenario(name: 'small  (size  8, 50 dabs)', brushSize: 8, dabCount: 50, iterations: 10),
-  BenchmarkScenario(name: 'medium (size 16, 100 dabs)', brushSize: 16, dabCount: 100, iterations: 5),
-  BenchmarkScenario(name: 'large  (size 32, 100 dabs)', brushSize: 32, dabCount: 100),
-  BenchmarkScenario(name: 'xl     (size 64, 50 dabs)', brushSize: 64, dabCount: 50),
+  BenchmarkScenario(
+    name: 'small  (size  8, 50 dabs)',
+    brushSize: 8,
+    dabCount: 50,
+    iterations: 10,
+  ),
+  BenchmarkScenario(
+    name: 'medium (size 16, 100 dabs)',
+    brushSize: 16,
+    dabCount: 100,
+    iterations: 5,
+  ),
+  BenchmarkScenario(
+    name: 'large  (size 32, 100 dabs)',
+    brushSize: 32,
+    dabCount: 100,
+  ),
+  BenchmarkScenario(
+    name: 'xl     (size 64, 50 dabs)',
+    brushSize: 64,
+    dabCount: 50,
+  ),
+  // Long dense stroke at 5% spacing (user-reported freeze scenario).
+  BenchmarkScenario(
+    name: 'dense  (size 64, 940 dabs)',
+    brushSize: 64,
+    dabCount: 940,
+    iterations: 2,
+  ),
+  BenchmarkScenario(
+    name: 'dense+ (size 128, 900 dabs)',
+    brushSize: 128,
+    dabCount: 900,
+    iterations: 2,
+  ),
 ];
 
 BrushDabSequence strokeFor(BenchmarkScenario scenario) {
@@ -80,7 +111,9 @@ void main() {
       sequence: sequence,
     );
     if (!warmup.hasChanges) {
-      throw StateError('Benchmark stroke produced no changes: ${scenario.name}');
+      throw StateError(
+        'Benchmark stroke produced no changes: ${scenario.name}',
+      );
     }
 
     // Timed runs on fresh blank surfaces (first-stroke commit) ...
@@ -105,7 +138,8 @@ void main() {
     }
     paintedWatch.stop();
 
-    final blankMs = blankWatch.elapsedMicroseconds / 1000.0 / scenario.iterations;
+    final blankMs =
+        blankWatch.elapsedMicroseconds / 1000.0 / scenario.iterations;
     final paintedMs =
         paintedWatch.elapsedMicroseconds / 1000.0 / scenario.iterations;
     print(scenario.name);

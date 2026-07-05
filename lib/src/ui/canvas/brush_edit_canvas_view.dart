@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
@@ -11,11 +13,20 @@ class BrushEditCanvasView extends StatelessWidget {
     required this.sessionState,
     this.showTransparentBackground = true,
     this.activeStrokeOverlay = const <BrushDab>[],
+    this.activeOverlayFlattened,
+    this.activeOverlayPaintFrom = 0,
+    this.activeOverlayRevision = 0,
   });
 
   final BrushEditSessionState sessionState;
   final bool showTransparentBackground;
   final List<BrushDab> activeStrokeOverlay;
+
+  /// Older overlay stamps pre-rendered by the interactive view; see
+  /// [ActiveStrokeOverlayPainter.flattenedOverlay].
+  final ui.Image? activeOverlayFlattened;
+  final int activeOverlayPaintFrom;
+  final int activeOverlayRevision;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +74,9 @@ class BrushEditCanvasView extends StatelessWidget {
                   ),
                   painter: ActiveStrokeOverlayPainter(
                     activeStrokeOverlay: activeStrokeOverlay,
+                    flattenedOverlay: activeOverlayFlattened,
+                    paintFrom: activeOverlayPaintFrom,
+                    overlayRevision: activeOverlayRevision,
                   ),
                 ),
               ),
