@@ -1,30 +1,9 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
-import '../controllers/default_layer_helpers.dart';
-import '../controllers/cut_list_helpers.dart';
-import '../controllers/editing_session_state.dart';
-import '../controllers/layer_controller.dart';
-import '../controllers/timeline_controller.dart';
-import '../models/cut.dart';
-import '../models/cut_id.dart';
 import '../models/canvas_viewport.dart';
-import '../models/frame.dart';
-import '../models/frame_id.dart';
-import '../models/layer.dart';
-import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
 import '../models/project.dart';
-import '../models/track_id.dart';
-import '../services/clipboard/layer_copy_payload.dart';
-import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/cut_reorder_planner.dart';
-import '../services/history_manager.dart';
 import '../services/project_repository.dart';
-import 'brush/brush_canvas_panel.dart';
-import 'brush/brush_editor_selection.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_tool_state.dart';
@@ -35,8 +14,8 @@ import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
+import 'editor_session_manager.dart';
 import 'storyboard_panel.dart';
-import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'panels/editor_panel_dock.dart';
@@ -52,23 +31,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const FrameId _frameId = FrameId('default-frame');
+  late final EditorSessionManager _session;
 
-  late final EditingSessionState _editingSession;
-
-  late final ProjectRepository _repository;
-  late final HistoryManager _historyManager;
-  late final CutCommandCoordinator _cutCommandCoordinator;
-  final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
-  late LayerController _layerController;
-  late TimelineController _timelineController;
-
-  int _layerSequence = 1;
-  int _frameSequence = 0;
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   final ScrollController _topToolbarScrollController = ScrollController();
-  _CopiedFrameReference? _copiedFrame;
-  LayerCopyPayload? _layerClipboard;
   CanvasViewport _canvasViewport = CanvasViewport();
   BrushToolState _brushToolState = BrushToolState.defaults;
 
@@ -76,204 +42,29 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final project = widget.initialProject ?? createDefaultProject();
-    _editingSession = EditingSessionState.forProject(project);
-
-    _repository = ProjectRepository(initialProject: project);
-    widget.onRepositoryCreated?.call(_repository);
-    _historyManager = HistoryManager();
-    _cutCommandCoordinator = CutCommandCoordinator(
-      repository: _repository,
-      editingSession: _editingSession,
-      historyManager: _historyManager,
-    );
-    _rebuildActiveCutControllers();
+    _session = EditorSessionManager(initialProject: project)
+      ..addListener(_onSessionChanged);
+    widget.onRepositoryCreated?.call(_session.repository);
   }
 
   @override
   void dispose() {
+    _session.removeListener(_onSessionChanged);
+    _session.dispose();
     _topToolbarScrollController.dispose();
     super.dispose();
   }
 
-  void _rebuildActiveCutControllers({
-    LayerId? preferredActiveLayerId,
-    int preferredFrameIndex = 0,
-  }) {
-    final activeCutId = _editingSession.activeCutId;
-    final initialActiveLayerId = _activeCutHasLayer(preferredActiveLayerId)
-        ? preferredActiveLayerId
-        : null;
-
-    _layerController = LayerController(
-      repository: _repository,
-      historyManager: _historyManager,
-      cutId: activeCutId,
-      frameId: _frameId,
-      initialActiveLayerId: initialActiveLayerId,
-    );
-    _timelineController = TimelineController(
-      repository: _repository,
-      historyManager: _historyManager,
-      cutId: activeCutId,
-      initialFrameIndex: _clampedFrameIndex(preferredFrameIndex),
-    );
+  void _onSessionChanged() {
+    setState(() {});
   }
 
-  int _clampedFrameIndex(int frameIndex) {
-    final maxIndex = math.max(0, _activeCutPlaybackFrameCount - 1);
-    return frameIndex.clamp(0, maxIndex);
-  }
+  // --- Dialog-driven commands --------------------------------------------
+  // These orchestrate dialogs (which need a BuildContext) and then delegate the
+  // actual mutation to the session.
 
-  TrackId get _activeCutTrackId {
-    final activeCutId = _editingSession.activeCutId;
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      if (track.cuts.any((cut) => cut.id == activeCutId)) {
-        return track.id;
-      }
-    }
-
-    if (project.tracks.isEmpty) {
-      throw StateError('Cannot resolve active Cut track in an empty project.');
-    }
-    return project.tracks.first.id;
-  }
-
-  void _refreshAfterCutCommand({
-    LayerId? preferredActiveLayerId,
-    int? preferredFrameIndex,
-  }) {
-    _copiedFrame = null;
-    _rebuildActiveCutControllers(
-      preferredActiveLayerId: preferredActiveLayerId,
-      preferredFrameIndex:
-          preferredFrameIndex ?? _timelineController.currentFrameIndex,
-    );
-  }
-
-  bool _activeCutHasLayer(LayerId? layerId) {
-    if (layerId == null) {
-      return false;
-    }
-    final cut = _activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    return cut.layers.any((layer) => layer.id == layerId);
-  }
-
-  void _createCutFromList() {
-    setState(() {
-      _cutCommandCoordinator.createCut(trackId: _activeCutTrackId);
-      _refreshAfterCutCommand();
-    });
-  }
-
-  void _duplicateActiveCutFromList() {
-    setState(() {
-      _cutCommandCoordinator.duplicateCut(
-        sourceCutId: _editingSession.activeCutId,
-        targetTrackId: _activeCutTrackId,
-      );
-      _refreshAfterCutCommand();
-    });
-  }
-
-  void _deleteActiveCutFromList() {
-    setState(() {
-      _cutCommandCoordinator.deleteCut(cutId: _editingSession.activeCutId);
-      _refreshAfterCutCommand();
-    });
-  }
-
-  CutPosition? get _activeCutPositionOrNull {
-    return _cutReorderPlanner.findCutPosition(
-      project: _repository.requireProject(),
-      cutId: _editingSession.activeCutId,
-    );
-  }
-
-  CutPosition get _activeCutPosition {
-    try {
-      return _cutReorderPlanner.requireCutPosition(
-        project: _repository.requireProject(),
-        cutId: _editingSession.activeCutId,
-      );
-    } on StateError {
-      throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
-    }
-  }
-
-  bool get _canMoveActiveCutLeft {
-    final position = _activeCutPositionOrNull;
-    return position != null && _cutReorderPlanner.canMoveLeft(position);
-  }
-
-  bool get _canMoveActiveCutRight {
-    final position = _activeCutPositionOrNull;
-    return position != null && _cutReorderPlanner.canMoveRight(position);
-  }
-
-  void _moveActiveCutLeftFromList() {
-    final position = _activeCutPosition;
-    if (!_cutReorderPlanner.canMoveLeft(position)) {
-      return;
-    }
-
-    setState(() {
-      _cutCommandCoordinator.reorderCut(
-        trackId: position.trackId,
-        cutId: position.cutId,
-        newIndex: _cutReorderPlanner.moveLeftTargetIndex(position),
-      );
-      _refreshAfterCutCommand();
-    });
-  }
-
-  void _moveActiveCutRightFromList() {
-    final position = _activeCutPosition;
-    if (!_cutReorderPlanner.canMoveRight(position)) {
-      return;
-    }
-
-    setState(() {
-      _cutCommandCoordinator.reorderCut(
-        trackId: position.trackId,
-        cutId: position.cutId,
-        newIndex: _cutReorderPlanner.moveRightTargetIndex(position),
-      );
-      _refreshAfterCutCommand();
-    });
-  }
-
-  void _reorderCutFromList({
-    required CutId draggedCutId,
-    required TrackId targetTrackId,
-    required int targetCutIndex,
-  }) {
-    final plan = _cutReorderPlanner.planSameTrackDrop(
-      project: _repository.requireProject(),
-      draggedCutId: draggedCutId,
-      targetTrackId: targetTrackId,
-      targetCutIndex: targetCutIndex,
-    );
-    if (plan == null) {
-      return;
-    }
-
-    setState(() {
-      _cutCommandCoordinator.reorderCut(
-        trackId: plan.trackId,
-        cutId: plan.cutId,
-        newIndex: plan.newIndex,
-      );
-      _refreshAfterCutCommand();
-    });
-  }
-
-  Future<void> _editActiveCutNoteFromList() async {
-    final activeCutId = _editingSession.activeCutId;
-    final initialNote = _activeCutOrNull?.metadata.note;
+  Future<void> _editActiveCutNote() async {
+    final initialNote = _session.activeCutNote;
     if (initialNote == null) {
       return;
     }
@@ -286,229 +77,25 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    setState(() {
-      _cutCommandCoordinator.updateCutNote(cutId: activeCutId, note: nextNote);
-      _refreshAfterCutCommand();
-    });
+    _session.updateActiveCutNote(nextNote);
   }
 
-  Cut? get _activeCutOrNull {
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == _editingSession.activeCutId) {
-          return cut;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  int get _activeCutPlaybackFrameCount => math.max(1, _activeCut.duration);
-
-  Cut get _activeCut {
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == _editingSession.activeCutId) {
-          return cut;
-        }
-      }
-    }
-
-    throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
-  }
-
-  Future<void> _renameActiveCutFromList() async {
-    final activeCutId = _editingSession.activeCutId;
+  Future<void> _renameActiveCut() async {
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => RenameCutDialog(initialName: _activeCut.name),
+      builder: (context) =>
+          RenameCutDialog(initialName: _session.activeCut.name),
     );
     if (!mounted || nextName == null || nextName.trim().isEmpty) {
       return;
     }
 
-    setState(() {
-      _cutCommandCoordinator.renameCut(cutId: activeCutId, newName: nextName);
-      _refreshAfterCutCommand();
-    });
-  }
-
-  void _undoProjectHistory() {
-    final beforeLayers = List<Layer>.of(_activeCut.layers);
-    final previousActiveLayerId = _layerController.activeLayerId;
-    final previousFrameIndex = _timelineController.currentFrameIndex;
-
-    setState(() {
-      _historyManager.undo();
-      final preferredLayerId = _preferredLayerAfterLayerListChange(
-        beforeLayers: beforeLayers,
-        afterLayers: _activeCut.layers,
-        previousActiveLayerId: previousActiveLayerId,
-      );
-      _refreshAfterCutCommand(
-        preferredActiveLayerId: preferredLayerId,
-        preferredFrameIndex: previousFrameIndex,
-      );
-    });
-  }
-
-  void _redoProjectHistory() {
-    final beforeLayers = List<Layer>.of(_activeCut.layers);
-    final previousActiveLayerId = _layerController.activeLayerId;
-    final previousFrameIndex = _timelineController.currentFrameIndex;
-
-    setState(() {
-      _historyManager.redo();
-      final preferredLayerId = _preferredLayerAfterLayerListChange(
-        beforeLayers: beforeLayers,
-        afterLayers: _activeCut.layers,
-        previousActiveLayerId: previousActiveLayerId,
-      );
-      _refreshAfterCutCommand(
-        preferredActiveLayerId: preferredLayerId,
-        preferredFrameIndex: previousFrameIndex,
-      );
-    });
-  }
-
-  void _handleCutSelected(CutId cutId) {
-    if (cutId == _editingSession.activeCutId) {
-      return;
-    }
-
-    setState(() {
-      _editingSession.setActiveCutId(cutId);
-      _copiedFrame = null;
-      _rebuildActiveCutControllers();
-    });
-  }
-
-  Layer? get _activeLayer => _layerController.activeLayer;
-
-  BrushEditorSelection? get _activeBrushEditorSelection {
-    final activeLayer = _activeLayer;
-    final selectedFrame = _selectedFrame;
-    if (activeLayer == null || selectedFrame == null) {
-      return null;
-    }
-
-    return BrushEditorSelection(
-      projectId: _repository.requireProject().id,
-      trackId: _activeCutTrackId,
-      cutId: _editingSession.activeCutId,
-      layerId: activeLayer.id,
-      frameId: selectedFrame.id,
-    );
-  }
-
-  bool get _canDeleteActiveLayer =>
-      _activeLayer != null && _activeCut.layers.length >= 2;
-
-  LayerId? _stableLayerIdAfterDeleting({
-    required List<Layer> beforeLayers,
-    required LayerId deletedLayerId,
-  }) {
-    final deletedIndex = beforeLayers.indexWhere(
-      (layer) => layer.id == deletedLayerId,
-    );
-    if (deletedIndex == -1) {
-      return null;
-    }
-
-    final remainingLayers = beforeLayers
-        .where((layer) => layer.id != deletedLayerId)
-        .toList(growable: false);
-    if (remainingLayers.isEmpty) {
-      return null;
-    }
-    if (deletedIndex < remainingLayers.length) {
-      return remainingLayers[deletedIndex].id;
-    }
-    return remainingLayers[deletedIndex - 1].id;
-  }
-
-  LayerId? _preferredLayerAfterLayerListChange({
-    required List<Layer> beforeLayers,
-    required List<Layer> afterLayers,
-    required LayerId? previousActiveLayerId,
-  }) {
-    final afterIds = afterLayers.map((layer) => layer.id).toSet();
-    final beforeIds = beforeLayers.map((layer) => layer.id).toSet();
-    final insertedLayers = afterLayers
-        .where((layer) => !beforeIds.contains(layer.id))
-        .toList(growable: false);
-    if (insertedLayers.isNotEmpty) {
-      return insertedLayers.first.id;
-    }
-
-    if (previousActiveLayerId != null &&
-        !afterIds.contains(previousActiveLayerId)) {
-      return _stableLayerIdAfterDeleting(
-        beforeLayers: beforeLayers,
-        deletedLayerId: previousActiveLayerId,
-      );
-    }
-
-    return previousActiveLayerId;
-  }
-
-  void _copyActiveLayer() {
-    final activeLayer = _activeLayer;
-    if (activeLayer == null) {
-      return;
-    }
-
-    setState(() {
-      _layerClipboard = copyLayerToPayload(activeLayer);
-    });
-  }
-
-  void _pasteLayerFromClipboard() {
-    final payload = _layerClipboard;
-    if (payload == null) {
-      return;
-    }
-
-    final activeLayer = _activeLayer;
-    final targetLayers = _activeCut.layers;
-    final activeLayerIndex = activeLayer == null
-        ? -1
-        : targetLayers.indexWhere((layer) => layer.id == activeLayer.id);
-    final insertionIndex = activeLayerIndex == -1
-        ? targetLayers.length
-        : activeLayerIndex + 1;
-
-    setState(() {
-      final pastedLayerId = _cutCommandCoordinator.pasteLayer(
-        cutId: _editingSession.activeCutId,
-        payload: payload,
-        insertionIndex: insertionIndex,
-      );
-      _refreshAfterCutCommand(preferredActiveLayerId: pastedLayerId);
-    });
-  }
-
-  void _duplicateActiveLayer() {
-    final activeLayer = _activeLayer;
-    if (activeLayer == null) {
-      return;
-    }
-
-    setState(() {
-      final duplicatedLayerId = _cutCommandCoordinator.duplicateLayer(
-        cutId: _editingSession.activeCutId,
-        sourceLayerId: activeLayer.id,
-      );
-      _refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
-    });
+    _session.renameActiveCut(nextName);
   }
 
   Future<void> _deleteActiveLayer() async {
-    final activeLayer = _activeLayer;
-    if (activeLayer == null || !_canDeleteActiveLayer) {
+    final activeLayer = _session.activeLayer;
+    if (activeLayer == null || !_session.canDeleteActiveLayer) {
       return;
     }
 
@@ -520,28 +107,15 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final beforeLayers = List<Layer>.of(_activeCut.layers);
-    final nextActiveLayerId = _stableLayerIdAfterDeleting(
-      beforeLayers: beforeLayers,
-      deletedLayerId: activeLayer.id,
-    );
-
-    setState(() {
-      _cutCommandCoordinator.deleteLayer(
-        cutId: _editingSession.activeCutId,
-        layerId: activeLayer.id,
-      );
-      _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
-    });
+    _session.deleteActiveLayer();
   }
 
   Future<void> _renameActiveLayer() async {
-    final activeLayer = _activeLayer;
+    final activeLayer = _session.activeLayer;
     if (activeLayer == null) {
       return;
     }
 
-    final activeLayerId = activeLayer.id;
     final nextName = await showDialog<String>(
       context: context,
       builder: (context) => RenameLayerDialog(initialName: activeLayer.name),
@@ -550,297 +124,26 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    setState(() {
-      _cutCommandCoordinator.renameLayer(
-        cutId: _editingSession.activeCutId,
-        layerId: activeLayerId,
-        name: nextName,
-      );
-      _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
-    });
-  }
-
-  Frame? get _selectedFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return null;
-    }
-
-    return _timelineController.getSelectedFrameForLayer(layer);
-  }
-
-  Layer? get _targetLayerForKindToggle => _activeLayer;
-
-  bool get _canToggleTargetLayerKind {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.storyboard) {
-      return true;
-    }
-
-    return !_layerController.layers.any(
-      (layer) =>
-          layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
-    );
-  }
-
-  String get _activeLayerKindLabelText {
-    final targetLayer = _targetLayerForKindToggle;
-    return switch (targetLayer?.kind) {
-      LayerKind.animation => 'Animation Layer',
-      LayerKind.storyboard => 'Storyboard Layer',
-      null => 'No Layer',
-    };
-  }
-
-  void _toggleTargetLayerKind() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
-      return;
-    }
-
-    final nextKind = targetLayer.kind == LayerKind.storyboard
-        ? LayerKind.animation
-        : LayerKind.storyboard;
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
-      layerId: targetLayer.id,
-      kind: nextKind,
-    );
-    _refreshAfterCutCommand();
-  }
-
-  bool get _hasActiveNonNegativeCell {
-    return _activeLayer != null && _timelineController.currentFrameIndex >= 0;
-  }
-
-  bool get _canCreateDrawingAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canCreateDrawingAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
-
-  bool get _canCopyFrameAtCurrentFrame {
-    return _selectedFrame != null;
-  }
-
-  bool get _canPasteLinkedFrameAtCurrentFrame {
-    final layer = _activeLayer;
-    final copiedFrame = _copiedFrame;
-    if (layer == null ||
-        copiedFrame == null ||
-        layer.id != copiedFrame.layerId) {
-      return false;
-    }
-
-    return _timelineController.canPasteLinkedFrameAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-      copiedFrameId: copiedFrame.frameId,
-    );
-  }
-
-  String get _copiedFrameStatusText {
-    final copiedFrame = _copiedFrame;
-    if (copiedFrame == null) {
-      return 'Copy: -';
-    }
-
-    final label = copiedFrame.frameName?.isNotEmpty == true
-        ? copiedFrame.frameName!
-        : copiedFrame.frameId.value;
-    return 'Copy: $label';
-  }
-
-  String get _linkedFrameUsesStatusText {
-    final layer = _activeLayer;
-    final frame = _selectedFrame;
-    if (layer == null || frame == null) {
-      return 'Links: -';
-    }
-
-    final uses = _timelineController.linkedUseCountForLayerFrame(
-      layer: layer,
-      frameId: frame.id,
-    );
-    return 'Links: $uses';
-  }
-
-  bool get _canCreateBlankAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canCreateBlankAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
-
-  void _createDrawingAtCurrentFrame() {
-    final layer = _activeLayer;
-    if (layer == null || !_canCreateDrawingAtCurrentFrame) {
-      return;
-    }
-
-    _frameSequence += 1;
-    _timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: FrameId(_nextFrameId(layer.id)),
-    );
-  }
-
-  void _copyFrameAtCurrentFrame() {
-    final layer = _activeLayer;
-    final frame = _selectedFrame;
-    if (layer == null || frame == null || !_canCopyFrameAtCurrentFrame) {
-      return;
-    }
-
-    _copiedFrame = _CopiedFrameReference(
-      layerId: layer.id,
-      frameId: frame.id,
-      frameName: frame.name,
-    );
-  }
-
-  void _pasteLinkedFrameAtCurrentFrame() {
-    final layer = _activeLayer;
-    final copiedFrame = _copiedFrame;
-    if (layer == null ||
-        copiedFrame == null ||
-        !_canPasteLinkedFrameAtCurrentFrame) {
-      return;
-    }
-
-    _timelineController.pasteLinkedFrameForLayer(
-      layerId: layer.id,
-      frameId: copiedFrame.frameId,
-    );
-  }
-
-  void _createBlankAtCurrentFrame() {
-    final layer = _activeLayer;
-    if (layer == null || !_canCreateBlankAtCurrentFrame) {
-      return;
-    }
-
-    _timelineController.createBlankExposureForLayer(layerId: layer.id);
-  }
-
-  String _nextFrameId(LayerId layerId) {
-    final timestamp = DateTime.now().microsecondsSinceEpoch;
-    return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
-  }
-
-  void _increaseSelectedExposure() {
-    final layer = _activeLayer;
-    final frame = _selectedFrame;
-    if (layer == null || frame == null) {
-      return;
-    }
-
-    _timelineController.increaseExposure(layerId: layer.id);
-  }
-
-  void _decreaseSelectedExposure() {
-    final layer = _activeLayer;
-    final frame = _selectedFrame;
-    if (layer == null || frame == null) {
-      return;
-    }
-
-    _timelineController.decreaseExposure(layerId: layer.id);
-  }
-
-  bool get _canToggleMarkAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canToggleMarkAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
-
-  void _toggleMarkAtCurrentFrame() {
-    final layer = _activeLayer;
-    if (layer == null || !_canToggleMarkAtCurrentFrame) {
-      return;
-    }
-
-    _timelineController.toggleMarkForLayer(layerId: layer.id);
-  }
-
-  bool get _canRenameFrameAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canRenameFrameAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-  }
-
-  bool get _canDeleteCellAtCurrentFrame {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return false;
-    }
-
-    return _timelineController.canDeleteCellAt(
-      layer: layer,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
+    _session.renameActiveLayer(nextName);
   }
 
   Future<void> _renameSelectedFrame() async {
-    final layer = _activeLayer;
-    final frame = _selectedFrame;
-    if (layer == null || frame == null || !_canRenameFrameAtCurrentFrame) {
+    if (_session.selectedFrame == null ||
+        !_session.canRenameFrameAtCurrentFrame) {
       return;
     }
 
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => RenameFrameDialog(initialName: frame.name ?? ''),
+      builder: (context) =>
+          RenameFrameDialog(initialName: _session.selectedFrameName ?? ''),
     );
     if (!mounted || nextName == null) {
       return;
     }
 
-    final currentLayer = _activeLayer;
-    if (currentLayer == null) {
-      return;
-    }
-
-    final conflictingFrameId = _timelineController.conflictingFrameIdForRename(
-      layer: currentLayer,
-      frameId: frame.id,
-      name: nextName,
-    );
+    final conflictingFrameId = _session.renameSelectedFrame(nextName);
     if (conflictingFrameId == null) {
-      setState(() {
-        _timelineController.renameFrameForLayer(
-          layerId: currentLayer.id,
-          frameId: frame.id,
-          name: nextName,
-        );
-      });
       return;
     }
 
@@ -852,167 +155,10 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    setState(() {
-      _timelineController.linkFrameForLayer(
-        layerId: currentLayer.id,
-        sourceFrameId: frame.id,
-        targetFrameId: conflictingFrameId,
-      );
-    });
+    _session.linkSelectedFrame(conflictingFrameId);
   }
 
-  void _deleteCellAtCurrentFrame() {
-    final layer = _activeLayer;
-    if (layer == null || !_canDeleteCellAtCurrentFrame) {
-      return;
-    }
-
-    _timelineController.deleteCellForLayer(layerId: layer.id);
-  }
-
-  bool _hasMarkForLayer(Layer layer, int frameIndex) {
-    return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
-  }
-
-  String? _frameNameForLayer(Layer layer, int frameIndex) {
-    return _timelineController
-        .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
-        ?.name;
-  }
-
-  TimelineCellExposureState _exposureStateForLayer(
-    Layer layer,
-    int frameIndex,
-  ) {
-    if (_timelineController.isDrawingStartForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.drawingStart;
-    }
-
-    if (_timelineController.isHeldExposureForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.heldExposure;
-    }
-
-    if (_timelineController.isBlankStartForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.blankStart;
-    }
-
-    if (_timelineController.isBlankHeldForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.blankHeld;
-    }
-
-    return TimelineCellExposureState.empty;
-  }
-
-  String get _currentLayerStatusText {
-    final layer = _activeLayer;
-    return 'Layer: ${layer?.name ?? 'None'}';
-  }
-
-  String get _currentFrameStatusText {
-    return 'Frame: ${_timelineController.currentFrameIndex + 1}';
-  }
-
-  String get _currentCellStatusText {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return 'Cell: No layer';
-    }
-
-    return 'Cell: ${_cellStatusLabelForLayer(layer)}';
-  }
-
-  String get _compactCellActionText {
-    final layer = _activeLayer;
-    if (layer == null) {
-      return 'No layer';
-    }
-
-    final frameIndex = _timelineController.currentFrameIndex;
-    final hasMark = _hasMarkForLayer(layer, frameIndex);
-    final exposureState = _exposureStateForLayer(layer, frameIndex);
-    final canPaste = _canPasteLinkedFrameAtCurrentFrame;
-
-    switch (exposureState) {
-      case TimelineCellExposureState.drawingStart:
-        return hasMark
-            ? 'Drawing + ●: Copy / Rename / Delete'
-            : 'Drawing: Copy / Rename / Delete';
-      case TimelineCellExposureState.heldExposure:
-        if (canPaste) {
-          return hasMark
-              ? 'Held + ●: Paste / Copy / Rename / Mark'
-              : 'Held: Paste / Copy / Rename';
-        }
-        return hasMark
-            ? 'Held + ●: Copy / Rename / Mark'
-            : 'Held: Copy / Rename';
-      case TimelineCellExposureState.blankStart:
-        if (canPaste) {
-          return hasMark
-              ? 'X + ●: Paste / New Frame / Mark'
-              : 'X: Paste / New Frame';
-        }
-        return hasMark ? 'X + ●: New Frame / Mark' : 'X: New Frame';
-      case TimelineCellExposureState.blankHeld:
-        if (canPaste) {
-          return hasMark
-              ? 'Blank held + ●: Paste / New Frame / Mark'
-              : 'Blank held: Paste / New Frame';
-        }
-        return hasMark
-            ? 'Blank held + ●: New Frame / Mark'
-            : 'Blank held: New Frame';
-      case TimelineCellExposureState.empty:
-        if (canPaste) {
-          return hasMark
-              ? 'Empty + ●: Paste / Mark'
-              : 'Empty: Paste / New Frame';
-        }
-        return hasMark ? 'Empty + ●: Mark' : 'Empty: New Frame';
-    }
-  }
-
-  String _cellStatusLabelForLayer(Layer layer) {
-    final frameIndex = _timelineController.currentFrameIndex;
-    final exposureState = _exposureStateForLayer(layer, frameIndex);
-    final baseLabel = switch (exposureState) {
-      TimelineCellExposureState.drawingStart => _drawingStartStatusForLayer(
-        layer,
-        frameIndex,
-      ),
-      TimelineCellExposureState.heldExposure => 'Held drawing',
-      TimelineCellExposureState.blankStart => 'Blank start (X)',
-      TimelineCellExposureState.blankHeld => 'Blank held',
-      TimelineCellExposureState.empty => 'Empty',
-    };
-
-    if (_hasMarkForLayer(layer, frameIndex)) {
-      return '$baseLabel + Mark ●';
-    }
-
-    return baseLabel;
-  }
-
-  String _drawingStartStatusForLayer(Layer layer, int frameIndex) {
-    final frameName = _frameNameForLayer(layer, frameIndex);
-    if (frameName == null || frameName.isEmpty) {
-      return 'Drawing start';
-    }
-
-    return 'Drawing start: $frameName';
-  }
+  // --- Timeline action toolbar -------------------------------------------
 
   Widget _timelineActionIconButton({
     required ValueKey<String> key,
@@ -1050,13 +196,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildTimelineActionToolbar(
-    BuildContext context, {
-    required Frame? selectedFrame,
-    required int? selectedEffectiveDuration,
-    required bool canDecreaseExposure,
-    required bool canIncreaseExposure,
-  }) {
+  Widget _buildTimelineActionToolbar(BuildContext context) {
+    final selectedFrame = _session.selectedFrame;
+    final selectedEffectiveDuration = _session.selectedEffectiveDuration;
     return DecoratedBox(
       key: const ValueKey<String>('timeline-action-toolbar'),
       decoration: BoxDecoration(
@@ -1074,12 +216,12 @@ class _HomePageState extends State<HomePage> {
               child: Row(
                 children: [
                   Text(
-                    _currentLayerStatusText,
+                    _session.currentLayerStatusText,
                     key: const ValueKey<String>('current-layer-status'),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    _activeLayerKindLabelText,
+                    _session.activeLayerKindLabelText,
                     key: const ValueKey<String>('active-layer-kind-label'),
                   ),
                   const SizedBox(width: 8),
@@ -1089,8 +231,8 @@ class _HomePageState extends State<HomePage> {
                     ),
                     tooltip: 'Toggle Storyboard Layer',
                     icon: Icons.auto_stories_outlined,
-                    onPressed: _canToggleTargetLayerKind
-                        ? () => setState(_toggleTargetLayerKind)
+                    onPressed: _session.canToggleTargetLayerKind
+                        ? _session.toggleTargetLayerKind
                         : null,
                   ),
                   const SizedBox(width: 8),
@@ -1098,38 +240,42 @@ class _HomePageState extends State<HomePage> {
                     key: const ValueKey<String>('rename-layer-button'),
                     tooltip: 'Rename Layer',
                     icon: Icons.drive_file_rename_outline,
-                    onPressed: _activeLayer == null ? null : _renameActiveLayer,
+                    onPressed: _session.activeLayer == null
+                        ? null
+                        : _renameActiveLayer,
                   ),
                   const SizedBox(width: 8),
                   _timelineActionIconButton(
                     key: const ValueKey<String>('duplicate-layer-button'),
                     tooltip: 'Duplicate Layer',
                     icon: Icons.copy_outlined,
-                    onPressed: _activeLayer == null
+                    onPressed: _session.activeLayer == null
                         ? null
-                        : _duplicateActiveLayer,
+                        : _session.duplicateActiveLayer,
                   ),
                   const SizedBox(width: 8),
                   _timelineActionIconButton(
                     key: const ValueKey<String>('copy-layer-button'),
                     tooltip: 'Copy Layer',
                     icon: Icons.content_copy,
-                    onPressed: _activeLayer == null ? null : _copyActiveLayer,
+                    onPressed: _session.activeLayer == null
+                        ? null
+                        : _session.copyActiveLayer,
                   ),
                   const SizedBox(width: 8),
                   _timelineActionIconButton(
                     key: const ValueKey<String>('paste-layer-button'),
                     tooltip: 'Paste Layer',
                     icon: Icons.content_paste,
-                    onPressed: _layerClipboard == null
-                        ? null
-                        : _pasteLayerFromClipboard,
+                    onPressed: _session.hasLayerClipboard
+                        ? _session.pasteLayerFromClipboard
+                        : null,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _layerClipboard == null
+                    _session.layerClipboardName == null
                         ? 'Layer Clipboard: empty'
-                        : 'Layer Clipboard: ${_layerClipboard!.name}',
+                        : 'Layer Clipboard: ${_session.layerClipboardName}',
                     key: const ValueKey<String>('layer-clipboard-status'),
                   ),
                   const SizedBox(width: 8),
@@ -1137,18 +283,18 @@ class _HomePageState extends State<HomePage> {
                     key: const ValueKey<String>('delete-layer-button'),
                     tooltip: 'Delete Layer',
                     icon: Icons.delete_outline,
-                    onPressed: _canDeleteActiveLayer
+                    onPressed: _session.canDeleteActiveLayer
                         ? _deleteActiveLayer
                         : null,
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    _currentFrameStatusText,
+                    _session.currentFrameStatusText,
                     key: const ValueKey<String>('current-frame-status'),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    _currentCellStatusText,
+                    _session.currentCellStatusText,
                     key: const ValueKey<String>('current-cell-status'),
                   ),
                   const SizedBox(width: 16),
@@ -1157,12 +303,12 @@ class _HomePageState extends State<HomePage> {
                   Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
                   const SizedBox(width: 16),
                   Text(
-                    _linkedFrameUsesStatusText,
+                    _session.linkedFrameUsesStatusText,
                     key: const ValueKey<String>('linked-frame-uses-status'),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    _copiedFrameStatusText,
+                    _session.copiedFrameStatusText,
                     key: const ValueKey<String>('copied-frame-status'),
                   ),
                 ],
@@ -1201,8 +347,8 @@ class _HomePageState extends State<HomePage> {
                             key: const ValueKey<String>('new-frame-button'),
                             tooltip: 'New Frame',
                             icon: Icons.add_box_outlined,
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_createDrawingAtCurrentFrame)
+                            onPressed: _session.hasActiveNonNegativeCell
+                                ? _session.createDrawingAtCurrentFrame
                                 : null,
                           ),
                           _timelineActionIconButton(
@@ -1211,16 +357,16 @@ class _HomePageState extends State<HomePage> {
                             ),
                             tooltip: 'Blank / X',
                             icon: Icons.close,
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_createBlankAtCurrentFrame)
+                            onPressed: _session.hasActiveNonNegativeCell
+                                ? _session.createBlankAtCurrentFrame
                                 : null,
                           ),
                           _timelineActionIconButton(
                             key: const ValueKey<String>('toggle-mark-button'),
                             tooltip: 'Mark ●',
                             icon: Icons.circle,
-                            onPressed: _hasActiveNonNegativeCell
-                                ? () => setState(_toggleMarkAtCurrentFrame)
+                            onPressed: _session.hasActiveNonNegativeCell
+                                ? _session.toggleMarkAtCurrentFrame
                                 : null,
                           ),
                         ],
@@ -1235,8 +381,8 @@ class _HomePageState extends State<HomePage> {
                             key: const ValueKey<String>('copy-frame-button'),
                             tooltip: 'Copy Frame',
                             icon: Icons.content_copy,
-                            onPressed: _canCopyFrameAtCurrentFrame
-                                ? () => setState(_copyFrameAtCurrentFrame)
+                            onPressed: _session.canCopyFrameAtCurrentFrame
+                                ? _session.copyFrameAtCurrentFrame
                                 : null,
                           ),
                           _timelineActionIconButton(
@@ -1245,9 +391,9 @@ class _HomePageState extends State<HomePage> {
                             ),
                             tooltip: 'Paste Linked Frame',
                             icon: Icons.link,
-                            onPressed: _canPasteLinkedFrameAtCurrentFrame
-                                ? () =>
-                                      setState(_pasteLinkedFrameAtCurrentFrame)
+                            onPressed:
+                                _session.canPasteLinkedFrameAtCurrentFrame
+                                ? _session.pasteLinkedFrameAtCurrentFrame
                                 : null,
                           ),
                         ],
@@ -1262,7 +408,7 @@ class _HomePageState extends State<HomePage> {
                             key: const ValueKey<String>('rename-frame-button'),
                             tooltip: 'Rename Frame',
                             icon: Icons.edit_outlined,
-                            onPressed: _canRenameFrameAtCurrentFrame
+                            onPressed: _session.canRenameFrameAtCurrentFrame
                                 ? _renameSelectedFrame
                                 : null,
                           ),
@@ -1270,8 +416,8 @@ class _HomePageState extends State<HomePage> {
                             key: const ValueKey<String>('delete-cell-button'),
                             tooltip: 'Delete Cell',
                             icon: Icons.delete_outline,
-                            onPressed: _canDeleteCellAtCurrentFrame
-                                ? () => setState(_deleteCellAtCurrentFrame)
+                            onPressed: _session.canDeleteCellAtCurrentFrame
+                                ? _session.deleteCellAtCurrentFrame
                                 : null,
                           ),
                         ],
@@ -1288,8 +434,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                             tooltip: 'Decrease Exposure',
                             icon: Icons.remove,
-                            onPressed: canDecreaseExposure
-                                ? () => setState(_decreaseSelectedExposure)
+                            onPressed: _session.canDecreaseSelectedExposure
+                                ? _session.decreaseSelectedExposure
                                 : null,
                           ),
                           _timelineActionIconButton(
@@ -1298,8 +444,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                             tooltip: 'Increase Exposure',
                             icon: Icons.add,
-                            onPressed: canIncreaseExposure
-                                ? () => setState(_increaseSelectedExposure)
+                            onPressed: _session.canIncreaseSelectedExposure
+                                ? _session.increaseSelectedExposure
                                 : null,
                           ),
                         ],
@@ -1311,7 +457,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 4),
             Text(
-              _compactCellActionText,
+              _session.compactCellActionText,
               key: const ValueKey<String>('cell-action-hint'),
             ),
           ],
@@ -1322,23 +468,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final activeLayer = _activeLayer;
-    final selectedFrame = _selectedFrame;
-    final selectedEffectiveDuration =
-        activeLayer == null || selectedFrame == null
-        ? null
-        : _timelineController.effectiveDurationForLayerAt(layer: activeLayer);
-    final canDecreaseExposure = activeLayer == null || selectedFrame == null
-        ? false
-        : _timelineController.canDecreaseExposure(layer: activeLayer);
-    final canIncreaseExposure = activeLayer == null || selectedFrame == null
-        ? false
-        : _timelineController.canIncreaseExposure(layer: activeLayer);
-    final cutEntries = cutListEntriesFor(
-      _repository.requireProject(),
-      activeCutId: _editingSession.activeCutId,
-    );
-
     return Scaffold(
       appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
       body: Column(
@@ -1356,34 +485,30 @@ class _HomePageState extends State<HomePage> {
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
                     CutListBar(
-                      entries: cutEntries,
-                      onCutSelected: _handleCutSelected,
-                      onNewCut: _createCutFromList,
-                      onRenameActiveCut: _renameActiveCutFromList,
-                      onEditActiveCutNote: _editActiveCutNoteFromList,
-                      onDuplicateActiveCut: _duplicateActiveCutFromList,
-                      onMoveActiveCutLeft: _canMoveActiveCutLeft
-                          ? _moveActiveCutLeftFromList
+                      entries: _session.cutListEntries,
+                      onCutSelected: _session.selectCut,
+                      onNewCut: _session.createCut,
+                      onRenameActiveCut: _renameActiveCut,
+                      onEditActiveCutNote: _editActiveCutNote,
+                      onDuplicateActiveCut: _session.duplicateActiveCut,
+                      onMoveActiveCutLeft: _session.canMoveActiveCutLeft
+                          ? _session.moveActiveCutLeft
                           : null,
-                      onMoveActiveCutRight: _canMoveActiveCutRight
-                          ? _moveActiveCutRightFromList
+                      onMoveActiveCutRight: _session.canMoveActiveCutRight
+                          ? _session.moveActiveCutRight
                           : null,
-                      onDeleteActiveCut: _deleteActiveCutFromList,
-                      onCutReordered: _reorderCutFromList,
+                      onDeleteActiveCut: _session.deleteActiveCut,
+                      onCutReordered: _session.reorderCut,
                     ),
                     const SizedBox(width: 16),
                     TextButton(
                       key: const ValueKey<String>('undo-button'),
-                      onPressed: _historyManager.canUndo
-                          ? _undoProjectHistory
-                          : null,
+                      onPressed: _session.canUndo ? _session.undo : null,
                       child: const Text('Undo'),
                     ),
                     TextButton(
                       key: const ValueKey<String>('redo-button'),
-                      onPressed: _historyManager.canRedo
-                          ? _redoProjectHistory
-                          : null,
+                      onPressed: _session.canRedo ? _session.redo : null,
                       child: const Text('Redo'),
                     ),
                   ],
@@ -1406,14 +531,14 @@ class _HomePageState extends State<HomePage> {
                           'main-canvas-brush-host-container',
                         ),
                         child: MainCanvasBrushHost(
-                          selection: _activeBrushEditorSelection,
-                          canvasSize: _activeCut.canvasSize,
-                          historyManager: _historyManager,
+                          selection: _session.activeBrushEditorSelection,
+                          canvasSize: _session.activeCut.canvasSize,
+                          historyManager: _session.historyManager,
                           viewport: _canvasViewport,
                           onViewportChanged: (viewport) {
                             setState(() => _canvasViewport = viewport);
                           },
-                          selectionLabels: _canvasSelectionLabels,
+                          selectionLabels: _session.canvasSelectionLabels,
                           brushToolState: _brushToolState,
                         ),
                       ),
@@ -1434,108 +559,34 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           StoryboardPanel(
-            project: _repository.requireProject(),
-            activeCutId: _editingSession.activeCutId,
-            onCutSelected: _handleCutSelected,
+            project: _session.repository.requireProject(),
+            activeCutId: _session.activeCutId,
+            onCutSelected: _session.selectCut,
           ),
           const SizedBox(height: 8),
           TimelinePanel(
-            layers: _layerController.layers,
-            activeLayerId: _layerController.activeLayerId,
-            currentFrameIndex: _timelineController.currentFrameIndex,
-            playbackFrameCount: _activeCutPlaybackFrameCount,
-            exposureStateForLayer: _exposureStateForLayer,
-            hasMarkForLayer: _hasMarkForLayer,
-            frameNameForLayer: _frameNameForLayer,
-            onSelectLayer: (layerId) {
-              setState(() => _layerController.selectLayer(layerId));
-            },
-            onSelectFrame: (frameIndex) {
-              setState(() => _timelineController.selectFrameIndex(frameIndex));
-            },
-            onAddLayer: () {
-              setState(() {
-                _layerSequence += 1;
-                _layerController.addLayerWithDefaults(
-                  layerId: defaultLayerIdForSequence(_layerSequence),
-                );
-              });
-            },
-            onToggleLayerVisibility: (layerId) {
-              setState(() {
-                _layerController.toggleLayerVisibility(layerId);
-              });
-            },
+            layers: _session.layers,
+            activeLayerId: _session.activeLayerId,
+            currentFrameIndex: _session.currentFrameIndex,
+            playbackFrameCount: _session.activeCutPlaybackFrameCount,
+            exposureStateForLayer: _session.exposureStateForLayer,
+            hasMarkForLayer: _session.hasMarkForLayer,
+            frameNameForLayer: _session.frameNameForLayer,
+            onSelectLayer: _session.selectLayer,
+            onSelectFrame: _session.selectFrameIndex,
+            onAddLayer: _session.addLayer,
+            onToggleLayerVisibility: _session.toggleLayerVisibility,
             onLayerOpacityChanged: (layerId, opacity) {
-              setState(() {
-                _layerController.setLayerOpacity(
-                  layerId: layerId,
-                  opacity: opacity,
-                );
-              });
+              _session.setLayerOpacity(layerId: layerId, opacity: opacity);
             },
             orientation: _timelineOrientation,
             onOrientationChanged: (orientation) {
               setState(() => _timelineOrientation = orientation);
             },
-            timelineActionToolbar: _buildTimelineActionToolbar(
-              context,
-              selectedFrame: selectedFrame,
-              selectedEffectiveDuration: selectedEffectiveDuration,
-              canDecreaseExposure: canDecreaseExposure,
-              canIncreaseExposure: canIncreaseExposure,
-            ),
+            timelineActionToolbar: _buildTimelineActionToolbar(context),
           ),
         ],
       ),
     );
   }
-
-  CanvasEditorSelectionLabels get _canvasSelectionLabels {
-    final project = _repository.requireProject();
-    final cut = _activeCut;
-    final layer = _layerController.activeLayer;
-    final frame = _selectedFrame;
-    return CanvasEditorSelectionLabels(
-      projectLabel: project.name,
-      cutLabel: cut.name,
-      layerLabel: layer?.name ?? '-',
-      frameLabel: _currentFrameDisplayLabel(layer, frame),
-    );
-  }
-
-  String _currentFrameDisplayLabel(Layer? layer, Frame? frame) {
-    if (layer == null) {
-      return '-';
-    }
-    final frameIndex = _timelineController.currentFrameIndex;
-    final frameName = frame?.name;
-    final exposureState = _exposureStateForLayer(layer, frameIndex);
-    final hasMark = _hasMarkForLayer(layer, frameIndex);
-    final baseLabel = switch (exposureState) {
-      TimelineCellExposureState.drawingStart =>
-        frameName == null || frameName.isEmpty ? '○' : frameName,
-      TimelineCellExposureState.heldExposure =>
-        frameName == null || frameName.isEmpty ? '' : frameName,
-      TimelineCellExposureState.blankStart => 'X',
-      TimelineCellExposureState.blankHeld => '',
-      TimelineCellExposureState.empty => '-',
-    };
-    if (!hasMark) {
-      return baseLabel;
-    }
-    return baseLabel.isEmpty ? '●' : '$baseLabel ●';
-  }
-}
-
-class _CopiedFrameReference {
-  const _CopiedFrameReference({
-    required this.layerId,
-    required this.frameId,
-    required this.frameName,
-  });
-
-  final LayerId layerId;
-  final FrameId frameId;
-  final String? frameName;
 }
