@@ -747,7 +747,9 @@ InteractiveBrushEditCanvasView _view(
     inputSettings: inputSettings,
     viewport: viewport,
     onViewportChanged: onViewportChanged,
-    onSourceStrokeCommitted: onResult,
+    // Tests observe the committed source dabs; the exact pre-rasterized
+    // stroke pixels travel alongside them in the commit data.
+    onSourceStrokeCommitted: (strokeData) => onResult(strokeData.sourceDabs),
   );
 }
 

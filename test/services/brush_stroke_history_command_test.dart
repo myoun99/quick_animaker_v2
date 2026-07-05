@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
 import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 
@@ -24,7 +25,7 @@ void main() {
     history.execute(
       BrushStrokeHistoryCommand(
         coordinator: coordinator,
-        sourceDabs: [_dab(0), _dab(1)],
+        strokeData: BrushStrokeCommitData(sourceDabs: [_dab(0), _dab(1)]),
       ),
     );
 

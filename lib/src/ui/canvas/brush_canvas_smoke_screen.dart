@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_dab.dart';
+import '../../services/brush_stroke_commit_data.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
@@ -183,9 +183,13 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   String _colorHex(int color) =>
       '0x${color.toUnsigned(32).toRadixString(16).padLeft(8, '0').toUpperCase()}';
 
-  void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
+  void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     setState(() {
-      _coordinator.commitSourceStroke(sourceDabs: sourceDabs);
+      _coordinator.commitSourceStroke(
+        sourceDabs: strokeData.sourceDabs,
+        prerasterizedStrokePixels: strokeData.strokePixels,
+        prerasterizedStrokeBounds: strokeData.strokeBounds,
+      );
       _sessionRevision += 1;
       _debugOperation = 'commit';
     });

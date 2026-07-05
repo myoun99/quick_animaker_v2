@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/dirty_region.dart';
 import '../models/brush_edit_session_state.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
@@ -63,6 +66,8 @@ class BrushFrameEditingCoordinator {
   BrushPaintCommand? commitSourceStroke({
     required List<BrushDab> sourceDabs,
     CacheInvalidationSink? cacheInvalidationSink,
+    Uint8List? prerasterizedStrokePixels,
+    DirtyRegion? prerasterizedStrokeBounds,
   }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
@@ -76,6 +81,8 @@ class BrushFrameEditingCoordinator {
           frameId: _activeFrameKey.frameId,
           cacheInvalidationSink:
               cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+          prerasterizedStrokePixels: prerasterizedStrokePixels,
+          prerasterizedStrokeBounds: prerasterizedStrokeBounds,
         );
     sessionStore.update(_activeFrameKey, result.sessionState);
     final affectedEntry = result.affectedEntry;

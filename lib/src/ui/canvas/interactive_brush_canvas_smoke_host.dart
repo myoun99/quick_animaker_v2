@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_dab.dart';
+import '../../services/brush_stroke_commit_data.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -37,7 +37,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
     int tileSize = 16,
     Object? sessionResetToken,
     bool showTransparentBackground = true,
-    ValueChanged<List<BrushDab>>? onSourceStrokeCommitted,
+    ValueChanged<BrushStrokeCommitData>? onSourceStrokeCommitted,
   }) {
     final resolvedCanvasSize = canvasSize ?? CanvasSize(width: 64, height: 64);
     final sessionStore = BrushFrameEditSessionStore(
@@ -70,7 +70,7 @@ class InteractiveBrushCanvasSmokeHost extends StatefulWidget {
   final FrameId frameId;
   final BrushEditCanvasInputSettings inputSettings;
   final CacheInvalidationSink cacheInvalidationSink;
-  final ValueChanged<List<BrushDab>>? onSourceStrokeCommitted;
+  final ValueChanged<BrushStrokeCommitData>? onSourceStrokeCommitted;
   final Object? sessionResetToken;
   final bool showTransparentBackground;
 

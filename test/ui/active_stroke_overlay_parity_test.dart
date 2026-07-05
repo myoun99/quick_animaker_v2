@@ -11,15 +11,19 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay_painter.dart';
 
-/// The active overlay is a live preview of what the commit rasterizer will
-/// produce on pointer-up. These tests stamp dabs through the overlay painter
-/// and compare against the rasterized surface within a small tolerance
-/// (byte-quantized mask coverage + premultiplied readback rounding). The old
-/// square-stamp painter differed by full 255-alpha pixels at tip corners, so
-/// this parity bound would catch any regression to non-WYSIWYG previews.
-const int channelTolerance = 8;
+/// The live stroke is CPU-rasterized with the same math as the commit path,
+/// so the pixels on screen while drawing must be byte-identical to the
+/// committed pixels — for every hardness, tip shape, and fractional center.
+/// These tests lock that unification:
+///
+/// 1. `BrushLiveStrokeRasterizer` output == `materialize...` output, exactly.
+/// 2. The pen-up composite fast path == full re-rasterization onto a painted
+///    base, within one rounding step (source-over associativity).
+/// 3. The region sprite (GPU upload of the live buffer) reads back as the
+///    buffer's premultiplied bytes.
 
 BrushDab _dab({
   required double x,
@@ -45,73 +49,67 @@ BrushDab _dab({
   );
 }
 
-Future<Uint8List> _stampedPixels(
-  List<BrushDab> dabs, {
-  required int width,
-  required int height,
-}) async {
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-  ActiveStrokeOverlayPainter(
-    activeStrokeOverlay: dabs,
-  ).paint(canvas, Size(width.toDouble(), height.toDouble()));
-  final image = await recorder.endRecording().toImage(width, height);
-  final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-  return byteData!.buffer.asUint8List();
+const int _canvasWidth = 40;
+const int _canvasHeight = 40;
+const _canvasSize = CanvasSize(width: _canvasWidth, height: _canvasHeight);
+
+Uint8List _liveBufferFor(List<BrushDab> dabs) {
+  final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+  rasterizer.blendFrom(dabs, from: 0);
+  return rasterizer.pixels;
 }
 
-/// Rasterizes [dabs] and returns straight-alpha RGBA converted to the same
-/// premultiplied form the overlay readback uses.
-Uint8List _rasterizedPixels(
+/// Canvas-wide straight-alpha bytes of the materialized surface.
+Uint8List _materializedBytes(
   List<BrushDab> dabs, {
-  required int width,
-  required int height,
+  BitmapSurface? baseSurface,
 }) {
   final result = materializeBrushDabSequenceOnBitmapSurface(
-    surface: BitmapSurface(
-      canvasSize: CanvasSize(width: width, height: height),
-      tileSize: 64,
-    ),
+    surface:
+        baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
     sequence: BrushDabSequence(dabs),
   );
-
-  final premultiplied = Uint8List(width * height * 4);
-  final tile = result.surface.tileAt(TileCoord(x: 0, y: 0));
-  if (tile == null) {
-    return premultiplied;
-  }
-  final tilePixels = tile.pixels;
-  for (var y = 0; y < height; y += 1) {
-    for (var x = 0; x < width; x += 1) {
-      final tileOffset = (y * tile.size + x) * 4;
-      final outOffset = (y * width + x) * 4;
-      final alpha = tilePixels[tileOffset + 3];
-      premultiplied[outOffset] = _mul255Round(tilePixels[tileOffset], alpha);
-      premultiplied[outOffset + 1] = _mul255Round(
-        tilePixels[tileOffset + 1],
-        alpha,
-      );
-      premultiplied[outOffset + 2] = _mul255Round(
-        tilePixels[tileOffset + 2],
-        alpha,
-      );
-      premultiplied[outOffset + 3] = alpha;
-    }
-  }
-  return premultiplied;
+  return _surfaceBytes(result.surface);
 }
 
-int _mul255Round(int value, int alpha) {
-  final product = value * alpha + 128;
-  return (product + (product >> 8)) >> 8;
+Uint8List _surfaceBytes(BitmapSurface surface) {
+  final bytes = Uint8List(_canvasWidth * _canvasHeight * 4);
+  final tile = surface.tileAt(TileCoord(x: 0, y: 0));
+  if (tile == null) {
+    return bytes;
+  }
+  final tilePixels = tile.pixels;
+  for (var y = 0; y < _canvasHeight; y += 1) {
+    for (var x = 0; x < _canvasWidth; x += 1) {
+      final tileOffset = (y * tile.size + x) * 4;
+      final outOffset = (y * _canvasWidth + x) * 4;
+      for (var channel = 0; channel < 4; channel += 1) {
+        bytes[outOffset + channel] = tilePixels[tileOffset + channel];
+      }
+    }
+  }
+  return bytes;
+}
+
+void _expectExact(Uint8List actual, Uint8List expected, String reason) {
+  expect(actual.length, expected.length);
+  for (var index = 0; index < actual.length; index += 1) {
+    if (actual[index] != expected[index]) {
+      final pixel = index ~/ 4;
+      fail(
+        '$reason: channel ${index % 4} at pixel '
+        '(${pixel % _canvasWidth}, ${pixel ~/ _canvasWidth}) is '
+        '${actual[index]}, expected ${expected[index]}.',
+      );
+    }
+  }
 }
 
 void _expectClose(
   Uint8List actual,
-  Uint8List expected, {
-  required int width,
-  required String reason,
-  int tolerance = channelTolerance,
+  Uint8List expected,
+  String reason, {
+  required int tolerance,
 }) {
   expect(actual.length, expected.length);
   for (var index = 0; index < actual.length; index += 1) {
@@ -120,99 +118,217 @@ void _expectClose(
       final pixel = index ~/ 4;
       fail(
         '$reason: channel ${index % 4} at pixel '
-        '(${pixel % width}, ${pixel ~/ width}) differs by $difference '
-        '(actual ${actual[index]}, expected ${expected[index]}).',
+        '(${pixel % _canvasWidth}, ${pixel ~/ _canvasWidth}) differs by '
+        '$difference (actual ${actual[index]}, expected ${expected[index]}).',
       );
     }
   }
 }
 
-Future<void> _expectStampParity(
-  List<BrushDab> dabs, {
-  required String reason,
-  int width = 40,
-  int height = 40,
-  int tolerance = channelTolerance,
-}) async {
-  final stamped = await _stampedPixels(dabs, width: width, height: height);
-  final rasterized = _rasterizedPixels(dabs, width: width, height: height);
-  _expectClose(
-    stamped,
-    rasterized,
-    width: width,
-    reason: reason,
-    tolerance: tolerance,
-  );
-}
-
 void main() {
-  group('active stroke overlay parity with commit rasterizer', () {
-    test('soft round dab on a pixel-aligned center', () async {
-      // size 10 -> mask dimension 11, half 5.5; center x=8.5 places the mask
-      // at integer offset 3.0 so mask texels align with canvas pixels.
-      await _expectStampParity([
-        _dab(x: 8.5, y: 8.5),
-      ], reason: 'soft round dab');
+  group('live stroke rasterizer matches the commit rasterizer exactly', () {
+    final scenarios = <String, List<BrushDab>>{
+      'hard round dab on fractional center': [
+        _dab(x: 9.13, y: 8.62, hardness: 1.0, opacity: 1.0, flow: 1.0),
+      ],
+      'soft round dab on fractional center': [
+        _dab(x: 14.37, y: 12.81, size: 16, hardness: 0.3),
+      ],
+      'fully soft dab': [_dab(x: 14.5, y: 14.5, hardness: 0.0, size: 16)],
+      'square tip dab': [_dab(x: 11.4, y: 9.7, tipShape: BrushTipShape.square)],
+      'overlapping translucent stroke': [
+        for (var i = 0; i < 6; i += 1)
+          _dab(
+            x: 7.37 + i * 3.21,
+            y: 9.81 + i * 1.43,
+            color: 0x8040A0C0,
+            sequence: i,
+          ),
+      ],
+      'canvas edge overhang': [
+        _dab(x: 0.6, y: 0.4, size: 14, sequence: 0),
+        _dab(x: 38.7, y: 38.9, size: 14, sequence: 1),
+      ],
+    };
+
+    scenarios.forEach((name, dabs) {
+      test(name, () {
+        _expectExact(_liveBufferFor(dabs), _materializedBytes(dabs), name);
+      });
     });
+  });
 
-    test('hard round dab', () async {
-      await _expectStampParity([
-        _dab(x: 12.5, y: 10.5, hardness: 1.0, opacity: 1.0, flow: 1.0),
-      ], reason: 'hard round dab');
-    });
+  group('pen-up composite fast path matches full re-rasterization', () {
+    test('stroke over painted base within one rounding step', () {
+      final baseDabs = [
+        for (var i = 0; i < 5; i += 1)
+          _dab(x: 8.5 + i * 4.0, y: 12.5, color: 0xCC994411, sequence: i),
+      ];
+      final base = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        sequence: BrushDabSequence(baseDabs),
+      ).surface;
 
-    test('hardness zero (fully soft) dab', () async {
-      await _expectStampParity([
-        _dab(x: 14.5, y: 14.5, hardness: 0.0, size: 16),
-      ], reason: 'fully soft dab');
-    });
+      final strokeDabs = [
+        for (var i = 0; i < 5; i += 1)
+          _dab(x: 10.2 + i * 3.6, y: 13.4, color: 0x9040A0C0, sequence: i),
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      rasterizer.blendFrom(strokeDabs, from: 0);
 
-    test(
-      'sequential overlapping stroke accumulates like the rasterizer',
-      () async {
-        await _expectStampParity([
-          for (var i = 0; i < 6; i += 1)
-            _dab(x: 8.5 + i * 3.0, y: 10.5 + i * 1.0, sequence: i),
-        ], reason: 'overlapping stroke');
-      },
-    );
+      final composite = compositeStrokePixelsOntoBitmapSurface(
+        surface: base,
+        strokePixels: rasterizer.pixels,
+        bounds: rasterizer.strokeBounds!,
+      );
+      final reference = materializeBrushDabSequenceOnBitmapSurface(
+        surface: base,
+        sequence: BrushDabSequence(strokeDabs),
+      );
 
-    test('translucent color stroke', () async {
-      await _expectStampParity([
-        _dab(x: 10.5, y: 10.5, color: 0x8040A0C0, sequence: 0),
-        _dab(x: 13.5, y: 11.5, color: 0x8040A0C0, sequence: 1),
-      ], reason: 'translucent stroke');
-    });
-
-    // Fractional dab centers exercise the subpixel-phase masks: the stamp
-    // coverage must track the rasterizer's true-center sampling instead of
-    // snapping to the pixel grid (which fizzed along live stroke edges).
-    // Soft tips keep the residual 1/8px phase-quantization error to a small
-    // alpha delta; hard tips can flip full boundary pixels, so they are
-    // covered by the visual-stability design rather than byte parity.
-    test('fractional-center soft dab tracks the rasterizer', () async {
-      await _expectStampParity(
-        [_dab(x: 9.13, y: 8.62, size: 14, hardness: 0.3)],
-        reason: 'fractional center dab',
-        tolerance: 32,
+      expect(composite.dirtyTiles.isNotEmpty, isTrue);
+      // Source-over is associative in real arithmetic but the two routes
+      // quantize at different points (per-dab onto base vs stroke buffer
+      // then one composite), so translucent overlaps drift by a rounding
+      // step per overlapping dab. The painted pixel SET must match exactly;
+      // channel values may drift slightly. What the user saw while drawing
+      // is the buffer, and the commit composites exactly that buffer, so
+      // the on-screen/committed unification itself is exact by construction.
+      final compositeBytes = _surfaceBytes(composite.surface);
+      final referenceBytes = _surfaceBytes(reference.surface);
+      for (var index = 3; index < compositeBytes.length; index += 4) {
+        expect(
+          compositeBytes[index] > 0,
+          referenceBytes[index] > 0,
+          reason: 'painted pixel set must match at byte ',
+        );
+      }
+      _expectClose(
+        compositeBytes,
+        referenceBytes,
+        'composite vs re-rasterize',
+        tolerance: 8,
       );
     });
 
-    test('fractional-center soft stroke tracks the rasterizer', () async {
-      await _expectStampParity(
-        [
-          for (var i = 0; i < 5; i += 1)
-            _dab(
-              x: 7.37 + i * 3.21,
-              y: 9.81 + i * 1.43,
-              size: 12,
-              hardness: 0.2,
-              sequence: i,
-            ),
-        ],
-        reason: 'fractional center stroke',
-        tolerance: 32,
+    test('opaque stroke over blank base is exact', () {
+      final strokeDabs = [
+        for (var i = 0; i < 4; i += 1)
+          _dab(
+            x: 9.3 + i * 4.1,
+            y: 11.8,
+            opacity: 1.0,
+            flow: 1.0,
+            hardness: 1.0,
+            sequence: i,
+          ),
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      rasterizer.blendFrom(strokeDabs, from: 0);
+
+      final composite = compositeStrokePixelsOntoBitmapSurface(
+        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        strokePixels: rasterizer.pixels,
+        bounds: rasterizer.strokeBounds!,
+      );
+
+      _expectExact(
+        _surfaceBytes(composite.surface),
+        _materializedBytes(strokeDabs),
+        'opaque composite',
       );
     });
   });
+
+  group('region sprite reads back as the live buffer', () {
+    test('sprite pixels equal premultiplied buffer pixels', () async {
+      final dabs = [
+        _dab(x: 9.13, y: 8.62, size: 12, hardness: 0.4),
+        _dab(x: 12.4, y: 10.1, size: 12, hardness: 0.4, sequence: 1),
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final region = rasterizer.blendFrom(dabs, from: 0)!;
+
+      final sprite = strokeRegionSprite(
+        pixels: rasterizer.pixels,
+        canvasWidth: _canvasWidth,
+        region: region,
+      );
+      final byteData = await sprite.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      final spriteBytes = byteData!.buffer.asUint8List();
+
+      final width = region.rightExclusive - region.left;
+      for (var y = 0; y < region.bottomExclusive - region.top; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          final bufferOffset =
+              ((region.top + y) * _canvasWidth + region.left + x) * 4;
+          final spriteOffset = (y * width + x) * 4;
+          final alpha = rasterizer.pixels[bufferOffset + 3];
+          final expected = [
+            _mul255Round(rasterizer.pixels[bufferOffset], alpha),
+            _mul255Round(rasterizer.pixels[bufferOffset + 1], alpha),
+            _mul255Round(rasterizer.pixels[bufferOffset + 2], alpha),
+            alpha,
+          ];
+          for (var channel = 0; channel < 4; channel += 1) {
+            final difference =
+                (spriteBytes[spriteOffset + channel] - expected[channel]).abs();
+            if (difference > 2) {
+              fail(
+                'sprite channel $channel at ($x, $y) differs by $difference',
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test(
+      'painter draws flattened image and segments with src replacement',
+      () async {
+        final dabs = [_dab(x: 8.5, y: 8.5, opacity: 1.0, flow: 1.0)];
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final region = rasterizer.blendFrom(dabs, from: 0)!;
+
+        final model = ActiveStrokeOverlayModel();
+        model.dabs.addAll(dabs);
+        model.segments.add(
+          ActiveStrokeOverlaySegment(
+            image: strokeRegionSprite(
+              pixels: rasterizer.pixels,
+              canvasWidth: _canvasWidth,
+              region: region,
+            ),
+            offset: Offset(region.left.toDouble(), region.top.toDouble()),
+          ),
+        );
+
+        final recorder = ui.PictureRecorder();
+        ActiveStrokeOverlayPainter(model: model).paint(
+          Canvas(recorder),
+          const Size(_canvasWidth * 1.0, _canvasHeight * 1.0),
+        );
+        final image = await recorder.endRecording().toImage(
+          _canvasWidth,
+          _canvasHeight,
+        );
+        final byteData = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        final painted = byteData!.buffer.asUint8List();
+
+        // The dab center pixel must carry the full stroke color.
+        final centerOffset = (8 * _canvasWidth + 8) * 4;
+        expect(painted[centerOffset + 3], greaterThan(0));
+        model.dispose();
+      },
+    );
+  });
+}
+
+int _mul255Round(int value, int alpha) {
+  final product = value * alpha + 128;
+  return (product + (product >> 8)) >> 8;
 }

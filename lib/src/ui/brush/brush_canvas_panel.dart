@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_dab.dart';
+import '../../services/brush_stroke_commit_data.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -204,20 +204,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     _setViewport(CanvasViewport());
   }
 
-  void _handleSourceStrokeCommitted(List<BrushDab> sourceDabs) {
+  void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
         widget.coordinator.commitSourceStroke(
-          sourceDabs: sourceDabs,
+          sourceDabs: strokeData.sourceDabs,
           cacheInvalidationSink: widget.cacheInvalidationSink,
+          prerasterizedStrokePixels: strokeData.strokePixels,
+          prerasterizedStrokeBounds: strokeData.strokeBounds,
         );
         return;
       }
       historyManager.execute(
         BrushStrokeHistoryCommand(
           coordinator: widget.coordinator,
-          sourceDabs: sourceDabs,
+          strokeData: strokeData,
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),
       );

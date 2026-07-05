@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import '../models/brush_dab_sequence.dart';
+import '../models/dirty_region.dart';
 import '../models/brush_bitmap_materialization_history_state.dart';
 import '../models/brush_edit_session_commit_result.dart';
 import '../models/canvas_surface_state.dart';
@@ -15,12 +18,16 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   required BrushDabSequence sequence,
   required LayerId layerId,
   required FrameId frameId,
+  Uint8List? prerasterizedStrokePixels,
+  DirtyRegion? prerasterizedStrokeBounds,
 }) {
   final edit = brushSurfaceEditForBrushDabSequenceOnBitmapSurface(
     surface: canvasState.currentSurface,
     sequence: sequence,
     layerId: layerId,
     frameId: frameId,
+    prerasterizedStrokePixels: prerasterizedStrokePixels,
+    prerasterizedStrokeBounds: prerasterizedStrokeBounds,
   );
   final updatedCanvasState = applyBrushSurfaceEditToCanvasSurfaceState(
     state: canvasState,
