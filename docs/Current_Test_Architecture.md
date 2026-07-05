@@ -75,9 +75,10 @@ Examples of allowed forbidden checks include:
 - `Provider`
 - `Riverpod`
 - `Bloc`
-- `ChangeNotifier`
 
 Even forbidden checks should be scoped to relevant files or boundaries.
+
+Do not add a blanket `ChangeNotifier` forbidden-string check: lightweight, editor-local `ChangeNotifier` / `ValueNotifier` use (such as `EditorSessionManager`) is allowed. Only the heavy third-party packages above and app-wide state-management style remain banned.
 
 ## Brush test policy
 
@@ -111,6 +112,6 @@ Architecture guard tests should protect stable boundaries:
 - app-level global undo/redo remains the user-facing brush undo path
 - `TileDelta` / `TileDeltaCommand` stay out of brush runtime, undo/redo, active display, and cache-invalidation boundaries
 - active editing remains source-dab based rather than preview-cache based
-- app-wide Provider/Riverpod/Bloc/ChangeNotifier style state management is not introduced without an explicit architecture phase
+- app-wide Provider/Riverpod/Bloc style state management is not introduced without an explicit architecture phase (lightweight editor-local `ChangeNotifier` / `ValueNotifier`, such as `EditorSessionManager`, is allowed and not treated as banned)
 
 Architecture guard tests should not freeze temporary implementation names. Prefer narrow forbidden-string checks only for legacy paths that must not return, such as active drawPath brush display, active preview-cache editor bases, and tile-delta brush boundaries.
