@@ -438,18 +438,21 @@ void main() {
       expect(results, isEmpty);
     });
 
-    testWidgets('clips the drawing canvas display to Cut canvas size', (
+    testWidgets('clips the drawing canvas display to the viewport', (
       tester,
     ) async {
+      // The Cut-canvas-rect clipping now happens inside the composite
+      // painter (canvas.clipRect in canvas space); the widget tree clips
+      // the whole editor display to the viewport bounds.
       await tester.pumpWidget(_app(_view(_sessionState(), (_) {})));
 
       final clipFinder = find.byKey(
-        const ValueKey<String>('brush-edit-canvas-cut-size-clip'),
+        const ValueKey<String>('interactive-brush-edit-canvas-clip'),
       );
 
       expect(clipFinder, findsOneWidget);
       expect(
-        find.ancestor(
+        find.descendant(
           of: clipFinder,
           matching: find.byType(BrushEditCanvasView),
         ),
