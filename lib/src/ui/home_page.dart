@@ -30,6 +30,11 @@ import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_tool_state.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
+import 'dialogs/delete_layer_dialog.dart';
+import 'dialogs/frame_name_conflict_dialog.dart';
+import 'dialogs/rename_cut_dialog.dart';
+import 'dialogs/rename_frame_dialog.dart';
+import 'dialogs/rename_layer_dialog.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_orientation.dart';
@@ -319,7 +324,7 @@ class _HomePageState extends State<HomePage> {
     final activeCutId = _editingSession.activeCutId;
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameCutDialog(initialName: _activeCut.name),
+      builder: (context) => RenameCutDialog(initialName: _activeCut.name),
     );
     if (!mounted || nextName == null || nextName.trim().isEmpty) {
       return;
@@ -509,7 +514,7 @@ class _HomePageState extends State<HomePage> {
 
     final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (context) => _DeleteLayerDialog(layerName: activeLayer.name),
+      builder: (context) => DeleteLayerDialog(layerName: activeLayer.name),
     );
     if (!mounted || shouldDelete != true) {
       return;
@@ -539,7 +544,7 @@ class _HomePageState extends State<HomePage> {
     final activeLayerId = activeLayer.id;
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameLayerDialog(initialName: activeLayer.name),
+      builder: (context) => RenameLayerDialog(initialName: activeLayer.name),
     );
     if (!mounted || nextName == null) {
       return;
@@ -812,7 +817,7 @@ class _HomePageState extends State<HomePage> {
 
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameFrameDialog(initialName: frame.name ?? ''),
+      builder: (context) => RenameFrameDialog(initialName: frame.name ?? ''),
     );
     if (!mounted || nextName == null) {
       return;
@@ -841,7 +846,7 @@ class _HomePageState extends State<HomePage> {
 
     final shouldLink = await showDialog<bool>(
       context: context,
-      builder: (context) => const _FrameNameConflictDialog(),
+      builder: (context) => const FrameNameConflictDialog(),
     );
     if (!mounted || shouldLink != true) {
       return;
@@ -1523,152 +1528,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _DeleteLayerDialog extends StatelessWidget {
-  const _DeleteLayerDialog({required this.layerName});
-
-  final String layerName;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('delete-layer-dialog'),
-      title: const Text('Delete Layer'),
-      content: Text('Delete layer "$layerName"?'),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('delete-layer-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('delete-layer-confirm-button'),
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Delete'),
-        ),
-      ],
-    );
-  }
-}
-
-class _RenameLayerDialog extends StatefulWidget {
-  const _RenameLayerDialog({required this.initialName});
-  final String initialName;
-
-  @override
-  State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
-}
-
-class _RenameLayerDialogState extends State<_RenameLayerDialog> {
-  late final TextEditingController _textController;
-  String? _errorText;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final trimmedName = _textController.text.trim();
-    if (trimmedName.isEmpty) {
-      setState(() => _errorText = 'Layer name cannot be empty.');
-      return;
-    }
-    Navigator.of(context).pop(trimmedName);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('rename-layer-dialog'),
-      title: const Text('Rename Layer'),
-      content: TextField(
-        key: const ValueKey<String>('rename-layer-text-field'),
-        controller: _textController,
-        autofocus: true,
-        decoration: InputDecoration(
-          labelText: 'Layer name',
-          errorText: _errorText,
-        ),
-        onChanged: (_) {
-          if (_errorText != null) {
-            setState(() => _errorText = null);
-          }
-        },
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('rename-layer-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('rename-layer-ok-button'),
-          onPressed: _submit,
-          child: const Text('OK'),
-        ),
-      ],
-    );
-  }
-}
-
-class _RenameCutDialog extends StatefulWidget {
-  const _RenameCutDialog({required this.initialName});
-
-  final String initialName;
-
-  @override
-  State<_RenameCutDialog> createState() => _RenameCutDialogState();
-}
-
-class _RenameCutDialogState extends State<_RenameCutDialog> {
-  late final TextEditingController _textController;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename Cut'),
-      content: TextField(
-        key: const ValueKey<String>('rename-cut-text-field'),
-        controller: _textController,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Cut name'),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('rename-cut-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('rename-cut-confirm-button'),
-          onPressed: () => Navigator.of(context).pop(_textController.text),
-          child: const Text('Rename'),
-        ),
-      ],
-    );
-  }
-}
-
 class _CopiedFrameReference {
   const _CopiedFrameReference({
     required this.layerId,
@@ -1679,82 +1538,4 @@ class _CopiedFrameReference {
   final LayerId layerId;
   final FrameId frameId;
   final String? frameName;
-}
-
-class _FrameNameConflictDialog extends StatelessWidget {
-  const _FrameNameConflictDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('frame-name-conflict-dialog'),
-      title: const Text('Frame name already exists'),
-      content: const Text(
-        'This name is already used by another frame in this layer. Link to '
-        'the existing named frame so the same name shares the same material?',
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('frame-name-conflict-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('frame-name-conflict-link-button'),
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Link'),
-        ),
-      ],
-    );
-  }
-}
-
-class _RenameFrameDialog extends StatefulWidget {
-  const _RenameFrameDialog({required this.initialName});
-
-  final String initialName;
-
-  @override
-  State<_RenameFrameDialog> createState() => _RenameFrameDialogState();
-}
-
-class _RenameFrameDialogState extends State<_RenameFrameDialog> {
-  late final TextEditingController _textController;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename Frame'),
-      content: TextField(
-        key: const ValueKey<String>('rename-frame-text-field'),
-        controller: _textController,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Frame name'),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('rename-frame-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('rename-frame-ok-button'),
-          onPressed: () => Navigator.of(context).pop(_textController.text),
-          child: const Text('OK'),
-        ),
-      ],
-    );
-  }
 }
