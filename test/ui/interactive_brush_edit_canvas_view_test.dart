@@ -634,6 +634,40 @@ void main() {
       }
     });
 
+    testWidgets(
+      'mouse strokes paint at full pressure even with the size toggle on',
+      (tester) async {
+        // Regression: a mouse claims a 0..1 pressure range on some platforms
+        // while always reporting pressure 0.0, which scaled every dab to
+        // size zero — enabling pen pressure made the mouse stop drawing.
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(
+                size: 8,
+                pressureSize: true,
+                pressureOpacity: true,
+              ),
+            ),
+          ),
+        );
+
+        await _pressureStroke(
+          tester,
+          canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+          pressure: 0.0,
+          kind: PointerDeviceKind.mouse,
+        );
+
+        expect(results, hasLength(1));
+        expect(results.single.map((dab) => dab.size).toSet(), {8.0});
+        expect(results.single.map((dab) => dab.opacity).toSet(), {1.0});
+      },
+    );
+
     testWidgets('pen pressure is ignored when the size toggle is off', (
       tester,
     ) async {
@@ -855,13 +889,16 @@ Widget _app(Widget child) {
 
 /// Drives a stroke through raw pointer events carrying a specific pressure
 /// (test gestures cannot set pressure). [downPressure] defaults to
-/// [pressure] so a flat-pressure stroke needs only one value.
+/// [pressure] so a flat-pressure stroke needs only one value. Defaults to a
+/// stylus: only stylus devices are trusted for pressure — a mouse claims a
+/// 0..1 pressure range on some platforms while always reporting 0.0.
 Future<void> _pressureStroke(
   WidgetTester tester, {
   required List<Offset> canvasPoints,
   required double pressure,
   double? downPressure,
   int pointer = 1,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
 }) async {
   final globals = [
     for (final point in canvasPoints) canvasGlobalOffset(tester, point),
@@ -869,6 +906,7 @@ Future<void> _pressureStroke(
   tester.binding.handlePointerEvent(
     PointerDownEvent(
       pointer: pointer,
+      kind: kind,
       position: globals.first,
       pressure: downPressure ?? pressure,
       pressureMin: 0,
@@ -880,6 +918,7 @@ Future<void> _pressureStroke(
     tester.binding.handlePointerEvent(
       PointerMoveEvent(
         pointer: pointer,
+        kind: kind,
         position: global,
         pressure: pressure,
         pressureMin: 0,
@@ -891,6 +930,7 @@ Future<void> _pressureStroke(
   tester.binding.handlePointerEvent(
     PointerUpEvent(
       pointer: pointer,
+      kind: kind,
       position: globals.last,
       pressure: 0,
       pressureMin: 0,

@@ -395,9 +395,17 @@ class _InteractiveBrushEditCanvasViewState
     ];
   }
 
-  /// Normalizes a pointer's pressure into 0..1. A zero or non-finite range
-  /// (mouse and other devices without pressure) maps to full pressure.
+  /// Normalizes a pointer's pressure into 0..1.
+  ///
+  /// Only stylus devices report meaningful pressure. A mouse claims a 0..1
+  /// pressure range on some platforms while always reporting 0.0 — trusting
+  /// it made pressure-sized strokes invisible — and touch pressure is
+  /// unreliable across devices, so both paint at full pressure.
   double _normalizedPressure(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.stylus &&
+        event.kind != PointerDeviceKind.invertedStylus) {
+      return 1.0;
+    }
     final range = event.pressureMax - event.pressureMin;
     if (!range.isFinite || range <= 0.0) {
       return 1.0;
