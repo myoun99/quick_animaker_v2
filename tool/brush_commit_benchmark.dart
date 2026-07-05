@@ -9,6 +9,7 @@
 //
 // This is a dev tool only: it is not imported by lib/ or test/ runtime code
 // and does not change runtime behavior.
+// ignore_for_file: avoid_print
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
