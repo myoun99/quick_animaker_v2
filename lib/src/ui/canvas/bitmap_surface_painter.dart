@@ -103,22 +103,24 @@ class BitmapSurfacePainter extends CustomPainter {
     }
 
     final overlay = overlayModel;
-    if (overlay != null && overlay.hasStrokeContent) {
-      // The stroke's region pictures replace (BlendMode.src) the stale
-      // content of earlier pictures where they overlap, so they must compose
-      // inside an isolated layer; the finished layer composites onto the
-      // artwork with plain source-over. Replacement blending never reaches
-      // the view canvas (at fractional zoom it erases boundary strips
-      // there), and pictures hold no GPU textures, so a lost GPU context
-      // cannot corrupt the overlay mid-stroke.
-      canvas.saveLayer(
-        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
-        tileImagePaint,
-      );
-      for (final picture in overlay.pictures) {
-        canvas.drawPicture(picture);
+    if (overlay != null) {
+      // The live stroke renders through the EXACT pipeline the committed
+      // tiles use — premultiplied bytes decoded to images, drawn with
+      // nearest sampling — so live and committed pixels rasterize
+      // identically at any zoom (one code path; rect-geometry replay
+      // diverged from image sampling at fractional zoom). Overlay tiles
+      // never overlap, so plain source-over per tile is exact.
+      final overlayTileSize = overlay.tileSize.toDouble();
+      for (final entry in overlay.tileImages.entries) {
+        canvas.drawImage(
+          entry.value,
+          Offset(
+            entry.key.x * overlayTileSize,
+            entry.key.y * overlayTileSize,
+          ),
+          tileImagePaint,
+        );
       }
-      canvas.restore();
     }
 
     canvas.restore();

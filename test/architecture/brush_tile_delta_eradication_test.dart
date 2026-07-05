@@ -158,11 +158,13 @@ void main() {
           expect(source, isNot(contains('inactivePreviewCache')));
           expect(source, isNot(contains('playbackPreviewCache')));
         }
-        // The live overlay must stay picture-based: `toImageSync` images are
-        // GPU-context-backed textures that flash garbage for a frame when
-        // the context is lost or the image is created/disposed (e.g. app
-        // focus switches). Pictures replay at final device resolution every
-        // frame and survive context loss.
+        // The live overlay must decode its images like the committed tiles
+        // (decodeImageFromPixels): `toImageSync` textures are GPU-context-
+        // backed and flash garbage for a frame when the context is lost or
+        // the image is created/disposed (e.g. app focus switches), and any
+        // non-image overlay rendering (rect geometry, pictures) rasterizes
+        // differently from nearest-sampled images at fractional zoom,
+        // visibly shifting the active stroke against committed strokes.
         for (final source in [activeOverlay, interactiveView, surfacePainter]) {
           expect(source, isNot(contains('toImageSync')));
         }

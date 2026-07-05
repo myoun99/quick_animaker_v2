@@ -110,23 +110,24 @@ The active frame display formula is:
 ```txt
 activeFrameDisplay =
   materialized session BitmapSurface (committed strokes)
-  + live stroke overlay pictures (exact incremental CPU rasterization)
+  + live stroke overlay tile images (exact incremental CPU rasterization)
 ```
 
 Committed strokes are rasterized into the session `BitmapSurface` at commit time (`commitSourceStroke` stores the source-dab command and materializes in one step) and displayed through the identity-keyed `BitmapTileImageCache` — O(tiles), independent of stroke count.
 
-The in-progress stroke is rasterized incrementally by `BrushLiveStrokeRasterizer`: each pointer move blends only the new dabs into a canvas-sized straight-alpha buffer using the exact per-dab math of the commit rasterizer (byte-identical, locked by `active_stroke_overlay_parity_test.dart`). The touched region is recorded as a run-length-compacted `ui.Picture` (`strokeRegionPicture`, absolute canvas coordinates, `BlendMode.src` rects) and appended to the `ActiveStrokeOverlayModel` picture list; `BitmapSurfacePainter` replays the list in order inside an isolated `saveLayer`, which then composites onto the artwork with plain source-over. Once ~64 region pictures accumulate, the whole stroke is re-recorded as one flat picture from the buffer, capping per-frame replay cost. Pointer moves repaint through the `ActiveStrokeOverlayModel` ChangeNotifier without rebuilding widgets.
+The in-progress stroke is rasterized incrementally by `BrushLiveStrokeRasterizer`: each pointer move blends only the new dabs into a canvas-sized straight-alpha buffer using the exact per-dab math of the commit rasterizer (byte-identical, locked by `active_stroke_overlay_parity_test.dart`). The `ActiveStrokeOverlayModel` snapshots the touched overlay tiles (128px grid, independent of the surface tile size) from that buffer, premultiplies them, and re-decodes them with `decodeImageFromPixels` — the EXACT pipeline the committed tile images use. `BitmapSurfacePainter` draws the overlay tile images with the same nearest-sampling paint as the committed tiles (overlay tiles never overlap, so plain source-over per tile is exact). Decode completions repaint through the `ActiveStrokeOverlayModel` ChangeNotifier without rebuilding widgets; a tile touched while its decode is in flight re-snapshots the newer buffer state as soon as the running decode lands, bounding per-frame work to one decode per touched tile.
 
-The overlay is picture-based, never GPU-image-based: pictures replay at final device resolution every frame and hold no GPU resources, so a lost or recreated GPU context (e.g. app focus switches) cannot corrupt the overlay. The previous per-move synchronous picture-to-GPU-image conversion flashed one frame of garbage exactly when those textures were created or disposed (stroke start/end). A guard in `brush_tile_delta_eradication_test.dart` bans GPU-image conversion from the overlay display path.
+One rasterization path for live and committed pixels is the load-bearing property: rendering the live stroke as rect geometry (`ui.Picture` run rects, the P11 representation) rasterized differently from nearest-sampled images at fractional zoom and visibly shifted the active stroke's pixels against committed strokes (100%/high zoom fine, ~125% severe). Decode-based images also survive GPU context events (app focus switches) that corrupted synchronously created `toImageSync` textures for a frame at stroke start/end. A guard in `brush_tile_delta_eradication_test.dart` bans synchronous GPU-image conversion from the overlay display path.
 
 On pen-up, `BrushStrokeCommitData` hands the finished stroke buffer to the commit route and `compositeStrokePixelsOntoBitmapSurface` merges it over the base in one pass — no re-rasterization hiccup, and the committed pixels are by construction exactly the pixels that were on screen. The per-dab materialize path remains as fallback when no pre-rasterized buffer is provided.
 
 Display stability rules (learned from fractional-zoom and GPU-lifecycle artifacts):
 
-- Never use replacement blend modes (`BlendMode.src`) on the transformed view canvas; region replacement composes only inside an isolated `saveLayer` (or off-screen), and the finished layer reaches the view canvas with plain source-over.
+- Never use replacement blend modes (`BlendMode.src`) on the transformed view canvas; region replacement composes only off-screen in image space, and finished content reaches the view canvas with plain source-over.
 - The viewport zoom/pan is applied INSIDE `BitmapSurfacePainter` (`canvas.translate/scale`), not by a Transform widget: compositing rasterized layers through a fractional widget transform resamples texel edges differently between idle and drawing frames.
 - The canvas `CustomPaint` sets `willChange: true` so the Skia raster cache never bakes the canvas picture: a cached layer's origin snaps to integer device pixels while direct rendering uses the fractional layout offset, shifting the artwork by a subpixel on every cached<->live transition (focus switches purge the cache, which made the shift appear after switching apps).
-- The live overlay holds `ui.Picture`s, never synchronously-created GPU images: context-backed textures can flash garbage for a frame when created/disposed or when the GPU context is lost.
+- Live and committed pixels must render through ONE rasterization path — nearest-sampled decoded images for both. Rect geometry (or picture replay) for the live stroke rasterizes differently from image sampling at fractional zoom and shifts the active stroke's pixels.
+- Overlay images come from `decodeImageFromPixels` like the committed tiles, never from synchronous picture-to-GPU-image conversion: context-backed textures can flash garbage for a frame when created/disposed or when the GPU context is lost.
 
 The live overlay is an editing-only display for current input. It is not a playback mechanism and is not a durable source of truth. Active editing must not use `displayPreviewSurface`, `inactivePreviewCache`, or `playbackPreviewCache` as the active editor base. It must not use a drawPath-based smooth vector brush display or `TileDelta` / `TileDeltaCommand`.
 
@@ -156,7 +157,7 @@ The app-level history owns global user-facing undo order. `BrushFrameStore` owns
 
 ## Current production display/commit baseline (P4, supersedes the PR #294 square-stamp baseline)
 
-- Committed strokes display from the materialized session `BitmapSurface`; the in-progress stroke displays from its exact incremental rasterization (`BrushLiveStrokeRasterizer` -> overlay region pictures).
+- Committed strokes display from the materialized session `BitmapSurface`; the in-progress stroke displays from its exact incremental rasterization (`BrushLiveStrokeRasterizer` -> decoded overlay tile images).
 - `commitSourceStroke` stores source dabs as the durable `BrushPaintCommand` AND materializes the stroke into the session surface in one step (compositing the pre-rasterized live buffer when provided); no-op strokes (no pixel changes) create no command and no undo entry.
 - The active route must not use an active drawPath brush display.
 - The active route must not use `displayPreviewSurface` or inactive/playback preview cache images as the active editor base.

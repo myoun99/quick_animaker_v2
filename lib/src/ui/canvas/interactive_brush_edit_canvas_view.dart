@@ -66,15 +66,11 @@ class _InteractiveBrushEditCanvasViewState
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
-  /// (the exact commit-rasterizer math), record the touched region as a
-  /// picture, and notify the canvas painter directly through this model —
-  /// no widget rebuild per move, and the pixels on screen are the pixels
-  /// the commit will keep.
+  /// (the exact commit-rasterizer math) and re-decode the touched overlay
+  /// tiles; decode completions repaint the canvas painter directly through
+  /// this model — no widget rebuild per move, and the pixels on screen are
+  /// the pixels the commit will keep.
   final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
-
-  /// Region-picture count that triggers re-recording the whole stroke as one
-  /// flat picture, capping the per-frame replay cost of long strokes.
-  static const int _overlayFlattenPictureCount = 64;
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
@@ -418,7 +414,7 @@ class _InteractiveBrushEditCanvasViewState
     _collectedDabs.clear();
   }
 
-  /// Clears the visible overlay (live or settling) and its pictures.
+  /// Clears the visible overlay (live or settling) and its tile images.
   void _resetOverlay() {
     _settling = false;
     _settlingFallbackTimer?.cancel();
@@ -466,13 +462,13 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  /// Rasterizes [newDabs] into the live buffer (exact commit math), records
-  /// the touched region as a picture on the overlay model, and repaints.
+  /// Rasterizes [newDabs] into the live buffer (exact commit math) and
+  /// re-decodes the touched overlay tiles.
   ///
-  /// Pictures hold no GPU textures (context-loss immune) and are replayed
-  /// at final device resolution each frame; once enough accumulate, the
-  /// whole stroke is re-recorded as one flat picture so replay cost stays
-  /// bounded.
+  /// The overlay model snapshots and decodes each touched tile through the
+  /// same premultiply + `decodeImageFromPixels` pipeline as the committed
+  /// tiles, so the on-screen stroke rasterizes exactly like it will after
+  /// commit; decode completions repaint the canvas painter directly.
   void _appendOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {
       return;
@@ -485,25 +481,12 @@ class _InteractiveBrushEditCanvasViewState
     _overlayModel.dabs.addAll(newDabs);
     final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
     if (region != null) {
-      if (_overlayModel.pictures.length + 1 >= _overlayFlattenPictureCount) {
-        // strokeBounds already includes the region blended above.
-        _overlayModel.replaceWithFlattened(
-          strokeRegionPicture(
-            pixels: rasterizer.pixels,
-            canvasWidth: rasterizer.canvasSize.width,
-            region: rasterizer.strokeBounds!,
-          ),
-        );
-      } else {
-        _overlayModel.addRegionPicture(
-          strokeRegionPicture(
-            pixels: rasterizer.pixels,
-            canvasWidth: rasterizer.canvasSize.width,
-            region: region,
-          ),
-        );
-      }
+      _overlayModel.updateRegion(
+        pixels: rasterizer.pixels,
+        canvasWidth: rasterizer.canvasSize.width,
+        canvasHeight: rasterizer.canvasSize.height,
+        region: region,
+      );
     }
-    _overlayModel.markChanged();
   }
 }
