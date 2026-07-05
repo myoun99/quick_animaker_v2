@@ -1,7 +1,7 @@
-import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
 import '../command.dart';
+import '../project_lookup.dart';
 import '../project_repository.dart';
 
 class UpdateCutNoteCommand implements Command {
@@ -23,7 +23,10 @@ class UpdateCutNoteCommand implements Command {
 
   @override
   void execute() {
-    _previousMetadata ??= _requireCut(cutId).metadata;
+    _previousMetadata ??= requireCut(
+      repository.requireProject(),
+      cutId,
+    ).metadata;
     repository.updateCutMetadata(
       cutId: cutId,
       metadata: _previousMetadata!.copyWith(note: note),
@@ -39,18 +42,5 @@ class UpdateCutNoteCommand implements Command {
     }
 
     repository.updateCutMetadata(cutId: cutId, metadata: previousMetadata);
-  }
-
-  Cut _requireCut(CutId cutId) {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return cut;
-        }
-      }
-    }
-
-    throw StateError('Cut not found: $cutId');
   }
 }

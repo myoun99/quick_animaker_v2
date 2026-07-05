@@ -1,8 +1,8 @@
-import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../command.dart';
+import '../project_lookup.dart';
 import '../project_repository.dart';
 
 class DeleteLayerCommand implements Command {
@@ -25,7 +25,7 @@ class DeleteLayerCommand implements Command {
 
   @override
   void execute() {
-    final cut = _requireCut();
+    final cut = requireCut(repository.requireProject(), cutId);
     if (cut.layers.length <= 1) {
       throw StateError('Cannot delete the last layer in cut $cutId.');
     }
@@ -54,18 +54,5 @@ class DeleteLayerCommand implements Command {
       layer: deletedLayer,
       index: deletedIndex,
     );
-  }
-
-  Cut _requireCut() {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return cut;
-        }
-      }
-    }
-
-    throw StateError('Cut not found: $cutId');
   }
 }

@@ -11,6 +11,7 @@ import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../history_manager.dart';
+import '../project_lookup.dart';
 import '../project_repository.dart';
 import 'cut_command_input_planner.dart';
 import 'create_cut_command.dart';
@@ -286,14 +287,11 @@ class CutCommandCoordinator {
   }
 
   Layer _requireLayer({required CutId cutId, required LayerId layerId}) {
-    final cut = _requireCut(cutId);
-    for (final layer in cut.layers) {
-      if (layer.id == layerId) {
-        return layer;
-      }
-    }
-
-    throw StateError('Layer not found in cut $cutId: $layerId');
+    return requireLayer(
+      repository.requireProject(),
+      cutId: cutId,
+      layerId: layerId,
+    );
   }
 
   int _cutCount(Project project) {
@@ -305,16 +303,7 @@ class CutCommandCoordinator {
   }
 
   Cut _requireCut(CutId cutId) {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == cutId) {
-          return cut;
-        }
-      }
-    }
-
-    throw StateError('Cut not found: $cutId');
+    return requireCut(repository.requireProject(), cutId);
   }
 }
 
