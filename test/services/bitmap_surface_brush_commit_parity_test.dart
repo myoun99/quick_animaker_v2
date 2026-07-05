@@ -1,0 +1,276 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
+import 'package:quick_animaker_v2/src/models/brush_pixel_blend_operation.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
+import 'package:quick_animaker_v2/src/models/rgba_color.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_tile_operation_materialization.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:quick_animaker_v2/src/services/brush_dab_sequence_blend.dart';
+
+/// Reference implementation of the stroke-commit rasterization, built from the
+/// retained per-pixel-operation pipeline (`brushPixelBlendOperationsForDabSequence`
+/// + `materializedBitmapTileForOperations`). This mirrors the pre-optimization
+/// commit path and acts as the oracle for the fast scratch-buffer path in
+/// `materializeBrushDabSequenceOnBitmapSurface`.
+BrushSurfaceMaterialization referenceMaterialize({
+  required BitmapSurface surface,
+  required BrushDabSequence sequence,
+}) {
+  final transparent = RgbaColor(r: 0, g: 0, b: 0, a: 0);
+
+  RgbaColor destinationAt(int x, int y) {
+    if (x < 0 ||
+        y < 0 ||
+        x >= surface.canvasSize.width ||
+        y >= surface.canvasSize.height) {
+      return transparent;
+    }
+
+    final tileX = x ~/ surface.tileSize;
+    final tileY = y ~/ surface.tileSize;
+    final tile = surface.tileAt(TileCoord(x: tileX, y: tileY));
+    if (tile == null) return transparent;
+
+    return readRgbaColorFromBitmapTile(
+      tile: tile,
+      x: x - tileX * surface.tileSize,
+      y: y - tileY * surface.tileSize,
+    );
+  }
+
+  final operations = brushPixelBlendOperationsForDabSequence(
+    sequence: sequence,
+    destinationAt: destinationAt,
+  );
+
+  final operationsByCoord = <TileCoord, List<BrushPixelBlendOperation>>{};
+  for (final operation in operations) {
+    if (operation.x < 0 ||
+        operation.y < 0 ||
+        operation.x >= surface.canvasSize.width ||
+        operation.y >= surface.canvasSize.height) {
+      continue;
+    }
+
+    final coord = TileCoord(
+      x: operation.x ~/ surface.tileSize,
+      y: operation.y ~/ surface.tileSize,
+    );
+    operationsByCoord.putIfAbsent(coord, () => []).add(operation);
+  }
+
+  var updatedSurface = surface;
+  var dirtyTiles = DirtyTileSet.empty();
+  final coords = operationsByCoord.keys.toList()
+    ..sort((a, b) {
+      final yComparison = a.y.compareTo(b.y);
+      if (yComparison != 0) return yComparison;
+      return a.x.compareTo(b.x);
+    });
+  for (final coord in coords) {
+    final existingTile = surface.tileAt(coord);
+    final tile =
+        existingTile ?? BitmapTile.blank(coord: coord, size: surface.tileSize);
+    final updatedTile = materializedBitmapTileForOperations(
+      tile: tile,
+      operations: operationsByCoord[coord]!,
+    );
+    if (updatedTile == null) continue;
+    updatedSurface = updatedSurface.putTile(updatedTile);
+    dirtyTiles = dirtyTiles.add(coord);
+  }
+
+  return BrushSurfaceMaterialization(
+    surface: updatedSurface,
+    dirtyTiles: dirtyTiles,
+  );
+}
+
+BrushDab dab({
+  required double x,
+  required double y,
+  double size = 12,
+  int color = 0xFF336699,
+  double opacity = 0.8,
+  double flow = 0.7,
+  double hardness = 0.5,
+  BrushTipShape tipShape = BrushTipShape.round,
+  int sequence = 0,
+}) {
+  return BrushDab(
+    center: CanvasPoint(x: x, y: y),
+    color: color,
+    size: size,
+    opacity: opacity,
+    flow: flow,
+    hardness: hardness,
+    tipShape: tipShape,
+    pressure: 1.0,
+    sequence: sequence,
+  );
+}
+
+BrushDabSequence strokeOf(List<BrushDab> dabs) => BrushDabSequence(dabs);
+
+void expectParity({
+  required BitmapSurface surface,
+  required BrushDabSequence sequence,
+  required String reason,
+}) {
+  final fast = materializeBrushDabSequenceOnBitmapSurface(
+    surface: surface,
+    sequence: sequence,
+  );
+  final reference = referenceMaterialize(surface: surface, sequence: sequence);
+
+  expect(fast.dirtyTiles, reference.dirtyTiles, reason: '$reason: dirtyTiles');
+  expect(fast.surface, reference.surface, reason: '$reason: surface pixels');
+}
+
+void main() {
+  const canvasSize = CanvasSize(width: 200, height: 160);
+
+  BitmapSurface blankSurface({int tileSize = 64}) {
+    return BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
+  }
+
+  group('materializeBrushDabSequenceOnBitmapSurface parity with reference', () {
+    test('single soft round dab on blank surface', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([dab(x: 40, y: 40)]),
+        reason: 'single dab',
+      );
+    });
+
+    test('overlapping stroke with partial opacity and flow', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (var i = 0; i < 12; i += 1)
+            dab(x: 30.0 + i * 3.0, y: 30.0 + i * 2.0, sequence: i),
+        ]),
+        reason: 'overlapping stroke',
+      );
+    });
+
+    test('dabs overhanging canvas corners are clipped identically', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 0, y: 0, size: 20, sequence: 0),
+          dab(x: 199.5, y: 159.5, size: 20, sequence: 1),
+          dab(x: -3, y: 80, size: 16, sequence: 2),
+        ]),
+        reason: 'edge clipping',
+      );
+    });
+
+    test('square tip stroke', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 50, y: 50, tipShape: BrushTipShape.square, sequence: 0),
+          dab(x: 55, y: 53, tipShape: BrushTipShape.square, sequence: 1),
+        ]),
+        reason: 'square tip',
+      );
+    });
+
+    test('hardness extremes 0.0 and 1.0', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 40, y: 40, hardness: 0.0, sequence: 0),
+          dab(x: 80, y: 40, hardness: 1.0, sequence: 1),
+        ]),
+        reason: 'hardness extremes',
+      );
+    });
+
+    test('full opacity and flow overwrite path', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 60, y: 60, opacity: 1.0, flow: 1.0, hardness: 1.0),
+        ]),
+        reason: 'opaque dab',
+      );
+    });
+
+    test('stroke crossing tile boundaries', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (var i = 0; i < 10; i += 1)
+            dab(x: 50.0 + i * 12.0, y: 60.0 + i * 6.0, size: 18, sequence: i),
+        ]),
+        reason: 'multi-tile stroke',
+      );
+    });
+
+    test('second stroke over an already painted surface', () {
+      final firstStroke = strokeOf([
+        for (var i = 0; i < 8; i += 1)
+          dab(x: 40.0 + i * 6.0, y: 50.0, sequence: i),
+      ]);
+      final painted = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: firstStroke,
+      ).surface;
+
+      expectParity(
+        surface: painted,
+        sequence: strokeOf([
+          for (var i = 0; i < 8; i += 1)
+            dab(
+              x: 44.0 + i * 6.0,
+              y: 52.0,
+              color: 0xCC994411,
+              opacity: 0.5,
+              sequence: i,
+            ),
+        ]),
+        reason: 'paint over painted',
+      );
+    });
+
+    test('non-effective dabs produce no changes in either path', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 40, y: 40, opacity: 0.0, sequence: 0),
+          dab(x: 50, y: 40, flow: 0.0, sequence: 1),
+          dab(x: 60, y: 40, color: 0x00FFFFFF, sequence: 2),
+          dab(x: 70, y: 40, size: 0, sequence: 3),
+        ]),
+        reason: 'non-effective dabs',
+      );
+    });
+
+    test('translucent color over translucent destination', () {
+      final base = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 45, y: 45, color: 0x40FF0000, opacity: 0.9, flow: 0.9),
+        ]),
+      ).surface;
+
+      expectParity(
+        surface: base,
+        sequence: strokeOf([
+          dab(x: 47, y: 46, color: 0x8000FF00, opacity: 0.6, flow: 0.8),
+        ]),
+        reason: 'translucent over translucent',
+      );
+    });
+  });
+}
