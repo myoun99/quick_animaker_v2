@@ -60,7 +60,7 @@ These ideas are intentionally preserved as long-term candidates. They are not cu
 
 ## Not yet
 
-- Do not add Provider, Riverpod, Bloc, ChangeNotifier, or broad app-wide state management.
+- Do not add Provider, Riverpod, Bloc, or broad app-wide state management. (Lightweight, locally scoped Flutter built-ins — `ChangeNotifier` / `ValueNotifier` — are allowed for focused editor rebuild isolation, e.g. `EditorSessionManager`.)
 - Do not restore deleted obsolete non-phase docs or deleted Brush V1 workspace routes.
 - Do not make `Cut.duration` decide authored data extent, editability, cache storage validity, or frame bitmap existence.
 - Do not add `Cut.storyboardLayer.panels` or a separate storyboard persistence system.

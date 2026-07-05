@@ -28,7 +28,8 @@ The UI should feel closer to a compact production tool than an onboarding demo.
 
 - Project, timeline, brush editing, canvas/cache/storage, storyboard overview, playback, and persistence UI should remain separated by narrow interfaces.
 - UI widgets should not become god objects that coordinate unrelated project, brush, cache, storage, persistence, and playback concerns.
-- Do not introduce Provider, Riverpod, Bloc, ChangeNotifier, hidden globals, or broad app-wide state-management packages for UI convenience unless a future phase explicitly designs that architecture.
+- Do not introduce Provider, Riverpod, Bloc, hidden globals, or broad app-wide state-management packages for UI convenience unless a future phase explicitly designs that architecture.
+- Lightweight, local Flutter built-ins (`ChangeNotifier` / `ValueNotifier`) are allowed for focused editor rebuild isolation — for example the `EditorSessionManager` that backs `HomePage`. Keep them narrow (one editor/session scope, no app-wide singleton) and prefer plain widget state where it already suffices.
 - UI state should remain small and local where possible. Shared editing/session state should use focused boundaries such as editing-session state, controllers, commands, or dedicated services.
 
 ## Tool controls

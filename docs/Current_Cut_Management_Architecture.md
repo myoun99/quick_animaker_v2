@@ -14,7 +14,7 @@ Cut name policy is intentionally different from frame name/material policy. Same
 
 `activeCutId` is application/session/controller state, not persisted project structure. The selected Cut is UI/session context rather than project content.
 
-Recommended ownership remains near the UI/controller boundary or in a small editing-session state object. Do not introduce Provider, Riverpod, Bloc, ChangeNotifier, hidden globals, or a broad app-wide state-management package for active Cut selection unless a future phase explicitly designs it.
+Recommended ownership remains near the UI/controller boundary or in a small editing-session state object. In the current editor `EditorSessionManager` (a narrowly scoped `ChangeNotifier`) holds `activeCutId` via `EditingSessionState` and drives targeted rebuilds. Do not introduce Provider, Riverpod, Bloc, hidden globals, or a broad app-wide state-management package for active Cut selection unless a future phase explicitly designs it; keep any `ChangeNotifier` / `ValueNotifier` use lightweight and editor-local rather than app-wide.
 
 `ProjectRepository` should remain focused on project data mutations, not UI selection state. Controllers and edit commands should carry enough Cut context to make their target explicit and avoid ambiguous repository-wide searches.
 

@@ -84,7 +84,7 @@ Brush stroke undo/redo participates in the single global user undo/redo stack. B
 
 - Project data, timeline UI, brush editing, canvas/cache/storage, storyboard overview, persistence, playback, and product UI policy should stay as separate modules with narrow interfaces.
 - Avoid global singleton state and avoid collapsing project, timeline, brush, cache, UI, and persistence concerns into one coordinator.
-- Do not introduce Provider, Riverpod, Bloc, ChangeNotifier, or similar app-wide state-management packages unless a future phase explicitly plans that architecture.
+- Do not introduce Provider, Riverpod, Bloc, or similar app-wide state-management packages unless a future phase explicitly plans that architecture. Lightweight, local Flutter built-ins (`ChangeNotifier` / `ValueNotifier`) are allowed for focused editor rebuild isolation (see the `EditorSessionManager` backing `HomePage`) as long as they stay narrowly scoped rather than app-wide.
 - Runtime code should remain test-driven and modular; documentation phases must not change runtime behavior.
 
 ## Long-term layer system direction
@@ -135,7 +135,7 @@ Panbar drag maps like a normal scrollbar: `thumbDelta / thumbTravel = scrollDelt
 
 ## Phase 303 editor brush tool state and right-side panel boundary
 
-The main editor treats brush size, opacity, color, and spacing as editor-session UI/tool state. `HomePage` owns the current `BrushToolState` and passes it to `MainCanvasBrushHost` / `BrushCanvasPanel` as drawing input. Brush setting mutation belongs to the right-side `BrushSettingsPanel`, not the canvas or host layer; no Provider, Riverpod, ChangeNotifier, Bloc, or app-wide state layer is involved.
+The main editor treats brush size, opacity, color, and spacing as editor-session UI/tool state. `EditorCanvasArea` (the canvas + brush-settings subtree split out of `HomePage`) owns the current `BrushToolState` as plain local widget state and passes it to `MainCanvasBrushHost` / `BrushCanvasPanel` as drawing input; keeping it there means brush-slider drags rebuild only that subtree, not the whole editor. Brush setting mutation belongs to the right-side `BrushSettingsPanel`, not the canvas or host layer. `BrushToolState` itself uses no notifier; the surrounding editor uses a narrowly scoped `EditorSessionManager` (`ChangeNotifier`) for model/session rebuilds, and no Provider, Riverpod, Bloc, or app-wide state layer is involved.
 
 Brush tool settings are kept out of Project, Cut, Layer, Frame, Stroke, cache, playback, camera, and save/load formats. Selection changes for cut/layer/frame retarget the brush host while preserving the current editor-session brush settings, and viewport pan/zoom remains a separate `CanvasViewport` state. Spacing affects future dab sampling only, and active strokes snapshot input settings at pointer down so mid-stroke UI changes affect future strokes rather than the current stroke.
 
