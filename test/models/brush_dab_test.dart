@@ -17,6 +17,8 @@ void main() {
       BrushTipShape tipShape = BrushTipShape.round,
       double pressure = 1,
       int sequence = 0,
+      double roundness = 1,
+      double angleDegrees = 0,
     }) {
       return BrushDab(
         center: center ?? CanvasPoint(x: 1, y: 2),
@@ -28,6 +30,8 @@ void main() {
         tipShape: tipShape,
         pressure: pressure,
         sequence: sequence,
+        roundness: roundness,
+        angleDegrees: angleDegrees,
       );
     }
 
@@ -181,6 +185,8 @@ void main() {
         tipShape: BrushTipShape.square,
         pressure: 0.4,
         sequence: 2,
+        roundness: 0.4,
+        angleDegrees: 137.5,
       );
       expect(BrushDab.fromJson(value.toJson()), value);
     });
@@ -188,6 +194,34 @@ void main() {
     test('fromJson without color uses default black', () {
       final json = dab(color: 0x80FF3366).toJson()..remove('color');
       expect(BrushDab.fromJson(json).color, 0xFF000000);
+    });
+
+    test('fromJson defaults legacy dabs to the classic full-round tip', () {
+      final json = dab().toJson()
+        ..remove('roundness')
+        ..remove('angleDegrees');
+      final decoded = BrushDab.fromJson(json);
+      expect(decoded.roundness, 1.0);
+      expect(decoded.angleDegrees, 0.0);
+    });
+
+    test('rejects roundness outside (0, 1]', () {
+      expect(() => dab(roundness: 0), throwsArgumentError);
+      expect(() => dab(roundness: -0.2), throwsArgumentError);
+      expect(() => dab(roundness: 1.1), throwsArgumentError);
+      expect(() => dab(roundness: double.nan), throwsArgumentError);
+    });
+
+    test('rejects non-finite angle', () {
+      expect(() => dab(angleDegrees: double.nan), throwsArgumentError);
+      expect(() => dab(angleDegrees: double.infinity), throwsArgumentError);
+    });
+
+    test('copyWith updates roundness and angle', () {
+      final updated = dab().copyWith(roundness: 0.5, angleDegrees: 45);
+      expect(updated.roundness, 0.5);
+      expect(updated.angleDegrees, 45.0);
+      expect(dab().copyWith(size: 6).roundness, 1.0);
     });
 
     test('fromInputSample uses sample position as CanvasPoint', () {
@@ -239,6 +273,16 @@ void main() {
       expect(value.flow, 0.3);
       expect(value.hardness, 0.4);
       expect(value.tipShape, BrushTipShape.square);
+    });
+
+    test('fromInputSample carries roundness and angle', () {
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0),
+        settings: BrushSettings(roundness: 0.6, angleDegrees: 30),
+        sequence: 0,
+      );
+      expect(value.roundness, 0.6);
+      expect(value.angleDegrees, 30.0);
     });
   });
 }

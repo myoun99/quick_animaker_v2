@@ -94,9 +94,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.spacing, greaterThan(BrushToolState.defaultSpacing));
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-tool-color-swatch-Blue')),
+    final blueSwatch = find.byKey(
+      const ValueKey<String>('brush-tool-color-swatch-Blue'),
     );
+    await tester.ensureVisible(blueSwatch);
+    await tester.tap(blueSwatch);
     await tester.pumpAndSettle();
     expect(state.color, 0xFF1E88E5);
   });
@@ -146,6 +148,52 @@ void main() {
     expect(inputSettings.hardness, state.hardness);
     expect(inputSettings.flow, state.flow);
     expect(inputSettings.tipShape, BrushTipShape.square);
+  });
+
+  testWidgets('BrushSettingsPanel updates tip roundness and angle', (
+    tester,
+  ) async {
+    var state = BrushToolState.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final roundnessSlider = find.byKey(
+      const ValueKey<String>('brush-tool-roundness-slider'),
+    );
+    await tester.ensureVisible(roundnessSlider);
+    await tester.drag(roundnessSlider, const Offset(-80, 0));
+    await tester.pumpAndSettle();
+    expect(state.roundness, lessThan(BrushToolState.defaultRoundness));
+    expect(
+      state.roundness,
+      greaterThanOrEqualTo(BrushToolState.minRoundness),
+    );
+
+    final angleSlider = find.byKey(
+      const ValueKey<String>('brush-tool-angle-slider'),
+    );
+    await tester.ensureVisible(angleSlider);
+    await tester.drag(angleSlider, const Offset(60, 0));
+    await tester.pumpAndSettle();
+    expect(state.angleDegrees, greaterThan(BrushToolState.defaultAngleDegrees));
+    expect(state.angleDegrees, lessThanOrEqualTo(180.0));
+
+    // Both reach the sampled canvas input settings.
+    final inputSettings = state.toInputSettings();
+    expect(inputSettings.roundness, state.roundness);
+    expect(inputSettings.angleDegrees, state.angleDegrees);
   });
 
   testWidgets('BrushSettingsPanel toggles pen-pressure size and opacity', (

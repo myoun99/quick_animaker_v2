@@ -14,6 +14,8 @@ class BrushDab {
     required this.tipShape,
     required this.pressure,
     required this.sequence,
+    this.roundness = 1.0,
+    this.angleDegrees = 0.0,
   }) {
     _validateColor(color);
     _validateNonNegativeFinite(size, 'size');
@@ -21,6 +23,8 @@ class BrushDab {
     _validateUnitIntervalFinite(flow, 'flow');
     _validateUnitIntervalFinite(hardness, 'hardness');
     _validateUnitIntervalFinite(pressure, 'pressure');
+    _validateRoundness(roundness);
+    _validateFinite(angleDegrees, 'angleDegrees');
     _validateSequence(sequence);
   }
 
@@ -43,6 +47,8 @@ class BrushDab {
       tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,
+      roundness: settings.roundness,
+      angleDegrees: settings.angleDegrees,
     );
   }
 
@@ -56,6 +62,14 @@ class BrushDab {
   final double pressure;
   final int sequence;
 
+  /// Minor-to-major axis ratio of the tip in (0, 1]: 1.0 keeps the classic
+  /// circle/square, smaller values flatten it into an ellipse/rectangle.
+  final double roundness;
+
+  /// Visual counterclockwise rotation of the tip's major axis from the
+  /// horizontal, in degrees. Meaningless for a full-round circle.
+  final double angleDegrees;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -66,6 +80,8 @@ class BrushDab {
     BrushTipShape? tipShape,
     double? pressure,
     int? sequence,
+    double? roundness,
+    double? angleDegrees,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -77,6 +93,8 @@ class BrushDab {
       tipShape: tipShape ?? this.tipShape,
       pressure: pressure ?? this.pressure,
       sequence: sequence ?? this.sequence,
+      roundness: roundness ?? this.roundness,
+      angleDegrees: angleDegrees ?? this.angleDegrees,
     );
   }
 
@@ -90,6 +108,8 @@ class BrushDab {
     'tipShape': tipShape.toJson(),
     'pressure': pressure,
     'sequence': sequence,
+    'roundness': roundness,
+    'angleDegrees': angleDegrees,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -103,6 +123,8 @@ class BrushDab {
       tipShape: BrushTipShape.fromJson(json['tipShape']),
       pressure: (json['pressure'] as num).toDouble(),
       sequence: json['sequence'] as int,
+      roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
+      angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -118,7 +140,9 @@ class BrushDab {
           other.hardness == hardness &&
           other.tipShape == tipShape &&
           other.pressure == pressure &&
-          other.sequence == sequence;
+          other.sequence == sequence &&
+          other.roundness == roundness &&
+          other.angleDegrees == angleDegrees;
 
   @override
   int get hashCode => Object.hash(
@@ -131,13 +155,16 @@ class BrushDab {
     tipShape,
     pressure,
     sequence,
+    roundness,
+    angleDegrees,
   );
 
   @override
   String toString() =>
       'BrushDab(center: $center, color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
-      'tipShape: $tipShape, pressure: $pressure, sequence: $sequence)';
+      'tipShape: $tipShape, pressure: $pressure, sequence: $sequence, '
+      'roundness: $roundness, angleDegrees: $angleDegrees)';
 }
 
 void _validateColor(int value) {
@@ -166,6 +193,26 @@ void _validateUnitIntervalFinite(double value, String fieldName) {
       value,
       fieldName,
       'BrushDab.$fieldName must be finite and between 0.0 and 1.0 inclusive.',
+    );
+  }
+}
+
+void _validateRoundness(double value) {
+  if (!value.isFinite || value <= 0.0 || value > 1.0) {
+    throw ArgumentError.value(
+      value,
+      'roundness',
+      'BrushDab.roundness must be finite and in (0.0, 1.0].',
+    );
+  }
+}
+
+void _validateFinite(double value, String fieldName) {
+  if (!value.isFinite) {
+    throw ArgumentError.value(
+      value,
+      fieldName,
+      'BrushDab.$fieldName must be finite.',
     );
   }
 }

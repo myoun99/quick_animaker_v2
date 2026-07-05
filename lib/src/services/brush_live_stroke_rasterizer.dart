@@ -100,6 +100,25 @@ class BrushLiveStrokeRasterizer {
     final hardRadius = radius * dab.hardness;
     final edgeSpan = radius - hardRadius;
     final isRound = dab.tipShape == BrushTipShape.round;
+    // Elliptical / rotated tips evaluate coverage in tip space: rotate the
+    // pixel offset onto the tip axes and stretch the minor axis by
+    // 1/roundness, turning the ellipse test back into the circle test. The
+    // classic circle (roundness == 1, rotation-invariant) and axis-aligned
+    // square keep their original code path so existing strokes stay
+    // byte-identical.
+    final isEllipse = isRound && dab.roundness < 1.0;
+    final isRotatedRect =
+        !isRound && (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
+    var tipCos = 1.0;
+    var tipSin = 0.0;
+    var inverseRoundness = 1.0;
+    if (isEllipse || isRotatedRect) {
+      final angleRadians = dab.angleDegrees * (math.pi / 180.0);
+      tipCos = math.cos(angleRadians);
+      tipSin = math.sin(angleRadians);
+      inverseRoundness = 1.0 / dab.roundness;
+    }
+    final minorRadius = radius * dab.roundness;
     final centerX = dab.center.x;
     final centerY = dab.center.y;
     final dabOpacity = dab.opacity;
@@ -123,7 +142,14 @@ class BrushLiveStrokeRasterizer {
         double coverage;
         if (isRound) {
           final dx = x + 0.5 - centerX;
-          final distance = math.sqrt(dx * dx + dySquared);
+          double distance;
+          if (isEllipse) {
+            final tipU = dx * tipCos - dy * tipSin;
+            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+            distance = math.sqrt(tipU * tipU + tipV * tipV);
+          } else {
+            distance = math.sqrt(dx * dx + dySquared);
+          }
           if (distance > radius) {
             continue;
           }
@@ -139,6 +165,14 @@ class BrushLiveStrokeRasterizer {
             continue;
           }
         } else {
+          if (isRotatedRect) {
+            final dx = x + 0.5 - centerX;
+            final tipU = dx * tipCos - dy * tipSin;
+            final tipV = dx * tipSin + dy * tipCos;
+            if (tipU.abs() > radius || tipV.abs() > minorRadius) {
+              continue;
+            }
+          }
           coverage = 1.0;
         }
 

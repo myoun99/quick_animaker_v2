@@ -101,7 +101,15 @@ Phase 303 keeps brush size, opacity, color, and spacing as editor-session tool s
 
 Active strokes snapshot brush input settings at pointer down. Size, opacity, color, spacing, flow, hardness, tip shape, and the pen-pressure toggles used by an in-progress stroke must come from that active-stroke snapshot until pointer up/cancel. Mid-stroke UI changes therefore affect future strokes only and must not alter the currently active stroke or already committed strokes.
 
-This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as angle, roundness, smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+This panel and settings direction is Photoshop-like in structure, but it is not Photoshop ABR import support and does not imply exact Photoshop brush engine parity. Future settings such as smoothing, texture, dual brush, and presets should fit this boundary without forcing source/save schema changes for editor-session UI state.
+
+## Tip roundness and angle (P15)
+
+`BrushDab`/`BrushSettings`/`BrushToolState`/`BrushEditCanvasInputSettings` carry `roundness` (minor-to-major axis ratio in (0, 1], default 1.0) and `angleDegrees` (visual counterclockwise rotation of the tip's major axis from the horizontal, default 0; the panel slider spans 0-180 since an ellipse repeats every 180). Old JSON payloads decode with the defaults, so existing strokes rerender identically.
+
+All three coverage implementations (the commit rasterizer, `BrushLiveStrokeRasterizer`, and the `brushPixelCoveragesForDab` oracle) share the same tip-space math and MUST stay textually in sync: rotate the pixel offset onto the tip axes (`u = dx*cos - dy*sin`, `v = dx*sin + dy*cos` — the sign convention makes positive angles tilt the major axis visually up-right in y-down screen coordinates), stretch the minor axis by `1/roundness`, then run the unchanged circle distance/hardness-falloff test (round) or the `|u| <= radius && |v| <= radius*roundness` box test (square). Byte-compat gate: the classic circle (`roundness == 1`, rotation-invariant) and the axis-aligned square (`roundness == 1 && angleDegrees == 0`) take their ORIGINAL code paths, so every pre-P15 stroke stays byte-identical — the transformed math must never run for them (floating-point rotation of a circle is not bit-exact).
+
+`dirtyRegionForBrushDab` expands the bounds for rotated rectangle tips (half-extents `r*|cos| + r*roundness*|sin|` per axis — at 45 degrees the half-diagonal reaches `radius * sqrt(2)`, past the radius box that would otherwise clip the corners). Round tips never exceed the radius circle, and the axis-aligned square is exactly the radius box, so their bounds are unchanged.
 
 ## Pen pressure dynamics (P14)
 

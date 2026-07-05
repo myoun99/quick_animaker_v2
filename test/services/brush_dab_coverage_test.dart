@@ -15,6 +15,8 @@ void main() {
     double hardness = 1,
     BrushTipShape tipShape = BrushTipShape.round,
     int sequence = 0,
+    double roundness = 1.0,
+    double angleDegrees = 0.0,
   }) {
     return BrushDab(
       center: CanvasPoint(x: x, y: y),
@@ -26,6 +28,8 @@ void main() {
       tipShape: tipShape,
       pressure: 1,
       sequence: sequence,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
     );
   }
 
@@ -117,6 +121,93 @@ void main() {
       );
       expect(nearCenter.coverage, closeTo(1 - (0.70710678 / 2), 0.000001));
       expect(nearEdge.coverage, lessThan(nearCenter.coverage));
+    });
+
+    test('elliptical tip flattens the minor axis at angle 0', () {
+      // Size 10 (radius 5), roundness 0.4 -> minor radius 2: pixels along
+      // the horizontal major axis stay covered out to the full radius while
+      // vertical pixels beyond the minor radius drop out.
+      final values = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 10, roundness: 0.4),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((14, 10))); // dx=+4 along major axis
+      expect(coords, contains((6, 10))); // dx=-4 along major axis
+      expect(coords, isNot(contains((10, 14)))); // dy=+4 beyond minor radius
+      expect(coords, isNot(contains((10, 6)))); // dy=-4 beyond minor radius
+      expect(coords, contains((10, 11))); // dy=+1 within minor radius
+    });
+
+    test('elliptical tip at angle 90 swaps the axes', () {
+      final values = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 10, roundness: 0.4, angleDegrees: 90),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((10, 14))); // vertical is now the major axis
+      expect(coords, contains((10, 6)));
+      expect(coords, isNot(contains((14, 10)))); // horizontal is now minor
+      expect(coords, isNot(contains((6, 10))));
+    });
+
+    test('elliptical tip at 45 degrees tilts the major axis up-right', () {
+      // Visual counterclockwise angle in y-down screen coordinates: the
+      // major axis at 45 degrees runs toward (+x, -y).
+      final values = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 12, roundness: 0.3, angleDegrees: 45),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((13, 7))); // up-right along the major axis
+      expect(coords, contains((7, 13))); // down-left along the major axis
+      expect(coords, isNot(contains((13, 13)))); // perpendicular: outside
+      expect(coords, isNot(contains((7, 7))));
+    });
+
+    test('full roundness keeps the classic circle regardless of angle', () {
+      final baseline = brushPixelCoveragesForDab(
+        dab(x: 10.3, y: 9.8, size: 6, hardness: 0.5),
+      );
+      final rotated = brushPixelCoveragesForDab(
+        dab(x: 10.3, y: 9.8, size: 6, hardness: 0.5, angleDegrees: 73),
+      );
+      expect(rotated, baseline);
+    });
+
+    test('rotated rectangle tip covers a diamond at 45 degrees', () {
+      // Size 8 (radius 4), roundness 1, rotated 45 degrees: corners of the
+      // axis-aligned bounding box fall outside the rotated square while the
+      // axis midpoints stay inside.
+      final values = brushPixelCoveragesForDab(
+        dab(
+          x: 10.5,
+          y: 10.5,
+          size: 8,
+          tipShape: BrushTipShape.square,
+          angleDegrees: 45,
+        ),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((10, 10)));
+      expect(coords, contains((13, 10))); // axis midpoint stays inside
+      expect(coords, contains((10, 13)));
+      expect(coords, isNot(contains((13, 13)))); // bbox corner cut off
+      expect(coords, isNot(contains((7, 7))));
+      expect(values.every((value) => value.coverage == 1), isTrue);
+    });
+
+    test('rectangle roundness shrinks the minor side', () {
+      final values = brushPixelCoveragesForDab(
+        dab(
+          x: 10.5,
+          y: 10.5,
+          size: 8,
+          tipShape: BrushTipShape.square,
+          roundness: 0.25,
+        ),
+      );
+      final coords = values.map((value) => (value.x, value.y)).toSet();
+      expect(coords, contains((13, 10))); // dx=+3 within the major half-width
+      expect(coords, isNot(contains((10, 13)))); // dy=+3 beyond minor radius 1
+      expect(coords, contains((10, 11))); // dy=+1 within minor radius
     });
 
     test('fractional center includes pixels exactly on radius boundary', () {

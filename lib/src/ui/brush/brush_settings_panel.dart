@@ -29,6 +29,8 @@ class BrushSettingsPanel extends StatelessWidget {
     final spacingLabel = '${(state.spacing * 100).round()}%';
     final hardnessLabel = '${(state.hardness * 100).round()}%';
     final flowLabel = '${(state.flow * 100).round()}%';
+    final roundnessLabel = '${(state.roundness * 100).round()}%';
+    final angleLabel = '${state.angleDegrees.round()}°';
     return EditorPanelFrame(
       title: 'Brush Settings',
       child: Column(
@@ -111,6 +113,26 @@ class BrushSettingsPanel extends StatelessWidget {
             selected: {state.tipShape},
             onSelectionChanged: (selection) =>
                 onChanged(state.copyWith(tipShape: selection.single)),
+          ),
+          const SizedBox(height: 4),
+          _PanelSlider(
+            label: 'Roundness',
+            valueLabel: roundnessLabel,
+            value: BrushToolState.clampRoundness(state.roundness),
+            min: BrushToolState.minRoundness,
+            max: 1,
+            keyValue: 'brush-tool-roundness-slider',
+            onChanged: (value) => onChanged(state.copyWith(roundness: value)),
+          ),
+          _PanelSlider(
+            label: 'Angle',
+            valueLabel: angleLabel,
+            value: BrushToolState.clampAngleDegrees(state.angleDegrees),
+            min: BrushToolState.minAngleDegrees,
+            max: BrushToolState.maxAngleDegrees,
+            keyValue: 'brush-tool-angle-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(angleDegrees: value)),
           ),
           const SizedBox(height: 8),
           Text('Pen Pressure', style: Theme.of(context).textTheme.labelSmall),
