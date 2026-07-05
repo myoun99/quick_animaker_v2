@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/canvas_viewport.dart';
-import 'active_stroke_overlay_painter.dart';
+import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
@@ -102,9 +102,23 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
 
-    final overlayImage = overlayModel?.overlayImage;
-    if (overlayImage != null) {
-      canvas.drawImage(overlayImage, Offset.zero, tileImagePaint);
+    final overlay = overlayModel;
+    if (overlay != null && overlay.hasStrokeContent) {
+      // The stroke's region pictures replace (BlendMode.src) the stale
+      // content of earlier pictures where they overlap, so they must compose
+      // inside an isolated layer; the finished layer composites onto the
+      // artwork with plain source-over. Replacement blending never reaches
+      // the view canvas (at fractional zoom it erases boundary strips
+      // there), and pictures hold no GPU textures, so a lost GPU context
+      // cannot corrupt the overlay mid-stroke.
+      canvas.saveLayer(
+        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
+        tileImagePaint,
+      );
+      for (final picture in overlay.pictures) {
+        canvas.drawPicture(picture);
+      }
+      canvas.restore();
     }
 
     canvas.restore();
