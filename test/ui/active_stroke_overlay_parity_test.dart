@@ -24,9 +24,9 @@ import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 /// 1. `BrushLiveStrokeRasterizer` output == `materialize...` output, exactly.
 /// 2. The pen-up composite fast path == full re-rasterization onto a painted
 ///    base, within one rounding step (source-over associativity).
-/// 3. The overlay's region pictures — replayed in order through the
-///    production painter's isolated layer — reproduce the buffer's
-///    premultiplied bytes: replacement semantics, flattening, and the
+/// 3. The overlay's decoded tile images — drawn through the production
+///    painter exactly like committed tiles — reproduce the buffer's
+///    premultiplied bytes: initial decode, mid-decode coalescing, and the
 ///    source-over composite onto committed artwork.
 
 BrushDab _dab({
@@ -244,9 +244,9 @@ void main() {
     });
   });
 
-  group('region pictures replay as the live buffer', () {
+  group('overlay tile images decode as the live buffer', () {
     // Renders the overlay exactly the way production does: through
-    // BitmapSurfacePainter's isolated layer over the given surface.
+    // BitmapSurfacePainter, over the given surface.
     Future<Uint8List> paintedCanvasBytes(
       ActiveStrokeOverlayModel model, {
       BitmapSurface? baseSurface,
@@ -271,21 +271,20 @@ void main() {
       return byteData!.buffer.asUint8List();
     }
 
-    void addRegion(
+    void updateRegion(
       ActiveStrokeOverlayModel model,
       BrushLiveStrokeRasterizer rasterizer,
       DirtyRegion region,
     ) {
-      model.addRegionPicture(
-        strokeRegionPicture(
-          pixels: rasterizer.pixels,
-          canvasWidth: _canvasWidth,
-          region: region,
-        ),
+      model.updateRegion(
+        pixels: rasterizer.pixels,
+        canvasWidth: _canvasWidth,
+        canvasHeight: _canvasHeight,
+        region: region,
       );
     }
 
-    test('a single region picture replays as the premultiplied buffer', () async {
+    test('decoded overlay tiles equal the premultiplied buffer', () async {
       final dabs = [
         _dab(x: 9.13, y: 8.62, size: 12, hardness: 0.4),
         _dab(x: 12.4, y: 10.1, size: 12, hardness: 0.4, sequence: 1),
@@ -293,85 +292,48 @@ void main() {
       final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
       final region = rasterizer.blendFrom(dabs, from: 0)!;
 
-      final model = ActiveStrokeOverlayModel();
+      // A small tile size makes the stroke span several overlay tiles.
+      final model = ActiveStrokeOverlayModel(tileSize: 16);
       addTearDown(model.dispose);
-      addRegion(model, rasterizer, region);
+      updateRegion(model, rasterizer, region);
+      await model.waitForPendingDecodes();
+      expect(model.hasStrokeContent, isTrue);
+      expect(model.tileImages.length, greaterThan(1));
 
-      _expectClose(
+      _expectExact(
         await paintedCanvasBytes(model),
         _premultipliedCanvasBytes(rasterizer.pixels),
-        'single region replay',
-        tolerance: 2,
+        'decoded overlay',
       );
     });
 
     test(
-      'later region pictures replace overlapping content, not re-blend it',
+      'tiles touched while decoding re-decode with the newest content',
       () async {
-        // Each region picture carries the accumulated buffer values for its
-        // rect, so where two batches overlap the second picture must REPLACE
-        // the first one's pixels (BlendMode.src inside the isolated layer);
-        // replaying it with source-over would blend the translucent overlap
-        // twice and fail this byte comparison.
+        // Two overlapping translucent batches pushed back to back: the
+        // second update lands while the first decode is still in flight, so
+        // the shared tiles must re-snapshot the newer buffer state once the
+        // running decode finishes (stale content would blend the overlap
+        // wrong or drop the second batch).
         final firstBatch = [_dab(x: 9.5, y: 9.5, size: 12, color: 0x8040A0C0)];
         final secondBatch = [
           _dab(x: 12.5, y: 10.5, size: 12, color: 0x80C04010, sequence: 1),
         ];
         final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
-        final model = ActiveStrokeOverlayModel();
+        final model = ActiveStrokeOverlayModel(tileSize: 16);
         addTearDown(model.dispose);
 
         final firstRegion = rasterizer.blendFrom(firstBatch, from: 0)!;
-        addRegion(model, rasterizer, firstRegion);
+        updateRegion(model, rasterizer, firstRegion);
         final allDabs = [...firstBatch, ...secondBatch];
         final secondRegion = rasterizer.blendFrom(allDabs, from: 1)!;
-        addRegion(model, rasterizer, secondRegion);
-
-        _expectClose(
-          await paintedCanvasBytes(model),
-          _premultipliedCanvasBytes(rasterizer.pixels),
-          'replacement replay',
-          tolerance: 2,
-        );
-      },
-    );
-
-    test(
-      'flattening replays identically to the accumulated region pictures',
-      () async {
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
-        final model = ActiveStrokeOverlayModel();
-        addTearDown(model.dispose);
-        final allDabs = <BrushDab>[];
-        for (var batch = 0; batch < 3; batch += 1) {
-          final from = allDabs.length;
-          allDabs.addAll([
-            for (var i = 0; i < 2; i += 1)
-              _dab(
-                x: 8.3 + batch * 3.7 + i * 1.9,
-                y: 9.1 + batch * 2.4,
-                sequence: from + i,
-              ),
-          ]);
-          final region = rasterizer.blendFrom(allDabs, from: from)!;
-          addRegion(model, rasterizer, region);
-        }
-        expect(model.pictures, hasLength(3));
-        final accumulated = await paintedCanvasBytes(model);
-
-        model.replaceWithFlattened(
-          strokeRegionPicture(
-            pixels: rasterizer.pixels,
-            canvasWidth: _canvasWidth,
-            region: rasterizer.strokeBounds!,
-          ),
-        );
-        expect(model.pictures, hasLength(1));
+        updateRegion(model, rasterizer, secondRegion);
+        await model.waitForPendingDecodes();
 
         _expectExact(
           await paintedCanvasBytes(model),
-          accumulated,
-          'flattened replay',
+          _premultipliedCanvasBytes(rasterizer.pixels),
+          'coalesced decode',
         );
       },
     );
@@ -408,9 +370,10 @@ void main() {
         ];
         final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
         final region = rasterizer.blendFrom(strokeDabs, from: 0)!;
-        final model = ActiveStrokeOverlayModel();
+        final model = ActiveStrokeOverlayModel(tileSize: 16);
         addTearDown(model.dispose);
-        addRegion(model, rasterizer, region);
+        updateRegion(model, rasterizer, region);
+        await model.waitForPendingDecodes();
 
         final painted = await paintedCanvasBytes(model, baseSurface: base);
         int offsetOf(int x, int y) => (y * _canvasWidth + x) * 4;
@@ -424,21 +387,39 @@ void main() {
       },
     );
 
-    test('reset clears the pictures and dabs', () {
+    test('reset clears the tile images and dabs', () async {
       final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
       final dabs = [_dab(x: 8.5, y: 8.5)];
       final region = rasterizer.blendFrom(dabs, from: 0)!;
-      final model = ActiveStrokeOverlayModel();
+      final model = ActiveStrokeOverlayModel(tileSize: 16);
       addTearDown(model.dispose);
       model.dabs.addAll(dabs);
-      addRegion(model, rasterizer, region);
+      updateRegion(model, rasterizer, region);
+      await model.waitForPendingDecodes();
       expect(model.hasStrokeContent, isTrue);
 
       model.reset();
 
       expect(model.hasStrokeContent, isFalse);
-      expect(model.pictures, isEmpty);
+      expect(model.tileImages, isEmpty);
       expect(model.dabs, isEmpty);
+    });
+
+    test('a decode landing after reset is discarded, not resurrected', () async {
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final dabs = [_dab(x: 8.5, y: 8.5)];
+      final region = rasterizer.blendFrom(dabs, from: 0)!;
+      final model = ActiveStrokeOverlayModel(tileSize: 16);
+      addTearDown(model.dispose);
+      updateRegion(model, rasterizer, region);
+
+      // Reset while the decode is still in flight (pointer cancel / next
+      // stroke starting): the late image must be dropped.
+      model.reset();
+      await model.waitForPendingDecodes();
+
+      expect(model.hasStrokeContent, isFalse);
+      expect(model.tileImages, isEmpty);
     });
   });
 }

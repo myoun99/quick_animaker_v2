@@ -1,143 +1,188 @@
+import 'dart:async';
 import 'dart:collection';
-import 'dart:typed_data';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
+import '../../models/tile_coord.dart';
 
 /// Mutable state of the in-progress stroke overlay.
 ///
 /// A lightweight editor-local [ChangeNotifier]: the interactive view blends
-/// new dabs into its live CPU stroke buffer, records the touched region as a
-/// [ui.Picture], and notifies — the canvas painter listens through the
-/// `CustomPainter.repaint` hook, so pointer moves repaint the canvas
-/// directly without rebuilding any widgets.
+/// new dabs into its live CPU stroke buffer and hands the touched region to
+/// [updateRegion]; decode completions notify the canvas painter through the
+/// `CustomPainter.repaint` hook, so strokes repaint without rebuilding any
+/// widgets.
 ///
-/// The overlay is picture-based on purpose: pictures are replayed at final
-/// device resolution every frame and hold no GPU resources, so a lost or
-/// recreated GPU context (e.g. switching app focus) can never corrupt what
-/// they show. The previous representation — synchronously converting the
-/// picture to a GPU image per move — was context-backed and flashed one
-/// frame of garbage at exactly the moments those images were created or
-/// disposed (stroke start/end).
+/// The overlay displays through the EXACT pipeline the committed tiles use:
+/// straight-alpha buffer bytes are premultiplied and decoded with
+/// `decodeImageFromPixels` into tile images that the painter draws with
+/// nearest sampling. One rasterization path means live and committed pixels
+/// cannot diverge at any zoom — replaying the stroke as rect geometry (a
+/// previous representation) rasterized differently from nearest-sampled
+/// images at fractional zoom, visibly shifting the active stroke's pixels
+/// against committed strokes. Decode-based images also survive GPU context
+/// events (e.g. app focus switches) that corrupted synchronously created
+/// picture-to-image textures for a frame.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
+  ActiveStrokeOverlayModel({this.tileSize = 128});
+
+  /// Edge length of an overlay tile in canvas pixels. Independent of the
+  /// committed surface's tile size; smaller tiles bound the per-move
+  /// snapshot/upload cost.
+  final int tileSize;
+
   /// Dabs of the current stroke, kept for observability and tests; rendering
-  /// uses [pictures], which carry the exact rasterized pixels.
+  /// uses [tileImages], which carry the exact rasterized pixels.
   final List<BrushDab> dabs = <BrushDab>[];
 
-  final List<ui.Picture> _pictures = <ui.Picture>[];
+  final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
+  final Set<TileCoord> _decoding = <TileCoord>{};
+  final Set<TileCoord> _dirtyWhileDecoding = <TileCoord>{};
+  int _generation = 0;
+  int _pendingDecodeCount = 0;
+  Completer<void>? _decodesSettled;
 
-  /// Stroke region pictures in paint order. Each picture replaces
-  /// (`BlendMode.src`) the pixels its region covers, so replaying the list
-  /// in order inside an isolated layer reproduces the live stroke buffer;
-  /// see [strokeRegionPicture].
-  late final List<ui.Picture> pictures = UnmodifiableListView(_pictures);
+  /// Decoded overlay tile images by tile coordinate. Tiles never overlap, so
+  /// the painter draws each with plain source-over at
+  /// `(coord * tileSize)`, exactly like the committed tile images.
+  late final Map<TileCoord, ui.Image> tileImages = UnmodifiableMapView(
+    _tileImages,
+  );
 
   /// Whether the overlay currently has stroke content to draw.
-  bool get hasStrokeContent => _pictures.isNotEmpty;
+  bool get hasStrokeContent => _tileImages.isNotEmpty;
 
-  /// Appends the picture of a freshly rasterized region.
-  void addRegionPicture(ui.Picture picture) {
-    _pictures.add(picture);
+  /// Snapshots the overlay tiles that [region] touches from the live stroke
+  /// buffer and re-decodes them.
+  ///
+  /// Decoding is asynchronous; a tile touched again while its decode is in
+  /// flight is re-snapshotted from the (newer) buffer content as soon as the
+  /// running decode lands, so the newest state always wins and per-frame
+  /// work stays bounded to one decode per touched tile.
+  void updateRegion({
+    required Uint8List pixels,
+    required int canvasWidth,
+    required int canvasHeight,
+    required DirtyRegion region,
+  }) {
+    for (final coord in region.toTileCoords(tileSize: tileSize)) {
+      _decodeTile(coord, pixels, canvasWidth, canvasHeight);
+    }
   }
 
-  /// Replaces the accumulated region pictures with one picture covering the
-  /// whole stroke, capping the per-frame replay cost of long strokes.
-  void replaceWithFlattened(ui.Picture flattened) {
-    _disposePictures();
-    _pictures.add(flattened);
+  void _decodeTile(
+    TileCoord coord,
+    Uint8List pixels,
+    int canvasWidth,
+    int canvasHeight,
+  ) {
+    if (_decoding.contains(coord)) {
+      _dirtyWhileDecoding.add(coord);
+      return;
+    }
+    _decoding.add(coord);
+    _pendingDecodeCount += 1;
+
+    final left = coord.x * tileSize;
+    final top = coord.y * tileSize;
+    final width = math.min(tileSize, canvasWidth - left);
+    final height = math.min(tileSize, canvasHeight - top);
+
+    // Snapshot and premultiply in one pass: the engine interprets rgba8888
+    // uploads as premultiplied, and Skia's mul-div-255 rounding keeps the
+    // overlay byte-identical to the committed tile images.
+    final bytes = Uint8List(width * height * 4);
+    for (var y = 0; y < height; y += 1) {
+      var source = ((top + y) * canvasWidth + left) * 4;
+      var target = y * width * 4;
+      for (var x = 0; x < width; x += 1) {
+        final alpha = pixels[source + 3];
+        if (alpha == 255) {
+          bytes[target] = pixels[source];
+          bytes[target + 1] = pixels[source + 1];
+          bytes[target + 2] = pixels[source + 2];
+          bytes[target + 3] = 255;
+        } else if (alpha != 0) {
+          bytes[target] = _mul255Round(pixels[source], alpha);
+          bytes[target + 1] = _mul255Round(pixels[source + 1], alpha);
+          bytes[target + 2] = _mul255Round(pixels[source + 2], alpha);
+          bytes[target + 3] = alpha;
+        }
+        source += 4;
+        target += 4;
+      }
+    }
+
+    final generation = _generation;
+    ui.decodeImageFromPixels(bytes, width, height, ui.PixelFormat.rgba8888, (
+      image,
+    ) {
+      if (generation != _generation) {
+        // The stroke was reset or the model disposed while decoding.
+        image.dispose();
+        _finishDecode();
+        return;
+      }
+      _decoding.remove(coord);
+      _tileImages[coord]?.dispose();
+      _tileImages[coord] = image;
+      notifyListeners();
+      if (_dirtyWhileDecoding.remove(coord)) {
+        _decodeTile(coord, pixels, canvasWidth, canvasHeight);
+      }
+      _finishDecode();
+    });
   }
 
-  /// Notifies listeners after the owner mutated the overlay content.
-  void markChanged() => notifyListeners();
+  void _finishDecode() {
+    _pendingDecodeCount -= 1;
+    if (_pendingDecodeCount == 0) {
+      _decodesSettled?.complete();
+      _decodesSettled = null;
+    }
+  }
 
-  /// Clears the overlay and disposes its pictures.
+  /// Completes once no tile decode is in flight, including decodes chained
+  /// by mid-decode updates.
+  @visibleForTesting
+  Future<void> waitForPendingDecodes() {
+    if (_pendingDecodeCount == 0) {
+      return Future<void>.value();
+    }
+    return (_decodesSettled ??= Completer<void>()).future;
+  }
+
+  /// Clears the overlay and disposes its tile images.
   void reset() {
-    _disposePictures();
+    _generation += 1;
+    _clearTiles();
     dabs.clear();
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _disposePictures();
+    _generation += 1;
+    _clearTiles();
     super.dispose();
   }
 
-  void _disposePictures() {
-    for (final picture in _pictures) {
-      picture.dispose();
+  void _clearTiles() {
+    for (final image in _tileImages.values) {
+      image.dispose();
     }
-    _pictures.clear();
-  }
-}
-
-/// Records a dirty region of the straight-alpha live stroke buffer as a
-/// picture of horizontal run rects at absolute canvas coordinates.
-///
-/// Horizontal runs of identical pixels collapse into single rects, so solid
-/// stroke interiors record a handful of ops per row. Skia premultiplies the
-/// straight-alpha colors when rasterizing with its own rounding — the same
-/// conversion the committed tile images go through — keeping the live
-/// overlay and the committed display byte-consistent.
-///
-/// Every rect paints with `BlendMode.src`: the buffer accumulates the whole
-/// stroke, so a region pixel always carries the complete blended value, and
-/// a later region picture must REPLACE the stale value an earlier picture
-/// painted where they overlap (source-over would blend it twice). Skipping
-/// transparent pixels is compatible with replacement because source-over
-/// blending never decreases alpha: a pixel that is transparent now was
-/// transparent in every earlier region too. Replacement blending is only
-/// valid inside an isolated layer over the rest of the stroke — the painter
-/// composes the pictures in a `saveLayer`, never on the view canvas.
-ui.Picture strokeRegionPicture({
-  required Uint8List pixels,
-  required int canvasWidth,
-  required DirtyRegion region,
-}) {
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-  final paint = Paint()
-    ..isAntiAlias = false
-    ..blendMode = BlendMode.src;
-
-  for (var y = region.top; y < region.bottomExclusive; y += 1) {
-    final rowOffset = y * canvasWidth;
-    var x = region.left;
-    while (x < region.rightExclusive) {
-      final offset = (rowOffset + x) * 4;
-      final a = pixels[offset + 3];
-      if (a == 0) {
-        x += 1;
-        continue;
-      }
-      final r = pixels[offset];
-      final g = pixels[offset + 1];
-      final b = pixels[offset + 2];
-
-      // Extend the run while the pixel value repeats.
-      var runEnd = x + 1;
-      while (runEnd < region.rightExclusive) {
-        final nextOffset = (rowOffset + runEnd) * 4;
-        if (pixels[nextOffset + 3] != a ||
-            pixels[nextOffset] != r ||
-            pixels[nextOffset + 1] != g ||
-            pixels[nextOffset + 2] != b) {
-          break;
-        }
-        runEnd += 1;
-      }
-
-      paint.color = Color.fromARGB(a, r, g, b);
-      canvas.drawRect(
-        Rect.fromLTWH(x.toDouble(), y.toDouble(), (runEnd - x).toDouble(), 1),
-        paint,
-      );
-      x = runEnd;
-    }
+    _tileImages.clear();
+    _decoding.clear();
+    _dirtyWhileDecoding.clear();
   }
 
-  return recorder.endRecording();
+  /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
+  static int _mul255Round(int value, int alpha) {
+    final product = value * alpha + 128;
+    return (product + (product >> 8)) >> 8;
+  }
 }
