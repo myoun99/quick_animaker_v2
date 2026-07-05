@@ -3,17 +3,13 @@ import 'package:flutter/material.dart';
 import '../../models/brush_dab.dart';
 
 class ActiveStrokeOverlayPainter extends CustomPainter {
-  ActiveStrokeOverlayPainter({
-    this.activeStrokeOverlay = const <BrushDab>[],
-    this.activeStrokePath,
-    this.activeStrokePathDab,
-    this.activeStrokePathVersion = 0,
-  });
+  ActiveStrokeOverlayPainter({this.activeStrokeOverlay = const <BrushDab>[]});
 
   final List<BrushDab> activeStrokeOverlay;
-  final Path? activeStrokePath;
-  final BrushDab? activeStrokePathDab;
-  final int activeStrokePathVersion;
+
+  final Paint _dabPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = false;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -25,13 +21,9 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
       return;
     }
 
-    final paint = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = false;
-
     for (final dab in dabs) {
-      paint.color = _colorForDab(dab);
-      _paintPixelGridStamp(canvas, paint, dab);
+      _dabPaint.color = _colorForDab(dab);
+      _paintPixelGridStamp(canvas, _dabPaint, dab);
     }
   }
 
@@ -58,9 +50,6 @@ class ActiveStrokeOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ActiveStrokeOverlayPainter oldDelegate) {
-    return oldDelegate.activeStrokeOverlay != activeStrokeOverlay ||
-        oldDelegate.activeStrokePath != activeStrokePath ||
-        oldDelegate.activeStrokePathDab != activeStrokePathDab ||
-        oldDelegate.activeStrokePathVersion != activeStrokePathVersion;
+    return oldDelegate.activeStrokeOverlay != activeStrokeOverlay;
   }
 }

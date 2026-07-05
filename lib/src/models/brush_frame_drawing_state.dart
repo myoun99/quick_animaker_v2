@@ -33,8 +33,12 @@ class BrushFrameDrawingState {
   List<BrushPaintCommand> get paintCommands => _paintCommands;
   List<BrushPaintCommand> get commands => paintCommands;
 
-  List<BrushPaintCommand> get livePaintCommands =>
-      _visibleByState(BrushPaintCommandState.live);
+  // Derived views are computed once per (immutable) instance and cached. A new
+  // instance is created by copyWith on every edit, so the cache never goes
+  // stale. Results are unmodifiable so shared cached lists cannot be corrupted.
+  late final List<BrushPaintCommand> livePaintCommands = _visibleByState(
+    BrushPaintCommandState.live,
+  );
 
   List<BrushPaintCommand> get hiddenByUndoPaintCommands =>
       _paintCommands
@@ -42,25 +46,26 @@ class BrushFrameDrawingState {
           .toList()
         ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
 
-  List<BrushPaintCommand> get deferredBakePaintCommands =>
+  late final List<BrushPaintCommand> deferredBakePaintCommands =
       _visibleByState(BrushPaintCommandState.deferredBake);
 
   bool get hasDeferredBakeCommands => deferredBakePaintCommands.isNotEmpty;
   int get deferredBakeCount => deferredBakePaintCommands.length;
 
-  List<BrushPaintCommand> get visibleActivePaintCommands =>
-      [...deferredBakePaintCommands, ...livePaintCommands]
-        ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+  late final List<BrushPaintCommand> visibleActivePaintCommands =
+      List<BrushPaintCommand>.unmodifiable(
+        <BrushPaintCommand>[...deferredBakePaintCommands, ...livePaintCommands]
+          ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber)),
+      );
 
   List<BrushPaintCommand> get allPaintCommandsInDisplayOrder =>
       visibleActivePaintCommands;
 
-  BrushPaintCommand? commandById(BrushPaintCommandId id) {
-    for (final command in _paintCommands) {
-      if (command.id == id) return command;
-    }
-    return null;
-  }
+  late final Map<BrushPaintCommandId, BrushPaintCommand> _commandIndex = {
+    for (final command in _paintCommands) command.id: command,
+  };
+
+  BrushPaintCommand? commandById(BrushPaintCommandId id) => _commandIndex[id];
 
   BrushFrameDrawingState copyWith({
     List<BrushPaintCommand>? paintCommands,
@@ -82,14 +87,16 @@ class BrushFrameDrawingState {
   }
 
   List<BrushPaintCommand> _visibleByState(BrushPaintCommandState state) =>
-      _paintCommands
-          .where(
-            (command) =>
-                command.state == state &&
-                !hiddenCommandIds.contains(command.id),
-          )
-          .toList()
-        ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+      List<BrushPaintCommand>.unmodifiable(
+        _paintCommands
+            .where(
+              (command) =>
+                  command.state == state &&
+                  !hiddenCommandIds.contains(command.id),
+            )
+            .toList()
+          ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber)),
+      );
 }
 
 typedef BrushFrameDrawing = BrushFrameDrawingState;

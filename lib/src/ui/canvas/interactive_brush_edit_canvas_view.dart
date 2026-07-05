@@ -236,15 +236,23 @@ class _InteractiveBrushEditCanvasViewState
       firstSequence: firstEndSequence,
       spacingRatio: _activeStrokeSpacing,
     );
-    final nextDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
-    if (nextDabs.isEmpty) {
+    final addedDabCount = segmentStartDabs.length + segmentEndDabs.length;
+    if (addedDabCount == 0) {
       return;
     }
 
     setState(() {
-      _collectedDabs.addAll(nextDabs);
-      _liveOverlayDabs.addAll(nextDabs);
-      _nextSequence += nextDabs.length;
+      // Append directly instead of materializing a temporary combined list on
+      // every pointer move (this runs at pointer-sample frequency).
+      if (segmentStartDabs.isNotEmpty) {
+        _collectedDabs.addAll(segmentStartDabs);
+        _liveOverlayDabs.addAll(segmentStartDabs);
+      }
+      if (segmentEndDabs.isNotEmpty) {
+        _collectedDabs.addAll(segmentEndDabs);
+        _liveOverlayDabs.addAll(segmentEndDabs);
+      }
+      _nextSequence += addedDabCount;
       _breakCurrentVisibleSegment = false;
     });
   }

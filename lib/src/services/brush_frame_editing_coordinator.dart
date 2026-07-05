@@ -46,6 +46,18 @@ class BrushFrameEditingCoordinator {
   BrushEditSessionState get activeSessionState =>
       sessionStore.getOrCreate(_activeFrameKey);
 
+  /// Visible committed source-dab strokes for [key], in display order.
+  ///
+  /// Display-only projection for the editor canvas: it reads visible source
+  /// commands through the store boundary and does not mutate drawing state.
+  List<List<BrushDab>> visibleCommittedSourceDabStrokes(BrushFrameKey key) =>
+      frameStore
+          .getOrCreateFrame(key)
+          .visibleActivePaintCommands
+          .map((command) => command.sourceDabs)
+          .where((dabs) => dabs.isNotEmpty)
+          .toList(growable: false);
+
   void selectFrame(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
     sessionStore.getOrCreate(key);
