@@ -1,3 +1,4 @@
+import '../../models/brush_settings.dart';
 import '../../models/brush_tip_shape.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
@@ -138,6 +139,42 @@ class BrushToolState {
   /// Visual counterclockwise rotation of the tip's major axis from the
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
   final double angleDegrees;
+
+  /// Builds tool state from a preset's model-layer [BrushSettings], clamping
+  /// every value into the panel's ranges.
+  factory BrushToolState.fromBrushSettings(BrushSettings settings) {
+    return BrushToolState.clamped(
+      size: settings.size,
+      opacity: settings.opacity,
+      color: settings.color,
+      spacing: settings.spacing,
+      hardness: settings.hardness,
+      flow: settings.flow,
+      tipShape: settings.tipShape,
+      pressureSize: settings.pressureSize,
+      pressureOpacity: settings.pressureOpacity,
+      roundness: settings.roundness,
+      angleDegrees: settings.angleDegrees,
+    );
+  }
+
+  /// Snapshot of this tool state as the model-layer [BrushSettings] — the
+  /// payload brush presets store.
+  BrushSettings toBrushSettings() {
+    return BrushSettings(
+      color: color,
+      size: size,
+      opacity: opacity,
+      flow: flow,
+      hardness: hardness,
+      spacing: spacing,
+      tipShape: tipShape,
+      pressureSize: pressureSize,
+      pressureOpacity: pressureOpacity,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
+    );
+  }
 
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings(

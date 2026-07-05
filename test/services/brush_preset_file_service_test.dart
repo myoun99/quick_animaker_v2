@@ -1,0 +1,109 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_preset.dart';
+import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
+import 'package:quick_animaker_v2/src/models/brush_settings.dart';
+import 'package:quick_animaker_v2/src/services/brush_preset_defaults.dart';
+import 'package:quick_animaker_v2/src/services/brush_preset_file_service.dart';
+
+void main() {
+  late Directory tempDirectory;
+
+  setUp(() async {
+    tempDirectory = await Directory.systemTemp.createTemp(
+      'brush_preset_file_service_test',
+    );
+  });
+
+  tearDown(() async {
+    if (await tempDirectory.exists()) {
+      await tempDirectory.delete(recursive: true);
+    }
+  });
+
+  String pathIn(String fileName) => '${tempDirectory.path}/$fileName';
+
+  group('BrushPresetFileService', () {
+    test('missing file yields the built-in defaults', () async {
+      final service = BrushPresetFileService(filePath: pathIn('missing.json'));
+
+      final presets = await service.loadOrDefaults();
+
+      expect(presets, defaultBrushPresets);
+      // Loading must not create the file; defaults are only persisted when
+      // the user actually saves.
+      expect(File(pathIn('missing.json')).existsSync(), isFalse);
+    });
+
+    test('save then load round-trips the library', () async {
+      final service = BrushPresetFileService(
+        filePath: pathIn('nested/dir/presets.json'),
+      );
+      final presets = [
+        BrushPreset(
+          id: const BrushPresetId('user-1'),
+          name: 'My Pen',
+          settings: BrushSettings(
+            size: 7,
+            hardness: 0.9,
+            roundness: 0.4,
+            angleDegrees: 45,
+            pressureSize: true,
+          ),
+        ),
+        defaultBrushPresets.first,
+      ];
+
+      await service.save(presets);
+
+      expect(await service.loadOrDefaults(), presets);
+    });
+
+    test('an explicitly saved empty library stays empty on load', () async {
+      final service = BrushPresetFileService(filePath: pathIn('empty.json'));
+
+      await service.save(const []);
+
+      expect(await service.loadOrDefaults(), isEmpty);
+    });
+
+    test('corrupt file falls back to the built-in defaults', () async {
+      final path = pathIn('corrupt.json');
+      await File(path).writeAsString('{not json');
+      final service = BrushPresetFileService(filePath: path);
+
+      expect(await service.loadOrDefaults(), defaultBrushPresets);
+    });
+
+    test('valid json with wrong shape falls back to the defaults', () async {
+      final path = pathIn('wrong_shape.json');
+      await File(path).writeAsString(jsonEncode({'presets': 'nope'}));
+      final service = BrushPresetFileService(filePath: path);
+
+      expect(await service.loadOrDefaults(), defaultBrushPresets);
+    });
+
+    test('default path points into the per-user app-data directory', () {
+      final path = BrushPresetFileService.defaultBrushPresetFilePath();
+      expect(path, endsWith('quick_animaker_v2/brush_presets.json'));
+    });
+  });
+
+  group('defaultBrushPresets', () {
+    test('are non-empty with unique ids and names', () {
+      expect(defaultBrushPresets, isNotEmpty);
+      final ids = defaultBrushPresets.map((preset) => preset.id).toSet();
+      final names = defaultBrushPresets.map((preset) => preset.name).toSet();
+      expect(ids.length, defaultBrushPresets.length);
+      expect(names.length, defaultBrushPresets.length);
+    });
+
+    test('every default round-trips through json', () {
+      for (final preset in defaultBrushPresets) {
+        expect(BrushPreset.fromJson(preset.toJson()), preset);
+      }
+    });
+  });
+}
