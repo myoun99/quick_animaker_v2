@@ -33,26 +33,34 @@ class BitmapTileImageCache extends ChangeNotifier {
     (image) => image.dispose(),
   );
 
-  /// Latest decoded tile per coordinate, held strongly so its image stays
-  /// alive (the [Finalizer] only disposes an image once its tile is
+  /// Latest decoded tile per (scope, coordinate), held strongly so its image
+  /// stays alive (the [Finalizer] only disposes an image once its tile is
   /// unreferenced everywhere). Lets the painter show slightly stale content
   /// for a just-changed tile instead of falling back to a per-pixel redraw,
   /// which froze the UI for large strokes.
-  final Map<TileCoord, BitmapTile> _latestDecodedTileByCoord =
-      <TileCoord, BitmapTile>{};
+  ///
+  /// The scope isolates unrelated surfaces that share coordinates — e.g. two
+  /// animation frames both have a tile at (0, 0), and without scoping the
+  /// previous frame's artwork would briefly show through while the current
+  /// frame's tile decodes.
+  final Map<Object?, Map<TileCoord, BitmapTile>> _latestDecodedByScope =
+      <Object?, Map<TileCoord, BitmapTile>>{};
 
   /// The decoded image for [tile], or `null` while the decode is pending.
   ui.Image? imageFor(BitmapTile tile) => _images[tile];
 
-  /// The most recently decoded image at [coord] (possibly for an older tile
-  /// version), or `null` if nothing decoded there yet.
-  ui.Image? latestImageForCoord(TileCoord coord) {
-    final tile = _latestDecodedTileByCoord[coord];
+  /// The most recently decoded image at [coord] within [scope] (possibly for
+  /// an older tile version), or `null` if nothing decoded there yet.
+  ui.Image? latestImageForCoord(TileCoord coord, {Object? scope}) {
+    final tile = _latestDecodedByScope[scope]?[coord];
     return tile == null ? null : _images[tile];
   }
 
   /// Starts decoding [tile] once; notifies listeners when the image is ready.
-  void ensureDecoded(BitmapTile tile) {
+  ///
+  /// [staleScope] identifies the logical surface lineage (e.g. a brush frame)
+  /// so [latestImageForCoord] never leaks another lineage's artwork.
+  void ensureDecoded(BitmapTile tile, {Object? staleScope}) {
     if (_images[tile] != null || _inFlight[tile] != null) {
       return;
     }
@@ -87,7 +95,10 @@ class BitmapTileImageCache extends ChangeNotifier {
       (image) {
         _images[tile] = image;
         _imageFinalizer.attach(tile, image);
-        _latestDecodedTileByCoord[tile.coord] = tile;
+        _latestDecodedByScope.putIfAbsent(
+          staleScope,
+          () => <TileCoord, BitmapTile>{},
+        )[tile.coord] = tile;
         notifyListeners();
       },
     );

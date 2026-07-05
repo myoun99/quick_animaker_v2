@@ -13,12 +13,19 @@ class BitmapSurfacePainter extends CustomPainter {
   BitmapSurfacePainter({
     required this.surface,
     this.showTransparentBackground = true,
+    this.staleScope,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(repaint: tileImageCache ?? BitmapTileImageCache.instance);
 
   final BitmapSurface surface;
   final bool showTransparentBackground;
+
+  /// Identifies this surface's lineage (e.g. the brush frame) so the stale
+  /// tile fallback never shows another frame's artwork; see
+  /// [BitmapTileImageCache.latestImageForCoord].
+  final Object? staleScope;
+
   final BitmapTileImageCache tileImageCache;
 
   @override
@@ -44,7 +51,7 @@ class BitmapSurfacePainter extends CustomPainter {
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
     for (final tile in surface.tiles.values) {
-      tileImageCache.ensureDecoded(tile);
+      tileImageCache.ensureDecoded(tile, staleScope: staleScope);
       // While this tile version's decode is pending, show the latest decoded
       // image at the same coordinate (slightly stale content) instead of a
       // per-pixel redraw: scanning up to 65k pixels per changed tile froze
@@ -52,7 +59,7 @@ class BitmapSurfacePainter extends CustomPainter {
       // stroke visible until the new tiles are decoded.
       final tileImage =
           tileImageCache.imageFor(tile) ??
-          tileImageCache.latestImageForCoord(tile.coord);
+          tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
       if (tileImage != null) {
         canvas.drawImage(
           tileImage,
