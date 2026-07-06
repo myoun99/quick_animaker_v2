@@ -15,10 +15,12 @@ import '../../models/canvas_viewport.dart';
 /// playback. A null [image] paints just the paper (the blank-canvas
 /// placeholder reuses this).
 ///
-/// Camera mode looks through the pose instead: the camera's output frame is
-/// fit-scaled and centered over a dark letterbox and the canvas-space
-/// composite is projected with the same transform the export renderer uses —
-/// no re-render, camera moves are pure GPU transforms over the cached image.
+/// Camera mode looks through the pose instead: the camera's output frame
+/// takes the canvas's place under the SAME viewport transform (zoom/pan keep
+/// working here too), everything outside it letterboxed dark, and the
+/// canvas-space composite is projected with the transform the export
+/// renderer uses — no re-render, camera moves are pure GPU transforms over
+/// the cached image.
 class PlaybackFramePainter extends CustomPainter {
   const PlaybackFramePainter({
     required this.image,
@@ -38,7 +40,7 @@ class PlaybackFramePainter extends CustomPainter {
 
   final CanvasSize canvasSize;
 
-  /// Pan/zoom for canvas mode; identity when null. Ignored in camera mode.
+  /// Pan/zoom of the panel viewport; identity when null.
   final CanvasViewport? viewport;
 
   /// Non-null = look through the camera.
@@ -56,24 +58,23 @@ class PlaybackFramePainter extends CustomPainter {
     final pose = cameraPose;
 
     canvas.save();
-    if (pose == null) {
-      final resolvedViewport = viewport;
-      if (resolvedViewport != null) {
-        canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-        canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
-      }
-    } else {
+    // CustomPaint does not clip: a zoomed/panned frame must never escape the
+    // canvas viewport into neighboring panels.
+    canvas.clipRect(Offset.zero & size);
+
+    if (pose != null) {
       canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
+    }
+    final resolvedViewport = viewport;
+    if (resolvedViewport != null) {
+      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
+      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+    }
+    if (pose != null) {
+      // The camera's output frame takes the canvas's place in viewport
+      // space; the projection inside it matches
+      // CameraFrameRenderService.renderThroughCamera.
       final frameSize = cameraFrameSize!;
-      final fitScale = math.min(
-        size.width / frameSize.width,
-        size.height / frameSize.height,
-      );
-      canvas.translate(
-        (size.width - frameSize.width * fitScale) / 2,
-        (size.height - frameSize.height * fitScale) / 2,
-      );
-      canvas.scale(fitScale);
       canvas.clipRect(
         Rect.fromLTWH(
           0,
@@ -82,7 +83,6 @@ class PlaybackFramePainter extends CustomPainter {
           frameSize.height.toDouble(),
         ),
       );
-      // Same projection as CameraFrameRenderService.renderThroughCamera.
       canvas.translate(frameSize.width / 2, frameSize.height / 2);
       canvas.scale(pose.zoom);
       canvas.rotate(-pose.rotationDegrees * math.pi / 180);

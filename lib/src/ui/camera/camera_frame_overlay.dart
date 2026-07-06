@@ -145,6 +145,9 @@ class CameraFramePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // CustomPaint does not clip: the frame silhouette must never escape the
+    // canvas viewport into neighboring panels.
+    canvas.clipRect(Offset.zero & size);
     final corners = frameCornersInViewport();
     final framePath = Path()..addPolygon(corners, true);
 

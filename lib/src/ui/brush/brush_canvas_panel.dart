@@ -133,16 +133,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    child: overlayBuilder == null
-                        ? canvasView
-                        : Stack(
-                            children: [
-                              Positioned.fill(child: canvasView),
-                              Positioned.fill(
-                                child: overlayBuilder(context, _viewport),
-                              ),
-                            ],
-                          ),
+                    // Nothing drawn in the viewport (canvas, playback frames,
+                    // camera overlay) may paint outside the panel.
+                    child: ClipRect(
+                      child: overlayBuilder == null
+                          ? canvasView
+                          : Stack(
+                              children: [
+                                Positioned.fill(child: canvasView),
+                                Positioned.fill(
+                                  child: overlayBuilder(context, _viewport),
+                                ),
+                              ],
+                            ),
+                    ),
                   );
                 },
               ),
