@@ -98,6 +98,66 @@ void main() {
     });
   });
 
+  group('sampleBrushTipMaskTiledCoverage', () {
+    final checker = BrushTipMask(
+      id: 'checker',
+      size: 2,
+      alpha: Uint8List.fromList([255, 0, 0, 255]),
+    );
+
+    double sample(double dx, double dy) => sampleBrushTipMaskTiledCoverage(
+      mask: checker,
+      dx: dx,
+      dy: dy,
+      period: 4.0,
+      offsetU: 0.0,
+      offsetV: 0.0,
+    );
+
+    test('repeats with the tile period', () {
+      for (final dx in [-8.0, -4.0, 0.0, 4.0, 8.0]) {
+        expect(sample(dx + 0.5, 0.5), closeTo(sample(0.5, 0.5), 1e-12));
+      }
+    });
+
+    test('uniform mask yields full coverage everywhere', () {
+      final solid = BrushTipMask(
+        id: 'solid',
+        size: 2,
+        alpha: Uint8List.fromList([200, 200, 200, 200]),
+      );
+      for (final dx in [0.0, 1.3, -2.7, 5.5]) {
+        expect(
+          sampleBrushTipMaskTiledCoverage(
+            mask: solid,
+            dx: dx,
+            dy: dx * 0.5,
+            period: 3.0,
+            offsetU: 0.4,
+            offsetV: 0.9,
+          ),
+          closeTo(200 / 255, 1e-9),
+        );
+      }
+    });
+
+    test('offset shifts the sampled phase', () {
+      // A half-period shift of the checker samples the complementary
+      // blend: the two values differ and sum to full coverage.
+      final base = sample(0.5, 0.5);
+      final shifted = sampleBrushTipMaskTiledCoverage(
+        mask: checker,
+        dx: 0.5,
+        dy: 0.5,
+        period: 4.0,
+        offsetU: 0.5,
+        offsetV: 0.0,
+      );
+      expect(base, isNot(closeTo(shifted, 1e-9)));
+      expect(base + shifted, closeTo(1.0, 1e-9));
+    });
+  });
+
   group('built-in sampled tips', () {
     test('are deterministic, non-empty, and square', () {
       expect(chalkBrushTipMask.id, 'builtin-chalk');

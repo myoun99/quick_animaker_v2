@@ -161,9 +161,26 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('null');
-  desc.i32(12);
+  desc.i32(13);
   desc.key('Nm  ');
   desc.text('Fancy Chalk');
+  desc.key('dualBrush');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('dualBrush');
+  desc.i32(2);
+  desc.key('useDualBrush');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  desc.key('Brsh');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('sampledBrush');
+  desc.i32(2);
+  desc.key('sampledData');
+  desc.text('tip-two-uuid');
+  desc.key('Dmtr');
+  desc.untf('#Pxl', 22);
   desc.key('useTipDynamics');
   desc.asciiChars('bool');
   desc.u8(1);
@@ -275,7 +292,9 @@ void main() {
       final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
 
       expect(result.warnings, isEmpty);
-      expect(result.presets, hasLength(3));
+      // Two desc brushes; the second samp tip is consumed as the dual
+      // texture, so no orphan preset is created for it.
+      expect(result.presets, hasLength(2));
 
       final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
       expect(chalk.id.value, 'abr-tip-one-uuid');
@@ -298,6 +317,11 @@ void main() {
       expect(chalk.settings.scatterRadiusRatio, closeTo(2.0, 1e-9));
       expect(chalk.settings.scatterCount, 3);
       expect(chalk.settings.scatterBothAxes, isTrue);
+      // Dual brush: the second tip joins by uuid and scales relative to
+      // the primary diameter (22 / 44).
+      expect(chalk.settings.dualMask, isNotNull);
+      expect(chalk.settings.dualMask!.id, 'abr-tip-two-uuid');
+      expect(chalk.settings.dualMaskScale, closeTo(0.5, 1e-9));
 
       final round = result.presets.firstWhere(
         (p) => p.name == 'Soft Round 16',
@@ -306,13 +330,6 @@ void main() {
       expect(round.settings.size, 16.0);
       expect(round.settings.hardness, closeTo(0.8, 1e-9));
       expect(round.settings.spacing, closeTo(0.3, 1e-9));
-
-      // The unreferenced tip still imports with default settings.
-      final orphan = result.presets.firstWhere(
-        (p) => p.id.value == 'abr-tip-two-uuid',
-      );
-      expect(orphan.name, 'fixture tip 1');
-      expect(orphan.settings.tipMask!.size, 4);
     });
 
     test('pads non-square tips to a centered square mask', () {
@@ -337,10 +354,11 @@ void main() {
 
     test('RLE and raw tips decode to the exact pixel bytes', () {
       final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+      // The raw (uniform) tip is consumed as the chalk brush's dual mask.
       final uniform = result.presets
-          .firstWhere((p) => p.id.value == 'abr-tip-two-uuid')
+          .firstWhere((p) => p.name == 'Fancy Chalk')
           .settings
-          .tipMask!;
+          .dualMask!;
       expect(uniform.alpha, everyElement(200));
     });
 

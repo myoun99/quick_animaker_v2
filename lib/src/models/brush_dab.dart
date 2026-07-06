@@ -18,8 +18,21 @@ class BrushDab {
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
+    this.dualMask,
+    this.dualMaskScale = 1.0,
+    this.dualOffsetU = 0.0,
+    this.dualOffsetV = 0.0,
   }) {
     _validateColor(color);
+    if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
+      throw ArgumentError.value(
+        dualMaskScale,
+        'dualMaskScale',
+        'BrushDab.dualMaskScale must be finite and greater than 0.',
+      );
+    }
+    _validateFinite(dualOffsetU, 'dualOffsetU');
+    _validateFinite(dualOffsetV, 'dualOffsetV');
     _validateNonNegativeFinite(size, 'size');
     _validateUnitIntervalFinite(opacity, 'opacity');
     _validateUnitIntervalFinite(flow, 'flow');
@@ -56,6 +69,8 @@ class BrushDab {
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
+      dualMask: settings.dualMask,
+      dualMaskScale: settings.dualMaskScale,
     );
   }
 
@@ -81,6 +96,15 @@ class BrushDab {
   /// and coverage comes from bilinear-sampling the mask in tip space.
   final BrushTipMask? tipMask;
 
+  /// Dual-brush mask: a second tip texture that MULTIPLIES the dab's
+  /// coverage, tiled across the dab at [dualMaskScale] times the dab size
+  /// with a per-dab random phase ([dualOffsetU]/[dualOffsetV], 0..1 of the
+  /// tile period) chosen at placement time.
+  final BrushTipMask? dualMask;
+  final double dualMaskScale;
+  final double dualOffsetU;
+  final double dualOffsetV;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -94,6 +118,10 @@ class BrushDab {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
+    BrushTipMask? dualMask,
+    double? dualMaskScale,
+    double? dualOffsetU,
+    double? dualOffsetV,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -108,6 +136,10 @@ class BrushDab {
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
+      dualMask: dualMask ?? this.dualMask,
+      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualOffsetU: dualOffsetU ?? this.dualOffsetU,
+      dualOffsetV: dualOffsetV ?? this.dualOffsetV,
     );
   }
 
@@ -124,6 +156,10 @@ class BrushDab {
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
+    if (dualMask != null) 'dualMask': dualMask!.toJson(),
+    'dualMaskScale': dualMaskScale,
+    'dualOffsetU': dualOffsetU,
+    'dualOffsetV': dualOffsetV,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -142,6 +178,12 @@ class BrushDab {
       tipMask: json['tipMask'] == null
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
+      dualMask: json['dualMask'] == null
+          ? null
+          : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
+      dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
+      dualOffsetU: (json['dualOffsetU'] as num?)?.toDouble() ?? 0.0,
+      dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -160,10 +202,14 @@ class BrushDab {
           other.sequence == sequence &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask;
+          other.tipMask == tipMask &&
+          other.dualMask == dualMask &&
+          other.dualMaskScale == dualMaskScale &&
+          other.dualOffsetU == dualOffsetU &&
+          other.dualOffsetV == dualOffsetV;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     center,
     color,
     size,
@@ -176,7 +222,11 @@ class BrushDab {
     roundness,
     angleDegrees,
     tipMask,
-  );
+    dualMask,
+    dualMaskScale,
+    dualOffsetU,
+    dualOffsetV,
+  ]);
 
   @override
   String toString() =>

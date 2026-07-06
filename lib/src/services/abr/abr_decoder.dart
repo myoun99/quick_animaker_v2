@@ -403,6 +403,35 @@ BrushPreset? _presetFromBrushDescriptor(
       _jitterOf(flowVariance, cap: 1.0),
     );
   }
+  // Dual brush: the nested second tip multiplies the primary coverage.
+  // Photoshop's per-blend-mode combine is approximated as multiply, and
+  // the dual tip's own spacing/scatter is approximated by the per-dab
+  // random tile phase.
+  BrushTipMask? dualMask;
+  var dualMaskScale = 1.0;
+  final dualBrush = entry.childDescriptor('dualBrush');
+  if (dualBrush != null && dualBrush['useDualBrush'] == true) {
+    final dualTip = dualBrush.childDescriptor('Brsh');
+    final dualKey = dualTip?.textValue('sampledData');
+    if (dualKey != null) {
+      dualMask = tipsByKey[dualKey];
+      if (dualMask != null) {
+        usedTipKeys.add(dualKey);
+        final dualDiameter = dualTip?.numberValue('Dmtr');
+        if (dualDiameter != null && dualDiameter > 0 && diameter > 0) {
+          dualMaskScale = (dualDiameter / diameter)
+              .clamp(0.05, 10.0)
+              .toDouble();
+        }
+      } else {
+        warnings.add(
+          'Brush "${name ?? sampledKey ?? ''}": dual-brush tip bitmap '
+          'missing; imported without the dual texture.',
+        );
+      }
+    }
+  }
+
   var scatterRadiusRatio = 0.0;
   var scatterCount = 1;
   var scatterBothAxes = true;
@@ -444,6 +473,8 @@ BrushPreset? _presetFromBrushDescriptor(
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
+      dualMask: dualMask,
+      dualMaskScale: dualMaskScale,
     ),
   );
 }
@@ -485,6 +516,8 @@ BrushSettings _settingsForTip(
   double scatterRadiusRatio = 0.0,
   int scatterCount = 1,
   bool scatterBothAxes = true,
+  BrushTipMask? dualMask,
+  double dualMaskScale = 1.0,
 }) {
   // Photoshop angles span -180..180; the ellipse repeats every 180.
   final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
@@ -509,5 +542,7 @@ BrushSettings _settingsForTip(
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     scatterBothAxes: scatterBothAxes,
+    dualMask: dualMask,
+    dualMaskScale: dualMaskScale,
   );
 }

@@ -31,6 +31,8 @@ class BrushToolState {
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
+    BrushTipMask? dualMask,
+    double dualMaskScale = 1.0,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -53,6 +55,8 @@ class BrushToolState {
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
+      dualMask: dualMask,
+      dualMaskScale: dualMaskScale,
     );
   }
 
@@ -77,6 +81,8 @@ class BrushToolState {
     this.scatterRadiusRatio = 0.0,
     this.scatterCount = 1,
     this.scatterBothAxes = true,
+    this.dualMask,
+    this.dualMaskScale = 1.0,
   });
 
   factory BrushToolState.clamped({
@@ -100,6 +106,8 @@ class BrushToolState {
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
+    BrushTipMask? dualMask,
+    double? dualMaskScale,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -122,6 +130,8 @@ class BrushToolState {
       scatterRadiusRatio: clampScatterRadius(scatterRadiusRatio ?? 0.0),
       scatterCount: clampScatterCount(scatterCount ?? 1),
       scatterBothAxes: scatterBothAxes ?? true,
+      dualMask: dualMask,
+      dualMaskScale: clampDualMaskScale(dualMaskScale ?? 1.0),
     );
   }
 
@@ -205,6 +215,8 @@ class BrushToolState {
   final double scatterRadiusRatio;
   final int scatterCount;
   final bool scatterBothAxes;
+  final BrushTipMask? dualMask;
+  final double dualMaskScale;
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -230,6 +242,8 @@ class BrushToolState {
       scatterRadiusRatio: settings.scatterRadiusRatio,
       scatterCount: settings.scatterCount,
       scatterBothAxes: settings.scatterBothAxes,
+      dualMask: settings.dualMask,
+      dualMaskScale: settings.dualMaskScale,
     );
   }
 
@@ -257,6 +271,8 @@ class BrushToolState {
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
+      dualMask: dualMask,
+      dualMaskScale: dualMaskScale,
     );
   }
 
@@ -282,6 +298,8 @@ class BrushToolState {
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
+      dualMask: dualMask,
+      dualMaskScale: dualMaskScale,
     );
   }
 
@@ -306,6 +324,8 @@ class BrushToolState {
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
+    BrushTipMask? dualMask,
+    double? dualMaskScale,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -328,6 +348,8 @@ class BrushToolState {
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
+      dualMask: dualMask ?? this.dualMask,
+      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
     );
   }
 
@@ -396,6 +418,14 @@ class BrushToolState {
   /// Clamps the per-step scatter dab count.
   static int clampScatterCount(int value) => value.clamp(1, 16);
 
+  /// Clamps the dual-mask tile scale to a sane positive range.
+  static double clampDualMaskScale(double value) {
+    if (!value.isFinite || value <= 0.0) {
+      return 1.0;
+    }
+    return value.clamp(0.05, 10.0).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -419,7 +449,9 @@ class BrushToolState {
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
           other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes;
+          other.scatterBothAxes == scatterBothAxes &&
+          other.dualMask == dualMask &&
+          other.dualMaskScale == dualMaskScale;
 
   @override
   int get hashCode => Object.hashAll([
@@ -443,5 +475,7 @@ class BrushToolState {
     scatterRadiusRatio,
     scatterCount,
     scatterBothAxes,
+    dualMask,
+    dualMaskScale,
   ]);
 }

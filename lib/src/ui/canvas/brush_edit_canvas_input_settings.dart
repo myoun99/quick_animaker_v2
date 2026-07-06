@@ -24,7 +24,13 @@ class BrushEditCanvasInputSettings {
     this.scatterRadiusRatio = 0.0,
     this.scatterCount = 1,
     this.scatterBothAxes = true,
+    this.dualMask,
+    this.dualMaskScale = 1.0,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
+       assert(
+         dualMaskScale > 0.0,
+         'BrushEditCanvasInputSettings.dualMaskScale must be > 0.',
+       ),
        assert(
          minimumSizeRatio >= 0.0 && minimumSizeRatio <= 1.0,
          'BrushEditCanvasInputSettings.minimumSizeRatio must be in [0, 1].',
@@ -107,6 +113,11 @@ class BrushEditCanvasInputSettings {
   /// Whether scatter spreads on both axes or only across the stroke.
   final bool scatterBothAxes;
 
+  /// Dual-brush mask multiplying every dab's coverage; tiled at
+  /// [dualMaskScale] times the dab size with a random per-dab phase.
+  final BrushTipMask? dualMask;
+  final double dualMaskScale;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -128,6 +139,8 @@ class BrushEditCanvasInputSettings {
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
+    BrushTipMask? dualMask,
+    double? dualMaskScale,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -150,6 +163,8 @@ class BrushEditCanvasInputSettings {
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
+      dualMask: dualMask ?? this.dualMask,
+      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
     );
   }
 
@@ -176,7 +191,9 @@ class BrushEditCanvasInputSettings {
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
           other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes;
+          other.scatterBothAxes == scatterBothAxes &&
+          other.dualMask == dualMask &&
+          other.dualMaskScale == dualMaskScale;
 
   @override
   int get hashCode => Object.hashAll([
@@ -200,6 +217,8 @@ class BrushEditCanvasInputSettings {
     scatterRadiusRatio,
     scatterCount,
     scatterBothAxes,
+    dualMask,
+    dualMaskScale,
   ]);
 
   @override

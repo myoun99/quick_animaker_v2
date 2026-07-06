@@ -153,6 +153,14 @@ Import mappings (ground truth from real files via `tool/abr_inspect.dart` / `too
 - ABR (preset-level, gated by `useTipDynamics`/`usePaintDynamics`): `brVr` control `bVTy` 2 = pen pressure -> pressureSize (szVr) / pressureOpacity (opVr or prVr); `jitter`% -> the matching jitter; `minimumDiameter`% -> minimumSizeRatio; `angleDynamics` control 6/7 -> direction rotation; `useScatter` + `scatterDynamics.jitter`% (up to 1000) -> scatterRadiusRatio, `Cnt ` -> count, `bothAxes`.
 - CSP: size-effector minimum (int32 at blob offset 12, percent) -> minimumSizeRatio; `BrushUseSpray` -> scatter (`BrushSpraySize`% is the spray-area diameter relative to brush size, so radius ratio = /100/2; `BrushSprayDensity` -> count).
 
+## Dual brush (P21)
+
+A dual-brush mask is a second tip texture that MULTIPLIES every dab's coverage, breaking the stroke up with texture (the mechanism behind Photoshop's "textured" brushes such as Noah Bradley's TEXTURED OVAL). `BrushDab` carries `dualMask` + `dualMaskScale` (tile period as a ratio of the dab size) + `dualOffsetU/V` — a per-dab random phase chosen at placement time and STORED on the dab, so replay stays deterministic (same doctrine as the P20 dynamics). `BrushSettings`/`InputSettings`/`BrushToolState` carry `dualMask`/`dualMaskScale`; the interactive view rolls the random phase per dab.
+
+Coverage math: after the primary coverage (round falloff / rect / sampled tip) is computed, `coverage *= sampleBrushTipMaskTiledCoverage(...)` — a wrapping bilinear sample over the dual mask tiled at `size * dualMaskScale`, implemented ONCE in `brush_tip_mask_sampling.dart` and called by the commit rasterizer, live rasterizer, and coverage oracle with identical float grouping (parity suites cover dual over round, square, and sampled tips). A `null` dual mask leaves all existing paths untouched.
+
+Approximations vs Photoshop (documented intentionally): the dual tip's blend mode (`BlnM`, e.g. Color Burn) is treated as multiply, and its own spacing/scatter is approximated by the per-dab random tile phase. ABR mapping: `dualBrush.useDualBrush` -> nested `Brsh.sampledData` joins the tip bitmap (consuming it, so it does not import as an orphan preset), `Dmtr` ratio -> `dualMaskScale`. CSP dual-brush columns exist but are unmapped until a real file using them is available.
+
 ## Pen pressure dynamics (P14)
 
 `BrushToolState`/`BrushEditCanvasInputSettings` carry `pressureSize` and `pressureOpacity` toggles (both default false, so a mouse or a stroke with the toggles off behaves exactly as before). `BrushSettingsPanel` exposes them under a "Pen Pressure" section as `brush-tool-pressure-size-toggle` / `brush-tool-pressure-opacity-toggle`.

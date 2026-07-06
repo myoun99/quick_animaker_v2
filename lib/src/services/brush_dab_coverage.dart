@@ -40,6 +40,23 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   }
   final minorRadius = radius * dab.roundness;
 
+  // Dual-brush texture factor; must multiply coverage with the exact same
+  // float grouping as the commit and live rasterizers.
+  final dualMask = dab.dualMask;
+  double dualFactorAt(int x, int y) {
+    if (dualMask == null) {
+      return 1.0;
+    }
+    return sampleBrushTipMaskTiledCoverage(
+      mask: dualMask,
+      dx: x + 0.5 - dab.center.x,
+      dy: y + 0.5 - dab.center.y,
+      period: dab.size * dab.dualMaskScale,
+      offsetU: dab.dualOffsetU,
+      offsetV: dab.dualOffsetV,
+    );
+  }
+
   for (var y = dirtyRegion.top; y < dirtyRegion.bottomExclusive; y += 1) {
     for (var x = dirtyRegion.left; x < dirtyRegion.rightExclusive; x += 1) {
       if (tipMask != null) {
@@ -50,12 +67,16 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
         if (tipU.abs() > radius || tipV.abs() > radius) {
           continue;
         }
-        final coverage = sampleBrushTipMaskCoverage(
+        var coverage = sampleBrushTipMaskCoverage(
           mask: tipMask,
           tipU: tipU,
           tipV: tipV,
           radius: radius,
         );
+        if (coverage <= 0.0) {
+          continue;
+        }
+        coverage *= dualFactorAt(x, y);
         if (coverage <= 0.0) {
           continue;
         }
@@ -73,7 +94,12 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
               continue;
             }
           }
-          coverages.add(BrushPixelCoverage(x: x, y: y, coverage: 1.0));
+          var coverage = 1.0;
+          coverage *= dualFactorAt(x, y);
+          if (coverage <= 0.0) {
+            continue;
+          }
+          coverages.add(BrushPixelCoverage(x: x, y: y, coverage: coverage));
         case BrushTipShape.round:
           final dx = x + 0.5 - dab.center.x;
           final dy = y + 0.5 - dab.center.y;
@@ -90,11 +116,15 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
             continue;
           }
 
-          final coverage = _roundCoverage(
+          var coverage = _roundCoverage(
             distance: distance,
             radius: radius,
             hardRadius: hardRadius,
           );
+          if (coverage <= 0.0) {
+            continue;
+          }
+          coverage *= dualFactorAt(x, y);
           if (coverage <= 0.0) {
             continue;
           }
