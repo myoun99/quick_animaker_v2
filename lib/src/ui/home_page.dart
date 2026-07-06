@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
+import 'camera/camera_preview_dialog.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
@@ -217,6 +220,20 @@ class _HomePageState extends State<HomePage> {
                       tooltip: 'Redo',
                       onPressed: _session.canRedo ? _session.redo : null,
                       icon: const Icon(Icons.redo),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('camera-preview-button'),
+                      tooltip: 'Camera Preview',
+                      onPressed: () {
+                        unawaited(
+                          showDialog<void>(
+                            context: context,
+                            builder: (context) =>
+                                CameraPreviewDialog(session: _session),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.movie_outlined),
                     ),
                   ],
                 ),

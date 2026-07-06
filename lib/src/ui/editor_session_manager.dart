@@ -7,6 +7,8 @@ import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/bitmap_surface.dart';
+import '../models/brush_frame_key.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
@@ -20,6 +22,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track_id.dart';
+import '../services/brush_frame_display_cache_renderer.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
@@ -330,6 +333,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// The camera's output frame size (the exported picture size); the camera
   /// view rect on canvas is this divided by the pose zoom.
   CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
+
+  int get projectFps => _repository.requireProject().fps;
+
+  /// Resolved camera pose at an arbitrary playback frame (for rendering).
+  CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(
+    camera: activeCut.camera,
+    canvasSize: activeCut.canvasSize,
+    frameIndex: frameIndex,
+  );
+
+  /// The drawable artwork of one layer frame in the active cut, replayed
+  /// from the brush store's paint commands; `null` when nothing is drawn.
+  /// This is the production [LayerFrameSurfaceResolver] for camera
+  /// preview/export compositing.
+  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
+    final drawing = brushFrameStore.frameOrNull(
+      BrushFrameKey(
+        projectId: _repository.requireProject().id,
+        trackId: activeCutTrackId,
+        cutId: _editingSession.activeCutId,
+        layerId: layer.id,
+        frameId: frame.id,
+      ),
+    );
+    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+      return null;
+    }
+    return BrushFrameDisplayCacheRenderer(
+      canvasSize: activeCut.canvasSize,
+    ).rebuildPreview(drawing);
+  }
 
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work).

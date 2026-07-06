@@ -1,0 +1,194 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/painting.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/camera_pose.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
+import 'package:quick_animaker_v2/src/ui/camera/camera_frame_render_service.dart';
+
+void main() {
+  const canvasSize = CanvasSize(width: 8, height: 8);
+
+  /// An 8×8 surface with one opaque red pixel at (x, y).
+  BitmapSurface surfaceWithRedPixelAt(int x, int y, {int alpha = 255}) {
+    final pixels = Uint8List(8 * 8 * 4);
+    final offset = (y * 8 + x) * 4;
+    pixels[offset] = 255;
+    pixels[offset + 3] = alpha;
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 8,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          coord: TileCoord(x: 0, y: 0),
+          size: 8,
+          pixels: pixels,
+        ),
+      },
+    );
+  }
+
+  Future<Color> pixelAt(ui.Image image, int x, int y) async {
+    final data = await image.toByteData();
+    final offset = (y * image.width + x) * 4;
+    return Color.fromARGB(
+      data!.getUint8(offset + 3),
+      data.getUint8(offset),
+      data.getUint8(offset + 1),
+      data.getUint8(offset + 2),
+    );
+  }
+
+  const service = CameraFrameRenderService(filterQuality: FilterQuality.none);
+
+  test('file names are 1-based and zero padded', () {
+    expect(cameraSequenceFileName(0), 'frame_0001.png');
+    expect(cameraSequenceFileName(11), 'frame_0012.png');
+  });
+
+  testWidgets('identity pose maps canvas pixels 1:1 onto the output', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithRedPixelAt(1, 2),
+            opacity: 1,
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      expect(image.width, 8);
+      expect(image.height, 8);
+      expect(await pixelAt(image, 1, 2), const Color(0xFFFF0000));
+      expect(await pixelAt(image, 5, 5), const Color(0xFFFFFFFF));
+      image.dispose();
+    });
+  });
+
+  testWidgets('background fills the area beyond the canvas edges', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: const [],
+        // Camera centered at the canvas corner: most of the view is outside.
+        pose: CameraPose(center: CanvasPoint(x: 0, y: 0)),
+        cameraFrameSize: canvasSize,
+      );
+
+      expect(await pixelAt(image, 0, 0), const Color(0xFFFFFFFF));
+      expect(await pixelAt(image, 7, 7), const Color(0xFFFFFFFF));
+      image.dispose();
+    });
+  });
+
+  testWidgets('camera zoom 2 magnifies around the pose center', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithRedPixelAt(3, 3),
+            opacity: 1,
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2),
+        cameraFrameSize: canvasSize,
+      );
+
+      // Canvas pixel (3,3)..(4,4) maps to output (4 + 2*(3-4)) = 2..4:
+      // the red canvas pixel covers the 2×2 output block at (2,2).
+      expect(await pixelAt(image, 2, 2), const Color(0xFFFF0000));
+      expect(await pixelAt(image, 3, 3), const Color(0xFFFF0000));
+      expect(await pixelAt(image, 4, 4), isNot(const Color(0xFFFF0000)));
+      image.dispose();
+    });
+  });
+
+  testWidgets('clockwise camera rotation rotates the world the opposite way', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            // One pixel right of center: canvas (5..6, 4..5).
+            surface: surfaceWithRedPixelAt(5, 4),
+            opacity: 1,
+          ),
+        ],
+        pose: CameraPose(
+          center: CanvasPoint(x: 4, y: 4),
+          rotationDegrees: 90,
+        ),
+        cameraFrameSize: canvasSize,
+      );
+
+      // Camera rotated 90° clockwise: what was to the canvas-right of center
+      // appears above the output center. Canvas rect (5,4)-(6,5) maps through
+      // R(-90): corners (1,0)&(2,1) → output rect (0,-2)-(1,-1) + center
+      // = (4,2)-(5,3), so output pixel (4,2) is red.
+      expect(await pixelAt(image, 4, 2), const Color(0xFFFF0000));
+      expect(await pixelAt(image, 5, 4), const Color(0xFFFFFFFF));
+      image.dispose();
+    });
+  });
+
+  testWidgets('layer opacity blends into the background', (tester) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithRedPixelAt(1, 1),
+            opacity: 0.5,
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      final blended = await pixelAt(image, 1, 1);
+      // 50% red over white: red stays near 255, green/blue drop to ~127.
+      expect((blended.r * 255).round(), inInclusiveRange(250, 255));
+      expect((blended.g * 255).round(), inInclusiveRange(120, 135));
+      expect((blended.b * 255).round(), inInclusiveRange(120, 135));
+      image.dispose();
+    });
+  });
+
+  testWidgets('smaller output renders the same view scaled down', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            // Left half red? Just one pixel; use scale factor 0.5:
+            surface: surfaceWithRedPixelAt(2, 2),
+            opacity: 1,
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+        outputSize: const CanvasSize(width: 4, height: 4),
+      );
+
+      expect(image.width, 4);
+      expect(image.height, 4);
+      // Canvas pixel (2..3) maps to output (1..1.5): probe (1,1).
+      expect(await pixelAt(image, 1, 1), isNot(const Color(0xFFFFFFFF)));
+      image.dispose();
+    });
+  });
+}
