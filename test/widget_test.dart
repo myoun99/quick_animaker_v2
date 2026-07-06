@@ -534,6 +534,81 @@ void main() {
     expect(beyondBaseHeaders, findsWidgets);
   });
 
+  testWidgets('timeline zoom buttons rescale the frame axis', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final header0 = find.byKey(
+      const ValueKey<String>('timeline-frame-header-0'),
+    );
+    expect(tester.getSize(header0).width, 48);
+    // Wide cells label every frame in-cell.
+    expect(
+      find.descendant(of: header0, matching: find.text('1')),
+      findsOneWidget,
+    );
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-in-button'),
+    );
+    expect(tester.getSize(header0).width, 72);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    expect(tester.getSize(header0).width, 24);
+    // Narrow cells move their labels to the every-Nth overlay: no in-cell
+    // texts anywhere in the header cells.
+    expect(
+      find.descendant(of: header0, matching: find.byType(Text)),
+      findsNothing,
+    );
+
+    // Fully zoomed out disables the button.
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('xsheet zoom rescales the frame row height', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
+
+    final row0 = find.byKey(const ValueKey<String>('xsheet-frame-row-0'));
+    expect(tester.getSize(row0).height, 36);
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-in-button'),
+    );
+    expect(tester.getSize(row0).height, 54);
+  });
+
   testWidgets('xsheet frame axis extends endlessly while scrolling', (
     WidgetTester tester,
   ) async {

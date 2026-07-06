@@ -7,10 +7,11 @@ import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_grid_metrics.dart';
 import 'timeline_orientation.dart';
 import 'xsheet_timeline_grid.dart';
 
-class TimelinePanel extends StatelessWidget {
+class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
     super.key,
     required this.layers,
@@ -73,19 +74,47 @@ class TimelinePanel extends StatelessWidget {
 
   bool get _storyboardVisible => showStoryboard && storyboardPanel != null;
 
+  /// Frame-axis zoom factors applied to each orientation's default cell
+  /// extent (index 2 = classic geometry).
+  static const List<double> _zoomFactors = [0.5, 0.75, 1.0, 1.5, 2.0];
+  static const int _defaultZoomIndex = 2;
+
+  @override
+  State<TimelinePanel> createState() => _TimelinePanelState();
+}
+
+class _TimelinePanelState extends State<TimelinePanel> {
+  int _zoomIndex = TimelinePanel._defaultZoomIndex;
+
+  bool get _canZoomIn => _zoomIndex < TimelinePanel._zoomFactors.length - 1;
+  bool get _canZoomOut => _zoomIndex > 0;
+
+  double get _zoomFactor => TimelinePanel._zoomFactors[_zoomIndex];
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final horizontalLayers = horizontalLayerDisplayOrder(layers);
-    final nextOrientation = orientation == TimelineOrientation.horizontal
+    final horizontalLayers = horizontalLayerDisplayOrder(widget.layers);
+    final nextOrientation = widget.orientation == TimelineOrientation.horizontal
         ? TimelineOrientation.vertical
         : TimelineOrientation.horizontal;
-    final showToolbar = timelineActionToolbar != null && !_storyboardVisible;
+    final showToolbar =
+        widget.timelineActionToolbar != null && !widget._storyboardVisible;
+
+    // The zoom factor scales each orientation's frame-axis cell extent
+    // (cell width horizontally, frame row height in the X-sheet).
+    final horizontalMetrics = TimelineGridMetrics.defaults.copyWith(
+      frameCellWidth: TimelineGridMetrics.defaults.frameCellWidth * _zoomFactor,
+    );
+    final xsheetMetrics = XSheetTimelineGrid.defaultMetrics.copyWith(
+      frameCellWidth:
+          XSheetTimelineGrid.defaultMetrics.frameCellWidth * _zoomFactor,
+    );
 
     return Material(
       color: colorScheme.surfaceContainerHighest,
       child: SizedBox(
-        height: timelineActionToolbar == null ? 220 : 320,
+        height: widget.timelineActionToolbar == null ? 220 : 320,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -93,15 +122,15 @@ class TimelinePanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
               child: Row(
                 children: [
-                  if (storyboardPanel != null) ...[
+                  if (widget.storyboardPanel != null) ...[
                     _ModeToggle(
-                      showStoryboard: showStoryboard,
-                      onChanged: onShowStoryboardChanged,
+                      showStoryboard: widget.showStoryboard,
+                      onChanged: widget.onShowStoryboardChanged,
                     ),
                     const SizedBox(width: 10),
                   ],
                   Text(
-                    '${currentFrameIndex + 1}',
+                    '${widget.currentFrameIndex + 1}',
                     key: const ValueKey<String>(
                       'timeline-current-frame-counter',
                     ),
@@ -113,23 +142,41 @@ class TimelinePanel extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  if (!_storyboardVisible) ...[
+                  if (!widget._storyboardVisible) ...[
+                    IconButton(
+                      key: const ValueKey<String>('timeline-zoom-out-button'),
+                      tooltip: 'Zoom Out',
+                      onPressed: _canZoomOut
+                          ? () => setState(() => _zoomIndex -= 1)
+                          : null,
+                      icon: const Icon(Icons.zoom_out),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('timeline-zoom-in-button'),
+                      tooltip: 'Zoom In',
+                      onPressed: _canZoomIn
+                          ? () => setState(() => _zoomIndex += 1)
+                          : null,
+                      icon: const Icon(Icons.zoom_in),
+                    ),
                     IconButton(
                       key: const ValueKey<String>(
                         'timeline-toolbar-add-layer-button',
                       ),
                       tooltip: 'Add layer',
-                      onPressed: onAddLayer,
+                      onPressed: widget.onAddLayer,
                       icon: const Icon(Icons.add),
                     ),
                     IconButton(
                       key: const ValueKey<String>(
                         'timeline-orientation-toggle-button',
                       ),
-                      tooltip: orientation == TimelineOrientation.horizontal
+                      tooltip:
+                          widget.orientation == TimelineOrientation.horizontal
                           ? 'Show X-sheet'
                           : 'Show timeline',
-                      onPressed: () => onOrientationChanged(nextOrientation),
+                      onPressed: () =>
+                          widget.onOrientationChanged(nextOrientation),
                       icon: const Icon(Icons.swap_horiz),
                     ),
                   ],
@@ -139,45 +186,47 @@ class TimelinePanel extends StatelessWidget {
             if (showToolbar)
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                child: timelineActionToolbar,
+                child: widget.timelineActionToolbar,
               ),
             Expanded(
-              child: _storyboardVisible
-                  ? storyboardPanel!
-                  : orientation == TimelineOrientation.horizontal
+              child: widget._storyboardVisible
+                  ? widget.storyboardPanel!
+                  : widget.orientation == TimelineOrientation.horizontal
                   ? LayerTimelineGrid(
                       layers: horizontalLayers,
-                      activeLayerId: activeLayerId,
-                      currentFrameIndex: currentFrameIndex,
-                      playbackFrameCount: playbackFrameCount,
-                      exposureStateForLayer: exposureStateForLayer,
-                      frameNameForLayer: frameNameForLayer,
-                      onSelectLayer: onSelectLayer,
-                      onSelectFrame: onSelectFrame,
-                      onAddLayer: onAddLayer,
-                      onToggleLayerVisibility: onToggleLayerVisibility,
-                      onLayerOpacityChanged: onLayerOpacityChanged,
-                      onToggleLayerTimesheet: onToggleLayerTimesheet,
-                      onLayerMarkSelected: onLayerMarkSelected,
-                      commaDrag: commaDrag,
-                      isFrameCached: isFrameCached,
+                      activeLayerId: widget.activeLayerId,
+                      currentFrameIndex: widget.currentFrameIndex,
+                      playbackFrameCount: widget.playbackFrameCount,
+                      exposureStateForLayer: widget.exposureStateForLayer,
+                      frameNameForLayer: widget.frameNameForLayer,
+                      onSelectLayer: widget.onSelectLayer,
+                      onSelectFrame: widget.onSelectFrame,
+                      onAddLayer: widget.onAddLayer,
+                      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+                      onLayerOpacityChanged: widget.onLayerOpacityChanged,
+                      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+                      onLayerMarkSelected: widget.onLayerMarkSelected,
+                      commaDrag: widget.commaDrag,
+                      isFrameCached: widget.isFrameCached,
+                      metrics: horizontalMetrics,
                     )
                   : XSheetTimelineGrid(
-                      layers: xsheetLayerDisplayOrder(layers),
-                      activeLayerId: activeLayerId,
-                      currentFrameIndex: currentFrameIndex,
-                      frameCount: playbackFrameCount,
-                      exposureStateForLayer: exposureStateForLayer,
-                      frameNameForLayer: frameNameForLayer,
-                      onSelectLayer: onSelectLayer,
-                      onSelectFrame: onSelectFrame,
-                      onAddLayer: onAddLayer,
-                      onToggleLayerVisibility: onToggleLayerVisibility,
-                      onLayerOpacityChanged: onLayerOpacityChanged,
-                      onToggleLayerTimesheet: onToggleLayerTimesheet,
-                      onLayerMarkSelected: onLayerMarkSelected,
-                      commaDrag: commaDrag,
-                      isFrameCached: isFrameCached,
+                      layers: xsheetLayerDisplayOrder(widget.layers),
+                      activeLayerId: widget.activeLayerId,
+                      currentFrameIndex: widget.currentFrameIndex,
+                      frameCount: widget.playbackFrameCount,
+                      exposureStateForLayer: widget.exposureStateForLayer,
+                      frameNameForLayer: widget.frameNameForLayer,
+                      onSelectLayer: widget.onSelectLayer,
+                      onSelectFrame: widget.onSelectFrame,
+                      onAddLayer: widget.onAddLayer,
+                      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+                      onLayerOpacityChanged: widget.onLayerOpacityChanged,
+                      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+                      onLayerMarkSelected: widget.onLayerMarkSelected,
+                      commaDrag: widget.commaDrag,
+                      isFrameCached: widget.isFrameCached,
+                      metrics: xsheetMetrics,
                     ),
             ),
           ],

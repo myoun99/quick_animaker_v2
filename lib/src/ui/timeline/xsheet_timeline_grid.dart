@@ -55,6 +55,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.commaDrag,
     this.isFrameCached,
+    this.metrics = defaultMetrics,
   });
 
   final List<Layer> layers;
@@ -83,9 +84,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// counterpart of the horizontal ruler's strip).
   final bool Function(int frameIndex)? isFrameCached;
 
+  /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
+  /// as the frame ROW height here.
+  final TimelineGridMetrics metrics;
+
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
-  static const TimelineGridMetrics _metrics = TimelineGridMetrics(
+  static const TimelineGridMetrics defaultMetrics = TimelineGridMetrics(
     frameCellWidth: 36,
     layerRowHeight: 164,
     layerControlsWidth: 72,
@@ -107,7 +112,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   final GlobalKey _railScrubViewportKey = GlobalKey();
   int? _lastRailScrubbedFrameIndex;
 
-  static TimelineGridMetrics get _metrics => XSheetTimelineGrid._metrics;
+  TimelineGridMetrics get _metrics => widget.metrics;
 
   @override
   void initState() {
@@ -436,6 +441,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                           active:
                                               widget.layers[index].id ==
                                               widget.activeLayerId,
+                                          metrics: _metrics,
                                           sectionStart: timelineSectionStartsAt(
                                             widget.layers,
                                             index,
@@ -887,8 +893,11 @@ class _LayerHeader extends StatelessWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    required this.metrics,
     this.sectionStart = false,
   });
+
+  final TimelineGridMetrics metrics;
 
   final Layer layer;
   final bool active;
@@ -910,7 +919,7 @@ class _LayerHeader extends StatelessWidget {
       key: ValueKey<String>('xsheet-layer-header-${layer.id}'),
       onTap: () => onSelectLayer(layer.id),
       child: Container(
-        width: XSheetTimelineGrid._metrics.layerRowHeight,
+        width: metrics.layerRowHeight,
         height: XSheetTimelineGrid._headerHeight,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(

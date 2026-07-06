@@ -42,6 +42,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.commaDrag,
     this.isFrameCached,
+    this.metrics = TimelineGridMetrics.defaults,
   });
 
   final List<Layer> layers;
@@ -66,13 +67,16 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Cached-range resolver for the ruler's green strip.
   final bool Function(int frameIndex)? isFrameCached;
 
-  static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
+  /// Grid geometry; the frame-axis cell width carries the panel zoom.
+  final TimelineGridMetrics metrics;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
+  TimelineGridMetrics get _metrics => widget.metrics;
+
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
   double _horizontalScrollOffset = 0;
@@ -113,7 +117,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             scrollOffset: offset,
             viewportExtent:
                 _horizontalScrollController.position.viewportDimension,
-            frameCellExtent: LayerTimelineGrid._metrics.frameCellWidth,
+            frameCellExtent: _metrics.frameCellWidth,
           )
         : _endlessTrailingFrames;
     setState(() {
@@ -125,8 +129,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   TimelineFrameRange get _frameRangePolicy =>
       TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: widget.playbackFrameCount,
-        minimumVisibleFrameCells:
-            LayerTimelineGrid._metrics.minimumVisibleFrameCells,
+        minimumVisibleFrameCells: _metrics.minimumVisibleFrameCells,
       );
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
@@ -140,7 +143,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     required double viewportWidth,
   }) {
     final totalFrameContentWidth =
-        _renderedFrameCount * LayerTimelineGrid._metrics.frameCellWidth;
+        _renderedFrameCount * _metrics.frameCellWidth;
 
     return resolveTimelineHorizontalOffset(
       requestedOffset: requestedOffset,
@@ -180,7 +183,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return frameIndexFromLocalX(
       localX: localX,
       horizontalScrollOffset: _lastEffectiveHorizontalScrollOffset,
-      frameCellWidth: LayerTimelineGrid._metrics.frameCellWidth,
+      frameCellWidth: _metrics.frameCellWidth,
       visibleFrameCount: _visibleFrameCount,
     );
   }
@@ -247,15 +250,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final headerHeight =
-                        LayerTimelineGrid._metrics.layerRowHeight;
+                    final headerHeight = _metrics.layerRowHeight;
                     final bodyViewportHeight = constraints.hasBoundedHeight
                         ? (constraints.maxHeight - headerHeight)
                               .clamp(0.0, double.infinity)
                               .toDouble()
                         : viewportHeight;
                     final verticalContentHeight =
-                        LayerTimelineGrid._metrics.layerRowHeight *
+                        _metrics.layerRowHeight *
                         math.max(widget.layers.length, 1);
 
                     return Column(
@@ -268,13 +270,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               TimelineLayerControlsHeader(
-                                metrics: LayerTimelineGrid._metrics,
+                                metrics: _metrics,
                                 onAddLayer: widget.onAddLayer,
                               ),
                               TimelineVerticalScrollbarSlot(
-                                width: LayerTimelineGrid
-                                    ._metrics
-                                    .verticalScrollbarWidth,
+                                width: _metrics.verticalScrollbarWidth,
                                 height: headerHeight,
                               ),
                               Expanded(
@@ -305,7 +305,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           visibleFrameCount:
                                               _renderedFrameCount,
                                           layerCount: widget.layers.length,
-                                          metrics: LayerTimelineGrid._metrics,
+                                          metrics: _metrics,
                                         );
                                     final frameRange = plan.frameRange;
 
@@ -372,8 +372,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         .leadingFrameSpacerWidth,
                                                     trailingFrameSpacerWidth: plan
                                                         .trailingFrameSpacerWidth,
-                                                    metrics: LayerTimelineGrid
-                                                        ._metrics,
+                                                    metrics: _metrics,
                                                     onSelectFrame:
                                                         _selectClampedFrameFromRuler,
                                                     isFrameCached:
@@ -432,8 +431,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.layers,
                                                       index,
                                                     ),
-                                                metrics:
-                                                    LayerTimelineGrid._metrics,
+                                                metrics: _metrics,
                                                 onSelectLayer:
                                                     widget.onSelectLayer,
                                                 onToggleLayerVisibility: widget
@@ -447,12 +445,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               ),
                                             if (widget.layers.isEmpty)
                                               SizedBox(
-                                                width: LayerTimelineGrid
-                                                    ._metrics
-                                                    .layerControlsWidth,
-                                                height: LayerTimelineGrid
-                                                    ._metrics
-                                                    .layerRowHeight,
+                                                width:
+                                                    _metrics.layerControlsWidth,
+                                                height: _metrics.layerRowHeight,
                                                 child: Padding(
                                                   padding: const EdgeInsets.all(
                                                     8,
@@ -471,9 +466,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       ),
                                     ),
                                     verticalScrollbarSlot: SizedBox(
-                                      width: LayerTimelineGrid
-                                          ._metrics
-                                          .verticalScrollbarWidth,
+                                      width: _metrics.verticalScrollbarWidth,
                                       height: verticalContentHeight,
                                     ),
                                     frameGridArea: Expanded(
@@ -510,8 +503,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       _renderedFrameCount,
                                                   layerCount:
                                                       widget.layers.length,
-                                                  metrics: LayerTimelineGrid
-                                                      ._metrics,
+                                                  metrics: _metrics,
                                                 );
                                             final frameRange = plan.frameRange;
 
@@ -542,8 +534,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       .trailingFrameSpacerWidth,
                                                   totalFrameContentWidth: plan
                                                       .totalFrameContentWidth,
-                                                  metrics: LayerTimelineGrid
-                                                      ._metrics,
+                                                  metrics: _metrics,
                                                   exposureStateForLayer: widget
                                                       .exposureStateForLayer,
                                                   frameNameForLayer:
@@ -558,8 +549,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     timelineCutEndBoundaryX(
                                                       playbackFrameCount: widget
                                                           .playbackFrameCount,
-                                                      metrics: LayerTimelineGrid
-                                                          ._metrics,
+                                                      metrics: _metrics,
                                                     ),
                                                 showPlayhead:
                                                     widget.currentFrameIndex >=
@@ -579,8 +569,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           .endIndexExclusive,
                                                   leadingFrameSpacerWidth: plan
                                                       .leadingFrameSpacerWidth,
-                                                  metrics: LayerTimelineGrid
-                                                      ._metrics,
+                                                  metrics: _metrics,
                                                   layerCount:
                                                       widget.layers.length,
                                                 ),
@@ -594,21 +583,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 ),
                               ),
                               Positioned(
-                                left: LayerTimelineGrid
-                                    ._metrics
-                                    .layerControlsWidth,
+                                left: _metrics.layerControlsWidth,
                                 top: 0,
                                 bottom: 0,
-                                width: LayerTimelineGrid
-                                    ._metrics
-                                    .verticalScrollbarWidth,
+                                width: _metrics.verticalScrollbarWidth,
                                 child: TimelineVerticalScrollbarRail(
                                   controller: _verticalScrollController,
                                   viewportHeight: bodyViewportHeight,
                                   contentHeight: verticalContentHeight,
-                                  width: LayerTimelineGrid
-                                      ._metrics
-                                      .verticalScrollbarWidth,
+                                  width: _metrics.verticalScrollbarWidth,
                                 ),
                               ),
                             ],
@@ -625,14 +608,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                     key: const ValueKey<String>(
                       'timeline-bottom-scrollbar-left-spacer',
                     ),
-                    width: LayerTimelineGrid._metrics.layerControlsWidth,
+                    width: _metrics.layerControlsWidth,
                     height: bottomScrollbarRailHeight,
                   ),
                   SizedBox(
                     key: const ValueKey<String>(
                       'timeline-vertical-scrollbar-bottom-spacer',
                     ),
-                    width: LayerTimelineGrid._metrics.verticalScrollbarWidth,
+                    width: _metrics.verticalScrollbarWidth,
                     height: bottomScrollbarRailHeight,
                   ),
                   Expanded(
@@ -643,8 +626,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                             : 0.0;
                         final effectiveFrameCount = _renderedFrameCount;
                         final contentWidth =
-                            effectiveFrameCount *
-                            LayerTimelineGrid._metrics.frameCellWidth;
+                            effectiveFrameCount * _metrics.frameCellWidth;
 
                         return TimelineHorizontalScrollbarRail(
                           key: const ValueKey<String>(
