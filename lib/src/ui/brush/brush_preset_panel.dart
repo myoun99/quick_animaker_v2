@@ -184,14 +184,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   /// Maps a drag in the flattened entry list onto the library move: the
   /// entry before the drop position decides the target group and anchor.
+  /// [newIndex] is already adjusted for the removed item (onReorderItem
+  /// semantics).
   void _handleReorder(List<_ListEntry> entries, int oldIndex, int newIndex) {
     final onReordered = widget.onPresetsReordered;
     final moved = oldIndex < entries.length ? entries[oldIndex].preset : null;
     if (onReordered == null || moved == null) {
       return;
-    }
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
     }
     final without = [...entries]..removeAt(oldIndex);
     final clampedIndex = newIndex.clamp(0, without.length);
@@ -359,7 +358,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                   buildDefaultDragHandles: false,
                   padding: const EdgeInsets.only(right: panelScrollbarGutter),
                   itemCount: entries.length,
-                  onReorder: (oldIndex, newIndex) =>
+                  onReorderItem: (oldIndex, newIndex) =>
                       _handleReorder(entries, oldIndex, newIndex),
                   itemBuilder: (context, index) {
                     final entry = entries[index];

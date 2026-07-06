@@ -177,7 +177,38 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
+      appBar: AppBar(
+        title: const Text('QuickAnimaker v2.1'),
+        actions: [
+          IconButton(
+            key: const ValueKey<String>('undo-button'),
+            tooltip: 'Undo',
+            onPressed: _session.canUndo ? _session.undo : null,
+            icon: const Icon(Icons.undo),
+          ),
+          IconButton(
+            key: const ValueKey<String>('redo-button'),
+            tooltip: 'Redo',
+            onPressed: _session.canRedo ? _session.redo : null,
+            icon: const Icon(Icons.redo),
+          ),
+          IconButton(
+            key: const ValueKey<String>('export-png-button'),
+            tooltip: 'Export PNG Sequence',
+            onPressed: () {
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (context) =>
+                      PngSequenceExportDialog(session: _session),
+                ),
+              );
+            },
+            icon: const Icon(Icons.save_alt),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -196,46 +227,7 @@ class _HomePageState extends State<HomePage> {
                     CutListBar(
                       entries: _session.cutListEntries,
                       onCutSelected: _session.selectCut,
-                      onNewCut: _session.createCut,
-                      onRenameActiveCut: _renameActiveCut,
-                      onEditActiveCutNote: _editActiveCutNote,
-                      onResizeActiveCutCanvas: _resizeActiveCutCanvas,
-                      onDuplicateActiveCut: _session.duplicateActiveCut,
-                      onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                          ? _session.moveActiveCutLeft
-                          : null,
-                      onMoveActiveCutRight: _session.canMoveActiveCutRight
-                          ? _session.moveActiveCutRight
-                          : null,
-                      onDeleteActiveCut: _session.deleteActiveCut,
                       onCutReordered: _session.reorderCut,
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      key: const ValueKey<String>('undo-button'),
-                      tooltip: 'Undo',
-                      onPressed: _session.canUndo ? _session.undo : null,
-                      icon: const Icon(Icons.undo),
-                    ),
-                    IconButton(
-                      key: const ValueKey<String>('redo-button'),
-                      tooltip: 'Redo',
-                      onPressed: _session.canRedo ? _session.redo : null,
-                      icon: const Icon(Icons.redo),
-                    ),
-                    IconButton(
-                      key: const ValueKey<String>('export-png-button'),
-                      tooltip: 'Export PNG Sequence',
-                      onPressed: () {
-                        unawaited(
-                          showDialog<void>(
-                            context: context,
-                            builder: (context) =>
-                                PngSequenceExportDialog(session: _session),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.save_alt),
                     ),
                   ],
                 ),
@@ -284,6 +276,18 @@ class _HomePageState extends State<HomePage> {
                     project: _session.repository.requireProject(),
                     activeCutId: _session.activeCutId,
                     onCutSelected: _session.selectCut,
+                    onNewCut: _session.createCut,
+                    onRenameActiveCut: _renameActiveCut,
+                    onEditActiveCutNote: _editActiveCutNote,
+                    onResizeActiveCutCanvas: _resizeActiveCutCanvas,
+                    onDuplicateActiveCut: _session.duplicateActiveCut,
+                    onMoveActiveCutLeft: _session.canMoveActiveCutLeft
+                        ? _session.moveActiveCutLeft
+                        : null,
+                    onMoveActiveCutRight: _session.canMoveActiveCutRight
+                        ? _session.moveActiveCutRight
+                        : null,
+                    onDeleteActiveCut: _session.deleteActiveCut,
                   ),
                 ),
               ],

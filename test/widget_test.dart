@@ -153,6 +153,7 @@ Future<void> _tapCutNoteSaveButton(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(saveButton);
   await tester.pumpAndSettle();
+  await _showTimelinePanel(tester);
 }
 
 Future<void> _tapCutNoteCancelButton(WidgetTester tester) async {
@@ -163,6 +164,7 @@ Future<void> _tapCutNoteCancelButton(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(cancelButton);
   await tester.pumpAndSettle();
+  await _showTimelinePanel(tester);
 }
 
 String _cutNoteFieldText(WidgetTester tester) {
@@ -195,6 +197,9 @@ Future<void> _renameActiveCut(WidgetTester tester, String name) async {
     find.byKey(const ValueKey<String>('rename-cut-confirm-button')),
   );
   await tester.pumpAndSettle();
+  // The command left the app in storyboard mode (the dialog blocked the
+  // automatic return); restore the timeline the tests assume.
+  await _showTimelinePanel(tester);
 }
 
 Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
@@ -305,11 +310,20 @@ Future<void> _tapCutCommandButton(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
+  // Cut management actions live in the storyboard panel's toolbar: enter
+  // storyboard mode, act, and return to the timeline the tests assume.
+  // When the action opened a dialog, stay put — switching modes would tap
+  // the modal barrier and dismiss it; the dialog helpers switch back after
+  // the dialog closes.
+  await _showStoryboardPanel(tester);
   final button = find.byKey(key);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
   await tester.pumpAndSettle();
+  if (find.byType(Dialog).evaluate().isEmpty) {
+    await _showTimelinePanel(tester);
+  }
 }
 
 Future<void> _tapTopBarButton(WidgetTester tester, ValueKey<String> key) async {
@@ -391,16 +405,20 @@ void main() {
     );
     expect(find.byTooltip('New Frame'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(find.text('New Drawing'), findsNothing);
+
+    // Cut management actions live in the storyboard panel's toolbar.
+    await _showStoryboardPanel(tester);
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
     expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
+    expect(find.byTooltip('Canvas Size'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
     expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.text('New Drawing'), findsNothing);
   });
 
   testWidgets('default sample cut duration is 24 frames', (
@@ -420,7 +438,7 @@ void main() {
     );
   });
 
-  testWidgets('top row keeps cut actions and undo redo reachable', (
+  testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -433,13 +451,10 @@ void main() {
       find.byKey(const ValueKey<String>('top-toolbar-row')),
       findsOneWidget,
     );
-    expect(find.byTooltip('New Cut'), findsOneWidget);
-    expect(find.byTooltip('Rename Cut'), findsOneWidget);
-    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
-    expect(find.byTooltip('Delete Cut'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
 
@@ -460,6 +475,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
+    await _showStoryboardPanel(tester);
 
     expect(find.byTooltip('Reorder Cut'), findsNothing);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
@@ -611,6 +627,8 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
+    // The move buttons live in the storyboard panel's toolbar.
+    await _showStoryboardPanel(tester);
 
     expect(
       _isActionButtonEnabled(
@@ -650,7 +668,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsNothing,
@@ -676,7 +693,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsNothing,
@@ -709,7 +725,6 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Delete Cut'), findsOneWidget);
     _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
     _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
 
@@ -854,12 +869,6 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('edit-cut-note-button')),
-      findsOneWidget,
-    );
-
     await _saveCutNote(tester, 'Old note');
     await _openCutNoteDialog(tester);
 
@@ -956,12 +965,6 @@ Line 8''';
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
-
-    expect(find.byTooltip('Rename Cut'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('rename-cut-button')),
-      findsOneWidget,
-    );
 
     await _tapCutCommandButton(
       tester,
