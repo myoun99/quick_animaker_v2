@@ -33,6 +33,9 @@ class BrushToolState {
     bool scatterBothAxes = true,
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
+    BrushTipMask? textureMask,
+    double textureScale = 1.0,
+    double textureDensity = 1.0,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -57,6 +60,9 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
     );
   }
 
@@ -83,6 +89,9 @@ class BrushToolState {
     this.scatterBothAxes = true,
     this.dualMask,
     this.dualMaskScale = 1.0,
+    this.textureMask,
+    this.textureScale = 1.0,
+    this.textureDensity = 1.0,
   });
 
   factory BrushToolState.clamped({
@@ -108,6 +117,9 @@ class BrushToolState {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    BrushTipMask? textureMask,
+    double? textureScale,
+    double? textureDensity,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -132,6 +144,9 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes ?? true,
       dualMask: dualMask,
       dualMaskScale: clampDualMaskScale(dualMaskScale ?? 1.0),
+      textureMask: textureMask,
+      textureScale: clampDualMaskScale(textureScale ?? 1.0),
+      textureDensity: clampZeroToOne(textureDensity ?? 1.0),
     );
   }
 
@@ -217,6 +232,9 @@ class BrushToolState {
   final bool scatterBothAxes;
   final BrushTipMask? dualMask;
   final double dualMaskScale;
+  final BrushTipMask? textureMask;
+  final double textureScale;
+  final double textureDensity;
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -244,6 +262,9 @@ class BrushToolState {
       scatterBothAxes: settings.scatterBothAxes,
       dualMask: settings.dualMask,
       dualMaskScale: settings.dualMaskScale,
+      textureMask: settings.textureMask,
+      textureScale: settings.textureScale,
+      textureDensity: settings.textureDensity,
     );
   }
 
@@ -273,6 +294,9 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
     );
   }
 
@@ -300,6 +324,9 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
     );
   }
 
@@ -326,6 +353,9 @@ class BrushToolState {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    BrushTipMask? textureMask,
+    double? textureScale,
+    double? textureDensity,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -350,6 +380,9 @@ class BrushToolState {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      textureMask: textureMask ?? this.textureMask,
+      textureScale: textureScale ?? this.textureScale,
+      textureDensity: textureDensity ?? this.textureDensity,
     );
   }
 
@@ -451,7 +484,10 @@ class BrushToolState {
           other.scatterCount == scatterCount &&
           other.scatterBothAxes == scatterBothAxes &&
           other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale;
+          other.dualMaskScale == dualMaskScale &&
+          other.textureMask == textureMask &&
+          other.textureScale == textureScale &&
+          other.textureDensity == textureDensity;
 
   @override
   int get hashCode => Object.hashAll([
@@ -477,5 +513,8 @@ class BrushToolState {
     scatterBothAxes,
     dualMask,
     dualMaskScale,
+    textureMask,
+    textureScale,
+    textureDensity,
   ]);
 }

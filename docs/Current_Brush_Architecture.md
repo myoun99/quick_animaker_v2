@@ -161,6 +161,12 @@ Coverage math: after the primary coverage (round falloff / rect / sampled tip) i
 
 Approximations vs Photoshop (documented intentionally): the dual tip's blend mode (`BlnM`, e.g. Color Burn) is treated as multiply, and its own spacing/scatter is approximated by the per-dab random tile phase. ABR mapping: `dualBrush.useDualBrush` -> nested `Brsh.sampledData` joins the tip bitmap (consuming it, so it does not import as an orphan preset), `Dmtr` ratio -> `dualMaskScale`. CSP dual-brush columns exist but are unmapped until a real file using them is available.
 
+## Paper texture overlay (P22)
+
+A paper texture is a mask tiled in CANVAS space — anchored to the canvas, with NO per-dab phase (that is the difference from the dual brush: every dab reveals the same fixed paper grain, like drawing on textured paper). `BrushDab`/`BrushSettings`/`InputSettings`/`BrushToolState` carry `textureMask`, `textureScale` (tile period = `mask.size * scale` canvas pixels), and `textureDensity` (overlay strength). Coverage math, applied AFTER the dual-brush multiply in all three rasterizers with identical multiplication order (separate `*=` steps — folding factors first would change float associativity, byte-parity locked by both suites): `coverage *= (1 - density) + density * sample`, sampling `sampleBrushTipMaskTiledCoverage` at absolute canvas coordinates with zero phase.
+
+Import: CSP `TextureImage` joins its material through the same UTF-16LE catalog-path extraction as the pattern array (`TextureScale2`% -> textureScale, `TextureDensity`% -> textureDensity) — verified against the user's real files. Photoshop's `useTexture` needs the unparsed `patt` 8BIM section, so ABR import emits a warning instead (deferred; Noah-pack-style brushes get their texture through the dual brush anyway). Unmapped texture refinements: composite modes (`TextureCompositeMode`), brightness/contrast, per-plot toggling.
+
 ## Pen pressure dynamics (P14)
 
 `BrushToolState`/`BrushEditCanvasInputSettings` carry `pressureSize` and `pressureOpacity` toggles (both default false, so a mouse or a stroke with the toggles off behaves exactly as before). `BrushSettingsPanel` exposes them under a "Pen Pressure" section as `brush-tool-pressure-size-toggle` / `brush-tool-pressure-opacity-toggle`.

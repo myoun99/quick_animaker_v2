@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
@@ -40,21 +40,39 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   }
   final minorRadius = radius * dab.roundness;
 
-  // Dual-brush texture factor; must multiply coverage with the exact same
-  // float grouping as the commit and live rasterizers.
+  // Applies the dual-brush and paper-texture multiplications with the EXACT
+  // multiplication order of the commit/live rasterizers (separate `*=`
+  // steps; folding the factors first would change float associativity).
   final dualMask = dab.dualMask;
-  double dualFactorAt(int x, int y) {
-    if (dualMask == null) {
-      return 1.0;
+  final textureMask = dab.textureMask;
+  double texturedCoverageAt(double coverage, int x, int y) {
+    var result = coverage;
+    if (dualMask != null) {
+      result *= sampleBrushTipMaskTiledCoverage(
+        mask: dualMask,
+        dx: x + 0.5 - dab.center.x,
+        dy: y + 0.5 - dab.center.y,
+        period: dab.size * dab.dualMaskScale,
+        offsetU: dab.dualOffsetU,
+        offsetV: dab.dualOffsetV,
+      );
+      if (result <= 0.0) {
+        return 0.0;
+      }
     }
-    return sampleBrushTipMaskTiledCoverage(
-      mask: dualMask,
-      dx: x + 0.5 - dab.center.x,
-      dy: y + 0.5 - dab.center.y,
-      period: dab.size * dab.dualMaskScale,
-      offsetU: dab.dualOffsetU,
-      offsetV: dab.dualOffsetV,
-    );
+    if (textureMask != null) {
+      final textureSample = sampleBrushTipMaskTiledCoverage(
+        mask: textureMask,
+        dx: x + 0.5,
+        dy: y + 0.5,
+        period: textureMask.size * dab.textureScale,
+        offsetU: 0.0,
+        offsetV: 0.0,
+      );
+      result *=
+          (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+    }
+    return result;
   }
 
   for (var y = dirtyRegion.top; y < dirtyRegion.bottomExclusive; y += 1) {
@@ -76,7 +94,7 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
         if (coverage <= 0.0) {
           continue;
         }
-        coverage *= dualFactorAt(x, y);
+        coverage = texturedCoverageAt(coverage, x, y);
         if (coverage <= 0.0) {
           continue;
         }
@@ -95,7 +113,7 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
             }
           }
           var coverage = 1.0;
-          coverage *= dualFactorAt(x, y);
+          coverage = texturedCoverageAt(coverage, x, y);
           if (coverage <= 0.0) {
             continue;
           }
@@ -124,7 +142,7 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
           if (coverage <= 0.0) {
             continue;
           }
-          coverage *= dualFactorAt(x, y);
+          coverage = texturedCoverageAt(coverage, x, y);
           if (coverage <= 0.0) {
             continue;
           }

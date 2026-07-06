@@ -26,6 +26,9 @@ class BrushSettings {
     this.scatterBothAxes = true,
     this.dualMask,
     this.dualMaskScale = 1.0,
+    this.textureMask,
+    this.textureScale = 1.0,
+    this.textureDensity = 1.0,
   }) {
     if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
       throw ArgumentError.value(
@@ -34,6 +37,14 @@ class BrushSettings {
         'BrushSettings.dualMaskScale must be finite and greater than 0.',
       );
     }
+    if (!textureScale.isFinite || textureScale <= 0.0) {
+      throw ArgumentError.value(
+        textureScale,
+        'textureScale',
+        'BrushSettings.textureScale must be finite and greater than 0.',
+      );
+    }
+    _validateUnitInterval(textureDensity, 'textureDensity');
     _validatePositive(size, 'size');
     _validateUnitInterval(opacity, 'opacity');
     _validateUnitInterval(flow, 'flow');
@@ -107,6 +118,11 @@ class BrushSettings {
   final BrushTipMask? dualMask;
   final double dualMaskScale;
 
+  /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
+  final BrushTipMask? textureMask;
+  final double textureScale;
+  final double textureDensity;
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -130,6 +146,9 @@ class BrushSettings {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    BrushTipMask? textureMask,
+    double? textureScale,
+    double? textureDensity,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -154,6 +173,9 @@ class BrushSettings {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      textureMask: textureMask ?? this.textureMask,
+      textureScale: textureScale ?? this.textureScale,
+      textureDensity: textureDensity ?? this.textureDensity,
     );
   }
 
@@ -180,6 +202,9 @@ class BrushSettings {
     'scatterBothAxes': scatterBothAxes,
     if (dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
+    if (textureMask != null) 'textureMask': textureMask!.toJson(),
+    'textureScale': textureScale,
+    'textureDensity': textureDensity,
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -214,6 +239,13 @@ class BrushSettings {
           ? null
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
+      textureMask: json['textureMask'] == null
+          ? null
+          : BrushTipMask.fromJson(
+              json['textureMask'] as Map<String, dynamic>,
+            ),
+      textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
+      textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
     );
   }
 
@@ -242,7 +274,10 @@ class BrushSettings {
           other.scatterCount == scatterCount &&
           other.scatterBothAxes == scatterBothAxes &&
           other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale;
+          other.dualMaskScale == dualMaskScale &&
+          other.textureMask == textureMask &&
+          other.textureScale == textureScale &&
+          other.textureDensity == textureDensity;
 
   @override
   int get hashCode => Object.hashAll([
@@ -268,6 +303,9 @@ class BrushSettings {
     scatterBothAxes,
     dualMask,
     dualMaskScale,
+    textureMask,
+    textureScale,
+    textureDensity,
   ]);
 
   @override

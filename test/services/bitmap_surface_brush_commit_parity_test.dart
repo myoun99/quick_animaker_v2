@@ -114,6 +114,9 @@ BrushDab dab({
   double dualMaskScale = 1.0,
   double dualOffsetU = 0.0,
   double dualOffsetV = 0.0,
+  BrushTipMask? textureMask,
+  double textureScale = 1.0,
+  double textureDensity = 1.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -132,6 +135,9 @@ BrushDab dab({
     dualMaskScale: dualMaskScale,
     dualOffsetU: dualOffsetU,
     dualOffsetV: dualOffsetV,
+    textureMask: textureMask,
+    textureScale: textureScale,
+    textureDensity: textureDensity,
   );
 }
 
@@ -431,6 +437,41 @@ void main() {
           ),
         ]),
         reason: 'dual brush texture',
+      );
+    });
+
+    test('paper-textured stroke stays anchored to the canvas', () {
+      // Two dabs at different positions must sample the SAME paper pattern
+      // (canvas-anchored), combined here with pressure-free dual masking.
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 44.3,
+            y: 41.2,
+            size: 18,
+            hardness: 0.5,
+            textureMask: _testTipMask,
+            textureScale: 0.9,
+            textureDensity: 0.85,
+            sequence: 0,
+          ),
+          dab(
+            x: 58.9,
+            y: 47.6,
+            size: 18,
+            tipMask: _testTipMask,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.6,
+            dualOffsetU: 0.25,
+            dualOffsetV: 0.75,
+            textureMask: _testTipMask,
+            textureScale: 1.5,
+            textureDensity: 0.4,
+            sequence: 1,
+          ),
+        ]),
+        reason: 'paper texture',
       );
     });
 

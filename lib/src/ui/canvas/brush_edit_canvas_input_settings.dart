@@ -26,7 +26,18 @@ class BrushEditCanvasInputSettings {
     this.scatterBothAxes = true,
     this.dualMask,
     this.dualMaskScale = 1.0,
+    this.textureMask,
+    this.textureScale = 1.0,
+    this.textureDensity = 1.0,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
+       assert(
+         textureScale > 0.0,
+         'BrushEditCanvasInputSettings.textureScale must be > 0.',
+       ),
+       assert(
+         textureDensity >= 0.0 && textureDensity <= 1.0,
+         'BrushEditCanvasInputSettings.textureDensity must be in [0, 1].',
+       ),
        assert(
          dualMaskScale > 0.0,
          'BrushEditCanvasInputSettings.dualMaskScale must be > 0.',
@@ -118,6 +129,11 @@ class BrushEditCanvasInputSettings {
   final BrushTipMask? dualMask;
   final double dualMaskScale;
 
+  /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
+  final BrushTipMask? textureMask;
+  final double textureScale;
+  final double textureDensity;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -141,6 +157,9 @@ class BrushEditCanvasInputSettings {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    BrushTipMask? textureMask,
+    double? textureScale,
+    double? textureDensity,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -165,6 +184,9 @@ class BrushEditCanvasInputSettings {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      textureMask: textureMask ?? this.textureMask,
+      textureScale: textureScale ?? this.textureScale,
+      textureDensity: textureDensity ?? this.textureDensity,
     );
   }
 
@@ -193,7 +215,10 @@ class BrushEditCanvasInputSettings {
           other.scatterCount == scatterCount &&
           other.scatterBothAxes == scatterBothAxes &&
           other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale;
+          other.dualMaskScale == dualMaskScale &&
+          other.textureMask == textureMask &&
+          other.textureScale == textureScale &&
+          other.textureDensity == textureDensity;
 
   @override
   int get hashCode => Object.hashAll([
@@ -219,6 +244,9 @@ class BrushEditCanvasInputSettings {
     scatterBothAxes,
     dualMask,
     dualMaskScale,
+    textureMask,
+    textureScale,
+    textureDensity,
   ]);
 
   @override

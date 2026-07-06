@@ -62,7 +62,9 @@ void main() {
   Future<String> buildFixture({
     required Uint8List tipPng,
     Uint8List? thumbnailPng,
+    Uint8List? texturePng,
     String catalogPath = '.:36:43:fixture-tip-catalog',
+    String textureCatalogPath = '.:25:01:fixture-texture-catalog',
     bool includeMaterial = true,
   }) async {
     final path = '${tempDirectory.path}/fixture.sut';
@@ -77,7 +79,8 @@ void main() {
         BrushPatternImageArray BLOB, BrushSizeEffector BLOB,
         BrushOpacityEffector BLOB, BrushFlowEffector BLOB,
         BrushUseSpray INTEGER, BrushSpraySize REAL,
-        BrushSprayDensity INTEGER);
+        BrushSprayDensity INTEGER, TextureImage BLOB,
+        TextureScale2 REAL, TextureDensity INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -101,14 +104,16 @@ void main() {
       'BrushHardness, BrushInterval, BrushThickness, BrushRotation, '
       'BrushUsePatternImage, BrushPatternImageArray, BrushSizeEffector, '
       'BrushOpacityEffector, BrushFlowEffector, BrushUseSpray, '
-      'BrushSpraySize, BrushSprayDensity) '
+      'BrushSpraySize, BrushSprayDensity, TextureImage, TextureScale2, '
+      'TextureDensity) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4)',
+      '1, 200.0, 4, ?, 182.0, 90)',
       [
         patternArray(catalogPath),
         effector(0x10, minimumPercent: 59),
         effector(0x00),
         effector(0x30),
+        texturePng == null ? null : patternArray(textureCatalogPath),
       ],
     );
     // Round brush without pattern data.
@@ -145,6 +150,22 @@ void main() {
           fileData.toBytes(),
         ],
       );
+      if (texturePng != null) {
+        final textureData = BytesBuilder();
+        textureData.add(ascii.encode('catalog.zip'));
+        textureData.add(Uint8List(13));
+        textureData.add(texturePng);
+        textureData.add(Uint8List(7));
+        database.execute(
+          'INSERT INTO MaterialFile(CatalogPath, OriginalPath, FileData) '
+          'VALUES (?, ?, ?)',
+          [
+            textureCatalogPath,
+            '$textureCatalogPath:data:material_0.layer',
+            textureData.toBytes(),
+          ],
+        );
+      }
     }
     database.close();
     return path;
@@ -154,6 +175,7 @@ void main() {
     final path = await buildFixture(
       tipPng: await blackPng(6, 4),
       thumbnailPng: await blackPng(2, 2),
+      texturePng: await blackPng(8, 8),
     );
     final result = await decodeSutBrushFile(
       filePath: path,
@@ -183,6 +205,11 @@ void main() {
     // Spray maps to scatter: 200% spray size -> radius ratio 1.0.
     expect(s.scatterRadiusRatio, closeTo(1.0, 1e-9));
     expect(s.scatterCount, 4);
+    // Paper texture joins its own material; scale 182% and density 90%.
+    expect(s.textureMask, isNotNull);
+    expect(s.textureMask!.size, 8);
+    expect(s.textureScale, closeTo(1.82, 1e-9));
+    expect(s.textureDensity, closeTo(0.9, 1e-9));
 
     // The larger PNG is the tip (the 2x2 one is a thumbnail); 6x4 pads to
     // a centered 6x6 square, black-opaque pixels become full coverage.

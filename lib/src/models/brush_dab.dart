@@ -22,7 +22,18 @@ class BrushDab {
     this.dualMaskScale = 1.0,
     this.dualOffsetU = 0.0,
     this.dualOffsetV = 0.0,
+    this.textureMask,
+    this.textureScale = 1.0,
+    this.textureDensity = 1.0,
   }) {
+    if (!textureScale.isFinite || textureScale <= 0.0) {
+      throw ArgumentError.value(
+        textureScale,
+        'textureScale',
+        'BrushDab.textureScale must be finite and greater than 0.',
+      );
+    }
+    _validateUnitIntervalFinite(textureDensity, 'textureDensity');
     _validateColor(color);
     if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
       throw ArgumentError.value(
@@ -71,6 +82,9 @@ class BrushDab {
       tipMask: settings.tipMask,
       dualMask: settings.dualMask,
       dualMaskScale: settings.dualMaskScale,
+      textureMask: settings.textureMask,
+      textureScale: settings.textureScale,
+      textureDensity: settings.textureDensity,
     );
   }
 
@@ -105,6 +119,14 @@ class BrushDab {
   final double dualOffsetU;
   final double dualOffsetV;
 
+  /// Paper texture: a mask tiled in CANVAS space (anchored to the canvas,
+  /// no per-dab phase) whose sample darkens coverage by [textureDensity]:
+  /// `coverage *= (1 - density) + density * sample`. Tile period =
+  /// `textureMask.size * textureScale` canvas pixels.
+  final BrushTipMask? textureMask;
+  final double textureScale;
+  final double textureDensity;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -122,6 +144,9 @@ class BrushDab {
     double? dualMaskScale,
     double? dualOffsetU,
     double? dualOffsetV,
+    BrushTipMask? textureMask,
+    double? textureScale,
+    double? textureDensity,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -140,6 +165,9 @@ class BrushDab {
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualOffsetU: dualOffsetU ?? this.dualOffsetU,
       dualOffsetV: dualOffsetV ?? this.dualOffsetV,
+      textureMask: textureMask ?? this.textureMask,
+      textureScale: textureScale ?? this.textureScale,
+      textureDensity: textureDensity ?? this.textureDensity,
     );
   }
 
@@ -160,6 +188,9 @@ class BrushDab {
     'dualMaskScale': dualMaskScale,
     'dualOffsetU': dualOffsetU,
     'dualOffsetV': dualOffsetV,
+    if (textureMask != null) 'textureMask': textureMask!.toJson(),
+    'textureScale': textureScale,
+    'textureDensity': textureDensity,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -184,6 +215,13 @@ class BrushDab {
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
       dualOffsetU: (json['dualOffsetU'] as num?)?.toDouble() ?? 0.0,
       dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
+      textureMask: json['textureMask'] == null
+          ? null
+          : BrushTipMask.fromJson(
+              json['textureMask'] as Map<String, dynamic>,
+            ),
+      textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
+      textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
     );
   }
 
@@ -206,7 +244,10 @@ class BrushDab {
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
           other.dualOffsetU == dualOffsetU &&
-          other.dualOffsetV == dualOffsetV;
+          other.dualOffsetV == dualOffsetV &&
+          other.textureMask == textureMask &&
+          other.textureScale == textureScale &&
+          other.textureDensity == textureDensity;
 
   @override
   int get hashCode => Object.hashAll([
@@ -226,6 +267,9 @@ class BrushDab {
     dualMaskScale,
     dualOffsetU,
     dualOffsetV,
+    textureMask,
+    textureScale,
+    textureDensity,
   ]);
 
   @override
