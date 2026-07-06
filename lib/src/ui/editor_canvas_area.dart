@@ -323,10 +323,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     ),
                     // Playback swaps only the viewport CONTENT (via the panel's
                     // contentOverride), so the panel shell — zoom buttons,
-                    // panbars — keeps working while playing.
-                    child: AnimatedBuilder(
-                      animation: session.playback,
-                      builder: (context, _) {
+                    // panbars — keeps working while playing. Listen to
+                    // enter/leave ONLY: subscribing this subtree to every
+                    // playback tick rebuilt the whole panel at fps and
+                    // caused real frame drops.
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: session.playback.isActiveListenable,
+                      builder: (context, _, _) {
                         return _buildInteractiveCanvas(
                           session,
                           isCameraLayerActive: isCameraLayerActive,

@@ -195,6 +195,75 @@ void main() {
     },
   );
 
+  testWidgets('seekToLocalFrame jumps the clock and keeps playing', (
+    tester,
+  ) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.position!.localFrameIndex, 1);
+
+    c.seekToLocalFrame(3);
+    expect(c.position!.localFrameIndex, 3);
+    expect(c.isPlaying, isTrue);
+
+    // The elapsed epoch rebases on the seek target.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.position!.localFrameIndex, 0, reason: '4-frame cut wraps 3→0');
+
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets('seek while paused moves the shown frame without playing', (
+    tester,
+  ) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    c.pause();
+
+    c.seekToLocalFrame(2);
+    expect(c.position!.localFrameIndex, 2);
+    expect(c.isPlaying, isFalse);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.position!.localFrameIndex, 2);
+
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets('dropped frames reset on every loop pass', (tester) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(c.droppedFrames, 0);
+
+    // Gap from raw frame 1 to 3 inside the first pass: one frame dropped.
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(c.droppedFrames, 1);
+
+    // Crossing into the next loop pass clears the counter.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.droppedFrames, 0);
+
+    c.stop();
+    c.detachTicker();
+  });
+
   testWidgets('stop syncs the last position through onStopped', (
     tester,
   ) async {

@@ -59,6 +59,14 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// (never route ticks through the session's notifyListeners).
   ValueListenable<int?> get localFrameIndexListenable => _localFrameIndex;
 
+  final ValueNotifier<bool> _isActiveNotifier = ValueNotifier<bool>(false);
+
+  /// Fires only when playback mode is entered/left — the canvas area swaps
+  /// its content on this instead of listening to every tick (subscribing the
+  /// whole canvas subtree to ticks rebuilt it at fps and caused real frame
+  /// drops).
+  ValueListenable<bool> get isActiveListenable => _isActiveNotifier;
+
   List<StoryboardTimelineLayoutEntry>? _playlist;
   PlaybackScope _scope = PlaybackScope.activeCut;
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
@@ -67,9 +75,11 @@ class CanvasPlaybackController extends ChangeNotifier {
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
   int? _lastRawFrame;
+  int _lastLap = 0;
 
-  /// Frames skipped to keep real time since [play] (DaVinci-style dropped
-  /// frame indicator).
+  /// Frames skipped to keep real time during the CURRENT loop pass
+  /// (DaVinci-style dropped frame indicator); resets on every wrap-around
+  /// and on play/seek.
   int get droppedFrames => _droppedFrames;
 
   /// Playback mode is entered (playing or paused); the canvas shows the
@@ -124,8 +134,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     }
     _scope = scope;
     _playlist = playlist;
-    _droppedFrames = 0;
-    _lastRawFrame = null;
+    _resetDropAccounting();
     _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
       0,
       playlistTotalFrames(playlist) - 1,
@@ -134,7 +143,39 @@ class CanvasPlaybackController extends ChangeNotifier {
     _isPlaying = true;
     _startTicker();
     _localFrameIndex.value = position?.localFrameIndex;
+    _isActiveNotifier.value = true;
     notifyListeners();
+  }
+
+  /// Jumps playback to a frame of the currently playing cut (ruler scrubs
+  /// during playback); keeps playing/paused state.
+  void seekToLocalFrame(int localFrameIndex) {
+    final playlist = _playlist;
+    final current = position;
+    if (playlist == null || current == null) {
+      return;
+    }
+    for (final entry in playlist) {
+      if (current.globalFrameIndex >= entry.startFrame &&
+          current.globalFrameIndex < entry.endFrame) {
+        final clamped = localFrameIndex.clamp(0, entry.duration - 1);
+        _currentGlobalFrame = entry.startFrame + clamped;
+        _resetDropAccounting();
+        if (_isPlaying) {
+          // Restart the ticker so its elapsed epoch rebases on the new frame.
+          _startTicker();
+        }
+        _localFrameIndex.value = position?.localFrameIndex;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void _resetDropAccounting() {
+    _droppedFrames = 0;
+    _lastRawFrame = null;
+    _lastLap = 0;
   }
 
   void pause() {
@@ -164,6 +205,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     _playlist = null;
     _isPlaying = false;
     _localFrameIndex.value = null;
+    _isActiveNotifier.value = false;
     notifyListeners();
     if (lastPosition != null) {
       onStopped?.call(lastPosition);
@@ -175,6 +217,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     _ticker?.dispose();
     _ticker = null;
     _localFrameIndex.dispose();
+    _isActiveNotifier.dispose();
     super.dispose();
   }
 
@@ -231,7 +274,14 @@ class CanvasPlaybackController extends ChangeNotifier {
     final total = playlistTotalFrames(playlist);
     var frame = _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFps());
     // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
-    // more than one frame between ticks means rendering fell behind.
+    // more than one frame between ticks means rendering fell behind. The
+    // counter reports the CURRENT loop pass only, resetting on wrap.
+    final lap = frame ~/ math.max(1, total);
+    if (lap != _lastLap) {
+      _droppedFrames = 0;
+      _lastRawFrame = null;
+      _lastLap = lap;
+    }
     final lastRawFrame = _lastRawFrame;
     if (lastRawFrame != null && frame > lastRawFrame + 1) {
       _droppedFrames += frame - lastRawFrame - 1;

@@ -50,12 +50,19 @@ class CanvasPlaybackView extends StatefulWidget {
   State<CanvasPlaybackView> createState() => _CanvasPlaybackViewState();
 }
 
+// TickerProviderStateMixin (multi), NOT the single variant: the controller
+// disposes and recreates its ticker on every pause/resume/seek, and a single
+// ticker provider asserts after the first creation (pause → play was dead).
 class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// Our own clone of the last displayed composite: the cache may evict and
   /// dispose its image at any time, a clone shares the pixels but has an
   /// independent lifetime.
   ui.Image? _heldFrame;
+
+  /// The cache image the clone came from (identity only, may be disposed);
+  /// cloning happens only when this changes, not on every tick.
+  ui.Image? _heldSource;
   CanvasSize? _heldCanvasSize;
 
   @override
@@ -88,8 +95,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         frameIndex: position.localFrameIndex,
         quality: widget.qualityOf(),
       );
-      if (composite != null) {
+      if (composite != null && !identical(composite, _heldSource)) {
         _heldFrame?.dispose();
+        _heldSource = composite;
         _heldFrame = composite.clone();
         _heldCanvasSize = position.cut.canvasSize;
       }

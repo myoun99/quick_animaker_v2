@@ -296,6 +296,37 @@ void main() {
     f.composites.dispose();
   });
 
+  testWidgets('pause then resume keeps ticking through the view vsync', (
+    tester,
+  ) async {
+    final f = fixture();
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: f.controller,
+      composites: f.composites,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(f.controller.position!.localFrameIndex, 1);
+
+    f.controller.pause();
+    await tester.pump();
+    // Resume recreates the ticker: this asserted with a single-ticker
+    // provider and playback stayed dead after pausing.
+    f.controller.resume();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(f.controller.isPlaying, isTrue);
+    expect(f.controller.position!.localFrameIndex, 0, reason: '2-frame wrap');
+    expect(tester.takeException(), isNull);
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
   testWidgets('shows warming progress while the cache fills', (tester) async {
     final f = fixture();
     final progress = ValueNotifier(

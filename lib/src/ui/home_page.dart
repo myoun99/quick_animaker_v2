@@ -256,7 +256,15 @@ class _HomePageState extends State<HomePage> {
                 hasMarkForLayer: _session.hasMarkForLayer,
                 frameNameForLayer: _session.frameNameForLayer,
                 onSelectLayer: _session.selectLayer,
-                onSelectFrame: _session.selectFrameIndex,
+                // Ruler scrubs during playback SEEK the playback clock
+                // instead of moving the (hidden) editing playhead.
+                onSelectFrame: (frameIndex) {
+                  if (_session.playback.isActive) {
+                    _session.playback.seekToLocalFrame(frameIndex);
+                  } else {
+                    _session.selectFrameIndex(frameIndex);
+                  }
+                },
                 onAddLayer: _session.addLayer,
                 onToggleLayerVisibility: _session.toggleLayerVisibility,
                 onLayerOpacityChanged: (layerId, opacity) {
