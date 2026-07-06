@@ -55,6 +55,8 @@ Future<void> _pumpPanel(
   VoidCallback? onPresetSaveRequested,
   ValueChanged<BrushPresetId>? onPresetDeleted,
   VoidCallback? onPresetImportRequested,
+  void Function(BrushPresetId id, String name)? onPresetRenamed,
+  ValueChanged<List<BrushPreset>>? onPresetsReordered,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -69,6 +71,8 @@ Future<void> _pumpPanel(
               onPresetSaveRequested: onPresetSaveRequested,
               onPresetDeleted: onPresetDeleted,
               onPresetImportRequested: onPresetImportRequested,
+              onPresetRenamed: onPresetRenamed,
+              onPresetsReordered: onPresetsReordered,
             ),
           ),
         ),
@@ -342,6 +346,94 @@ void main() {
     await tester.tap(find.text('Wet wash'));
     await tester.pumpAndSettle();
     expect(applied.single, watercolor);
+  });
+
+  testWidgets('options menu renames the selected preset', (tester) async {
+    final renames = <(BrushPresetId, String)>[];
+    await _pumpPanel(
+      tester,
+      presets: [_calligraphy(), _marker()],
+      selectedPresetId: const BrushPresetId('preset-marker'),
+      onPresetRenamed: (id, name) => renames.add((id, name)),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename selected brush'));
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(
+      const ValueKey<String>('brush-preset-rename-text-field'),
+    );
+    expect(tester.widget<TextField>(field).controller!.text, 'Marker');
+
+    // An empty name keeps the dialog open with an error.
+    await tester.enterText(field, '   ');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-rename-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-rename-dialog')),
+      findsOneWidget,
+    );
+    expect(renames, isEmpty);
+
+    await tester.enterText(field, 'Wet wash');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-rename-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(renames.single, (const BrushPresetId('preset-marker'), 'Wet wash'));
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-rename-dialog')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('rename is disabled without a selection', (tester) async {
+    await _pumpPanel(tester, presets: [_marker()], onPresetRenamed: (_, _) {});
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final item = tester.widget<PopupMenuItem<Object?>>(
+      find.byKey(const ValueKey<String>('brush-preset-menu-rename')),
+    );
+    expect(item.enabled, isFalse);
+  });
+
+  testWidgets('dragging a row reorders the library', (tester) async {
+    final reordered = <List<BrushPreset>>[];
+    final calligraphy = _calligraphy();
+    final marker = _marker();
+    final sampled = _sampled();
+    await _pumpPanel(
+      tester,
+      presets: [calligraphy, marker, sampled],
+      onPresetsReordered: reordered.add,
+    );
+
+    // Drag the first row down past the second (rows are 36px tall).
+    await tester.drag(
+      find.byKey(
+        const ValueKey<String>('brush-preset-entry-preset-calligraphy'),
+      ),
+      const Offset(0, 44),
+    );
+    await tester.pumpAndSettle();
+
+    expect(reordered, isNotEmpty);
+    expect(reordered.last.map((preset) => preset.id.value), [
+      'preset-marker',
+      'preset-calligraphy',
+      'preset-sampled',
+    ]);
   });
 
   testWidgets('shows no group headers when every preset is ungrouped', (

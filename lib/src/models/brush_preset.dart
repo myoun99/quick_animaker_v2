@@ -18,17 +18,21 @@ class BrushPreset {
   /// ungrouped; the UI shows those under a default group.
   final String? group;
 
+  static const Object _groupUnset = Object();
+
+  /// [group] accepts an explicit `null` to clear the group (move the preset
+  /// back to the default section); omitting it keeps the current group.
   BrushPreset copyWith({
     BrushPresetId? id,
     String? name,
     BrushSettings? settings,
-    String? group,
+    Object? group = _groupUnset,
   }) {
     return BrushPreset(
       id: id ?? this.id,
       name: name ?? this.name,
       settings: settings ?? this.settings,
-      group: group ?? this.group,
+      group: identical(group, _groupUnset) ? this.group : group as String?,
     );
   }
 
