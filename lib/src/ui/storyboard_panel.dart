@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
@@ -12,6 +13,8 @@ import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
+import 'timeline/timeline_frame_range_policy.dart'
+    show defaultEndlessRunwayFrames, endlessTrailingFrames;
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
 
@@ -111,6 +114,31 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   final ScrollController _horizontalController = ScrollController();
 
   int _zoomIndex = StoryboardPanel._defaultZoomIndex;
+  int _endlessTrailingFrames = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _horizontalController.addListener(_handleHorizontalScroll);
+  }
+
+  void _handleHorizontalScroll() {
+    if (!_horizontalController.hasClients) {
+      return;
+    }
+    final next = endlessTrailingFrames(
+      baseFrameCount: _totalFrames(
+        buildStoryboardTimelineLayout(widget.project),
+      ),
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: _horizontalController.offset,
+      viewportExtent: _horizontalController.position.viewportDimension,
+      frameCellExtent: _scale.pixelsPerFrame,
+    );
+    if (next != _endlessTrailingFrames) {
+      setState(() => _endlessTrailingFrames = next);
+    }
+  }
 
   TimelineScale get _scale => TimelineScale(
     pixelsPerFrame: StoryboardPanel._zoomSteps[_zoomIndex],
@@ -135,6 +163,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
+    _horizontalController.removeListener(_handleHorizontalScroll);
     _verticalController.dispose();
     _horizontalController.dispose();
     super.dispose();
@@ -174,8 +203,19 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
     final scale = _scale;
-    final contentWidth = _timelineContentWidth(layoutEntries, scale);
     final totalFrames = _totalFrames(layoutEntries);
+    // Endless frame axis: the ruler (and scrollable area) always shows a
+    // runway past the cuts, growing with how far the user has scrolled
+    // (short content could never scroll into a grow-on-approach runway
+    // otherwise); seeks stay content-bound.
+    final renderedFrames =
+        totalFrames +
+        math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
+    final contentWidth = math.max(
+      _timelineContentWidth(layoutEntries, scale),
+      scale.leftForFrame(renderedFrames) +
+          StoryboardPanel._timelineTrailingPadding,
+    );
     final playheadFrame = widget.playheadGlobalFrame;
 
     return DecoratedBox(
@@ -251,7 +291,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   children: [
                                     _StoryboardRuler(
                                       width: contentWidth,
-                                      totalFrames: totalFrames,
+                                      totalFrames: renderedFrames,
+                                      seekableFrames: totalFrames,
                                       timelineScale: scale,
                                       onSeekGlobalFrame:
                                           widget.onSeekGlobalFrame,
@@ -450,23 +491,30 @@ class _StoryboardRuler extends StatelessWidget {
   const _StoryboardRuler({
     required this.width,
     required this.totalFrames,
+    required this.seekableFrames,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
   });
 
   final double width;
+
+  /// Painted tick range — includes the endless-axis runway past the cuts.
   final int totalFrames;
+
+  /// Seeks clamp here (the cuts' actual end); the runway is display-only.
+  final int seekableFrames;
+
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
 
   void _seekAt(double dx) {
     final onSeek = onSeekGlobalFrame;
-    if (onSeek == null || totalFrames <= 0) {
+    if (onSeek == null || seekableFrames <= 0) {
       return;
     }
     final frame = (dx / timelineScale.pixelsPerFrame).floor().clamp(
       0,
-      totalFrames - 1,
+      seekableFrames - 1,
     );
     onSeek(frame);
   }

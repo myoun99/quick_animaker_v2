@@ -566,6 +566,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('frame axis extends endlessly while scrolling right', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final initialWidth = tester.getSize(ruler).width;
+
+      for (var i = 0; i < 3; i += 1) {
+        await tester.drag(
+          find.byKey(
+            const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+          ),
+          const Offset(-1200, 0),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      expect(tester.getSize(ruler).width, greaterThan(initialWidth));
+    });
+
     testWidgets('tap-to-select still works when dragging is enabled', (
       tester,
     ) async {

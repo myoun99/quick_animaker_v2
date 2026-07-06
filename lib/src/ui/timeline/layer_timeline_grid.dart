@@ -78,6 +78,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   double _horizontalScrollOffset = 0;
   double _lastEffectiveHorizontalScrollOffset = 0;
   double? _scheduledHorizontalOffsetCorrection;
+  int _endlessTrailingFrames = 0;
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
@@ -105,8 +106,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (offset == _horizontalScrollOffset) {
       return;
     }
+    final nextTrailingFrames = _horizontalScrollController.hasClients
+        ? endlessTrailingFrames(
+            baseFrameCount: _visibleFrameCount,
+            currentTrailingFrames: _endlessTrailingFrames,
+            scrollOffset: offset,
+            viewportExtent:
+                _horizontalScrollController.position.viewportDimension,
+            frameCellExtent: LayerTimelineGrid._metrics.frameCellWidth,
+          )
+        : _endlessTrailingFrames;
     setState(() {
       _horizontalScrollOffset = offset;
+      _endlessTrailingFrames = nextTrailingFrames;
     });
   }
 
@@ -119,12 +131,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
 
+  /// Render extent: the endless-axis runway extends past the base count as
+  /// the user scrolls. Interaction clamps stay on [_visibleFrameCount].
+  int get _renderedFrameCount => _visibleFrameCount + _endlessTrailingFrames;
+
   double _effectiveHorizontalScrollOffset({
     required double requestedOffset,
     required double viewportWidth,
   }) {
     final totalFrameContentWidth =
-        _visibleFrameCount * LayerTimelineGrid._metrics.frameCellWidth;
+        _renderedFrameCount * LayerTimelineGrid._metrics.frameCellWidth;
 
     return resolveTimelineHorizontalOffset(
       requestedOffset: requestedOffset,
@@ -286,7 +302,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           verticalScrollOffset: 0,
                                           viewportWidth: viewportWidth,
                                           viewportHeight: viewportHeight,
-                                          visibleFrameCount: _visibleFrameCount,
+                                          visibleFrameCount:
+                                              _renderedFrameCount,
                                           layerCount: widget.layers.length,
                                           metrics: LayerTimelineGrid._metrics,
                                         );
@@ -425,8 +442,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     .onLayerOpacityChanged,
                                                 onToggleLayerTimesheet: widget
                                                     .onToggleLayerTimesheet,
-                                                onLayerMarkSelected: widget
-                                                    .onLayerMarkSelected,
+                                                onLayerMarkSelected:
+                                                    widget.onLayerMarkSelected,
                                               ),
                                             if (widget.layers.isEmpty)
                                               SizedBox(
@@ -490,7 +507,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   viewportHeight:
                                                       viewportHeight,
                                                   visibleFrameCount:
-                                                      _visibleFrameCount,
+                                                      _renderedFrameCount,
                                                   layerCount:
                                                       widget.layers.length,
                                                   metrics: LayerTimelineGrid
@@ -624,7 +641,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                         final viewportWidth = constraints.hasBoundedWidth
                             ? constraints.maxWidth
                             : 0.0;
-                        final effectiveFrameCount = _visibleFrameCount;
+                        final effectiveFrameCount = _renderedFrameCount;
                         final contentWidth =
                             effectiveFrameCount *
                             LayerTimelineGrid._metrics.frameCellWidth;

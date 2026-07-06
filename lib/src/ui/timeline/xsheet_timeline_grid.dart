@@ -103,6 +103,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   double _frameScrollOffset = 0;
   double _lastEffectiveFrameScrollOffset = 0;
   double? _scheduledFrameOffsetCorrection;
+  int _endlessTrailingFrames = 0;
   final GlobalKey _railScrubViewportKey = GlobalKey();
   int? _lastRailScrubbedFrameIndex;
 
@@ -132,8 +133,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     if (offset == _frameScrollOffset) {
       return;
     }
+    final nextTrailingFrames = _frameScrollController.hasClients
+        ? endlessTrailingFrames(
+            baseFrameCount: _visibleFrameCount,
+            currentTrailingFrames: _endlessTrailingFrames,
+            scrollOffset: offset,
+            viewportExtent: _frameScrollController.position.viewportDimension,
+            frameCellExtent: _metrics.frameCellWidth,
+          )
+        : _endlessTrailingFrames;
     setState(() {
       _frameScrollOffset = offset;
+      _endlessTrailingFrames = nextTrailingFrames;
     });
   }
 
@@ -145,8 +156,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
 
+  /// Render extent: the endless-axis runway extends past the base count as
+  /// the user scrolls. Interaction clamps stay on [_visibleFrameCount].
+  int get _renderedFrameCount => _visibleFrameCount + _endlessTrailingFrames;
+
   double get _totalFrameContentHeight =>
-      _visibleFrameCount * _metrics.frameCellWidth;
+      _renderedFrameCount * _metrics.frameCellWidth;
 
   double _effectiveFrameScrollOffset({
     required double requestedOffset,
@@ -260,7 +275,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           viewportHeight: 0,
           frameCellWidth: _metrics.frameCellWidth,
           layerRowHeight: _metrics.layerRowHeight,
-          frameCount: _visibleFrameCount,
+          frameCount: _renderedFrameCount,
           layerCount: widget.layers.length,
         );
         final frameRange = plan.frameRange;
@@ -348,8 +363,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             metrics: _metrics,
                                             onSelectFrame:
                                                 _selectClampedFrameFromRail,
-                                            isFrameCached:
-                                                widget.isFrameCached,
+                                            isFrameCached: widget.isFrameCached,
                                           ),
                                           TimelineRulerCutEndBoundary(
                                             axis: Axis.vertical,
@@ -491,8 +505,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                         widget.onSelectLayer,
                                                     onSelectFrame:
                                                         widget.onSelectFrame,
-                                                    commaDrag:
-                                                        widget.commaDrag,
+                                                    commaDrag: widget.commaDrag,
                                                   ),
                                               ],
                                             ),

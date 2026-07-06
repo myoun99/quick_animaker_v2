@@ -773,7 +773,7 @@ void main() {
   });
 
   testWidgets(
-    'clamps horizontal offset after viewport widens and keeps ruler/body aligned',
+    'keeps ruler/body aligned after viewport widens',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(500, 320));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -789,6 +789,15 @@ void main() {
       await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 12));
       await tester.pump();
       await tester.pump();
+
+      // The endless frame axis grew a runway past the scrolled offset, so
+      // widening no longer clamps the offset back — return to the origin
+      // and check ruler/body alignment through the relayout.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(2400, 0),
+      );
+      await tester.pumpAndSettle();
 
       final frameGridArea = find.byKey(
         const ValueKey<String>('timeline-frame-grid-area'),
@@ -869,6 +878,14 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+
+      // Endless axis: the scrolled offset survives the widening; scroll
+      // back so the outlined cells are on screen.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(2400, 0),
+      );
+      await tester.pumpAndSettle();
 
       final outline = find.byKey(
         const ValueKey<String>(

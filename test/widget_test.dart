@@ -505,6 +505,66 @@ void main() {
     );
   });
 
+  testWidgets('timeline frame axis extends endlessly while scrolling', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    // Base extent = 24-frame cut + safety/minimum cells (48 frames). Keep
+    // dragging right: the endless runway must materialize headers beyond it.
+    for (var i = 0; i < 5; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1200, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final beyondBaseHeaders = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      if (key is! ValueKey<String> ||
+          !key.value.startsWith('timeline-frame-header-')) {
+        return false;
+      }
+      final index = int.tryParse(
+        key.value.substring('timeline-frame-header-'.length),
+      );
+      return index != null && index >= 48;
+    });
+    expect(beyondBaseHeaders, findsWidgets);
+  });
+
+  testWidgets('xsheet frame axis extends endlessly while scrolling', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
+
+    for (var i = 0; i < 5; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('xsheet-frame-vertical-viewport')),
+        const Offset(0, -1200),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final beyondBaseRows = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      if (key is! ValueKey<String> ||
+          !key.value.startsWith('xsheet-frame-row-')) {
+        return false;
+      }
+      final index = int.tryParse(
+        key.value.substring('xsheet-frame-row-'.length),
+      );
+      return index != null && index >= 48;
+    });
+    expect(beyondBaseRows, findsWidgets);
+  });
+
   testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
