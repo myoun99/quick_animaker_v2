@@ -218,9 +218,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   void _persistPresets() {
     // Fire-and-forget: preset persistence must never block or crash the
     // editor; a failed write just leaves the in-memory library unsaved.
-    unawaited(
-      _presetFileService.save(_brushPresets).catchError((Object _) {}),
-    );
+    unawaited(_presetFileService.save(_brushPresets).catchError((Object _) {}));
   }
 
   @override
@@ -233,7 +231,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             padding: const EdgeInsets.all(16),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFBDBDBD)),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
               child: RepaintBoundary(
                 child: KeyedSubtree(
