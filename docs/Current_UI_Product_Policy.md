@@ -43,7 +43,7 @@ The UI should feel closer to a compact production tool than an onboarding demo.
 
 Phase 303 establishes the first long-term editor panel frame direction. Reusable panel primitives now include `EditorPanelFrame`, `EditorPanelHeader`, `EditorPanelBody`, and `EditorPanelDock`. These primitives are intended to be reused by future Brush, Color, Layers, Navigator, Timeline, Storyboard, Brush Preset, and tool-property panels instead of creating one-off panel chrome for each feature.
 
-The right-side `EditorPanelDock` is the first durable panel dock direction, not a full docking framework. It should remain compact editor UI and must not add drag-to-dock, floating panels, workspace persistence, source-data changes, save/load schema changes, or broad app-wide state management unless a later phase explicitly designs those systems.
+`EditorPanelDock` is the first durable panel dock direction, not a full docking framework. It supports a `side` (left/right); the brush library + tool-property dock sits on the LEFT of the canvas, Clip-Studio-like. It should remain compact editor UI and must not add drag-to-dock, floating panels, workspace persistence, source-data changes, save/load schema changes, or broad app-wide state management unless a later phase explicitly designs those systems.
 
 Panel scrollbars are shared UI: wrap panel scrollables in `PanelScrollbar` (`lib/src/ui/panels/panel_scrollbar.dart`) and pad the scroll-end edge by `panelScrollbarGutter` so the always-visible bar owns allocated space instead of overlaying content. Visuals come from the app-level `ScrollbarThemeData`; do not restyle scrollbars per panel. The timeline's custom scrollbar rails already reserve their own space and stay as they are.
 

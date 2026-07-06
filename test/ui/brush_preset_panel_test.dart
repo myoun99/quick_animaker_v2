@@ -290,6 +290,72 @@ void main() {
     expect(find.byType(BrushTipPreview), findsOneWidget);
   });
 
+  testWidgets('groups presets under collapsible source-file headers', (
+    tester,
+  ) async {
+    final applied = <BrushPreset>[];
+    final watercolor = _calligraphy().copyWith(
+      id: const BrushPresetId('preset-wet'),
+      name: 'Wet wash',
+      group: '불투명 수채',
+    );
+    await _pumpPanel(
+      tester,
+      presets: [
+        _marker(), // ungrouped -> Default
+        watercolor,
+        _sampled().copyWith(group: '불투명 수채'),
+      ],
+      onPresetApplied: applied.add,
+    );
+
+    // Headers appear in first-appearance order.
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-group-Default')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-group-불투명 수채')),
+      findsOneWidget,
+    );
+    expect(find.byType(BrushStrokePreview), findsNWidgets(3));
+
+    // Rows inside a collapsed group disappear; others stay.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-group-불투명 수채')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-chip-preset-wet')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-chip-preset-marker')),
+      findsOneWidget,
+    );
+
+    // Expanding restores the rows and they stay tappable.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-group-불투명 수채')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wet wash'));
+    await tester.pumpAndSettle();
+    expect(applied.single, watercolor);
+  });
+
+  testWidgets('shows no group headers when every preset is ungrouped', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, presets: [_calligraphy(), _marker()]);
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-group-Default')),
+      findsNothing,
+    );
+    expect(find.byType(BrushStrokePreview), findsNWidgets(2));
+  });
+
   testWidgets('the last visible element cannot be hidden', (tester) async {
     Future<void> toggle(String keyValue) async {
       await tester.tap(

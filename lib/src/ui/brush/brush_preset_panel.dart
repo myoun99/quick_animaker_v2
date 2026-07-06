@@ -50,6 +50,18 @@ class BrushPresetPanel extends StatefulWidget {
   State<BrushPresetPanel> createState() => _BrushPresetPanelState();
 }
 
+/// Label for presets without a [BrushPreset.group] (built-ins, hand-saved).
+const String _defaultGroupLabel = 'Default';
+
+/// One flattened list entry: either a group header or a preset row.
+class _ListEntry {
+  const _ListEntry.header(this.groupLabel) : preset = null;
+  const _ListEntry.preset(this.preset) : groupLabel = null;
+
+  final String? groupLabel;
+  final BrushPreset? preset;
+}
+
 class _BrushPresetPanelState extends State<BrushPresetPanel> {
   final ScrollController _scrollController = ScrollController();
 
@@ -58,6 +70,37 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   bool _showTipIcon = true;
   bool _showStrokePreview = true;
   bool _showName = true;
+
+  /// Collapsed group labels; groups start expanded.
+  final Set<String> _collapsedGroups = <String>{};
+
+  /// Flattens presets into header + row entries, preserving preset order;
+  /// group order follows first appearance. When every preset is ungrouped
+  /// the headers are omitted entirely (a lone "Default" header is noise).
+  List<_ListEntry> _buildEntries() {
+    final groupLabels = <String>[];
+    final grouped = <String, List<BrushPreset>>{};
+    for (final preset in widget.presets) {
+      final label = preset.group ?? _defaultGroupLabel;
+      final bucket = grouped[label];
+      if (bucket == null) {
+        groupLabels.add(label);
+        grouped[label] = [preset];
+      } else {
+        bucket.add(preset);
+      }
+    }
+    if (groupLabels.length == 1 && groupLabels.single == _defaultGroupLabel) {
+      return [for (final preset in widget.presets) _ListEntry.preset(preset)];
+    }
+    return [
+      for (final label in groupLabels) ...[
+        _ListEntry.header(label),
+        if (!_collapsedGroups.contains(label))
+          for (final preset in grouped[label]!) _ListEntry.preset(preset),
+      ],
+    ];
+  }
 
   int get _visibleElementCount =>
       (_showTipIcon ? 1 : 0) +
@@ -95,6 +138,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final entries = _buildEntries();
     return EditorPanelFrame(
       title: 'Brushes',
       bodyPadding: const EdgeInsets.all(5),
@@ -188,9 +232,24 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                   controller: _scrollController,
                   shrinkWrap: true,
                   padding: const EdgeInsets.only(right: panelScrollbarGutter),
-                  itemCount: widget.presets.length,
+                  itemCount: entries.length,
                   itemBuilder: (context, index) {
-                    final preset = widget.presets[index];
+                    final entry = entries[index];
+                    final groupLabel = entry.groupLabel;
+                    if (groupLabel != null) {
+                      return _BrushGroupHeader(
+                        label: groupLabel,
+                        collapsed: _collapsedGroups.contains(groupLabel),
+                        onToggle: () {
+                          setState(() {
+                            if (!_collapsedGroups.remove(groupLabel)) {
+                              _collapsedGroups.add(groupLabel);
+                            }
+                          });
+                        },
+                      );
+                    }
+                    final preset = entry.preset!;
                     return _BrushPresetRow(
                       preset: preset,
                       selected: preset.id == widget.selectedPresetId,
@@ -203,6 +262,53 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// A flat collapsible group header (chevron + name), Clip-Studio-like.
+class _BrushGroupHeader extends StatelessWidget {
+  const _BrushGroupHeader({
+    required this.label,
+    required this.collapsed,
+    required this.onToggle,
+  });
+
+  final String label;
+  final bool collapsed;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      key: ValueKey<String>('brush-preset-group-$label'),
+      onTap: onToggle,
+      child: SizedBox(
+        height: 24,
+        child: Row(
+          children: [
+            Icon(
+              collapsed ? Icons.chevron_right : Icons.expand_more,
+              size: 15,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 3),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

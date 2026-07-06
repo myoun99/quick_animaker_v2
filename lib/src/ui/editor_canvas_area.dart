@@ -172,13 +172,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (!mounted) {
       return;
     }
+    // Imported brushes group under their source file, mirroring Clip
+    // Studio's sub-tool groups (re-importing keeps them together).
+    final grouped = [
+      for (final preset in imported) preset.copyWith(group: baseName),
+    ];
     setState(() {
       // Re-importing replaces presets with the same id (same brush/tip).
-      final importedIds = {for (final preset in imported) preset.id};
+      final importedIds = {for (final preset in grouped) preset.id};
       _brushPresets = [
         for (final preset in _brushPresets)
           if (!importedIds.contains(preset.id)) preset,
-        ...imported,
+        ...grouped,
       ];
     });
     _persistPresets();
@@ -244,6 +249,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final showCameraOverlay = _cameraViewEnabled || isCameraLayerActive;
     return Row(
       children: [
+        // CSP-like layout: the brush library + tool properties dock sits on
+        // the left of the canvas.
+        EditorPanelDock(
+          side: EditorPanelDockSide.left,
+          children: [
+            BrushPresetPanel(
+              presets: _brushPresets,
+              selectedPresetId: _activePresetId,
+              onPresetApplied: _applyPreset,
+              onPresetSaveRequested: _saveCurrentAsPreset,
+              onPresetDeleted: _deletePreset,
+              onPresetImportRequested: () {
+                unawaited(_importBrushFile());
+              },
+            ),
+            BrushSettingsPanel(
+              state: _brushToolState,
+              onChanged: (state) {
+                setState(() => _brushToolState = state);
+              },
+            ),
+          ],
+        ),
         Expanded(
           child: Column(
             children: [
@@ -265,7 +293,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     hasKeyframeAtCurrentFrame:
                         session.hasCameraKeyframeAtCurrentFrame,
                     onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
-                    onRemoveKeyframe: session.removeCameraKeyframeAtCurrentFrame,
+                    onRemoveKeyframe:
+                        session.removeCameraKeyframeAtCurrentFrame,
                   ),
                 ),
               ),
@@ -321,26 +350,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
             ],
           ),
-        ),
-        EditorPanelDock(
-          children: [
-            BrushPresetPanel(
-              presets: _brushPresets,
-              selectedPresetId: _activePresetId,
-              onPresetApplied: _applyPreset,
-              onPresetSaveRequested: _saveCurrentAsPreset,
-              onPresetDeleted: _deletePreset,
-              onPresetImportRequested: () {
-                unawaited(_importBrushFile());
-              },
-            ),
-            BrushSettingsPanel(
-              state: _brushToolState,
-              onChanged: (state) {
-                setState(() => _brushToolState = state);
-              },
-            ),
-          ],
         ),
       ],
     );

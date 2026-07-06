@@ -45,6 +45,8 @@ void main() {
         BrushPreset(
           id: const BrushPresetId('user-1'),
           name: 'My Pen',
+          // Groups (import source files) must survive the round trip.
+          group: '불투명 수채',
           settings: BrushSettings(
             size: 7,
             hardness: 0.9,
@@ -97,10 +99,7 @@ void main() {
       await File(path).writeAsString(
         jsonEncode({
           'version': 1,
-          'presets': [
-            userPreset.toJson(),
-            defaultBrushPresets.first.toJson(),
-          ],
+          'presets': [userPreset.toJson(), defaultBrushPresets.first.toJson()],
         }),
       );
       final service = BrushPresetFileService(filePath: path);
@@ -119,52 +118,58 @@ void main() {
       }
     });
 
-    test('current-version libraries do not resurrect deleted built-ins', () async {
-      final path = pathIn('v_current.json');
-      final service = BrushPresetFileService(filePath: path);
-      // Save a library missing most built-ins at the CURRENT version: the
-      // user deleted them, so loading must not bring them back.
-      await service.save([defaultBrushPresets.last]);
+    test(
+      'current-version libraries do not resurrect deleted built-ins',
+      () async {
+        final path = pathIn('v_current.json');
+        final service = BrushPresetFileService(filePath: path);
+        // Save a library missing most built-ins at the CURRENT version: the
+        // user deleted them, so loading must not bring them back.
+        await service.save([defaultBrushPresets.last]);
 
-      final loaded = await service.loadOrDefaults();
+        final loaded = await service.loadOrDefaults();
 
-      expect(loaded, [defaultBrushPresets.last]);
-    });
+        expect(loaded, [defaultBrushPresets.last]);
+      },
+    );
 
-    test('duplicate preset ids in a saved library are healed on load', () async {
-      // The pre-fix ABR importer could persist duplicate ids when several
-      // brushes shared one tip; duplicate ids crash the preset chips.
-      final path = pathIn('duplicates.json');
-      final duplicated = BrushPreset(
-        id: const BrushPresetId('abr-shared'),
-        name: 'Variant A',
-        settings: BrushSettings(size: 5),
-      );
-      await File(path).writeAsString(
-        jsonEncode({
-          'version': BrushPresetFileService.libraryVersion,
-          'presets': [
-            duplicated.toJson(),
-            duplicated.copyWith(name: 'Variant B').toJson(),
-            duplicated.copyWith(name: 'Variant C').toJson(),
-          ],
-        }),
-      );
-      final service = BrushPresetFileService(filePath: path);
+    test(
+      'duplicate preset ids in a saved library are healed on load',
+      () async {
+        // The pre-fix ABR importer could persist duplicate ids when several
+        // brushes shared one tip; duplicate ids crash the preset chips.
+        final path = pathIn('duplicates.json');
+        final duplicated = BrushPreset(
+          id: const BrushPresetId('abr-shared'),
+          name: 'Variant A',
+          settings: BrushSettings(size: 5),
+        );
+        await File(path).writeAsString(
+          jsonEncode({
+            'version': BrushPresetFileService.libraryVersion,
+            'presets': [
+              duplicated.toJson(),
+              duplicated.copyWith(name: 'Variant B').toJson(),
+              duplicated.copyWith(name: 'Variant C').toJson(),
+            ],
+          }),
+        );
+        final service = BrushPresetFileService(filePath: path);
 
-      final loaded = await service.loadOrDefaults();
+        final loaded = await service.loadOrDefaults();
 
-      expect(loaded.map((p) => p.id.value), [
-        'abr-shared',
-        'abr-shared-2',
-        'abr-shared-3',
-      ]);
-      expect(loaded.map((p) => p.name), [
-        'Variant A',
-        'Variant B',
-        'Variant C',
-      ]);
-    });
+        expect(loaded.map((p) => p.id.value), [
+          'abr-shared',
+          'abr-shared-2',
+          'abr-shared-3',
+        ]);
+        expect(loaded.map((p) => p.name), [
+          'Variant A',
+          'Variant B',
+          'Variant C',
+        ]);
+      },
+    );
 
     test('default path points into the per-user app-data directory', () {
       final path = BrushPresetFileService.defaultBrushPresetFilePath();
