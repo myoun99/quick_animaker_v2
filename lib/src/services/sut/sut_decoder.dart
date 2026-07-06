@@ -137,6 +137,20 @@ Future<SutImportResult> _decode(
         materials: materials,
         maskId: '$idBase-tip',
         brushName: name,
+        describe: 'tip bitmap',
+        warnings: warnings,
+      );
+    }
+    // Paper texture material (canvas-anchored overlay), referenced the same
+    // way as the pattern array.
+    BrushTipMask? textureMask;
+    if (variant['TextureImage'] != null) {
+      textureMask = await _tipMaskFromPatternArray(
+        variant['TextureImage'],
+        materials: materials,
+        maskId: '$idBase-texture',
+        brushName: name,
+        describe: 'paper texture',
         warnings: warnings,
       );
     }
@@ -145,7 +159,11 @@ Future<SutImportResult> _decode(
       BrushPreset(
         id: presetId,
         name: name,
-        settings: _settingsFromVariant(variant, mask: mask),
+        settings: _settingsFromVariant(
+          variant,
+          mask: mask,
+          textureMask: textureMask,
+        ),
       ),
     );
   }
@@ -161,6 +179,7 @@ Future<SutImportResult> _decode(
 BrushSettings _settingsFromVariant(
   Map<String, Object?> variant, {
   required BrushTipMask? mask,
+  BrushTipMask? textureMask,
 }) {
   final size = _doubleOf(variant['BrushSize']) ?? 24.0;
   final opacityPercent = _doubleOf(variant['Opacity']) ?? 100.0;
@@ -206,7 +225,28 @@ BrushSettings _settingsFromVariant(
     minimumSizeRatio: minimumSizeRatio,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
+    textureMask: textureMask,
+    textureScale: _textureScaleOf(variant),
+    textureDensity: _textureDensityOf(variant),
   );
+}
+
+/// `TextureScale2` is a percentage of the texture's native size.
+double _textureScaleOf(Map<String, Object?> variant) {
+  final scale = _doubleOf(variant['TextureScale2']);
+  if (scale == null || !scale.isFinite || scale <= 0.0) {
+    return 1.0;
+  }
+  return (scale / 100.0).clamp(0.05, 10.0).toDouble();
+}
+
+/// `TextureDensity` is the overlay strength in percent.
+double _textureDensityOf(Map<String, Object?> variant) {
+  final density = _doubleOf(variant['TextureDensity']);
+  if (density == null || !density.isFinite) {
+    return 1.0;
+  }
+  return (density / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
 /// Effector blobs start with two header ints, then the input-source flags:
@@ -235,12 +275,13 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
   required List<({String path, Uint8List data})> materials,
   required String maskId,
   required String brushName,
+  required String describe,
   required List<String> warnings,
 }) async {
   if (patternArray is! Uint8List || materials.isEmpty) {
     if (patternArray != null) {
-      warnings.add('Brush "$brushName": tip bitmap is not embedded; '
-          'imported with a round tip.');
+      warnings.add('Brush "$brushName": $describe is not embedded; '
+          'imported without it.');
     }
     return null;
   }
@@ -258,22 +299,22 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
     }
   }
   if (tipMaterial == null) {
-    warnings.add('Brush "$brushName": tip bitmap reference not found; '
-        'imported with a round tip.');
+    warnings.add('Brush "$brushName": $describe reference not found; '
+        'imported without it.');
     return null;
   }
 
   final png = _largestPng(tipMaterial.data);
   if (png == null) {
-    warnings.add('Brush "$brushName": embedded material holds no readable '
-        'image; imported with a round tip.');
+    warnings.add('Brush "$brushName": $describe material holds no readable '
+        'image; imported without it.');
     return null;
   }
   try {
     return await _maskFromPngBytes(png, maskId: maskId);
   } catch (error) {
-    warnings.add('Brush "$brushName": tip image could not be decoded '
-        '($error); imported with a round tip.');
+    warnings.add('Brush "$brushName": $describe image could not be decoded '
+        '($error); imported without it.');
     return null;
   }
 }

@@ -47,6 +47,9 @@ BrushDab _dab({
   double dualMaskScale = 1.0,
   double dualOffsetU = 0.0,
   double dualOffsetV = 0.0,
+  BrushTipMask? textureMask,
+  double textureScale = 1.0,
+  double textureDensity = 1.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -65,6 +68,9 @@ BrushDab _dab({
     dualMaskScale: dualMaskScale,
     dualOffsetU: dualOffsetU,
     dualOffsetV: dualOffsetV,
+    textureMask: textureMask,
+    textureScale: textureScale,
+    textureDensity: textureDensity,
   );
 }
 
@@ -212,6 +218,35 @@ void main() {
       ],
       'sampled tip on fractional center': [
         _dab(x: 14.37, y: 12.81, size: 16, tipMask: _testTipMask),
+      ],
+      'paper-textured translucent stroke (canvas-anchored)': [
+        for (var i = 0; i < 3; i += 1)
+          _dab(
+            x: 9.6 + i * 5.2,
+            y: 13.1 + i * 2.3,
+            size: 12,
+            color: 0x9040A0C0,
+            hardness: 0.6,
+            textureMask: _testTipMask,
+            textureScale: 0.8,
+            textureDensity: 0.9,
+            sequence: i,
+          ),
+      ],
+      'paper texture combined with dual mask and sampled tip': [
+        _dab(
+          x: 16.4,
+          y: 15.8,
+          size: 14,
+          tipMask: _testTipMask,
+          dualMask: _testTipMask,
+          dualMaskScale: 0.7,
+          dualOffsetU: 0.4,
+          dualOffsetV: 0.6,
+          textureMask: _testTipMask,
+          textureScale: 1.2,
+          textureDensity: 0.5,
+        ),
       ],
       'dual-brush textured soft round dab': [
         _dab(

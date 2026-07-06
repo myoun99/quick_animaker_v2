@@ -432,6 +432,15 @@ BrushPreset? _presetFromBrushDescriptor(
     }
   }
 
+  // Photoshop paper texture lives in the unparsed 'patt' section; flag it
+  // so the fidelity gap is visible instead of silent.
+  if (entry['useTexture'] == true) {
+    warnings.add(
+      'Brush "${name ?? sampledKey ?? ''}": Photoshop paper texture is not '
+      'imported yet.',
+    );
+  }
+
   var scatterRadiusRatio = 0.0;
   var scatterCount = 1;
   var scatterBothAxes = true;

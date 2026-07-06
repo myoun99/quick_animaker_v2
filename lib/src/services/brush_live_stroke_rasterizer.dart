@@ -213,6 +213,25 @@ class BrushLiveStrokeRasterizer {
           }
         }
 
+        // Paper texture: canvas-anchored tiled mask, blended in by density
+        // (must match the commit rasterizer and oracle exactly).
+        final textureMask = dab.textureMask;
+        if (textureMask != null) {
+          final textureSample = sampleBrushTipMaskTiledCoverage(
+            mask: textureMask,
+            dx: x + 0.5,
+            dy: y + 0.5,
+            period: textureMask.size * dab.textureScale,
+            offsetU: 0.0,
+            offsetV: 0.0,
+          );
+          coverage *=
+              (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+          if (coverage <= 0.0) {
+            continue;
+          }
+        }
+
         // Same grouping as the commit rasterizer:
         // effectiveOpacity = dab.opacity * coverage,
         // sourceAlpha = ((a/255) * effectiveOpacity) * flow.

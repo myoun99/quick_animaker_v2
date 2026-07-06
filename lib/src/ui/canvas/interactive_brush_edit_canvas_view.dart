@@ -420,6 +420,9 @@ class _InteractiveBrushEditCanvasViewState
       dualMaskScale: settings.dualMaskScale,
       dualOffsetU: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
       dualOffsetV: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
+      textureMask: settings.textureMask,
+      textureScale: settings.textureScale,
+      textureDensity: settings.textureDensity,
     );
   }
 
