@@ -19,6 +19,7 @@ class TimelineFrameCell extends StatelessWidget {
     required this.exposureState,
     required this.selectedExposureRangeSegment,
     required this.exposureBlockSegment,
+    this.emptyRunStart = false,
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
@@ -39,6 +40,10 @@ class TimelineFrameCell extends StatelessWidget {
   final TimelineCellExposureState exposureState;
   final bool selectedExposureRangeSegment;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
+
+  /// Whether this cell opens an empty run — the timesheet X marks only the
+  /// FIRST cell of each empty stretch, like paper sheets.
+  final bool emptyRunStart;
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -118,6 +123,7 @@ class TimelineFrameCell extends StatelessWidget {
               _markerForCell(
                 layer: layer,
                 exposureState: exposureState,
+                emptyRunStart: emptyRunStart,
                 frameName: frameName,
                 outsidePlaybackRange: outsidePlaybackRange,
               ),
@@ -193,14 +199,18 @@ BorderRadius? _timelineCellBorderRadius(
 String _markerForCell({
   required Layer layer,
   required TimelineCellExposureState exposureState,
+  required bool emptyRunStart,
   String? frameName,
   required bool outsidePlaybackRange,
 }) {
   return switch (exposureState) {
-    // The timesheet "X": every empty cel cell inside the playback range.
-    // Camera rows mirror keyframes, not cel exposure — no X there.
+    // The timesheet "X": the FIRST cell of each empty run inside the
+    // playback range (paper-sheet style). Camera rows mirror keyframes,
+    // not cel exposure — no X there.
     TimelineCellExposureState.uncovered =>
-      layer.kind == LayerKind.camera || outsidePlaybackRange ? '' : 'X',
+      layer.kind == LayerKind.camera || outsidePlaybackRange || !emptyRunStart
+          ? ''
+          : 'X',
     TimelineCellExposureState.drawingStart =>
       frameName == null || frameName.isEmpty ? '○' : frameName,
     TimelineCellExposureState.held => '',

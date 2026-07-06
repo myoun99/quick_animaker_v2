@@ -1235,13 +1235,25 @@ void main() {
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
-  testWidgets('empty cells inside the playback range show the timesheet X', (
+  testWidgets('only the first cell of an empty run shows the timesheet X', (
     tester,
   ) async {
     await tester.pumpWidget(_grid());
 
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2-2'));
-    expect(find.descendant(of: cell, matching: find.text('X')), findsOneWidget);
+    final runStart = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-2-0'),
+    );
+    final runBody = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-2-2'),
+    );
+    expect(
+      find.descendant(of: runStart, matching: find.text('X')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: runBody, matching: find.text('X')),
+      findsNothing,
+    );
   });
 
   testWidgets('shows inbetween mark inside a hold', (tester) async {

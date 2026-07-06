@@ -1527,9 +1527,9 @@ Line 8''';
       await _switchToCut(tester, 'default-cut-1');
 
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      // Cut 1's layer is untouched: all empty (X) cells, no marks.
+      // Cut 1's layer is untouched: one empty run whose first cell reads X.
       _expectCellText('default-layer-1', 0, 'X');
-      _expectCellText('default-layer-1', 1, 'X');
+      _expectNoCellText('default-layer-1', 1, 'X');
       _expectNoCellText('default-layer-1', 2, '●');
       expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
@@ -1587,20 +1587,20 @@ Line 8''';
         const ValueKey<String>('new-frame-button'),
       );
 
+      // Grip keys are ORDINAL-based (block 0, block 1) so a start-edge drag
+      // that moves the block's start index keeps its gesture subtree alive.
       final endGrip = find.byKey(
         const ValueKey<String>(
           'timeline-block-edge-grip-end-default-layer-1-0',
         ),
       );
-      expect(endGrip, findsOneWidget);
-      expect(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-block-edge-grip-start-default-layer-1-3',
-          ),
+      final startGripB = find.byKey(
+        const ValueKey<String>(
+          'timeline-block-edge-grip-start-default-layer-1-1',
         ),
-        findsOneWidget,
       );
+      expect(endGrip, findsOneWidget);
+      expect(startGripB, findsOneWidget);
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
       // with B's comma preserved.
@@ -1620,6 +1620,26 @@ Line 8''';
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
       _expectCellText('default-layer-1', 1, 'X');
       _expectCellText('default-layer-1', 3, '○');
+
+      // START-edge drag across several cells in ONE gesture: the live
+      // preview moves the block's start every step, and the drag must
+      // survive it (regression: start grips died after one step). B grows
+      // backward through the gap until it touches A.
+      final frontDrag = await tester.startGesture(
+        tester.getCenter(startGripB),
+      );
+      await frontDrag.moveBy(const Offset(-19, 0));
+      await tester.pump();
+      await frontDrag.moveBy(const Offset(-48, 0));
+      await tester.pumpAndSettle();
+      await frontDrag.moveBy(const Offset(-48, 0));
+      await tester.pumpAndSettle();
+      await frontDrag.up();
+      await tester.pumpAndSettle();
+
+      _expectCellText('default-layer-1', 1, '○');
+      _expectNoCellText('default-layer-1', 2, 'X');
+      _expectNoCellText('default-layer-1', 3, '○');
     },
   );
 
@@ -1750,7 +1770,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
-    // Every empty cel cell inside the playback range reads X.
+    // Paper-sheet style: only the FIRST cell of the empty run reads X.
     expect(
       find.descendant(
         of: find.byKey(
@@ -1758,7 +1778,7 @@ Line 8''';
         ),
         matching: find.text('X'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.bySemanticsLabel('drawing start'), findsNothing);
     expect(find.bySemanticsLabel('inbetween mark'), findsNothing);

@@ -105,6 +105,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
                       current: exposureStateForLayer(layer, frameIndex),
                       next: exposureStateForLayer(layer, frameIndex + 1),
                     ),
+                emptyRunStart: timelineEmptyRunStartsAt(
+                  current: exposureStateForLayer(layer, frameIndex),
+                  previous: frameIndex == 0
+                      ? null
+                      : exposureStateForLayer(layer, frameIndex - 1),
+                ),
                 frameName: frameNameForLayer?.call(layer, frameIndex),
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
@@ -172,7 +178,9 @@ List<Widget> timelineRowBlockEdgeGrips({
   required Axis axis,
 }) {
   final grips = <Widget>[];
-  for (final block in drawingBlocks(layer.timeline)) {
+  final blocks = drawingBlocks(layer.timeline);
+  for (var ordinal = 0; ordinal < blocks.length; ordinal += 1) {
+    final block = blocks[ordinal];
     if (block.endIndexExclusive <= frameStartIndex ||
         block.startIndex >= frameEndIndexExclusive) {
       continue;
@@ -196,6 +204,7 @@ List<Widget> timelineRowBlockEdgeGrips({
         TimelineBlockEdgeGrip(
           layerId: layer.id,
           blockStartIndex: block.startIndex,
+          blockOrdinal: ordinal,
           edge: edge,
           blockStartOffset: blockStartOffset,
           blockEndOffset: blockEndOffset,

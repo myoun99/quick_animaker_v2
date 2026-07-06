@@ -38,8 +38,8 @@ void main() {
 
       expect(_gripFinder('start', 0), findsOneWidget);
       expect(_gripFinder('end', 0), findsOneWidget);
-      expect(_gripFinder('start', 4), findsOneWidget);
-      expect(_gripFinder('end', 4), findsOneWidget);
+      expect(_gripFinder('start', 1), findsOneWidget);
+      expect(_gripFinder('end', 1), findsOneWidget);
     });
 
     testWidgets('grips sit inside the block edges', (tester) async {
@@ -106,7 +106,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        tester.getCenter(_gripFinder('start', 4)),
+        tester.getCenter(_gripFinder('start', 1)),
       );
       await gesture.moveBy(const Offset(-19, 0));
       await tester.pump();
@@ -152,7 +152,7 @@ void main() {
       );
 
       expect(_gripFinder('start', 0), findsOneWidget);
-      expect(_gripFinder('end', 4), findsOneWidget);
+      expect(_gripFinder('end', 1), findsOneWidget);
 
       final gesture = await tester.startGesture(
         tester.getCenter(_gripFinder('end', 0)),
@@ -174,8 +174,8 @@ void main() {
   });
 }
 
-Finder _gripFinder(String edge, int blockStart) => find.byKey(
-  ValueKey<String>('timeline-block-edge-grip-$edge-layer-a-$blockStart'),
+Finder _gripFinder(String edge, int ordinal) => find.byKey(
+  ValueKey<String>('timeline-block-edge-grip-$edge-layer-a-$ordinal'),
 );
 
 Finder _anyGripFinder() => find.byWidgetPredicate((widget) {

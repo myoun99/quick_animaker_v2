@@ -21,3 +21,17 @@ enum TimelineCellExposureState {
       this == TimelineCellExposureState.markHeld ||
       this == TimelineCellExposureState.markUncovered;
 }
+
+/// Whether an empty run STARTS at a cell in [current] state, given the
+/// [previous] cell's state (null at frame 0). Japanese timesheets mark only
+/// the first cell of each empty run with the X glyph; a mark inside the run
+/// continues it rather than starting a new one.
+bool timelineEmptyRunStartsAt({
+  required TimelineCellExposureState current,
+  TimelineCellExposureState? previous,
+}) {
+  if (current != TimelineCellExposureState.uncovered) {
+    return false;
+  }
+  return previous == null || previous.isCovered;
+}

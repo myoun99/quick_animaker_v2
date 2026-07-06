@@ -750,6 +750,12 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                         current: exposureStateForLayer(layer, frameIndex),
                         next: exposureStateForLayer(layer, frameIndex + 1),
                       ),
+                  emptyRunStart: timelineEmptyRunStartsAt(
+                    current: exposureStateForLayer(layer, frameIndex),
+                    previous: frameIndex == 0
+                        ? null
+                        : exposureStateForLayer(layer, frameIndex - 1),
+                  ),
                   frameName: frameNameForLayer?.call(layer, frameIndex),
                   onSelectLayer: onSelectLayer,
                   onSelectFrame: onSelectFrame,

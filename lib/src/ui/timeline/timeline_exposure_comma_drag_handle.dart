@@ -17,6 +17,7 @@ class TimelineBlockEdgeGrip extends StatefulWidget {
     super.key,
     required this.layerId,
     required this.blockStartIndex,
+    required this.blockOrdinal,
     required this.edge,
     required this.blockStartOffset,
     required this.blockEndOffset,
@@ -31,6 +32,12 @@ class TimelineBlockEdgeGrip extends StatefulWidget {
   /// The block's start frame index at build time (its identity for the
   /// drag; the session snapshots the layer on begin).
   final int blockStartIndex;
+
+  /// The block's position among the layer's blocks. Keys derive from THIS,
+  /// not the start index: a start-edge drag moves the start index every
+  /// step, and a key change there would rebuild the gesture subtree and
+  /// kill the active drag.
+  final int blockOrdinal;
   final TimelineBlockEdge edge;
 
   /// Main-axis pixel offsets of the block's edges within the row/column
@@ -191,7 +198,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
 
     final key = ValueKey<String>(
       'timeline-block-edge-grip-${widget.edge.name}-'
-      '${widget.layerId}-${widget.blockStartIndex}',
+      '${widget.layerId}-${widget.blockOrdinal}',
     );
     if (horizontal) {
       return Positioned(
