@@ -13,11 +13,15 @@ import '../../models/viewport_point.dart';
 /// - Scroll wheel zooms around the cursor — no modifier key by design.
 /// - Trackpad pinch/pan gestures zoom around the focal point and pan
 ///   (mouse-less desktops; the same events arrive from some touchpads).
+/// - Two touch fingers pinch-zoom around the focal point and pan
+///   (tablet/touch-screen navigation). One finger stays reserved for
+///   drawing — the interactive canvas cancels its stroke when the second
+///   finger lands, so a quick pinch never leaves marks.
 ///
 /// While a brush stroke is in progress ([strokeActive]) new pans and wheel
 /// zooms are ignored so a stray wheel tick cannot re-anchor the stroke
-/// mid-draw. Touch-screen pinch zoom is a separate follow-up: single-finger
-/// touch must keep drawing, so it needs coordination with the brush input.
+/// mid-draw. Two-finger touch navigation deliberately bypasses that gate:
+/// the second finger IS the cancel-and-navigate signal.
 class CanvasViewportGestureLayer extends StatefulWidget {
   const CanvasViewportGestureLayer({
     super.key,
@@ -47,6 +51,14 @@ class _CanvasViewportGestureLayerState
   CanvasViewport? _panStartViewport;
   CanvasViewport? _panZoomStartViewport;
 
+  /// Live touch contacts (pointer id → local position). The first two form
+  /// the two-finger navigation gesture.
+  final Map<int, Offset> _touchPositions = <int, Offset>{};
+  List<int>? _touchNavPointers;
+  Offset? _touchNavStartFocal;
+  double? _touchNavStartDistance;
+  CanvasViewport? _touchNavStartViewport;
+
   @override
   Widget build(BuildContext context) {
     return Listener(
@@ -68,6 +80,12 @@ class _CanvasViewportGestureLayerState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (event.kind == PointerDeviceKind.touch) {
+      _touchPositions[event.pointer] = event.localPosition;
+      _syncTouchNavigation();
+      return;
+    }
+
     if (event.buttons != kMiddleMouseButton ||
         _panPointer != null ||
         widget.strokeActive) {
@@ -79,6 +97,12 @@ class _CanvasViewportGestureLayerState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    if (_touchPositions.containsKey(event.pointer)) {
+      _touchPositions[event.pointer] = event.localPosition;
+      _updateTouchNavigation();
+      return;
+    }
+
     if (event.pointer != _panPointer) {
       return;
     }
@@ -92,15 +116,95 @@ class _CanvasViewportGestureLayerState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    if (_touchPositions.remove(event.pointer) != null) {
+      _syncTouchNavigation();
+      return;
+    }
     if (event.pointer == _panPointer) {
       _clearPan();
     }
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    if (_touchPositions.remove(event.pointer) != null) {
+      _syncTouchNavigation();
+      return;
+    }
     if (event.pointer == _panPointer) {
       _clearPan();
     }
+  }
+
+  /// (Re)arms or disarms the two-finger gesture as touch contacts come and
+  /// go. Any contact-count change re-anchors the gesture at the current
+  /// positions so a lifted/added finger never jumps the viewport.
+  void _syncTouchNavigation() {
+    if (_touchPositions.length < 2) {
+      _touchNavPointers = null;
+      _touchNavStartFocal = null;
+      _touchNavStartDistance = null;
+      _touchNavStartViewport = null;
+      return;
+    }
+
+    final pointers = _touchPositions.keys.take(2).toList(growable: false);
+    final first = _touchPositions[pointers[0]]!;
+    final second = _touchPositions[pointers[1]]!;
+    _touchNavPointers = pointers;
+    _touchNavStartFocal = Offset(
+      (first.dx + second.dx) / 2,
+      (first.dy + second.dy) / 2,
+    );
+    _touchNavStartDistance = (second - first).distance;
+    _touchNavStartViewport = widget.viewport;
+  }
+
+  void _updateTouchNavigation() {
+    // A non-touch stroke (stylus/mouse) stays active through stray touch
+    // contacts — hold navigation and keep re-anchoring so the viewport
+    // neither warps the stroke nor jumps when the stroke ends. (A TOUCH
+    // stroke is cancelled by the second finger, clearing this flag.)
+    if (widget.strokeActive) {
+      _syncTouchNavigation();
+      return;
+    }
+
+    final pointers = _touchNavPointers;
+    final startFocal = _touchNavStartFocal;
+    final startDistance = _touchNavStartDistance;
+    final startViewport = _touchNavStartViewport;
+    if (pointers == null ||
+        startFocal == null ||
+        startDistance == null ||
+        startViewport == null) {
+      return;
+    }
+    final first = _touchPositions[pointers[0]];
+    final second = _touchPositions[pointers[1]];
+    if (first == null || second == null) {
+      return;
+    }
+
+    final focal = Offset(
+      (first.dx + second.dx) / 2,
+      (first.dy + second.dy) / 2,
+    );
+    final distance = (second - first).distance;
+    // Scale around the START focal, then follow the fingers: the canvas
+    // point that was under the initial focal stays under the current one.
+    var next = startViewport;
+    if (startDistance > 0 && distance > 0) {
+      next = next.zoomedAround(
+        nextZoom: startViewport.zoom * (distance / startDistance),
+        anchor: ViewportPoint(x: startFocal.dx, y: startFocal.dy),
+      );
+    }
+    _emit(
+      next.translated(
+        dx: focal.dx - startFocal.dx,
+        dy: focal.dy - startFocal.dy,
+      ),
+    );
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {

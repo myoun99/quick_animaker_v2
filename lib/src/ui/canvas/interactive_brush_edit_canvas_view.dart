@@ -60,6 +60,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
+
+  /// Live touch contacts. A second finger switches the interaction to
+  /// viewport navigation (handled by the panel's gesture layer): the
+  /// in-progress stroke is cancelled without committing, and no new stroke
+  /// starts until every finger lifts — a quick pinch never leaves marks.
+  final Set<int> _activeTouchPointers = <int>{};
+  bool _multiTouchNavigation = false;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
@@ -163,7 +170,26 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (_activeDrawingPointer != null || !_isPrimaryButton(event.buttons)) {
+    if (event.kind == PointerDeviceKind.touch) {
+      _activeTouchPointers.add(event.pointer);
+      if (_activeTouchPointers.length >= 2) {
+        _multiTouchNavigation = true;
+        // Discard only a TOUCH stroke — the first finger turned out to be
+        // the start of a pinch, not a stroke. A stylus/mouse stroke keeps
+        // drawing: extra touch contacts alongside it are palm rests, and
+        // the gesture layer holds navigation while any stroke is active.
+        if (_activeDrawingPointer != null &&
+            _activeTouchPointers.contains(_activeDrawingPointer)) {
+          _endStrokeInput();
+          _resetOverlay();
+        }
+        return;
+      }
+    }
+
+    if (_multiTouchNavigation ||
+        _activeDrawingPointer != null ||
+        !_isPrimaryButton(event.buttons)) {
       return;
     }
 
@@ -296,6 +322,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    _forgetTouchPointer(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -326,12 +353,20 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    _forgetTouchPointer(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
 
     _endStrokeInput();
     _resetOverlay();
+  }
+
+  void _forgetTouchPointer(int pointer) {
+    _activeTouchPointers.remove(pointer);
+    if (_activeTouchPointers.isEmpty) {
+      _multiTouchNavigation = false;
+    }
   }
 
   bool _isInsideSurface(CanvasPoint localPosition) {

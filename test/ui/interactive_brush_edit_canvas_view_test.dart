@@ -401,6 +401,58 @@ void main() {
       },
     );
 
+    testWidgets('second touch finger cancels the stroke without committing', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final firstFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await firstFinger.down(canvasGlobalOffset(tester, const Offset(1, 1)));
+      await firstFinger.moveTo(canvasGlobalOffset(tester, const Offset(3, 3)));
+
+      final secondFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await secondFinger.down(canvasGlobalOffset(tester, const Offset(6, 6)));
+
+      // Finger 1 keeps moving as part of the pinch — it must not draw.
+      await firstFinger.moveTo(canvasGlobalOffset(tester, const Offset(5, 5)));
+      await firstFinger.up();
+      await secondFinger.up();
+      await tester.pump();
+
+      expect(results, isEmpty);
+
+      // With every finger lifted, a single-finger stroke works again.
+      final thirdFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await thirdFinger.down(canvasGlobalOffset(tester, const Offset(2, 2)));
+      await thirdFinger.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+    });
+
+    testWidgets('single-finger touch stroke still commits', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      final finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.down(canvasGlobalOffset(tester, const Offset(1, 1)));
+      await finger.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+      await finger.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single, isNotEmpty);
+    });
+
     testWidgets('middle mouse drag never commits dabs', (tester) async {
       // Viewport panning itself moved to the panel's
       // CanvasViewportGestureLayer; the view must simply not draw from a
@@ -752,25 +804,32 @@ void main() {
       expect(results, isEmpty);
     });
 
-    testWidgets('second pointer is ignored while first pointer is active', (
+    testWidgets('stray touches never cancel a stylus stroke (palm rest)', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
-      final first = await tester.startGesture(
-        canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
-        pointer: 1,
+      final stylus = await tester.createGesture(
+        kind: PointerDeviceKind.stylus,
       );
-      final second = await tester.startGesture(
-        canvasGlobalOffset(tester, const Offset(2.5, 1.5)),
-        pointer: 2,
-      );
-      await second.up();
-      await first.up();
+      await stylus.down(canvasGlobalOffset(tester, const Offset(1.5, 1.5)));
+
+      // Two palm contacts land while the stylus draws — only a TOUCH
+      // stroke turns into a pinch; the stylus stroke must survive.
+      final palmA = await tester.createGesture(kind: PointerDeviceKind.touch);
+      final palmB = await tester.createGesture(kind: PointerDeviceKind.touch);
+      await palmA.down(canvasGlobalOffset(tester, const Offset(6, 6)));
+      await palmB.down(canvasGlobalOffset(tester, const Offset(7, 7)));
+
+      await stylus.moveTo(canvasGlobalOffset(tester, const Offset(3, 3)));
+      await stylus.up();
+      await palmA.up();
+      await palmB.up();
       await tester.pump();
 
       expect(results, hasLength(1));
+      expect(results.single, isNotEmpty);
     });
 
     testWidgets('callback is called at most once per stroke', (tester) async {

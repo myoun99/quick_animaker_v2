@@ -708,6 +708,86 @@ void main() {
       expect(viewports.last.zoom, closeTo(2.0, 1e-9));
     });
 
+    testWidgets('two-finger touch pinch zooms and pans without a frame', (
+      tester,
+    ) async {
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pump();
+
+      final firstFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      final secondFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await firstFinger.down(viewportPoint(tester, const Offset(40, 50)));
+      await secondFinger.down(viewportPoint(tester, const Offset(80, 50)));
+
+      // Pinch out: distance 40 → 80 doubles the zoom around the start
+      // focal (60,50); the new focal (80,50) drags the view 20px along x.
+      await secondFinger.moveTo(viewportPoint(tester, const Offset(120, 50)));
+      await firstFinger.up();
+      await secondFinger.up();
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, closeTo(2.0, 1e-9));
+      expect(viewports.last.panX, closeTo(-40, 1e-9));
+      expect(viewports.last.panY, closeTo(-50, 1e-9));
+    });
+
+    testWidgets('two-finger touch navigation works over a stroke in progress', (
+      tester,
+    ) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
+      final viewports = <CanvasViewport>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                onViewportChanged: viewports.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Finger 1 starts what looks like a stroke; finger 2 turns the
+      // interaction into navigation (the view cancels the stroke).
+      final firstFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await firstFinger.down(viewportPoint(tester, const Offset(40, 40)));
+      final secondFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await secondFinger.down(viewportPoint(tester, const Offset(80, 40)));
+      // The view cancels the touch stroke synchronously; the panel's
+      // strokeActive flag clears on the next frame — pump before moving.
+      await tester.pump();
+
+      await secondFinger.moveTo(viewportPoint(tester, const Offset(100, 40)));
+      await firstFinger.up();
+      await secondFinger.up();
+      await tester.pumpAndSettle();
+
+      expect(viewports, isNotEmpty);
+    });
+
     testWidgets('scroll wheel zooms with an editable frame too', (
       tester,
     ) async {
