@@ -7,7 +7,13 @@ import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/bitmap_surface.dart';
+import '../models/brush_frame_key.dart';
+import '../models/camera_pose.dart';
+import '../models/canvas_resize_anchor.dart';
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -15,8 +21,24 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
+import '../models/timeline_coverage.dart';
 import '../models/track_id.dart';
+import '../services/brush_frame_display_cache_renderer.dart';
+import '../services/brush_frame_store.dart';
+import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
+import '../models/brush_frame_cache_invalidation.dart';
+import '../models/playback_quality.dart';
+import '../services/cut_frame_composite_plan.dart';
+import '../services/playback/editor_cache_invalidation_hub.dart';
+import '../services/playback/playback_frame_mapping.dart';
+import 'canvas/canvas_layer_stack_view.dart';
+import 'playback/canvas_playback_controller.dart';
+import 'playback/cut_frame_composite_cache.dart';
+import 'playback/layer_frame_image_cache.dart';
+import 'playback/playback_cache_budget.dart';
+import 'playback/playback_prerender_scheduler.dart';
+import 'storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
@@ -42,14 +64,137 @@ class EditorSessionManager extends ChangeNotifier {
       repository: _repository,
       editingSession: _editingSession,
       historyManager: _historyManager,
+      brushFrameStore: brushFrameStore,
     );
     _rebuildActiveCutControllers();
+    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
 
   final EditingSessionState _editingSession;
   final ProjectRepository _repository;
+
+  /// App-level brush stroke store shared with the canvas host, so commands
+  /// (e.g. anchored canvas resize) can transform stroke data.
+  final BrushFrameStore brushFrameStore = BrushFrameStore();
+
+  /// Production sink for brush edit invalidations; playback caches and the
+  /// prerender scheduler listen here.
+  final EditorCacheInvalidationHub cacheInvalidationHub =
+      EditorCacheInvalidationHub();
+
+  // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
+
+  late final LayerFrameImageCache layerFrameImageCache = LayerFrameImageCache(
+    frameStore: brushFrameStore,
+  );
+
+  late final CutFrameCompositeCache cutFrameCompositeCache =
+      CutFrameCompositeCache(
+        layerImages: layerFrameImageCache,
+        frameStore: brushFrameStore,
+        frameKeyOf: brushFrameKeyForCut,
+      );
+
+  late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
+      PlaybackCacheBudgetEnforcer(
+        layerImages: layerFrameImageCache,
+        composites: cutFrameCompositeCache,
+      );
+
+  late final PlaybackPrerenderScheduler prerenderScheduler =
+      PlaybackPrerenderScheduler(
+        composites: cutFrameCompositeCache,
+        resolveCut: cutById,
+        afterFrameCached: () => _playbackCacheBudgetEnforcer.enforce(
+          protect: _playbackProtectedRanges(),
+        ),
+      );
+
+  /// What budget eviction must never touch: the full PLAYING playlist while
+  /// playback is active (a looping pass must keep every cut warm so the
+  /// second pass plays fully cached), otherwise the active cut's range.
+  List<PlaybackProtectedRange> _playbackProtectedRanges() {
+    if (playback.isActive) {
+      return [
+        for (final entry in playback.playlist)
+          PlaybackProtectedRange(
+            cutId: entry.cutId,
+            startFrame: 0,
+            endFrame: math.max(0, entry.duration - 1),
+            quality: playbackQuality,
+          ),
+      ];
+    }
+
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return [
+      PlaybackProtectedRange(
+        cutId: cut.id,
+        startFrame: 0,
+        endFrame: math.max(0, cut.duration - 1),
+        quality: playbackQuality,
+      ),
+    ];
+  }
+
+  /// Playback preview quality (Premiere/AE monitor resolution analogue).
+  PlaybackQuality playbackQuality = defaultPlaybackQuality;
+
+  void setPlaybackQuality(PlaybackQuality quality) {
+    if (playbackQuality == quality) {
+      return;
+    }
+    playbackQuality = quality;
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Canvas playback state machine; only the playback view and transport
+  /// controls listen (the session playhead syncs once on stop).
+  late final CanvasPlaybackController playback = CanvasPlaybackController(
+    resolveProject: () => _repository.requireProject(),
+    resolveActiveCutId: () => _editingSession.activeCutId,
+    resolveActiveTrackId: () => activeCutTrackId,
+    resolveFps: () => projectFps,
+    onStopped: _onPlaybackStopped,
+    onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
+  );
+
+  void _onPlaybackStopped(PlaybackPosition lastPosition) {
+    if (lastPosition.cutId != _editingSession.activeCutId) {
+      selectCut(lastPosition.cutId);
+    }
+    selectFrameIndex(_clampedFrameIndex(lastPosition.localFrameIndex));
+  }
+
+  void _onPlaybackPlaylistWarmRequested(
+    List<StoryboardTimelineLayoutEntry> playlist,
+    PlaybackScope scope,
+    int startGlobalFrame,
+  ) {
+    // Playhead-forward with wrap-around: the frames about to play warm
+    // first, so first-pass misses shrink toward zero and a looping second
+    // pass starts fully cached.
+    final frames = <(CutId, int)>[
+      for (final entry in playlist)
+        for (var index = 0; index < entry.duration; index += 1)
+          (entry.cutId, index),
+    ];
+    if (frames.isEmpty) {
+      return;
+    }
+    final start = startGlobalFrame.clamp(0, frames.length - 1);
+    prerenderScheduler.requestWarmFrames(
+      frames: [...frames.sublist(start), ...frames.sublist(0, start)],
+      quality: playbackQuality,
+    );
+  }
+
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;
   final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
@@ -127,6 +272,75 @@ class EditorSessionManager extends ChangeNotifier {
       preferredFrameIndex:
           preferredFrameIndex ?? _timelineController.currentFrameIndex,
     );
+    _warmActiveCut();
+  }
+
+  /// The cut with [cutId] anywhere in the project, or `null`.
+  Cut? cutById(CutId cutId) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == cutId) {
+          return cut;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// The brush store key of a layer frame within [cut] — same derivation the
+  /// canvas selection uses (track containing the cut, first track fallback).
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
+    final project = _repository.requireProject();
+    var trackId = project.tracks.isEmpty
+        ? const TrackId('')
+        : project.tracks.first.id;
+    for (final track in project.tracks) {
+      if (track.cuts.any((candidate) => candidate.id == cut.id)) {
+        trackId = track.id;
+        break;
+      }
+    }
+    return BrushFrameKey(
+      projectId: project.id,
+      trackId: trackId,
+      cutId: cut.id,
+      layerId: layerId,
+      frameId: frameId,
+    );
+  }
+
+  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
+    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
+    cutFrameCompositeCache.invalidateWhereLayerFrame(
+      layerId: invalidation.frameKey.layerId,
+      frameId: invalidation.frameKey.frameId,
+    );
+    // Warming yields to the edit and then re-renders the dirty frames.
+    prerenderScheduler.notifyEditActivity();
+    _warmActiveCut();
+  }
+
+  /// Warms the active cut's composites around the playhead ("navigate away
+  /// from a frame and it gets pre-rendered").
+  void _warmActiveCut() {
+    if (activeCutOrNull == null) {
+      return;
+    }
+    prerenderScheduler.requestWarmCut(
+      cutId: _editingSession.activeCutId,
+      quality: playbackQuality,
+      aroundFrameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+  @override
+  void dispose() {
+    cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
+    playback.dispose();
+    prerenderScheduler.dispose();
+    cutFrameCompositeCache.dispose();
+    layerFrameImageCache.dispose();
+    super.dispose();
   }
 
   bool _activeCutHasLayer(LayerId? layerId) {
@@ -143,7 +357,25 @@ class EditorSessionManager extends ChangeNotifier {
   // --- Cut commands -------------------------------------------------------
 
   void createCut() {
-    _cutCommandCoordinator.createCut(trackId: activeCutTrackId);
+    _cutCommandCoordinator.createCut(
+      trackId: activeCutTrackId,
+      // New cuts inherit the active cut's canvas size, like new scenes in
+      // TVPaint/Clip Studio inherit the project size.
+      canvasSize: activeCutOrNull?.canvasSize,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void resizeActiveCutCanvas(
+    CanvasSize canvasSize, {
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+  }) {
+    _cutCommandCoordinator.resizeCutCanvas(
+      cutId: _editingSession.activeCutId,
+      canvasSize: canvasSize,
+      anchor: anchor,
+    );
     _refreshAfterCutCommand();
     notifyListeners();
   }
@@ -293,6 +525,152 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Camera --------------------------------------------------------------
+
+  CutCamera get activeCutCamera => activeCut.camera;
+
+  /// The camera's output frame size (the exported picture size); the camera
+  /// view rect on canvas is this divided by the pose zoom.
+  CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
+
+  int get projectFps => _repository.requireProject().fps;
+
+  /// Resolved camera pose at an arbitrary playback frame (for rendering).
+  CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(
+    camera: activeCut.camera,
+    canvasSize: activeCut.canvasSize,
+    frameIndex: frameIndex,
+  );
+
+  /// Resolved camera pose for any cut (play-all renders other cuts too).
+  CameraPose cameraPoseForCut(Cut cut, int frameIndex) => resolveCameraPoseAt(
+    camera: cut.camera,
+    canvasSize: cut.canvasSize,
+    frameIndex: frameIndex,
+  );
+
+  /// The editing canvas's layer stack at the playhead: which non-active
+  /// layers composite below/above the interactive layer (bottom → top,
+  /// hidden/transparent/undrawn layers skipped) and the active layer's own
+  /// display opacity (0 while hidden).
+  ({
+    List<CanvasLayerImageRequest> below,
+    List<CanvasLayerImageRequest> above,
+    double activeLayerOpacity,
+  })
+  get editingCanvasStack {
+    final cut = activeCutOrNull;
+    final activeLayerId = this.activeLayerId;
+    final below = <CanvasLayerImageRequest>[];
+    final above = <CanvasLayerImageRequest>[];
+    var activeLayerOpacity = 1.0;
+    if (cut == null) {
+      return (below: below, above: above, activeLayerOpacity: 1.0);
+    }
+
+    final frameIndex = _timelineController.currentFrameIndex;
+    var seenActiveLayer = false;
+    for (final layer in cut.layers) {
+      if (layer.id == activeLayerId) {
+        seenActiveLayer = true;
+        activeLayerOpacity = layer.isVisible
+            ? layer.opacity.clamp(0.0, 1.0).toDouble()
+            : 0.0;
+        continue;
+      }
+      if (layer.kind == LayerKind.camera ||
+          !layer.isVisible ||
+          layer.opacity <= 0) {
+        continue;
+      }
+      final frame = resolveExposedFrameAt(layer, frameIndex);
+      if (frame == null) {
+        continue;
+      }
+      (seenActiveLayer ? above : below).add(
+        CanvasLayerImageRequest(
+          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
+          opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
+        ),
+      );
+    }
+    return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+  }
+
+  /// Whether the playback composite for [frameIndex] is warmed at the
+  /// current quality (the timeline's cached-range "green bar").
+  bool isPlaybackFrameCached(int frameIndex) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    return cutFrameCompositeCache.validCompositeOrNull(
+          cut: cut,
+          frameIndex: frameIndex,
+          quality: playbackQuality,
+        ) !=
+        null;
+  }
+
+  /// The drawable artwork of one layer frame in the active cut, replayed
+  /// from the brush store's paint commands; `null` when nothing is drawn.
+  /// This is the production [LayerFrameSurfaceResolver] for camera
+  /// preview/export compositing.
+  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
+    final drawing = brushFrameStore.frameOrNull(
+      BrushFrameKey(
+        projectId: _repository.requireProject().id,
+        trackId: activeCutTrackId,
+        cutId: _editingSession.activeCutId,
+        layerId: layer.id,
+        frameId: frame.id,
+      ),
+    );
+    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+      return null;
+    }
+    return BrushFrameDisplayCacheRenderer(
+      canvasSize: activeCut.canvasSize,
+    ).rebuildPreview(drawing);
+  }
+
+  /// The resolved camera pose at the current playhead frame (keyframe,
+  /// interpolation, or the default pose when the cut has no camera work).
+  CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
+    camera: activeCut.camera,
+    canvasSize: activeCut.canvasSize,
+    frameIndex: _timelineController.currentFrameIndex,
+  );
+
+  bool get hasCameraKeyframeAtCurrentFrame =>
+      activeCut.camera.keyframeAt(_timelineController.currentFrameIndex) !=
+      null;
+
+  void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
+    _cutCommandCoordinator.setCutCameraKeyframe(
+      cutId: _editingSession.activeCutId,
+      frameIndex: _timelineController.currentFrameIndex,
+      pose: pose,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void removeCameraKeyframeAtCurrentFrame() {
+    _cutCommandCoordinator.removeCutCameraKeyframe(
+      cutId: _editingSession.activeCutId,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void clearActiveCutCamera() {
+    _cutCommandCoordinator.clearCutCamera(cutId: _editingSession.activeCutId);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   void undo() {
     final beforeLayers = List<Layer>.of(activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;
@@ -337,6 +715,7 @@ class EditorSessionManager extends ChangeNotifier {
     _editingSession.setActiveCutId(cutId);
     _copiedFrame = null;
     _rebuildActiveCutControllers();
+    _warmActiveCut();
     notifyListeners();
   }
 
@@ -362,8 +741,46 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  bool get canDeleteActiveLayer =>
-      activeLayer != null && activeCut.layers.length >= 2;
+  bool get canDeleteActiveLayer {
+    final activeLayer = this.activeLayer;
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
+      return false;
+    }
+    final drawingLayerCount = activeCut.layers
+        .where((layer) => layer.kind != LayerKind.camera)
+        .length;
+    return drawingLayerCount >= 2;
+  }
+
+  /// Whether the canvas is in camera manipulation mode.
+  bool get isCameraLayerActive => activeLayer?.kind == LayerKind.camera;
+
+  /// What the canvas shows while the camera layer is active: the first
+  /// visible drawing layer with a frame at the playhead, so there is artwork
+  /// to frame. `null` when the cut has nothing drawn at this frame.
+  BrushEditorSelection? get cameraBackdropSelection {
+    final frameIndex = _timelineController.currentFrameIndex;
+    for (final layer in activeCut.layers) {
+      if (layer.kind == LayerKind.camera || !layer.isVisible) {
+        continue;
+      }
+      final frame = _timelineController.resolveFrameForLayer(
+        layer: layer,
+        frameIndex: frameIndex,
+      );
+      if (frame == null) {
+        continue;
+      }
+      return BrushEditorSelection(
+        projectId: _repository.requireProject().id,
+        trackId: activeCutTrackId,
+        cutId: _editingSession.activeCutId,
+        layerId: layer.id,
+        frameId: frame.id,
+      );
+    }
+    return null;
+  }
 
   LayerId? _stableLayerIdAfterDeleting({
     required List<Layer> beforeLayers,
@@ -418,7 +835,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void copyActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
       return;
     }
 
@@ -452,7 +869,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void duplicateActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
       return;
     }
 
@@ -538,7 +955,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
+    if (targetLayer == null || targetLayer.kind == LayerKind.camera) {
       return false;
     }
     if (targetLayer.kind == LayerKind.storyboard) {
@@ -556,6 +973,7 @@ class EditorSessionManager extends ChangeNotifier {
     return switch (targetLayer?.kind) {
       LayerKind.animation => 'Animation Layer',
       LayerKind.storyboard => 'Storyboard Layer',
+      LayerKind.camera => 'Camera Layer',
       null => 'No Layer',
     };
   }
@@ -587,7 +1005,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
@@ -643,13 +1061,15 @@ class EditorSessionManager extends ChangeNotifier {
     return 'Links: $uses';
   }
 
-  bool get canCreateBlankAtCurrentFrame {
+  /// The timesheet "X here" action: cuts the covering block's hold so the
+  /// current cell (and the rest of the old hold) becomes empty.
+  bool get canCutExposureAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
-    return _timelineController.canCreateBlankAt(
+    return _timelineController.canCutExposureAt(
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
     );
@@ -700,13 +1120,13 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void createBlankAtCurrentFrame() {
+  void cutExposureAtCurrentFrame() {
     final layer = activeLayer;
-    if (layer == null || !canCreateBlankAtCurrentFrame) {
+    if (layer == null || !canCutExposureAtCurrentFrame) {
       return;
     }
 
-    _timelineController.createBlankExposureForLayer(layerId: layer.id);
+    _timelineController.cutExposureForLayer(layerId: layer.id);
     notifyListeners();
   }
 
@@ -715,31 +1135,142 @@ class EditorSessionManager extends ChangeNotifier {
     return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
   }
 
-  void increaseSelectedExposure() {
+  /// The toolbar +/- buttons are one-frame comma adjustments of the
+  /// selected block's end edge (the same op the drag grips use).
+  void increaseSelectedExposure() => _shiftSelectedExposureEnd(1);
+
+  void decreaseSelectedExposure() => _shiftSelectedExposureEnd(-1);
+
+  void _shiftSelectedExposureEnd(int delta) {
     final layer = activeLayer;
-    final frame = selectedFrame;
-    if (layer == null || frame == null) {
+    if (layer == null) {
+      return;
+    }
+    final block = _timelineController.blockForLayerAt(layer: layer);
+    if (block == null) {
       return;
     }
 
-    _timelineController.increaseExposure(layerId: layer.id);
+    _timelineController.shiftExposureEdge(
+      layerId: layer.id,
+      blockStartIndex: block.startIndex,
+      edge: TimelineBlockEdge.end,
+      delta: delta,
+    );
     notifyListeners();
   }
 
-  void decreaseSelectedExposure() {
-    final layer = activeLayer;
-    final frame = selectedFrame;
-    if (layer == null || frame == null) {
+  // --- Comma edge drag ------------------------------------------------------
+  //
+  // A drag previews live by recomputing the shifted layer from the drag-start
+  // snapshot with the CUMULATIVE frame delta (idempotent — no per-step
+  // accounting) and writing it straight to the repository; releasing commits
+  // the before→after pair as ONE undoable command.
+
+  Layer? _edgeDragBefore;
+  TimelineBlockEdge? _edgeDragEdge;
+  int? _edgeDragBlockStart;
+
+  bool get isExposureEdgeDragActive => _edgeDragBefore != null;
+
+  /// Starts a comma drag on [edge] of the block starting at
+  /// [blockStartIndex]; returns false when there is no such block.
+  bool beginExposureEdgeDrag({
+    required LayerId layerId,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind == LayerKind.camera ||
+        !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
+      return false;
+    }
+
+    _edgeDragBefore = layer;
+    _edgeDragEdge = edge;
+    _edgeDragBlockStart = blockStartIndex;
+    return true;
+  }
+
+  /// Applies the drag's current cumulative frame delta as a live preview.
+  void updateExposureEdgeDrag(int cumulativeDelta) {
+    final before = _edgeDragBefore;
+    final edge = _edgeDragEdge;
+    final blockStart = _edgeDragBlockStart;
+    if (before == null || edge == null || blockStart == null) {
       return;
     }
 
-    _timelineController.decreaseExposure(layerId: layer.id);
+    final after =
+        _timelineController.shiftedLayerForEdge(
+          layer: before,
+          blockStartIndex: blockStart,
+          edge: edge,
+          delta: cumulativeDelta,
+        ) ??
+        before;
+    final current = _layerById(before.id);
+    if (current == null || current == after) {
+      return;
+    }
+
+    // No notifyEditActivity here: composites self-validate against the
+    // preview edits, the drag-end warm request re-renders what changed, and
+    // the idle gate's REAL-time delay would leave timers pending under the
+    // fake test clock.
+    _repository.replaceLayer(layer: after);
     notifyListeners();
+  }
+
+  /// Commits the drag as a single undo step (no-op when nothing changed).
+  void endExposureEdgeDrag() {
+    final before = _edgeDragBefore;
+    _edgeDragBefore = null;
+    _edgeDragEdge = null;
+    _edgeDragBlockStart = null;
+    if (before == null) {
+      return;
+    }
+
+    final current = _layerById(before.id);
+    if (current == null || current == before) {
+      return;
+    }
+    _timelineController.commitLayerTimelineDrag(before: before, after: current);
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Reverts an in-flight drag preview without touching history.
+  void cancelExposureEdgeDrag() {
+    final before = _edgeDragBefore;
+    _edgeDragBefore = null;
+    _edgeDragEdge = null;
+    _edgeDragBlockStart = null;
+    if (before == null) {
+      return;
+    }
+
+    final current = _layerById(before.id);
+    if (current != null && current != before) {
+      _repository.replaceLayer(layer: before);
+    }
+    notifyListeners();
+  }
+
+  Layer? _layerById(LayerId layerId) {
+    for (final layer in layers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+    return null;
   }
 
   bool get canToggleMarkAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
@@ -844,10 +1375,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectFrameIndex(int frameIndex) {
     _timelineController.selectFrameIndex(frameIndex);
+    _warmActiveCut();
     notifyListeners();
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      return false;
+    }
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
   }
 
@@ -858,6 +1393,13 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      // The camera row's cells mirror the cut's camera keyframes.
+      return activeCut.camera.keyframeAt(frameIndex) != null
+          ? TimelineCellExposureState.drawingStart
+          : TimelineCellExposureState.uncovered;
+    }
+
     if (_timelineController.isDrawingStartForLayer(
       layer: layer,
       frameIndex: frameIndex,
@@ -865,28 +1407,22 @@ class EditorSessionManager extends ChangeNotifier {
       return TimelineCellExposureState.drawingStart;
     }
 
-    if (_timelineController.isHeldExposureForLayer(
+    final hasMark = _timelineController.hasMarkAt(
       layer: layer,
       frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.heldExposure;
-    }
-
-    if (_timelineController.isBlankStartForLayer(
+    );
+    final held = _timelineController.isHeldExposureForLayer(
       layer: layer,
       frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.blankStart;
+    );
+    if (hasMark) {
+      return held
+          ? TimelineCellExposureState.markHeld
+          : TimelineCellExposureState.markUncovered;
     }
-
-    if (_timelineController.isBlankHeldForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.blankHeld;
-    }
-
-    return TimelineCellExposureState.empty;
+    return held
+        ? TimelineCellExposureState.held
+        : TimelineCellExposureState.uncovered;
   }
 
   int? get selectedEffectiveDuration {
@@ -899,18 +1435,19 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canDecreaseSelectedExposure {
     final layer = activeLayer;
-    if (layer == null || selectedFrame == null) {
+    if (layer == null) {
       return false;
     }
-    return _timelineController.canDecreaseExposure(layer: layer);
+    final block = _timelineController.blockForLayerAt(layer: layer);
+    return block != null && block.length > 1;
   }
 
   bool get canIncreaseSelectedExposure {
     final layer = activeLayer;
-    if (layer == null || selectedFrame == null) {
+    if (layer == null) {
       return false;
     }
-    return _timelineController.canIncreaseExposure(layer: layer);
+    return _timelineController.blockForLayerAt(layer: layer) != null;
   }
 
   // --- Status text --------------------------------------------------------
@@ -940,69 +1477,42 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
-    final hasMark = hasMarkForLayer(layer, frameIndex);
     final exposureState = exposureStateForLayer(layer, frameIndex);
     final canPaste = canPasteLinkedFrameAtCurrentFrame;
 
     switch (exposureState) {
       case TimelineCellExposureState.drawingStart:
-        return hasMark
-            ? 'Drawing + ●: Copy / Rename / Delete'
-            : 'Drawing: Copy / Rename / Delete';
-      case TimelineCellExposureState.heldExposure:
-        if (canPaste) {
-          return hasMark
-              ? 'Held + ●: Paste / Copy / Rename / Mark'
-              : 'Held: Paste / Copy / Rename';
-        }
-        return hasMark
-            ? 'Held + ●: Copy / Rename / Mark'
-            : 'Held: Copy / Rename';
-      case TimelineCellExposureState.blankStart:
-        if (canPaste) {
-          return hasMark
-              ? 'X + ●: Paste / New Frame / Mark'
-              : 'X: Paste / New Frame';
-        }
-        return hasMark ? 'X + ●: New Frame / Mark' : 'X: New Frame';
-      case TimelineCellExposureState.blankHeld:
-        if (canPaste) {
-          return hasMark
-              ? 'Blank held + ●: Paste / New Frame / Mark'
-              : 'Blank held: Paste / New Frame';
-        }
-        return hasMark
-            ? 'Blank held + ●: New Frame / Mark'
-            : 'Blank held: New Frame';
-      case TimelineCellExposureState.empty:
-        if (canPaste) {
-          return hasMark
-              ? 'Empty + ●: Paste / Mark'
-              : 'Empty: Paste / New Frame';
-        }
-        return hasMark ? 'Empty + ●: Mark' : 'Empty: New Frame';
+        return 'Drawing: Copy / Rename / Delete';
+      case TimelineCellExposureState.held:
+        return canPaste
+            ? 'Held: Paste / Copy / Rename / Mark'
+            : 'Held: Copy / Rename / Mark';
+      case TimelineCellExposureState.markHeld:
+        return canPaste
+            ? 'Held + ●: Paste / Copy / Rename / Mark'
+            : 'Held + ●: Copy / Rename / Mark';
+      case TimelineCellExposureState.uncovered:
+        return canPaste
+            ? 'X: Paste / New Frame / Mark'
+            : 'X: New Frame / Mark';
+      case TimelineCellExposureState.markUncovered:
+        return canPaste ? 'X + ●: Paste / New Frame / Mark' : 'X + ●: New Frame / Mark';
     }
   }
 
   String _cellStatusLabelForLayer(Layer layer) {
     final frameIndex = _timelineController.currentFrameIndex;
     final exposureState = exposureStateForLayer(layer, frameIndex);
-    final baseLabel = switch (exposureState) {
+    return switch (exposureState) {
       TimelineCellExposureState.drawingStart => _drawingStartStatusForLayer(
         layer,
         frameIndex,
       ),
-      TimelineCellExposureState.heldExposure => 'Held drawing',
-      TimelineCellExposureState.blankStart => 'Blank start (X)',
-      TimelineCellExposureState.blankHeld => 'Blank held',
-      TimelineCellExposureState.empty => 'Empty',
+      TimelineCellExposureState.held => 'Held drawing',
+      TimelineCellExposureState.markHeld => 'Held drawing + Mark ●',
+      TimelineCellExposureState.uncovered => 'Empty (X)',
+      TimelineCellExposureState.markUncovered => 'Empty (X) + Mark ●',
     };
-
-    if (hasMarkForLayer(layer, frameIndex)) {
-      return '$baseLabel + Mark ●';
-    }
-
-    return baseLabel;
   }
 
   String _drawingStartStatusForLayer(Layer layer, int frameIndex) {
@@ -1036,20 +1546,16 @@ class EditorSessionManager extends ChangeNotifier {
     final frameIndex = _timelineController.currentFrameIndex;
     final frameName = frame?.name;
     final exposureState = exposureStateForLayer(layer, frameIndex);
-    final hasMark = hasMarkForLayer(layer, frameIndex);
-    final baseLabel = switch (exposureState) {
+    return switch (exposureState) {
       TimelineCellExposureState.drawingStart =>
         frameName == null || frameName.isEmpty ? '○' : frameName,
-      TimelineCellExposureState.heldExposure =>
+      TimelineCellExposureState.held =>
         frameName == null || frameName.isEmpty ? '' : frameName,
-      TimelineCellExposureState.blankStart => 'X',
-      TimelineCellExposureState.blankHeld => '',
-      TimelineCellExposureState.empty => '-',
+      TimelineCellExposureState.markHeld =>
+        frameName == null || frameName.isEmpty ? '●' : '$frameName ●',
+      TimelineCellExposureState.uncovered => 'X',
+      TimelineCellExposureState.markUncovered => '●',
     };
-    if (!hasMark) {
-      return baseLabel;
-    }
-    return baseLabel.isEmpty ? '●' : '$baseLabel ●';
   }
 }
 

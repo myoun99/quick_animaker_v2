@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_orientation.dart';
 import 'xsheet_timeline_grid.dart';
 
@@ -16,16 +17,20 @@ class TimelinePanel extends StatelessWidget {
     required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.commaDrag,
+    this.isFrameCached,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
+    this.showStoryboard = false,
+    this.onShowStoryboardChanged,
+    this.storyboardPanel,
   });
 
   final List<Layer> layers;
@@ -34,16 +39,33 @@ class TimelinePanel extends StatelessWidget {
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Comma-drag hooks for the block edge grips, shared by both
+  /// orientations; null hides the grips.
+  final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Cached-range resolver for the horizontal ruler's green strip.
+  final bool Function(int frameIndex)? isFrameCached;
+
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final Widget? timelineActionToolbar;
+
+  /// When true (and [storyboardPanel] is provided) the body shows the
+  /// storyboard instead of the frame grid.
+  final bool showStoryboard;
+  final ValueChanged<bool>? onShowStoryboardChanged;
+
+  /// The storyboard content hosted behind the timeline/storyboard toggle.
+  final Widget? storyboardPanel;
+
+  bool get _storyboardVisible => showStoryboard && storyboardPanel != null;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +74,7 @@ class TimelinePanel extends StatelessWidget {
     final nextOrientation = orientation == TimelineOrientation.horizontal
         ? TimelineOrientation.vertical
         : TimelineOrientation.horizontal;
+    final showToolbar = timelineActionToolbar != null && !_storyboardVisible;
 
     return Material(
       color: colorScheme.surfaceContainerHighest,
@@ -61,76 +84,168 @@ class TimelinePanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Timeline • Current frame: ${currentFrameIndex + 1}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                  if (storyboardPanel != null) ...[
+                    _ModeToggle(
+                      showStoryboard: showStoryboard,
+                      onChanged: onShowStoryboardChanged,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Text(
+                    '${currentFrameIndex + 1}',
+                    key: const ValueKey<String>(
+                      'timeline-current-frame-counter',
+                    ),
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.primary,
                     ),
                   ),
-                  TextButton.icon(
-                    key: const ValueKey<String>(
-                      'timeline-toolbar-add-layer-button',
+                  const Spacer(),
+                  if (!_storyboardVisible) ...[
+                    IconButton(
+                      key: const ValueKey<String>(
+                        'timeline-toolbar-add-layer-button',
+                      ),
+                      tooltip: 'Add layer',
+                      onPressed: onAddLayer,
+                      icon: const Icon(Icons.add),
                     ),
-                    onPressed: onAddLayer,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Layer'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    key: const ValueKey<String>(
-                      'timeline-orientation-toggle-button',
-                    ),
-                    onPressed: () => onOrientationChanged(nextOrientation),
-                    child: Text(
-                      orientation == TimelineOrientation.horizontal
+                    IconButton(
+                      key: const ValueKey<String>(
+                        'timeline-orientation-toggle-button',
+                      ),
+                      tooltip: orientation == TimelineOrientation.horizontal
                           ? 'Show X-sheet'
-                          : 'Show Timeline',
+                          : 'Show timeline',
+                      onPressed: () => onOrientationChanged(nextOrientation),
+                      icon: const Icon(Icons.swap_horiz),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            if (timelineActionToolbar != null)
+            if (showToolbar)
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
                 child: timelineActionToolbar,
               ),
             Expanded(
-              child: orientation == TimelineOrientation.horizontal
+              child: _storyboardVisible
+                  ? storyboardPanel!
+                  : orientation == TimelineOrientation.horizontal
                   ? LayerTimelineGrid(
                       layers: horizontalLayers,
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       playbackFrameCount: playbackFrameCount,
                       exposureStateForLayer: exposureStateForLayer,
-                      hasMarkForLayer: hasMarkForLayer,
                       frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      commaDrag: commaDrag,
+                      isFrameCached: isFrameCached,
                     )
                   : XSheetTimelineGrid(
-                      layers: layers,
+                      layers: xsheetLayerDisplayOrder(layers),
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       frameCount: playbackFrameCount,
                       exposureStateForLayer: exposureStateForLayer,
-                      hasMarkForLayer: hasMarkForLayer,
                       frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      commaDrag: commaDrag,
                     ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The timeline/storyboard segmented toggle shown in the panel header.
+class _ModeToggle extends StatelessWidget {
+  const _ModeToggle({required this.showStoryboard, required this.onChanged});
+
+  final bool showStoryboard;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeToggleButton(
+            key: const ValueKey<String>('timeline-mode-timeline-button'),
+            tooltip: 'Timeline',
+            icon: Icons.view_timeline_outlined,
+            selected: !showStoryboard,
+            onPressed: onChanged == null ? null : () => onChanged!(false),
+          ),
+          _ModeToggleButton(
+            key: const ValueKey<String>('timeline-mode-storyboard-button'),
+            tooltip: 'Storyboard',
+            icon: Icons.movie_outlined,
+            selected: showStoryboard,
+            onPressed: onChanged == null ? null : () => onChanged!(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeToggleButton extends StatelessWidget {
+  const _ModeToggleButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 26),
+      style: IconButton.styleFrom(
+        foregroundColor: selected
+            ? colorScheme.primary
+            : colorScheme.onSurfaceVariant,
+        backgroundColor: selected
+            ? colorScheme.surfaceContainerHigh
+            : Colors.transparent,
+        shape: const RoundedRectangleBorder(),
       ),
     );
   }

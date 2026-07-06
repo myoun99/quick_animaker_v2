@@ -16,7 +16,9 @@ import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 
 void main() {
   group('StoryboardPanel baseline smoke tests', () {
-    testWidgets('renders current root and title keys', (tester) async {
+    testWidgets('renders current root key without a title header', (
+      tester,
+    ) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
       expect(
@@ -25,9 +27,9 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-panel-title')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('STORYBOARD'), findsOneWidget);
+      expect(find.text('STORYBOARD'), findsNothing);
     });
 
     testWidgets('renders current track row and track label keys', (

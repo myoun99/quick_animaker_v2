@@ -17,6 +17,48 @@ import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_block.dart';
 
 void main() {
+  testWidgets('hosts the cut management toolbar when actions are wired', (
+    tester,
+  ) async {
+    var newCuts = 0;
+    var deletes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: _project(storyboardLayer: null),
+            activeCutId: const CutId('cut-a'),
+            onCutSelected: (_) {},
+            onNewCut: () => newCuts += 1,
+            onDeleteActiveCut: () => deletes += 1,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-actions')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('New Cut'), findsOneWidget);
+    expect(find.byTooltip('Canvas Size'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('new-cut-button')));
+    await tester.tap(find.byKey(const ValueKey<String>('delete-cut-button')));
+    expect(newCuts, 1);
+    expect(deletes, 1);
+  });
+
+  testWidgets('hides the cut toolbar for a passive overview', (tester) async {
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-actions')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey<String>('new-cut-button')), findsNothing);
+  });
+
   testWidgets('cut blocks use the shared timeline block primitive', (
     tester,
   ) async {
@@ -230,11 +272,6 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-panel')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-panel-title')),
-      findsOneWidget,
-    );
-    expect(find.text('STORYBOARD'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('storyboard-track-label-track-a')),
       findsOneWidget,

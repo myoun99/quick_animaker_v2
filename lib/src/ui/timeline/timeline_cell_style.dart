@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 
 class TimelineCellStyleColors {
@@ -12,12 +13,22 @@ class TimelineCellStyleColors {
   final Color border;
 }
 
-const Color timelineDrawingHeldColor = Colors.white;
+/// Drawing exposure blocks read like paper timesheet cells: near-white on
+/// the dark grid so held runs are unmistakable at a glance.
+const Color timelineDrawingHeldColor = Color(0xFFE9E7E2);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
-const Color timelineDrawingStartBorderColor = Color(0xFFBDBDBD);
-const Color timelineBlankStartColor = Color(0xFFD0D0D0);
-const Color timelineBlankHeldColor = timelineBlankStartColor;
-const Color timelineSelectedFrameBorderColor = Colors.red;
+const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
+const Color timelineSelectedFrameBorderColor = AppColors.accent;
+
+/// Ink for glyphs (frame names, marks) sitting on the near-white drawing
+/// blocks; the usual light on-surface text would vanish there.
+const Color timelineDrawingInkColor = Color(0xFF26282B);
+
+/// Whether [exposureState] renders on the light drawing-block background
+/// (and therefore needs [timelineDrawingInkColor] text).
+bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
+  return exposureState.isCovered;
+}
 
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
@@ -29,20 +40,19 @@ TimelineCellStyleColors timelineCellStyleColors({
       ? colorScheme.secondaryContainer.withValues(alpha: 0.35)
       : colorScheme.surface;
   final exposureColor = switch (exposureState) {
-    TimelineCellExposureState.empty => emptyBaseColor,
+    TimelineCellExposureState.uncovered ||
+    TimelineCellExposureState.markUncovered => emptyBaseColor,
     TimelineCellExposureState.drawingStart => timelineDrawingStartColor,
-    TimelineCellExposureState.heldExposure => timelineDrawingHeldColor,
-    TimelineCellExposureState.blankStart => timelineBlankStartColor,
-    TimelineCellExposureState.blankHeld => timelineBlankHeldColor,
+    TimelineCellExposureState.held ||
+    TimelineCellExposureState.markHeld => timelineDrawingHeldColor,
   };
   final exposureBorderColor = switch (exposureState) {
-    TimelineCellExposureState.empty => colorScheme.outlineVariant,
+    TimelineCellExposureState.uncovered ||
+    TimelineCellExposureState.markUncovered => colorScheme.outlineVariant,
     TimelineCellExposureState.drawingStart => timelineDrawingStartBorderColor,
-    TimelineCellExposureState.heldExposure =>
+    TimelineCellExposureState.held ||
+    TimelineCellExposureState.markHeld =>
       colorScheme.outlineVariant.withValues(alpha: 0.65),
-    TimelineCellExposureState.blankStart => colorScheme.outlineVariant,
-    TimelineCellExposureState.blankHeld =>
-      colorScheme.outlineVariant.withValues(alpha: 0.55),
   };
 
   if (!selected) {

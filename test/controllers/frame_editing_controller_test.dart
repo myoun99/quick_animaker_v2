@@ -10,7 +10,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -83,8 +82,7 @@ void main() {
         id: const LayerId('layer'),
         name: 'Layer',
         frames: const [],
-        timeline: const {},
-        marks: const {4: TimelineMark.inbetween()},
+        timeline: const {4: TimelineExposure.mark()},
       );
       final fixture = _fixture(markOnlyLayer);
       fixture.controller.selectFrameIndex(4);
@@ -97,39 +95,35 @@ void main() {
     test(
       'delete drawing start removes entry and unreferenced backing frame',
       () {
-        final fixture = _fixture(
-          _editingLayer(marks: const {2: TimelineMark.inbetween()}),
-        );
+        final fixture = _fixture(_editingLayer(markIndex: 2));
         fixture.controller.selectFrameIndex(5);
 
         fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
         final layer = _latestLayer(fixture.repository);
 
-        expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
+        expect(layer.timeline.keys, orderedEquals([0, 2, 9]));
         expect(
           layer.frames.map((frame) => frame.id),
           orderedEquals([const FrameId('a')]),
         );
-        expect(layer.marks.keys, orderedEquals([2]));
+        expect(layer.timeline[2], const TimelineExposure.mark());
         expect(layer.timeline[9]?.frameId, const FrameId('a'));
       },
     );
 
-    test('delete drawing start with mark deletes frame and mark together', () {
-      final fixture = _fixture(
-        _editingLayer(marks: const {5: TimelineMark.inbetween()}),
-      );
+    test('delete drawing start keeps unrelated marks in the timeline', () {
+      final fixture = _fixture(_editingLayer(markIndex: 7));
       fixture.controller.selectFrameIndex(5);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
       final layer = _latestLayer(fixture.repository);
 
-      expect(layer.timeline.keys, orderedEquals([0, 3, 9]));
+      expect(layer.timeline.keys, orderedEquals([0, 7, 9]));
       expect(
         layer.frames.map((frame) => frame.id),
         orderedEquals([const FrameId('a')]),
       );
-      expect(layer.marks, isEmpty);
+      expect(layer.timeline[7], const TimelineExposure.mark());
     });
 
     test(
@@ -141,7 +135,7 @@ void main() {
         fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
         final layer = _latestLayer(fixture.repository);
 
-        expect(layer.timeline.keys, orderedEquals([0, 3, 5]));
+        expect(layer.timeline.keys, orderedEquals([0, 5]));
         expect(
           layer.frames.map((frame) => frame.id),
           orderedEquals([const FrameId('a'), const FrameId('b')]),
@@ -180,49 +174,37 @@ void main() {
       },
     );
 
-    test('delete drawing start with mark is undo and redo able', () {
+    test('delete drawing start is undo and redo able', () {
       final history = HistoryManager();
-      final fixture = _fixture(
-        _editingLayer(marks: const {5: TimelineMark.inbetween()}),
-        historyManager: history,
-      );
+      final fixture = _fixture(_editingLayer(), historyManager: history);
       fixture.controller.selectFrameIndex(5);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
       expect(_latestLayer(fixture.repository).timeline.containsKey(5), isFalse);
-      expect(_latestLayer(fixture.repository).marks, isEmpty);
 
       history.undo();
       expect(
         _latestLayer(fixture.repository).timeline[5]?.frameId,
         const FrameId('b'),
       );
-      expect(
-        _latestLayer(fixture.repository).marks[5],
-        const TimelineMark.inbetween(),
-      );
 
       history.redo();
       expect(_latestLayer(fixture.repository).timeline.containsKey(5), isFalse);
-      expect(_latestLayer(fixture.repository).marks, isEmpty);
     });
 
     test('mark toggle can still remove marks', () {
-      final fixture = _fixture(
-        _editingLayer(marks: const {4: TimelineMark.inbetween()}),
-      );
+      final fixture = _fixture(_editingLayer(markIndex: 4));
       fixture.controller.selectFrameIndex(4);
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
 
-      expect(_latestLayer(fixture.repository).marks, isEmpty);
-      expect(_latestLayer(fixture.repository).timeline, fixture.layer.timeline);
+      final layer = _latestLayer(fixture.repository);
+      expect(layer.timeline.containsKey(4), isFalse);
+      expect(layer.timeline, _editingLayer().timeline);
     });
 
     test('can delete and rename checks match follow-up cell rules', () {
-      final fixture = _fixture(
-        _editingLayer(marks: const {4: TimelineMark.inbetween()}),
-      );
+      final fixture = _fixture(_editingLayer(markIndex: 4));
       final layer = fixture.layer;
 
       expect(
@@ -259,7 +241,16 @@ void main() {
 
 const _cutId = CutId('cut');
 
-Layer _editingLayer({Map<int, TimelineMark> marks = const {}}) {
+/// a[0,3) .. X[3,5) .. b[5,9) .. a[9,12); optional mark entry.
+Layer _editingLayer({int? markIndex}) {
+  final timeline = <int, TimelineExposure>{
+    0: TimelineExposure.drawing(const FrameId('a'), length: 3),
+    5: TimelineExposure.drawing(const FrameId('b'), length: 4),
+    9: TimelineExposure.drawing(const FrameId('a'), length: 3),
+  };
+  if (markIndex != null) {
+    timeline[markIndex] = const TimelineExposure.mark();
+  }
   return Layer(
     id: const LayerId('layer'),
     name: 'Layer',
@@ -267,13 +258,7 @@ Layer _editingLayer({Map<int, TimelineMark> marks = const {}}) {
       Frame(id: const FrameId('a'), duration: 3, strokes: const []),
       Frame(id: const FrameId('b'), duration: 4, strokes: const []),
     ],
-    timeline: {
-      0: TimelineExposure.drawing(const FrameId('a')),
-      3: const TimelineExposure.blank(),
-      5: TimelineExposure.drawing(const FrameId('b')),
-      9: TimelineExposure.drawing(const FrameId('a')),
-    },
-    marks: marks,
+    timeline: timeline,
   );
 }
 

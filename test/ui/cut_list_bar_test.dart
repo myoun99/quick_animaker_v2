@@ -24,7 +24,7 @@ void main() {
         find.byKey(const ValueKey<String>('cut-list-bar')),
         findsOneWidget,
       );
-      expect(find.text('Cuts:'), findsOneWidget);
+      expect(find.byIcon(Icons.local_movies_outlined), findsOneWidget);
       expect(find.text('Cut 1'), findsOneWidget);
       expect(find.text('Cut 2'), findsOneWidget);
     });
@@ -75,90 +75,27 @@ void main() {
       expect(find.byTooltip('Cut: Cut 1'), findsOneWidget);
     });
 
-    testWidgets('renders compact command actions when callbacks are provided', (
+    testWidgets('hosts no cut command actions (they moved to the storyboard)', (
       tester,
     ) async {
-      var newCutCount = 0;
-      var renameCutCount = 0;
-      var editCutNoteCount = 0;
-      var duplicateCutCount = 0;
-      var moveLeftCount = 0;
-      var moveRightCount = 0;
-      var deleteCutCount = 0;
-
       await tester.pumpWidget(
         _testApp(
           CutListBar(
             entries: [_entry(id: 'cut-1', name: 'Cut 1', isActive: true)],
-            onNewCut: () => newCutCount += 1,
-            onRenameActiveCut: () => renameCutCount += 1,
-            onEditActiveCutNote: () => editCutNoteCount += 1,
-            onDuplicateActiveCut: () => duplicateCutCount += 1,
-            onMoveActiveCutLeft: () => moveLeftCount += 1,
-            onMoveActiveCutRight: () => moveRightCount += 1,
-            onDeleteActiveCut: () => deleteCutCount += 1,
+            onCutSelected: (_) {},
           ),
         ),
       );
 
-      expect(find.byTooltip('New Cut'), findsOneWidget);
-      expect(find.byTooltip('Rename Cut'), findsOneWidget);
-      expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-      expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
-      expect(find.byTooltip('Move Cut Left'), findsOneWidget);
-      expect(find.byTooltip('Move Cut Right'), findsOneWidget);
-      expect(find.byTooltip('Delete Cut'), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('new-cut-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('rename-cut-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('edit-cut-note-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('duplicate-cut-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('move-cut-left-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('move-cut-right-button')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('delete-cut-button')),
-        findsOneWidget,
+        findsNothing,
       );
-      await tester.tap(find.byKey(const ValueKey<String>('new-cut-button')));
-      await tester.tap(find.byKey(const ValueKey<String>('rename-cut-button')));
-      await tester.tap(
-        find.byKey(const ValueKey<String>('edit-cut-note-button')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('duplicate-cut-button')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('move-cut-left-button')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('move-cut-right-button')),
-      );
-      await tester.tap(find.byKey(const ValueKey<String>('delete-cut-button')));
-
-      expect(newCutCount, 1);
-      expect(renameCutCount, 1);
-      expect(editCutNoteCount, 1);
-      expect(duplicateCutCount, 1);
-      expect(moveLeftCount, 1);
-      expect(moveRightCount, 1);
-      expect(deleteCutCount, 1);
+      expect(find.byTooltip('New Cut'), findsNothing);
     });
 
     testWidgets('keeps long cut labels compact', (tester) async {
@@ -172,11 +109,6 @@ void main() {
                 isActive: true,
               ),
             ],
-            onNewCut: () {},
-            onRenameActiveCut: () {},
-            onEditActiveCutNote: () {},
-            onDuplicateActiveCut: () {},
-            onDeleteActiveCut: () {},
           ),
         ),
       );
@@ -187,11 +119,6 @@ void main() {
 
       expect(label.overflow, TextOverflow.ellipsis);
       expect(label.softWrap, isFalse);
-      expect(find.byTooltip('New Cut'), findsOneWidget);
-      expect(find.byTooltip('Rename Cut'), findsOneWidget);
-      expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-      expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
-      expect(find.byTooltip('Delete Cut'), findsOneWidget);
     });
 
     testWidgets('renders no cut controls for passive read-only display', (

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
+import '../playback/playback_frame_painter.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
@@ -26,22 +28,57 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selection,
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
+    this.frameStore,
+    this.cacheInvalidationSink,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.brushToolState = BrushToolState.defaults,
+    this.viewportOverlayBuilder,
+    this.viewportUnderlayBuilder,
+    this.interactiveContentOpacity = 1.0,
+    this.contentOverride,
   });
 
   final BrushFrameKey? activeFrameKey;
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
   final CanvasSize canvasSize;
+
+  /// Injectable stroke store (the session-owned one in production, so
+  /// app-level commands can transform stroke data); defaults to a local one.
+  final BrushFrameStore? frameStore;
+
+  /// Injectable invalidation sink (the session hub in production, so
+  /// playback caches hear about stroke edits); defaults to a local recorder.
+  final CacheInvalidationSink? cacheInvalidationSink;
+
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
   final BrushToolState brushToolState;
+
+  /// Forwarded to [BrushCanvasPanel]: stacked over the canvas inside the
+  /// editor viewport (e.g. the camera frame overlay).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportOverlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: painted under the interactive canvas
+  /// (paper + layers below the active one).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportUnderlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: the active layer's display opacity.
+  final double interactiveContentOpacity;
+
+  /// Forwarded to [BrushCanvasPanel]: replaces the interactive canvas inside
+  /// the panel shell (playback). Without an editable frame the host supplies
+  /// its own blank-canvas override, so the paper always shows.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  contentOverride;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -50,8 +87,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 }
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
-  final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
-  final _frameStore = BrushFrameStore();
+  late final CacheInvalidationSink _cacheInvalidationSink =
+      widget.cacheInvalidationSink ?? BrushEditCacheInvalidationSink();
+  late final BrushFrameStore _frameStore =
+      widget.frameStore ?? BrushFrameStore();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
   BrushFrameEditingCoordinator? _coordinator;
@@ -67,7 +106,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     super.didUpdateWidget(oldWidget);
     _frameKeys = _resolveFrameKeys();
     if (widget.canvasSize != oldWidget.canvasSize) {
-      _coordinator = null;
+      // Keep the coordinator (and with it the paint commands and undo
+      // history); it rebuilds the session surfaces at the new size from the
+      // durable commands.
+      _coordinator?.resizeCanvas(widget.canvasSize);
     }
     _selectResolvedFrame();
   }
@@ -75,16 +117,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   @override
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
-    if (_frameKeys.isEmpty || coordinator == null) {
-      return const Center(
-        key: ValueKey<String>('main-canvas-brush-host-empty-selection'),
-        child: Text('Select a layer and frame to edit with Brush.'),
-      );
-    }
+    final hasEditableFrame = _frameKeys.isNotEmpty && coordinator != null;
+    // No editable frame: keep the panel (and its paper) visible, just
+    // without brush input — drawing needs a selected frame.
+    final contentOverride =
+        widget.contentOverride ??
+        (hasEditableFrame ? null : _blankCanvasContent);
 
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
-      coordinator: coordinator,
+      coordinator: hasEditableFrame ? coordinator : null,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
@@ -93,6 +135,22 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onViewportChanged: widget.onViewportChanged,
       selectionLabels: widget.selectionLabels,
       brushToolState: widget.brushToolState,
+      viewportOverlayBuilder: widget.viewportOverlayBuilder,
+      viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
+      interactiveContentOpacity: widget.interactiveContentOpacity,
+      contentOverride: contentOverride,
+    );
+  }
+
+  Widget _blankCanvasContent(BuildContext context, CanvasViewport viewport) {
+    return CustomPaint(
+      key: const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
+      painter: PlaybackFramePainter(
+        image: null,
+        canvasSize: widget.canvasSize,
+        viewport: viewport,
+      ),
+      child: const SizedBox.expand(),
     );
   }
 

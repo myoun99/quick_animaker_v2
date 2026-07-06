@@ -397,22 +397,20 @@ void main() {
         expect(duplicatePaintLayer.frames.map((frame) => frame.id), [
           const FrameId('frame-paint-a-copy'),
         ]);
-        expect(duplicateLineLayer.timeline.keys, [0, 2, 5]);
+        expect(duplicateLineLayer.timeline.keys, [0, 5]);
         expect(
           duplicateLineLayer.timeline[0],
-          TimelineExposure.drawing(const FrameId('frame-line-a-copy')),
+          TimelineExposure.drawing(const FrameId('frame-line-a-copy'), length: 2),
         );
-        expect(duplicateLineLayer.timeline[2], const TimelineExposure.blank());
         expect(
           duplicateLineLayer.timeline[5],
-          TimelineExposure.drawing(const FrameId('frame-line-b-copy')),
+          TimelineExposure.drawing(const FrameId('frame-line-b-copy'), length: 6),
         );
-        expect(duplicatePaintLayer.timeline.keys, [1, 4]);
+        expect(duplicatePaintLayer.timeline.keys, [1]);
         expect(
           duplicatePaintLayer.timeline[1],
-          TimelineExposure.drawing(const FrameId('frame-paint-a-copy')),
+          TimelineExposure.drawing(const FrameId('frame-paint-a-copy'), length: 3),
         );
-        expect(duplicatePaintLayer.timeline[4], const TimelineExposure.blank());
         expect(duplicateLineLayer.frames.map((frame) => frame.duration), [
           3,
           6,
@@ -503,8 +501,7 @@ void main() {
                 sourceLineLayer.frames[1],
               ],
               timeline: {
-                0: TimelineExposure.drawing(const FrameId('frame-line-a')),
-                8: const TimelineExposure.blank(),
+                0: TimelineExposure.drawing(const FrameId('frame-line-a'), length: 8),
               },
             ),
           );
@@ -512,10 +509,10 @@ void main() {
           cuts = _allCuts(repository);
           expect(cuts[0].layers[0].frames[0].duration, 9);
           expect(cuts[0].layers[0].frames[0].name, 'Edited A');
-          expect(cuts[0].layers[0].timeline.keys, [0, 8]);
+          expect(cuts[0].layers[0].timeline.keys, [0]);
           expect(cuts[1].layers[0].frames[0].duration, 3);
           expect(cuts[1].layers[0].frames[0].name, 'Line A');
-          expect(cuts[1].layers[0].timeline.keys, [0, 2, 5]);
+          expect(cuts[1].layers[0].timeline.keys, [0, 5]);
           expect(cuts[1].layers[0].frames[0].strokes.single, _editedStroke());
         },
       );
@@ -621,9 +618,8 @@ Cut _authoredSourceCut() {
         name: 'Line',
         frames: [lineFrameA, lineFrameB],
         timeline: {
-          0: TimelineExposure.drawing(lineFrameA.id),
-          2: const TimelineExposure.blank(),
-          5: TimelineExposure.drawing(lineFrameB.id),
+          0: TimelineExposure.drawing(lineFrameA.id, length: 2),
+          5: TimelineExposure.drawing(lineFrameB.id, length: 6),
         },
         isVisible: false,
         opacity: 0.5,
@@ -633,8 +629,7 @@ Cut _authoredSourceCut() {
         name: 'Paint',
         frames: [paintFrameA],
         timeline: {
-          1: TimelineExposure.drawing(paintFrameA.id),
-          4: const TimelineExposure.blank(),
+          1: TimelineExposure.drawing(paintFrameA.id, length: 3),
         },
       ),
     ],

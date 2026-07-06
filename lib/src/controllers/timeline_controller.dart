@@ -6,13 +6,19 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
-import '../models/timeline_exposure_type.dart';
-import '../models/timeline_mark.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 
+/// Timeline queries and editing commands over the unified timeline model
+/// (drawing blocks with explicit lengths + inbetween marks; emptiness is
+/// the absence of coverage).
+///
+/// All coverage lookups go through `timeline_coverage.dart` (SplayTreeMap
+/// navigation, O(log n)) so the controller, playback compositing and UI
+/// mapping always agree.
 class TimelineController {
   TimelineController({
     required ProjectRepository repository,
@@ -45,75 +51,46 @@ class TimelineController {
     _currentFrameIndex = frameIndex;
   }
 
+  // --- Queries -------------------------------------------------------------
+
   int get authoredTimelineExtentFrameCount {
     final cut = _findCutOrNull();
     if (cut == null || cut.layers.isEmpty) {
       return 0;
     }
 
-    var maxLength = 0;
+    var maxExtent = 0;
     for (final layer in cut.layers) {
-      for (final entry in _entriesForLayer(layer)) {
-        final authoredEnd = _authoredEndIndex(layer: layer, entry: entry);
-        if (authoredEnd > maxLength) {
-          maxLength = authoredEnd;
-        }
+      final extent = authoredTimelineExtent(layer.timeline);
+      if (extent > maxExtent) {
+        maxExtent = extent;
       }
     }
-
-    return maxLength;
+    return maxExtent;
   }
 
-  @Deprecated(
-    'Use authoredTimelineExtentFrameCount to avoid confusing authored data extent with Cut duration or visible timeline range.',
-  )
-  int get totalFrameCount => authoredTimelineExtentFrameCount;
-
-  Frame? resolveFrameForLayer({required Layer layer, int? frameIndex}) {
-    final exposure = resolveExposureEntryForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    if (exposure == null || exposure.type == TimelineExposureType.blank) {
+  /// The drawing block covering [frameIndex] (or the current frame).
+  TimelineDrawingBlock? blockForLayerAt({required Layer layer, int? frameIndex}) {
+    final targetIndex = frameIndex ?? _currentFrameIndex;
+    if (targetIndex < 0) {
       return null;
     }
+    return coveringDrawingBlockAt(layer.timeline, targetIndex);
+  }
 
-    final frameId = exposure.frameId;
+  Frame? resolveFrameForLayer({required Layer layer, int? frameIndex}) {
+    final frameId = blockForLayerAt(
+      layer: layer,
+      frameIndex: frameIndex,
+    )?.frameId;
     if (frameId == null) {
       return null;
     }
-
-    for (final frame in layer.frames) {
-      if (frame.id == frameId) {
-        return frame;
-      }
-    }
-
-    return null;
-  }
-
-  TimelineExposure? resolveExposureEntryForLayer({
-    required Layer layer,
-    int? frameIndex,
-  }) {
-    final targetIndex = frameIndex ?? _currentFrameIndex;
-    if (targetIndex < 0 || layer.timeline.isEmpty) {
-      return null;
-    }
-
-    TimelineExposure? activeExposure;
-    for (final entry in layer.timeline.entries) {
-      if (entry.key > targetIndex) {
-        break;
-      }
-      activeExposure = entry.value;
-    }
-
-    return activeExposure;
+    return _frameOrNull(layer: layer, frameId: frameId);
   }
 
   FrameId? resolveFrameIdForLayer({required Layer layer, int? frameIndex}) {
-    return resolveFrameForLayer(layer: layer, frameIndex: frameIndex)?.id;
+    return blockForLayerAt(layer: layer, frameIndex: frameIndex)?.frameId;
   }
 
   Frame? getSelectedFrameForLayer(Layer layer) {
@@ -136,14 +113,7 @@ class TimelineController {
     if (frameIndex < 0) {
       return false;
     }
-    return layer.timeline[frameIndex]?.type == TimelineExposureType.drawing;
-  }
-
-  bool isBlankStartForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
-      return false;
-    }
-    return layer.timeline[frameIndex]?.type == TimelineExposureType.blank;
+    return layer.timeline[frameIndex]?.isDrawing ?? false;
   }
 
   bool isHeldExposureForLayer({required Layer layer, required int frameIndex}) {
@@ -151,25 +121,14 @@ class TimelineController {
         isDrawingStartForLayer(layer: layer, frameIndex: frameIndex)) {
       return false;
     }
-
-    final exposure = resolveExposureEntryForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    return exposure?.type == TimelineExposureType.drawing;
+    return coveringDrawingBlockAt(layer.timeline, frameIndex) != null;
   }
 
-  bool isBlankHeldForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 ||
-        isBlankStartForLayer(layer: layer, frameIndex: frameIndex)) {
+  bool hasMarkAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
       return false;
     }
-
-    final exposure = resolveExposureEntryForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    return exposure?.type == TimelineExposureType.blank;
+    return layer.timeline[frameIndex]?.isMark ?? false;
   }
 
   int? exposureStartIndexForLayer({
@@ -177,9 +136,7 @@ class TimelineController {
     required FrameId frameId,
   }) {
     for (final entry in layer.timeline.entries) {
-      final exposure = entry.value;
-      if (exposure.type == TimelineExposureType.drawing &&
-          exposure.frameId == frameId) {
+      if (entry.value.isDrawing && entry.value.frameId == frameId) {
         return entry.key;
       }
     }
@@ -190,25 +147,180 @@ class TimelineController {
     required Layer layer,
     required FrameId frameId,
   }) {
-    final entry = _entryForFrame(layer: layer, frameId: frameId);
-    if (entry == null) {
+    final startIndex = exposureStartIndexForLayer(
+      layer: layer,
+      frameId: frameId,
+    );
+    if (startIndex == null) {
       return null;
     }
-
-    return _effectiveDurationForEntry(layer: layer, entry: entry);
+    return layer.timeline[startIndex]!.length;
   }
 
   int? effectiveDurationForLayerAt({required Layer layer, int? frameIndex}) {
-    final entry = _entryForFrameIndex(
-      layer: layer,
-      frameIndex: frameIndex ?? _currentFrameIndex,
-    );
-    if (entry == null || entry.exposure.type != TimelineExposureType.drawing) {
-      return null;
+    return blockForLayerAt(layer: layer, frameIndex: frameIndex)?.length;
+  }
+
+  int linkedUseCountForLayerFrame({
+    required Layer layer,
+    required FrameId frameId,
+  }) {
+    return layer.timeline.values
+        .where((entry) => entry.isDrawing && entry.frameId == frameId)
+        .length;
+  }
+
+  // --- Drawing creation ------------------------------------------------------
+
+  /// A drawing can be created on any uncovered cell (a mark there is
+  /// replaced — the drawing wins).
+  bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return false;
+    }
+    return coveringDrawingBlockAt(layer.timeline, frameIndex) == null;
+  }
+
+  void createDrawingFrameForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+    int length = 1,
+  }) {
+    if (length < 1) {
+      throw ArgumentError.value(
+        length,
+        'length',
+        'Drawing exposure length must be at least 1.',
+      );
     }
 
-    return _effectiveDurationForEntry(layer: layer, entry: entry);
+    final before = _requireLayer(layerId);
+    if (!canCreateDrawingAt(layer: before, frameIndex: _currentFrameIndex)) {
+      throw StateError(
+        'Timeline cell is already covered at index $_currentFrameIndex.',
+      );
+    }
+
+    final nextBlock = nextDrawingBlockAfter(
+      before.timeline,
+      _currentFrameIndex,
+    );
+    final maxLength = nextBlock == null
+        ? length
+        : nextBlock.startIndex - _currentFrameIndex;
+    final clampedLength = length > maxLength ? maxLength : length;
+
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(
+      frameId,
+      length: clampedLength,
+    );
+    final after = before.copyWith(
+      frames: [
+        ...before.frames,
+        Frame(id: frameId, duration: clampedLength, strokes: const []),
+      ],
+      timeline: nextTimeline,
+    );
+    _applyLayerEdit(before: before, after: after);
   }
+
+  // --- Cut exposure (the timesheet "X here" action) -------------------------
+
+  /// Ends the covering block's hold just before [frameIndex] so the cell
+  /// (and the rest of the old hold) becomes empty. Only meaningful on held
+  /// cells — cutting at a block start would leave a zero-length block.
+  bool canCutExposureAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return false;
+    }
+    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    return block != null && frameIndex > block.startIndex;
+  }
+
+  void cutExposureForLayer({required LayerId layerId}) {
+    final before = _requireLayer(layerId);
+    if (!canCutExposureAt(layer: before, frameIndex: _currentFrameIndex)) {
+      return;
+    }
+
+    final block = coveringDrawingBlockAt(before.timeline, _currentFrameIndex)!;
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    nextTimeline[block.startIndex] = block.entry.copyWith(
+      length: _currentFrameIndex - block.startIndex,
+    );
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(timeline: nextTimeline),
+    );
+  }
+
+  // --- Marks -----------------------------------------------------------------
+
+  /// Marks live on held or empty cells only; a drawing start keeps its
+  /// drawing (the unified map records one thing per index).
+  bool canToggleMarkAt({required Layer layer, required int frameIndex}) {
+    if (frameIndex < 0) {
+      return false;
+    }
+    return !(layer.timeline[frameIndex]?.isDrawing ?? false);
+  }
+
+  void toggleMarkForLayer({required LayerId layerId}) {
+    final before = _requireLayer(layerId);
+    if (!canToggleMarkAt(layer: before, frameIndex: _currentFrameIndex)) {
+      return;
+    }
+
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    );
+    if (nextTimeline[_currentFrameIndex]?.isMark ?? false) {
+      nextTimeline.remove(_currentFrameIndex);
+    } else {
+      nextTimeline[_currentFrameIndex] = const TimelineExposure.mark();
+    }
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(timeline: nextTimeline),
+    );
+  }
+
+  // --- Cell deletion ----------------------------------------------------------
+
+  bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
+    return isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
+  }
+
+  void deleteCellForLayer({required LayerId layerId}) {
+    final before = _requireLayer(layerId);
+    if (!canDeleteCellAt(layer: before, frameIndex: _currentFrameIndex)) {
+      return;
+    }
+
+    final entry = before.timeline[_currentFrameIndex]!;
+    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+      before.timeline,
+    )..remove(_currentFrameIndex);
+    var nextFrames = before.frames;
+    final frameId = entry.frameId;
+    if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
+      nextFrames = before.frames
+          .where((frame) => frame.id != frameId)
+          .toList(growable: false);
+    }
+
+    _applyLayerEdit(
+      before: before,
+      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+    );
+  }
+
+  // --- Linked paste ------------------------------------------------------------
 
   bool canPasteLinkedFrameAt({
     required Layer layer,
@@ -218,21 +330,7 @@ class TimelineController {
     if (frameIndex < 0) {
       return false;
     }
-
     return _frameOrNull(layer: layer, frameId: copiedFrameId) != null;
-  }
-
-  int linkedUseCountForLayerFrame({
-    required Layer layer,
-    required FrameId frameId,
-  }) {
-    return layer.timeline.values
-        .where(
-          (exposure) =>
-              exposure.type == TimelineExposureType.drawing &&
-              exposure.frameId == frameId,
-        )
-        .length;
   }
 
   void pasteLinkedFrameForLayer({
@@ -251,17 +349,40 @@ class TimelineController {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    final previousExposure = nextTimeline[_currentFrameIndex];
-    nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(frameId);
+    final index = _currentFrameIndex;
+    final covering = coveringDrawingBlockAt(before.timeline, index);
+    FrameId? replacedFrameId;
+
+    if (covering != null && covering.startIndex == index) {
+      // On a block start: relink the block to the pasted frame.
+      replacedFrameId = covering.frameId;
+      nextTimeline[index] = covering.entry.copyWith(frameId: frameId);
+    } else if (covering != null) {
+      // Inside a hold: split — the covering block ends here, the pasted
+      // frame holds for the rest of the old coverage.
+      nextTimeline[covering.startIndex] = covering.entry.copyWith(
+        length: index - covering.startIndex,
+      );
+      nextTimeline[index] = TimelineExposure.drawing(
+        frameId,
+        length: covering.endIndexExclusive - index,
+      );
+    } else {
+      // Empty cell: fill up to the next block (or a single frame).
+      final nextBlock = nextDrawingBlockAfter(before.timeline, index);
+      nextTimeline[index] = TimelineExposure.drawing(
+        frameId,
+        length: nextBlock == null ? 1 : nextBlock.startIndex - index,
+      );
+    }
 
     var nextFrames = before.frames;
-    final previousFrameId = previousExposure?.frameId;
-    if (previousExposure?.type == TimelineExposureType.drawing &&
-        previousFrameId != null &&
-        previousFrameId != frameId &&
-        !_timelineReferencesFrame(nextTimeline, previousFrameId)) {
+    if (replacedFrameId != null &&
+        replacedFrameId != frameId &&
+        !_timelineReferencesFrame(nextTimeline, replacedFrameId)) {
+      final removedFrameId = replacedFrameId;
       nextFrames = before.frames
-          .where((frame) => frame.id != previousFrameId)
+          .where((frame) => frame.id != removedFrameId)
           .toList(growable: false);
     }
 
@@ -271,95 +392,7 @@ class TimelineController {
     );
   }
 
-  bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
-      return false;
-    }
-
-    final authoredExposure = layer.timeline[frameIndex];
-    return authoredExposure == null ||
-        authoredExposure.type == TimelineExposureType.blank;
-  }
-
-  bool canCreateBlankAt({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 || layer.timeline.containsKey(frameIndex)) {
-      return false;
-    }
-
-    final exposure = resolveExposureEntryForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    return exposure?.type == TimelineExposureType.drawing;
-  }
-
-  bool canIncreaseExposure({
-    required Layer layer,
-    FrameId? frameId,
-    int? frameIndex,
-  }) {
-    return _entryForExposureEdit(
-          layer: layer,
-          frameId: frameId,
-          frameIndex: frameIndex,
-        ) !=
-        null;
-  }
-
-  bool canDecreaseExposure({
-    required Layer layer,
-    FrameId? frameId,
-    int? frameIndex,
-  }) {
-    final entry = _entryForExposureEdit(
-      layer: layer,
-      frameId: frameId,
-      frameIndex: frameIndex,
-    );
-    if (entry == null) {
-      return false;
-    }
-
-    final nextEntry = _nextEntryAfterStart(
-      layer: layer,
-      startIndex: entry.startIndex,
-    );
-    return nextEntry != null && nextEntry.startIndex - entry.startIndex > 1;
-  }
-
-  bool hasMarkAt({required Layer layer, required int frameIndex}) {
-    return markAt(layer: layer, frameIndex: frameIndex) != null;
-  }
-
-  TimelineMark? markAt({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
-      return null;
-    }
-    return layer.marks[frameIndex];
-  }
-
-  bool canToggleMarkAt({required Layer layer, required int frameIndex}) {
-    return frameIndex >= 0;
-  }
-
-  void toggleMarkForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    if (!canToggleMarkAt(layer: before, frameIndex: _currentFrameIndex)) {
-      return;
-    }
-
-    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks);
-    if (nextMarks.containsKey(_currentFrameIndex)) {
-      nextMarks.remove(_currentFrameIndex);
-    } else {
-      nextMarks[_currentFrameIndex] = const TimelineMark.inbetween();
-    }
-
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(marks: nextMarks),
-    );
-  }
+  // --- Frame rename / link -------------------------------------------------------
 
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
@@ -432,9 +465,8 @@ class TimelineController {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>();
     for (final entry in before.timeline.entries) {
       final exposure = entry.value;
-      if (exposure.type == TimelineExposureType.drawing &&
-          exposure.frameId == sourceFrameId) {
-        nextTimeline[entry.key] = TimelineExposure.drawing(targetFrameId);
+      if (exposure.isDrawing && exposure.frameId == sourceFrameId) {
+        nextTimeline[entry.key] = exposure.copyWith(frameId: targetFrameId);
       } else {
         nextTimeline[entry.key] = exposure;
       }
@@ -455,215 +487,246 @@ class TimelineController {
     _applyLayerEdit(before: before, after: after);
   }
 
-  bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
-    return isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
-  }
+  // --- Comma adjustment (TVPaint-style edge shift) ------------------------------
 
-  void deleteCellForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    if (!canDeleteCellAt(layer: before, frameIndex: _currentFrameIndex)) {
-      return;
-    }
-
-    final authoredExposure = before.timeline[_currentFrameIndex];
-    if (authoredExposure == null ||
-        authoredExposure.type != TimelineExposureType.drawing) {
-      return;
-    }
-
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    )..remove(_currentFrameIndex);
-    final nextMarks = SplayTreeMap<int, TimelineMark>.from(before.marks)
-      ..remove(_currentFrameIndex);
-    var nextFrames = before.frames;
-    final frameId = authoredExposure.frameId;
-    if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
-      nextFrames = before.frames
-          .where((frame) => frame.id != frameId)
-          .toList(growable: false);
-    }
-
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(
-        frames: nextFrames,
-        timeline: nextTimeline,
-        marks: nextMarks,
-      ),
-    );
-  }
-
-  void createDrawingFrameForLayer({
-    required LayerId layerId,
-    required FrameId frameId,
-    int duration = 1,
+  /// Whether the block starting at [blockStartIndex] can shift its [edge]
+  /// at all in the direction of [delta] (used to enable UI affordances;
+  /// the actual applied delta is clamped by [clampExposureEdgeDelta]).
+  bool canShiftExposureEdge({
+    required Layer layer,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+    required int delta,
   }) {
-    if (duration < 1) {
-      throw ArgumentError.value(
-        duration,
-        'duration',
-        'Drawing frame duration must be at least 1.',
-      );
+    return clampExposureEdgeDelta(
+          layer: layer,
+          blockStartIndex: blockStartIndex,
+          edge: edge,
+          delta: delta,
+        ) !=
+        0;
+  }
+
+  /// The largest applicable portion of [delta] for an edge shift:
+  /// shrinking stops at length 1, and start-edge growth stops when the
+  /// pushed chain would cross frame 0. Growth toward the open end is
+  /// unlimited.
+  int clampExposureEdgeDelta({
+    required Layer layer,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
+    final entry = layer.timeline[blockStartIndex];
+    if (entry == null || !entry.isDrawing || delta == 0) {
+      return 0;
+    }
+    final length = entry.length!;
+
+    switch (edge) {
+      case TimelineBlockEdge.end:
+        if (delta > 0) {
+          return delta;
+        }
+        // Shrink from the end: keep at least one frame.
+        return delta < 1 - length ? 1 - length : delta;
+      case TimelineBlockEdge.start:
+        if (delta > 0) {
+          // Shrink from the front: keep at least one frame.
+          return delta > length - 1 ? length - 1 : delta;
+        }
+        // Grow backward: limited by the room the preceding glued/pushed
+        // chain has before frame 0.
+        final maxGrow = _startEdgeGrowRoom(
+          layer.timeline,
+          blockStartIndex: blockStartIndex,
+        );
+        return delta < -maxGrow ? -maxGrow : delta;
+    }
+  }
+
+  /// Pure computation of the layer after a comma edge shift; `null` when
+  /// the clamped delta is zero. Exposed for drag previews (apply directly,
+  /// commit once on release) while [shiftExposureEdge] applies it as a
+  /// single undoable command.
+  Layer? shiftedLayerForEdge({
+    required Layer layer,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
+    final clampedDelta = clampExposureEdgeDelta(
+      layer: layer,
+      blockStartIndex: blockStartIndex,
+      edge: edge,
+      delta: delta,
+    );
+    if (clampedDelta == 0) {
+      return null;
     }
 
+    final nextTimeline = _shiftEdgeTimeline(
+      layer.timeline,
+      blockStartIndex: blockStartIndex,
+      edge: edge,
+      delta: clampedDelta,
+    );
+    return layer.copyWith(timeline: nextTimeline);
+  }
+
+  void shiftExposureEdge({
+    required LayerId layerId,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
     final before = _requireLayer(layerId);
-    if (!canCreateDrawingAt(layer: before, frameIndex: _currentFrameIndex)) {
+    final after = shiftedLayerForEdge(
+      layer: before,
+      blockStartIndex: blockStartIndex,
+      edge: edge,
+      delta: delta,
+    );
+    if (after == null || after == before) {
+      return;
+    }
+    _applyLayerEdit(before: before, after: after);
+  }
+
+  /// Commits an already-applied drag as one undoable step: the repository
+  /// currently holds [after]; the command's execute is idempotent.
+  void commitLayerTimelineDrag({required Layer before, required Layer after}) {
+    if (before == after) {
+      return;
+    }
+    _applyLayerEdit(before: before, after: after);
+  }
+
+  // --- Shift internals -----------------------------------------------------------
+
+  /// How far the start edge can grow backward: empty space in front plus
+  /// the gaps the preceding glued/pushed chain can absorb before its head
+  /// hits frame 0. Mirrors the shift algorithm's contact rules.
+  int _startEdgeGrowRoom(
+    SplayTreeMap<int, TimelineExposure> timeline, {
+    required int blockStartIndex,
+  }) {
+    // Total space before the block minus the total length of all blocks in
+    // front of it: pushing can compact every gap, so that difference is
+    // exactly the reachable room.
+    var precedingLengths = 0;
+    for (final entry in timeline.entries) {
+      if (entry.key >= blockStartIndex) {
+        break;
+      }
+      if (entry.value.isDrawing) {
+        precedingLengths += entry.value.length!;
+      }
+    }
+    return blockStartIndex - precedingLengths;
+  }
+
+  SplayTreeMap<int, TimelineExposure> _shiftEdgeTimeline(
+    SplayTreeMap<int, TimelineExposure> timeline, {
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
+    final blocks = drawingBlocks(timeline);
+    final targetIndex = blocks.indexWhere(
+      (block) => block.startIndex == blockStartIndex,
+    );
+    if (targetIndex == -1) {
+      throw StateError('No drawing block starts at index $blockStartIndex.');
+    }
+
+    // New start/length per block, seeded with the resized target.
+    final newStarts = List<int>.generate(
+      blocks.length,
+      (i) => blocks[i].startIndex,
+      growable: false,
+    );
+    final newLengths = List<int>.generate(
+      blocks.length,
+      (i) => blocks[i].length,
+      growable: false,
+    );
+
+    final target = blocks[targetIndex];
+    switch (edge) {
+      case TimelineBlockEdge.end:
+        newLengths[targetIndex] = target.length + delta;
+      case TimelineBlockEdge.start:
+        newStarts[targetIndex] = target.startIndex + delta;
+        newLengths[targetIndex] = target.length - delta;
+    }
+
+    // Ripple following blocks (end-edge resizes and front shrinks change
+    // where the target ends; contact rules: glued blocks stay glued,
+    // separated blocks move only when overlapped).
+    var prevOldEnd = target.endIndexExclusive;
+    var prevNewEnd = newStarts[targetIndex] + newLengths[targetIndex];
+    for (var i = targetIndex + 1; i < blocks.length; i += 1) {
+      final block = blocks[i];
+      final glued = block.startIndex == prevOldEnd;
+      var start = glued ? prevNewEnd : block.startIndex;
+      if (start < prevNewEnd) {
+        start = prevNewEnd;
+      }
+      newStarts[i] = start;
+      prevOldEnd = block.endIndexExclusive;
+      prevNewEnd = start + block.length;
+    }
+
+    // Ripple preceding blocks (start-edge moves): mirror of the above.
+    var nextOldStart = target.startIndex;
+    var nextNewStart = newStarts[targetIndex];
+    for (var i = targetIndex - 1; i >= 0; i -= 1) {
+      final block = blocks[i];
+      final glued = block.endIndexExclusive == nextOldStart;
+      var end = glued ? nextNewStart : block.endIndexExclusive;
+      if (end > nextNewStart) {
+        end = nextNewStart;
+      }
+      newStarts[i] = end - block.length;
+      nextOldStart = block.startIndex;
+      nextNewStart = newStarts[i];
+    }
+
+    if (newStarts.isNotEmpty && newStarts.first < 0) {
       throw StateError(
-        'Timeline exposure already exists at index $_currentFrameIndex.',
+        'Comma edge shift would push a block before frame 0 '
+        '(clamp deltas with clampExposureEdgeDelta first).',
       );
     }
 
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(frameId);
-    final after = before.copyWith(
-      frames: [
-        ...before.frames,
-        Frame(id: frameId, duration: duration, strokes: const []),
-      ],
-      timeline: nextTimeline,
-    );
-    _applyLayerEdit(before: before, after: after);
+    // Rebuild: drawings at their new starts; marks ride with the block that
+    // covered them (target-block marks stay absolute), free marks stay put.
+    final next = SplayTreeMap<int, TimelineExposure>();
+    for (var i = 0; i < blocks.length; i += 1) {
+      next[newStarts[i]] = blocks[i].entry.copyWith(length: newLengths[i]);
+    }
+
+    for (final entry in timeline.entries) {
+      if (!entry.value.isMark) {
+        continue;
+      }
+      var markIndex = entry.key;
+      for (var i = 0; i < blocks.length; i += 1) {
+        if (i != targetIndex && blocks[i].covers(markIndex)) {
+          markIndex += newStarts[i] - blocks[i].startIndex;
+          break;
+        }
+      }
+      if (markIndex >= 0 && !next.containsKey(markIndex)) {
+        next[markIndex] = entry.value;
+      }
+    }
+
+    return next;
   }
 
-  void createBlankExposureForLayer({required LayerId layerId}) {
-    final before = _requireLayer(layerId);
-    if (!canCreateBlankAt(layer: before, frameIndex: _currentFrameIndex)) {
-      return;
-    }
-
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
-    );
-    nextTimeline[_currentFrameIndex] = const TimelineExposure.blank();
-    final after = before.copyWith(timeline: nextTimeline);
-    _applyLayerEdit(before: before, after: after);
-  }
-
-  void increaseExposure({
-    required LayerId layerId,
-    FrameId? frameId,
-    int? frameIndex,
-  }) {
-    final before = _requireLayer(layerId);
-    if (frameId != null) {
-      _requireFrameInLayer(layer: before, frameId: frameId);
-    }
-
-    final targetEntry = _entryForExposureEdit(
-      layer: before,
-      frameId: frameId,
-      frameIndex: frameIndex,
-    );
-    if (targetEntry == null) {
-      throw StateError('Timeline entry not found for exposure edit.');
-    }
-
-    final targetFrameId = targetEntry.exposure.frameId;
-    if (targetFrameId == null) {
-      throw StateError('Timeline entry does not reference a drawing frame.');
-    }
-    final targetFrame = _requireFrameInLayer(
-      layer: before,
-      frameId: targetFrameId,
-    );
-    final connectedEntries = _connectedFollowingEntries(
-      layer: before,
-      startIndex: targetEntry.startIndex,
-    );
-    final nextTimeline = _shiftTimelineEntries(
-      before.timeline,
-      connectedEntries,
-      1,
-    );
-    final sharesAuthoredFrame = _hasMultipleAuthoredUses(
-      layer: before,
-      frameId: targetFrameId,
-    );
-    final nextFrames = sharesAuthoredFrame
-        ? before.frames
-        : before.frames
-              .map(
-                (frame) => frame.id == targetFrameId
-                    ? frame.copyWith(
-                        duration: _safeDuration(targetFrame.duration) + 1,
-                      )
-                    : frame,
-              )
-              .toList(growable: false);
-    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
-
-  void decreaseExposure({
-    required LayerId layerId,
-    FrameId? frameId,
-    int? frameIndex,
-  }) {
-    final before = _requireLayer(layerId);
-    if (frameId != null) {
-      _requireFrameInLayer(layer: before, frameId: frameId);
-    }
-    if (!canDecreaseExposure(
-      layer: before,
-      frameId: frameId,
-      frameIndex: frameIndex,
-    )) {
-      return;
-    }
-
-    final targetEntry = _entryForExposureEdit(
-      layer: before,
-      frameId: frameId,
-      frameIndex: frameIndex,
-    )!;
-    final targetFrameId = targetEntry.exposure.frameId;
-    if (targetFrameId == null) {
-      return;
-    }
-    final targetFrame = _requireFrameInLayer(
-      layer: before,
-      frameId: targetFrameId,
-    );
-    final connectedEntries = _connectedFollowingEntries(
-      layer: before,
-      startIndex: targetEntry.startIndex,
-    );
-    final nextTimeline = _shiftTimelineEntries(
-      before.timeline,
-      connectedEntries,
-      -1,
-    );
-    final sharesAuthoredFrame = _hasMultipleAuthoredUses(
-      layer: before,
-      frameId: targetFrameId,
-    );
-    final nextFrames = sharesAuthoredFrame
-        ? before.frames
-        : before.frames
-              .map(
-                (existingFrame) => existingFrame.id == targetFrameId
-                    ? existingFrame.copyWith(
-                        duration: _safeDuration(targetFrame.duration) > 1
-                            ? _safeDuration(targetFrame.duration) - 1
-                            : 1,
-                      )
-                    : existingFrame,
-              )
-              .toList(growable: false);
-    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
+  // --- Shared internals -------------------------------------------------------
 
   String? _normalizeFrameName(String? name) {
     final trimmed = name?.trim();
@@ -678,9 +741,7 @@ class TimelineController {
     FrameId frameId,
   ) {
     return timeline.values.any(
-      (exposure) =>
-          exposure.type == TimelineExposureType.drawing &&
-          exposure.frameId == frameId,
+      (exposure) => exposure.isDrawing && exposure.frameId == frameId,
     );
   }
 
@@ -740,224 +801,6 @@ class TimelineController {
     return null;
   }
 
-  List<_TimelineEntry> _entriesForLayer(Layer layer) {
-    return layer.timeline.entries
-        .map(
-          (entry) =>
-              _TimelineEntry(startIndex: entry.key, exposure: entry.value),
-        )
-        .toList(growable: false);
-  }
-
-  _TimelineEntry? _entryForFrame({
-    required Layer layer,
-    required FrameId frameId,
-  }) {
-    for (final entry in _entriesForLayer(layer)) {
-      if (entry.exposure.type == TimelineExposureType.drawing &&
-          entry.exposure.frameId == frameId) {
-        return entry;
-      }
-    }
-
-    return null;
-  }
-
-  _TimelineEntry? _entryForFrameIndex({
-    required Layer layer,
-    required int frameIndex,
-  }) {
-    if (frameIndex < 0 || layer.timeline.isEmpty) {
-      return null;
-    }
-
-    _TimelineEntry? activeEntry;
-    for (final entry in _entriesForLayer(layer)) {
-      if (entry.startIndex > frameIndex) {
-        break;
-      }
-      activeEntry = entry;
-    }
-
-    return activeEntry;
-  }
-
-  _TimelineEntry? _entryForExposureEdit({
-    required Layer layer,
-    FrameId? frameId,
-    int? frameIndex,
-  }) {
-    final selectedEntry = _entryForFrameIndex(
-      layer: layer,
-      frameIndex: frameIndex ?? _currentFrameIndex,
-    );
-    if (selectedEntry?.exposure.type == TimelineExposureType.drawing &&
-        (frameId == null || selectedEntry?.exposure.frameId == frameId)) {
-      return selectedEntry;
-    }
-
-    if (frameId == null) {
-      return null;
-    }
-
-    return _entryForFrame(layer: layer, frameId: frameId);
-  }
-
-  bool _hasMultipleAuthoredUses({
-    required Layer layer,
-    required FrameId frameId,
-  }) {
-    var count = 0;
-    for (final exposure in layer.timeline.values) {
-      if (exposure.type == TimelineExposureType.drawing &&
-          exposure.frameId == frameId) {
-        count += 1;
-        if (count > 1) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  List<_TimelineEntry> _connectedFollowingEntries({
-    required Layer layer,
-    required int startIndex,
-  }) {
-    final entries = _entriesForLayer(layer);
-    final targetIndex = entries.indexWhere(
-      (entry) => entry.startIndex == startIndex,
-    );
-    if (targetIndex == -1 || targetIndex + 1 >= entries.length) {
-      return const <_TimelineEntry>[];
-    }
-
-    final connectedEntries = <_TimelineEntry>[];
-    var previousEntry = entries[targetIndex];
-    var expectedStartIndex = _authoredEndIndex(
-      layer: layer,
-      entry: previousEntry,
-    );
-    for (var index = targetIndex + 1; index < entries.length; index += 1) {
-      final entry = entries[index];
-      if (entry.startIndex != expectedStartIndex) {
-        if (connectedEntries.isEmpty) {
-          connectedEntries.add(entry);
-        }
-        break;
-      }
-
-      connectedEntries.add(entry);
-      previousEntry = entry;
-      expectedStartIndex = _authoredEndIndex(
-        layer: layer,
-        entry: previousEntry,
-      );
-    }
-
-    return connectedEntries;
-  }
-
-  _TimelineEntry? _nextEntryAfterStart({
-    required Layer layer,
-    required int startIndex,
-  }) {
-    for (final entry in _entriesForLayer(layer)) {
-      if (entry.startIndex > startIndex) {
-        return entry;
-      }
-    }
-    return null;
-  }
-
-  int _effectiveDurationForEntry({
-    required Layer layer,
-    required _TimelineEntry entry,
-  }) {
-    return _effectiveEndIndexForEntry(layer: layer, entry: entry) -
-        entry.startIndex;
-  }
-
-  int _effectiveEndIndexForEntry({
-    required Layer layer,
-    required _TimelineEntry entry,
-  }) {
-    final nextEntry = _nextEntryAfterStart(
-      layer: layer,
-      startIndex: entry.startIndex,
-    );
-    if (nextEntry != null) {
-      return nextEntry.startIndex;
-    }
-
-    final visibleTimelineEnd = authoredTimelineExtentFrameCount;
-    if (visibleTimelineEnd > entry.startIndex) {
-      return visibleTimelineEnd;
-    }
-
-    return _authoredEndIndex(layer: layer, entry: entry);
-  }
-
-  int _authoredEndIndex({required Layer layer, required _TimelineEntry entry}) {
-    if (entry.exposure.type == TimelineExposureType.blank) {
-      return entry.startIndex + 1;
-    }
-
-    final frameId = entry.exposure.frameId;
-    final frame = frameId == null
-        ? null
-        : _frameOrNull(layer: layer, frameId: frameId);
-    return entry.startIndex + _safeDuration(frame?.duration ?? 1);
-  }
-
-  SplayTreeMap<int, TimelineExposure> _shiftTimelineEntries(
-    SplayTreeMap<int, TimelineExposure> timeline,
-    Iterable<_TimelineEntry> entries,
-    int delta,
-  ) {
-    final movingIndexes = entries.map((entry) => entry.startIndex).toSet();
-    var foundCollision = true;
-    while (foundCollision) {
-      foundCollision = false;
-      for (final movingIndex in movingIndexes.toList(growable: false)) {
-        final nextStartIndex = movingIndex + delta;
-        if (nextStartIndex < 0) {
-          throw StateError('Timeline entry cannot move before index zero.');
-        }
-
-        if (timeline.containsKey(nextStartIndex) &&
-            !movingIndexes.contains(nextStartIndex)) {
-          movingIndexes.add(nextStartIndex);
-          foundCollision = true;
-        }
-      }
-    }
-
-    final entriesToMove =
-        movingIndexes
-            .map(
-              (startIndex) => _TimelineEntry(
-                startIndex: startIndex,
-                exposure: timeline[startIndex]!,
-              ),
-            )
-            .toList(growable: false)
-          ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(timeline)
-      ..removeWhere((index, _) => movingIndexes.contains(index));
-
-    for (final entry in entriesToMove) {
-      final nextStartIndex = entry.startIndex + delta;
-      if (nextTimeline.containsKey(nextStartIndex)) {
-        throw StateError(
-          'Timeline entry already exists at index $nextStartIndex.',
-        );
-      }
-      nextTimeline[nextStartIndex] = entry.exposure;
-    }
-    return nextTimeline;
-  }
-
   Frame? _frameOrNull({required Layer layer, required FrameId frameId}) {
     for (final frame in layer.frames) {
       if (frame.id == frameId) {
@@ -966,13 +809,4 @@ class TimelineController {
     }
     return null;
   }
-
-  int _safeDuration(int duration) => duration <= 0 ? 1 : duration;
-}
-
-class _TimelineEntry {
-  const _TimelineEntry({required this.startIndex, required this.exposure});
-
-  final int startIndex;
-  final TimelineExposure exposure;
 }

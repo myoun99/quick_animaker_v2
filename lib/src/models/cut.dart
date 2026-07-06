@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import 'canvas_size.dart';
+import 'cut_camera.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
@@ -12,7 +13,9 @@ class Cut {
     required this.duration,
     required this.canvasSize,
     this.metadata = const CutMetadata.empty(),
-  }) : layers = List.unmodifiable(layers);
+    CutCamera? camera,
+  }) : layers = List.unmodifiable(layers),
+       camera = camera ?? CutCamera.empty();
 
   final CutId id;
   final String name;
@@ -20,6 +23,7 @@ class Cut {
   final int duration;
   final CanvasSize canvasSize;
   final CutMetadata metadata;
+  final CutCamera camera;
 
   Cut copyWith({
     CutId? id,
@@ -28,6 +32,7 @@ class Cut {
     int? duration,
     CanvasSize? canvasSize,
     CutMetadata? metadata,
+    CutCamera? camera,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -36,6 +41,7 @@ class Cut {
       duration: duration ?? this.duration,
       canvasSize: canvasSize ?? this.canvasSize,
       metadata: metadata ?? this.metadata,
+      camera: camera ?? this.camera,
     );
   }
 
@@ -46,6 +52,7 @@ class Cut {
     'duration': duration,
     'canvasSize': canvasSize.toJson(),
     'metadata': metadata.toJson(),
+    'camera': camera.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -62,6 +69,9 @@ class Cut {
       metadata: json['metadata'] == null
           ? const CutMetadata.empty()
           : CutMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
+      camera: json['camera'] == null
+          ? null
+          : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
     );
   }
 
@@ -74,7 +84,8 @@ class Cut {
           listEquals(other.layers, layers) &&
           other.duration == duration &&
           other.canvasSize == canvasSize &&
-          other.metadata == metadata;
+          other.metadata == metadata &&
+          other.camera == camera;
 
   @override
   int get hashCode => Object.hash(
@@ -84,9 +95,10 @@ class Cut {
     duration,
     canvasSize,
     metadata,
+    camera,
   );
 
   @override
   String toString() =>
-      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata)';
+      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, camera: $camera)';
 }

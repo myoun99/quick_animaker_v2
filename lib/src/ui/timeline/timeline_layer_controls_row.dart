@@ -14,6 +14,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.sectionStart = false,
   });
 
   final Layer layer;
@@ -23,12 +24,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
+  /// Whether this row opens a new timesheet section (drawing/SE/camera);
+  /// draws a heavier divider along the rail row's top edge.
+  final bool sectionStart;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
 
-    return InkWell(
+    final row = InkWell(
       key: ValueKey<String>('timeline-layer-row-${layer.id}'),
       onTap: () => onSelectLayer(layer.id),
       child: Container(
@@ -101,29 +106,56 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
                 onPressed: () => onToggleLayerVisibility(layer.id),
               ),
-              SizedBox(
-                width: 64,
-                child: Slider(
-                  key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-                  min: 0,
-                  max: 1,
-                  value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                  onChanged: (opacity) =>
-                      onLayerOpacityChanged(layer.id, opacity),
+              // The camera track has no compositing opacity; hide the slider
+              // rather than offering a dead control.
+              if (layer.kind != LayerKind.camera) ...[
+                SizedBox(
+                  width: 64,
+                  child: Slider(
+                    key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged(layer.id, opacity),
+                  ),
                 ),
-              ),
-              SizedBox(
-                width: 34,
-                child: Text(
-                  '${(layer.opacity * 100).round()}%',
-                  textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.labelSmall,
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${(layer.opacity * 100).round()}%',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
       ),
+    );
+
+    if (!sectionStart) {
+      return row;
+    }
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          child: IgnorePointer(
+            child: Container(
+              key: ValueKey<String>(
+                'timeline-section-divider-rail-${layer.id}',
+              ),
+              color: colorScheme.outline,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -132,6 +164,7 @@ IconData _iconForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => Icons.brush_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
+    LayerKind.camera => Icons.videocam_outlined,
   };
 }
 
@@ -139,5 +172,6 @@ String _semanticLabelForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => 'Animation layer',
     LayerKind.storyboard => 'Storyboard layer',
+    LayerKind.camera => 'Camera layer',
   };
 }

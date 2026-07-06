@@ -6,21 +6,33 @@ class BrushPreset {
     required this.id,
     required this.name,
     required this.settings,
+    this.group,
   });
 
   final BrushPresetId id;
   final String name;
   final BrushSettings settings;
 
+  /// Library group the preset belongs to (e.g. the import source file's
+  /// base name, mirroring Clip Studio sub-tool groups). `null` means
+  /// ungrouped; the UI shows those under a default group.
+  final String? group;
+
+  static const Object _groupUnset = Object();
+
+  /// [group] accepts an explicit `null` to clear the group (move the preset
+  /// back to the default section); omitting it keeps the current group.
   BrushPreset copyWith({
     BrushPresetId? id,
     String? name,
     BrushSettings? settings,
+    Object? group = _groupUnset,
   }) {
     return BrushPreset(
       id: id ?? this.id,
       name: name ?? this.name,
       settings: settings ?? this.settings,
+      group: identical(group, _groupUnset) ? this.group : group as String?,
     );
   }
 
@@ -28,6 +40,7 @@ class BrushPreset {
     'id': id.toJson(),
     'name': name,
     'settings': settings.toJson(),
+    if (group != null) 'group': group,
   };
 
   factory BrushPreset.fromJson(Map<String, dynamic> json) {
@@ -37,6 +50,7 @@ class BrushPreset {
       settings: BrushSettings.fromJson(
         json['settings'] as Map<String, dynamic>,
       ),
+      group: json['group'] as String?,
     );
   }
 
@@ -46,11 +60,13 @@ class BrushPreset {
       other is BrushPreset &&
           other.id == id &&
           other.name == name &&
-          other.settings == settings;
+          other.settings == settings &&
+          other.group == group;
 
   @override
-  int get hashCode => Object.hash(id, name, settings);
+  int get hashCode => Object.hash(id, name, settings, group);
 
   @override
-  String toString() => 'BrushPreset(id: $id, name: $name, settings: $settings)';
+  String toString() =>
+      'BrushPreset(id: $id, name: $name, group: $group, settings: $settings)';
 }

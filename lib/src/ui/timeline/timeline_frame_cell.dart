@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -18,10 +19,17 @@ class TimelineFrameCell extends StatelessWidget {
     required this.exposureState,
     required this.selectedExposureRangeSegment,
     required this.exposureBlockSegment,
-    required this.hasMark,
+    this.emptyRunStart = false,
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.axis = Axis.horizontal,
+    this.width,
+    this.height,
+    this.cellKeyPrefix = 'timeline-cell',
+    this.selectedSemanticsKey = const ValueKey<String>(
+      'timeline-selected-cell',
+    ),
   });
 
   final Layer layer;
@@ -32,10 +40,28 @@ class TimelineFrameCell extends StatelessWidget {
   final TimelineCellExposureState exposureState;
   final bool selectedExposureRangeSegment;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
-  final bool hasMark;
+
+  /// Whether this cell opens an empty run — the timesheet X marks only the
+  /// FIRST cell of each empty stretch, like paper sheets.
+  final bool emptyRunStart;
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// The frame axis direction: horizontal in the layer timeline, vertical
+  /// in the X-sheet. Controls which edges of an exposure block round.
+  final Axis axis;
+
+  /// Cell dimensions; default to the horizontal timeline metrics.
+  final double? width;
+  final double? height;
+
+  /// Key namespace ('timeline-cell' / 'xsheet-cell') so both grids share
+  /// this widget while keeping their stable test keys.
+  final String cellKeyPrefix;
+
+  /// Semantics key marking the selected cell in this grid's namespace.
+  final ValueKey<String> selectedSemanticsKey;
 
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
@@ -71,47 +97,56 @@ class TimelineFrameCell extends StatelessWidget {
           )
         : cellBorderColor;
     final borderWidth = selected && !selectedExposureRangeSegment ? 3.0 : 1.0;
+    final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     return InkWell(
-      key: ValueKey<String>('timeline-cell-${layer.id}-$frameIndex'),
+      key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
       onTap: () {
         onSelectLayer(layer.id);
         onSelectFrame(frameIndex);
       },
       child: Container(
-        width: _metrics.frameCellWidth,
-        height: _metrics.layerRowHeight,
+        width: width ?? _metrics.frameCellWidth,
+        height: height ?? _metrics.layerRowHeight,
         alignment: Alignment.center,
         decoration: _timelineCellDecoration(
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: borderWidth,
           exposureBlockSegment: exposureBlockSegment,
+          axis: axis,
         ),
         child: Center(
           child: Semantics(
-            key: selected
-                ? const ValueKey<String>('timeline-selected-cell')
-                : null,
+            key: selected ? selectedSemanticsKey : null,
             child: Text(
               _markerForCell(
+                layer: layer,
                 exposureState: exposureState,
-                hasMark: hasMark,
+                emptyRunStart: emptyRunStart,
                 frameName: frameName,
+                outsidePlaybackRange: outsidePlaybackRange,
               ),
               semanticsLabel: _semanticsLabelForCell(
                 exposureState: exposureState,
-                hasMark: hasMark,
                 frameName: frameName,
               ),
               style: TextStyle(
-                color: outsidePlaybackRange
+                color: timelineCellUsesDrawingInk(exposureState)
+                    ? (outsidePlaybackRange
+                          ? timelineDrawingInkColor.withValues(alpha: 0.55)
+                          : timelineDrawingInkColor)
+                    : isEmptyX
+                    // The "X" only marks emptiness; keep it quiet.
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                    : outsidePlaybackRange
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
                     : selected
                     ? colorScheme.onPrimaryContainer
                     : colorScheme.onSurface,
                 fontWeight:
-                    hasMark || exposureState != TimelineCellExposureState.empty
+                    !isEmptyX &&
+                        exposureState != TimelineCellExposureState.held
                     ? FontWeight.bold
                     : null,
               ),
@@ -128,66 +163,74 @@ BoxDecoration _timelineCellDecoration({
   required Color borderColor,
   required double borderWidth,
   required TimelineExposureBlockVisualSegment exposureBlockSegment,
+  required Axis axis,
 }) {
   return BoxDecoration(
     color: backgroundColor,
     border: Border.all(color: borderColor, width: borderWidth),
-    borderRadius: _timelineCellBorderRadius(exposureBlockSegment),
+    borderRadius: _timelineCellBorderRadius(exposureBlockSegment, axis),
   );
 }
 
 BorderRadius? _timelineCellBorderRadius(
   TimelineExposureBlockVisualSegment exposureBlockSegment,
+  Axis axis,
 ) {
   if (!exposureBlockSegment.isBlock) {
     return null;
   }
 
   const blockRadius = Radius.circular(6);
-  return BorderRadius.horizontal(
-    left: exposureBlockSegment.continuesFromPrevious
-        ? Radius.zero
-        : blockRadius,
-    right: exposureBlockSegment.continuesToNext ? Radius.zero : blockRadius,
-  );
+  final startRadius = exposureBlockSegment.continuesFromPrevious
+      ? Radius.zero
+      : blockRadius;
+  final endRadius = exposureBlockSegment.continuesToNext
+      ? Radius.zero
+      : blockRadius;
+  return switch (axis) {
+    Axis.horizontal => BorderRadius.horizontal(
+      left: startRadius,
+      right: endRadius,
+    ),
+    Axis.vertical => BorderRadius.vertical(top: startRadius, bottom: endRadius),
+  };
 }
 
 String _markerForCell({
+  required Layer layer,
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
+  required bool emptyRunStart,
   String? frameName,
+  required bool outsidePlaybackRange,
 }) {
-  if (hasMark) {
-    return '●';
-  }
-
   return switch (exposureState) {
-    TimelineCellExposureState.empty => '',
+    // The timesheet "X": the FIRST cell of each empty run inside the
+    // playback range (paper-sheet style). Camera rows mirror keyframes,
+    // not cel exposure — no X there.
+    TimelineCellExposureState.uncovered =>
+      layer.kind == LayerKind.camera || outsidePlaybackRange || !emptyRunStart
+          ? ''
+          : 'X',
     TimelineCellExposureState.drawingStart =>
       frameName == null || frameName.isEmpty ? '○' : frameName,
-    TimelineCellExposureState.heldExposure => '',
-    TimelineCellExposureState.blankStart => 'X',
-    TimelineCellExposureState.blankHeld => '',
+    TimelineCellExposureState.held => '',
+    TimelineCellExposureState.markHeld ||
+    TimelineCellExposureState.markUncovered => '●',
   };
 }
 
 String? _semanticsLabelForCell({
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
   String? frameName,
 }) {
-  if (hasMark) {
-    return 'inbetween mark';
-  }
-
   return switch (exposureState) {
-    TimelineCellExposureState.empty => null,
+    TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>
       frameName == null || frameName.isEmpty
           ? 'drawing start'
           : 'drawing start $frameName',
-    TimelineCellExposureState.heldExposure => 'held exposure',
-    TimelineCellExposureState.blankStart => 'blank exposure start',
-    TimelineCellExposureState.blankHeld => 'blank held exposure',
+    TimelineCellExposureState.held => 'held exposure',
+    TimelineCellExposureState.markHeld ||
+    TimelineCellExposureState.markUncovered => 'inbetween mark',
   };
 }

@@ -6,7 +6,6 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 
 void main() {
   group('celLayerNameForIndex', () {
@@ -63,7 +62,7 @@ void main() {
     });
   });
 
-  test('createDefaultAnimationLayer creates blank exposure without frames', () {
+  test('createDefaultAnimationLayer creates an all-empty (X) layer', () {
     final cut = _cut(layers: [_layer('A'), _layer('B')]);
 
     final layer = createDefaultAnimationLayer(
@@ -74,7 +73,7 @@ void main() {
     expect(layer.name, 'C');
     expect(layer.kind, LayerKind.animation);
     expect(layer.frames, isEmpty);
-    expect(layer.timeline[0], const TimelineExposure.blank());
+    expect(layer.timeline, isEmpty);
   });
 }
 

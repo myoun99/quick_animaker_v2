@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'timeline_grid_metrics.dart';
+
+/// The playhead tint color, exported so tests can assert against it.
+const Color timelinePlayheadColor = AppColors.accent;
 
 class TimelinePlayhead extends StatelessWidget {
   const TimelinePlayhead({
@@ -11,6 +15,7 @@ class TimelinePlayhead extends StatelessWidget {
     required this.leadingFrameSpacerWidth,
     required this.metrics,
     required this.layerCount,
+    this.axis = Axis.horizontal,
   });
 
   final int currentFrameIndex;
@@ -20,12 +25,16 @@ class TimelinePlayhead extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final int layerCount;
 
+  /// The frame axis direction: a column tint in the horizontal timeline, a
+  /// row tint in the X-sheet. The offset math is shared.
+  final Axis axis;
+
   bool get _isCurrentFrameBuilt {
     return currentFrameIndex >= frameStartIndex &&
         currentFrameIndex < frameEndIndexExclusive;
   }
 
-  double get _left {
+  double get _mainAxisOffset {
     return leadingFrameSpacerWidth +
         ((currentFrameIndex - frameStartIndex) * metrics.frameCellWidth);
   }
@@ -40,7 +49,26 @@ class TimelinePlayhead extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    const playheadColor = Colors.red;
+    const playheadColor = timelinePlayheadColor;
+
+    if (axis == Axis.vertical) {
+      return IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              top: _mainAxisOffset,
+              left: 0,
+              right: 0,
+              child: Container(
+                key: const ValueKey<String>('timeline-playhead-column'),
+                height: metrics.frameCellWidth,
+                color: playheadColor.withValues(alpha: 0.18),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return IgnorePointer(
       child: SizedBox(
@@ -48,7 +76,7 @@ class TimelinePlayhead extends StatelessWidget {
         child: Stack(
           children: [
             Positioned(
-              left: _left,
+              left: _mainAxisOffset,
               top: 0,
               bottom: 0,
               child: Container(

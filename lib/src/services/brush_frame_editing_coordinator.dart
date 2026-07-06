@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/canvas_size.dart';
+import '../models/canvas_surface_state.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_edit_session_state.dart';
 import '../models/brush_frame_cache_invalidation.dart';
@@ -17,6 +19,7 @@ import '../models/undo_history_entry_id.dart';
 import '../models/undo_history_entry_kind.dart';
 import '../models/undo_payload_ref.dart';
 import '../models/unified_undo_history.dart';
+import 'bitmap_surface_brush_commit.dart';
 import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
@@ -45,13 +48,59 @@ class BrushFrameEditingCoordinator {
   UnifiedUndoHistory get undoHistory => _undoHistory;
   bool get canUndo => _undoHistory.undoStack.isNotEmpty;
   bool get canRedo => _undoHistory.redoStack.isNotEmpty;
-  BrushEditSessionState get activeSessionState =>
-      sessionStore.getOrCreate(_activeFrameKey);
+  BrushEditSessionState get activeSessionState => _sessionFor(_activeFrameKey);
 
   void selectFrame(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
-    sessionStore.getOrCreate(key);
+    _sessionFor(key);
     _activeFrameKey = key;
+  }
+
+  /// Adopts a new editing canvas size.
+  ///
+  /// Session surfaces and display caches are derived at the old size, so they
+  /// are dropped and rebuilt from the durable paint commands. Stroke
+  /// coordinates are untouched (top-left anchor): shrinking crops
+  /// non-destructively and growing extends with transparency, so resizing back
+  /// restores the original picture.
+  void resizeCanvas(CanvasSize canvasSize) {
+    if (canvasSize == sessionStore.canvasSize) {
+      return;
+    }
+    sessionStore.resizeCanvas(canvasSize);
+    frameStore.clearDisplayCaches();
+    _rebuildSessionFromCommands(_activeFrameKey);
+  }
+
+  BrushEditSessionState _sessionFor(BrushFrameKey key) {
+    return sessionStore.sessionOrNull(key) ?? _rebuildSessionFromCommands(key);
+  }
+
+  /// Replays the frame's visible paint commands into a fresh session surface
+  /// at the store's current canvas size. The bitmap materialization history
+  /// starts empty; undo/redo of older strokes falls back to a full replay.
+  BrushEditSessionState _rebuildSessionFromCommands(BrushFrameKey key) {
+    final blank = sessionStore.reset(key);
+    final commands =
+        frameStore.frameOrNull(key)?.allPaintCommandsInDisplayOrder ??
+        const <BrushPaintCommand>[];
+    if (commands.isEmpty) {
+      return blank;
+    }
+    var surface = blank.canvasState.currentSurface;
+    for (final command in commands) {
+      if (command.sourceDabs.isEmpty) {
+        continue;
+      }
+      surface = materializeBrushDabSequenceOnBitmapSurface(
+        surface: surface,
+        sequence: BrushDabSequence(command.sourceDabs),
+      ).surface;
+    }
+    return sessionStore.update(
+      key,
+      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+    );
   }
 
   /// Commits a finished stroke: stores the source dabs as the durable
@@ -127,7 +176,7 @@ class BrushFrameEditingCoordinator {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    final state = sessionStore.getOrCreate(key);
+    final state = _sessionFor(key);
     if (state.canUndo) {
       final result =
           undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
@@ -147,10 +196,14 @@ class BrushFrameEditingCoordinator {
         dirtyTiles: result.affectedEntry?.dirtyTiles,
       );
     } else {
+      // The bitmap materialization history no longer covers this entry (it is
+      // reset by a canvas resize), so revert the bitmap by replaying the
+      // remaining visible commands instead.
       frameStore.markPaintCommandHiddenByUndo(
         key,
         entry.payloadRef.paintCommandId,
       );
+      _rebuildSessionFromCommands(key);
       _invalidateBrushFrame(cacheInvalidationSink, key);
     }
     return entry;
@@ -166,7 +219,7 @@ class BrushFrameEditingCoordinator {
       return entry;
     }
     final key = entry.payloadRef.targetKey!;
-    final state = sessionStore.getOrCreate(key);
+    final state = _sessionFor(key);
     if (state.canRedo) {
       final result =
           redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
@@ -186,10 +239,13 @@ class BrushFrameEditingCoordinator {
         dirtyTiles: result.affectedEntry?.dirtyTiles,
       );
     } else {
+      // Same fallback as undo: replay visible commands when the bitmap
+      // materialization history cannot restore this entry.
       frameStore.restorePaintCommandFromUndo(
         key,
         entry.payloadRef.paintCommandId,
       );
+      _rebuildSessionFromCommands(key);
       _invalidateBrushFrame(cacheInvalidationSink, key);
     }
     return entry;

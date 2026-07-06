@@ -2,149 +2,97 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_block_visual.dart';
 
+/// Covered runs (start + holds + marks inside the hold) form drawing block
+/// visuals; uncovered cells never do, and a drawing start always begins a
+/// fresh block even when glued to the previous one.
 void main() {
-  group('calculateTimelineExposureBlockVisualSegment', () {
-    test('empty cells never become exposure blocks', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.drawingStart,
-        current: TimelineCellExposureState.empty,
-        next: TimelineCellExposureState.heldExposure,
-      );
+  TimelineExposureBlockVisualSegment segment({
+    TimelineCellExposureState? previous,
+    required TimelineCellExposureState current,
+    TimelineCellExposureState? next,
+  }) {
+    return calculateTimelineExposureBlockVisualSegment(
+      previous: previous,
+      current: current,
+      next: next,
+    );
+  }
 
-      expect(segment.kind, TimelineExposureBlockKind.none);
-      expect(segment.isBlock, isFalse);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
+  test('uncovered cells are not blocks', () {
+    expect(
+      segment(current: TimelineCellExposureState.uncovered).isBlock,
+      isFalse,
+    );
+    expect(
+      segment(current: TimelineCellExposureState.markUncovered).isBlock,
+      isFalse,
+    );
+  });
 
-    test('drawingStart connects to following held drawing cells only', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.heldExposure,
-        current: TimelineCellExposureState.drawingStart,
-        next: TimelineCellExposureState.heldExposure,
-      );
+  test('a single-frame drawing rounds on both sides', () {
+    final result = segment(
+      previous: TimelineCellExposureState.uncovered,
+      current: TimelineCellExposureState.drawingStart,
+      next: TimelineCellExposureState.uncovered,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.drawing);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isTrue);
-    });
+    expect(result.kind, TimelineExposureBlockKind.drawing);
+    expect(result.continuesFromPrevious, isFalse);
+    expect(result.continuesToNext, isFalse);
+  });
 
-    test('heldExposure connects to adjacent drawing exposure states', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.drawingStart,
-        current: TimelineCellExposureState.heldExposure,
-        next: TimelineCellExposureState.heldExposure,
-      );
+  test('held cells continue the block in both directions', () {
+    final result = segment(
+      previous: TimelineCellExposureState.drawingStart,
+      current: TimelineCellExposureState.held,
+      next: TimelineCellExposureState.held,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.drawing);
-      expect(segment.continuesFromPrevious, isTrue);
-      expect(segment.continuesToNext, isTrue);
-    });
+    expect(result.kind, TimelineExposureBlockKind.drawing);
+    expect(result.continuesFromPrevious, isTrue);
+    expect(result.continuesToNext, isTrue);
+  });
 
-    test('blankStart connects to following blank held cells only', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.blankHeld,
-        current: TimelineCellExposureState.blankStart,
-        next: TimelineCellExposureState.blankHeld,
-      );
+  test('marks inside a hold continue the block visual', () {
+    final result = segment(
+      previous: TimelineCellExposureState.held,
+      current: TimelineCellExposureState.markHeld,
+      next: TimelineCellExposureState.held,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.blank);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isTrue);
-    });
+    expect(result.kind, TimelineExposureBlockKind.drawing);
+    expect(result.continuesFromPrevious, isTrue);
+    expect(result.continuesToNext, isTrue);
+  });
 
-    test('blankHeld connects to adjacent blank exposure states', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.blankStart,
-        current: TimelineCellExposureState.blankHeld,
-        next: TimelineCellExposureState.blankHeld,
-      );
+  test('a glued next drawing start ends the current block visual', () {
+    final result = segment(
+      previous: TimelineCellExposureState.held,
+      current: TimelineCellExposureState.held,
+      next: TimelineCellExposureState.drawingStart,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.blank);
-      expect(segment.continuesFromPrevious, isTrue);
-      expect(segment.continuesToNext, isTrue);
-    });
+    expect(result.continuesToNext, isFalse);
+  });
 
-    test('different exposure kinds do not connect visually', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.blankStart,
-        current: TimelineCellExposureState.heldExposure,
-        next: TimelineCellExposureState.blankHeld,
-      );
+  test('a drawing start never continues from the previous block', () {
+    final result = segment(
+      previous: TimelineCellExposureState.held,
+      current: TimelineCellExposureState.drawingStart,
+      next: TimelineCellExposureState.held,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.drawing);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
+    expect(result.continuesFromPrevious, isFalse);
+    expect(result.continuesToNext, isTrue);
+  });
 
-    test('heldExposure followed by drawingStart does not connect forward', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.drawingStart,
-        current: TimelineCellExposureState.heldExposure,
-        next: TimelineCellExposureState.drawingStart,
-      );
+  test('block ends at the coverage boundary before empty cells', () {
+    final result = segment(
+      previous: TimelineCellExposureState.drawingStart,
+      current: TimelineCellExposureState.held,
+      next: TimelineCellExposureState.uncovered,
+    );
 
-      expect(segment.kind, TimelineExposureBlockKind.drawing);
-      expect(segment.continuesFromPrevious, isTrue);
-      expect(segment.continuesToNext, isFalse);
-    });
-
-    test('drawingStart preceded by heldExposure does not connect backward', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.heldExposure,
-        current: TimelineCellExposureState.drawingStart,
-        next: TimelineCellExposureState.empty,
-      );
-
-      expect(segment.kind, TimelineExposureBlockKind.drawing);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
-
-    test('blankHeld followed by blankStart does not connect forward', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.blankStart,
-        current: TimelineCellExposureState.blankHeld,
-        next: TimelineCellExposureState.blankStart,
-      );
-
-      expect(segment.kind, TimelineExposureBlockKind.blank);
-      expect(segment.continuesFromPrevious, isTrue);
-      expect(segment.continuesToNext, isFalse);
-    });
-
-    test('blankStart preceded by blankHeld does not connect backward', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.blankHeld,
-        current: TimelineCellExposureState.blankStart,
-        next: TimelineCellExposureState.empty,
-      );
-
-      expect(segment.kind, TimelineExposureBlockKind.blank);
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
-
-    test('single drawingStart has both sides rounded', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.empty,
-        current: TimelineCellExposureState.drawingStart,
-        next: TimelineCellExposureState.empty,
-      );
-
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
-
-    test('single blankStart has both sides rounded', () {
-      final segment = calculateTimelineExposureBlockVisualSegment(
-        previous: TimelineCellExposureState.empty,
-        current: TimelineCellExposureState.blankStart,
-        next: TimelineCellExposureState.empty,
-      );
-
-      expect(segment.continuesFromPrevious, isFalse);
-      expect(segment.continuesToNext, isFalse);
-    });
+    expect(result.continuesToNext, isFalse);
   });
 }

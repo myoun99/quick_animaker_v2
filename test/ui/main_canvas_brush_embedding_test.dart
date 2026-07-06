@@ -14,7 +14,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -44,14 +43,14 @@ void main() {
     );
     expect(find.byType(MainCanvasBrushHost), findsOneWidget);
     expect(find.textContaining('Active strokes:'), findsNothing);
-    expect(find.text('Undo'), findsOneWidget);
-    expect(find.text('Redo'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
     expect(find.text('Project Undo'), findsNothing);
     expect(find.text('Project Redo'), findsNothing);
   });
 
   testWidgets(
-    'production brush host shows empty-selection placeholder without active drawing frame',
+    'production brush host shows the blank canvas without active drawing frame',
     (tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
       await tester.pumpAndSettle();
@@ -61,17 +60,15 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
+      // The panel and its paper stay visible; only brush INPUT requires a
+      // selected frame.
+      expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(
         find.byKey(
-          const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+          const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
         ),
         findsOneWidget,
       );
-      expect(
-        find.text('Select a layer and frame to edit with Brush.'),
-        findsOneWidget,
-      );
-      expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-default-frame')),
@@ -161,7 +158,7 @@ void main() {
     },
   );
 
-  testWidgets('marked named frame title keeps frame name and appends mark', (
+  testWidgets('named drawing start title shows the frame name', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -175,20 +172,14 @@ void main() {
 
     expect(
       find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material ●',
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material',
       ),
       findsOneWidget,
-    );
-    expect(
-      find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
-      ),
-      findsNothing,
     );
   });
 
   testWidgets(
-    'marked unnamed drawing title keeps unnamed display label and appends mark',
+    'unnamed drawing start title shows the drawing marker',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
@@ -197,15 +188,9 @@ void main() {
 
       expect(
         find.text(
-          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○ ●',
+          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○',
         ),
         findsOneWidget,
-      );
-      expect(
-        find.text(
-          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
-        ),
-        findsNothing,
       );
     },
   );
@@ -601,9 +586,8 @@ Project _projectWithMarkedFrame({String? name}) {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('marked-frame')),
+                  0: TimelineExposure.drawing(const FrameId('marked-frame'), length: 1),
                 },
-                marks: const {0: TimelineMark.inbetween()},
               ),
             ],
           ),
@@ -641,7 +625,7 @@ Project _projectWithActiveFrame() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('editor-frame-1')),
+                  0: TimelineExposure.drawing(const FrameId('editor-frame-1'), length: 1),
                 },
               ),
             ],

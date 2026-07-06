@@ -3,17 +3,26 @@ import 'package:flutter/material.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
+import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_scale.dart';
 
-class StoryboardPanel extends StatelessWidget {
+class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
     required this.project,
     required this.activeCutId,
     required this.onCutSelected,
+    this.onNewCut,
+    this.onRenameActiveCut,
+    this.onEditActiveCutNote,
+    this.onResizeActiveCutCanvas,
+    this.onDuplicateActiveCut,
+    this.onMoveActiveCutLeft,
+    this.onMoveActiveCutRight,
+    this.onDeleteActiveCut,
   });
 
   static const TimelineScale _timelineScale = TimelineScale();
@@ -25,10 +34,46 @@ class StoryboardPanel extends StatelessWidget {
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
 
+  // Cut management actions (the storyboard owns cut lifecycle; these were
+  // the temporary top-toolbar controls). All act on the active cut.
+  final VoidCallback? onNewCut;
+  final VoidCallback? onRenameActiveCut;
+  final VoidCallback? onEditActiveCutNote;
+  final VoidCallback? onResizeActiveCutCanvas;
+  final VoidCallback? onDuplicateActiveCut;
+  final VoidCallback? onMoveActiveCutLeft;
+  final VoidCallback? onMoveActiveCutRight;
+  final VoidCallback? onDeleteActiveCut;
+
+  bool get _hasCutActions =>
+      onNewCut != null ||
+      onRenameActiveCut != null ||
+      onEditActiveCutNote != null ||
+      onResizeActiveCutCanvas != null ||
+      onDuplicateActiveCut != null ||
+      onMoveActiveCutLeft != null ||
+      onMoveActiveCutRight != null ||
+      onDeleteActiveCut != null;
+
+  @override
+  State<StoryboardPanel> createState() => _StoryboardPanelState();
+}
+
+class _StoryboardPanelState extends State<StoryboardPanel> {
+  final ScrollController _verticalController = ScrollController();
+  final ScrollController _horizontalController = ScrollController();
+
+  @override
+  void dispose() {
+    _verticalController.dispose();
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final layoutEntries = buildStoryboardTimelineLayout(project);
+    final layoutEntries = buildStoryboardTimelineLayout(widget.project);
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -39,74 +84,187 @@ class StoryboardPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(6),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'STORYBOARD',
-              key: const ValueKey<String>('storyboard-panel-title'),
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  key: const ValueKey<String>('storyboard-track-label-rail'),
-                  width: _trackLabelWidth,
-                  child: Column(
+            if (widget._hasCutActions)
+              _StoryboardCutActionsToolbar(panel: widget),
+            Expanded(
+              child: PanelScrollbar(
+                controller: _verticalController,
+                child: SingleChildScrollView(
+                  key: const ValueKey<String>('storyboard-vertical-viewport'),
+                  controller: _verticalController,
+                  padding: const EdgeInsets.only(right: panelScrollbarGutter),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (
-                        var index = 0;
-                        index < project.tracks.length;
-                        index++
-                      )
-                        _StoryboardTrackLabel(
-                          track: project.tracks[index],
-                          trackLabel: 'V${index + 1}',
+                      SizedBox(
+                        key: const ValueKey<String>(
+                          'storyboard-track-label-rail',
                         ),
+                        width: StoryboardPanel._trackLabelWidth,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (
+                              var index = 0;
+                              index < widget.project.tracks.length;
+                              index++
+                            )
+                              _StoryboardTrackLabel(
+                                track: widget.project.tracks[index],
+                                trackLabel: 'V${index + 1}',
+                              ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: PanelScrollbar(
+                          controller: _horizontalController,
+                          child: SingleChildScrollView(
+                            key: const ValueKey<String>(
+                              'storyboard-timeline-horizontal-viewport',
+                            ),
+                            controller: _horizontalController,
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(
+                              bottom: panelScrollbarGutter,
+                            ),
+                            child: Column(
+                              key: const ValueKey<String>(
+                                'storyboard-timeline-scroll-content',
+                              ),
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < widget.project.tracks.length;
+                                  index++
+                                )
+                                  _StoryboardTrackRow(
+                                    track: widget.project.tracks[index],
+                                    layoutEntries: layoutEntries
+                                        .where(
+                                          (entry) => entry.trackIndex == index,
+                                        )
+                                        .toList(growable: false),
+                                    activeCutId: widget.activeCutId,
+                                    onCutSelected: widget.onCutSelected,
+                                    timelineScale:
+                                        StoryboardPanel._timelineScale,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    key: const ValueKey<String>(
-                      'storyboard-timeline-horizontal-viewport',
-                    ),
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      key: const ValueKey<String>(
-                        'storyboard-timeline-scroll-content',
-                      ),
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (
-                          var index = 0;
-                          index < project.tracks.length;
-                          index++
-                        )
-                          _StoryboardTrackRow(
-                            track: project.tracks[index],
-                            layoutEntries: layoutEntries
-                                .where((entry) => entry.trackIndex == index)
-                                .toList(growable: false),
-                            activeCutId: activeCutId,
-                            onCutSelected: onCutSelected,
-                            timelineScale: _timelineScale,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The compact cut-management toolbar at the top of the storyboard: the
+/// storyboard owns the cut lifecycle, so new/rename/note/canvas/duplicate/
+/// move/delete live here (icon-only with tooltips, acting on the active
+/// cut).
+class _StoryboardCutActionsToolbar extends StatelessWidget {
+  const _StoryboardCutActionsToolbar({required this.panel});
+
+  final StoryboardPanel panel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: SingleChildScrollView(
+        key: const ValueKey<String>('storyboard-cut-actions'),
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _CutActionButton(
+              key: const ValueKey<String>('new-cut-button'),
+              tooltip: 'New Cut',
+              icon: Icons.add,
+              onPressed: panel.onNewCut,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('rename-cut-button'),
+              tooltip: 'Rename Cut',
+              icon: Icons.edit_outlined,
+              onPressed: panel.onRenameActiveCut,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('edit-cut-note-button'),
+              tooltip: 'Edit Cut Note',
+              icon: Icons.note_alt_outlined,
+              onPressed: panel.onEditActiveCutNote,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('resize-cut-canvas-button'),
+              tooltip: 'Canvas Size',
+              icon: Icons.aspect_ratio,
+              onPressed: panel.onResizeActiveCutCanvas,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('duplicate-cut-button'),
+              tooltip: 'Duplicate Cut',
+              icon: Icons.content_copy,
+              onPressed: panel.onDuplicateActiveCut,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('move-cut-left-button'),
+              tooltip: 'Move Cut Left',
+              icon: Icons.chevron_left,
+              onPressed: panel.onMoveActiveCutLeft,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('move-cut-right-button'),
+              tooltip: 'Move Cut Right',
+              icon: Icons.chevron_right,
+              onPressed: panel.onMoveActiveCutRight,
+            ),
+            _CutActionButton(
+              key: const ValueKey<String>('delete-cut-button'),
+              tooltip: 'Delete Cut',
+              icon: Icons.delete_outline,
+              onPressed: panel.onDeleteActiveCut,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CutActionButton extends StatelessWidget {
+  const _CutActionButton({
+    required super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 18,
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

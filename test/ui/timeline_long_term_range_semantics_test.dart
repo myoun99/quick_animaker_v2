@@ -85,7 +85,7 @@ void main() {
         final fixture = _fixture(
           cutDuration: 3,
           layer: _layer(
-            timeline: {0: TimelineExposure.drawing(const FrameId('head'))},
+            timeline: {0: TimelineExposure.drawing(const FrameId('head'), length: 1)},
           ),
         );
 
@@ -171,8 +171,8 @@ Layer _layer({Map<int, TimelineExposure>? timeline}) {
     timeline:
         timeline ??
         {
-          0: TimelineExposure.drawing(const FrameId('head')),
-          10: TimelineExposure.drawing(const FrameId('late')),
+          0: TimelineExposure.drawing(const FrameId('head'), length: 1),
+          10: TimelineExposure.drawing(const FrameId('late'), length: 1),
         },
   );
 }
@@ -242,7 +242,7 @@ class _TimelineRangeFixture {
           return latest;
         });
     if (activeExposureStart == null) {
-      return TimelineCellExposureState.empty;
+      return TimelineCellExposureState.uncovered;
     }
 
     final activeExposure = layer.timeline[activeExposureStart]!;
@@ -251,9 +251,9 @@ class _TimelineRangeFixture {
     );
     final exposureEndExclusive = activeExposureStart + frame.duration;
     if (frameIndex < exposureEndExclusive) {
-      return TimelineCellExposureState.heldExposure;
+      return TimelineCellExposureState.held;
     }
-    return TimelineCellExposureState.empty;
+    return TimelineCellExposureState.uncovered;
   }
 
   String? frameNameForLayer(Layer layer, int frameIndex) {

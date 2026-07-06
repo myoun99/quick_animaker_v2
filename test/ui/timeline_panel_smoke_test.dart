@@ -150,7 +150,7 @@ Widget _panel({
           playbackFrameCount: cut.duration,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 0
               ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.empty,
+              : TimelineCellExposureState.uncovered,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
           onAddLayer: onAddLayer ?? () {},

@@ -11,30 +11,19 @@ typedef CutReorderedCallback =
       required int targetCutIndex,
     });
 
+/// The quick cut switcher strip: one chip per cut (tap selects, drag
+/// reorders). Cut management ACTIONS (new/rename/note/canvas/duplicate/
+/// move/delete) live in the storyboard panel's toolbar, not here.
 class CutListBar extends StatelessWidget {
   const CutListBar({
     super.key,
     required this.entries,
     this.onCutSelected,
-    this.onNewCut,
-    this.onRenameActiveCut,
-    this.onEditActiveCutNote,
-    this.onDuplicateActiveCut,
-    this.onMoveActiveCutLeft,
-    this.onMoveActiveCutRight,
-    this.onDeleteActiveCut,
     this.onCutReordered,
   });
 
   final List<CutListEntry> entries;
   final ValueChanged<CutId>? onCutSelected;
-  final VoidCallback? onNewCut;
-  final VoidCallback? onRenameActiveCut;
-  final VoidCallback? onEditActiveCutNote;
-  final VoidCallback? onDuplicateActiveCut;
-  final VoidCallback? onMoveActiveCutLeft;
-  final VoidCallback? onMoveActiveCutRight;
-  final VoidCallback? onDeleteActiveCut;
   final CutReorderedCallback? onCutReordered;
 
   @override
@@ -57,11 +46,10 @@ class CutListBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Cuts:',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            Icon(
+              Icons.local_movies_outlined,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 6),
             for (var index = 0; index < entries.length; index += 1) ...[
@@ -73,65 +61,11 @@ class CutListBar extends StatelessWidget {
               ),
               if (index < entries.length - 1) const SizedBox(width: 4),
             ],
-            if (_hasCommandActions) ...[
-              const SizedBox(width: 6),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('new-cut-button'),
-                tooltip: 'New Cut',
-                icon: Icons.add,
-                onPressed: onNewCut,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('rename-cut-button'),
-                tooltip: 'Rename Cut',
-                icon: Icons.edit_outlined,
-                onPressed: onRenameActiveCut,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('edit-cut-note-button'),
-                tooltip: 'Edit Cut Note',
-                icon: Icons.note_alt_outlined,
-                onPressed: onEditActiveCutNote,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('duplicate-cut-button'),
-                tooltip: 'Duplicate Cut',
-                icon: Icons.content_copy,
-                onPressed: onDuplicateActiveCut,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('move-cut-left-button'),
-                tooltip: 'Move Cut Left',
-                icon: Icons.chevron_left,
-                onPressed: onMoveActiveCutLeft,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('move-cut-right-button'),
-                tooltip: 'Move Cut Right',
-                icon: Icons.chevron_right,
-                onPressed: onMoveActiveCutRight,
-              ),
-              _CutCommandIconButton(
-                key: const ValueKey<String>('delete-cut-button'),
-                tooltip: 'Delete Cut',
-                icon: Icons.delete_outline,
-                onPressed: onDeleteActiveCut,
-              ),
-            ],
           ],
         ),
       ),
     );
   }
-
-  bool get _hasCommandActions =>
-      onNewCut != null ||
-      onRenameActiveCut != null ||
-      onEditActiveCutNote != null ||
-      onDuplicateActiveCut != null ||
-      onMoveActiveCutLeft != null ||
-      onMoveActiveCutRight != null ||
-      onDeleteActiveCut != null;
 }
 
 class _ReorderableCutListChip extends StatelessWidget {
@@ -194,32 +128,6 @@ class _ReorderableCutListChip extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _CutCommandIconButton extends StatelessWidget {
-  const _CutCommandIconButton({
-    required super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon),
-      iconSize: 18,
-      padding: const EdgeInsets.all(4),
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      visualDensity: VisualDensity.compact,
     );
   }
 }

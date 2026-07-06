@@ -15,7 +15,6 @@ import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 
 void main() {
   group('duplicateCutAsIndependentCopy', () {
@@ -78,24 +77,22 @@ void main() {
       expect(duplicate.layers[0].timeline.keys, orderedEquals([0, 3, 5, 7]));
       expect(
         duplicate.layers[0].timeline[0],
-        TimelineExposure.drawing(const FrameId('frame-copy-a')),
+        TimelineExposure.drawing(const FrameId('frame-copy-a'), length: 3),
       );
-      expect(duplicate.layers[0].timeline[3], const TimelineExposure.blank());
+      expect(duplicate.layers[0].timeline[3], const TimelineExposure.mark());
       expect(
         duplicate.layers[0].timeline[5],
-        TimelineExposure.drawing(const FrameId('frame-copy-b')),
+        TimelineExposure.drawing(const FrameId('frame-copy-b'), length: 2),
       );
       expect(
         duplicate.layers[0].timeline[7],
-        TimelineExposure.drawing(const FrameId('frame-copy-a')),
+        TimelineExposure.drawing(const FrameId('frame-copy-a'), length: 1),
       );
       expect(duplicate.layers[1].timeline.keys, orderedEquals([2]));
       expect(
         duplicate.layers[1].timeline[2],
-        TimelineExposure.drawing(const FrameId('frame-copy-c')),
+        TimelineExposure.drawing(const FrameId('frame-copy-c'), length: 1),
       );
-      expect(duplicate.layers[0].marks, source.layers[0].marks);
-      expect(duplicate.layers[1].marks, source.layers[1].marks);
     });
 
     test('preserves source metadata', () {
@@ -287,7 +284,7 @@ void main() {
               ),
             ],
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('missing-frame')),
+              0: TimelineExposure.drawing(const FrameId('missing-frame'), length: 1),
             },
           ),
         ],
@@ -327,12 +324,11 @@ Cut _sourceCut() {
           Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('frame-a')),
-          3: const TimelineExposure.blank(),
-          5: TimelineExposure.drawing(const FrameId('frame-b')),
-          7: TimelineExposure.drawing(const FrameId('frame-a')),
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 3),
+          3: const TimelineExposure.mark(),
+          5: TimelineExposure.drawing(const FrameId('frame-b'), length: 2),
+          7: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
         },
-        marks: const {3: TimelineMark.inbetween()},
         isVisible: false,
         opacity: 0.5,
       ),
@@ -352,7 +348,7 @@ Cut _sourceCut() {
             ),
           ),
         ],
-        timeline: {2: TimelineExposure.drawing(const FrameId('frame-c'))},
+        timeline: {2: TimelineExposure.drawing(const FrameId('frame-c'), length: 1)},
         isVisible: true,
         opacity: 0.75,
         kind: LayerKind.storyboard,

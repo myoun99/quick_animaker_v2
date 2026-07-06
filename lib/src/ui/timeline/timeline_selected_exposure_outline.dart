@@ -15,6 +15,7 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
     required this.rowHeight,
     required this.borderColor,
     required this.borderRadius,
+    this.axis = Axis.horizontal,
   });
 
   final LayerId layerId;
@@ -22,9 +23,15 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
   final int frameStartIndex;
   final double leadingFrameSpacerWidth;
   final double frameCellWidth;
+
+  /// Cross-axis extent of the outlined run (row height in the horizontal
+  /// timeline, column width in the X-sheet).
   final double rowHeight;
   final Color borderColor;
   final BorderRadius borderRadius;
+
+  /// The frame axis direction; the offset math is shared and transposed.
+  final Axis axis;
 
   @override
   Widget build(BuildContext context) {
@@ -32,32 +39,48 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final mainAxisOffset = frameVisibleX(
+      frameIndex: displayRange.visibleStartFrameIndex,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellWidth,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final mainAxisExtent = frameRangeVisibleWidth(
+      startFrameIndex: displayRange.visibleStartFrameIndex,
+      endFrameIndexExclusive: displayRange.visibleEndFrameIndexExclusive,
+      frameCellWidth: frameCellWidth,
+    );
+    final outline = IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          border: Border.all(color: borderColor, width: 2),
+          borderRadius: borderRadius,
+        ),
+      ),
+    );
+
+    if (axis == Axis.vertical) {
+      return Positioned(
+        key: ValueKey<String>(
+          'timeline-selected-exposure-range-outline-$layerId',
+        ),
+        top: mainAxisOffset,
+        left: 0,
+        height: mainAxisExtent,
+        width: rowHeight,
+        child: outline,
+      );
+    }
     return Positioned(
       key: ValueKey<String>(
         'timeline-selected-exposure-range-outline-$layerId',
       ),
-      left: frameVisibleX(
-        frameIndex: displayRange.visibleStartFrameIndex,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellWidth,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      ),
+      left: mainAxisOffset,
       top: 0,
-      width: frameRangeVisibleWidth(
-        startFrameIndex: displayRange.visibleStartFrameIndex,
-        endFrameIndexExclusive: displayRange.visibleEndFrameIndexExclusive,
-        frameCellWidth: frameCellWidth,
-      ),
+      width: mainAxisExtent,
       height: rowHeight,
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            border: Border.all(color: borderColor, width: 2),
-            borderRadius: borderRadius,
-          ),
-        ),
-      ),
+      child: outline,
     );
   }
 }

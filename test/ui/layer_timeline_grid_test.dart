@@ -10,14 +10,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
-
-bool _isGray(Color color) {
-  final value = color.toARGB32();
-  final red = (value >> 16) & 0xff;
-  final green = (value >> 8) & 0xff;
-  final blue = value & 0xff;
-  return red == green && green == blue;
-}
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_playhead.dart';
 
 final Matcher _isInsideTestRoot = isA<Rect>()
     .having((rect) => rect.left, 'left', greaterThanOrEqualTo(0))
@@ -835,12 +828,12 @@ void main() {
           playbackFrameCount: 12,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               10 => TimelineCellExposureState.drawingStart,
-              11 || 12 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              11 || 12 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -859,12 +852,12 @@ void main() {
           playbackFrameCount: 12,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               10 => TimelineCellExposureState.drawingStart,
-              11 || 12 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              11 || 12 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -932,7 +925,7 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.empty,
+              : TimelineCellExposureState.uncovered,
           frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
         ),
       );
@@ -957,7 +950,7 @@ void main() {
           playbackFrameCount: 5,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.empty,
+              : TimelineCellExposureState.uncovered,
           frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
         ),
       );
@@ -979,7 +972,7 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 45
               ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.empty,
+              : TimelineCellExposureState.uncovered,
           frameNameForLayer: (_, frameIndex) => frameIndex == 45 ? 'A45' : null,
         ),
       );
@@ -1222,7 +1215,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -1234,41 +1227,42 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.heldExposure
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.held
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
-  testWidgets('blank start shows X with low-emphasis background', (
+  testWidgets('only the first cell of an empty run shows the timesheet X', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.blankStart
-            : TimelineCellExposureState.empty,
-      ),
-    );
+    await tester.pumpWidget(_grid());
 
-    expect(find.text('X'), findsOneWidget);
-    expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
+    final runStart = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-2-0'),
+    );
+    final runBody = find.byKey(
+      const ValueKey<String>('timeline-cell-layer-2-2'),
+    );
+    expect(
+      find.descendant(of: runStart, matching: find.text('X')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: runBody, matching: find.text('X')),
+      findsNothing,
+    );
   });
 
-  testWidgets('shows inbetween mark with priority over exposure marker', (
-    tester,
-  ) async {
+  testWidgets('shows inbetween mark inside a hold', (tester) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -1278,15 +1272,13 @@ void main() {
     expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
   });
 
-  testWidgets('shows inbetween mark on blank held cell', (tester) async {
+  testWidgets('shows inbetween mark on an empty cell', (tester) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.blankHeld
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markUncovered
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -1294,7 +1286,7 @@ void main() {
     expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
   });
 
-  testWidgets('empty cells stay blank', (tester) async {
+  testWidgets('empty cells show no drawing markers', (tester) async {
     await tester.pumpWidget(_grid());
 
     expect(find.text('○'), findsNothing);
@@ -1379,7 +1371,7 @@ void main() {
     expect(tester.getSize(column), const Size(48, 104));
 
     final container = tester.widget<Container>(column);
-    expect(container.color, Colors.red.withValues(alpha: 0.18));
+    expect(container.color, timelinePlayheadColor.withValues(alpha: 0.18));
     expect(container.decoration, isNull);
   });
 
@@ -1456,7 +1448,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -1475,10 +1467,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -1522,7 +1512,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
     var cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
@@ -1532,8 +1522,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.blankStart
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.uncovered
+            : TimelineCellExposureState.uncovered,
       ),
     );
     cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
@@ -1544,7 +1534,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? 'A1'
@@ -1562,10 +1552,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? 'A1'
@@ -1585,8 +1573,8 @@ void main() {
       _grid(
         exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
           0 => TimelineCellExposureState.drawingStart,
-          1 || 2 => TimelineCellExposureState.heldExposure,
-          _ => TimelineCellExposureState.empty,
+          1 || 2 => TimelineCellExposureState.held,
+          _ => TimelineCellExposureState.uncovered,
         },
       ),
     );
@@ -1616,15 +1604,15 @@ void main() {
     );
   });
 
-  testWidgets('blank exposure cells keep divider-safe block radius rules', (
+  testWidgets('block cells keep divider-safe radius rules', (
     tester,
   ) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
-          4 => TimelineCellExposureState.blankStart,
-          5 || 6 => TimelineCellExposureState.blankHeld,
-          _ => TimelineCellExposureState.empty,
+          4 => TimelineCellExposureState.drawingStart,
+          5 || 6 => TimelineCellExposureState.held,
+          _ => TimelineCellExposureState.uncovered,
         },
       ),
     );
@@ -1656,12 +1644,12 @@ void main() {
           currentFrameIndex: 0,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               0 => TimelineCellExposureState.drawingStart,
-              1 || 2 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              1 || 2 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1680,12 +1668,12 @@ void main() {
           currentFrameIndex: 2,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               0 => TimelineCellExposureState.drawingStart,
-              1 || 2 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              1 || 2 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1696,19 +1684,19 @@ void main() {
   );
 
   testWidgets(
-    'selecting blankStart highlights the active blank exposure range',
+    'selecting a block start highlights its exposure range',
     (tester) async {
       await tester.pumpWidget(
         _grid(
           currentFrameIndex: 4,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
-              4 => TimelineCellExposureState.blankStart,
-              5 || 6 => TimelineCellExposureState.blankHeld,
-              _ => TimelineCellExposureState.empty,
+              4 => TimelineCellExposureState.drawingStart,
+          5 || 6 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1720,19 +1708,19 @@ void main() {
   );
 
   testWidgets(
-    'selecting blankHeld resolves back to the active blank start range',
+    'selecting a held cell resolves back to its block range',
     (tester) async {
       await tester.pumpWidget(
         _grid(
           currentFrameIndex: 6,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
-              4 => TimelineCellExposureState.blankStart,
-              5 || 6 => TimelineCellExposureState.blankHeld,
-              _ => TimelineCellExposureState.empty,
+              4 => TimelineCellExposureState.drawingStart,
+          5 || 6 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1751,7 +1739,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -1776,11 +1764,11 @@ void main() {
           if (layer.id == const LayerId('layer-2')) {
             return switch (frameIndex) {
               1 => TimelineCellExposureState.drawingStart,
-              2 || 3 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              2 || 3 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           }
-          return TimelineCellExposureState.empty;
+          return TimelineCellExposureState.uncovered;
         },
       ),
     );
@@ -1807,12 +1795,12 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               45 => TimelineCellExposureState.drawingStart,
-              46 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              46 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1850,12 +1838,12 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               26 => TimelineCellExposureState.drawingStart,
-              >= 27 && <= 47 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              >= 27 && <= 47 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1890,12 +1878,12 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
-              2 => TimelineCellExposureState.blankStart,
-              >= 3 && <= 47 => TimelineCellExposureState.blankHeld,
-              _ => TimelineCellExposureState.empty,
+              2 => TimelineCellExposureState.drawingStart,
+              >= 3 && <= 47 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1916,12 +1904,12 @@ void main() {
           playbackFrameCount: 100,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               6 => TimelineCellExposureState.drawingStart,
-              >= 7 && <= 20 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              >= 7 && <= 20 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1947,7 +1935,7 @@ void main() {
   );
 
   testWidgets(
-    'selected held and blank held exposure outlines survive horizontal virtualization',
+    'selected held exposure outlines survive horizontal virtualization',
     (tester) async {
       await tester.pumpWidget(
         _grid(
@@ -1955,12 +1943,12 @@ void main() {
           playbackFrameCount: 100,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               12 => TimelineCellExposureState.drawingStart,
-              >= 13 && <= 24 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              >= 13 && <= 24 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -1988,12 +1976,12 @@ void main() {
           playbackFrameCount: 100,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
-              12 => TimelineCellExposureState.blankStart,
-              >= 13 && <= 24 => TimelineCellExposureState.blankHeld,
-              _ => TimelineCellExposureState.empty,
+              12 => TimelineCellExposureState.drawingStart,
+              >= 13 && <= 24 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -2022,12 +2010,12 @@ void main() {
           playbackFrameCount: 100,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               6 => TimelineCellExposureState.drawingStart,
-              >= 7 && <= 10 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              >= 7 && <= 10 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -2059,12 +2047,12 @@ void main() {
         playbackFrameCount: 24,
         exposureStateForLayer: (layer, frameIndex) {
           if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.empty;
+            return TimelineCellExposureState.uncovered;
           }
           return switch (frameIndex) {
             28 => TimelineCellExposureState.drawingStart,
-            >= 29 && <= 32 => TimelineCellExposureState.heldExposure,
-            _ => TimelineCellExposureState.empty,
+            >= 29 && <= 32 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
           };
         },
       ),
@@ -2097,12 +2085,12 @@ void main() {
         currentFrameIndex: 2,
         exposureStateForLayer: (layer, frameIndex) {
           if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.empty;
+            return TimelineCellExposureState.uncovered;
           }
           return switch (frameIndex) {
             2 => TimelineCellExposureState.drawingStart,
-            3 || 4 => TimelineCellExposureState.heldExposure,
-            _ => TimelineCellExposureState.empty,
+            3 || 4 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
           };
         },
       ),
@@ -2143,14 +2131,14 @@ void main() {
           currentFrameIndex: 10,
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               6 => TimelineCellExposureState.drawingStart,
-              7 || 8 || 9 => TimelineCellExposureState.heldExposure,
+              7 || 8 || 9 => TimelineCellExposureState.held,
               10 => TimelineCellExposureState.drawingStart,
-              11 => TimelineCellExposureState.heldExposure,
-              _ => TimelineCellExposureState.empty,
+              11 => TimelineCellExposureState.held,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -2171,13 +2159,13 @@ void main() {
         _grid(
           exposureStateForLayer: (layer, frameIndex) {
             if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.empty;
+              return TimelineCellExposureState.uncovered;
             }
             return switch (frameIndex) {
               6 => TimelineCellExposureState.drawingStart,
-              7 || 8 || 9 => TimelineCellExposureState.heldExposure,
+              7 || 8 || 9 => TimelineCellExposureState.held,
               10 => TimelineCellExposureState.drawingStart,
-              _ => TimelineCellExposureState.empty,
+              _ => TimelineCellExposureState.uncovered,
             };
           },
         ),
@@ -2202,8 +2190,8 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
             45 => TimelineCellExposureState.drawingStart,
-            46 => TimelineCellExposureState.heldExposure,
-            _ => TimelineCellExposureState.empty,
+            46 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
           },
         ),
       );
@@ -2224,7 +2212,7 @@ void main() {
     },
   );
 
-  test('cell style keeps drawing cells neutral and blank cells muted', () {
+  test('cell style keeps covered cells paper-white and empty cells muted', () {
     const colorScheme = ColorScheme.light();
 
     final drawingStart = timelineCellStyleColors(
@@ -2235,25 +2223,25 @@ void main() {
     );
     final heldDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.heldExposure,
+      exposureState: TimelineCellExposureState.held,
       active: true,
       selected: false,
     );
-    final blankStart = timelineCellStyleColors(
+    final markHeld = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.blankStart,
+      exposureState: TimelineCellExposureState.markHeld,
       active: true,
       selected: false,
     );
-    final blankHeld = timelineCellStyleColors(
+    final uncovered = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.blankHeld,
+      exposureState: TimelineCellExposureState.uncovered,
       active: true,
       selected: false,
     );
     final selectedDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.heldExposure,
+      exposureState: TimelineCellExposureState.held,
       active: true,
       selected: true,
     );
@@ -2262,13 +2250,9 @@ void main() {
     expect(drawingStart.background, timelineDrawingStartColor);
     expect(drawingStart.background, heldDrawing.background);
     expect(drawingStart.border, timelineDrawingStartBorderColor);
-    expect(_isGray(blankStart.background), isTrue);
-    expect(blankStart.background, timelineBlankStartColor);
-    expect(blankHeld.background, timelineBlankHeldColor);
-    expect(blankStart.background, blankHeld.background);
-    expect(blankStart.background, isNot(heldDrawing.background));
-    expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
-    expect(selectedDrawing.border, Colors.red);
+    expect(markHeld.background, heldDrawing.background);
+    expect(uncovered.background, isNot(heldDrawing.background));
+    expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }
@@ -2367,7 +2351,6 @@ Widget _grid({
   VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
-  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
 }) {
   return MaterialApp(
@@ -2382,8 +2365,7 @@ Widget _grid({
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
-              (_, _) => TimelineCellExposureState.empty,
-          hasMarkForLayer: hasMarkForLayer,
+              (_, _) => TimelineCellExposureState.uncovered,
           frameNameForLayer: frameNameForLayer,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},

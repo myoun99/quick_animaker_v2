@@ -13,7 +13,6 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -823,10 +822,9 @@ void main() {
         name: 'Layer 1',
         frames: [frameWithMetadata],
         timeline: {
-          0: TimelineExposure.drawing(frame.id),
-          6: const TimelineExposure.blank(),
+          0: TimelineExposure.drawing(frame.id, length: 6),
+          6: const TimelineExposure.mark(),
         },
-        marks: const {6: TimelineMark.inbetween()},
         isVisible: false,
         opacity: 0.25,
       );
@@ -862,7 +860,6 @@ void main() {
       expect(updatedLayer.frames, [frameWithMetadata]);
       expect(updatedLayer.frames.single.storyboardMetadata, metadata);
       expect(updatedLayer.timeline, layer.timeline);
-      expect(updatedLayer.marks, layer.marks);
       expect(updatedLayer.isVisible, isFalse);
       expect(updatedLayer.opacity, 0.25);
       expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));

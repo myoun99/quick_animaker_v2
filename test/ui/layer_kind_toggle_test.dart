@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
@@ -18,7 +18,6 @@ import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -26,7 +25,6 @@ import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
-const _labelKey = ValueKey<String>('active-layer-kind-label');
 const _undoKey = ValueKey<String>('undo-button');
 const _redoKey = ValueKey<String>('redo-button');
 const _cutId = CutId('phase-73-cut');
@@ -120,8 +118,10 @@ Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
                     ],
                   ),
                 ],
-                timeline: {0: TimelineExposure.drawing(_frameId)},
-                marks: const {1: TimelineMark.inbetween()},
+                timeline: {
+                  0: TimelineExposure.drawing(_frameId, length: 1),
+                  1: const TimelineExposure.mark(),
+                },
               ),
             ],
           ),
@@ -167,12 +167,12 @@ void main() {
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(find.text('Animation Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
 
     await _tapKey(tester, _toggleKey);
 
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(find.text('Storyboard Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
   });
 
   testWidgets('toggles storyboard layer back to animation', (tester) async {
@@ -184,12 +184,12 @@ void main() {
     );
 
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(find.text('Storyboard Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
 
     await _tapKey(tester, _toggleKey);
 
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(find.text('Animation Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
   });
 
   testWidgets('undo and redo work after toggling to storyboard', (
@@ -242,7 +242,6 @@ void main() {
 
     expect(find.byKey(_toggleKey), findsOneWidget);
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
-    expect(tester.widget<Text>(find.byKey(_labelKey)).data, 'No Layer');
     expect(
       repository.requireProject().tracks.single.cuts.single.layers,
       isEmpty,
@@ -266,7 +265,6 @@ void main() {
     expect(afterFrame.strokes, beforeFrame.strokes);
     expect(afterLayer.frames, beforeLayer.frames);
     expect(afterLayer.timeline, beforeLayer.timeline);
-    expect(afterLayer.marks, beforeLayer.marks);
     expect(afterLayer.isVisible, beforeLayer.isVisible);
     expect(afterLayer.opacity, beforeLayer.opacity);
     expect(

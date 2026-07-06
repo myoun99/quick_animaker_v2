@@ -6,11 +6,27 @@ import '../models/canvas_size.dart';
 import '../models/canvas_surface_state.dart';
 
 class BrushFrameEditSessionStore {
-  BrushFrameEditSessionStore({required this.canvasSize, this.tileSize = 256});
+  BrushFrameEditSessionStore({
+    required CanvasSize canvasSize,
+    this.tileSize = 256,
+  }) : _canvasSize = canvasSize;
 
-  final CanvasSize canvasSize;
+  CanvasSize _canvasSize;
   final int tileSize;
   final Map<BrushFrameKey, BrushEditSessionState> _sessions = {};
+
+  CanvasSize get canvasSize => _canvasSize;
+
+  /// Adopts a new canvas size and drops every session state: session surfaces
+  /// are derived caches at the old size, so the caller must rebuild them from
+  /// the durable paint commands.
+  void resizeCanvas(CanvasSize canvasSize) {
+    if (canvasSize == _canvasSize) {
+      return;
+    }
+    _canvasSize = canvasSize;
+    _sessions.clear();
+  }
 
   BrushEditSessionState getOrCreate(BrushFrameKey key) {
     return _sessions.putIfAbsent(key, _createBlankSessionState);
@@ -36,7 +52,7 @@ class BrushFrameEditSessionStore {
     return BrushEditSessionState(
       canvasState: CanvasSurfaceState(
         currentSurface: BitmapSurface(
-          canvasSize: canvasSize,
+          canvasSize: _canvasSize,
           tileSize: tileSize,
         ),
       ),

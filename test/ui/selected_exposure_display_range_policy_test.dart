@@ -28,7 +28,7 @@ void main() {
         states: {
           10: TimelineCellExposureState.drawingStart,
           for (var frameIndex = 11; frameIndex < 48; frameIndex += 1)
-            frameIndex: TimelineCellExposureState.heldExposure,
+            frameIndex: TimelineCellExposureState.held,
         },
       );
 
@@ -44,9 +44,9 @@ void main() {
           frameStartIndex: 0,
           frameEndIndexExclusive: 48,
           states: {
-            2: TimelineCellExposureState.blankStart,
+            2: TimelineCellExposureState.drawingStart,
             for (var frameIndex = 3; frameIndex < 48; frameIndex += 1)
-              frameIndex: TimelineCellExposureState.blankHeld,
+              frameIndex: TimelineCellExposureState.held,
           },
         );
 
@@ -61,9 +61,9 @@ void main() {
         frameStartIndex: 0,
         frameEndIndexExclusive: 48,
         states: {
-          2: TimelineCellExposureState.blankStart,
+          2: TimelineCellExposureState.drawingStart,
           for (var frameIndex = 3; frameIndex < 48; frameIndex += 1)
-            frameIndex: TimelineCellExposureState.blankHeld,
+            frameIndex: TimelineCellExposureState.held,
         },
       );
 
@@ -77,9 +77,9 @@ void main() {
         frameStartIndex: 20,
         frameEndIndexExclusive: 36,
         states: {
-          2: TimelineCellExposureState.blankStart,
+          2: TimelineCellExposureState.drawingStart,
           for (var frameIndex = 3; frameIndex < 48; frameIndex += 1)
-            frameIndex: TimelineCellExposureState.blankHeld,
+            frameIndex: TimelineCellExposureState.held,
         },
       );
 
@@ -93,9 +93,9 @@ void main() {
         frameStartIndex: 20,
         frameEndIndexExclusive: 36,
         states: {
-          2: TimelineCellExposureState.blankStart,
+          2: TimelineCellExposureState.drawingStart,
           for (var frameIndex = 3; frameIndex < 10; frameIndex += 1)
-            frameIndex: TimelineCellExposureState.blankHeld,
+            frameIndex: TimelineCellExposureState.held,
         },
       );
 
@@ -109,9 +109,9 @@ void main() {
         frameStartIndex: 0,
         frameEndIndexExclusive: 48,
         states: {
-          2: TimelineCellExposureState.blankStart,
+          2: TimelineCellExposureState.drawingStart,
           for (var frameIndex = 3; frameIndex < 48; frameIndex += 1)
-            frameIndex: TimelineCellExposureState.blankHeld,
+            frameIndex: TimelineCellExposureState.held,
         },
       );
 
@@ -133,7 +133,7 @@ SelectedExposureDisplayRange _resolve({
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
     exposureStateAt: (frameIndex) =>
-        states[frameIndex] ?? TimelineCellExposureState.empty,
+        states[frameIndex] ?? TimelineCellExposureState.uncovered,
   );
 }
 

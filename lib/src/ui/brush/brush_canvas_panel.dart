@@ -31,9 +31,19 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewport,
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
-  });
+    this.viewportOverlayBuilder,
+    this.viewportUnderlayBuilder,
+    this.interactiveContentOpacity = 1.0,
+    this.contentOverride,
+  }) : assert(
+         coordinator != null || contentOverride != null,
+         'Without a coordinator the panel needs a content override.',
+       );
 
-  final BrushFrameEditingCoordinator coordinator;
+  /// Null only when [contentOverride] supplies the viewport content (e.g.
+  /// the blank-canvas placeholder without an editable frame).
+  final BrushFrameEditingCoordinator? coordinator;
+
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
@@ -42,6 +52,28 @@ class BrushCanvasPanel extends StatefulWidget {
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
+
+  /// Optional layer stacked over the canvas inside the editor viewport,
+  /// receiving the live viewport so it can transform canvas coordinates
+  /// (e.g. the camera frame overlay, layers above the active one).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportOverlayBuilder;
+
+  /// Optional layer painted UNDER the interactive canvas (layers below the
+  /// active one + the paper). When present, the interactive view skips its
+  /// own opaque background so the underlay shows through.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportUnderlayBuilder;
+
+  /// Display opacity of the interactive layer itself (the active layer's
+  /// visibility/opacity preview); strokes still commit at full strength.
+  final double interactiveContentOpacity;
+
+  /// Replaces the interactive canvas INSIDE the panel shell (title, zoom
+  /// toolbar and panbars keep working) — playback and the blank-canvas
+  /// placeholder render through this. Receives the live viewport.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  contentOverride;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -58,8 +90,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       _viewport = widget.viewport!;
       _lastWidgetViewport = widget.viewport;
     }
-    final activeKey = widget.coordinator.activeFrameKey;
-    final session = widget.coordinator.activeSessionState;
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -110,19 +140,30 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   );
                   _rememberEditorViewportSize(viewportSize);
 
+                  final canvasView = _buildViewportContent(context);
+                  final overlayBuilder = widget.viewportOverlayBuilder;
+                  final underlayBuilder = widget.viewportUnderlayBuilder;
+
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    child: InteractiveBrushEditCanvasView(
-                      key: ValueKey<String>(
-                        'brush-canvas-${activeKey.frameId.value}',
-                      ),
-                      sessionState: session,
-                      layerId: activeKey.layerId,
-                      frameId: activeKey.frameId,
-                      inputSettings: widget.brushToolState.toInputSettings(),
-                      viewport: _viewport,
-                      onViewportChanged: _setViewport,
-                      onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+                    // Nothing drawn in the viewport (canvas, playback frames,
+                    // camera overlay) may paint outside the panel.
+                    child: ClipRect(
+                      child: overlayBuilder == null && underlayBuilder == null
+                          ? canvasView
+                          : Stack(
+                              children: [
+                                if (underlayBuilder != null)
+                                  Positioned.fill(
+                                    child: underlayBuilder(context, _viewport),
+                                  ),
+                                Positioned.fill(child: canvasView),
+                                if (overlayBuilder != null)
+                                  Positioned.fill(
+                                    child: overlayBuilder(context, _viewport),
+                                  ),
+                              ],
+                            ),
                     ),
                   );
                 },
@@ -131,6 +172,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildViewportContent(BuildContext context) {
+    final override = widget.contentOverride;
+    if (override != null) {
+      return override(context, _viewport);
+    }
+
+    final coordinator = widget.coordinator!;
+    final activeKey = coordinator.activeFrameKey;
+    final interactiveView = InteractiveBrushEditCanvasView(
+      key: ValueKey<String>('brush-canvas-${activeKey.frameId.value}'),
+      sessionState: coordinator.activeSessionState,
+      layerId: activeKey.layerId,
+      frameId: activeKey.frameId,
+      inputSettings: widget.brushToolState.toInputSettings(),
+      viewport: _viewport,
+      onViewportChanged: _setViewport,
+      onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+      // The underlay paints the paper (and the layers below); an opaque
+      // background here would hide them.
+      showTransparentBackground: widget.viewportUnderlayBuilder == null,
+    );
+    if (widget.interactiveContentOpacity >= 1.0) {
+      return interactiveView;
+    }
+    return Opacity(
+      opacity: widget.interactiveContentOpacity.clamp(0.0, 1.0).toDouble(),
+      child: interactiveView,
     );
   }
 
@@ -205,10 +276,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
+    // Only reachable from the interactive canvas, which requires the
+    // coordinator to exist.
+    final coordinator = widget.coordinator!;
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
-        widget.coordinator.commitSourceStroke(
+        coordinator.commitSourceStroke(
           sourceDabs: strokeData.sourceDabs,
           cacheInvalidationSink: widget.cacheInvalidationSink,
           prerasterizedStrokePixels: strokeData.strokePixels,
@@ -218,7 +292,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       }
       historyManager.execute(
         BrushStrokeHistoryCommand(
-          coordinator: widget.coordinator,
+          coordinator: coordinator,
           strokeData: strokeData,
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),

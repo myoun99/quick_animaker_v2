@@ -13,9 +13,9 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -53,7 +53,7 @@ void main() {
       );
     });
 
-    test('paste linked frame on X replaces blank entry with drawing entry', () {
+    test('paste linked frame on an empty X cell creates a drawing entry', () {
       final fixture = _fixture(_layer());
       fixture.controller.selectFrameIndex(3);
 
@@ -112,9 +112,9 @@ void main() {
         final fixture = _fixture(
           _layer(
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('a')),
-              5: TimelineExposure.drawing(const FrameId('b')),
-              9: TimelineExposure.drawing(const FrameId('b')),
+              0: TimelineExposure.drawing(const FrameId('a'), length: 1),
+              5: TimelineExposure.drawing(const FrameId('b'), length: 1),
+              9: TimelineExposure.drawing(const FrameId('b'), length: 1),
             },
           ),
         );
@@ -154,7 +154,7 @@ void main() {
       },
     );
 
-    test('paste linked frame on blankHeld creates authored drawingStart', () {
+    test('paste linked frame inside an X run creates authored drawingStart', () {
       final fixture = _fixture(_layer());
       fixture.controller.selectFrameIndex(4);
 
@@ -184,9 +184,16 @@ void main() {
       );
     });
 
-    test('paste linked frame preserves existing mark at same index', () {
+    test('paste linked frame replaces a mark at the same index (one entry '
+        'per cell — the drawing wins)', () {
       final fixture = _fixture(
-        _layer(marks: const {3: TimelineMark.inbetween()}),
+        _layer(
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a'), length: 3),
+            3: const TimelineExposure.mark(),
+            5: TimelineExposure.drawing(const FrameId('b'), length: 4),
+          },
+        ),
       );
       fixture.controller.selectFrameIndex(3);
 
@@ -195,10 +202,9 @@ void main() {
         frameId: const FrameId('a'),
       );
 
-      expect(
-        _latestLayer(fixture.repository).marks[3],
-        const TimelineMark.inbetween(),
-      );
+      final layer = _latestLayer(fixture.repository);
+      expect(layer.timeline[3]!.isDrawing, isTrue);
+      expect(hasMarkAt(layer.timeline, 3), isFalse);
     });
 
     test('paste linked frame does not create a new Frame or clone strokes', () {
@@ -216,12 +222,12 @@ void main() {
       expect(_frame(layer, const FrameId('a')).strokes, _sampleStrokes);
     });
 
-    test('pasted linked end exposure edits selected authored use only', () {
+    test('linked uses hold independent lengths and edge shifts touch the '
+        'selected use only', () {
       final fixture = _fixture(
         _layer(
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('a')),
-            4: const TimelineExposure.blank(),
+            0: TimelineExposure.drawing(const FrameId('a'), length: 4),
           },
         ),
       );
@@ -231,10 +237,15 @@ void main() {
         frameId: const FrameId('a'),
       );
 
-      fixture.controller.increaseExposure(layerId: const LayerId('layer'));
+      fixture.controller.shiftExposureEdge(
+        layerId: const LayerId('layer'),
+        blockStartIndex: 8,
+        edge: TimelineBlockEdge.end,
+        delta: 1,
+      );
 
       final layer = _latestLayer(fixture.repository);
-      expect(layer.timeline.keys, orderedEquals([0, 4, 8]));
+      expect(layer.timeline.keys, orderedEquals([0, 8]));
       expect(_frame(layer, const FrameId('a')).strokes, _sampleStrokes);
       expect(
         fixture.controller.linkedUseCountForLayerFrame(
@@ -248,7 +259,7 @@ void main() {
           layer: layer,
           frameIndex: 8,
         ),
-        3,
+        2,
       );
       expect(
         fixture.controller.effectiveDurationForLayerFrame(
@@ -275,8 +286,8 @@ void main() {
 
       history.undo();
       expect(
-        _latestLayer(fixture.repository).timeline[3],
-        const TimelineExposure.blank(),
+        _latestLayer(fixture.repository).timeline.containsKey(3),
+        isFalse,
       );
 
       history.redo();
@@ -329,10 +340,8 @@ final _sampleStrokes = [
   ),
 ];
 
-Layer _layer({
-  Map<int, TimelineExposure>? timeline,
-  Map<int, TimelineMark> marks = const {},
-}) {
+/// Default: a[0,3) .. X[3,5) .. b[5,9) .. a[9,12).
+Layer _layer({Map<int, TimelineExposure>? timeline}) {
   return Layer(
     id: const LayerId('layer'),
     name: 'Layer',
@@ -343,12 +352,10 @@ Layer _layer({
     timeline:
         timeline ??
         {
-          0: TimelineExposure.drawing(const FrameId('a')),
-          3: const TimelineExposure.blank(),
-          5: TimelineExposure.drawing(const FrameId('b')),
-          9: TimelineExposure.drawing(const FrameId('a')),
+          0: TimelineExposure.drawing(const FrameId('a'), length: 3),
+          5: TimelineExposure.drawing(const FrameId('b'), length: 4),
+          9: TimelineExposure.drawing(const FrameId('a'), length: 3),
         },
-    marks: marks,
   );
 }
 

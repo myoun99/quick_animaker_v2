@@ -6,7 +6,6 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -24,17 +23,24 @@ void main() {
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
       expect(cut.canvasSize, defaultCutCanvasSize);
-      expect(cut.layers, hasLength(1));
+      // One drawing layer plus the always-present camera layer.
+      expect(cut.layers, hasLength(2));
 
-      final layer = cut.layers.single;
+      final layer = cut.layers.first;
       expect(layer.id, const LayerId('layer-new'));
       expect(layer.name, 'A');
       expect(layer.kind, LayerKind.animation);
       expect(layer.frames, isEmpty);
-      expect(layer.timeline[0], const TimelineExposure.blank());
-      expect(layer.marks, isEmpty);
+      expect(layer.timeline, isEmpty);
       expect(layer.isVisible, isTrue);
       expect(layer.opacity, 1.0);
+
+      final cameraLayer = cut.layers.last;
+      expect(cameraLayer.id, cameraLayerIdForCut(const CutId('cut-new')));
+      expect(cameraLayer.name, 'Camera');
+      expect(cameraLayer.kind, LayerKind.camera);
+      expect(cameraLayer.frames, isEmpty);
+      expect(cameraLayer.timeline, isEmpty);
     });
 
     test('uses the Phase 104 default duration for newly created cuts', () {
@@ -73,7 +79,7 @@ void main() {
 
       expect(first.name, second.name);
       expect(first.id, isNot(second.id));
-      expect(first.layers.single.id, isNot(second.layers.single.id));
+      expect(first.layers.first.id, isNot(second.layers.first.id));
     });
 
     test('does not mutate a project', () {

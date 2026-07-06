@@ -15,24 +15,22 @@ import '../helpers/brush_canvas_fixture.dart';
 
 void main() {
   testWidgets(
-    'production host without selection renders empty placeholder only',
+    'production host without selection shows the blank canvas, not brush input',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: MainCanvasBrushHost())),
       );
       await tester.pumpAndSettle();
 
+      // The panel (and its paper) stays visible so the canvas never goes
+      // blank, but there is no editable brush view — drawing needs a frame.
+      expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(
         find.byKey(
-          const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+          const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
         ),
         findsOneWidget,
       );
-      expect(
-        find.text('Select a layer and frame to edit with Brush.'),
-        findsOneWidget,
-      );
-      expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
@@ -72,7 +70,7 @@ void main() {
     );
     expect(
       find.byKey(
-        const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+        const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
       ),
       findsNothing,
     );

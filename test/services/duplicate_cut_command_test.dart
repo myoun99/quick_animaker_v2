@@ -63,12 +63,9 @@ void main() {
       );
       expect(
         cuts.last.layers.single.timeline[0],
-        TimelineExposure.drawing(const FrameId('frame-copy')),
+        TimelineExposure.drawing(const FrameId('frame-copy'), length: 1),
       );
-      expect(
-        cuts.last.layers.single.timeline[1],
-        const TimelineExposure.blank(),
-      );
+      expect(cuts.last.layers.single.timeline.containsKey(1), isFalse);
       expect(editingSession.activeCutId, const CutId('cut-duplicate'));
     });
 
@@ -336,8 +333,7 @@ Cut _sourceCut() {
     name: 'Line',
     frames: [frame],
     timeline: {
-      0: TimelineExposure.drawing(frame.id),
-      1: const TimelineExposure.blank(),
+      0: TimelineExposure.drawing(frame.id, length: 1),
     },
     isVisible: false,
     opacity: 0.5,

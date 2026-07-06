@@ -1,7 +1,6 @@
 import '../models/cut.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
-import '../models/timeline_exposure.dart';
 
 LayerId defaultLayerIdForSequence(int sequence) {
   if (sequence < 1) {
@@ -50,10 +49,12 @@ Layer createDefaultAnimationLayer({
   required LayerId layerId,
   required Cut cut,
 }) {
+  // A new cel layer is all empty cells ("X" everywhere): emptiness needs no
+  // timeline entry in the unified model.
   return Layer(
     id: layerId,
     name: nextCelLayerNameForCut(cut),
     frames: const [],
-    timeline: const {0: TimelineExposure.blank()},
+    timeline: const {},
   );
 }

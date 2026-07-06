@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_section_policy.dart';
 
 class TimelineFrameRowsScrollBody extends StatelessWidget {
   const TimelineFrameRowsScrollBody({
@@ -20,10 +22,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.totalFrameContentWidth,
     required this.metrics,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.commaDrag,
   });
 
   final List<Layer> layers;
@@ -38,10 +40,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final TimelineCommaDragCallbacks? commaDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -50,10 +52,11 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final layer in layers)
+          for (var index = 0; index < layers.length; index += 1)
             TimelineFrameCellsRow(
-              layer: layer,
-              active: layer.id == activeLayerId,
+              layer: layers[index],
+              active: layers[index].id == activeLayerId,
+              sectionStart: timelineSectionStartsAt(layers, index),
               currentFrameIndex: currentFrameIndex,
               playbackFrameCount: playbackFrameCount,
               frameStartIndex: frameStartIndex,
@@ -62,10 +65,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
               trailingFrameSpacerWidth: trailingFrameSpacerWidth,
               metrics: metrics,
               exposureStateForLayer: exposureStateForLayer,
-              hasMarkForLayer: hasMarkForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
+              commaDrag: commaDrag,
             ),
           if (layers.isEmpty)
             SizedBox(

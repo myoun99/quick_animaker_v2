@@ -214,7 +214,7 @@ void main() {
               .cuts
               .single
               .layers
-              .single
+              .first
               .id,
           const LayerId('replacement-layer'),
         );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
@@ -5,6 +7,7 @@ import '../models/project.dart';
 import '../services/project_repository.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
+import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
@@ -12,8 +15,14 @@ import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'export/export_dialog.dart';
+import 'playback/canvas_playback_controller.dart';
+import 'playback/playback_prerender_scheduler.dart';
+import 'playback/playback_transport_controls.dart';
+import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
@@ -31,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   late final EditorSessionManager _session;
 
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
+  bool _showStoryboard = false;
   final ScrollController _topToolbarScrollController = ScrollController();
 
   @override
@@ -86,6 +96,19 @@ class _HomePageState extends State<HomePage> {
     }
 
     _session.renameActiveCut(nextName);
+  }
+
+  Future<void> _resizeActiveCutCanvas() async {
+    final request = await showDialog<CanvasResizeRequest>(
+      context: context,
+      builder: (context) =>
+          CanvasSizeDialog(initialSize: _session.activeCut.canvasSize),
+    );
+    if (!mounted || request == null) {
+      return;
+    }
+
+    _session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
   }
 
   Future<void> _deleteActiveLayer() async {
@@ -156,47 +179,56 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('QuickAnimaker v2.1')),
+      appBar: AppBar(
+        title: const Text('QuickAnimaker v2.1'),
+        actions: [
+          IconButton(
+            key: const ValueKey<String>('undo-button'),
+            tooltip: 'Undo',
+            onPressed: _session.canUndo ? _session.undo : null,
+            icon: const Icon(Icons.undo),
+          ),
+          IconButton(
+            key: const ValueKey<String>('redo-button'),
+            tooltip: 'Redo',
+            onPressed: _session.canRedo ? _session.redo : null,
+            icon: const Icon(Icons.redo),
+          ),
+          IconButton(
+            key: const ValueKey<String>('export-png-button'),
+            tooltip: 'Export',
+            onPressed: () {
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (context) => ExportDialog(session: _session),
+                ),
+              );
+            },
+            icon: const Icon(Icons.save_alt),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: Scrollbar(
+            child: PanelScrollbar(
               controller: _topToolbarScrollController,
               child: SingleChildScrollView(
                 key: const ValueKey<String>('top-toolbar-scroll-view'),
                 controller: _topToolbarScrollController,
                 scrollDirection: Axis.horizontal,
                 primary: false,
+                padding: const EdgeInsets.only(bottom: panelScrollbarGutter),
                 child: Row(
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
                     CutListBar(
                       entries: _session.cutListEntries,
                       onCutSelected: _session.selectCut,
-                      onNewCut: _session.createCut,
-                      onRenameActiveCut: _renameActiveCut,
-                      onEditActiveCutNote: _editActiveCutNote,
-                      onDuplicateActiveCut: _session.duplicateActiveCut,
-                      onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                          ? _session.moveActiveCutLeft
-                          : null,
-                      onMoveActiveCutRight: _session.canMoveActiveCutRight
-                          ? _session.moveActiveCutRight
-                          : null,
-                      onDeleteActiveCut: _session.deleteActiveCut,
                       onCutReordered: _session.reorderCut,
-                    ),
-                    const SizedBox(width: 16),
-                    TextButton(
-                      key: const ValueKey<String>('undo-button'),
-                      onPressed: _session.canUndo ? _session.undo : null,
-                      child: const Text('Undo'),
-                    ),
-                    TextButton(
-                      key: const ValueKey<String>('redo-button'),
-                      onPressed: _session.canRedo ? _session.redo : null,
-                      child: const Text('Redo'),
                     ),
                   ],
                 ),
@@ -204,36 +236,115 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           Expanded(child: EditorCanvasArea(session: _session)),
-          StoryboardPanel(
-            project: _session.repository.requireProject(),
-            activeCutId: _session.activeCutId,
-            onCutSelected: _session.selectCut,
-          ),
-          const SizedBox(height: 8),
-          TimelinePanel(
-            layers: _session.layers,
-            activeLayerId: _session.activeLayerId,
-            currentFrameIndex: _session.currentFrameIndex,
-            playbackFrameCount: _session.activeCutPlaybackFrameCount,
-            exposureStateForLayer: _session.exposureStateForLayer,
-            hasMarkForLayer: _session.hasMarkForLayer,
-            frameNameForLayer: _session.frameNameForLayer,
-            onSelectLayer: _session.selectLayer,
-            onSelectFrame: _session.selectFrameIndex,
-            onAddLayer: _session.addLayer,
-            onToggleLayerVisibility: _session.toggleLayerVisibility,
-            onLayerOpacityChanged: (layerId, opacity) {
-              _session.setLayerOpacity(layerId: layerId, opacity: opacity);
-            },
-            orientation: _timelineOrientation,
-            onOrientationChanged: (orientation) {
-              setState(() => _timelineOrientation = orientation);
-            },
-            timelineActionToolbar: TimelineActionToolbar(
-              session: _session,
-              onRenameLayer: _renameActiveLayer,
-              onDeleteLayer: _deleteActiveLayer,
-              onRenameFrame: _renameSelectedFrame,
+          // Playback ticks flow through the playback-only frame listenable —
+          // never the session's notifyListeners — so during playback only
+          // this panel rebuilds and the playhead follows every frame. The
+          // prerender progress listenable keeps the cached-range green bar
+          // live while frames warm in the background.
+          ValueListenableBuilder<PrerenderProgress>(
+            valueListenable: _session.prerenderScheduler.progress,
+            builder: (context, _, _) => ValueListenableBuilder<int?>(
+              valueListenable: _session.playback.localFrameIndexListenable,
+              builder: (context, playbackFrameIndex, _) => TimelinePanel(
+                layers: _session.layers,
+                activeLayerId: _session.activeLayerId,
+                currentFrameIndex:
+                    playbackFrameIndex ?? _session.currentFrameIndex,
+                isFrameCached: _session.isPlaybackFrameCached,
+                playbackFrameCount: _session.activeCutPlaybackFrameCount,
+                exposureStateForLayer: _session.exposureStateForLayer,
+                frameNameForLayer: _session.frameNameForLayer,
+                onSelectLayer: _session.selectLayer,
+                // Ruler scrubs during playback SEEK the playback clock
+                // instead of moving the (hidden) editing playhead.
+                onSelectFrame: (frameIndex) {
+                  if (_session.playback.isActive) {
+                    _session.playback.seekToLocalFrame(frameIndex);
+                  } else {
+                    _session.selectFrameIndex(frameIndex);
+                  }
+                },
+                onAddLayer: _session.addLayer,
+                onToggleLayerVisibility: _session.toggleLayerVisibility,
+                onLayerOpacityChanged: (layerId, opacity) {
+                  _session.setLayerOpacity(layerId: layerId, opacity: opacity);
+                },
+                // Comma edge drags preview live from the session's
+                // drag-start snapshot and commit as ONE undo entry on
+                // release.
+                commaDrag: TimelineCommaDragCallbacks(
+                  onBegin: (layerId, blockStartIndex, edge) =>
+                      _session.beginExposureEdgeDrag(
+                        layerId: layerId,
+                        blockStartIndex: blockStartIndex,
+                        edge: edge,
+                      ),
+                  onUpdate: _session.updateExposureEdgeDrag,
+                  onEnd: _session.endExposureEdgeDrag,
+                  onCancel: _session.cancelExposureEdgeDrag,
+                ),
+                orientation: _timelineOrientation,
+                onOrientationChanged: (orientation) {
+                  setState(() => _timelineOrientation = orientation);
+                },
+                showStoryboard: _showStoryboard,
+                onShowStoryboardChanged: (show) {
+                  setState(() => _showStoryboard = show);
+                },
+                // The storyboard context plays every cut of the track; the
+                // timeline context plays the active cut from the playhead.
+                // Composing the transports into the existing slots keeps
+                // TimelinePanel/StoryboardPanel untouched.
+                storyboardPanel: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    PlaybackTransportControls(
+                      controller: _session.playback,
+                      scope: PlaybackScope.allCuts,
+                      quality: _session.playbackQuality,
+                      onQualityChanged: _session.setPlaybackQuality,
+                    ),
+                    Expanded(
+                      child: StoryboardPanel(
+                        project: _session.repository.requireProject(),
+                        activeCutId: _session.activeCutId,
+                        onCutSelected: _session.selectCut,
+                        onNewCut: _session.createCut,
+                        onRenameActiveCut: _renameActiveCut,
+                        onEditActiveCutNote: _editActiveCutNote,
+                        onResizeActiveCutCanvas: _resizeActiveCutCanvas,
+                        onDuplicateActiveCut: _session.duplicateActiveCut,
+                        onMoveActiveCutLeft: _session.canMoveActiveCutLeft
+                            ? _session.moveActiveCutLeft
+                            : null,
+                        onMoveActiveCutRight: _session.canMoveActiveCutRight
+                            ? _session.moveActiveCutRight
+                            : null,
+                        onDeleteActiveCut: _session.deleteActiveCut,
+                      ),
+                    ),
+                  ],
+                ),
+                timelineActionToolbar: Row(
+                  children: [
+                    PlaybackTransportControls(
+                      controller: _session.playback,
+                      scope: PlaybackScope.activeCut,
+                      quality: _session.playbackQuality,
+                      onQualityChanged: _session.setPlaybackQuality,
+                      playbackStartFrame: () => _session.currentFrameIndex,
+                    ),
+                    Expanded(
+                      child: TimelineActionToolbar(
+                        session: _session,
+                        onRenameLayer: _renameActiveLayer,
+                        onDeleteLayer: _deleteActiveLayer,
+                        onRenameFrame: _renameSelectedFrame,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

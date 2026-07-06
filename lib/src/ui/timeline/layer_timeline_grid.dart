@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_frame_range_policy.dart';
@@ -19,6 +20,7 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
+import 'timeline_section_policy.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
@@ -29,13 +31,14 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.commaDrag,
+    this.isFrameCached,
   });
 
   final List<Layer> layers;
@@ -44,13 +47,19 @@ class LayerTimelineGrid extends StatefulWidget {
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Comma-drag hooks for the block edge grips (shared policy with the
+  /// X-sheet); null hides the grips.
+  final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Cached-range resolver for the ruler's green strip.
+  final bool Function(int frameIndex)? isFrameCached;
 
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
@@ -345,6 +354,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         ._metrics,
                                                     onSelectFrame:
                                                         _selectClampedFrameFromRuler,
+                                                    isFrameCached:
+                                                        widget.isFrameCached,
                                                   ),
                                                 ),
                                               ),
@@ -384,12 +395,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            for (final layer in widget.layers)
+                                            for (
+                                              var index = 0;
+                                              index < widget.layers.length;
+                                              index += 1
+                                            )
                                               TimelineLayerControlsRow(
-                                                layer: layer,
+                                                layer: widget.layers[index],
                                                 active:
-                                                    layer.id ==
+                                                    widget.layers[index].id ==
                                                     widget.activeLayerId,
+                                                sectionStart:
+                                                    timelineSectionStartsAt(
+                                                      widget.layers,
+                                                      index,
+                                                    ),
                                                 metrics:
                                                     LayerTimelineGrid._metrics,
                                                 onSelectLayer:
@@ -500,14 +520,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       ._metrics,
                                                   exposureStateForLayer: widget
                                                       .exposureStateForLayer,
-                                                  hasMarkForLayer:
-                                                      widget.hasMarkForLayer,
                                                   frameNameForLayer:
                                                       widget.frameNameForLayer,
                                                   onSelectLayer:
                                                       widget.onSelectLayer,
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
+                                                  commaDrag: widget.commaDrag,
                                                 ),
                                                 cutEndBoundaryLeft:
                                                     timelineCutEndBoundaryX(

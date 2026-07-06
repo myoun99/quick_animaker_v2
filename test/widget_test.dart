@@ -153,6 +153,7 @@ Future<void> _tapCutNoteSaveButton(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(saveButton);
   await tester.pumpAndSettle();
+  await _showTimelinePanel(tester);
 }
 
 Future<void> _tapCutNoteCancelButton(WidgetTester tester) async {
@@ -163,6 +164,7 @@ Future<void> _tapCutNoteCancelButton(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(cancelButton);
   await tester.pumpAndSettle();
+  await _showTimelinePanel(tester);
 }
 
 String _cutNoteFieldText(WidgetTester tester) {
@@ -195,6 +197,9 @@ Future<void> _renameActiveCut(WidgetTester tester, String name) async {
     find.byKey(const ValueKey<String>('rename-cut-confirm-button')),
   );
   await tester.pumpAndSettle();
+  // The command left the app in storyboard mode (the dialog blocked the
+  // automatic return); restore the timeline the tests assume.
+  await _showTimelinePanel(tester);
 }
 
 Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
@@ -209,13 +214,53 @@ Future<void> _createSecondAuthoredFrame(WidgetTester tester) async {
   await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 }
 
-String _cellActionHint(WidgetTester tester) {
-  return _statusText(tester, const ValueKey<String>('cell-action-hint'));
-}
-
 String _statusText(WidgetTester tester, ValueKey<String> key) {
   final status = tester.widget<Text>(find.byKey(key));
   return status.data ?? '';
+}
+
+void _expectActiveLayerName(String name) {
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      matching: find.text(name),
+    ),
+    findsOneWidget,
+  );
+}
+
+void _expectCurrentFrame(WidgetTester tester, int frameNumber) {
+  expect(
+    _statusText(
+      tester,
+      const ValueKey<String>('timeline-current-frame-counter'),
+    ),
+    '$frameNumber',
+  );
+}
+
+String? _selectedCellStateLabel(WidgetTester tester) {
+  final texts = tester.widgetList<Text>(
+    find.descendant(
+      of: find.byKey(const ValueKey<String>('timeline-selected-cell')),
+      matching: find.byType(Text),
+    ),
+  );
+  return texts.isEmpty ? null : texts.first.semanticsLabel;
+}
+
+Future<void> _showStoryboardPanel(WidgetTester tester) async {
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('timeline-mode-storyboard-button'),
+  );
+}
+
+Future<void> _showTimelinePanel(WidgetTester tester) async {
+  await _tapToolbarButton(
+    tester,
+    const ValueKey<String>('timeline-mode-timeline-button'),
+  );
 }
 
 bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
@@ -265,11 +310,20 @@ Future<void> _tapCutCommandButton(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
+  // Cut management actions live in the storyboard panel's toolbar: enter
+  // storyboard mode, act, and return to the timeline the tests assume.
+  // When the action opened a dialog, stay put — switching modes would tap
+  // the modal barrier and dismiss it; the dialog helpers switch back after
+  // the dialog closes.
+  await _showStoryboardPanel(tester);
   final button = find.byKey(key);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
   await tester.pumpAndSettle();
+  if (find.byType(Dialog).evaluate().isEmpty) {
+    await _showTimelinePanel(tester);
+  }
 }
 
 Future<void> _tapTopBarButton(WidgetTester tester, ValueKey<String> key) async {
@@ -351,17 +405,20 @@ void main() {
     );
     expect(find.byTooltip('New Frame'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
+    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
+    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    expect(find.text('New Drawing'), findsNothing);
+
+    // Cut management actions live in the storyboard panel's toolbar.
+    await _showStoryboardPanel(tester);
     expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(find.byTooltip('Rename Cut'), findsOneWidget);
     expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
+    expect(find.byTooltip('Canvas Size'), findsOneWidget);
     expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
     expect(find.byTooltip('Move Cut Right'), findsOneWidget);
     expect(find.byTooltip('Delete Cut'), findsOneWidget);
-    expect(find.text('Cuts:'), findsOneWidget);
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.text('New Drawing'), findsNothing);
   });
 
   testWidgets('default sample cut duration is 24 frames', (
@@ -381,7 +438,7 @@ void main() {
     );
   });
 
-  testWidgets('top row keeps cut actions and undo redo reachable', (
+  testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -394,13 +451,10 @@ void main() {
       find.byKey(const ValueKey<String>('top-toolbar-row')),
       findsOneWidget,
     );
-    expect(find.byTooltip('New Cut'), findsOneWidget);
-    expect(find.byTooltip('Rename Cut'), findsOneWidget);
-    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
-    expect(find.byTooltip('Delete Cut'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
 
@@ -421,6 +475,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
+    await _showStoryboardPanel(tester);
 
     expect(find.byTooltip('Reorder Cut'), findsNothing);
     expect(find.byTooltip('Move Cut Left'), findsOneWidget);
@@ -572,6 +627,8 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
+    // The move buttons live in the storyboard panel's toolbar.
+    await _showStoryboardPanel(tester);
 
     expect(
       _isActionButtonEnabled(
@@ -611,7 +668,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('New Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsNothing,
@@ -637,7 +693,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
       findsNothing,
@@ -670,7 +725,6 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Delete Cut'), findsOneWidget);
     _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
     _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
 
@@ -815,12 +869,6 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('edit-cut-note-button')),
-      findsOneWidget,
-    );
-
     await _saveCutNote(tester, 'Old note');
     await _openCutNoteDialog(tester);
 
@@ -918,12 +966,6 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byTooltip('Rename Cut'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('rename-cut-button')),
-      findsOneWidget,
-    );
-
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('rename-cut-button'),
@@ -993,7 +1035,7 @@ Line 8''';
 
     _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    final undoButton = tester.widget<TextButton>(
+    final undoButton = tester.widget<IconButton>(
       find.byKey(const ValueKey<String>('undo-button')),
     );
     expect(undoButton.onPressed, isNull);
@@ -1029,12 +1071,11 @@ Line 8''';
 
     _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
     expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
-    expect(find.text('Layer: A'), findsOneWidget);
-    expect(find.text('Layer: B'), findsNothing);
+    _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
     expect(_cutListEntryLabelsNamed('New Cut'), findsNothing);
     expect(find.text('A'), findsWidgets);
-    expect(find.text('X'), findsOneWidget);
+    expect(find.text('X'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-0')),
       findsOneWidget,
@@ -1076,7 +1117,7 @@ Line 8''';
       findsOneWidget,
     );
     expect(_layerKindIcon(tester, 'default-layer-2'), Icons.brush_outlined);
-    expect(find.text('Layer: B'), findsOneWidget);
+    _expectActiveLayerName('B');
     expect(find.bySemanticsLabel('Animation layer'), findsNWidgets(2));
   });
 
@@ -1086,10 +1127,6 @@ Line 8''';
     await tester.pumpWidget(const QuickAnimakerApp());
 
     expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
-    expect(
-      _statusText(tester, const ValueKey<String>('active-layer-kind-label')),
-      'Animation Layer',
-    );
 
     await _tapToolbarButton(
       tester,
@@ -1101,10 +1138,6 @@ Line 8''';
       Icons.auto_stories_outlined,
     );
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
-    expect(
-      _statusText(tester, const ValueKey<String>('active-layer-kind-label')),
-      'Storyboard Layer',
-    );
 
     await _tapToolbarButton(
       tester,
@@ -1144,11 +1177,7 @@ Line 8''';
     await tester.tap(layerAName);
     await tester.pumpAndSettle();
 
-    expect(find.text('Layer: A'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
-      findsOneWidget,
-    );
+    _expectActiveLayerName('A');
   });
 
   testWidgets('pressing Add Layer creates B then C above active layers', (
@@ -1156,8 +1185,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.text('Layer: A'), findsOneWidget);
-    expect(find.text('Layer: B'), findsNothing);
+    _expectActiveLayerName('A');
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-row-default-layer-2')),
       findsNothing,
@@ -1165,7 +1193,7 @@ Line 8''';
 
     await _addLayer(tester);
 
-    expect(find.text('Layer: B'), findsOneWidget);
+    _expectActiveLayerName('B');
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsOneWidget,
@@ -1194,7 +1222,7 @@ Line 8''';
 
     await _addLayer(tester);
 
-    expect(find.text('Layer: C'), findsOneWidget);
+    _expectActiveLayerName('C');
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-3-0')),
       findsOneWidget,
@@ -1286,7 +1314,13 @@ Line 8''';
       find.byKey(const ValueKey<String>('xsheet-cell-default-layer-1-0')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Layer: A'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+        matching: find.text('A'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('switches between existing sample cuts', (
@@ -1301,7 +1335,7 @@ Line 8''';
     expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
 
     await tester.tap(
@@ -1311,14 +1345,14 @@ Line 8''';
 
     expect(find.byTooltip('Switch to Cut 1'), findsOneWidget);
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,
     );
-    expect(find.text('X'), findsOneWidget);
+    expect(find.text('X'), findsWidgets);
     expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await tester.tap(
@@ -1328,7 +1362,7 @@ Line 8''';
 
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
     expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
   });
 
@@ -1338,6 +1372,7 @@ Line 8''';
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
+    await _showStoryboardPanel(tester);
 
     expect(
       find.byKey(const ValueKey<String>('storyboard-panel')),
@@ -1366,10 +1401,6 @@ Line 8''';
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
     expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(
         const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
       ),
@@ -1381,6 +1412,17 @@ Line 8''';
       ),
       findsNothing,
     );
+
+    await _showTimelinePanel(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-panel')),
+      findsNothing,
+    );
   });
 
   testWidgets('CutListBar switching updates StoryboardPanel highlight', (
@@ -1388,6 +1430,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
+    await _showStoryboardPanel(tester);
 
     expect(
       find.byKey(
@@ -1421,7 +1464,7 @@ Line 8''';
 
     await _switchToCut(tester, 'cut-1');
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     _expectCellText('layer-1', 0, 'X');
 
     await _tapTimelineCell(
@@ -1432,12 +1475,12 @@ Line 8''';
 
     _expectCellText('layer-1', 0, 'X');
     _expectCellText('layer-1', 1, '○');
-    expect(find.text('Cell: Drawing start'), findsOneWidget);
+    expect(_selectedCellStateLabel(tester), 'drawing start');
 
     await _switchToCut(tester, 'default-cut-1');
 
     expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     _expectCellText('default-layer-1', 0, 'X');
     _expectNoCellText('default-layer-1', 1, '○');
 
@@ -1479,11 +1522,12 @@ Line 8''';
         const ValueKey<String>('toggle-mark-button'),
       );
       _expectCellText('layer-1', 2, '●');
-      expect(find.text('Cell: Blank start (X) + Mark ●'), findsOneWidget);
+      expect(_selectedCellStateLabel(tester), 'inbetween mark');
 
       await _switchToCut(tester, 'default-cut-1');
 
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      // Cut 1's layer is untouched: one empty run whose first cell reads X.
       _expectCellText('default-layer-1', 0, 'X');
       _expectNoCellText('default-layer-1', 1, 'X');
       _expectNoCellText('default-layer-1', 2, '●');
@@ -1499,29 +1543,105 @@ Line 8''';
 
     await _switchToCut(tester, 'cut-1');
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expect(find.text('Duration: 1'), findsOneWidget);
 
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('increase-exposure-button'),
     );
 
-    expect(find.text('Duration: 2'), findsOneWidget);
     await _tapTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-layer-1-1'),
     );
-    expect(find.text('Cell: Held drawing'), findsOneWidget);
+    expect(_selectedCellStateLabel(tester), 'held exposure');
     _expectNoCellText('layer-1', 1, 'X');
 
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.text('Layer: A'), findsOneWidget);
-    expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+    _expectActiveLayerName('A');
+    // The fresh layer is all empty (X) cells; empty cells carry no
+    // semantics label under the unified model.
+    expect(_selectedCellStateLabel(tester), isNull);
     _expectCellText('default-layer-1', 0, 'X');
     _expectNoCellText('default-layer-1', 1, '○');
-    expect(find.text('Duration: -'), findsOneWidget);
   });
+
+  testWidgets(
+    'comma edge grips ripple blocks TVPaint-style with one undo per drag',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
+
+      // Block A at index 0, block B at index 3 with an X gap between.
+      // Plain cell tap: ensureVisible over-scrolls the custom frame
+      // viewport and would push frame 0 out of the virtualized window.
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('new-frame-button'),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-3')),
+      );
+      await tester.pumpAndSettle();
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('new-frame-button'),
+      );
+
+      // Grip keys are ORDINAL-based (block 0, block 1) so a start-edge drag
+      // that moves the block's start index keeps its gesture subtree alive.
+      final endGrip = find.byKey(
+        const ValueKey<String>(
+          'timeline-block-edge-grip-end-default-layer-1-0',
+        ),
+      );
+      final startGripB = find.byKey(
+        const ValueKey<String>(
+          'timeline-block-edge-grip-start-default-layer-1-1',
+        ),
+      );
+      expect(endGrip, findsOneWidget);
+      expect(startGripB, findsOneWidget);
+
+      // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
+      // with B's comma preserved.
+      final gesture = await tester.startGesture(tester.getCenter(endGrip));
+      await gesture.moveBy(const Offset(19, 0));
+      await tester.pump();
+      await gesture.moveBy(const Offset(144, 0));
+      await tester.pumpAndSettle();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      _expectNoCellText('default-layer-1', 1, 'X');
+      _expectNoCellText('default-layer-1', 2, 'X');
+      _expectCellText('default-layer-1', 4, '○');
+
+      // The whole drag is ONE undo step.
+      await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
+      _expectCellText('default-layer-1', 1, 'X');
+      _expectCellText('default-layer-1', 3, '○');
+
+      // START-edge drag across several cells in ONE gesture: the live
+      // preview moves the block's start every step, and the drag must
+      // survive it (regression: start grips died after one step). B grows
+      // backward through the gap until it touches A.
+      final frontDrag = await tester.startGesture(
+        tester.getCenter(startGripB),
+      );
+      await frontDrag.moveBy(const Offset(-19, 0));
+      await tester.pump();
+      await frontDrag.moveBy(const Offset(-48, 0));
+      await tester.pumpAndSettle();
+      await frontDrag.moveBy(const Offset(-48, 0));
+      await tester.pumpAndSettle();
+      await frontDrag.up();
+      await tester.pumpAndSettle();
+
+      _expectCellText('default-layer-1', 1, '○');
+      _expectNoCellText('default-layer-1', 2, 'X');
+      _expectNoCellText('default-layer-1', 3, '○');
+    },
+  );
 
   testWidgets(
     'cut switching clears copied frame before cross-cut linked paste',
@@ -1538,15 +1658,10 @@ Line 8''';
         tester,
         const ValueKey<String>('copy-frame-button'),
       );
-      expect(
-        _statusText(tester, const ValueKey<String>('copied-frame-status')),
-        startsWith('Copy: ui-frame-'),
-      );
 
       await _switchToCut(tester, 'cut-1');
 
       expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-      expect(find.text('Copy: -'), findsOneWidget);
       expect(
         _isActionButtonEnabled(
           tester,
@@ -1560,7 +1675,6 @@ Line 8''';
         const ValueKey<String>('timeline-cell-layer-1-1'),
       );
 
-      expect(find.text('Copy: -'), findsOneWidget);
       expect(
         _isActionButtonEnabled(
           tester,
@@ -1589,7 +1703,7 @@ Line 8''';
     await _tapUndoButton(tester);
 
     expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(find.text('Layer: A'), findsOneWidget);
+    _expectActiveLayerName('A');
     _expectNoCellText('layer-1', 1, '○');
 
     await _tapRedoButton(tester);
@@ -1606,13 +1720,8 @@ Line 8''';
     final toolbar = find.byKey(
       const ValueKey<String>('timeline-action-toolbar'),
     );
-    final cellActions = find.byKey(
-      const ValueKey<String>('cell-actions-section'),
-    );
 
     expect(toolbar, findsOneWidget);
-    expect(cellActions, findsOneWidget);
-    expect(find.descendant(of: toolbar, matching: cellActions), findsOneWidget);
     expect(
       find.descendant(
         of: toolbar,
@@ -1620,15 +1729,12 @@ Line 8''';
       ),
       findsOneWidget,
     );
-    expect(
-      find.descendant(
-        of: toolbar,
-        matching: find.byKey(const ValueKey<String>('cell-action-hint')),
-      ),
-      findsOneWidget,
-    );
     _expectTimelineActionKeys();
     _expectTimelineActionTooltips();
+    expect(
+      find.byKey(const ValueKey<String>('timeline-toolbar-layer-group')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('timeline-toolbar-create-group')),
       findsOneWidget,
@@ -1645,142 +1751,6 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-toolbar-exposure-group')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('current-layer-status')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('current-frame-status')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('current-cell-status')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('linked-frame-uses-status')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('copied-frame-status')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('phase 22 compact cell action hints update by cell state', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
-
-    expect(
-      find.byKey(const ValueKey<String>('cell-actions-section')),
-      findsOneWidget,
-    );
-    expect(find.text('Cell Actions'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('cell-action-hint')),
-      findsOneWidget,
-    );
-    expect(find.text('Layer: A'), findsOneWidget);
-    expect(find.text('Frame: 1'), findsOneWidget);
-    expect(find.text('Cell: Blank start (X)'), findsOneWidget);
-    expect(_cellActionHint(tester), contains('X:'));
-    expect(_cellActionHint(tester), contains('New Frame'));
-    expect(_cellActionHint(tester), isNot(contains('replace X')));
-    expect(_cellActionHint(tester), isNot(contains('will')));
-
-    final deleteButton = find.byKey(
-      const ValueKey<String>('delete-cell-button'),
-    );
-    final renameButton = find.byKey(
-      const ValueKey<String>('rename-frame-button'),
-    );
-    expect(deleteButton, findsOneWidget);
-    expect(renameButton, findsOneWidget);
-    expect(
-      _isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('delete-cell-button'),
-      ),
-      isFalse,
-    );
-
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expect(_cellActionHint(tester), contains('Drawing'));
-    expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
-    expect(
-      _cellActionHint(tester),
-      isNot(contains('delete this drawing frame')),
-    );
-    expect(
-      _isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('delete-cell-button'),
-      ),
-      isTrue,
-    );
-
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-mark-button'),
-    );
-    expect(_cellActionHint(tester), contains('Drawing + ●'));
-    expect(_cellActionHint(tester), contains('Copy / Rename / Delete'));
-    expect(_cellActionHint(tester), isNot(contains('drawing and its mark')));
-
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-mark-button'),
-    );
-    await _tapTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    expect(_cellActionHint(tester), contains('Held'));
-    expect(_cellActionHint(tester), contains('Copy / Rename'));
-    expect(_cellActionHint(tester), isNot(contains('Rename Frame')));
-    expect(
-      _isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('delete-cell-button'),
-      ),
-      isFalse,
-    );
-    expect(
-      _isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('rename-frame-button'),
-      ),
-      isTrue,
-    );
-
-    await _tapTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('delete-cell-button'),
-    );
-    expect(_cellActionHint(tester), contains('Empty'));
-    expect(_cellActionHint(tester), contains('New Frame'));
-    expect(_cellActionHint(tester), isNot(contains('New Frame can create')));
-
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-mark-button'),
-    );
-    expect(_cellActionHint(tester), contains('Empty + ●'));
-    expect(_cellActionHint(tester), contains('Mark'));
-    expect(_cellActionHint(tester), isNot(contains('will remove')));
-
-    expect(find.byTooltip('New Frame'), findsOneWidget);
-    expect(find.byTooltip('Blank / X'), findsOneWidget);
-    expect(find.byTooltip('Mark ●'), findsOneWidget);
-    expect(find.byTooltip('Rename Frame'), findsOneWidget);
-    expect(find.byTooltip('Delete Cell'), findsOneWidget);
-    expect(find.byTooltip('Decrease Exposure'), findsOneWidget);
-    expect(find.byTooltip('Increase Exposure'), findsOneWidget);
   });
 
   testWidgets('initial layer starts with a blank exposure at frame 1', (
@@ -1800,23 +1770,29 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
-    expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
-    expect(find.bySemanticsLabel('blank held exposure'), findsWidgets);
+    // Paper-sheet style: only the FIRST cell of the empty run reads X.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('timeline-cell-default-layer-1-1'),
+        ),
+        matching: find.text('X'),
+      ),
+      findsNothing,
+    );
+    expect(find.bySemanticsLabel('drawing start'), findsNothing);
     expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
   });
 
   testWidgets(
-    'selection status text updates for blank, drawing, name, and mark',
+    'selected cell state updates for blank, drawing, name, and mark',
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
-      expect(
-        find.byKey(const ValueKey<String>('current-layer-status')),
-        findsOneWidget,
-      );
-      expect(find.text('Layer: A'), findsOneWidget);
-      expect(find.text('Frame: 1'), findsOneWidget);
-      expect(find.text('Cell: Blank start (X)'), findsOneWidget);
+      _expectActiveLayerName('A');
+      _expectCurrentFrame(tester, 1);
+      // Empty (X) cells carry no semantics label.
+      expect(_selectedCellStateLabel(tester), isNull);
 
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),
@@ -1826,7 +1802,7 @@ Line 8''';
       await tester.tap(newFrameButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('Cell: Drawing start'), findsOneWidget);
+      expect(_selectedCellStateLabel(tester), 'drawing start');
 
       final renameButton = find.byKey(
         const ValueKey<String>('rename-frame-button'),
@@ -1844,17 +1820,24 @@ Line 8''';
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Cell: Drawing start: A1'), findsOneWidget);
+      expect(_selectedCellStateLabel(tester), 'drawing start A1');
 
-      final markButton = find.byKey(
+      // Marks live on held/empty cells (never on a drawing start): hold the
+      // block one frame longer, then mark the held cell.
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('increase-exposure-button'),
+      );
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-1'),
+      );
+      await _tapToolbarButton(
+        tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
 
-      expect(find.text('Cell: Drawing start: A1 + Mark ●'), findsOneWidget);
+      expect(_selectedCellStateLabel(tester), 'inbetween mark');
     },
   );
 
@@ -1883,8 +1866,8 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
-    expect(find.text('Frame: 2'), findsOneWidget);
-    expect(find.text('Cell: Blank held'), findsOneWidget);
+    _expectCurrentFrame(tester, 2);
+    expect(_selectedCellStateLabel(tester), isNull);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -1912,6 +1895,15 @@ Line 8''';
       isTrue,
     );
 
+    // Hold the block across frames 1-3, then cut the hold at frame 3.
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('increase-exposure-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('increase-exposure-button'),
+    );
     await _tapTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-2'),
@@ -1923,12 +1915,13 @@ Line 8''';
     await tester.pumpAndSettle();
     await tester.tap(blankButton);
     await tester.pumpAndSettle();
+    _expectCellText('default-layer-1', 2, 'X');
 
     await _tapTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
-    expect(find.text('Cell: Held drawing'), findsOneWidget);
+    expect(_selectedCellStateLabel(tester), 'held exposure');
     expect(
       _isActionButtonEnabled(
         tester,
@@ -2022,7 +2015,6 @@ Line 8''';
         findsOneWidget,
       );
       expect(find.bySemanticsLabel('drawing start'), findsOneWidget);
-      expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
       expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
   );
@@ -2101,14 +2093,16 @@ Line 8''';
         findsOneWidget,
       );
 
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
+      // Marks live on held/empty cells only; on a drawing start the mark
+      // button is disabled under the unified model.
       expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('●')),
-        findsOneWidget,
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('toggle-mark-button'),
+        ),
+        isFalse,
       );
+      expect(markButton, findsOneWidget);
 
       expect(
         _isActionButtonEnabled(
@@ -2209,7 +2203,6 @@ Line 8''';
       find.descendant(of: secondCell, matching: find.text('○')),
       findsOneWidget,
     );
-    expect(find.text('Links: 1'), findsOneWidget);
   });
 
   testWidgets('conflicting frame name link merges into existing material', (
@@ -2241,7 +2234,6 @@ Line 8''';
       find.descendant(of: secondCell, matching: find.text('A1')),
       findsOneWidget,
     );
-    expect(find.text('Links: 2'), findsOneWidget);
     expect(find.text('Rename only'), findsNothing);
   });
 
@@ -2293,16 +2285,10 @@ Line 8''';
     final pasteButton = find.byKey(
       const ValueKey<String>('paste-linked-frame-button'),
     );
-    final linkedUsesStatus = find.byKey(
-      const ValueKey<String>('linked-frame-uses-status'),
-    );
     expect(copyButton, findsOneWidget);
     expect(pasteButton, findsOneWidget);
     expect(find.byTooltip('Copy Frame'), findsOneWidget);
     expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
-    expect(linkedUsesStatus, findsOneWidget);
-    expect(find.text('Links: -'), findsOneWidget);
-    expect(find.text('Copy: -'), findsOneWidget);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -2320,7 +2306,6 @@ Line 8''';
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    expect(find.text('Links: 1'), findsOneWidget);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -2328,8 +2313,6 @@ Line 8''';
       ),
       isTrue,
     );
-    expect(_cellActionHint(tester), contains('Copy'));
-    expect(_cellActionHint(tester), isNot(contains('Copy Frame can')));
 
     await _tapToolbarButton(
       tester,
@@ -2347,8 +2330,6 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
-    expect(_cellActionHint(tester), contains('Paste'));
-    expect(_cellActionHint(tester), isNot(contains('Paste Linked Frame')));
 
     await _tapToolbarButton(
       tester,
@@ -2369,14 +2350,9 @@ Line 8''';
       find.descendant(of: secondCell, matching: find.text('○')),
       findsOneWidget,
     );
-    expect(find.text('Links: 2'), findsOneWidget);
-    expect(
-      _statusText(tester, const ValueKey<String>('copied-frame-status')),
-      startsWith('Copy: ui-frame-'),
-    );
   });
 
-  testWidgets('linked paste replaces X and preserves mark priority', (
+  testWidgets('linked paste on a marked empty cell replaces the mark with a drawing', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -2404,10 +2380,6 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('blank-exposure-button'),
-    );
     final secondCell = find.byKey(
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
@@ -2420,6 +2392,12 @@ Line 8''';
       tester,
       const ValueKey<String>('toggle-mark-button'),
     );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('●')),
+      findsOneWidget,
+    );
+
+    // One entry per cell: pasting a linked frame REPLACES the mark.
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('paste-linked-frame-button'),
@@ -2427,9 +2405,13 @@ Line 8''';
 
     expect(
       find.descendant(of: secondCell, matching: find.text('●')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('○')),
       findsOneWidget,
     );
-    expect(find.text('Cell: Drawing start + Mark ●'), findsOneWidget);
+    expect(_selectedCellStateLabel(tester), 'drawing start');
   });
 
   testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (
@@ -2446,11 +2428,10 @@ Line 8''';
     expect(find.byTooltip('Paste Layer'), findsOneWidget);
     expect(_isActionButtonEnabled(tester, copyKey), isTrue);
     expect(_isActionButtonEnabled(tester, pasteKey), isFalse);
-    expect(find.text('Layer Clipboard: empty'), findsOneWidget);
 
     await _tapToolbarButton(tester, copyKey);
 
-    expect(find.text('Layer Clipboard: A'), findsOneWidget);
+    expect(find.byTooltip('Paste Layer (A)'), findsOneWidget);
     expect(_isActionButtonEnabled(tester, pasteKey), isTrue);
   });
 
@@ -2469,7 +2450,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      // Drawing rows plus the always-present camera row.
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2479,10 +2461,10 @@ Line 8''';
       );
 
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-      expect(_timelineLayerRows(), findsOneWidget);
+      expect(_timelineLayerRows(), findsNWidgets(2));
 
       await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2556,7 +2538,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      // Drawing rows plus the always-present camera row.
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),

@@ -16,7 +16,6 @@ import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_layer_kind_command.dart';
@@ -43,10 +42,9 @@ void main() {
           id: 'layer-1',
           frames: [frame],
           timeline: {
-            0: TimelineExposure.drawing(frame.id),
-            4: const TimelineExposure.blank(),
+            0: TimelineExposure.drawing(frame.id, length: 4),
+            4: const TimelineExposure.mark(),
           },
-          marks: const {4: TimelineMark.inbetween()},
           isVisible: false,
           opacity: 0.42,
         );
@@ -72,7 +70,6 @@ void main() {
         expect(updatedLayer.name, layer.name);
         expect(updatedLayer.frames, [frame]);
         expect(updatedLayer.timeline, layer.timeline);
-        expect(updatedLayer.marks, layer.marks);
         expect(updatedLayer.isVisible, isFalse);
         expect(updatedLayer.opacity, 0.42);
         expect(updatedFrame.storyboardMetadata, metadata);
@@ -149,8 +146,7 @@ void main() {
         frames: [
           _frame(id: 'frame-animation', strokes: [_stroke('stroke')]),
         ],
-        timeline: const {0: TimelineExposure.blank()},
-        marks: const {0: TimelineMark.inbetween()},
+        timeline: const {0: TimelineExposure.mark()},
       );
       final cut = _cut(id: 'cut-1', layers: [storyboardLayer, animationLayer]);
       final repository = ProjectRepository(initialProject: _project([cut]));
@@ -264,7 +260,6 @@ Layer _layer({
   required String id,
   List<Frame> frames = const [],
   Map<int, TimelineExposure>? timeline,
-  Map<int, TimelineMark>? marks,
   LayerKind kind = LayerKind.animation,
   bool isVisible = true,
   double opacity = 1.0,
@@ -273,7 +268,6 @@ Layer _layer({
   name: 'name-$id',
   frames: frames,
   timeline: timeline,
-  marks: marks,
   kind: kind,
   isVisible: isVisible,
   opacity: opacity,
