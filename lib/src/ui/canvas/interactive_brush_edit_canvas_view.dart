@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -75,6 +76,11 @@ class _InteractiveBrushEditCanvasViewState
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
+
+  /// Per-stroke randomness for the dual-mask phase; each dab samples the
+  /// dual texture at its own random offset (stored on the dab, so replay
+  /// is deterministic).
+  final math.Random _dualPhaseRandom = math.Random();
 
   /// Latest known stroke direction (visual CCW degrees); kept across
   /// stationary events so direction-following tips do not snap back.
@@ -396,6 +402,7 @@ class _InteractiveBrushEditCanvasViewState
     required int sequence,
   }) {
     final settings = _activeStrokeInputSettings ?? widget.inputSettings;
+    final dualMask = settings.dualMask;
     return BrushDab(
       center: localPosition,
       color: settings.color,
@@ -409,6 +416,10 @@ class _InteractiveBrushEditCanvasViewState
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
+      dualMask: dualMask,
+      dualMaskScale: settings.dualMaskScale,
+      dualOffsetU: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
+      dualOffsetV: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
     );
   }
 

@@ -110,6 +110,10 @@ BrushDab dab({
   double roundness = 1.0,
   double angleDegrees = 0.0,
   BrushTipMask? tipMask,
+  BrushTipMask? dualMask,
+  double dualMaskScale = 1.0,
+  double dualOffsetU = 0.0,
+  double dualOffsetV = 0.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -124,6 +128,10 @@ BrushDab dab({
     roundness: roundness,
     angleDegrees: angleDegrees,
     tipMask: tipMask,
+    dualMask: dualMask,
+    dualMaskScale: dualMaskScale,
+    dualOffsetU: dualOffsetU,
+    dualOffsetV: dualOffsetV,
   );
 }
 
@@ -381,6 +389,48 @@ void main() {
             ),
         ]),
         reason: 'sampled tip rotated across tiles',
+      );
+    });
+
+    test('dual-brush textured stroke across tip shapes', () {
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 40.4,
+            y: 40.6,
+            size: 16,
+            hardness: 0.5,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.7,
+            dualOffsetU: 0.31,
+            dualOffsetV: 0.77,
+            sequence: 0,
+          ),
+          dab(
+            x: 52.2,
+            y: 44.8,
+            size: 16,
+            tipShape: BrushTipShape.square,
+            dualMask: _testTipMask,
+            dualMaskScale: 1.3,
+            dualOffsetU: 0.9,
+            dualOffsetV: 0.1,
+            sequence: 1,
+          ),
+          dab(
+            x: 60.7,
+            y: 47.3,
+            size: 16,
+            tipMask: _testTipMask,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.5,
+            dualOffsetU: 0.5,
+            dualOffsetV: 0.5,
+            sequence: 2,
+          ),
+        ]),
+        reason: 'dual brush texture',
       );
     });
 

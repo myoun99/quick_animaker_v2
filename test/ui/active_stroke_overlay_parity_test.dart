@@ -43,6 +43,10 @@ BrushDab _dab({
   double roundness = 1.0,
   double angleDegrees = 0.0,
   BrushTipMask? tipMask,
+  BrushTipMask? dualMask,
+  double dualMaskScale = 1.0,
+  double dualOffsetU = 0.0,
+  double dualOffsetV = 0.0,
 }) {
   return BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -57,6 +61,10 @@ BrushDab _dab({
     roundness: roundness,
     angleDegrees: angleDegrees,
     tipMask: tipMask,
+    dualMask: dualMask,
+    dualMaskScale: dualMaskScale,
+    dualOffsetU: dualOffsetU,
+    dualOffsetV: dualOffsetV,
   );
 }
 
@@ -204,6 +212,33 @@ void main() {
       ],
       'sampled tip on fractional center': [
         _dab(x: 14.37, y: 12.81, size: 16, tipMask: _testTipMask),
+      ],
+      'dual-brush textured soft round dab': [
+        _dab(
+          x: 13.4,
+          y: 12.7,
+          size: 14,
+          hardness: 0.5,
+          dualMask: _testTipMask,
+          dualMaskScale: 0.6,
+          dualOffsetU: 0.31,
+          dualOffsetV: 0.77,
+        ),
+      ],
+      'dual mask over sampled tip, translucent overlap': [
+        for (var i = 0; i < 3; i += 1)
+          _dab(
+            x: 10.3 + i * 4.1,
+            y: 12.2 + i * 1.7,
+            size: 12,
+            color: 0x9040A0C0,
+            tipMask: _testTipMask,
+            dualMask: _testTipMask,
+            dualMaskScale: 1.4,
+            dualOffsetU: 0.1 * (i + 1),
+            dualOffsetV: 0.9 - 0.2 * i,
+            sequence: i,
+          ),
       ],
       'sampled tip rotated and squashed, overlapping stroke': [
         for (var i = 0; i < 4; i += 1)

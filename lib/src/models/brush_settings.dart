@@ -24,7 +24,16 @@ class BrushSettings {
     this.scatterRadiusRatio = 0.0,
     this.scatterCount = 1,
     this.scatterBothAxes = true,
+    this.dualMask,
+    this.dualMaskScale = 1.0,
   }) {
+    if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
+      throw ArgumentError.value(
+        dualMaskScale,
+        'dualMaskScale',
+        'BrushSettings.dualMaskScale must be finite and greater than 0.',
+      );
+    }
     _validatePositive(size, 'size');
     _validateUnitInterval(opacity, 'opacity');
     _validateUnitInterval(flow, 'flow');
@@ -93,6 +102,11 @@ class BrushSettings {
   /// to the stroke direction.
   final bool scatterBothAxes;
 
+  /// Dual-brush mask multiplying every dab's coverage; tiled at
+  /// [dualMaskScale] times the dab size with a random per-dab phase.
+  final BrushTipMask? dualMask;
+  final double dualMaskScale;
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -114,6 +128,8 @@ class BrushSettings {
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
+    BrushTipMask? dualMask,
+    double? dualMaskScale,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -136,6 +152,8 @@ class BrushSettings {
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
+      dualMask: dualMask ?? this.dualMask,
+      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
     );
   }
 
@@ -160,6 +178,8 @@ class BrushSettings {
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
+    if (dualMask != null) 'dualMask': dualMask!.toJson(),
+    'dualMaskScale': dualMaskScale,
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -190,6 +210,10 @@ class BrushSettings {
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,
       scatterBothAxes: json['scatterBothAxes'] as bool? ?? true,
+      dualMask: json['dualMask'] == null
+          ? null
+          : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
+      dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
     );
   }
 
@@ -216,7 +240,9 @@ class BrushSettings {
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
           other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes;
+          other.scatterBothAxes == scatterBothAxes &&
+          other.dualMask == dualMask &&
+          other.dualMaskScale == dualMaskScale;
 
   @override
   int get hashCode => Object.hashAll([
@@ -240,6 +266,8 @@ class BrushSettings {
     scatterRadiusRatio,
     scatterCount,
     scatterBothAxes,
+    dualMask,
+    dualMaskScale,
   ]);
 
   @override

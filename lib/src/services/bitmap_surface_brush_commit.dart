@@ -184,6 +184,23 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
             coverage = 1.0;
           }
 
+          // Dual-brush texture: a second tiled mask multiplies the coverage
+          // (must match the live rasterizer and oracle exactly).
+          final dualMask = dab.dualMask;
+          if (dualMask != null) {
+            coverage *= sampleBrushTipMaskTiledCoverage(
+              mask: dualMask,
+              dx: x + 0.5 - centerX,
+              dy: dy,
+              period: dab.size * dab.dualMaskScale,
+              offsetU: dab.dualOffsetU,
+              offsetV: dab.dualOffsetV,
+            );
+            if (coverage <= 0.0) {
+              continue;
+            }
+          }
+
           // Same grouping as the reference path:
           // effectiveOpacity = dab.opacity * coverage,
           // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
