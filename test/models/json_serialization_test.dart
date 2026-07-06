@@ -72,7 +72,8 @@ void main() {
     expect(restored.toJson(), project.toJson());
   });
 
-  test('layer timeline map serializes and deserializes blank entries', () {
+  test('layer timeline map serializes and deserializes drawing and mark '
+      'entries', () {
     final layer = Layer(
       id: const LayerId('layer-timeline'),
       name: 'Timeline Layer',
@@ -80,15 +81,15 @@ void main() {
         Frame(id: const FrameId('frame-a'), duration: 2, strokes: const []),
       ],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-a')),
-        6: const TimelineExposure.blank(),
+        0: TimelineExposure.drawing(const FrameId('frame-a'), length: 6),
+        6: const TimelineExposure.mark(),
       },
     );
 
     final restored = Layer.fromJson(layer.toJson());
 
     expect(restored, layer);
-    expect(restored.timeline[6], const TimelineExposure.blank());
+    expect(restored.timeline[6], const TimelineExposure.mark());
   });
 
   test(
@@ -115,8 +116,14 @@ void main() {
 
       final layer = Layer.fromJson(json);
 
-      expect(layer.timeline[0], TimelineExposure.drawing(const FrameId('a')));
-      expect(layer.timeline[3], TimelineExposure.drawing(const FrameId('b')));
+      expect(
+        layer.timeline[0],
+        TimelineExposure.drawing(const FrameId('a'), length: 3),
+      );
+      expect(
+        layer.timeline[3],
+        TimelineExposure.drawing(const FrameId('b'), length: 2),
+      );
     },
   );
 }

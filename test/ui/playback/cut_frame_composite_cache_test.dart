@@ -46,7 +46,7 @@ void main() {
         name: 'A',
         frames: [Frame(id: const FrameId('frame-a'), duration: 1, strokes: const [])],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('frame-a')),
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 24),
         },
         opacity: opacity,
       ),
@@ -274,12 +274,14 @@ void main() {
 
       cache.enforceBudget(
         maxBytes: 8 * 8 * 4,
-        protect: const PlaybackProtectedRange(
-          cutId: CutId('cut'),
+        protect: const [
+          PlaybackProtectedRange(
+            cutId: CutId('cut'),
           startFrame: 0,
           endFrame: 23,
           quality: PlaybackQuality.full,
-        ),
+          ),
+        ],
       );
 
       expect(

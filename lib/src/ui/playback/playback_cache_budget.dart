@@ -33,7 +33,7 @@ class PlaybackCacheBudgetEnforcer {
   final CutFrameCompositeCache composites;
   final int maxBytes;
 
-  void enforce({PlaybackProtectedRange? protect}) {
+  void enforce({List<PlaybackProtectedRange> protect = const []}) {
     composites.enforceBudget(maxBytes: maxBytes, protect: protect);
     final remaining = maxBytes - composites.estimatedBytes;
     layerImages.evictLeastRecentlyUsed(

@@ -48,7 +48,7 @@ void main() {
         frames: [
           Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(const FrameId('frame-a'))},
+        timeline: {0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1)},
       ),
     ],
   );
@@ -115,12 +115,14 @@ void main() {
           composites: c.composites,
           maxBytes: fullImageBytes,
         ).enforce(
-          protect: const PlaybackProtectedRange(
-            cutId: CutId('cut'),
+          protect: const [
+            PlaybackProtectedRange(
+              cutId: CutId('cut'),
             startFrame: 0,
             endFrame: 3,
             quality: PlaybackQuality.full,
-          ),
+            ),
+          ],
         );
 
         // Composites fit the budget exactly; nothing remains for the layer
@@ -154,12 +156,14 @@ void main() {
         composites: c.composites,
         maxBytes: fullImageBytes,
       ).enforce(
-        protect: const PlaybackProtectedRange(
-          cutId: CutId('cut'),
+        protect: const [
+          PlaybackProtectedRange(
+            cutId: CutId('cut'),
           startFrame: 0,
           endFrame: 3,
           quality: PlaybackQuality.full,
-        ),
+          ),
+        ],
       );
 
       expect(

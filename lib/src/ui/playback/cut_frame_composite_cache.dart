@@ -197,15 +197,22 @@ class CutFrameCompositeCache {
   }
 
   /// Evicts least-recently-used composites until at or under [maxBytes],
-  /// never touching frames inside [protect].
-  void enforceBudget({required int maxBytes, PlaybackProtectedRange? protect}) {
+  /// never touching frames inside any of the [protect] ranges (the playing
+  /// playlist may span several cuts).
+  void enforceBudget({
+    required int maxBytes,
+    List<PlaybackProtectedRange> protect = const [],
+  }) {
     if (estimatedBytes <= maxBytes) {
       return;
     }
     final protectedSignatures = <CutFrameCompositeSignature>{};
-    if (protect != null) {
+    if (protect.isNotEmpty) {
       for (final entry in _index.entries) {
-        if (protect.contains(entry.key.$1, entry.key.$2, entry.key.$3)) {
+        final isProtected = protect.any(
+          (range) => range.contains(entry.key.$1, entry.key.$2, entry.key.$3),
+        );
+        if (isProtected) {
           protectedSignatures.add(entry.value);
         }
       }

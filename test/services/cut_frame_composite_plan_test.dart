@@ -59,13 +59,13 @@ void main() {
           id: const LayerId('bottom'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
         ),
         Layer(
           id: const LayerId('top'),
           name: 'B',
           frames: [frame('frame-2')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1)},
         ),
       ]),
       frameIndex: 0,
@@ -82,20 +82,20 @@ void main() {
           id: const LayerId('visible'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
         ),
         Layer(
           id: const LayerId('hidden'),
           name: 'B',
           frames: [frame('frame-2')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1)},
           isVisible: false,
         ),
         Layer(
           id: const LayerId('transparent'),
           name: 'C',
           frames: [frame('frame-3')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-3'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-3'), length: 1)},
           opacity: 0,
         ),
         Layer(
@@ -113,14 +113,14 @@ void main() {
     expect(plan.map(markerOf), [1]);
   });
 
-  test('held exposures keep the frame until the next entry', () {
+  test('held exposures keep the frame across their block coverage', () {
     final layer = Layer(
       id: const LayerId('layer'),
       name: 'A',
       frames: [frame('frame-1'), frame('frame-2')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1')),
-        6: TimelineExposure.drawing(const FrameId('frame-2')),
+        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 6),
+        6: TimelineExposure.drawing(const FrameId('frame-2'), length: 4),
       },
     );
 
@@ -133,7 +133,9 @@ void main() {
     expect(planAt(0).map(markerOf), [1]);
     expect(planAt(5).map(markerOf), [1]);
     expect(planAt(6).map(markerOf), [2]);
-    expect(planAt(99).map(markerOf), [2]);
+    expect(planAt(9).map(markerOf), [2]);
+    // Past the last block's explicit end nothing shows.
+    expect(planAt(99), isEmpty);
   });
 
   test('blank exposures and missing surfaces contribute nothing', () {
@@ -144,15 +146,14 @@ void main() {
           name: 'A',
           frames: [frame('frame-1')],
           timeline: {
-            0: TimelineExposure.drawing(const FrameId('frame-1')),
-            2: const TimelineExposure.blank(),
+            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 2),
           },
         ),
         Layer(
           id: const LayerId('undrawn'),
           name: 'B',
           frames: [frame('frame-x')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-x'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-x'), length: 1)},
         ),
       ]),
       frameIndex: 3,
@@ -169,7 +170,7 @@ void main() {
           id: const LayerId('faded'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
+          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
           opacity: 0.25,
         ),
       ]),

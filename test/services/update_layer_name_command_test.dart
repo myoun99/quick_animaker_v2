@@ -11,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
@@ -115,7 +114,6 @@ void main() {
         expect(afterLayer.kind, beforeLayer.kind);
         expect(afterLayer.frames, beforeLayer.frames);
         expect(afterLayer.timeline, beforeLayer.timeline);
-        expect(afterLayer.marks, beforeLayer.marks);
         expect(afterLayer.isVisible, beforeLayer.isVisible);
         expect(afterLayer.opacity, beforeLayer.opacity);
         expect(afterCut.layers.map((layer) => layer.id).toList(), beforeOrder);
@@ -218,10 +216,9 @@ Layer _layer({
     opacity: opacity,
     frames: [Frame(id: _frameId, duration: 2, strokes: const [], name: 'A1')],
     timeline: {
-      0: TimelineExposure.drawing(_frameId),
-      2: TimelineExposure.blank(),
+      0: TimelineExposure.drawing(_frameId, length: 2),
+      1: const TimelineExposure.mark(),
     },
-    marks: {1: TimelineMark.inbetween()},
   );
 }
 

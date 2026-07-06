@@ -108,7 +108,7 @@ void main() {
           currentFrameIndex: 1,
           exposureStateForLayer: (layer, frameIndex) => frameIndex == 1
               ? TimelineCellExposureState.drawingStart
-              : TimelineCellExposureState.empty,
+              : TimelineCellExposureState.uncovered,
         ),
       );
 
@@ -158,9 +158,8 @@ void main() {
           frameStartIndex: 0,
           frameEndIndexExclusive: 3,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 2
-              ? TimelineCellExposureState.empty
+              ? TimelineCellExposureState.markUncovered
               : TimelineCellExposureState.drawingStart,
-          hasMarkForLayer: (_, frameIndex) => frameIndex == 2,
           frameNameForLayer: (_, frameIndex) =>
               frameIndex == 1 ? 'Pose A' : null,
         ),
@@ -205,7 +204,6 @@ Widget _body({
   TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
-  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
@@ -226,8 +224,7 @@ Widget _body({
           metrics: metrics,
           exposureStateForLayer:
               exposureStateForLayer ??
-              ((_, _) => TimelineCellExposureState.empty),
-          hasMarkForLayer: hasMarkForLayer,
+              ((_, _) => TimelineCellExposureState.uncovered),
           frameNameForLayer: frameNameForLayer,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},

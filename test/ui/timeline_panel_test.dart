@@ -164,8 +164,8 @@ void main() {
         orientation: TimelineOrientation.horizontal,
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.heldExposure
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.held
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -180,8 +180,8 @@ void main() {
         orientation: TimelineOrientation.vertical,
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.heldExposure
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.held
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -292,13 +292,15 @@ void main() {
     expect(selectedLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('forwards mark display callback to timeline grids', (
+  testWidgets('forwards mark exposure states to timeline grids', (
     tester,
   ) async {
     await tester.pumpWidget(
       _panel(
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0,
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -392,7 +394,6 @@ Widget _panel({
   ValueChanged<TimelineOrientation>? onOrientationChanged,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
-  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   Widget? timelineActionToolbar,
 }) {
@@ -407,8 +408,7 @@ Widget _panel({
             exposureStateForLayer ??
             (layer, frameIndex) => frameIndex == 0
                 ? TimelineCellExposureState.drawingStart
-                : TimelineCellExposureState.empty,
-        hasMarkForLayer: hasMarkForLayer,
+                : TimelineCellExposureState.uncovered,
         frameNameForLayer: frameNameForLayer,
         onSelectLayer: onSelectLayer ?? (_) {},
         onSelectFrame: onSelectFrame ?? (_) {},

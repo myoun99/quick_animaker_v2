@@ -2,30 +2,34 @@ import 'dart:collection';
 
 import '../core/collection_equality.dart';
 import 'frame.dart';
+import 'frame_id.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
-import 'timeline_mark.dart';
+import 'timeline_exposure_type.dart';
 
+/// A cel layer. Its single [timeline] map records everything authored on
+/// the frame axis: drawing block starts (frame + explicit hold length) and
+/// inbetween marks. Emptiness has no entry — uncovered cells are the
+/// timesheet "X" cells. There is no separate marks map and no blank entry
+/// type (legacy files carrying either are migrated in [Layer.fromJson]).
 class Layer {
   Layer({
     required this.id,
     required this.name,
     required List<Frame> frames,
     Map<int, TimelineExposure>? timeline,
-    Map<int, TimelineMark>? marks,
     this.isVisible = true,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
   }) : frames = List.unmodifiable(frames),
-       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
-       marks = _immutableMarks(marks ?? const {});
+       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames));
 
   final LayerId id;
   final String name;
   final List<Frame> frames;
   final SplayTreeMap<int, TimelineExposure> timeline;
-  final SplayTreeMap<int, TimelineMark> marks;
   final bool isVisible;
   final double opacity;
   final LayerKind kind;
@@ -35,7 +39,6 @@ class Layer {
     String? name,
     List<Frame>? frames,
     Map<int, TimelineExposure>? timeline,
-    Map<int, TimelineMark>? marks,
     bool? isVisible,
     double? opacity,
     LayerKind? kind,
@@ -46,7 +49,6 @@ class Layer {
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
-      marks: marks ?? this.marks,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
@@ -59,9 +61,6 @@ class Layer {
     'frames': frames.map((frame) => frame.toJson()).toList(),
     'timeline': timeline.entries
         .map((entry) => {'index': entry.key, 'exposure': entry.value.toJson()})
-        .toList(),
-    'marks': marks.entries
-        .map((entry) => {'index': entry.key, 'mark': entry.value.toJson()})
         .toList(),
     'isVisible': isVisible,
     'opacity': opacity,
@@ -77,11 +76,12 @@ class Layer {
       name: json['name'] as String,
       frames: frames,
       timeline: json.containsKey('timeline')
-          ? _timelineFromJson(json['timeline'])
+          ? _timelineFromJson(
+              json['timeline'],
+              legacyMarksJson: json['marks'],
+              frames: frames,
+            )
           : _deriveTimeline(frames),
-      marks: json.containsKey('marks')
-          ? _marksFromJson(json['marks'])
-          : const {},
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),
       kind: json.containsKey('kind')
@@ -98,7 +98,6 @@ class Layer {
           other.name == name &&
           listEquals(other.frames, frames) &&
           mapEquals(other.timeline, timeline) &&
-          mapEquals(other.marks, marks) &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
           other.kind == kind;
@@ -111,9 +110,6 @@ class Layer {
     Object.hashAll(
       timeline.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
-    Object.hashAll(
-      marks.entries.map((entry) => Object.hash(entry.key, entry.value)),
-    ),
     isVisible,
     opacity,
     kind,
@@ -122,7 +118,7 @@ class Layer {
   @override
   String toString() =>
       'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, '
-      'marks: $marks, isVisible: $isVisible, opacity: $opacity, kind: $kind)';
+      'isVisible: $isVisible, opacity: $opacity, kind: $kind)';
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(
@@ -139,21 +135,7 @@ SplayTreeMap<int, TimelineExposure> _immutableTimeline(
     }
     result[entry.key] = entry.value;
   }
-  return result;
-}
-
-SplayTreeMap<int, TimelineMark> _immutableMarks(Map<int, TimelineMark> marks) {
-  final result = SplayTreeMap<int, TimelineMark>();
-  for (final entry in marks.entries) {
-    if (entry.key < 0) {
-      throw ArgumentError.value(
-        entry.key,
-        'marks',
-        'Timeline mark indexes must be non-negative.',
-      );
-    }
-    result[entry.key] = entry.value;
-  }
+  validateTimelineCoverage(result);
   return result;
 }
 
@@ -161,86 +143,187 @@ SplayTreeMap<int, TimelineExposure> _deriveTimeline(List<Frame> frames) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   var index = 0;
   for (final frame in frames) {
-    timeline[index] = TimelineExposure.drawing(frame.id);
-    index += frame.duration <= 0 ? 1 : frame.duration;
+    final length = frame.duration <= 0 ? 1 : frame.duration;
+    timeline[index] = TimelineExposure.drawing(frame.id, length: length);
+    index += length;
   }
   return timeline;
 }
 
-SplayTreeMap<int, TimelineExposure> _timelineFromJson(Object? json) {
-  final timeline = SplayTreeMap<int, TimelineExposure>();
+/// Raw parse of one legacy or current timeline item.
+class _RawTimelineItem {
+  const _RawTimelineItem({
+    required this.index,
+    required this.type,
+    this.frameId,
+    this.length,
+  });
 
-  if (json is List<dynamic>) {
-    for (final item in json) {
-      final entry = item as Map<String, dynamic>;
-      final index = entry['index'] as int;
-      if (index < 0) {
-        throw const FormatException('Timeline indexes must be non-negative.');
-      }
-      if (timeline.containsKey(index)) {
-        throw FormatException('Duplicate timeline index: $index');
-      }
-      timeline[index] = TimelineExposure.fromJson(
-        entry['exposure'] as Map<String, dynamic>,
-      );
-    }
-    return timeline;
-  }
+  final int index;
 
-  if (json is Map<String, dynamic>) {
-    for (final entry in json.entries) {
-      final index = int.tryParse(entry.key);
-      if (index == null || index < 0) {
-        throw FormatException('Invalid timeline index: ${entry.key}');
-      }
-      if (timeline.containsKey(index)) {
-        throw FormatException('Duplicate timeline index: $index');
-      }
-      timeline[index] = TimelineExposure.fromJson(
-        entry.value as Map<String, dynamic>,
-      );
-    }
-    return timeline;
-  }
-
-  throw const FormatException('Layer timeline must be a list or object.');
+  /// 'drawing' | 'blank' | 'mark'
+  final String type;
+  final FrameId? frameId;
+  final int? length;
 }
 
-SplayTreeMap<int, TimelineMark> _marksFromJson(Object? json) {
-  final marks = SplayTreeMap<int, TimelineMark>();
+/// Decodes a timeline from JSON, migrating legacy formats in one pass:
+///
+/// - legacy `blank` entries become nothing — each one cuts the preceding
+///   drawing's hold at its index;
+/// - legacy drawing entries without `length` get their old visual length:
+///   up to the next entry (drawing or blank), or `Frame.duration` for the
+///   last block (the old trailing infinite hold becomes finite);
+/// - the legacy separate `marks` map merges in as mark entries, dropping
+///   any mark that collides with a drawing start index (drawing wins).
+SplayTreeMap<int, TimelineExposure> _timelineFromJson(
+  Object? json, {
+  Object? legacyMarksJson,
+  required List<Frame> frames,
+}) {
+  final items = SplayTreeMap<int, _RawTimelineItem>();
+
+  void addItem(int index, Map<String, dynamic> exposureJson) {
+    if (index < 0) {
+      throw const FormatException('Timeline indexes must be non-negative.');
+    }
+    if (items.containsKey(index)) {
+      throw FormatException('Duplicate timeline index: $index');
+    }
+    final type = exposureJson['type'];
+    if (type != 'drawing' && type != 'blank' && type != 'mark') {
+      throw FormatException('Unknown timeline exposure type: $type');
+    }
+    final frameIdJson = exposureJson['frameId'];
+    final lengthJson = exposureJson['length'];
+    if (type == 'drawing' && frameIdJson == null) {
+      throw const FormatException(
+        'Drawing timeline exposure requires frameId.',
+      );
+    }
+    if (type != 'drawing' && frameIdJson != null) {
+      throw FormatException('$type timeline exposure cannot have frameId.');
+    }
+    items[index] = _RawTimelineItem(
+      index: index,
+      type: type as String,
+      frameId: frameIdJson == null
+          ? null
+          : FrameId.fromJson(frameIdJson as Map<String, dynamic>),
+      length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
+    );
+  }
 
   if (json is List<dynamic>) {
     for (final item in json) {
       final entry = item as Map<String, dynamic>;
-      final index = entry['index'] as int;
-      if (index < 0) {
-        throw const FormatException(
-          'Timeline mark indexes must be non-negative.',
-        );
-      }
-      if (marks.containsKey(index)) {
-        throw FormatException('Duplicate timeline mark index: $index');
-      }
-      marks[index] = TimelineMark.fromJson(
-        entry['mark'] as Map<String, dynamic>,
-      );
+      addItem(entry['index'] as int, entry['exposure'] as Map<String, dynamic>);
     }
-    return marks;
-  }
-
-  if (json is Map<String, dynamic>) {
+  } else if (json is Map<String, dynamic>) {
     for (final entry in json.entries) {
       final index = int.tryParse(entry.key);
-      if (index == null || index < 0) {
-        throw FormatException('Invalid timeline mark index: ${entry.key}');
+      if (index == null) {
+        throw FormatException('Invalid timeline index: ${entry.key}');
       }
-      if (marks.containsKey(index)) {
-        throw FormatException('Duplicate timeline mark index: $index');
-      }
-      marks[index] = TimelineMark.fromJson(entry.value as Map<String, dynamic>);
+      addItem(index, entry.value as Map<String, dynamic>);
     }
-    return marks;
+  } else {
+    throw const FormatException('Layer timeline must be a list or object.');
   }
 
-  throw const FormatException('Layer marks must be a list or object.');
+  final frameDurations = <FrameId, int>{
+    for (final frame in frames)
+      frame.id: frame.duration <= 0 ? 1 : frame.duration,
+  };
+
+  final timeline = SplayTreeMap<int, TimelineExposure>();
+  final rawItems = items.values.toList(growable: false);
+  for (var i = 0; i < rawItems.length; i += 1) {
+    final item = rawItems[i];
+    switch (item.type) {
+      case 'mark':
+        timeline[item.index] = const TimelineExposure.mark();
+      case 'blank':
+        // Legacy hold terminator: consumed as the previous block's boundary.
+        break;
+      case 'drawing':
+        var length = item.length;
+        if (length == null) {
+          // Legacy entry: old visuals held until the next drawing/blank
+          // entry; the last block held its Frame.duration.
+          int? boundary;
+          for (var j = i + 1; j < rawItems.length; j += 1) {
+            if (rawItems[j].type != 'mark') {
+              boundary = rawItems[j].index;
+              break;
+            }
+          }
+          length = boundary != null
+              ? boundary - item.index
+              : (frameDurations[item.frameId] ?? 1);
+        }
+        // Never overlap the next drawing regardless of what the file says.
+        for (var j = i + 1; j < rawItems.length; j += 1) {
+          if (rawItems[j].type == 'drawing') {
+            final maxLength = rawItems[j].index - item.index;
+            if (length! > maxLength) {
+              length = maxLength;
+            }
+            break;
+          }
+        }
+        if (length! < 1) {
+          length = 1;
+        }
+        timeline[item.index] = TimelineExposure.drawing(
+          item.frameId!,
+          length: length,
+        );
+    }
+  }
+
+  _mergeLegacyMarks(timeline, legacyMarksJson);
+  return timeline;
+}
+
+void _mergeLegacyMarks(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  Object? legacyMarksJson,
+) {
+  if (legacyMarksJson == null) {
+    return;
+  }
+
+  final indexes = <int>[];
+  if (legacyMarksJson is List<dynamic>) {
+    for (final item in legacyMarksJson) {
+      indexes.add((item as Map<String, dynamic>)['index'] as int);
+    }
+  } else if (legacyMarksJson is Map<String, dynamic>) {
+    for (final key in legacyMarksJson.keys) {
+      final index = int.tryParse(key);
+      if (index == null) {
+        throw FormatException('Invalid timeline mark index: $key');
+      }
+      indexes.add(index);
+    }
+  } else {
+    throw const FormatException('Layer marks must be a list or object.');
+  }
+
+  for (final index in indexes) {
+    if (index < 0) {
+      throw const FormatException(
+        'Timeline mark indexes must be non-negative.',
+      );
+    }
+    final existing = timeline[index];
+    if (existing != null &&
+        existing.type == TimelineExposureType.drawing) {
+      // Legacy marks could overlay a drawing start; the unified model keeps
+      // the drawing.
+      continue;
+    }
+    timeline[index] = const TimelineExposure.mark();
+  }
 }

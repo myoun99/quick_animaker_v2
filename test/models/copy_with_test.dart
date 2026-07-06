@@ -14,7 +14,7 @@ import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 
 void main() {
   frameNameCopyWithTests();
@@ -35,7 +35,8 @@ void main() {
   });
 
   test(
-    'layer marks default empty, copyWith replaces marks, and equality includes marks',
+    'timeline marks default empty, copyWith replaces the timeline, and '
+    'equality includes mark entries',
     () {
       final layer = Layer(
         id: const LayerId('layer-1'),
@@ -43,11 +44,11 @@ void main() {
         frames: const [],
       );
       final markedLayer = layer.copyWith(
-        marks: const {3: TimelineMark.inbetween()},
+        timeline: const {3: TimelineExposure.mark()},
       );
 
-      expect(layer.marks, isEmpty);
-      expect(markedLayer.marks[3], const TimelineMark.inbetween());
+      expect(layer.timeline, isEmpty);
+      expect(markedLayer.timeline[3], const TimelineExposure.mark());
       expect(markedLayer, isNot(layer));
       expect(
         markedLayer,
@@ -55,7 +56,7 @@ void main() {
           id: const LayerId('layer-1'),
           name: 'Layer',
           frames: const [],
-          marks: const {3: TimelineMark.inbetween()},
+          timeline: const {3: TimelineExposure.mark()},
         ),
       );
     },

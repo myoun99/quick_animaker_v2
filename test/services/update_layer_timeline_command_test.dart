@@ -9,7 +9,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_layer_timeline_command.dart';
@@ -25,8 +24,7 @@ void main() {
     );
     final after = before.copyWith(
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('a')),
-        4: const TimelineExposure.blank(),
+        0: TimelineExposure.drawing(const FrameId('a'), length: 4),
       },
     );
     final repository = ProjectRepository(initialProject: _project(before));
@@ -40,7 +38,7 @@ void main() {
       ),
     );
 
-    expect(_layer(repository).timeline[4]?.type, TimelineExposureType.blank);
+    expect(_layer(repository).timeline[0]?.length, 4);
 
     history.undo();
 

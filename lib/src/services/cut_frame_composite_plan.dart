@@ -3,8 +3,7 @@ import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
 import '../models/layer_kind.dart';
-import '../models/timeline_exposure.dart';
-import '../models/timeline_exposure_type.dart';
+import '../models/timeline_coverage.dart';
 
 /// One paintable layer of a composited cut frame, bottom → top order.
 class CutFrameCompositeLayer {
@@ -24,8 +23,8 @@ typedef LayerFrameSurfaceResolver =
 /// Layers are visited in list order (first = bottom, later layers draw on
 /// top, matching "add layer above"). The camera layer, hidden layers and
 /// fully transparent layers are skipped. Exposure resolution matches the
-/// timeline: the last exposure entry at or before [frameIndex] holds, and
-/// blank exposures contribute nothing.
+/// timeline: the drawing block covering [frameIndex] shows; uncovered
+/// cells contribute nothing.
 List<CutFrameCompositeLayer> planCutFrameComposite({
   required Cut cut,
   required int frameIndex,
@@ -59,28 +58,13 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   return plan;
 }
 
-/// The frame exposed at [frameIndex]: the last exposure entry at or before
-/// the index (same semantics as TimelineController.resolveFrameForLayer).
-/// Shared by the composite plan and the composite cache signature so both
-/// always agree on what a frame shows.
+/// The frame exposed at [frameIndex]: the drawing block covering the index
+/// (same semantics as TimelineController.resolveFrameForLayer — uncovered
+/// cells and marks in empty space show nothing). Shared by the composite
+/// plan and the composite cache signature so both always agree on what a
+/// frame shows.
 Frame? resolveExposedFrameAt(Layer layer, int frameIndex) {
-  if (frameIndex < 0 || layer.timeline.isEmpty) {
-    return null;
-  }
-
-  TimelineExposure? activeExposure;
-  for (final entry in layer.timeline.entries) {
-    if (entry.key > frameIndex) {
-      break;
-    }
-    activeExposure = entry.value;
-  }
-
-  if (activeExposure == null ||
-      activeExposure.type == TimelineExposureType.blank) {
-    return null;
-  }
-  final frameId = activeExposure.frameId;
+  final frameId = exposedFrameIdAt(layer.timeline, frameIndex);
   if (frameId == null) {
     return null;
   }

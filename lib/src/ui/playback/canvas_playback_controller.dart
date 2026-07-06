@@ -40,10 +40,13 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// playhead (and switch the active cut after a play-all run).
   final void Function(PlaybackPosition lastPosition)? onStopped;
 
-  /// Fired on [play] so the prerender scheduler can warm the playlist.
+  /// Fired on [play] so the prerender scheduler can warm the playlist;
+  /// [startGlobalFrame] lets warming run playhead-forward (wrapping) so the
+  /// frames about to play always warm first.
   final void Function(
     List<StoryboardTimelineLayoutEntry> playlist,
     PlaybackScope scope,
+    int startGlobalFrame,
   )?
   onPlaylistWarmRequested;
 
@@ -139,7 +142,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       0,
       playlistTotalFrames(playlist) - 1,
     );
-    onPlaylistWarmRequested?.call(playlist, scope);
+    onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
     _isPlaying = true;
     _startTicker();
     _localFrameIndex.value = position?.localFrameIndex;

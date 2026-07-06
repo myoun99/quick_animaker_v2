@@ -1,6 +1,6 @@
 import 'timeline_cell_exposure_state.dart';
 
-enum TimelineExposureBlockKind { none, drawing, blank }
+enum TimelineExposureBlockKind { none, drawing }
 
 class TimelineExposureBlockVisualSegment {
   const TimelineExposureBlockVisualSegment({
@@ -16,13 +16,16 @@ class TimelineExposureBlockVisualSegment {
   bool get isBlock => kind != TimelineExposureBlockKind.none;
 }
 
+/// How one cell participates in its drawing block's rounded visual: block
+/// bodies are covered runs (start + holds + marks inside the hold); a new
+/// drawing start always begins a fresh block even when glued to the
+/// previous one.
 TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
   required TimelineCellExposureState? previous,
   required TimelineCellExposureState current,
   required TimelineCellExposureState? next,
 }) {
-  final kind = _kindForState(current);
-  if (kind == TimelineExposureBlockKind.none) {
+  if (!current.isCovered) {
     return const TimelineExposureBlockVisualSegment(
       kind: TimelineExposureBlockKind.none,
       continuesFromPrevious: false,
@@ -31,44 +34,13 @@ TimelineExposureBlockVisualSegment calculateTimelineExposureBlockVisualSegment({
   }
 
   return TimelineExposureBlockVisualSegment(
-    kind: kind,
-    continuesFromPrevious: switch (current) {
-      TimelineCellExposureState.heldExposure => _isDrawingContinuation(
-        previous,
-      ),
-      TimelineCellExposureState.blankHeld => _isBlankContinuation(previous),
-      TimelineCellExposureState.drawingStart ||
-      TimelineCellExposureState.blankStart ||
-      TimelineCellExposureState.empty => false,
-    },
-    continuesToNext: switch (current) {
-      TimelineCellExposureState.drawingStart ||
-      TimelineCellExposureState.heldExposure =>
-        next == TimelineCellExposureState.heldExposure,
-      TimelineCellExposureState.blankStart ||
-      TimelineCellExposureState.blankHeld =>
-        next == TimelineCellExposureState.blankHeld,
-      TimelineCellExposureState.empty => false,
-    },
+    kind: TimelineExposureBlockKind.drawing,
+    continuesFromPrevious:
+        current != TimelineCellExposureState.drawingStart &&
+        (previous?.isCovered ?? false),
+    continuesToNext:
+        next != null &&
+        next != TimelineCellExposureState.drawingStart &&
+        next.isCovered,
   );
-}
-
-TimelineExposureBlockKind _kindForState(TimelineCellExposureState state) {
-  return switch (state) {
-    TimelineCellExposureState.empty => TimelineExposureBlockKind.none,
-    TimelineCellExposureState.drawingStart ||
-    TimelineCellExposureState.heldExposure => TimelineExposureBlockKind.drawing,
-    TimelineCellExposureState.blankStart ||
-    TimelineCellExposureState.blankHeld => TimelineExposureBlockKind.blank,
-  };
-}
-
-bool _isDrawingContinuation(TimelineCellExposureState? state) {
-  return state == TimelineCellExposureState.drawingStart ||
-      state == TimelineCellExposureState.heldExposure;
-}
-
-bool _isBlankContinuation(TimelineCellExposureState? state) {
-  return state == TimelineCellExposureState.blankStart ||
-      state == TimelineCellExposureState.blankHeld;
 }

@@ -14,7 +14,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -159,7 +158,7 @@ void main() {
     },
   );
 
-  testWidgets('marked named frame title keeps frame name and appends mark', (
+  testWidgets('named drawing start title shows the frame name', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -173,20 +172,14 @@ void main() {
 
     expect(
       find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material ●',
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material',
       ),
       findsOneWidget,
-    );
-    expect(
-      find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
-      ),
-      findsNothing,
     );
   });
 
   testWidgets(
-    'marked unnamed drawing title keeps unnamed display label and appends mark',
+    'unnamed drawing start title shows the drawing marker',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
@@ -195,15 +188,9 @@ void main() {
 
       expect(
         find.text(
-          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○ ●',
+          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○',
         ),
         findsOneWidget,
-      );
-      expect(
-        find.text(
-          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ●',
-        ),
-        findsNothing,
       );
     },
   );
@@ -599,9 +586,8 @@ Project _projectWithMarkedFrame({String? name}) {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('marked-frame')),
+                  0: TimelineExposure.drawing(const FrameId('marked-frame'), length: 1),
                 },
-                marks: const {0: TimelineMark.inbetween()},
               ),
             ],
           ),
@@ -639,7 +625,7 @@ Project _projectWithActiveFrame() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('editor-frame-1')),
+                  0: TimelineExposure.drawing(const FrameId('editor-frame-1'), length: 1),
                 },
               ),
             ],

@@ -1,97 +1,151 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
-import 'selected_exposure_display_range_policy.dart';
+import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'timeline_frame_coordinate_policy.dart';
 
-/// The comma-drag grip at the trailing edge of the active layer's selected
-/// exposure block: dragging it along the frame axis lengthens/shortens the
-/// exposure one frame at a time.
+/// One comma-drag grip: an inset vertical bar just inside a drawing
+/// block's start or end edge. Every block shows both grips (TVPaint-style
+/// comma adjustment), in both orientations via [axis].
 ///
-/// Positioned inside the row/column Stack like
-/// `TimelineSelectedExposureOutline`; the [axis] parameter transposes the
-/// same geometry and gesture for the X-sheet, per the shared Axis policy.
-class TimelineExposureCommaDragHandle extends StatefulWidget {
-  const TimelineExposureCommaDragHandle({
+/// Dragging reports the CUMULATIVE whole-frame delta since drag start
+/// through [callbacks]; the session recomputes the preview from its
+/// drag-start snapshot, so the grip needs no per-step accounting.
+class TimelineBlockEdgeGrip extends StatefulWidget {
+  const TimelineBlockEdgeGrip({
     super.key,
     required this.layerId,
-    required this.displayRange,
-    required this.frameStartIndex,
-    required this.leadingFrameSpacerWidth,
+    required this.blockStartIndex,
+    required this.edge,
+    required this.blockStartOffset,
+    required this.blockEndOffset,
     required this.frameCellExtent,
     required this.crossAxisExtent,
-    required this.onTryIncreaseExposure,
-    required this.onTryDecreaseExposure,
+    required this.callbacks,
     this.axis = Axis.horizontal,
   });
 
   final LayerId layerId;
-  final SelectedExposureDisplayRange displayRange;
-  final int frameStartIndex;
 
-  /// Leading virtualization spacer extent along the frame axis.
-  final double leadingFrameSpacerWidth;
+  /// The block's start frame index at build time (its identity for the
+  /// drag; the session snapshots the layer on begin).
+  final int blockStartIndex;
+  final TimelineBlockEdge edge;
+
+  /// Main-axis pixel offsets of the block's edges within the row/column
+  /// content (leading spacer included).
+  final double blockStartOffset;
+  final double blockEndOffset;
 
   /// Main-axis extent of one frame cell (cell width in the horizontal
   /// timeline, frame row height in the X-sheet).
   final double frameCellExtent;
 
-  /// Cross-axis extent of the block's run (row height in the horizontal
-  /// timeline, column width in the X-sheet).
+  /// Cross-axis extent of the row (row height / column width).
   final double crossAxisExtent;
 
-  final TimelineExposureCommaStepAttempt onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt onTryDecreaseExposure;
+  final TimelineCommaDragCallbacks callbacks;
 
-  /// The frame axis direction; the offset math is shared and transposed.
+  /// The frame axis direction; geometry and gesture transpose with it.
   final Axis axis;
 
-  /// Pointer-target extent straddling the block's end edge.
-  static const double hitExtent = 14;
+  /// Pointer-target strip anchored inside the block edge.
+  static const double hitExtent = 12;
 
-  static const double _gripThickness = 4;
+  static const double _barThickness = 3.5;
+  static const double _barInset = 2.5;
 
   @override
-  State<TimelineExposureCommaDragHandle> createState() =>
-      _TimelineExposureCommaDragHandleState();
+  State<TimelineBlockEdgeGrip> createState() => _TimelineBlockEdgeGripState();
 }
 
-class _TimelineExposureCommaDragHandleState
-    extends State<TimelineExposureCommaDragHandle> {
-  TimelineExposureCommaDragSession? _dragSession;
+class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
+  double _accumulatedDelta = 0;
+  int _lastReportedFrames = 0;
+  bool _dragging = false;
 
   void _startDrag() {
-    _dragSession = TimelineExposureCommaDragSession(
-      frameCellExtent: widget.frameCellExtent,
+    final accepted = widget.callbacks.onBegin(
+      widget.layerId,
+      widget.blockStartIndex,
+      widget.edge,
     );
+    if (!accepted) {
+      return;
+    }
+    setState(() {
+      _dragging = true;
+      _accumulatedDelta = 0;
+      _lastReportedFrames = 0;
+    });
   }
 
   void _updateDrag(double delta) {
-    _dragSession?.update(
-      delta: delta,
-      tryIncrease: widget.onTryIncreaseExposure,
-      tryDecrease: widget.onTryDecreaseExposure,
+    if (!_dragging) {
+      return;
+    }
+    _accumulatedDelta += delta;
+    final frames = commaDragFrameDelta(
+      accumulatedDelta: _accumulatedDelta,
+      frameCellExtent: widget.frameCellExtent,
     );
+    if (frames == _lastReportedFrames) {
+      return;
+    }
+    _lastReportedFrames = frames;
+    widget.callbacks.onUpdate(frames);
   }
 
   void _endDrag() {
-    _dragSession = null;
+    if (!_dragging) {
+      return;
+    }
+    setState(() => _dragging = false);
+    widget.callbacks.onEnd();
+  }
+
+  void _cancelDrag() {
+    if (!_dragging) {
+      return;
+    }
+    setState(() => _dragging = false);
+    widget.callbacks.onCancel();
+  }
+
+  @override
+  void dispose() {
+    // A grip can unmount mid-drag when its block scrolls out; the session
+    // keeps the preview and the pointer-up never arrives here, so end the
+    // drag as committed rather than leaking an open session.
+    if (_dragging) {
+      widget.callbacks.onEnd();
+    }
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final horizontal = widget.axis == Axis.horizontal;
-    final endEdgeOffset = frameVisibleX(
-      frameIndex: widget.displayRange.resolvedRange.endFrameIndexExclusive,
-      frameStartIndex: widget.frameStartIndex,
-      frameCellWidth: widget.frameCellExtent,
-      leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-    );
-    final gripLength = widget.crossAxisExtent * 0.55;
+    final isStartEdge = widget.edge == TimelineBlockEdge.start;
+    final hitStart = isStartEdge
+        ? widget.blockStartOffset
+        : widget.blockEndOffset - TimelineBlockEdgeGrip.hitExtent;
+    final barLength = widget.crossAxisExtent * 0.55;
+    final barColor = _dragging
+        ? timelineSelectedFrameBorderColor
+        : timelineDrawingInkColor.withValues(alpha: 0.38);
 
-    final handle = MouseRegion(
+    final bar = Container(
+      width: horizontal ? TimelineBlockEdgeGrip._barThickness : barLength,
+      height: horizontal ? barLength : TimelineBlockEdgeGrip._barThickness,
+      decoration: BoxDecoration(
+        color: barColor,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
+
+    final grip = MouseRegion(
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
@@ -102,51 +156,60 @@ class _TimelineExposureCommaDragHandleState
             ? (details) => _updateDrag(details.delta.dx)
             : null,
         onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
-        onHorizontalDragCancel: horizontal ? _endDrag : null,
+        onHorizontalDragCancel: horizontal ? _cancelDrag : null,
         onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
         onVerticalDragUpdate: horizontal
             ? null
             : (details) => _updateDrag(details.delta.dy),
         onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
-        onVerticalDragCancel: horizontal ? null : _endDrag,
-        child: Center(
-          child: Container(
-            width: horizontal
-                ? TimelineExposureCommaDragHandle._gripThickness
-                : gripLength,
-            height: horizontal
-                ? gripLength
-                : TimelineExposureCommaDragHandle._gripThickness,
-            decoration: BoxDecoration(
-              color: timelineSelectedFrameBorderColor,
-              borderRadius: BorderRadius.circular(2),
+        onVerticalDragCancel: horizontal ? null : _cancelDrag,
+        child: Align(
+          // The bar sits inset just inside the block edge.
+          alignment: horizontal
+              ? (isStartEdge ? Alignment.centerLeft : Alignment.centerRight)
+              : (isStartEdge ? Alignment.topCenter : Alignment.bottomCenter),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: horizontal && isStartEdge
+                  ? TimelineBlockEdgeGrip._barInset
+                  : 0,
+              right: horizontal && !isStartEdge
+                  ? TimelineBlockEdgeGrip._barInset
+                  : 0,
+              top: !horizontal && isStartEdge
+                  ? TimelineBlockEdgeGrip._barInset
+                  : 0,
+              bottom: !horizontal && !isStartEdge
+                  ? TimelineBlockEdgeGrip._barInset
+                  : 0,
             ),
+            child: bar,
           ),
         ),
       ),
     );
 
+    final key = ValueKey<String>(
+      'timeline-block-edge-grip-${widget.edge.name}-'
+      '${widget.layerId}-${widget.blockStartIndex}',
+    );
     if (horizontal) {
       return Positioned(
-        key: ValueKey<String>(
-          'timeline-exposure-comma-drag-handle-${widget.layerId}',
-        ),
-        left: endEdgeOffset - TimelineExposureCommaDragHandle.hitExtent / 2,
+        key: key,
+        left: hitStart,
         top: 0,
-        width: TimelineExposureCommaDragHandle.hitExtent,
+        width: TimelineBlockEdgeGrip.hitExtent,
         height: widget.crossAxisExtent,
-        child: handle,
+        child: grip,
       );
     }
     return Positioned(
-      key: ValueKey<String>(
-        'timeline-exposure-comma-drag-handle-${widget.layerId}',
-      ),
-      top: endEdgeOffset - TimelineExposureCommaDragHandle.hitExtent / 2,
+      key: key,
+      top: hitStart,
       left: 0,
-      height: TimelineExposureCommaDragHandle.hitExtent,
+      height: TimelineBlockEdgeGrip.hitExtent,
       width: widget.crossAxisExtent,
-      child: handle,
+      child: grip,
     );
   }
 }

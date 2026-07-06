@@ -12,8 +12,6 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
@@ -74,7 +72,6 @@ void main() {
       final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
       expect(duplicate.isVisible, source.isVisible);
       expect(duplicate.opacity, source.opacity);
-      expect(duplicate.marks, source.marks);
       expect(duplicate.frames.length, source.frames.length);
       expect(duplicate.frames.first.id, isNot(source.frames.first.id));
       expect(duplicate.frames.first.name, source.frames.first.name);
@@ -247,10 +244,8 @@ Layer _layer(
       Frame(id: _frameBId, duration: 1, strokes: const [], name: '$name-2'),
     ],
     timeline: {
-      0: TimelineExposure.drawing(_frameAId),
-      2: const TimelineExposure.blank(),
+      0: TimelineExposure.drawing(_frameAId, length: 2),
     },
-    marks: const {0: TimelineMark(type: TimelineMarkType.inbetween)},
   );
 }
 

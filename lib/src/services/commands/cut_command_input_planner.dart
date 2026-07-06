@@ -4,8 +4,6 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_exposure.dart';
-import '../../models/timeline_exposure_type.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 
@@ -173,8 +171,8 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
         .map((frame) => frame.copyWith(id: frameIdMap[frame.id]))
         .toList(),
     timeline: payload.timeline.map((index, exposure) {
-      if (exposure.type == TimelineExposureType.blank) {
-        return MapEntry(index, const TimelineExposure.blank());
+      if (exposure.isMark) {
+        return MapEntry(index, exposure);
       }
       final sourceFrameId = exposure.frameId;
       final newFrameId = sourceFrameId == null
@@ -187,9 +185,8 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
           'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
         );
       }
-      return MapEntry(index, TimelineExposure.drawing(newFrameId));
+      return MapEntry(index, exposure.copyWith(frameId: newFrameId));
     }),
-    marks: payload.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
     isVisible: payload.isVisible,
     opacity: payload.opacity,
     kind: pastedKind,

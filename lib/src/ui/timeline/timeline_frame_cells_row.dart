@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_coverage.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -10,6 +11,7 @@ import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
+import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_selected_exposure_outline.dart';
 
@@ -26,12 +28,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.trailingFrameSpacerWidth,
     required this.metrics,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
     this.sectionStart = false,
   });
 
@@ -51,15 +51,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
-  /// Comma-drag step attempts for the active layer's selected exposure
-  /// block; when either is null the drag handle is not offered.
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  /// Comma-drag hooks; null hides the block edge grips.
+  final TimelineCommaDragCallbacks? commaDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -71,20 +68,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
       exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
-    final onTryIncreaseExposure = this.onTryIncreaseExposure;
-    final onTryDecreaseExposure = this.onTryDecreaseExposure;
-    // Comma-drag dispatches by LayerKind inside the shared row widget: the
-    // camera row's cells mirror keyframes, not exposure runs, so it gets no
-    // handle.
-    final showCommaDragHandle =
-        onTryIncreaseExposure != null &&
-        onTryDecreaseExposure != null &&
-        layer.kind != LayerKind.camera &&
-        timelineCommaDragHandleVisible(
-          displayRange: selectedExposureDisplayRange,
-          exposureStateAt: (frameIndex) =>
-              exposureStateForLayer(layer, frameIndex),
-        );
+    final commaDrag = this.commaDrag;
+
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
@@ -120,7 +105,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
                       current: exposureStateForLayer(layer, frameIndex),
                       next: exposureStateForLayer(layer, frameIndex + 1),
                     ),
-                hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
                 frameName: frameNameForLayer?.call(layer, frameIndex),
                 onSelectLayer: onSelectLayer,
                 onSelectFrame: onSelectFrame,
@@ -159,18 +143,69 @@ class TimelineFrameCellsRow extends StatelessWidget {
               ),
             ),
           ),
-        if (showCommaDragHandle)
-          TimelineExposureCommaDragHandle(
-            layerId: layer.id,
-            displayRange: selectedExposureDisplayRange,
+        if (commaDrag != null && layer.kind != LayerKind.camera)
+          ...timelineRowBlockEdgeGrips(
+            layer: layer,
             frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
-            onTryIncreaseExposure: onTryIncreaseExposure,
-            onTryDecreaseExposure: onTryDecreaseExposure,
+            commaDrag: commaDrag,
+            axis: Axis.horizontal,
           ),
       ],
     );
   }
+}
+
+/// The edge grips for every drawing block intersecting the visible window,
+/// shared by the horizontal row and the X-sheet column (Axis policy).
+List<Widget> timelineRowBlockEdgeGrips({
+  required Layer layer,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required double leadingFrameSpacerWidth,
+  required double frameCellExtent,
+  required double crossAxisExtent,
+  required TimelineCommaDragCallbacks commaDrag,
+  required Axis axis,
+}) {
+  final grips = <Widget>[];
+  for (final block in drawingBlocks(layer.timeline)) {
+    if (block.endIndexExclusive <= frameStartIndex ||
+        block.startIndex >= frameEndIndexExclusive) {
+      continue;
+    }
+
+    final blockStartOffset = frameVisibleX(
+      frameIndex: block.startIndex,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final blockEndOffset = frameVisibleX(
+      frameIndex: block.endIndexExclusive,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+
+    for (final edge in TimelineBlockEdge.values) {
+      grips.add(
+        TimelineBlockEdgeGrip(
+          layerId: layer.id,
+          blockStartIndex: block.startIndex,
+          edge: edge,
+          blockStartOffset: blockStartOffset,
+          blockEndOffset: blockEndOffset,
+          frameCellExtent: frameCellExtent,
+          crossAxisExtent: crossAxisExtent,
+          callbacks: commaDrag,
+          axis: axis,
+        ),
+      );
+    }
+  }
+  return grips;
 }

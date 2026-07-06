@@ -22,6 +22,7 @@ import 'playback/playback_transport_controls.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 
@@ -252,7 +253,6 @@ class _HomePageState extends State<HomePage> {
                 isFrameCached: _session.isPlaybackFrameCached,
                 playbackFrameCount: _session.activeCutPlaybackFrameCount,
                 exposureStateForLayer: _session.exposureStateForLayer,
-                hasMarkForLayer: _session.hasMarkForLayer,
                 frameNameForLayer: _session.frameNameForLayer,
                 onSelectLayer: _session.selectLayer,
                 // Ruler scrubs during playback SEEK the playback clock
@@ -269,22 +269,20 @@ class _HomePageState extends State<HomePage> {
                 onLayerOpacityChanged: (layerId, opacity) {
                   _session.setLayerOpacity(layerId: layerId, opacity: opacity);
                 },
-                // Comma-drag steps reuse the toolbar increase/decrease commands
-                // (one undo entry per frame step, same as the buttons).
-                onTryIncreaseExposure: () {
-                  if (!_session.canIncreaseSelectedExposure) {
-                    return false;
-                  }
-                  _session.increaseSelectedExposure();
-                  return true;
-                },
-                onTryDecreaseExposure: () {
-                  if (!_session.canDecreaseSelectedExposure) {
-                    return false;
-                  }
-                  _session.decreaseSelectedExposure();
-                  return true;
-                },
+                // Comma edge drags preview live from the session's
+                // drag-start snapshot and commit as ONE undo entry on
+                // release.
+                commaDrag: TimelineCommaDragCallbacks(
+                  onBegin: (layerId, blockStartIndex, edge) =>
+                      _session.beginExposureEdgeDrag(
+                        layerId: layerId,
+                        blockStartIndex: blockStartIndex,
+                        edge: edge,
+                      ),
+                  onUpdate: _session.updateExposureEdgeDrag,
+                  onEnd: _session.endExposureEdgeDrag,
+                  onCancel: _session.cancelExposureEdgeDrag,
+                ),
                 orientation: _timelineOrientation,
                 onOrientationChanged: (orientation) {
                   setState(() => _timelineOrientation = orientation);

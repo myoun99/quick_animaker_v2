@@ -14,9 +14,9 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/services/project_json_serializer.dart';
 
 void main() {
@@ -44,12 +44,12 @@ void main() {
       expect(restored, project);
     });
 
-    test('preserves layer marks through JSON', () {
+    test('preserves timeline marks through JSON', () {
       final restored = serializer.decode(serializer.encode(_sampleProject()));
 
       expect(
-        restored.tracks.single.cuts.single.layers.single.marks[3],
-        const TimelineMark.inbetween(),
+        restored.tracks.single.cuts.single.layers.single.timeline[3],
+        const TimelineExposure.mark(),
       );
       expect(
         restored.tracks.single.cuts.single.layers.single.frames,
@@ -57,26 +57,42 @@ void main() {
       );
       expect(
         restored.tracks.single.cuts.single.layers.single.timeline,
-        hasLength(1),
+        hasLength(2),
       );
     });
 
-    test('loads old layer JSON without marks as empty marks', () {
+    test('loads legacy layer JSON with a separate marks map by merging it '
+        'into the timeline', () {
       final json =
           jsonDecode(serializer.encode(_sampleProject()))
               as Map<String, dynamic>;
       final layerJson =
-          (((json['tracks'] as List<dynamic>).single
-                          as Map<String, dynamic>)['cuts']
-                      as List<dynamic>)
-                  .single
-              as Map<String, dynamic>;
-      (((layerJson['layers'] as List<dynamic>).single) as Map<String, dynamic>)
-          .remove('marks');
+          ((((json['tracks'] as List<dynamic>).single
+                              as Map<String, dynamic>)['cuts']
+                          as List<dynamic>)
+                      .single
+                  as Map<String, dynamic>)['layers']
+              as List<dynamic>;
+      final layerMap = layerJson.single as Map<String, dynamic>;
+      (layerMap['timeline'] as List<dynamic>).removeWhere(
+        (item) =>
+            ((item as Map<String, dynamic>)['exposure']
+                as Map<String, dynamic>)['type'] ==
+            'mark',
+      );
+      layerMap['marks'] = [
+        {
+          'index': 5,
+          'mark': {'type': 'inbetween'},
+        },
+      ];
 
       final restored = serializer.decode(jsonEncode(json));
 
-      expect(restored.tracks.single.cuts.single.layers.single.marks, isEmpty);
+      expect(
+        restored.tracks.single.cuts.single.layers.single.timeline[5],
+        const TimelineExposure.mark(),
+      );
     });
 
     test('rejects negative mark index in JSON', () {
@@ -147,7 +163,10 @@ Layer _sampleLayer() {
     name: 'Ink Layer',
     frames: [_sampleFrame()],
     opacity: 0.75,
-    marks: const {3: TimelineMark.inbetween()},
+    timeline: {
+      0: TimelineExposure.drawing(const FrameId('frame-1'), length: 2),
+      3: const TimelineExposure.mark(),
+    },
   );
 }
 

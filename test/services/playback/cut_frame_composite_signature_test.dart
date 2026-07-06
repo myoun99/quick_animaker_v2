@@ -25,9 +25,8 @@ void main() {
       name: 'A',
       frames: [frame('frame-1'), frame('frame-2')],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-1')),
-        6: TimelineExposure.drawing(const FrameId('frame-2')),
-        10: const TimelineExposure.blank(),
+        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 6),
+        6: TimelineExposure.drawing(const FrameId('frame-2'), length: 4),
       },
       opacity: opacity,
       isVisible: isVisible,

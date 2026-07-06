@@ -63,7 +63,7 @@ void main() {
     });
   });
 
-  test('createDefaultAnimationLayer creates blank exposure without frames', () {
+  test('createDefaultAnimationLayer creates an all-empty (X) layer', () {
     final cut = _cut(layers: [_layer('A'), _layer('B')]);
 
     final layer = createDefaultAnimationLayer(
@@ -74,7 +74,7 @@ void main() {
     expect(layer.name, 'C');
     expect(layer.kind, LayerKind.animation);
     expect(layer.frames, isEmpty);
-    expect(layer.timeline[0], const TimelineExposure.blank());
+    expect(layer.timeline, isEmpty);
   });
 }
 

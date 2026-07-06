@@ -1075,7 +1075,7 @@ Line 8''';
     expect(find.text('B'), findsNothing);
     expect(_cutListEntryLabelsNamed('New Cut'), findsNothing);
     expect(find.text('A'), findsWidgets);
-    expect(find.text('X'), findsOneWidget);
+    expect(find.text('X'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-0')),
       findsOneWidget,
@@ -1352,7 +1352,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,
     );
-    expect(find.text('X'), findsOneWidget);
+    expect(find.text('X'), findsWidgets);
     expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
 
     await tester.tap(
@@ -1527,8 +1527,9 @@ Line 8''';
       await _switchToCut(tester, 'default-cut-1');
 
       expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      // Cut 1's layer is untouched: all empty (X) cells, no marks.
       _expectCellText('default-layer-1', 0, 'X');
-      _expectNoCellText('default-layer-1', 1, 'X');
+      _expectCellText('default-layer-1', 1, 'X');
       _expectNoCellText('default-layer-1', 2, '●');
       expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
@@ -1558,72 +1559,67 @@ Line 8''';
     await _switchToCut(tester, 'default-cut-1');
 
     _expectActiveLayerName('A');
-    expect(_selectedCellStateLabel(tester), 'blank exposure start');
+    // The fresh layer is all empty (X) cells; empty cells carry no
+    // semantics label under the unified model.
+    expect(_selectedCellStateLabel(tester), isNull);
     _expectCellText('default-layer-1', 0, 'X');
     _expectNoCellText('default-layer-1', 1, '○');
   });
 
   testWidgets(
-    'comma-drag handle lengthens and shortens the selected exposure',
+    'comma edge grips ripple blocks TVPaint-style with one undo per drag',
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
-      // Drawing block at frames 1-2 followed by a blank at frame 3: the
-      // handle needs a real end edge (a following authored entry).
+      // Block A at index 0, block B at index 3 with an X gap between.
+      // Plain cell tap: ensureVisible over-scrolls the custom frame
+      // viewport and would push frame 0 out of the virtualized window.
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('new-frame-button'),
       );
-      await _tapTimelineCell(
-        tester,
-        const ValueKey<String>('timeline-cell-default-layer-1-2'),
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-3')),
       );
+      await tester.pumpAndSettle();
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('blank-exposure-button'),
+        const ValueKey<String>('new-frame-button'),
       );
-      await _tapTimelineCell(
-        tester,
-        const ValueKey<String>('timeline-cell-default-layer-1-0'),
-      );
-      _expectCellText('default-layer-1', 2, 'X');
 
-      final handleFinder = find.byKey(
+      final endGrip = find.byKey(
         const ValueKey<String>(
-          'timeline-exposure-comma-drag-handle-default-layer-1',
+          'timeline-block-edge-grip-end-default-layer-1-0',
         ),
       );
-      expect(handleFinder, findsOneWidget);
-
-      // Drag one cell toward longer: the exposure grows and pushes the
-      // blank entry from frame 3 to frame 4.
-      final lengthen = await tester.startGesture(
-        tester.getCenter(handleFinder),
+      expect(endGrip, findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-block-edge-grip-start-default-layer-1-3',
+          ),
+        ),
+        findsOneWidget,
       );
-      await lengthen.moveBy(const Offset(19, 0));
+
+      // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
+      // with B's comma preserved.
+      final gesture = await tester.startGesture(tester.getCenter(endGrip));
+      await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
-      await lengthen.moveBy(const Offset(48, 0));
+      await gesture.moveBy(const Offset(144, 0));
       await tester.pumpAndSettle();
-      await lengthen.up();
+      await gesture.up();
       await tester.pumpAndSettle();
 
+      _expectNoCellText('default-layer-1', 1, 'X');
       _expectNoCellText('default-layer-1', 2, 'X');
-      _expectCellText('default-layer-1', 3, 'X');
-      expect(_selectedCellStateLabel(tester), 'drawing start');
+      _expectCellText('default-layer-1', 4, '○');
 
-      // Drag one cell back toward shorter: the blank returns to frame 3.
-      final shorten = await tester.startGesture(
-        tester.getCenter(handleFinder),
-      );
-      await shorten.moveBy(const Offset(-19, 0));
-      await tester.pump();
-      await shorten.moveBy(const Offset(-48, 0));
-      await tester.pumpAndSettle();
-      await shorten.up();
-      await tester.pumpAndSettle();
-
-      _expectCellText('default-layer-1', 2, 'X');
-      _expectNoCellText('default-layer-1', 3, 'X');
+      // The whole drag is ONE undo step.
+      await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
+      _expectCellText('default-layer-1', 1, 'X');
+      _expectCellText('default-layer-1', 3, '○');
     },
   );
 
@@ -1754,8 +1750,17 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
-    expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
-    expect(find.bySemanticsLabel('blank held exposure'), findsWidgets);
+    // Every empty cel cell inside the playback range reads X.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('timeline-cell-default-layer-1-1'),
+        ),
+        matching: find.text('X'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('drawing start'), findsNothing);
     expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
   });
 
@@ -1766,7 +1771,8 @@ Line 8''';
 
       _expectActiveLayerName('A');
       _expectCurrentFrame(tester, 1);
-      expect(_selectedCellStateLabel(tester), 'blank exposure start');
+      // Empty (X) cells carry no semantics label.
+      expect(_selectedCellStateLabel(tester), isNull);
 
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),
@@ -1796,13 +1802,20 @@ Line 8''';
 
       expect(_selectedCellStateLabel(tester), 'drawing start A1');
 
-      final markButton = find.byKey(
+      // Marks live on held/empty cells (never on a drawing start): hold the
+      // block one frame longer, then mark the held cell.
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('increase-exposure-button'),
+      );
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-1'),
+      );
+      await _tapToolbarButton(
+        tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
 
       expect(_selectedCellStateLabel(tester), 'inbetween mark');
     },
@@ -1834,7 +1847,7 @@ Line 8''';
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
     _expectCurrentFrame(tester, 2);
-    expect(_selectedCellStateLabel(tester), 'blank held exposure');
+    expect(_selectedCellStateLabel(tester), isNull);
     expect(
       _isActionButtonEnabled(
         tester,
@@ -1862,6 +1875,15 @@ Line 8''';
       isTrue,
     );
 
+    // Hold the block across frames 1-3, then cut the hold at frame 3.
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('increase-exposure-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('increase-exposure-button'),
+    );
     await _tapTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-2'),
@@ -1873,6 +1895,7 @@ Line 8''';
     await tester.pumpAndSettle();
     await tester.tap(blankButton);
     await tester.pumpAndSettle();
+    _expectCellText('default-layer-1', 2, 'X');
 
     await _tapTimelineCell(
       tester,
@@ -1972,7 +1995,6 @@ Line 8''';
         findsOneWidget,
       );
       expect(find.bySemanticsLabel('drawing start'), findsOneWidget);
-      expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
       expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
   );
@@ -2051,14 +2073,16 @@ Line 8''';
         findsOneWidget,
       );
 
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
+      // Marks live on held/empty cells only; on a drawing start the mark
+      // button is disabled under the unified model.
       expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('●')),
-        findsOneWidget,
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('toggle-mark-button'),
+        ),
+        isFalse,
       );
+      expect(markButton, findsOneWidget);
 
       expect(
         _isActionButtonEnabled(
@@ -2308,7 +2332,7 @@ Line 8''';
     );
   });
 
-  testWidgets('linked paste replaces X and preserves mark priority', (
+  testWidgets('linked paste on a marked empty cell replaces the mark with a drawing', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -2336,10 +2360,6 @@ Line 8''';
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('blank-exposure-button'),
-    );
     final secondCell = find.byKey(
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
@@ -2352,6 +2372,12 @@ Line 8''';
       tester,
       const ValueKey<String>('toggle-mark-button'),
     );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('●')),
+      findsOneWidget,
+    );
+
+    // One entry per cell: pasting a linked frame REPLACES the mark.
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('paste-linked-frame-button'),
@@ -2359,9 +2385,13 @@ Line 8''';
 
     expect(
       find.descendant(of: secondCell, matching: find.text('●')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: secondCell, matching: find.text('○')),
       findsOneWidget,
     );
-    expect(_selectedCellStateLabel(tester), 'inbetween mark');
+    expect(_selectedCellStateLabel(tester), 'drawing start');
   });
 
   testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (

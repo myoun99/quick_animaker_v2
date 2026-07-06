@@ -32,8 +32,7 @@ void main() {
       expect(layer.name, 'A');
       expect(layer.kind, LayerKind.animation);
       expect(layer.frames, isEmpty);
-      expect(layer.timeline[0], const TimelineExposure.blank());
-      expect(layer.marks, isEmpty);
+      expect(layer.timeline, isEmpty);
       expect(layer.isVisible, isTrue);
       expect(layer.opacity, 1.0);
 

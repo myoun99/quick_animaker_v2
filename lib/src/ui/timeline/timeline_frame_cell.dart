@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -18,7 +19,6 @@ class TimelineFrameCell extends StatelessWidget {
     required this.exposureState,
     required this.selectedExposureRangeSegment,
     required this.exposureBlockSegment,
-    required this.hasMark,
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
@@ -39,7 +39,6 @@ class TimelineFrameCell extends StatelessWidget {
   final TimelineCellExposureState exposureState;
   final bool selectedExposureRangeSegment;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
-  final bool hasMark;
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -93,6 +92,7 @@ class TimelineFrameCell extends StatelessWidget {
           )
         : cellBorderColor;
     final borderWidth = selected && !selectedExposureRangeSegment ? 3.0 : 1.0;
+    final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     return InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
@@ -116,13 +116,13 @@ class TimelineFrameCell extends StatelessWidget {
             key: selected ? selectedSemanticsKey : null,
             child: Text(
               _markerForCell(
+                layer: layer,
                 exposureState: exposureState,
-                hasMark: hasMark,
                 frameName: frameName,
+                outsidePlaybackRange: outsidePlaybackRange,
               ),
               semanticsLabel: _semanticsLabelForCell(
                 exposureState: exposureState,
-                hasMark: hasMark,
                 frameName: frameName,
               ),
               style: TextStyle(
@@ -130,13 +130,17 @@ class TimelineFrameCell extends StatelessWidget {
                     ? (outsidePlaybackRange
                           ? timelineDrawingInkColor.withValues(alpha: 0.55)
                           : timelineDrawingInkColor)
+                    : isEmptyX
+                    // The "X" only marks emptiness; keep it quiet.
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
                     : outsidePlaybackRange
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
                     : selected
                     ? colorScheme.onPrimaryContainer
                     : colorScheme.onSurface,
                 fontWeight:
-                    hasMark || exposureState != TimelineCellExposureState.empty
+                    !isEmptyX &&
+                        exposureState != TimelineCellExposureState.held
                     ? FontWeight.bold
                     : null,
               ),
@@ -187,41 +191,36 @@ BorderRadius? _timelineCellBorderRadius(
 }
 
 String _markerForCell({
+  required Layer layer,
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
   String? frameName,
+  required bool outsidePlaybackRange,
 }) {
-  if (hasMark) {
-    return '●';
-  }
-
   return switch (exposureState) {
-    TimelineCellExposureState.empty => '',
+    // The timesheet "X": every empty cel cell inside the playback range.
+    // Camera rows mirror keyframes, not cel exposure — no X there.
+    TimelineCellExposureState.uncovered =>
+      layer.kind == LayerKind.camera || outsidePlaybackRange ? '' : 'X',
     TimelineCellExposureState.drawingStart =>
       frameName == null || frameName.isEmpty ? '○' : frameName,
-    TimelineCellExposureState.heldExposure => '',
-    TimelineCellExposureState.blankStart => 'X',
-    TimelineCellExposureState.blankHeld => '',
+    TimelineCellExposureState.held => '',
+    TimelineCellExposureState.markHeld ||
+    TimelineCellExposureState.markUncovered => '●',
   };
 }
 
 String? _semanticsLabelForCell({
   required TimelineCellExposureState exposureState,
-  required bool hasMark,
   String? frameName,
 }) {
-  if (hasMark) {
-    return 'inbetween mark';
-  }
-
   return switch (exposureState) {
-    TimelineCellExposureState.empty => null,
+    TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>
       frameName == null || frameName.isEmpty
           ? 'drawing start'
           : 'drawing start $frameName',
-    TimelineCellExposureState.heldExposure => 'held exposure',
-    TimelineCellExposureState.blankStart => 'blank exposure start',
-    TimelineCellExposureState.blankHeld => 'blank held exposure',
+    TimelineCellExposureState.held => 'held exposure',
+    TimelineCellExposureState.markHeld ||
+    TimelineCellExposureState.markUncovered => 'inbetween mark',
   };
 }

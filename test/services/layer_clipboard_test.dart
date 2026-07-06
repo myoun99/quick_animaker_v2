@@ -10,8 +10,6 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/clipboard/layer_copy_payload.dart';
@@ -31,7 +29,6 @@ void main() {
     expect(payload.opacity, source.opacity);
     expect(payload.frames, source.frames);
     expect(payload.timeline, source.timeline);
-    expect(payload.marks, source.marks);
   });
 
   test('copying to payload does not mutate repository state', () {
@@ -189,6 +186,5 @@ Layer _layer({
       name: 'A1',
     ),
   ],
-  timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'))},
-  marks: const {0: TimelineMark(type: TimelineMarkType.inbetween)},
+  timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
 );

@@ -122,7 +122,7 @@ Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {
           activeLayerId: const LayerId('layer-1'),
           currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.empty,
+          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
           onSelectLayer: (_) {},
           onSelectFrame: (_) {},
           onAddLayer: () {},

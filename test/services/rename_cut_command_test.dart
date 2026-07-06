@@ -24,8 +24,7 @@ void main() {
         name: 'Line',
         frames: [_frame(id: 'frame-1', name: 'A')],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('frame-1')),
-          3: const TimelineExposure.blank(),
+          0: TimelineExposure.drawing(const FrameId('frame-1'), length: 3),
         },
       );
       final targetCut = _cut(

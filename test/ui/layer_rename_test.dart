@@ -11,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -246,6 +245,6 @@ Layer _layerModel(LayerId id, String name) {
     name: name,
     kind: LayerKind.animation,
     frames: [Frame(id: _frameId, duration: 1, strokes: const [])],
-    timeline: const {0: TimelineExposure.blank()},
+    timeline: const {},
   );
 }

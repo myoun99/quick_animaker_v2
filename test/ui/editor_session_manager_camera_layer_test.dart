@@ -48,7 +48,7 @@ void main() {
     expect(s.canDeleteActiveLayer, isFalse);
     expect(s.canToggleTargetLayerKind, isFalse);
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
-    expect(s.canCreateBlankAtCurrentFrame, isFalse);
+    expect(s.canCutExposureAtCurrentFrame, isFalse);
     expect(s.canToggleMarkAtCurrentFrame, isFalse);
     expect(s.activeLayerKindLabelText, 'Camera Layer');
 
@@ -74,7 +74,7 @@ void main() {
     );
     expect(
       s.exposureStateForLayer(cameraLayer, 4),
-      TimelineCellExposureState.empty,
+      TimelineCellExposureState.uncovered,
     );
     expect(s.hasMarkForLayer(cameraLayer, 3), isFalse);
     expect(s.hasCameraKeyframeAtCurrentFrame, isTrue);
@@ -82,7 +82,7 @@ void main() {
     s.removeCameraKeyframeAtCurrentFrame();
     expect(
       s.exposureStateForLayer(cameraLayer, 3),
-      TimelineCellExposureState.empty,
+      TimelineCellExposureState.uncovered,
     );
   });
 

@@ -21,7 +21,6 @@ void main() {
       expect(storyboardLayer.name, layer.name);
       expect(storyboardLayer.frames, layer.frames);
       expect(storyboardLayer.timeline, layer.timeline);
-      expect(storyboardLayer.marks, layer.marks);
       expect(storyboardLayer.isVisible, layer.isVisible);
       expect(storyboardLayer.opacity, layer.opacity);
     });

@@ -129,7 +129,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -141,28 +141,21 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.heldExposure
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.held
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
     expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
   });
 
-  testWidgets('blank start shows X with low-emphasis background', (
+  testWidgets('empty cells inside the playback range show the timesheet X', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.blankStart
-            : TimelineCellExposureState.empty,
-      ),
-    );
+    await tester.pumpWidget(_grid());
 
-    expect(find.text('X'), findsOneWidget);
-    expect(find.bySemanticsLabel('blank exposure start'), findsOneWidget);
+    final cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2'));
+    expect(find.descendant(of: cell, matching: find.text('X')), findsOneWidget);
   });
 
   testWidgets('shows inbetween mark with priority over exposure marker', (
@@ -172,10 +165,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -190,10 +181,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.blankHeld
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markUncovered
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -227,7 +216,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -246,10 +235,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-2') && frameIndex == 2
             ? 'A1'
@@ -290,7 +277,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
     var cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
@@ -300,8 +287,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.blankStart
-            : TimelineCellExposureState.empty,
+            ? TimelineCellExposureState.uncovered
+            : TimelineCellExposureState.uncovered,
       ),
     );
     cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
@@ -312,7 +299,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? 'A1'
@@ -330,10 +317,8 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
-        hasMarkForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-1') && frameIndex == 0,
+            ? TimelineCellExposureState.markHeld
+            : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? 'A1'
@@ -354,12 +339,12 @@ void main() {
         frameCount: 4,
         exposureStateForLayer: (layer, frameIndex) {
           if (layer.id != const LayerId('layer-1')) {
-            return TimelineCellExposureState.empty;
+            return TimelineCellExposureState.uncovered;
           }
           return switch (frameIndex) {
             0 => TimelineCellExposureState.drawingStart,
-            1 || 2 => TimelineCellExposureState.heldExposure,
-            _ => TimelineCellExposureState.empty,
+            1 || 2 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
           };
         },
       ),
@@ -416,7 +401,7 @@ void main() {
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
             ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.empty,
+            : TimelineCellExposureState.uncovered,
       ),
     );
 
@@ -488,25 +473,19 @@ void main() {
     );
     final heldDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.heldExposure,
+      exposureState: TimelineCellExposureState.held,
       active: true,
       selected: false,
     );
-    final blankStart = timelineCellStyleColors(
+    final uncovered = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.blankStart,
-      active: true,
-      selected: false,
-    );
-    final blankHeld = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.blankHeld,
+      exposureState: TimelineCellExposureState.uncovered,
       active: true,
       selected: false,
     );
     final selectedDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: TimelineCellExposureState.heldExposure,
+      exposureState: TimelineCellExposureState.held,
       active: true,
       selected: true,
     );
@@ -515,11 +494,7 @@ void main() {
     expect(drawingStart.background, timelineDrawingStartColor);
     expect(drawingStart.background, heldDrawing.background);
     expect(drawingStart.border, timelineDrawingStartBorderColor);
-    expect(blankStart.background, timelineBlankStartColor);
-    expect(blankHeld.background, timelineBlankHeldColor);
-    expect(blankStart.background, blankHeld.background);
-    expect(blankStart.background, isNot(heldDrawing.background));
-    expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
+    expect(uncovered.background, isNot(heldDrawing.background));
     expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
@@ -541,7 +516,6 @@ Widget _grid({
   VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
-  bool Function(Layer layer, int frameIndex)? hasMarkForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
 }) {
   return MaterialApp(
@@ -556,8 +530,7 @@ Widget _grid({
           frameCount: frameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
-              (_, _) => TimelineCellExposureState.empty,
-          hasMarkForLayer: hasMarkForLayer,
+              (_, _) => TimelineCellExposureState.uncovered,
           frameNameForLayer: frameNameForLayer,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},

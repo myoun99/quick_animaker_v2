@@ -17,15 +17,13 @@ class TimelinePanel extends StatelessWidget {
     required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
     this.isFrameCached,
     required this.orientation,
     required this.onOrientationChanged,
@@ -41,7 +39,6 @@ class TimelinePanel extends StatelessWidget {
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -49,10 +46,9 @@ class TimelinePanel extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
-  /// Comma-drag step attempts for the active layer's selected exposure
-  /// block, shared by both orientations; null hides the drag handles.
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  /// Comma-drag hooks for the block edge grips, shared by both
+  /// orientations; null hides the grips.
+  final TimelineCommaDragCallbacks? commaDrag;
 
   /// Cached-range resolver for the horizontal ruler's green strip.
   final bool Function(int frameIndex)? isFrameCached;
@@ -149,15 +145,13 @@ class TimelinePanel extends StatelessWidget {
                       currentFrameIndex: currentFrameIndex,
                       playbackFrameCount: playbackFrameCount,
                       exposureStateForLayer: exposureStateForLayer,
-                      hasMarkForLayer: hasMarkForLayer,
                       frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
-                      onTryIncreaseExposure: onTryIncreaseExposure,
-                      onTryDecreaseExposure: onTryDecreaseExposure,
+                      commaDrag: commaDrag,
                       isFrameCached: isFrameCached,
                     )
                   : XSheetTimelineGrid(
@@ -166,15 +160,13 @@ class TimelinePanel extends StatelessWidget {
                       currentFrameIndex: currentFrameIndex,
                       frameCount: playbackFrameCount,
                       exposureStateForLayer: exposureStateForLayer,
-                      hasMarkForLayer: hasMarkForLayer,
                       frameNameForLayer: frameNameForLayer,
                       onSelectLayer: onSelectLayer,
                       onSelectFrame: onSelectFrame,
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
-                      onTryIncreaseExposure: onTryIncreaseExposure,
-                      onTryDecreaseExposure: onTryDecreaseExposure,
+                      commaDrag: commaDrag,
                     ),
             ),
           ],

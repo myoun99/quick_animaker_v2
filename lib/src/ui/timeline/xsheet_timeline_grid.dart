@@ -9,9 +9,9 @@ import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
-import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
+import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
@@ -43,15 +43,13 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.currentFrameIndex,
     required this.frameCount,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
   });
 
   final List<Layer> layers;
@@ -63,7 +61,6 @@ class XSheetTimelineGrid extends StatefulWidget {
   final int frameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -71,10 +68,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
-  /// Comma-drag step attempts (shared policy with the horizontal timeline);
-  /// when either is null the drag handle is not offered.
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  /// Comma-drag hooks for the block edge grips (shared policy with the
+  /// horizontal timeline); null hides the grips.
+  final TimelineCommaDragCallbacks? commaDrag;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -472,18 +468,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     metrics: _metrics,
                                                     exposureStateForLayer: widget
                                                         .exposureStateForLayer,
-                                                    hasMarkForLayer:
-                                                        widget.hasMarkForLayer,
                                                     frameNameForLayer: widget
                                                         .frameNameForLayer,
                                                     onSelectLayer:
                                                         widget.onSelectLayer,
                                                     onSelectFrame:
                                                         widget.onSelectFrame,
-                                                    onTryIncreaseExposure: widget
-                                                        .onTryIncreaseExposure,
-                                                    onTryDecreaseExposure: widget
-                                                        .onTryDecreaseExposure,
+                                                    commaDrag:
+                                                        widget.commaDrag,
                                                   ),
                                               ],
                                             ),
@@ -683,12 +675,10 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     required this.trailingFrameSpacerHeight,
     required this.metrics,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
     this.sectionStart = false,
   });
 
@@ -707,12 +697,10 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  final TimelineCommaDragCallbacks? commaDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -724,19 +712,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
       exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
-    final onTryIncreaseExposure = this.onTryIncreaseExposure;
-    final onTryDecreaseExposure = this.onTryDecreaseExposure;
-    // Comma-drag dispatches by LayerKind inside the shared cell widgets:
-    // the camera column mirrors keyframes, not exposure runs.
-    final showCommaDragHandle =
-        onTryIncreaseExposure != null &&
-        onTryDecreaseExposure != null &&
-        layer.kind != LayerKind.camera &&
-        timelineCommaDragHandleVisible(
-          displayRange: selectedExposureDisplayRange,
-          exposureStateAt: (frameIndex) =>
-              exposureStateForLayer(layer, frameIndex),
-        );
+    final commaDrag = this.commaDrag;
     return SizedBox(
       width: metrics.layerRowHeight,
       child: Stack(
@@ -774,7 +750,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                         current: exposureStateForLayer(layer, frameIndex),
                         next: exposureStateForLayer(layer, frameIndex + 1),
                       ),
-                  hasMark: hasMarkForLayer?.call(layer, frameIndex) ?? false,
                   frameName: frameNameForLayer?.call(layer, frameIndex),
                   onSelectLayer: onSelectLayer,
                   onSelectFrame: onSelectFrame,
@@ -821,17 +796,16 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                 ),
               ),
             ),
-          if (showCommaDragHandle)
-            TimelineExposureCommaDragHandle(
-              axis: Axis.vertical,
-              layerId: layer.id,
-              displayRange: selectedExposureDisplayRange,
+          if (commaDrag != null && layer.kind != LayerKind.camera)
+            ...timelineRowBlockEdgeGrips(
+              layer: layer,
               frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
-              onTryIncreaseExposure: onTryIncreaseExposure,
-              onTryDecreaseExposure: onTryDecreaseExposure,
+              commaDrag: commaDrag,
+              axis: Axis.vertical,
             ),
         ],
       ),

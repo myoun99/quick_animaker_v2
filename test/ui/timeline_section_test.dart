@@ -100,7 +100,7 @@ void main() {
             activeLayerId: const LayerId('a'),
             currentFrameIndex: 0,
             playbackFrameCount: 12,
-            exposureStateForLayer: (_, _) => TimelineCellExposureState.empty,
+            exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},
             onAddLayer: () {},

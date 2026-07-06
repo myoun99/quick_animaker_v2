@@ -46,7 +46,7 @@ void main() {
       onStopped: onStopped,
       onPlaylistWarmRequested: onWarm == null
           ? null
-          : (List<StoryboardTimelineLayoutEntry> playlist, scope) =>
+          : (List<StoryboardTimelineLayoutEntry> playlist, scope, _) =>
                 onWarm(scope, playlistTotalFrames(playlist)),
     );
   }

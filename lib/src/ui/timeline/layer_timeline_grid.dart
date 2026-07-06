@@ -31,15 +31,13 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
     this.isFrameCached,
   });
 
@@ -49,7 +47,6 @@ class LayerTimelineGrid extends StatefulWidget {
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
@@ -57,10 +54,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
-  /// Comma-drag step attempts (shared policy with the X-sheet); when either
-  /// is null the drag handle is not offered.
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  /// Comma-drag hooks for the block edge grips (shared policy with the
+  /// X-sheet); null hides the grips.
+  final TimelineCommaDragCallbacks? commaDrag;
 
   /// Cached-range resolver for the ruler's green strip.
   final bool Function(int frameIndex)? isFrameCached;
@@ -524,18 +520,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       ._metrics,
                                                   exposureStateForLayer: widget
                                                       .exposureStateForLayer,
-                                                  hasMarkForLayer:
-                                                      widget.hasMarkForLayer,
                                                   frameNameForLayer:
                                                       widget.frameNameForLayer,
                                                   onSelectLayer:
                                                       widget.onSelectLayer,
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
-                                                  onTryIncreaseExposure: widget
-                                                      .onTryIncreaseExposure,
-                                                  onTryDecreaseExposure: widget
-                                                      .onTryDecreaseExposure,
+                                                  commaDrag: widget.commaDrag,
                                                 ),
                                                 cutEndBoundaryLeft:
                                                     timelineCutEndBoundaryX(

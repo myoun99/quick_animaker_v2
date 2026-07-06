@@ -68,7 +68,7 @@ void main() {
         fixture.controller.createDrawingFrameForLayer(
           layerId: const LayerId('empty-layer'),
           frameId: const FrameId('outside-playback'),
-          duration: 4,
+          length: 4,
         );
 
         final cut = fixture.cut;
@@ -177,15 +177,17 @@ List<Layer> _defaultLayers() => [
       Frame(id: const FrameId('a-2'), duration: 2, strokes: const []),
     ],
     timeline: {
-      0: TimelineExposure.drawing(const FrameId('a-1')),
-      7: TimelineExposure.drawing(const FrameId('a-2')),
+      0: TimelineExposure.drawing(const FrameId('a-1'), length: 7),
+      7: TimelineExposure.drawing(const FrameId('a-2'), length: 2),
     },
   ),
   Layer(
     id: const LayerId('animation-b'),
     name: 'Animation B',
     frames: [Frame(id: const FrameId('b-1'), duration: 3, strokes: const [])],
-    timeline: {10: TimelineExposure.drawing(const FrameId('b-1'))},
+    timeline: {
+      10: TimelineExposure.drawing(const FrameId('b-1'), length: 3),
+    },
   ),
   Layer(
     id: const LayerId('empty-layer'),

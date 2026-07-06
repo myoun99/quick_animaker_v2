@@ -10,7 +10,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -44,11 +43,7 @@ void main() {
       expect(fixture.controller.activeLayerId, const LayerId('layer-3'));
       expect(fixture.controller.activeLayer?.name, 'C');
       expect(fixture.controller.activeLayer?.frames, isEmpty);
-      expect(fixture.controller.activeLayer?.timeline, hasLength(1));
-      expect(
-        fixture.controller.activeLayer?.timeline[0]?.type,
-        TimelineExposureType.blank,
-      );
+      expect(fixture.controller.activeLayer?.timeline, isEmpty);
     });
 
     test('adds a default layer after the active layer in raw XSheet order', () {
@@ -408,7 +403,7 @@ Project _createTwoCutProject() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('frame-a')),
+                  0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
                 },
               ),
             ],
@@ -431,7 +426,7 @@ Project _createTwoCutProject() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('frame-b')),
+                  0: TimelineExposure.drawing(const FrameId('frame-b'), length: 1),
                 },
               ),
             ],

@@ -18,7 +18,6 @@ import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_mark.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -119,8 +118,10 @@ Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
                     ],
                   ),
                 ],
-                timeline: {0: TimelineExposure.drawing(_frameId)},
-                marks: const {1: TimelineMark.inbetween()},
+                timeline: {
+                  0: TimelineExposure.drawing(_frameId, length: 1),
+                  1: const TimelineExposure.mark(),
+                },
               ),
             ],
           ),
@@ -264,7 +265,6 @@ void main() {
     expect(afterFrame.strokes, beforeFrame.strokes);
     expect(afterLayer.frames, beforeLayer.frames);
     expect(afterLayer.timeline, beforeLayer.timeline);
-    expect(afterLayer.marks, beforeLayer.marks);
     expect(afterLayer.isVisible, beforeLayer.isVisible);
     expect(afterLayer.opacity, beforeLayer.opacity);
     expect(

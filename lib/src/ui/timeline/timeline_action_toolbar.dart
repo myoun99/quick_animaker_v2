@@ -149,15 +149,15 @@ class TimelineActionToolbar extends StatelessWidget {
                     key: const ValueKey<String>('blank-exposure-button'),
                     tooltip: 'Blank / X',
                     icon: Icons.close,
-                    onPressed: session.hasActiveNonNegativeCell
-                        ? session.createBlankAtCurrentFrame
+                    onPressed: session.canCutExposureAtCurrentFrame
+                        ? session.cutExposureAtCurrentFrame
                         : null,
                   ),
                   _iconButton(
                     key: const ValueKey<String>('toggle-mark-button'),
                     tooltip: 'Mark ●',
                     icon: Icons.circle,
-                    onPressed: session.hasActiveNonNegativeCell
+                    onPressed: session.canToggleMarkAtCurrentFrame
                         ? session.toggleMarkAtCurrentFrame
                         : null,
                   ),

@@ -2,335 +2,95 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_range_resolver.dart';
 
+/// The selected exposure range: the covered run containing the selected
+/// frame, bounded by drawing starts on both sides (glued blocks resolve
+/// separately) and by coverage boundaries.
 void main() {
-  group('resolveTimelineExposureRange', () {
-    test('empty selected frame returns none without inventing a range', () {
-      final range = _resolve(
-        selectedFrameIndex: 2,
-        states: {2: TimelineCellExposureState.empty},
-      );
+  // a[0,3) with a mark at 1, then X at 3-4, then b[5,7).
+  TimelineCellExposureState stateAt(int frameIndex) {
+    return switch (frameIndex) {
+      0 => TimelineCellExposureState.drawingStart,
+      1 => TimelineCellExposureState.markHeld,
+      2 => TimelineCellExposureState.held,
+      5 => TimelineCellExposureState.drawingStart,
+      6 => TimelineCellExposureState.held,
+      _ => TimelineCellExposureState.uncovered,
+    };
+  }
 
-      expect(range.kind, TimelineExposureRangeKind.none);
-      expect(range.startFrameIndex, 2);
-      expect(range.endFrameIndexExclusive, 2);
-      expect(range.length, 0);
-      expect(range.containsSelectedFrame, isFalse);
-      expect(range.isBlock, isFalse);
-    });
-
-    test('drawingStart alone resolves single-frame drawing range', () {
-      final range = _resolve(
-        selectedFrameIndex: 3,
-        states: {3: TimelineCellExposureState.drawingStart},
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.drawing);
-      expect(range.startFrameIndex, 3);
-      expect(range.endFrameIndexExclusive, 4);
-      expect(range.length, 1);
-      expect(range.isSingleFrame, isTrue);
-      expect(range.isStartFrame, isTrue);
-      expect(range.isEndFrame, isTrue);
-      expect(range.isMiddleFrame, isFalse);
-    });
-
-    test(
-      'drawingStart with heldExposure cells resolves full drawing range',
-      () {
-        final range = _resolve(
-          selectedFrameIndex: 0,
-          states: {
-            0: TimelineCellExposureState.drawingStart,
-            1: TimelineCellExposureState.heldExposure,
-            2: TimelineCellExposureState.heldExposure,
-          },
-        );
-
-        expect(range.kind, TimelineExposureRangeKind.drawing);
-        expect(range.startFrameIndex, 0);
-        expect(range.endFrameIndexExclusive, 3);
-        expect(range.isStartFrame, isTrue);
-      },
+  TimelineExposureRange resolve(int selectedFrameIndex) {
+    return resolveTimelineExposureRange(
+      selectedFrameIndex: selectedFrameIndex,
+      minFrameIndex: 0,
+      maxFrameIndexExclusive: 24,
+      exposureStateAt: stateAt,
     );
+  }
 
-    test('heldExposure selection resolves back to drawing block start', () {
-      final range = _resolve(
-        selectedFrameIndex: 2,
-        states: {
-          0: TimelineCellExposureState.drawingStart,
-          1: TimelineCellExposureState.heldExposure,
-          2: TimelineCellExposureState.heldExposure,
-          3: TimelineCellExposureState.heldExposure,
-        },
-      );
+  test('selecting a drawing start resolves its whole covered run', () {
+    final range = resolve(0);
 
-      expect(range.kind, TimelineExposureRangeKind.drawing);
-      expect(range.startFrameIndex, 0);
-      expect(range.endFrameIndexExclusive, 4);
-      expect(range.isMiddleFrame, isTrue);
-    });
-
-    test('drawing range does not connect through blank or empty cells', () {
-      final range = _resolve(
-        selectedFrameIndex: 2,
-        states: {
-          0: TimelineCellExposureState.blankStart,
-          1: TimelineCellExposureState.blankHeld,
-          2: TimelineCellExposureState.heldExposure,
-          3: TimelineCellExposureState.blankHeld,
-          4: TimelineCellExposureState.heldExposure,
-        },
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.drawing);
-      expect(range.startFrameIndex, 2);
-      expect(range.endFrameIndexExclusive, 3);
-      expect(range.isSingleFrame, isTrue);
-    });
-
-    test('blankStart alone resolves single-frame blank range', () {
-      final range = _resolve(
-        selectedFrameIndex: 5,
-        states: {5: TimelineCellExposureState.blankStart},
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.blank);
-      expect(range.startFrameIndex, 5);
-      expect(range.endFrameIndexExclusive, 6);
-      expect(range.isSingleFrame, isTrue);
-      expect(range.isStartFrame, isTrue);
-      expect(range.isEndFrame, isTrue);
-    });
-
-    test('blankStart with blankHeld cells resolves full blank range', () {
-      final range = _resolve(
-        selectedFrameIndex: 4,
-        states: {
-          4: TimelineCellExposureState.blankStart,
-          5: TimelineCellExposureState.blankHeld,
-          6: TimelineCellExposureState.blankHeld,
-        },
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.blank);
-      expect(range.startFrameIndex, 4);
-      expect(range.endFrameIndexExclusive, 7);
-      expect(range.isStartFrame, isTrue);
-    });
-
-    test('blankHeld selection resolves back to blank block start', () {
-      final range = _resolve(
-        selectedFrameIndex: 7,
-        states: {
-          5: TimelineCellExposureState.blankStart,
-          6: TimelineCellExposureState.blankHeld,
-          7: TimelineCellExposureState.blankHeld,
-          8: TimelineCellExposureState.blankHeld,
-        },
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.blank);
-      expect(range.startFrameIndex, 5);
-      expect(range.endFrameIndexExclusive, 9);
-      expect(range.isMiddleFrame, isTrue);
-    });
-
-    test('blank range does not connect through drawing or empty cells', () {
-      final range = _resolve(
-        selectedFrameIndex: 3,
-        states: {
-          1: TimelineCellExposureState.drawingStart,
-          2: TimelineCellExposureState.heldExposure,
-          3: TimelineCellExposureState.blankHeld,
-          4: TimelineCellExposureState.heldExposure,
-          5: TimelineCellExposureState.blankHeld,
-        },
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.blank);
-      expect(range.startFrameIndex, 3);
-      expect(range.endFrameIndexExclusive, 4);
-      expect(range.isSingleFrame, isTrue);
-    });
-
-    test('respects lower bound for a partially visible drawing range', () {
-      final queried = <int>[];
-      final range = _resolve(
-        selectedFrameIndex: 2,
-        minFrameIndex: 2,
-        maxFrameIndexExclusive: 5,
-        states: {
-          1: TimelineCellExposureState.drawingStart,
-          2: TimelineCellExposureState.heldExposure,
-          3: TimelineCellExposureState.heldExposure,
-          4: TimelineCellExposureState.heldExposure,
-        },
-        onQuery: queried.add,
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.drawing);
-      expect(range.startFrameIndex, 2);
-      expect(range.endFrameIndexExclusive, 5);
-      expect(queried, isNot(contains(1)));
-    });
-
-    test('respects upper bound for a partially visible blank range', () {
-      final queried = <int>[];
-      final range = _resolve(
-        selectedFrameIndex: 8,
-        minFrameIndex: 6,
-        maxFrameIndexExclusive: 9,
-        states: {
-          6: TimelineCellExposureState.blankStart,
-          7: TimelineCellExposureState.blankHeld,
-          8: TimelineCellExposureState.blankHeld,
-          9: TimelineCellExposureState.blankHeld,
-        },
-        onQuery: queried.add,
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.blank);
-      expect(range.startFrameIndex, 6);
-      expect(range.endFrameIndexExclusive, 9);
-      expect(queried, isNot(contains(9)));
-    });
-
-    test(
-      'selected drawingStart does not resolve backward into previous heldExposure',
-      () {
-        final range = _resolve(
-          selectedFrameIndex: 10,
-          maxFrameIndexExclusive: 14,
-          states: {
-            6: TimelineCellExposureState.drawingStart,
-            7: TimelineCellExposureState.heldExposure,
-            8: TimelineCellExposureState.heldExposure,
-            9: TimelineCellExposureState.heldExposure,
-            10: TimelineCellExposureState.drawingStart,
-            11: TimelineCellExposureState.heldExposure,
-          },
-        );
-
-        expect(range.kind, TimelineExposureRangeKind.drawing);
-        expect(range.startFrameIndex, 10);
-        expect(range.endFrameIndexExclusive, 12);
-      },
-    );
-
-    test(
-      'selected blankStart does not resolve backward into previous blankHeld',
-      () {
-        final range = _resolve(
-          selectedFrameIndex: 10,
-          maxFrameIndexExclusive: 14,
-          states: {
-            6: TimelineCellExposureState.blankStart,
-            7: TimelineCellExposureState.blankHeld,
-            8: TimelineCellExposureState.blankHeld,
-            9: TimelineCellExposureState.blankHeld,
-            10: TimelineCellExposureState.blankStart,
-            11: TimelineCellExposureState.blankHeld,
-          },
-        );
-
-        expect(range.kind, TimelineExposureRangeKind.blank);
-        expect(range.startFrameIndex, 10);
-        expect(range.endFrameIndexExclusive, 12);
-      },
-    );
-
-    test('resolver does not cross a new drawingStart', () {
-      final range = _resolve(
-        selectedFrameIndex: 7,
-        maxFrameIndexExclusive: 12,
-        states: {
-          6: TimelineCellExposureState.drawingStart,
-          7: TimelineCellExposureState.heldExposure,
-          8: TimelineCellExposureState.heldExposure,
-          9: TimelineCellExposureState.drawingStart,
-          10: TimelineCellExposureState.heldExposure,
-        },
-      );
-
-      expect(range.startFrameIndex, 6);
-      expect(range.endFrameIndexExclusive, 9);
-    });
-
-    test('resolver does not cross a new blankStart', () {
-      final range = _resolve(
-        selectedFrameIndex: 7,
-        maxFrameIndexExclusive: 12,
-        states: {
-          6: TimelineCellExposureState.blankStart,
-          7: TimelineCellExposureState.blankHeld,
-          8: TimelineCellExposureState.blankHeld,
-          9: TimelineCellExposureState.blankStart,
-          10: TimelineCellExposureState.blankHeld,
-        },
-      );
-
-      expect(range.startFrameIndex, 6);
-      expect(range.endFrameIndexExclusive, 9);
-    });
-
-    test(
-      'outside-bounds selection returns safe none and performs no reads',
-      () {
-        var queryCount = 0;
-        final range = resolveTimelineExposureRange(
-          selectedFrameIndex: 12,
-          minFrameIndex: 0,
-          maxFrameIndexExclusive: 10,
-          exposureStateAt: (_) {
-            queryCount += 1;
-            return TimelineCellExposureState.drawingStart;
-          },
-        );
-
-        expect(range.kind, TimelineExposureRangeKind.none);
-        expect(range.startFrameIndex, 12);
-        expect(range.endFrameIndexExclusive, 12);
-        expect(queryCount, 0);
-      },
-    );
-
-    test('empty bounds selection returns safe none and performs no reads', () {
-      var queryCount = 0;
-      final range = resolveTimelineExposureRange(
-        selectedFrameIndex: 0,
-        minFrameIndex: 0,
-        maxFrameIndexExclusive: 0,
-        exposureStateAt: (_) {
-          queryCount += 1;
-          return TimelineCellExposureState.drawingStart;
-        },
-      );
-
-      expect(range.kind, TimelineExposureRangeKind.none);
-      expect(range.startFrameIndex, 0);
-      expect(range.endFrameIndexExclusive, 0);
-      expect(queryCount, 0);
-    });
+    expect(range.kind, TimelineExposureRangeKind.drawing);
+    expect(range.startFrameIndex, 0);
+    expect(range.endFrameIndexExclusive, 3);
+    expect(range.isStartFrame, isTrue);
   });
-}
 
-TimelineExposureRange _resolve({
-  required int selectedFrameIndex,
-  required Map<int, TimelineCellExposureState> states,
-  int minFrameIndex = 0,
-  int maxFrameIndexExclusive = 10,
-  void Function(int frameIndex)? onQuery,
-}) {
-  return resolveTimelineExposureRange(
-    selectedFrameIndex: selectedFrameIndex,
-    minFrameIndex: minFrameIndex,
-    maxFrameIndexExclusive: maxFrameIndexExclusive,
-    exposureStateAt: (frameIndex) {
-      if (frameIndex < minFrameIndex || frameIndex >= maxFrameIndexExclusive) {
-        throw StateError('Read outside bounds: $frameIndex');
-      }
-      onQuery?.call(frameIndex);
-      return states[frameIndex] ?? TimelineCellExposureState.empty;
-    },
-  );
+  test('selecting a held or marked cell resolves back to the block start', () {
+    expect(resolve(2).startFrameIndex, 0);
+    expect(resolve(1).startFrameIndex, 0);
+    expect(resolve(1).endFrameIndexExclusive, 3);
+  });
+
+  test('uncovered cells resolve no range', () {
+    expect(resolve(3).isBlock, isFalse);
+    expect(resolve(10).isBlock, isFalse);
+  });
+
+  test('range ends at the coverage boundary', () {
+    final range = resolve(6);
+
+    expect(range.startFrameIndex, 5);
+    expect(range.endFrameIndexExclusive, 7);
+    expect(range.isEndFrame, isTrue);
+  });
+
+  test('glued blocks resolve separately on both sides of the boundary', () {
+    TimelineCellExposureState glued(int frameIndex) {
+      return switch (frameIndex) {
+        0 || 2 => TimelineCellExposureState.drawingStart,
+        1 || 3 => TimelineCellExposureState.held,
+        _ => TimelineCellExposureState.uncovered,
+      };
+    }
+
+    final first = resolveTimelineExposureRange(
+      selectedFrameIndex: 1,
+      minFrameIndex: 0,
+      maxFrameIndexExclusive: 24,
+      exposureStateAt: glued,
+    );
+    final second = resolveTimelineExposureRange(
+      selectedFrameIndex: 3,
+      minFrameIndex: 0,
+      maxFrameIndexExclusive: 24,
+      exposureStateAt: glued,
+    );
+
+    expect(first.startFrameIndex, 0);
+    expect(first.endFrameIndexExclusive, 2);
+    expect(second.startFrameIndex, 2);
+    expect(second.endFrameIndexExclusive, 4);
+  });
+
+  test('out-of-window selections resolve no range', () {
+    final range = resolveTimelineExposureRange(
+      selectedFrameIndex: 30,
+      minFrameIndex: 0,
+      maxFrameIndexExclusive: 24,
+      exposureStateAt: stateAt,
+    );
+
+    expect(range.isBlock, isFalse);
+  });
 }

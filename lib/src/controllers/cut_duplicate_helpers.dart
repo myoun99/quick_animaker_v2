@@ -8,7 +8,6 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/stroke.dart';
 import '../models/timeline_exposure.dart';
-import '../models/timeline_exposure_type.dart';
 
 Cut duplicateCutAsIndependentCopy({
   required Cut source,
@@ -77,7 +76,6 @@ Layer duplicateLayerAsIndependentCopy({
         _duplicateTimelineExposure(exposure: exposure, frameIdMap: frameIdMap),
       ),
     ),
-    marks: source.marks.map((index, mark) => MapEntry(index, mark.copyWith())),
     isVisible: source.isVisible,
     opacity: source.opacity,
     kind: kind ?? source.kind,
@@ -110,23 +108,20 @@ TimelineExposure _duplicateTimelineExposure({
   required TimelineExposure exposure,
   required Map<FrameId, FrameId> frameIdMap,
 }) {
-  switch (exposure.type) {
-    case TimelineExposureType.blank:
-      return const TimelineExposure.blank();
-    case TimelineExposureType.drawing:
-      final sourceFrameId = exposure.frameId;
-      final newFrameId = sourceFrameId == null
-          ? null
-          : frameIdMap[sourceFrameId];
-      if (sourceFrameId == null || newFrameId == null) {
-        throw ArgumentError.value(
-          frameIdMap,
-          'frameIdMap',
-          'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
-        );
-      }
-      return TimelineExposure.drawing(newFrameId);
+  if (exposure.isMark) {
+    return exposure;
   }
+
+  final sourceFrameId = exposure.frameId;
+  final newFrameId = sourceFrameId == null ? null : frameIdMap[sourceFrameId];
+  if (sourceFrameId == null || newFrameId == null) {
+    throw ArgumentError.value(
+      frameIdMap,
+      'frameIdMap',
+      'Missing mapped FrameId for timeline exposure ${exposure.frameId}.',
+    );
+  }
+  return exposure.copyWith(frameId: newFrameId);
 }
 
 Stroke _duplicateStroke(Stroke stroke) {

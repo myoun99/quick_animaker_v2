@@ -22,12 +22,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.totalFrameContentWidth,
     required this.metrics,
     required this.exposureStateForLayer,
-    this.hasMarkForLayer,
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
-    this.onTryIncreaseExposure,
-    this.onTryDecreaseExposure,
+    this.commaDrag,
   });
 
   final List<Layer> layers;
@@ -42,12 +40,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
-  final bool Function(Layer layer, int frameIndex)? hasMarkForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
-  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
-  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+  final TimelineCommaDragCallbacks? commaDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -69,12 +65,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
               trailingFrameSpacerWidth: trailingFrameSpacerWidth,
               metrics: metrics,
               exposureStateForLayer: exposureStateForLayer,
-              hasMarkForLayer: hasMarkForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
-              onTryIncreaseExposure: onTryIncreaseExposure,
-              onTryDecreaseExposure: onTryDecreaseExposure,
+              commaDrag: commaDrag,
             ),
           if (layers.isEmpty)
             SizedBox(
