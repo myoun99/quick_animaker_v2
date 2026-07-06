@@ -126,7 +126,11 @@ class TimelineFrameCell extends StatelessWidget {
                 frameName: frameName,
               ),
               style: TextStyle(
-                color: outsidePlaybackRange
+                color: timelineCellUsesDrawingInk(exposureState)
+                    ? (outsidePlaybackRange
+                          ? timelineDrawingInkColor.withValues(alpha: 0.55)
+                          : timelineDrawingInkColor)
+                    : outsidePlaybackRange
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
                     : selected
                     ? colorScheme.onPrimaryContainer

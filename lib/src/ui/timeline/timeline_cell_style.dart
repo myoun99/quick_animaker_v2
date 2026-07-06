@@ -13,12 +13,25 @@ class TimelineCellStyleColors {
   final Color border;
 }
 
-const Color timelineDrawingHeldColor = AppColors.surfaceHigh;
+/// Drawing exposure blocks read like paper timesheet cells: near-white on
+/// the dark grid so held runs are unmistakable at a glance.
+const Color timelineDrawingHeldColor = Color(0xFFE9E7E2);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
 const Color timelineBlankStartColor = Color(0xFF232527);
 const Color timelineBlankHeldColor = timelineBlankStartColor;
 const Color timelineSelectedFrameBorderColor = AppColors.accent;
+
+/// Ink for glyphs (frame names, marks) sitting on the near-white drawing
+/// blocks; the usual light on-surface text would vanish there.
+const Color timelineDrawingInkColor = Color(0xFF26282B);
+
+/// Whether [exposureState] renders on the light drawing-block background
+/// (and therefore needs [timelineDrawingInkColor] text).
+bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
+  return exposureState == TimelineCellExposureState.drawingStart ||
+      exposureState == TimelineCellExposureState.heldExposure;
+}
 
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
