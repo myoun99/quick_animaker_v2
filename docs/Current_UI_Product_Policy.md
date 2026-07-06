@@ -45,6 +45,8 @@ Phase 303 establishes the first long-term editor panel frame direction. Reusable
 
 The right-side `EditorPanelDock` is the first durable panel dock direction, not a full docking framework. It should remain compact editor UI and must not add drag-to-dock, floating panels, workspace persistence, source-data changes, save/load schema changes, or broad app-wide state management unless a later phase explicitly designs those systems.
 
+Panel scrollbars are shared UI: wrap panel scrollables in `PanelScrollbar` (`lib/src/ui/panels/panel_scrollbar.dart`) and pad the scroll-end edge by `panelScrollbarGutter` so the always-visible bar owns allocated space instead of overlaying content. Visuals come from the app-level `ScrollbarThemeData`; do not restyle scrollbars per panel. The timeline's custom scrollbar rails already reserve their own space and stay as they are.
+
 The right dock stacks `BrushPresetPanel` ("Brushes" — the preset library list with tip previews, import, save, delete) above `BrushSettingsPanel` (the editable tool properties). This is the Clip-Studio-like list/properties split; future panels (for example a tool panel) join the same dock as additional `EditorPanelFrame` children. `BrushSettingsPanel` remains the only editable brush settings UI. `BrushCanvasPanel` should stay focused on the canvas viewport, panbars, zoom/fit/reset controls, and drawing input. Do not reintroduce duplicate editable brush settings into the canvas panel or route brush setting mutation callbacks through the canvas/host layer.
 
 This is a Photoshop-like panel and brush-settings structure, but it is not Photoshop ABR compatibility and does not claim exact Photoshop brush engine parity.

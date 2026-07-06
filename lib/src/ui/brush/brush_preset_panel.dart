@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../panels/editor_panel_frame.dart';
-import 'brush_tip_preview.dart';
+import '../panels/panel_scrollbar.dart';
+import 'brush_stroke_preview.dart';
 
-/// The brush library panel: one row per preset with a tip preview.
+/// The brush library panel: one row per preset with a stroke preview.
 ///
 /// Split out of [BrushSettingsPanel] so the dock reads Clip-Studio-like —
 /// brush list on top, tool properties below — while staying icon-first.
-/// Tapping a row applies the preset; the row's close affordance deletes it.
-/// The header hosts the import and save-as-preset actions.
-class BrushPresetPanel extends StatelessWidget {
+/// Tapping a row applies the preset. Destructive actions live behind the
+/// header options menu (Photoshop-style) so a stray click cannot delete a
+/// brush; the menu acts on the selected preset.
+class BrushPresetPanel extends StatefulWidget {
   const BrushPresetPanel({
     super.key,
     required this.presets,
@@ -24,9 +26,9 @@ class BrushPresetPanel extends StatelessWidget {
 
   final List<BrushPreset> presets;
 
-  /// The last-applied preset; its row is highlighted. Tweaking settings
-  /// afterwards keeps the highlight (the row is a starting point, not a
-  /// live equality check).
+  /// The last-applied preset; its row is highlighted and the options menu
+  /// targets it. Tweaking settings afterwards keeps the highlight (the row
+  /// is a starting point, not a live equality check).
   final BrushPresetId? selectedPresetId;
 
   final ValueChanged<BrushPreset>? onPresetApplied;
@@ -39,6 +41,19 @@ class BrushPresetPanel extends StatelessWidget {
   static const double _maxListHeight = 312;
 
   @override
+  State<BrushPresetPanel> createState() => _BrushPresetPanelState();
+}
+
+class _BrushPresetPanelState extends State<BrushPresetPanel> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return EditorPanelFrame(
@@ -47,25 +62,51 @@ class BrushPresetPanel extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (onPresetImportRequested != null)
+          if (widget.onPresetImportRequested != null)
             IconButton(
               key: const ValueKey<String>('brush-preset-import-button'),
               icon: const Icon(Icons.file_open_outlined, size: 16),
               visualDensity: VisualDensity.compact,
               tooltip: 'Import brushes (.abr, .sut, .sutg)',
-              onPressed: onPresetImportRequested,
+              onPressed: widget.onPresetImportRequested,
             ),
-          if (onPresetSaveRequested != null)
+          if (widget.onPresetSaveRequested != null)
             IconButton(
               key: const ValueKey<String>('brush-preset-save-button'),
               icon: const Icon(Icons.add, size: 16),
               visualDensity: VisualDensity.compact,
               tooltip: 'Save current settings as preset',
-              onPressed: onPresetSaveRequested,
+              onPressed: widget.onPresetSaveRequested,
+            ),
+          if (widget.onPresetDeleted != null)
+            PopupMenuButton<String>(
+              key: const ValueKey<String>('brush-preset-menu-button'),
+              tooltip: 'Brush options',
+              icon: const Icon(Icons.more_vert, size: 16),
+              padding: EdgeInsets.zero,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onSelected: (value) {
+                final selectedId = widget.selectedPresetId;
+                if (value == 'delete' && selectedId != null) {
+                  widget.onPresetDeleted!(selectedId);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('brush-preset-menu-delete'),
+                  value: 'delete',
+                  height: 34,
+                  enabled: widget.selectedPresetId != null,
+                  child: const Text('Delete selected brush'),
+                ),
+              ],
             ),
         ],
       ),
-      child: presets.isEmpty
+      child: widget.presets.isEmpty
           ? SizedBox(
               height: 56,
               child: Center(
@@ -77,20 +118,26 @@ class BrushPresetPanel extends StatelessWidget {
               ),
             )
           : ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: _maxListHeight),
-              child: ListView.builder(
-                key: const ValueKey<String>('brush-preset-list'),
-                shrinkWrap: true,
-                itemCount: presets.length,
-                itemBuilder: (context, index) {
-                  final preset = presets[index];
-                  return _BrushPresetRow(
-                    preset: preset,
-                    selected: preset.id == selectedPresetId,
-                    onApplied: onPresetApplied,
-                    onDeleted: onPresetDeleted,
-                  );
-                },
+              constraints: const BoxConstraints(
+                maxHeight: BrushPresetPanel._maxListHeight,
+              ),
+              child: PanelScrollbar(
+                controller: _scrollController,
+                child: ListView.builder(
+                  key: const ValueKey<String>('brush-preset-list'),
+                  controller: _scrollController,
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(right: panelScrollbarGutter),
+                  itemCount: widget.presets.length,
+                  itemBuilder: (context, index) {
+                    final preset = widget.presets[index];
+                    return _BrushPresetRow(
+                      preset: preset,
+                      selected: preset.id == widget.selectedPresetId,
+                      onApplied: widget.onPresetApplied,
+                    );
+                  },
+                ),
               ),
             ),
     );
@@ -102,13 +149,11 @@ class _BrushPresetRow extends StatelessWidget {
     required this.preset,
     required this.selected,
     required this.onApplied,
-    required this.onDeleted,
   });
 
   final BrushPreset preset;
   final bool selected;
   final ValueChanged<BrushPreset>? onApplied;
-  final ValueChanged<BrushPresetId>? onDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +169,7 @@ class _BrushPresetRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           onTap: onApplied == null ? null : () => onApplied!(preset),
           child: SizedBox(
-            height: 32,
+            height: 34,
             child: Row(
               children: [
                 SizedBox(
@@ -133,7 +178,7 @@ class _BrushPresetRow extends StatelessWidget {
                       ? Center(
                           child: Container(
                             width: 2,
-                            height: 20,
+                            height: 22,
                             decoration: BoxDecoration(
                               color: colorScheme.primary,
                               borderRadius: BorderRadius.circular(1),
@@ -142,47 +187,47 @@ class _BrushPresetRow extends StatelessWidget {
                         )
                       : null,
                 ),
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    border: Border.all(color: colorScheme.outlineVariant),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: BrushTipPreview(settings: preset.settings),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    preset.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: selected
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
-                    ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: BrushStrokePreview(settings: preset.settings),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 132),
+                          margin: const EdgeInsets.only(right: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                (selected
+                                        ? colorScheme.surfaceContainerHigh
+                                        : colorScheme.surface)
+                                    .withValues(alpha: 0.78),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            preset.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: selected
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (onDeleted != null)
-                  IconButton(
-                    key: ValueKey<String>(
-                      'brush-preset-delete-${preset.id.value}',
-                    ),
-                    icon: const Icon(Icons.close, size: 14),
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 24,
-                      height: 24,
-                    ),
-                    padding: EdgeInsets.zero,
-                    color: colorScheme.onSurfaceVariant,
-                    tooltip: 'Delete preset',
-                    onPressed: () => onDeleted!(preset.id),
-                  ),
                 const SizedBox(width: 2),
               ],
             ),

@@ -109,6 +109,25 @@ ThemeData buildAppTheme() {
       thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
       overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
     ),
+    scrollbarTheme: const ScrollbarThemeData(
+      thumbVisibility: WidgetStatePropertyAll<bool>(true),
+      trackVisibility: WidgetStatePropertyAll<bool>(true),
+      thickness: WidgetStatePropertyAll<double>(6),
+      radius: Radius.circular(3),
+      thumbColor: WidgetStatePropertyAll<Color>(AppColors.hairlineStrong),
+      trackColor: WidgetStatePropertyAll<Color>(Color(0xFF232527)),
+      trackBorderColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+      crossAxisMargin: 2,
+      mainAxisMargin: 2,
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: AppColors.surfaceHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(6),
+        side: const BorderSide(color: AppColors.hairline),
+      ),
+      textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
+    ),
     tooltipTheme: const TooltipThemeData(
       waitDuration: Duration(milliseconds: 400),
       decoration: BoxDecoration(

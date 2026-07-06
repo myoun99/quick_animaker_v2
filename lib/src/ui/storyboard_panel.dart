@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
+import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_scale.dart';
 
-class StoryboardPanel extends StatelessWidget {
+class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
     required this.project,
@@ -26,9 +27,24 @@ class StoryboardPanel extends StatelessWidget {
   final ValueChanged<CutId> onCutSelected;
 
   @override
+  State<StoryboardPanel> createState() => _StoryboardPanelState();
+}
+
+class _StoryboardPanelState extends State<StoryboardPanel> {
+  final ScrollController _verticalController = ScrollController();
+  final ScrollController _horizontalController = ScrollController();
+
+  @override
+  void dispose() {
+    _verticalController.dispose();
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final layoutEntries = buildStoryboardTimelineLayout(project);
+    final layoutEntries = buildStoryboardTimelineLayout(widget.project);
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -38,56 +54,72 @@ class StoryboardPanel extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(6),
-        child: SingleChildScrollView(
-          key: const ValueKey<String>('storyboard-vertical-viewport'),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                key: const ValueKey<String>('storyboard-track-label-rail'),
-                width: _trackLabelWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var index = 0; index < project.tracks.length; index++)
-                      _StoryboardTrackLabel(
-                        track: project.tracks[index],
-                        trackLabel: 'V${index + 1}',
-                      ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  key: const ValueKey<String>(
-                    'storyboard-timeline-horizontal-viewport',
-                  ),
-                  scrollDirection: Axis.horizontal,
+        child: PanelScrollbar(
+          controller: _verticalController,
+          child: SingleChildScrollView(
+            key: const ValueKey<String>('storyboard-vertical-viewport'),
+            controller: _verticalController,
+            padding: const EdgeInsets.only(right: panelScrollbarGutter),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  key: const ValueKey<String>('storyboard-track-label-rail'),
+                  width: StoryboardPanel._trackLabelWidth,
                   child: Column(
-                    key: const ValueKey<String>(
-                      'storyboard-timeline-scroll-content',
-                    ),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (
                         var index = 0;
-                        index < project.tracks.length;
+                        index < widget.project.tracks.length;
                         index++
                       )
-                        _StoryboardTrackRow(
-                          track: project.tracks[index],
-                          layoutEntries: layoutEntries
-                              .where((entry) => entry.trackIndex == index)
-                              .toList(growable: false),
-                          activeCutId: activeCutId,
-                          onCutSelected: onCutSelected,
-                          timelineScale: _timelineScale,
+                        _StoryboardTrackLabel(
+                          track: widget.project.tracks[index],
+                          trackLabel: 'V${index + 1}',
                         ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: PanelScrollbar(
+                    controller: _horizontalController,
+                    child: SingleChildScrollView(
+                      key: const ValueKey<String>(
+                        'storyboard-timeline-horizontal-viewport',
+                      ),
+                      controller: _horizontalController,
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.only(
+                        bottom: panelScrollbarGutter,
+                      ),
+                      child: Column(
+                        key: const ValueKey<String>(
+                          'storyboard-timeline-scroll-content',
+                        ),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (
+                            var index = 0;
+                            index < widget.project.tracks.length;
+                            index++
+                          )
+                            _StoryboardTrackRow(
+                              track: widget.project.tracks[index],
+                              layoutEntries: layoutEntries
+                                  .where((entry) => entry.trackIndex == index)
+                                  .toList(growable: false),
+                              activeCutId: widget.activeCutId,
+                              onCutSelected: widget.onCutSelected,
+                              timelineScale: StoryboardPanel._timelineScale,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

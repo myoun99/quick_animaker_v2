@@ -7,7 +7,7 @@ import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tip_preview.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview.dart';
 
 BrushPreset _calligraphy() {
   return BrushPreset(
@@ -77,7 +77,9 @@ Future<void> _pumpPanel(
 }
 
 void main() {
-  testWidgets('renders one row per preset with a tip preview', (tester) async {
+  testWidgets('renders one row per preset with a stroke preview', (
+    tester,
+  ) async {
     await _pumpPanel(tester, presets: [_calligraphy(), _marker(), _sampled()]);
 
     expect(find.text('Brushes'), findsOneWidget);
@@ -95,14 +97,13 @@ void main() {
       find.byKey(const ValueKey<String>('brush-preset-chip-preset-sampled')),
       findsOneWidget,
     );
-    expect(find.byType(BrushTipPreview), findsNWidgets(3));
+    expect(find.byType(BrushStrokePreview), findsNWidgets(3));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('applies, saves, imports, and deletes presets', (tester) async {
+  testWidgets('applies, saves, and imports presets', (tester) async {
     final calligraphy = _calligraphy();
     final applied = <BrushPreset>[];
-    final deleted = <BrushPresetId>[];
     var saveRequests = 0;
     var importRequests = 0;
 
@@ -111,7 +112,7 @@ void main() {
       presets: [calligraphy, _marker()],
       onPresetApplied: applied.add,
       onPresetSaveRequested: () => saveRequests += 1,
-      onPresetDeleted: deleted.add,
+      onPresetDeleted: (_) {},
       onPresetImportRequested: () => importRequests += 1,
     );
 
@@ -133,13 +134,55 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(importRequests, 1);
+  });
 
-    // The row's delete affordance reports the preset id.
+  testWidgets('options menu deletes the selected preset', (tester) async {
+    final deleted = <BrushPresetId>[];
+
+    await _pumpPanel(
+      tester,
+      presets: [_calligraphy(), _marker()],
+      selectedPresetId: const BrushPresetId('preset-marker'),
+      onPresetDeleted: deleted.add,
+    );
+
+    // No per-row delete affordance (stray clicks cannot delete).
+    expect(find.byIcon(Icons.close), findsNothing);
+
     await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-delete-preset-marker')),
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete selected brush'));
+    await tester.pumpAndSettle();
+
     expect(deleted.single, const BrushPresetId('preset-marker'));
+  });
+
+  testWidgets('options menu delete is disabled without a selection', (
+    tester,
+  ) async {
+    final deleted = <BrushPresetId>[];
+
+    await _pumpPanel(
+      tester,
+      presets: [_marker()],
+      onPresetDeleted: deleted.add,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final item = tester.widget<PopupMenuItem<String>>(
+      find.byKey(const ValueKey<String>('brush-preset-menu-delete')),
+    );
+    expect(item.enabled, isFalse);
+
+    await tester.tap(find.text('Delete selected brush'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(deleted, isEmpty);
   });
 
   testWidgets('highlights only the selected preset row', (tester) async {
@@ -180,7 +223,7 @@ void main() {
     await _pumpPanel(tester, presets: const []);
 
     expect(find.text('Brushes'), findsOneWidget);
-    expect(find.byType(BrushTipPreview), findsNothing);
+    expect(find.byType(BrushStrokePreview), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('brush-preset-save-button')),
       findsNothing,
@@ -192,13 +235,13 @@ void main() {
     expect(find.byIcon(Icons.brush_outlined), findsOneWidget);
   });
 
-  testWidgets('hides delete affordances when deletion is not wired', (
+  testWidgets('hides the options menu when deletion is not wired', (
     tester,
   ) async {
     await _pumpPanel(tester, presets: [_marker()]);
 
     expect(
-      find.byKey(const ValueKey<String>('brush-preset-delete-preset-marker')),
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
       findsNothing,
     );
   });
