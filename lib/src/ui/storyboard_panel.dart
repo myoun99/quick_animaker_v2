@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../models/cut_id.dart';
@@ -8,6 +9,7 @@ import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
+import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
@@ -26,6 +28,8 @@ class StoryboardPanel extends StatefulWidget {
     required this.activeCutId,
     required this.onCutSelected,
     this.onCutReordered,
+    this.playheadGlobalFrame,
+    this.onSeekGlobalFrame,
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
@@ -40,6 +44,8 @@ class StoryboardPanel extends StatefulWidget {
   static const double _trackLabelWidth = 56;
   static const double _trackLaneHeight = 64;
   static const double _trackRowBottomPadding = 4;
+  static const double _rulerHeight = 22;
+  static const double _timelineTrailingPadding = 12;
 
   final Project project;
   final CutId activeCutId;
@@ -48,6 +54,14 @@ class StoryboardPanel extends StatefulWidget {
   /// Dragging a cut block onto another block of the same track reorders the
   /// cuts (same semantics as the top-bar chips). Null disables dragging.
   final CutReorderedCallback? onCutReordered;
+
+  /// Track-global frame the playhead line sits on (playback position while
+  /// playing, the active cut's playhead otherwise). Null hides the line.
+  final int? playheadGlobalFrame;
+
+  /// Tapping or scrubbing the ruler reports the track-global frame under
+  /// the pointer. Null makes the ruler display-only.
+  final ValueChanged<int>? onSeekGlobalFrame;
 
   // Cut management actions (the storyboard owns cut lifecycle; these were
   // the temporary top-toolbar controls). All act on the active cut.
@@ -85,10 +99,39 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     super.dispose();
   }
 
+  /// The widest content edge across every track (blocks can outgrow their
+  /// duration via the minimum block width) plus trailing padding — the
+  /// ruler and playhead overlay both span it.
+  double _timelineContentWidth(List<StoryboardTimelineLayoutEntry> entries) {
+    var width = 0.0;
+    for (final entry in entries) {
+      final right =
+          StoryboardPanel._timelineScale.leftForFrame(entry.startFrame) +
+          StoryboardPanel._timelineScale.widthForDuration(entry.duration);
+      if (right > width) {
+        width = right;
+      }
+    }
+    return width + StoryboardPanel._timelineTrailingPadding;
+  }
+
+  int _totalFrames(List<StoryboardTimelineLayoutEntry> entries) {
+    var total = 0;
+    for (final entry in entries) {
+      if (entry.endFrame > total) {
+        total = entry.endFrame;
+      }
+    }
+    return total;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
+    final contentWidth = _timelineContentWidth(layoutEntries);
+    final totalFrames = _totalFrames(layoutEntries);
+    final playheadFrame = widget.playheadGlobalFrame;
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -121,6 +164,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Keeps the labels aligned with the track rows
+                            // below the ruler strip.
+                            const SizedBox(
+                              height: StoryboardPanel._rulerHeight,
+                            ),
                             for (
                               var index = 0;
                               index < widget.project.tracks.length;
@@ -145,29 +193,62 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             padding: const EdgeInsets.only(
                               bottom: panelScrollbarGutter,
                             ),
-                            child: Column(
-                              key: const ValueKey<String>(
-                                'storyboard-timeline-scroll-content',
-                              ),
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Stack(
                               children: [
-                                for (
-                                  var index = 0;
-                                  index < widget.project.tracks.length;
-                                  index++
-                                )
-                                  _StoryboardTrackRow(
-                                    track: widget.project.tracks[index],
-                                    layoutEntries: layoutEntries
-                                        .where(
-                                          (entry) => entry.trackIndex == index,
-                                        )
-                                        .toList(growable: false),
-                                    activeCutId: widget.activeCutId,
-                                    onCutSelected: widget.onCutSelected,
-                                    onCutReordered: widget.onCutReordered,
-                                    timelineScale:
-                                        StoryboardPanel._timelineScale,
+                                Column(
+                                  key: const ValueKey<String>(
+                                    'storyboard-timeline-scroll-content',
+                                  ),
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _StoryboardRuler(
+                                      width: contentWidth,
+                                      totalFrames: totalFrames,
+                                      timelineScale:
+                                          StoryboardPanel._timelineScale,
+                                      onSeekGlobalFrame:
+                                          widget.onSeekGlobalFrame,
+                                    ),
+                                    for (
+                                      var index = 0;
+                                      index < widget.project.tracks.length;
+                                      index++
+                                    )
+                                      _StoryboardTrackRow(
+                                        track: widget.project.tracks[index],
+                                        layoutEntries: layoutEntries
+                                            .where(
+                                              (entry) =>
+                                                  entry.trackIndex == index,
+                                            )
+                                            .toList(growable: false),
+                                        activeCutId: widget.activeCutId,
+                                        onCutSelected: widget.onCutSelected,
+                                        onCutReordered: widget.onCutReordered,
+                                        timelineScale:
+                                            StoryboardPanel._timelineScale,
+                                      ),
+                                  ],
+                                ),
+                                if (playheadFrame != null)
+                                  Positioned(
+                                    key: const ValueKey<String>(
+                                      'storyboard-playhead',
+                                    ),
+                                    left:
+                                        StoryboardPanel._timelineScale
+                                            .leftForFrame(playheadFrame) -
+                                        1,
+                                    top: 0,
+                                    bottom: 0,
+                                    child: const IgnorePointer(
+                                      child: SizedBox(
+                                        width: 2,
+                                        child: ColoredBox(
+                                          color: timelinePlayheadColor,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                               ],
                             ),
@@ -282,6 +363,123 @@ class _CutActionButton extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       visualDensity: VisualDensity.compact,
     );
+  }
+}
+
+/// The Premiere-style frame ruler across the top of the track area: frame
+/// ticks and 1-based labels on the shared [TimelineScale], scrolling with
+/// the blocks. Tapping or dragging seeks via [onSeekGlobalFrame].
+class _StoryboardRuler extends StatelessWidget {
+  const _StoryboardRuler({
+    required this.width,
+    required this.totalFrames,
+    required this.timelineScale,
+    required this.onSeekGlobalFrame,
+  });
+
+  final double width;
+  final int totalFrames;
+  final TimelineScale timelineScale;
+  final ValueChanged<int>? onSeekGlobalFrame;
+
+  void _seekAt(double dx) {
+    final onSeek = onSeekGlobalFrame;
+    if (onSeek == null || totalFrames <= 0) {
+      return;
+    }
+    final frame = (dx / timelineScale.pixelsPerFrame).floor().clamp(
+      0,
+      totalFrames - 1,
+    );
+    onSeek(frame);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      key: const ValueKey<String>('storyboard-ruler'),
+      behavior: HitTestBehavior.opaque,
+      // .down reports the true pointer-down position, so a scrub seeks the
+      // pressed frame first instead of the post-slop position (same fix as
+      // the camera overlay handles).
+      dragStartBehavior: DragStartBehavior.down,
+      onTapDown: (details) => _seekAt(details.localPosition.dx),
+      // Scrubbing claims horizontal drags on the ruler strip only; the
+      // track rows below still pan the panel.
+      onHorizontalDragStart: (details) => _seekAt(details.localPosition.dx),
+      onHorizontalDragUpdate: (details) => _seekAt(details.localPosition.dx),
+      child: CustomPaint(
+        size: Size(width, StoryboardPanel._rulerHeight),
+        painter: _StoryboardRulerPainter(
+          totalFrames: totalFrames,
+          pixelsPerFrame: timelineScale.pixelsPerFrame,
+          tickColor: colorScheme.onSurfaceVariant,
+          labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 10,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StoryboardRulerPainter extends CustomPainter {
+  const _StoryboardRulerPainter({
+    required this.totalFrames,
+    required this.pixelsPerFrame,
+    required this.tickColor,
+    required this.labelStyle,
+  });
+
+  static const int _labelEveryFrames = 12;
+  static const int _minorTickEveryFrames = 4;
+
+  final int totalFrames;
+  final double pixelsPerFrame;
+  final Color tickColor;
+  final TextStyle? labelStyle;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tickPaint = Paint()
+      ..color = tickColor.withValues(alpha: 0.6)
+      ..strokeWidth = 1;
+
+    canvas.drawLine(
+      Offset(0, size.height - 1),
+      Offset(size.width, size.height - 1),
+      tickPaint,
+    );
+
+    for (var frame = 0; frame <= totalFrames; frame += _minorTickEveryFrames) {
+      final x = frame * pixelsPerFrame;
+      if (x > size.width) {
+        break;
+      }
+      final isLabeled = frame % _labelEveryFrames == 0;
+      canvas.drawLine(
+        Offset(x, size.height - (isLabeled ? 10 : 5)),
+        Offset(x, size.height - 1),
+        tickPaint,
+      );
+      if (isLabeled) {
+        final painter = TextPainter(
+          text: TextSpan(text: '${frame + 1}', style: labelStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        painter.paint(canvas, Offset(x + 2, 0));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StoryboardRulerPainter oldDelegate) {
+    return oldDelegate.totalFrames != totalFrames ||
+        oldDelegate.pixelsPerFrame != pixelsPerFrame ||
+        oldDelegate.tickColor != tickColor ||
+        oldDelegate.labelStyle != labelStyle;
   }
 }
 

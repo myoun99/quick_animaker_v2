@@ -301,6 +301,95 @@ void main() {
       );
     });
 
+    testWidgets('ruler tap seeks the frame under the pointer', (tester) async {
+      final seekedFrames = <int>[];
+
+      // Two 24-frame cuts: the ruler spans 48 frames at 8px each.
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onSeekGlobalFrame: seekedFrames.add,
+      );
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      expect(ruler, findsOneWidget);
+
+      final topLeft = tester.getTopLeft(ruler);
+      // Frame 30 starts at 240px; tap inside its cell.
+      await tester.tapAt(topLeft + const Offset(30 * 8 + 3, 10));
+      await tester.pumpAndSettle();
+
+      expect(seekedFrames, [30]);
+    });
+
+    testWidgets('ruler scrub reports frames while dragging', (tester) async {
+      final seekedFrames = <int>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onSeekGlobalFrame: seekedFrames.add,
+      );
+
+      final topLeft = tester.getTopLeft(
+        find.byKey(const ValueKey<String>('storyboard-ruler')),
+      );
+      final gesture = await tester.startGesture(
+        topLeft + const Offset(8 * 8 + 3, 10),
+      );
+      await gesture.moveBy(const Offset(8 * 8, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(seekedFrames.first, 8);
+      expect(seekedFrames.last, 16);
+    });
+
+    testWidgets('playhead line sits on the global frame', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        playheadGlobalFrame: 30,
+      );
+
+      final playhead = find.byKey(
+        const ValueKey<String>('storyboard-playhead'),
+      );
+      expect(playhead, findsOneWidget);
+      // 30 frames × 8px, minus the 1px centering of the 2px line.
+      expect(tester.widget<Positioned>(playhead).left, 30 * 8 - 1);
+    });
+
+    testWidgets('no playhead line without a frame', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-playhead')),
+        findsNothing,
+      );
+    });
+
     testWidgets('tap-to-select still works when dragging is enabled', (
       tester,
     ) async {
@@ -338,6 +427,8 @@ Future<void> _pumpStoryboardPanel(
   required CutId activeCutId,
   required ValueChanged<CutId> onCutSelected,
   CutReorderedCallback? onCutReordered,
+  int? playheadGlobalFrame,
+  ValueChanged<int>? onSeekGlobalFrame,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -347,6 +438,8 @@ Future<void> _pumpStoryboardPanel(
           activeCutId: activeCutId,
           onCutSelected: onCutSelected,
           onCutReordered: onCutReordered,
+          playheadGlobalFrame: playheadGlobalFrame,
+          onSeekGlobalFrame: onSeekGlobalFrame,
         ),
       ),
     ),

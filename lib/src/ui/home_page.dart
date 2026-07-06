@@ -19,6 +19,7 @@ import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import 'storyboard_panel.dart';
+import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
@@ -58,6 +59,78 @@ class _HomePageState extends State<HomePage> {
 
   void _onSessionChanged() {
     setState(() {});
+  }
+
+  // --- Storyboard playhead mapping -----------------------------------------
+  // The storyboard ruler/playhead work in track-global frames: the active
+  // track's cuts laid end to end (the same layout allCuts playback plays).
+
+  List<StoryboardTimelineLayoutEntry> _activeTrackLayout() {
+    final layout = buildStoryboardTimelineLayout(
+      _session.repository.requireProject(),
+    );
+    for (final entry in layout) {
+      if (entry.cutId == _session.activeCutId) {
+        return layout
+            .where((candidate) => candidate.trackId == entry.trackId)
+            .toList(growable: false);
+      }
+    }
+    return layout;
+  }
+
+  /// Where the storyboard playhead sits: the playback position while
+  /// playback is active (an activeCut-scope playlist is rebased to frame 0,
+  /// so map through the cut's track slot), the editing playhead otherwise.
+  int? _storyboardPlayheadFrame() {
+    final layout = _activeTrackLayout();
+    final playbackPosition = _session.playback.isActive
+        ? _session.playback.position
+        : null;
+    final cutId = playbackPosition?.cutId ?? _session.activeCutId;
+    final localFrame =
+        playbackPosition?.localFrameIndex ?? _session.currentFrameIndex;
+    for (final entry in layout) {
+      if (entry.cutId == cutId) {
+        final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
+        return entry.startFrame + localFrame.clamp(0, maxLocal);
+      }
+    }
+    return null;
+  }
+
+  void _seekStoryboardGlobalFrame(int globalFrame) {
+    final layout = _activeTrackLayout();
+    if (layout.isEmpty) {
+      return;
+    }
+    final playback = _session.playback;
+    if (playback.isActive) {
+      if (playback.scope == PlaybackScope.allCuts) {
+        playback.seekToGlobalFrame(globalFrame);
+        return;
+      }
+      // Single-cut playback: its playlist is rebased to frame 0, and seeks
+      // outside the playing cut are a no-op.
+      for (final entry in layout) {
+        if (globalFrame >= entry.startFrame &&
+            globalFrame < entry.endFrame &&
+            entry.cutId == playback.position?.cutId) {
+          playback.seekToGlobalFrame(globalFrame - entry.startFrame);
+          return;
+        }
+      }
+      return;
+    }
+    for (final entry in layout) {
+      if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
+        if (entry.cutId != _session.activeCutId) {
+          _session.selectCut(entry.cutId);
+        }
+        _session.selectFrameIndex(globalFrame - entry.startFrame);
+        return;
+      }
+    }
   }
 
   // --- Dialog-driven commands --------------------------------------------
@@ -218,13 +291,18 @@ class _HomePageState extends State<HomePage> {
           // live while frames warm in the background.
           ValueListenableBuilder<PrerenderProgress>(
             valueListenable: _session.prerenderScheduler.progress,
+            // The global-frame listenable is a superset of the local one
+            // (it also fires on cross-cut seeks), so both the timeline and
+            // the storyboard playheads ride this single subscription.
             builder: (context, _, _) => ValueListenableBuilder<int?>(
-              valueListenable: _session.playback.localFrameIndexListenable,
-              builder: (context, playbackFrameIndex, _) => TimelinePanel(
+              valueListenable: _session.playback.globalFrameIndexListenable,
+              builder: (context, playbackGlobalFrame, _) => TimelinePanel(
                 layers: _session.layers,
                 activeLayerId: _session.activeLayerId,
-                currentFrameIndex:
-                    playbackFrameIndex ?? _session.currentFrameIndex,
+                currentFrameIndex: playbackGlobalFrame == null
+                    ? _session.currentFrameIndex
+                    : _session.playback.position?.localFrameIndex ??
+                          _session.currentFrameIndex,
                 isFrameCached: _session.isPlaybackFrameCached,
                 playbackFrameCount: _session.activeCutPlaybackFrameCount,
                 exposureStateForLayer: _session.exposureStateForLayer,
@@ -287,6 +365,8 @@ class _HomePageState extends State<HomePage> {
                         activeCutId: _session.activeCutId,
                         onCutSelected: _session.selectCut,
                         onCutReordered: _session.reorderCut,
+                        playheadGlobalFrame: _storyboardPlayheadFrame(),
+                        onSeekGlobalFrame: _seekStoryboardGlobalFrame,
                         onNewCut: _session.createCut,
                         onRenameActiveCut: _renameActiveCut,
                         onEditActiveCutNote: _editActiveCutNote,

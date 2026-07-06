@@ -62,6 +62,18 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// (never route ticks through the session's notifyListeners).
   ValueListenable<int?> get localFrameIndexListenable => _localFrameIndex;
 
+  final ValueNotifier<int?> _globalFrameIndexNotifier = ValueNotifier<int?>(
+    null,
+  );
+
+  /// The playlist-global frame index, `null` while playback is inactive.
+  ///
+  /// Superset signal of [localFrameIndexListenable]: it also fires on
+  /// cross-cut seeks that happen to land on the same local frame (the
+  /// storyboard playhead follows this one).
+  ValueListenable<int?> get globalFrameIndexListenable =>
+      _globalFrameIndexNotifier;
+
   final ValueNotifier<bool> _isActiveNotifier = ValueNotifier<bool>(false);
 
   /// Fires only when playback mode is entered/left — the canvas area swaps
@@ -145,7 +157,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
     _isPlaying = true;
     _startTicker();
-    _localFrameIndex.value = position?.localFrameIndex;
+    _syncFrameNotifiers();
     _isActiveNotifier.value = true;
     notifyListeners();
   }
@@ -162,17 +174,31 @@ class CanvasPlaybackController extends ChangeNotifier {
       if (current.globalFrameIndex >= entry.startFrame &&
           current.globalFrameIndex < entry.endFrame) {
         final clamped = localFrameIndex.clamp(0, entry.duration - 1);
-        _currentGlobalFrame = entry.startFrame + clamped;
-        _resetDropAccounting();
-        if (_isPlaying) {
-          // Restart the ticker so its elapsed epoch rebases on the new frame.
-          _startTicker();
-        }
-        _localFrameIndex.value = position?.localFrameIndex;
-        notifyListeners();
+        seekToGlobalFrame(entry.startFrame + clamped);
         return;
       }
     }
+  }
+
+  /// Jumps playback to a playlist-global frame (storyboard ruler seeks can
+  /// cross cut boundaries); keeps playing/paused state.
+  void seekToGlobalFrame(int globalFrameIndex) {
+    final playlist = _playlist;
+    if (playlist == null) {
+      return;
+    }
+    final total = playlistTotalFrames(playlist);
+    if (total == 0) {
+      return;
+    }
+    _currentGlobalFrame = globalFrameIndex.clamp(0, total - 1);
+    _resetDropAccounting();
+    if (_isPlaying) {
+      // Restart the ticker so its elapsed epoch rebases on the new frame.
+      _startTicker();
+    }
+    _syncFrameNotifiers();
+    notifyListeners();
   }
 
   void _resetDropAccounting() {
@@ -207,7 +233,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     _stopTicker();
     _playlist = null;
     _isPlaying = false;
-    _localFrameIndex.value = null;
+    _syncFrameNotifiers();
     _isActiveNotifier.value = false;
     notifyListeners();
     if (lastPosition != null) {
@@ -220,8 +246,16 @@ class CanvasPlaybackController extends ChangeNotifier {
     _ticker?.dispose();
     _ticker = null;
     _localFrameIndex.dispose();
+    _globalFrameIndexNotifier.dispose();
     _isActiveNotifier.dispose();
     super.dispose();
+  }
+
+  void _syncFrameNotifiers() {
+    _localFrameIndex.value = position?.localFrameIndex;
+    _globalFrameIndexNotifier.value = _playlist == null
+        ? null
+        : _currentGlobalFrame;
   }
 
   List<StoryboardTimelineLayoutEntry> _buildPlaylist(PlaybackScope scope) {
@@ -307,7 +341,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       return;
     }
     _currentGlobalFrame = frame;
-    _localFrameIndex.value = position?.localFrameIndex;
+    _syncFrameNotifiers();
     notifyListeners();
   }
 }
