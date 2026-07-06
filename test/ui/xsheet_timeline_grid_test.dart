@@ -346,6 +346,137 @@ void main() {
     expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
   });
 
+  testWidgets('held exposure run renders as one vertical block', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 4,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.empty;
+          }
+          return switch (frameIndex) {
+            0 => TimelineCellExposureState.drawingStart,
+            1 || 2 => TimelineCellExposureState.heldExposure,
+            _ => TimelineCellExposureState.empty,
+          };
+        },
+      ),
+    );
+
+    final startRadius =
+        _cellDecoration(tester, 'xsheet-cell-layer-1-0').borderRadius!
+            as BorderRadius;
+    expect(startRadius.topLeft, const Radius.circular(6));
+    expect(startRadius.bottomLeft, Radius.zero);
+
+    final midRadius =
+        _cellDecoration(tester, 'xsheet-cell-layer-1-1').borderRadius
+            as BorderRadius?;
+    expect(midRadius, BorderRadius.zero);
+
+    final endRadius =
+        _cellDecoration(tester, 'xsheet-cell-layer-1-2').borderRadius!
+            as BorderRadius;
+    expect(endRadius.topLeft, Radius.zero);
+    expect(endRadius.bottomLeft, const Radius.circular(6));
+  });
+
+  testWidgets('shows the shared playhead row tint at the current frame', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(currentFrameIndex: 2));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-playhead-column')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows cut-end boundary lines past the playback range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 12));
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cut-end-boundary')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-cut-end-boundary-ruler')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('outlines the selected exposure run', (tester) async {
+    await tester.pumpWidget(
+      _grid(
+        frameCount: 4,
+        exposureStateForLayer: (layer, frameIndex) =>
+            layer.id == const LayerId('layer-1') && frameIndex == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.empty,
+      ),
+    );
+
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-selected-exposure-range-outline-layer-1',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('virtualizes long cuts to the visible frame window', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 500));
+
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-499')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-frame-rail-trailing-spacer')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('dims frames beyond the playback range like the timeline', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(frameCount: 12));
+
+    // The visible window extends to the shared 24-frame minimum, so frames
+    // past the 12-frame playback range render dimmed (on the inactive layer
+    // to keep the active-layer tint out of the comparison).
+    final inside = _cellDecoration(tester, 'xsheet-cell-layer-2-0').color;
+    final outside = _cellDecoration(tester, 'xsheet-cell-layer-2-13').color;
+    expect(outside, isNot(inside));
+  });
+
+  testWidgets('dragging the frame rail scrubs the current frame', (
+    tester,
+  ) async {
+    final selected = <int>[];
+    await tester.pumpWidget(_grid(onSelectFrame: selected.add));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('xsheet-frame-rail-scrub-area')),
+      const Offset(0, 80),
+    );
+    await tester.pumpAndSettle();
+
+    expect(selected, isNotEmpty);
+  });
+
   test('cell style keeps drawing cells neutral and blank cells muted', () {
     const colorScheme = ColorScheme.light();
 
@@ -392,6 +523,12 @@ void main() {
     expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
+}
+
+BoxDecoration _cellDecoration(WidgetTester tester, String key) {
+  final inkWell = tester.widget<InkWell>(find.byKey(ValueKey<String>(key)));
+  final container = inkWell.child! as Container;
+  return container.decoration! as BoxDecoration;
 }
 
 Widget _grid({
