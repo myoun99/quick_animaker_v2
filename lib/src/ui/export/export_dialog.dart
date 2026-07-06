@@ -42,11 +42,22 @@ class ExportDialogState extends State<ExportDialog> {
   ExportRange _range = ExportRange.activeCut;
   ExportSizeMode _sizeMode = ExportSizeMode.camera;
   bool _instanceOnly = false;
+  bool _celTransparent = true;
+  bool _celIncludeProject = false;
+  bool _celIncludeCut = false;
+  bool _celIncludeLayer = true;
+  bool _celCutFolder = false;
+  bool _celLayerFolder = false;
   late final TextEditingController _rangeStartController =
       TextEditingController(text: '1');
   late final TextEditingController _rangeEndController = TextEditingController(
     text: '${math.max(1, widget.session.activeCut.duration)}',
   );
+  late final TextEditingController _celDigitsController = TextEditingController(
+    text: '0',
+  );
+  late final TextEditingController _celSuffixController =
+      TextEditingController();
   bool _isExporting = false;
   bool _cancelRequested = false;
   String? _statusMessage;
@@ -56,6 +67,8 @@ class ExportDialogState extends State<ExportDialog> {
   void dispose() {
     _rangeStartController.dispose();
     _rangeEndController.dispose();
+    _celDigitsController.dispose();
+    _celSuffixController.dispose();
     super.dispose();
   }
 
@@ -87,10 +100,21 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  ExportCelNaming get _celNaming => ExportCelNaming(
+    includeProjectName: _celIncludeProject,
+    includeCutName: _celIncludeCut,
+    includeLayerName: _celIncludeLayer,
+    frameDigits: int.tryParse(_celDigitsController.text.trim()) ?? 0,
+    suffix: _celSuffixController.text.trim(),
+    cutFolder: _celCutFolder,
+    layerFolder: _celLayerFolder,
+  );
+
   List<ExportCelTask> _celPlan() => buildExportCelPlan(
     project: widget.session.repository.requireProject(),
     activeCutId: widget.session.activeCut.id,
     range: _range,
+    naming: _celNaming,
   );
 
   /// The canvas sizes the current range covers; one entry means every
@@ -106,7 +130,8 @@ class ExportDialogState extends State<ExportDialog> {
   String _planSummary() {
     if (_instanceOnly) {
       final count = _celPlan().length;
-      return '$count ${_plural(count, 'cel')} as transparent PNGs, '
+      final background = _celTransparent ? 'transparent' : 'opaque white';
+      return '$count ${_plural(count, 'cel')} as $background PNGs, '
           'no compositing.';
     }
     final plan = _framePlan();
@@ -152,6 +177,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// Public for tests; the Export button is the production entry point.
   Future<void> export() async {
     final instanceOnly = _instanceOnly;
+    final celTransparent = _celTransparent;
     final sizeMode = _sizeMode;
     final celPlan = instanceOnly ? _celPlan() : const <ExportCelTask>[];
     final framePlan = instanceOnly ? const <ExportFrameTask>[] : _framePlan();
@@ -177,7 +203,7 @@ class ExportDialogState extends State<ExportDialog> {
       final summary = await _exportService.exportImages(
         count: count,
         renderImage: (index) => instanceOnly
-            ? renderer.renderCel(celPlan[index])
+            ? renderer.renderCel(celPlan[index], transparent: celTransparent)
             : renderer.renderComposite(framePlan![index], sizeMode),
         fileNameFor: (index) => instanceOnly
             ? celPlan[index].fileName
@@ -244,6 +270,20 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  Widget _celOptionChip(
+    String label,
+    bool selected,
+    void Function(bool value) apply,
+    String key,
+  ) {
+    return FilterChip(
+      key: ValueKey<String>(key),
+      label: Text(label),
+      selected: selected,
+      onSelected: _isExporting ? null : (value) => setState(() => apply(value)),
+    );
+  }
+
   Widget _rangeField(
     TextEditingController controller,
     String label,
@@ -271,10 +311,11 @@ class ExportDialogState extends State<ExportDialog> {
         ? 'Canvas ${canvasSizes.first.width}×${canvasSizes.first.height}'
         : 'Canvas (per cut)';
     final progress = _progress;
+    final celPlan = _instanceOnly ? _celPlan() : const <ExportCelTask>[];
     final canExport =
         !_isExporting &&
         (_instanceOnly
-            ? _celPlan().isNotEmpty
+            ? celPlan.isNotEmpty
             : (_framePlan()?.isNotEmpty ?? false));
 
     return AlertDialog(
@@ -382,15 +423,125 @@ class ExportDialogState extends State<ExportDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Instance export: each unique cel as its own '
-                      'transparent PNG, no compositing.',
+                      'Instance export: each unique cel as its own PNG, '
+                      'no compositing.',
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
                 ],
               ),
+              if (_instanceOnly) ...[
+                const SizedBox(height: 4),
+                _sectionLabel('Cel options'),
+                Row(
+                  children: [
+                    Switch(
+                      key: const ValueKey<String>(
+                        'export-cel-transparent-toggle',
+                      ),
+                      value: _celTransparent,
+                      onChanged: _isExporting
+                          ? null
+                          : (value) => setState(() => _celTransparent = value),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _celTransparent
+                            ? 'Transparent background'
+                            : 'Opaque background (white paper)',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _celOptionChip(
+                      'Project name',
+                      _celIncludeProject,
+                      (value) => _celIncludeProject = value,
+                      'export-cel-include-project',
+                    ),
+                    _celOptionChip(
+                      'Cut name',
+                      _celIncludeCut,
+                      (value) => _celIncludeCut = value,
+                      'export-cel-include-cut',
+                    ),
+                    _celOptionChip(
+                      'Layer name',
+                      _celIncludeLayer,
+                      (value) => _celIncludeLayer = value,
+                      'export-cel-include-layer',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 130,
+                      child: TextField(
+                        key: const ValueKey<String>('export-cel-digits-field'),
+                        controller: _celDigitsController,
+                        enabled: !_isExporting,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Digits (0 = off)',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        key: const ValueKey<String>('export-cel-suffix-field'),
+                        controller: _celSuffixController,
+                        enabled: !_isExporting,
+                        decoration: const InputDecoration(labelText: 'Suffix'),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _celOptionChip(
+                      'Cut folder',
+                      _celCutFolder,
+                      (value) => _celCutFolder = value,
+                      'export-cel-cut-folder',
+                    ),
+                    _celOptionChip(
+                      'Layer folder',
+                      _celLayerFolder,
+                      (value) => _celLayerFolder = value,
+                      'export-cel-layer-folder',
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               Text(_planSummary(), style: theme.textTheme.bodyMedium),
+              if (_instanceOnly && celPlan.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Example: ${celPlan.first.fileName}',
+                    key: const ValueKey<String>('export-cel-example'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
               if (progress != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),

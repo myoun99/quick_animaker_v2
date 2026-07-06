@@ -30,9 +30,12 @@ class PngSequenceExportService {
       if (image != null) {
         try {
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          await File(
+          final file = File(
             '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}',
-          ).writeAsBytes(bytes!.buffer.asUint8List(), flush: true);
+          );
+          // File names may carry subfolders (per-cut/per-layer cel export).
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes!.buffer.asUint8List(), flush: true);
           written += 1;
         } finally {
           image.dispose();

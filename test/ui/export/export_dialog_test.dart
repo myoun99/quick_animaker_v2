@@ -271,6 +271,7 @@ void main() {
       find.text('2 cels as transparent PNGs, no compositing.'),
       findsOneWidget,
     );
+    expect(find.text('Example: A1.png'), findsOneWidget);
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -278,6 +279,53 @@ void main() {
     // No brush artwork in the test store, so both cels skip their files.
     expect(fileNames(directory), isEmpty);
     expect(find.text('Exported 0 cels (2 empty skipped).'), findsOneWidget);
+  });
+
+  testWidgets('cel options rebuild the example name and the opaque summary', (
+    tester,
+  ) async {
+    await pumpDialog(tester, exportSession());
+
+    // The dialog body scrolls, so bring each control on-screen first.
+    Future<void> tapVisible(String key) async {
+      final finder = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(finder);
+      await tester.pump();
+      await tester.tap(finder);
+      await tester.pump();
+    }
+
+    Future<void> typeVisible(String key, String text) async {
+      final finder = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(finder);
+      await tester.pump();
+      await tester.enterText(finder, text);
+      await tester.pump();
+    }
+
+    await tapVisible('export-instance-toggle');
+
+    await typeVisible('export-cel-digits-field', '4');
+    expect(find.text('Example: A0001.png'), findsOneWidget);
+
+    await tapVisible('export-cel-include-cut');
+    expect(find.text('Example: Cut_A0001.png'), findsOneWidget);
+
+    await tapVisible('export-cel-include-layer');
+    expect(find.text('Example: Cut_0001.png'), findsOneWidget);
+
+    await typeVisible('export-cel-suffix-field', '_fix');
+    expect(find.text('Example: Cut_0001_fix.png'), findsOneWidget);
+
+    await tapVisible('export-cel-layer-folder');
+    expect(find.text('Example: A/Cut_0001_fix.png'), findsOneWidget);
+
+    await tapVisible('export-cel-transparent-toggle');
+    expect(
+      find.text('2 cels as opaque white PNGs, no compositing.'),
+      findsOneWidget,
+    );
+    expect(find.text('Opaque background (white paper)'), findsOneWidget);
   });
 
   testWidgets('cancelling the directory picker leaves no status', (

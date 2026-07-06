@@ -41,7 +41,61 @@ class ExportCelTask {
   final Cut cut;
   final Layer layer;
   final Frame frame;
+
+  /// Relative to the export directory; may contain `/` subfolders.
   final String fileName;
+}
+
+/// How cel files are named and foldered (CSP-style cel export options).
+///
+/// The name is `[project_][cut_][layer]frame[suffix].png`: project/cut
+/// prefixes join with '_', the layer name sits directly against the frame
+/// name (layer 'A' + frame '1' = 'A1'). The frame name is [Frame.name],
+/// falling back to the cel's 1-based position when unnamed.
+class ExportCelNaming {
+  const ExportCelNaming({
+    this.includeProjectName = false,
+    this.includeCutName = false,
+    this.includeLayerName = true,
+    this.frameDigits = 0,
+    this.suffix = '',
+    this.cutFolder = false,
+    this.layerFolder = false,
+  });
+
+  final bool includeProjectName;
+  final bool includeCutName;
+  final bool includeLayerName;
+
+  /// 0 = off; otherwise the first digit run in the frame name is left-padded
+  /// with zeros to this width ('1' → '0001' at 4). Names without any digits
+  /// are left alone.
+  final int frameDigits;
+
+  /// Appended right before '.png' (TVPaint's 後ろ文字付け).
+  final String suffix;
+
+  /// Per-cut / per-layer subfolders under the export directory.
+  final bool cutFolder;
+  final bool layerFolder;
+}
+
+/// Pads the first digit run in [name] to [digits] ('1' → '0001', 'a12b' →
+/// 'a0012b' at 4). Runs already at least [digits] wide and names without
+/// digits are unchanged.
+String padFrameNumber(String name, int digits) {
+  if (digits <= 0) {
+    return name;
+  }
+  final match = RegExp(r'\d+').firstMatch(name);
+  if (match == null) {
+    return name;
+  }
+  final run = match.group(0)!;
+  if (run.length >= digits) {
+    return name;
+  }
+  return name.replaceRange(match.start, match.end, run.padLeft(digits, '0'));
 }
 
 /// The cuts the chosen range covers, in play order. [ExportRange.frameRange]
@@ -120,6 +174,7 @@ List<ExportCelTask> buildExportCelPlan({
   required Project project,
   required CutId activeCutId,
   required ExportRange range,
+  ExportCelNaming naming = const ExportCelNaming(),
 }) {
   final cuts = resolveExportCuts(
     project: project,
@@ -135,21 +190,31 @@ List<ExportCelTask> buildExportCelPlan({
         continue;
       }
       for (var index = 0; index < layer.frames.length; index += 1) {
-        final base =
-            '${sanitizeExportFileComponent(cut.name)}_'
-            '${sanitizeExportFileComponent(layer.name)}_'
-            '${(index + 1).toString().padLeft(4, '0')}';
-        var fileName = '$base.png';
+        final frame = layer.frames[index];
+        final base = _celFileBase(
+          projectName: project.name,
+          cut: cut,
+          layer: layer,
+          frame: frame,
+          celPosition: index + 1,
+          naming: naming,
+        );
+        final folder = [
+          if (naming.cutFolder) sanitizeExportFileComponent(cut.name),
+          if (naming.layerFolder) sanitizeExportFileComponent(layer.name),
+        ].join('/');
+        final prefix = folder.isEmpty ? '' : '$folder/';
+        var fileName = '$prefix$base.png';
         var bump = 2;
         while (!usedNames.add(fileName)) {
-          fileName = '${base}_$bump.png';
+          fileName = '$prefix${base}_$bump.png';
           bump += 1;
         }
         plan.add(
           ExportCelTask(
             cut: cut,
             layer: layer,
-            frame: layer.frames[index],
+            frame: frame,
             fileName: fileName,
           ),
         );
@@ -157,6 +222,41 @@ List<ExportCelTask> buildExportCelPlan({
     }
   }
   return plan;
+}
+
+String _celFileBase({
+  required String projectName,
+  required Cut cut,
+  required Layer layer,
+  required Frame frame,
+  required int celPosition,
+  required ExportCelNaming naming,
+}) {
+  final rawFrameName = (frame.name ?? '').trim();
+  final frameName = padFrameNumber(
+    rawFrameName.isEmpty ? '$celPosition' : rawFrameName,
+    naming.frameDigits,
+  );
+
+  final prefixes = [
+    if (naming.includeProjectName) sanitizeExportFileComponent(projectName),
+    if (naming.includeCutName) sanitizeExportFileComponent(cut.name),
+  ];
+  final buffer = StringBuffer();
+  if (prefixes.isNotEmpty) {
+    buffer
+      ..writeAll(prefixes, '_')
+      ..write('_');
+  }
+  if (naming.includeLayerName) {
+    buffer.write(sanitizeExportFileComponent(layer.name));
+  }
+  buffer.write(sanitizeExportFileComponent(frameName));
+  final suffix = naming.suffix.trim();
+  if (suffix.isNotEmpty) {
+    buffer.write(sanitizeExportFileComponent(suffix));
+  }
+  return buffer.toString();
 }
 
 /// Makes a cut/layer name safe as a file-name component: characters Windows

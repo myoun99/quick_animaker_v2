@@ -166,10 +166,9 @@ void main() {
 
       expect(plan, hasLength(2));
       expect(plan.map((task) => task.frame.id.value), ['f1', 'f2']);
-      expect(plan.map((task) => task.fileName), [
-        'Cut_A_0001.png',
-        'Cut_A_0002.png',
-      ]);
+      // Default naming: layer name + frame name (position fallback when the
+      // frame is unnamed).
+      expect(plan.map((task) => task.fileName), ['A1.png', 'A2.png']);
     });
 
     test('frame range covers the whole active cut for cels', () {
@@ -219,10 +218,75 @@ void main() {
         range: ExportRange.activeCut,
       );
 
-      expect(plan.map((task) => task.fileName), [
-        'Cut_A_0001.png',
-        'Cut_A_0001_2.png',
+      expect(plan.map((task) => task.fileName), ['A1.png', 'A1_2.png']);
+    });
+
+    test('naming options assemble project/cut prefixes, digits, suffix and '
+        'folders', () {
+      final tracks = [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            cut(
+              'a',
+              name: 'C01',
+              layers: [
+                layer(
+                  'draw',
+                  name: 'A',
+                  frames: [
+                    Frame(
+                      id: const FrameId('f1'),
+                      duration: 1,
+                      strokes: const [],
+                      name: '3',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ];
+
+      List<String> namesFor(ExportCelNaming naming) => buildExportCelPlan(
+        project: project(tracks),
+        activeCutId: const CutId('a'),
+        range: ExportRange.activeCut,
+        naming: naming,
+      ).map((task) => task.fileName).toList();
+
+      expect(
+        namesFor(
+          const ExportCelNaming(
+            includeProjectName: true,
+            includeCutName: true,
+            frameDigits: 4,
+          ),
+        ),
+        ['Project_C01_A0003.png'],
+      );
+      expect(namesFor(const ExportCelNaming(includeLayerName: false)), [
+        '3.png',
       ]);
+      expect(namesFor(const ExportCelNaming(suffix: '_fix')), ['A3_fix.png']);
+      expect(
+        namesFor(const ExportCelNaming(cutFolder: true, layerFolder: true)),
+        ['C01/A/A3.png'],
+      );
+    });
+  });
+
+  group('padFrameNumber', () {
+    test('pads the first digit run and leaves the rest alone', () {
+      expect(padFrameNumber('1', 4), '0001');
+      expect(padFrameNumber('12', 3), '012');
+      expect(padFrameNumber('a12b', 4), 'a0012b');
+      expect(padFrameNumber('1234', 4), '1234');
+      expect(padFrameNumber('12345', 4), '12345');
+      expect(padFrameNumber('abc', 4), 'abc');
+      expect(padFrameNumber('1', 0), '1');
     });
   });
 
