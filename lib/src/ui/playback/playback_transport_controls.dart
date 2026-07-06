@@ -103,18 +103,13 @@ class PlaybackTransportControls extends StatelessWidget {
               itemBuilder: (context) => [
                 for (final candidate in PlaybackQuality.values)
                   PopupMenuItem(
-                    key: ValueKey<String>(
-                      'playback-quality-${candidate.name}',
-                    ),
+                    key: ValueKey<String>('playback-quality-${candidate.name}'),
                     value: candidate,
                     child: Text(qualityLabel(candidate)),
                   ),
               ],
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 child: Text(
                   qualityLabel(quality),
                   style: Theme.of(context).textTheme.labelMedium,

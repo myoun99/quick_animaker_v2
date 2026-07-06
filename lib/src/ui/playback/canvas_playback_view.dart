@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
 import 'canvas_playback_controller.dart';
@@ -12,13 +13,15 @@ import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
 
-/// The canvas panel's playback mode: cached composite frames drawn like a
-/// program monitor (fit + letterbox), advancing with the controller's ticker.
+/// The canvas panel's playback content: cached composite frames advancing
+/// with the controller's ticker, rendered INSIDE the panel viewport so the
+/// panel chrome (zoom buttons, panbars) keeps working during playback.
 ///
-/// Cache misses keep the last successfully displayed frame on screen (the
-/// stale-frame policy the tile cache also uses) while a thin strip reports
-/// warming progress. With the camera view enabled the frame is projected
-/// through the cut's camera pose instead of shown in canvas space.
+/// Tapping anywhere cancels playback. Cache misses keep the last displayed
+/// frame on screen (the stale-frame policy the tile cache also uses) while a
+/// thin strip reports warming progress. With the camera view enabled the
+/// frame is projected through the cut's camera pose instead of shown in
+/// canvas space.
 class CanvasPlaybackView extends StatefulWidget {
   const CanvasPlaybackView({
     super.key,
@@ -29,6 +32,7 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
+    this.viewport,
   });
 
   final CanvasPlaybackController controller;
@@ -38,6 +42,9 @@ class CanvasPlaybackView extends StatefulWidget {
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
+
+  /// The panel's live pan/zoom (canvas mode); identity when null.
+  final CanvasViewport? viewport;
 
   @override
   State<CanvasPlaybackView> createState() => _CanvasPlaybackViewState();
@@ -92,52 +99,59 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
-    return Stack(
+    return GestureDetector(
       key: const ValueKey<String>('canvas-playback-view'),
-      fit: StackFit.expand,
-      children: [
-        CustomPaint(
-          painter: PlaybackFramePainter(
-            image: _heldCanvasSize == canvasSize ? _heldFrame : null,
-            canvasSize: canvasSize,
-            cameraPose: widget.cameraViewEnabled && cut != null && position != null
-                ? widget.cameraPoseOf(cut, position.localFrameIndex)
-                : null,
-            cameraFrameSize: widget.cameraViewEnabled
-                ? widget.cameraFrameSize
-                : null,
+      behavior: HitTestBehavior.opaque,
+      // One tap anywhere on the canvas cancels playback.
+      onTap: widget.controller.stop,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: PlaybackFramePainter(
+              image: _heldCanvasSize == canvasSize ? _heldFrame : null,
+              canvasSize: canvasSize,
+              viewport: widget.viewport,
+              cameraPose:
+                  widget.cameraViewEnabled && cut != null && position != null
+                  ? widget.cameraPoseOf(cut, position.localFrameIndex)
+                  : null,
+              cameraFrameSize: widget.cameraViewEnabled
+                  ? widget.cameraFrameSize
+                  : null,
+            ),
           ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: ValueListenableBuilder<PrerenderProgress>(
-            valueListenable: widget.prerenderProgress,
-            builder: (context, progress, _) {
-              if (progress.total == 0 || progress.isComplete) {
-                return const SizedBox.shrink();
-              }
-              return Column(
-                key: const ValueKey<String>('canvas-playback-progress'),
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'caching ${progress.cached}/${progress.total}',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                  LinearProgressIndicator(
-                    value: progress.cached / progress.total,
-                    minHeight: 2,
-                  ),
-                ],
-              );
-            },
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ValueListenableBuilder<PrerenderProgress>(
+              valueListenable: widget.prerenderProgress,
+              builder: (context, progress, _) {
+                if (progress.total == 0 || progress.isComplete) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  key: const ValueKey<String>('canvas-playback-progress'),
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'caching ${progress.cached}/${progress.total}',
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                    LinearProgressIndicator(
+                      value: progress.cached / progress.total,
+                      minHeight: 2,
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

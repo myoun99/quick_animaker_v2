@@ -155,12 +155,7 @@ class LayerFrameImageCache {
     final canvas = ui.Canvas(recorder);
     canvas.drawImageRect(
       source,
-      ui.Rect.fromLTWH(
-        0,
-        0,
-        source.width.toDouble(),
-        source.height.toDouble(),
-      ),
+      ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
       ui.Rect.fromLTWH(0, 0, target.width.toDouble(), target.height.toDouble()),
       ui.Paint()..filterQuality = ui.FilterQuality.medium,
     );

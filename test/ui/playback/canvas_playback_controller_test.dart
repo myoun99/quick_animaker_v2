@@ -173,6 +173,28 @@ void main() {
     c.detachTicker();
   });
 
+  testWidgets(
+    'localFrameIndexListenable ticks per frame without session rebuilds',
+    (tester) async {
+      final c = controller();
+      c.attachTicker(const TestVSync());
+      addTearDown(c.dispose);
+      final seen = <int?>[];
+      c.localFrameIndexListenable.addListener(
+        () => seen.add(c.localFrameIndexListenable.value),
+      );
+
+      c.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      c.stop();
+      c.detachTicker();
+
+      expect(seen, [0, 1, 2, null]);
+    },
+  );
+
   testWidgets('stop syncs the last position through onStopped', (
     tester,
   ) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
+import '../playback/playback_frame_painter.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -35,6 +36,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
+    this.contentOverride,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -60,6 +62,12 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// editor viewport (e.g. the camera frame overlay).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: replaces the interactive canvas inside
+  /// the panel shell (playback). Without an editable frame the host supplies
+  /// its own blank-canvas override, so the paper always shows.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  contentOverride;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -99,16 +107,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   @override
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
-    if (_frameKeys.isEmpty || coordinator == null) {
-      return const Center(
-        key: ValueKey<String>('main-canvas-brush-host-empty-selection'),
-        child: Text('Select a layer and frame to edit with Brush.'),
-      );
-    }
+    final hasEditableFrame = _frameKeys.isNotEmpty && coordinator != null;
+    // No editable frame: keep the panel (and its paper) visible, just
+    // without brush input — drawing needs a selected frame.
+    final contentOverride =
+        widget.contentOverride ??
+        (hasEditableFrame ? null : _blankCanvasContent);
 
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
-      coordinator: coordinator,
+      coordinator: hasEditableFrame ? coordinator : null,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
@@ -118,6 +126,19 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       selectionLabels: widget.selectionLabels,
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
+      contentOverride: contentOverride,
+    );
+  }
+
+  Widget _blankCanvasContent(BuildContext context, CanvasViewport viewport) {
+    return CustomPaint(
+      key: const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
+      painter: PlaybackFramePainter(
+        image: null,
+        canvasSize: widget.canvasSize,
+        viewport: viewport,
+      ),
+      child: const SizedBox.expand(),
     );
   }
 

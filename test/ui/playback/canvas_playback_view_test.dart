@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -238,6 +239,57 @@ void main() {
 
     expect(f.controller.position!.localFrameIndex, 1);
     expect(painterOf(tester).image, isNotNull, reason: 'stale frame held');
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
+  testWidgets('tapping the canvas cancels playback', (tester) async {
+    final f = fixture();
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: f.controller,
+      composites: f.composites,
+    );
+    expect(f.controller.isActive, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-playback-view')),
+    );
+    await tester.pump();
+
+    expect(f.controller.isActive, isFalse);
+    f.composites.dispose();
+  });
+
+  testWidgets('canvas mode paints under the panel viewport transform', (
+    tester,
+  ) async {
+    final f = fixture();
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasPlaybackView(
+            controller: f.controller,
+            compositeCache: f.composites,
+            qualityOf: () => PlaybackQuality.full,
+            prerenderProgress: ValueNotifier(PrerenderProgress.none),
+            cameraViewEnabled: false,
+            cameraFrameSize: const CanvasSize(width: 4, height: 2),
+            cameraPoseOf: (cut, frameIndex) =>
+                CameraPose(center: CanvasPoint(x: 4, y: 4)),
+            viewport: CanvasViewport(zoom: 2, panX: 10, panY: 20),
+          ),
+        ),
+      ),
+    );
+
+    final painter = painterOf(tester);
+    expect(painter.viewport, CanvasViewport(zoom: 2, panX: 10, panY: 20));
+    expect(painter.cameraPose, isNull);
 
     f.controller.stop();
     await tester.pump();

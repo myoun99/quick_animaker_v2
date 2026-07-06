@@ -50,6 +50,15 @@ class CanvasPlaybackController extends ChangeNotifier {
   TickerProvider? _vsync;
   Ticker? _ticker;
 
+  final ValueNotifier<int?> _localFrameIndex = ValueNotifier<int?>(null);
+
+  /// The playing cut's local frame index, `null` while playback is inactive.
+  ///
+  /// Playback-only signal for the timeline playhead: subscribing here lets
+  /// the playhead follow every tick WITHOUT rebuilding the whole editor
+  /// (never route ticks through the session's notifyListeners).
+  ValueListenable<int?> get localFrameIndexListenable => _localFrameIndex;
+
   List<StoryboardTimelineLayoutEntry>? _playlist;
   PlaybackScope _scope = PlaybackScope.activeCut;
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
@@ -116,6 +125,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     onPlaylistWarmRequested?.call(playlist, scope);
     _isPlaying = true;
     _startTicker();
+    _localFrameIndex.value = position?.localFrameIndex;
     notifyListeners();
   }
 
@@ -145,6 +155,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     _stopTicker();
     _playlist = null;
     _isPlaying = false;
+    _localFrameIndex.value = null;
     notifyListeners();
     if (lastPosition != null) {
       onStopped?.call(lastPosition);
@@ -155,6 +166,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   void dispose() {
     _ticker?.dispose();
     _ticker = null;
+    _localFrameIndex.dispose();
     super.dispose();
   }
 
@@ -227,6 +239,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       return;
     }
     _currentGlobalFrame = frame;
+    _localFrameIndex.value = position?.localFrameIndex;
     notifyListeners();
   }
 }

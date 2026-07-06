@@ -320,23 +320,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         color: Theme.of(context).colorScheme.outlineVariant,
                       ),
                     ),
-                    // Playback replaces the interactive canvas with the
-                    // cached-composite monitor while active.
+                    // Playback swaps only the viewport CONTENT (via the panel's
+                    // contentOverride), so the panel shell — zoom buttons,
+                    // panbars — keeps working while playing.
                     child: AnimatedBuilder(
                       animation: session.playback,
                       builder: (context, _) {
-                        if (session.playback.isActive) {
-                          return CanvasPlaybackView(
-                            controller: session.playback,
-                            compositeCache: session.cutFrameCompositeCache,
-                            qualityOf: () => session.playbackQuality,
-                            prerenderProgress:
-                                session.prerenderScheduler.progress,
-                            cameraViewEnabled: _cameraViewEnabled,
-                            cameraFrameSize: session.cameraFrameSize,
-                            cameraPoseOf: session.cameraPoseForCut,
-                          );
-                        }
                         return _buildInteractiveCanvas(
                           session,
                           isCameraLayerActive: isCameraLayerActive,
@@ -359,6 +348,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required bool isCameraLayerActive,
     required bool showCameraOverlay,
   }) {
+    final isPlaybackActive = session.playback.isActive;
     return RepaintBoundary(
       child: KeyedSubtree(
         key: const ValueKey<String>('main-canvas-brush-host-container'),
@@ -378,7 +368,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           },
           selectionLabels: session.canvasSelectionLabels,
           brushToolState: _brushToolState,
-          viewportOverlayBuilder: showCameraOverlay
+          // The playback view renders the camera framing itself; the editing
+          // overlay would show a stale playhead pose on top of it.
+          viewportOverlayBuilder: showCameraOverlay && !isPlaybackActive
               ? (context, viewport) => CameraFrameOverlay(
                   pose: session.cameraPoseAtCurrentFrame,
                   cameraFrameSize: session.cameraFrameSize,
@@ -388,6 +380,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   dimOpacity: _cameraViewEnabled ? _cameraDimOpacity : 0,
                   interactive: isCameraLayerActive,
                   onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+                )
+              : null,
+          contentOverride: isPlaybackActive
+              ? (context, viewport) => CanvasPlaybackView(
+                  controller: session.playback,
+                  compositeCache: session.cutFrameCompositeCache,
+                  qualityOf: () => session.playbackQuality,
+                  prerenderProgress: session.prerenderScheduler.progress,
+                  cameraViewEnabled: _cameraViewEnabled,
+                  cameraFrameSize: session.cameraFrameSize,
+                  cameraPoseOf: session.cameraPoseForCut,
+                  viewport: viewport,
                 )
               : null,
         ),

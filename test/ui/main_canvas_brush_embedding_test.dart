@@ -51,7 +51,7 @@ void main() {
   });
 
   testWidgets(
-    'production brush host shows empty-selection placeholder without active drawing frame',
+    'production brush host shows the blank canvas without active drawing frame',
     (tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
       await tester.pumpAndSettle();
@@ -61,17 +61,15 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
+      // The panel and its paper stay visible; only brush INPUT requires a
+      // selected frame.
+      expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(
         find.byKey(
-          const ValueKey<String>('main-canvas-brush-host-empty-selection'),
+          const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
         ),
         findsOneWidget,
       );
-      expect(
-        find.text('Select a layer and frame to edit with Brush.'),
-        findsOneWidget,
-      );
-      expect(find.byType(BrushCanvasPanel), findsNothing);
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-default-frame')),

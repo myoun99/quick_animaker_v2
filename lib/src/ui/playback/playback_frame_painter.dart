@@ -5,20 +5,25 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
+import '../../models/canvas_viewport.dart';
 
-/// Paints one cached composite frame like a program monitor: the content
-/// rect (canvas, or camera output frame) is fit-scaled and centered in the
-/// view over a dark letterbox.
+/// Paints one cached composite frame inside the canvas panel viewport.
 ///
-/// Canvas mode paints the paper and the composite 1:1 in canvas space.
-/// Camera mode looks through the pose instead: the camera's output frame
-/// fills the fitted rect and the canvas-space composite is projected with
-/// the same transform the export renderer uses — no re-render, camera moves
-/// are pure GPU transforms over the cached image.
+/// Canvas mode ([cameraPose] null) draws the paper and the composite in
+/// canvas space under the interactive [viewport] transform — the exact
+/// framing the editing canvas uses, so panel zoom/pan keep working during
+/// playback. A null [image] paints just the paper (the blank-canvas
+/// placeholder reuses this).
+///
+/// Camera mode looks through the pose instead: the camera's output frame is
+/// fit-scaled and centered over a dark letterbox and the canvas-space
+/// composite is projected with the same transform the export renderer uses —
+/// no re-render, camera moves are pure GPU transforms over the cached image.
 class PlaybackFramePainter extends CustomPainter {
   const PlaybackFramePainter({
     required this.image,
     required this.canvasSize,
+    this.viewport,
     this.cameraPose,
     this.cameraFrameSize,
     this.letterboxColor = const Color(0xFF15191C),
@@ -33,6 +38,9 @@ class PlaybackFramePainter extends CustomPainter {
 
   final CanvasSize canvasSize;
 
+  /// Pan/zoom for canvas mode; identity when null. Ignored in camera mode.
+  final CanvasViewport? viewport;
+
   /// Non-null = look through the camera.
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
@@ -42,36 +50,40 @@ class PlaybackFramePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
     if (size.isEmpty) {
       return;
     }
-
     final pose = cameraPose;
-    final contentSize = pose == null ? canvasSize : cameraFrameSize!;
-    final fitScale = math.min(
-      size.width / contentSize.width,
-      size.height / contentSize.height,
-    );
 
     canvas.save();
-    canvas.translate(
-      (size.width - contentSize.width * fitScale) / 2,
-      (size.height - contentSize.height * fitScale) / 2,
-    );
-    canvas.scale(fitScale);
-    canvas.clipRect(
-      Rect.fromLTWH(
-        0,
-        0,
-        contentSize.width.toDouble(),
-        contentSize.height.toDouble(),
-      ),
-    );
-
-    if (pose != null) {
+    if (pose == null) {
+      final resolvedViewport = viewport;
+      if (resolvedViewport != null) {
+        canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
+        canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      }
+    } else {
+      canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
+      final frameSize = cameraFrameSize!;
+      final fitScale = math.min(
+        size.width / frameSize.width,
+        size.height / frameSize.height,
+      );
+      canvas.translate(
+        (size.width - frameSize.width * fitScale) / 2,
+        (size.height - frameSize.height * fitScale) / 2,
+      );
+      canvas.scale(fitScale);
+      canvas.clipRect(
+        Rect.fromLTWH(
+          0,
+          0,
+          frameSize.width.toDouble(),
+          frameSize.height.toDouble(),
+        ),
+      );
       // Same projection as CameraFrameRenderService.renderThroughCamera.
-      canvas.translate(contentSize.width / 2, contentSize.height / 2);
+      canvas.translate(frameSize.width / 2, frameSize.height / 2);
       canvas.scale(pose.zoom);
       canvas.rotate(-pose.rotationDegrees * math.pi / 180);
       canvas.translate(-pose.center.x, -pose.center.y);
@@ -106,6 +118,7 @@ class PlaybackFramePainter extends CustomPainter {
   bool shouldRepaint(covariant PlaybackFramePainter oldDelegate) =>
       !identical(oldDelegate.image, image) ||
       oldDelegate.canvasSize != canvasSize ||
+      oldDelegate.viewport != viewport ||
       oldDelegate.cameraPose != cameraPose ||
       oldDelegate.cameraFrameSize != cameraFrameSize ||
       oldDelegate.letterboxColor != letterboxColor ||
