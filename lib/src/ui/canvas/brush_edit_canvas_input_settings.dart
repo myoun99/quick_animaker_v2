@@ -1,4 +1,5 @@
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 
 class BrushEditCanvasInputSettings {
@@ -15,7 +16,27 @@ class BrushEditCanvasInputSettings {
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
+    this.rotationMode = BrushTipRotationMode.fixed,
+    this.minimumSizeRatio = 0.0,
+    this.sizeJitter = 0.0,
+    this.opacityJitter = 0.0,
+    this.angleJitter = 0.0,
+    this.scatterRadiusRatio = 0.0,
+    this.scatterCount = 1,
+    this.scatterBothAxes = true,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
+       assert(
+         minimumSizeRatio >= 0.0 && minimumSizeRatio <= 1.0,
+         'BrushEditCanvasInputSettings.minimumSizeRatio must be in [0, 1].',
+       ),
+       assert(
+         scatterRadiusRatio >= 0.0,
+         'BrushEditCanvasInputSettings.scatterRadiusRatio must be >= 0.',
+       ),
+       assert(
+         scatterCount >= 1,
+         'BrushEditCanvasInputSettings.scatterCount must be at least 1.',
+       ),
        assert(
          roundness > 0.0 && roundness <= 1.0,
          'BrushEditCanvasInputSettings.roundness must be in (0, 1].',
@@ -62,6 +83,30 @@ class BrushEditCanvasInputSettings {
   /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
   final BrushTipMask? tipMask;
 
+  /// How dab angles are chosen at placement time.
+  final BrushTipRotationMode rotationMode;
+
+  /// Size floor for pressure scaling, as a ratio of [size].
+  final double minimumSizeRatio;
+
+  /// Random per-dab size reduction, 0..1.
+  final double sizeJitter;
+
+  /// Random per-dab opacity reduction, 0..1.
+  final double opacityJitter;
+
+  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
+  final double angleJitter;
+
+  /// Scatter radius as a ratio of the dab size; 0 disables scattering.
+  final double scatterRadiusRatio;
+
+  /// Dabs stamped per placement step when scattering.
+  final int scatterCount;
+
+  /// Whether scatter spreads on both axes or only across the stroke.
+  final bool scatterBothAxes;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -75,6 +120,14 @@ class BrushEditCanvasInputSettings {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
+    BrushTipRotationMode? rotationMode,
+    double? minimumSizeRatio,
+    double? sizeJitter,
+    double? opacityJitter,
+    double? angleJitter,
+    double? scatterRadiusRatio,
+    int? scatterCount,
+    bool? scatterBothAxes,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -89,6 +142,14 @@ class BrushEditCanvasInputSettings {
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
+      rotationMode: rotationMode ?? this.rotationMode,
+      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
+      sizeJitter: sizeJitter ?? this.sizeJitter,
+      opacityJitter: opacityJitter ?? this.opacityJitter,
+      angleJitter: angleJitter ?? this.angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
+      scatterCount: scatterCount ?? this.scatterCount,
+      scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
     );
   }
 
@@ -107,10 +168,18 @@ class BrushEditCanvasInputSettings {
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask;
+          other.tipMask == tipMask &&
+          other.rotationMode == rotationMode &&
+          other.minimumSizeRatio == minimumSizeRatio &&
+          other.sizeJitter == sizeJitter &&
+          other.opacityJitter == opacityJitter &&
+          other.angleJitter == angleJitter &&
+          other.scatterRadiusRatio == scatterRadiusRatio &&
+          other.scatterCount == scatterCount &&
+          other.scatterBothAxes == scatterBothAxes;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     color,
     size,
     opacity,
@@ -123,7 +192,15 @@ class BrushEditCanvasInputSettings {
     roundness,
     angleDegrees,
     tipMask,
-  );
+    rotationMode,
+    minimumSizeRatio,
+    sizeJitter,
+    opacityJitter,
+    angleJitter,
+    scatterRadiusRatio,
+    scatterCount,
+    scatterBothAxes,
+  ]);
 
   @override
   String toString() =>
@@ -132,5 +209,9 @@ class BrushEditCanvasInputSettings {
       'tipShape: $tipShape, spacing: $spacing, '
       'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity, '
       'roundness: $roundness, angleDegrees: $angleDegrees, '
-      'tipMask: $tipMask)';
+      'tipMask: $tipMask, rotationMode: $rotationMode, '
+      'minimumSizeRatio: $minimumSizeRatio, sizeJitter: $sizeJitter, '
+      'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
+      'scatterRadiusRatio: $scatterRadiusRatio, '
+      'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';
 }

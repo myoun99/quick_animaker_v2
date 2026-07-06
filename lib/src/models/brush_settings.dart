@@ -1,4 +1,5 @@
 import 'brush_tip_mask.dart';
+import 'brush_tip_rotation_mode.dart';
 import 'brush_tip_shape.dart';
 
 class BrushSettings {
@@ -15,6 +16,14 @@ class BrushSettings {
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
+    this.rotationMode = BrushTipRotationMode.fixed,
+    this.minimumSizeRatio = 0.0,
+    this.sizeJitter = 0.0,
+    this.opacityJitter = 0.0,
+    this.angleJitter = 0.0,
+    this.scatterRadiusRatio = 0.0,
+    this.scatterCount = 1,
+    this.scatterBothAxes = true,
   }) {
     _validatePositive(size, 'size');
     _validateUnitInterval(opacity, 'opacity');
@@ -23,6 +32,18 @@ class BrushSettings {
     _validatePositive(spacing, 'spacing');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
+    _validateUnitInterval(minimumSizeRatio, 'minimumSizeRatio');
+    _validateUnitInterval(sizeJitter, 'sizeJitter');
+    _validateUnitInterval(opacityJitter, 'opacityJitter');
+    _validateUnitInterval(angleJitter, 'angleJitter');
+    _validateNonNegativeFinite(scatterRadiusRatio, 'scatterRadiusRatio');
+    if (scatterCount < 1) {
+      throw ArgumentError.value(
+        scatterCount,
+        'scatterCount',
+        'BrushSettings.scatterCount must be at least 1.',
+      );
+    }
   }
 
   final int color;
@@ -46,6 +67,32 @@ class BrushSettings {
   /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
   final BrushTipMask? tipMask;
 
+  /// How dab angles are chosen at placement time.
+  final BrushTipRotationMode rotationMode;
+
+  /// Size floor for pressure scaling, as a ratio of [size]: with pressure
+  /// enabled, effective size = size * (min + (1 - min) * pressure).
+  final double minimumSizeRatio;
+
+  /// Random per-dab size reduction, 0..1 of the base size.
+  final double sizeJitter;
+
+  /// Random per-dab opacity reduction, 0..1 of the base opacity.
+  final double opacityJitter;
+
+  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
+  final double angleJitter;
+
+  /// Scatter radius as a ratio of the dab size; 0 disables scattering.
+  final double scatterRadiusRatio;
+
+  /// Dabs stamped per placement step when scattering.
+  final int scatterCount;
+
+  /// Whether scatter offsets spread along both axes or only perpendicular
+  /// to the stroke direction.
+  final bool scatterBothAxes;
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -59,6 +106,14 @@ class BrushSettings {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
+    BrushTipRotationMode? rotationMode,
+    double? minimumSizeRatio,
+    double? sizeJitter,
+    double? opacityJitter,
+    double? angleJitter,
+    double? scatterRadiusRatio,
+    int? scatterCount,
+    bool? scatterBothAxes,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -73,6 +128,14 @@ class BrushSettings {
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
+      rotationMode: rotationMode ?? this.rotationMode,
+      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
+      sizeJitter: sizeJitter ?? this.sizeJitter,
+      opacityJitter: opacityJitter ?? this.opacityJitter,
+      angleJitter: angleJitter ?? this.angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
+      scatterCount: scatterCount ?? this.scatterCount,
+      scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
     );
   }
 
@@ -89,6 +152,14 @@ class BrushSettings {
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
+    'rotationMode': rotationMode.toJson(),
+    'minimumSizeRatio': minimumSizeRatio,
+    'sizeJitter': sizeJitter,
+    'opacityJitter': opacityJitter,
+    'angleJitter': angleJitter,
+    'scatterRadiusRatio': scatterRadiusRatio,
+    'scatterCount': scatterCount,
+    'scatterBothAxes': scatterBothAxes,
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -109,6 +180,16 @@ class BrushSettings {
       tipMask: json['tipMask'] == null
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
+      rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
+      minimumSizeRatio:
+          (json['minimumSizeRatio'] as num?)?.toDouble() ?? 0.0,
+      sizeJitter: (json['sizeJitter'] as num?)?.toDouble() ?? 0.0,
+      opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
+      angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
+      scatterRadiusRatio:
+          (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
+      scatterCount: json['scatterCount'] as int? ?? 1,
+      scatterBothAxes: json['scatterBothAxes'] as bool? ?? true,
     );
   }
 
@@ -127,10 +208,18 @@ class BrushSettings {
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask;
+          other.tipMask == tipMask &&
+          other.rotationMode == rotationMode &&
+          other.minimumSizeRatio == minimumSizeRatio &&
+          other.sizeJitter == sizeJitter &&
+          other.opacityJitter == opacityJitter &&
+          other.angleJitter == angleJitter &&
+          other.scatterRadiusRatio == scatterRadiusRatio &&
+          other.scatterCount == scatterCount &&
+          other.scatterBothAxes == scatterBothAxes;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     color,
     size,
     opacity,
@@ -143,7 +232,15 @@ class BrushSettings {
     roundness,
     angleDegrees,
     tipMask,
-  );
+    rotationMode,
+    minimumSizeRatio,
+    sizeJitter,
+    opacityJitter,
+    angleJitter,
+    scatterRadiusRatio,
+    scatterCount,
+    scatterBothAxes,
+  ]);
 
   @override
   String toString() =>
@@ -151,7 +248,11 @@ class BrushSettings {
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'tipShape: $tipShape, pressureSize: $pressureSize, '
       'pressureOpacity: $pressureOpacity, roundness: $roundness, '
-      'angleDegrees: $angleDegrees, tipMask: $tipMask)';
+      'angleDegrees: $angleDegrees, tipMask: $tipMask, '
+      'rotationMode: $rotationMode, minimumSizeRatio: $minimumSizeRatio, '
+      'sizeJitter: $sizeJitter, opacityJitter: $opacityJitter, '
+      'angleJitter: $angleJitter, scatterRadiusRatio: $scatterRadiusRatio, '
+      'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';
 }
 
 void _validatePositive(double value, String fieldName) {
@@ -190,6 +291,16 @@ void _validateFinite(double value, String fieldName) {
       value,
       fieldName,
       'BrushSettings.$fieldName must be finite.',
+    );
+  }
+}
+
+void _validateNonNegativeFinite(double value, String fieldName) {
+  if (!value.isFinite || value < 0.0) {
+    throw ArgumentError.value(
+      value,
+      fieldName,
+      'BrushSettings.$fieldName must be finite and non-negative.',
     );
   }
 }

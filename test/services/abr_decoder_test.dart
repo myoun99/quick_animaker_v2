@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
 import 'package:quick_animaker_v2/src/services/abr/abr_byte_reader.dart';
 import 'package:quick_animaker_v2/src/services/abr/abr_decoder.dart';
 import 'package:quick_animaker_v2/src/services/abr/photoshop_descriptor.dart';
@@ -125,6 +126,25 @@ void _write8bimSection(_AbrBytes file, String tag, Uint8List payload) {
   file.raw(payload);
 }
 
+/// Writes a `brVr` dynamics descriptor (control type + jitter).
+void _writeBrVr(
+  _AbrBytes desc,
+  String key, {
+  required int control,
+  required double jitterPercent,
+}) {
+  desc.key(key);
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('brVr');
+  desc.i32(2);
+  desc.key('bVTy');
+  desc.asciiChars('long');
+  desc.i32(control);
+  desc.key('jitter');
+  desc.untf('#Prc', jitterPercent);
+}
+
 /// Sampled + computed brush descriptor payload (`desc` section).
 Uint8List _descPayload({required String sampledUuid}) {
   final desc = _AbrBytes();
@@ -136,13 +156,35 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.asciiChars('VlLs');
   desc.i32(2);
 
-  // Brush 1: sampled, wrapped element with a name and nested tip object.
+  // Brush 1: sampled, wrapped element with a name, nested tip object, and
+  // preset-level dynamics (as real Photoshop writes them).
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('null');
-  desc.i32(2);
+  desc.i32(12);
   desc.key('Nm  ');
   desc.text('Fancy Chalk');
+  desc.key('useTipDynamics');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  desc.key('minimumDiameter');
+  desc.untf('#Prc', 65);
+  _writeBrVr(desc, 'szVr', control: 2, jitterPercent: 30);
+  _writeBrVr(desc, 'angleDynamics', control: 6, jitterPercent: 10);
+  desc.key('usePaintDynamics');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  _writeBrVr(desc, 'opVr', control: 2, jitterPercent: 0);
+  desc.key('useScatter');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  desc.key('Cnt ');
+  desc.asciiChars('doub');
+  desc.f64(3);
+  desc.key('bothAxes');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  _writeBrVr(desc, 'scatterDynamics', control: 0, jitterPercent: 200);
   desc.key('Brsh');
   desc.asciiChars('Objc');
   desc.unicode('');
@@ -242,6 +284,20 @@ void main() {
       expect(chalk.settings.angleDegrees, 120.0); // -60 normalized into 0-180
       expect(chalk.settings.roundness, 0.4);
       expect(chalk.settings.tipMask, isNotNull);
+      // Preset-level dynamics: szVr control 2 = pen pressure, minimum
+      // diameter, jitters, direction-following angle, scatter block.
+      expect(chalk.settings.pressureSize, isTrue);
+      expect(chalk.settings.minimumSizeRatio, closeTo(0.65, 1e-9));
+      expect(chalk.settings.sizeJitter, closeTo(0.3, 1e-9));
+      expect(chalk.settings.pressureOpacity, isTrue);
+      expect(
+        chalk.settings.rotationMode,
+        BrushTipRotationMode.direction,
+      );
+      expect(chalk.settings.angleJitter, closeTo(0.1, 1e-9));
+      expect(chalk.settings.scatterRadiusRatio, closeTo(2.0, 1e-9));
+      expect(chalk.settings.scatterCount, 3);
+      expect(chalk.settings.scatterBothAxes, isTrue);
 
       final round = result.presets.firstWhere(
         (p) => p.name == 'Soft Round 16',

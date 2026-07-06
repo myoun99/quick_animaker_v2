@@ -1,5 +1,6 @@
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
@@ -22,6 +23,14 @@ class BrushToolState {
     double roundness = defaultRoundness,
     double angleDegrees = defaultAngleDegrees,
     BrushTipMask? tipMask,
+    BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
+    double minimumSizeRatio = 0.0,
+    double sizeJitter = 0.0,
+    double opacityJitter = 0.0,
+    double angleJitter = 0.0,
+    double scatterRadiusRatio = 0.0,
+    int scatterCount = 1,
+    bool scatterBothAxes = true,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -36,6 +45,14 @@ class BrushToolState {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
+      rotationMode: rotationMode,
+      minimumSizeRatio: minimumSizeRatio,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
     );
   }
 
@@ -52,6 +69,14 @@ class BrushToolState {
     required this.roundness,
     required this.angleDegrees,
     this.tipMask,
+    this.rotationMode = BrushTipRotationMode.fixed,
+    this.minimumSizeRatio = 0.0,
+    this.sizeJitter = 0.0,
+    this.opacityJitter = 0.0,
+    this.angleJitter = 0.0,
+    this.scatterRadiusRatio = 0.0,
+    this.scatterCount = 1,
+    this.scatterBothAxes = true,
   });
 
   factory BrushToolState.clamped({
@@ -67,6 +92,14 @@ class BrushToolState {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
+    BrushTipRotationMode? rotationMode,
+    double? minimumSizeRatio,
+    double? sizeJitter,
+    double? opacityJitter,
+    double? angleJitter,
+    double? scatterRadiusRatio,
+    int? scatterCount,
+    bool? scatterBothAxes,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -81,6 +114,14 @@ class BrushToolState {
       roundness: clampRoundness(roundness ?? defaultRoundness),
       angleDegrees: clampAngleDegrees(angleDegrees ?? defaultAngleDegrees),
       tipMask: tipMask,
+      rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
+      minimumSizeRatio: clampZeroToOne(minimumSizeRatio ?? 0.0),
+      sizeJitter: clampZeroToOne(sizeJitter ?? 0.0),
+      opacityJitter: clampZeroToOne(opacityJitter ?? 0.0),
+      angleJitter: clampZeroToOne(angleJitter ?? 0.0),
+      scatterRadiusRatio: clampScatterRadius(scatterRadiusRatio ?? 0.0),
+      scatterCount: clampScatterCount(scatterCount ?? 1),
+      scatterBothAxes: scatterBothAxes ?? true,
     );
   }
 
@@ -153,6 +194,18 @@ class BrushToolState {
   /// it so slider tweaks keep the textured tip.
   final BrushTipMask? tipMask;
 
+  /// Placement dynamics carried from presets/imports (no panel controls
+  /// yet, pending the unified UI pass): see the same-named fields on
+  /// `BrushSettings`.
+  final BrushTipRotationMode rotationMode;
+  final double minimumSizeRatio;
+  final double sizeJitter;
+  final double opacityJitter;
+  final double angleJitter;
+  final double scatterRadiusRatio;
+  final int scatterCount;
+  final bool scatterBothAxes;
+
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) {
@@ -169,6 +222,14 @@ class BrushToolState {
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
+      rotationMode: settings.rotationMode,
+      minimumSizeRatio: settings.minimumSizeRatio,
+      sizeJitter: settings.sizeJitter,
+      opacityJitter: settings.opacityJitter,
+      angleJitter: settings.angleJitter,
+      scatterRadiusRatio: settings.scatterRadiusRatio,
+      scatterCount: settings.scatterCount,
+      scatterBothAxes: settings.scatterBothAxes,
     );
   }
 
@@ -188,6 +249,14 @@ class BrushToolState {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
+      rotationMode: rotationMode,
+      minimumSizeRatio: minimumSizeRatio,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
     );
   }
 
@@ -205,6 +274,14 @@ class BrushToolState {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
+      rotationMode: rotationMode,
+      minimumSizeRatio: minimumSizeRatio,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
     );
   }
 
@@ -221,6 +298,14 @@ class BrushToolState {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
+    BrushTipRotationMode? rotationMode,
+    double? minimumSizeRatio,
+    double? sizeJitter,
+    double? opacityJitter,
+    double? angleJitter,
+    double? scatterRadiusRatio,
+    int? scatterCount,
+    bool? scatterBothAxes,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -235,6 +320,14 @@ class BrushToolState {
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
+      rotationMode: rotationMode ?? this.rotationMode,
+      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
+      sizeJitter: sizeJitter ?? this.sizeJitter,
+      opacityJitter: opacityJitter ?? this.opacityJitter,
+      angleJitter: angleJitter ?? this.angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
+      scatterCount: scatterCount ?? this.scatterCount,
+      scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
     );
   }
 
@@ -284,6 +377,25 @@ class BrushToolState {
     return value.clamp(minAngleDegrees, maxAngleDegrees).toDouble();
   }
 
+  /// Clamps dynamics ratios (jitters, minimum size) to [0, 1].
+  static double clampZeroToOne(double value) {
+    if (!value.isFinite) {
+      return 0.0;
+    }
+    return value.clamp(0.0, 1.0).toDouble();
+  }
+
+  /// Clamps the scatter radius ratio to a sane non-negative range.
+  static double clampScatterRadius(double value) {
+    if (!value.isFinite) {
+      return 0.0;
+    }
+    return value.clamp(0.0, 10.0).toDouble();
+  }
+
+  /// Clamps the per-step scatter dab count.
+  static int clampScatterCount(int value) => value.clamp(1, 16);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -299,10 +411,18 @@ class BrushToolState {
           other.pressureOpacity == pressureOpacity &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask;
+          other.tipMask == tipMask &&
+          other.rotationMode == rotationMode &&
+          other.minimumSizeRatio == minimumSizeRatio &&
+          other.sizeJitter == sizeJitter &&
+          other.opacityJitter == opacityJitter &&
+          other.angleJitter == angleJitter &&
+          other.scatterRadiusRatio == scatterRadiusRatio &&
+          other.scatterCount == scatterCount &&
+          other.scatterBothAxes == scatterBothAxes;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     size,
     opacity,
     color,
@@ -315,5 +435,13 @@ class BrushToolState {
     roundness,
     angleDegrees,
     tipMask,
-  );
+    rotationMode,
+    minimumSizeRatio,
+    sizeJitter,
+    opacityJitter,
+    angleJitter,
+    scatterRadiusRatio,
+    scatterCount,
+    scatterBothAxes,
+  ]);
 }

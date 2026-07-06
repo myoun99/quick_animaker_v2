@@ -5,6 +5,7 @@ import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_rotation_mode.dart';
 import 'abr_byte_reader.dart';
 import 'photoshop_descriptor.dart';
 
@@ -368,6 +369,52 @@ BrushPreset? _presetFromBrushDescriptor(
   final roundnessPercent = tip.numberValue('Rndn') ?? 100.0;
   final hardnessPercent = tip.numberValue('Hrdn') ?? 100.0;
 
+  // Dynamics live at the preset level (sibling of 'Brsh'), gated by the
+  // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
+  // 2 = pen pressure; 6/7 = initial direction / direction.
+  var pressureSize = false;
+  var sizeJitter = 0.0;
+  var minimumSizeRatio = 0.0;
+  var rotationMode = BrushTipRotationMode.fixed;
+  var angleJitter = 0.0;
+  if (entry['useTipDynamics'] == true) {
+    final sizeVariance = entry.childDescriptor('szVr');
+    pressureSize = _controlOf(sizeVariance) == 2;
+    sizeJitter = _jitterOf(sizeVariance, cap: 1.0);
+    minimumSizeRatio = ((entry.numberValue('minimumDiameter') ?? 0.0) / 100.0)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final angleVariance = entry.childDescriptor('angleDynamics');
+    final angleControl = _controlOf(angleVariance);
+    if (angleControl == 6 || angleControl == 7) {
+      rotationMode = BrushTipRotationMode.direction;
+    }
+    angleJitter = _jitterOf(angleVariance, cap: 1.0);
+  }
+  var pressureOpacity = false;
+  var opacityJitter = 0.0;
+  if (entry['usePaintDynamics'] == true) {
+    final opacityVariance = entry.childDescriptor('opVr');
+    final flowVariance = entry.childDescriptor('prVr');
+    pressureOpacity =
+        _controlOf(opacityVariance) == 2 || _controlOf(flowVariance) == 2;
+    opacityJitter = math.max(
+      _jitterOf(opacityVariance, cap: 1.0),
+      _jitterOf(flowVariance, cap: 1.0),
+    );
+  }
+  var scatterRadiusRatio = 0.0;
+  var scatterCount = 1;
+  var scatterBothAxes = true;
+  if (entry['useScatter'] == true) {
+    scatterRadiusRatio = _jitterOf(
+      entry.childDescriptor('scatterDynamics'),
+      cap: 10.0,
+    );
+    scatterCount = (entry.numberValue('Cnt ') ?? 1.0).round().clamp(1, 16);
+    scatterBothAxes = entry['bothAxes'] == true;
+  }
+
   final id = uniquePresetId(
     sampledKey != null
         ? 'abr-$sampledKey'
@@ -387,8 +434,38 @@ BrushPreset? _presetFromBrushDescriptor(
       angleDegrees: angle,
       roundness: roundnessPercent / 100.0,
       hardness: hardnessPercent / 100.0,
+      pressureSize: pressureSize,
+      pressureOpacity: pressureOpacity,
+      minimumSizeRatio: minimumSizeRatio,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      rotationMode: rotationMode,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
     ),
   );
+}
+
+/// Control type of a `brVr` dynamics descriptor (0 = off, 2 = pen
+/// pressure, 6/7 = direction).
+int _controlOf(PsDescriptor? variance) {
+  if (variance == null) {
+    return 0;
+  }
+  final value = variance['bVTy'];
+  return value is int ? value : 0;
+}
+
+/// Jitter ratio of a `brVr` dynamics descriptor (percent -> ratio).
+double _jitterOf(PsDescriptor? variance, {required double cap}) {
+  if (variance == null) {
+    return 0.0;
+  }
+  return ((variance.numberValue('jitter') ?? 0.0) / 100.0)
+      .clamp(0.0, cap)
+      .toDouble();
 }
 
 BrushSettings _settingsForTip(
@@ -398,6 +475,16 @@ BrushSettings _settingsForTip(
   required double angleDegrees,
   required double roundness,
   double hardness = 1.0,
+  bool pressureSize = false,
+  bool pressureOpacity = false,
+  double minimumSizeRatio = 0.0,
+  double sizeJitter = 0.0,
+  double opacityJitter = 0.0,
+  double angleJitter = 0.0,
+  BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
+  double scatterRadiusRatio = 0.0,
+  int scatterCount = 1,
+  bool scatterBothAxes = true,
 }) {
   // Photoshop angles span -180..180; the ellipse repeats every 180.
   final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
@@ -412,5 +499,15 @@ BrushSettings _settingsForTip(
         : 1.0,
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
     tipMask: mask,
+    pressureSize: pressureSize,
+    pressureOpacity: pressureOpacity,
+    minimumSizeRatio: minimumSizeRatio,
+    sizeJitter: sizeJitter,
+    opacityJitter: opacityJitter,
+    angleJitter: angleJitter,
+    rotationMode: rotationMode,
+    scatterRadiusRatio: scatterRadiusRatio,
+    scatterCount: scatterCount,
+    scatterBothAxes: scatterBothAxes,
   );
 }

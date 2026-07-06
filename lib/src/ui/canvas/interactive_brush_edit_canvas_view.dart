@@ -13,6 +13,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
+import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
@@ -70,6 +71,19 @@ class _InteractiveBrushEditCanvasViewState
   /// pressure report a zero range and are treated as full pressure, so a
   /// mouse draws exactly as before.
   double _currentPressure = 1.0;
+
+  /// Placement dynamics (scatter/jitter/direction rotation) for the active
+  /// stroke; created at pointer-down from the stroke's settings snapshot.
+  BrushStrokeDynamics? _strokeDynamics;
+
+  /// Latest known stroke direction (visual CCW degrees); kept across
+  /// stationary events so direction-following tips do not snap back.
+  double? _lastDirectionDegrees;
+
+  /// Last dab of the UNTRANSFORMED interpolation chain. Interpolation must
+  /// anchor on the base chain — anchoring on scattered/jittered dabs would
+  /// wander the spacing.
+  BrushDab? _previousBaseDab;
 
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
   /// (the exact commit-rasterizer math) and re-decode the touched overlay
@@ -167,6 +181,9 @@ class _InteractiveBrushEditCanvasViewState
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
     _previousRawCanvasPosition = canvasPosition;
+    _strokeDynamics = BrushStrokeDynamics(settings: widget.inputSettings);
+    _lastDirectionDegrees = null;
+    _previousBaseDab = null;
     _resetOverlay();
     _collectedDabs.clear();
     _prepareLiveRasterizer();
@@ -181,9 +198,17 @@ class _InteractiveBrushEditCanvasViewState
         spacingRatio: _activeStrokeSpacing,
       ),
     );
-    _collectedDabs.addAll(initialDabs);
-    _appendOverlayDabs(initialDabs);
-    _nextSequence = _collectedDabs.length;
+    if (initialDabs.isNotEmpty) {
+      _previousBaseDab = initialDabs.last;
+    }
+    final emitted = _strokeDynamics!.apply(
+      initialDabs,
+      firstSequence: _nextSequence,
+      directionDegrees: null,
+    );
+    _collectedDabs.addAll(emitted);
+    _appendOverlayDabs(emitted);
+    _nextSequence += emitted.length;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -219,13 +244,13 @@ class _InteractiveBrushEditCanvasViewState
     final previousDab =
         _breakCurrentVisibleSegment ||
             clippedSegment.startsNewVisibleSegment ||
-            _collectedDabs.isEmpty
+            _previousBaseDab == null
         ? null
-        : _collectedDabs.last;
+        : _previousBaseDab;
     final segmentStartDabs =
         clippedSegment.startsNewVisibleSegment ||
             _breakCurrentVisibleSegment ||
-            _collectedDabs.isEmpty
+            _previousBaseDab == null
         ? _withPressureDynamics(
             widget.dabInterpolator.interpolate(
               previous: null,
@@ -253,22 +278,29 @@ class _InteractiveBrushEditCanvasViewState
         spacingRatio: _activeStrokeSpacing,
       ),
     );
-    final addedDabCount = segmentStartDabs.length + segmentEndDabs.length;
-    if (addedDabCount == 0) {
+    final baseDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
+    if (baseDabs.isEmpty) {
       return;
     }
+    _previousBaseDab = baseDabs.last;
+
+    _lastDirectionDegrees =
+        strokeDirectionDegrees(from: previousRaw, to: canvasPosition) ??
+        _lastDirectionDegrees;
+    final emitted =
+        _strokeDynamics?.apply(
+          baseDabs,
+          firstSequence: _nextSequence,
+          directionDegrees: _lastDirectionDegrees,
+        ) ??
+        baseDabs;
 
     // No setState: pointer moves rasterize the new dabs and repaint the
     // overlay layer directly, skipping the widget rebuild entirely (this
     // runs at pointer-sample frequency).
-    if (segmentStartDabs.isNotEmpty) {
-      _collectedDabs.addAll(segmentStartDabs);
-    }
-    if (segmentEndDabs.isNotEmpty) {
-      _collectedDabs.addAll(segmentEndDabs);
-    }
-    _appendOverlayDabs([...segmentStartDabs, ...segmentEndDabs]);
-    _nextSequence += addedDabCount;
+    _collectedDabs.addAll(emitted);
+    _appendOverlayDabs(emitted);
+    _nextSequence += emitted.length;
     _breakCurrentVisibleSegment = false;
   }
 
@@ -394,6 +426,7 @@ class _InteractiveBrushEditCanvasViewState
           dab,
           pressureSize: settings.pressureSize,
           pressureOpacity: settings.pressureOpacity,
+          minimumSizeRatio: settings.minimumSizeRatio,
         ),
     ];
   }
@@ -472,6 +505,9 @@ class _InteractiveBrushEditCanvasViewState
     _previousRawCanvasPosition = null;
     _activeStrokeInputSettings = null;
     _currentPressure = 1.0;
+    _strokeDynamics = null;
+    _lastDirectionDegrees = null;
+    _previousBaseDab = null;
     _collectedDabs.clear();
   }
 

@@ -38,8 +38,12 @@ class BrushDab {
     return BrushDab(
       center: CanvasPoint(x: sample.x, y: sample.y),
       color: settings.color,
+      // Pressure scales size down to the minimum-size floor (Photoshop's
+      // "minimum diameter"), so light strokes never vanish entirely.
       size: settings.pressureSize
-          ? settings.size * sample.pressure
+          ? settings.size *
+                (settings.minimumSizeRatio +
+                    (1.0 - settings.minimumSizeRatio) * sample.pressure)
           : settings.size,
       opacity: settings.pressureOpacity
           ? settings.opacity * sample.pressure

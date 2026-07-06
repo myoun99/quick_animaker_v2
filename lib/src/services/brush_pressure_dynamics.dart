@@ -16,12 +16,19 @@ BrushDab applyBrushPressureDynamics(
   BrushDab dab, {
   required bool pressureSize,
   required bool pressureOpacity,
+  double minimumSizeRatio = 0.0,
 }) {
   if (!pressureSize && !pressureOpacity) {
     return dab;
   }
+  // The minimum-size floor (Photoshop "minimum diameter", Clip Studio
+  // 최소치) keeps light strokes from vanishing: pressure interpolates
+  // between minimum*size and the full size.
   return dab.copyWith(
-    size: pressureSize ? dab.size * dab.pressure : dab.size,
+    size: pressureSize
+        ? dab.size *
+              (minimumSizeRatio + (1.0 - minimumSizeRatio) * dab.pressure)
+        : dab.size,
     opacity: pressureOpacity
         ? (dab.opacity * dab.pressure).clamp(0.0, 1.0)
         : dab.opacity,
