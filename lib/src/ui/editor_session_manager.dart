@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../controllers/cut_list_helpers.dart';
 import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
@@ -213,11 +212,6 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canUndo => _historyManager.canUndo;
   bool get canRedo => _historyManager.canRedo;
-
-  List<CutListEntry> get cutListEntries => cutListEntriesFor(
-    _repository.requireProject(),
-    activeCutId: _editingSession.activeCutId,
-  );
 
   void _rebuildActiveCutControllers({
     LayerId? preferredActiveLayerId,
