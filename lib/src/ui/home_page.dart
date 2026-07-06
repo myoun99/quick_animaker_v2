@@ -15,7 +15,7 @@ import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
-import 'export/png_sequence_export_dialog.dart';
+import 'export/export_dialog.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
@@ -195,13 +195,12 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             key: const ValueKey<String>('export-png-button'),
-            tooltip: 'Export PNG Sequence',
+            tooltip: 'Export',
             onPressed: () {
               unawaited(
                 showDialog<void>(
                   context: context,
-                  builder: (context) =>
-                      PngSequenceExportDialog(session: _session),
+                  builder: (context) => ExportDialog(session: _session),
                 ),
               );
             },
