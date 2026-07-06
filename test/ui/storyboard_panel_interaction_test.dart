@@ -12,8 +12,6 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/ui/cut/cut_list_bar.dart'
-    show CutReorderedCallback;
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 
 void main() {

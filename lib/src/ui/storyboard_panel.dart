@@ -3,12 +3,21 @@ import 'package:flutter/material.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
-import 'cut/cut_list_bar.dart' show CutReorderedCallback;
+import '../models/track_id.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_scale.dart';
+
+/// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
+/// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
+typedef CutReorderedCallback =
+    void Function({
+      required CutId draggedCutId,
+      required TrackId targetTrackId,
+      required int targetCutIndex,
+    });
 
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
@@ -356,7 +365,8 @@ class _StoryboardTrackRow extends StatelessWidget {
                   width: timelineScale.widthForDuration(entry.duration),
                   isActive: entry.cutId == activeCutId,
                   onSelected: onCutSelected,
-                  canReorder: onCutReordered != null && layoutEntries.length > 1,
+                  canReorder:
+                      onCutReordered != null && layoutEntries.length > 1,
                   onCutReordered: onCutReordered,
                 ),
               ),

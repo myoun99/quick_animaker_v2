@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
-import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
@@ -19,7 +18,6 @@ import 'export/export_dialog.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
-import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
@@ -41,7 +39,6 @@ class _HomePageState extends State<HomePage> {
 
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   bool _showStoryboard = false;
-  final ScrollController _topToolbarScrollController = ScrollController();
 
   @override
   void initState() {
@@ -56,7 +53,6 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _session.removeListener(_onSessionChanged);
     _session.dispose();
-    _topToolbarScrollController.dispose();
     super.dispose();
   }
 
@@ -212,29 +208,8 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: PanelScrollbar(
-              controller: _topToolbarScrollController,
-              child: SingleChildScrollView(
-                key: const ValueKey<String>('top-toolbar-scroll-view'),
-                controller: _topToolbarScrollController,
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                padding: const EdgeInsets.only(bottom: panelScrollbarGutter),
-                child: Row(
-                  key: const ValueKey<String>('top-toolbar-row'),
-                  children: [
-                    CutListBar(
-                      entries: _session.cutListEntries,
-                      onCutSelected: _session.selectCut,
-                      onCutReordered: _session.reorderCut,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          // Cut switching lives in the storyboard panel (blocks select and
+          // drag-reorder); the old top chips bar is retired.
           Expanded(child: EditorCanvasArea(session: _session)),
           // Playback ticks flow through the playback-only frame listenable —
           // never the session's notifyListeners — so during playback only
