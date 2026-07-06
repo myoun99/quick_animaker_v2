@@ -39,7 +39,7 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
       continue;
     }
 
-    final frame = _resolveFrameAt(layer, frameIndex);
+    final frame = resolveExposedFrameAt(layer, frameIndex);
     if (frame == null) {
       continue;
     }
@@ -61,7 +61,9 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
 
 /// The frame exposed at [frameIndex]: the last exposure entry at or before
 /// the index (same semantics as TimelineController.resolveFrameForLayer).
-Frame? _resolveFrameAt(Layer layer, int frameIndex) {
+/// Shared by the composite plan and the composite cache signature so both
+/// always agree on what a frame shows.
+Frame? resolveExposedFrameAt(Layer layer, int frameIndex) {
   if (frameIndex < 0 || layer.timeline.isEmpty) {
     return null;
   }

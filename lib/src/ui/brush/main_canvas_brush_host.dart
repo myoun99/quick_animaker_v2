@@ -7,6 +7,7 @@ import '../../models/canvas_viewport.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
@@ -27,6 +28,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.frameStore,
+    this.cacheInvalidationSink,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
@@ -43,6 +45,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Injectable stroke store (the session-owned one in production, so
   /// app-level commands can transform stroke data); defaults to a local one.
   final BrushFrameStore? frameStore;
+
+  /// Injectable invalidation sink (the session hub in production, so
+  /// playback caches hear about stroke edits); defaults to a local recorder.
+  final CacheInvalidationSink? cacheInvalidationSink;
 
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
@@ -63,7 +69,8 @@ class MainCanvasBrushHost extends StatefulWidget {
 }
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
-  final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
+  late final CacheInvalidationSink _cacheInvalidationSink =
+      widget.cacheInvalidationSink ?? BrushEditCacheInvalidationSink();
   late final BrushFrameStore _frameStore =
       widget.frameStore ?? BrushFrameStore();
 

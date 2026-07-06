@@ -26,6 +26,7 @@ import '../services/brush_frame_display_cache_renderer.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
+import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
@@ -64,6 +65,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
   final BrushFrameStore brushFrameStore = BrushFrameStore();
+
+  /// Production sink for brush edit invalidations; playback caches and the
+  /// prerender scheduler listen here.
+  final EditorCacheInvalidationHub cacheInvalidationHub =
+      EditorCacheInvalidationHub();
 
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;

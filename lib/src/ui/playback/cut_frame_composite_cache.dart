@@ -1,0 +1,272 @@
+import 'dart:ui' as ui;
+
+import '../../models/brush_frame_key.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer_id.dart';
+import '../../models/playback_quality.dart';
+import '../../services/brush_frame_store.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
+import '../canvas/deferred_image_disposal.dart';
+import 'layer_frame_image_cache.dart';
+import 'playback_cache_budget.dart';
+
+/// Resolves the store key of a layer frame within [cut] (production impl
+/// lives on the session, which knows project/track ids).
+typedef CutBrushFrameKeyResolver =
+    BrushFrameKey Function(Cut cut, LayerId layerId, FrameId frameId);
+
+/// The frame range being played (or about to play) that budget eviction
+/// must not touch.
+class PlaybackProtectedRange {
+  const PlaybackProtectedRange({
+    required this.cutId,
+    required this.startFrame,
+    required this.endFrame,
+    required this.quality,
+  });
+
+  final CutId cutId;
+  final int startFrame;
+  final int endFrame;
+  final PlaybackQuality quality;
+
+  bool contains(CutId cutId, int frameIndex, PlaybackQuality quality) {
+    return cutId == this.cutId &&
+        quality == this.quality &&
+        frameIndex >= startFrame &&
+        frameIndex <= endFrame;
+  }
+}
+
+class _CompositeEntry {
+  _CompositeEntry({required this.image});
+
+  final ui.Image image;
+  int referenceCount = 0;
+  int lastUsed = 0;
+}
+
+/// Level-2 playback cache: `(cut, frameIndex, quality)` → composited
+/// canvas-space `ui.Image`, GPU-composed from [LayerFrameImageCache] images.
+///
+/// Composites self-validate through [CutFrameCompositeSignature]; held
+/// exposures produce equal signatures and therefore share one stored image
+/// (content addressing + reference counting). The camera is never baked in,
+/// so camera edits leave every composite valid.
+class CutFrameCompositeCache {
+  CutFrameCompositeCache({
+    required this.layerImages,
+    required this.frameStore,
+    required this.frameKeyOf,
+  });
+
+  final LayerFrameImageCache layerImages;
+  final BrushFrameStore frameStore;
+  final CutBrushFrameKeyResolver frameKeyOf;
+
+  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature> _index =
+      {};
+  final Map<CutFrameCompositeSignature, _CompositeEntry> _images = {};
+  int _useCounter = 0;
+
+  CutFrameCompositeSignature _signatureFor(
+    Cut cut,
+    int frameIndex,
+    PlaybackQuality quality,
+  ) {
+    return computeCutFrameCompositeSignature(
+      cut: cut,
+      frameIndex: frameIndex,
+      quality: quality,
+      revisionOf: (layerId, frameId) =>
+          frameStore
+              .frameOrNull(frameKeyOf(cut, layerId, frameId))
+              ?.sourceRevision ??
+          0,
+    );
+  }
+
+  /// The cached composite when its stored signature still matches the cut's
+  /// current state; `null` on miss or staleness.
+  ui.Image? validCompositeOrNull({
+    required Cut cut,
+    required int frameIndex,
+    required PlaybackQuality quality,
+  }) {
+    final stored = _index[(cut.id, frameIndex, quality)];
+    if (stored == null) {
+      return null;
+    }
+    final entry = _images[stored];
+    if (entry == null || stored != _signatureFor(cut, frameIndex, quality)) {
+      return null;
+    }
+    entry.lastUsed = ++_useCounter;
+    return entry.image;
+  }
+
+  /// Returns a valid composite, building it when missing or stale. Frames
+  /// with no drawn content composite to a fully transparent image.
+  Future<ui.Image> prepareComposite({
+    required Cut cut,
+    required int frameIndex,
+    required PlaybackQuality quality,
+  }) async {
+    final signature = _signatureFor(cut, frameIndex, quality);
+    final indexKey = (cut.id, frameIndex, quality);
+
+    final existing = _images[signature];
+    if (existing != null) {
+      _pointIndexAt(indexKey, signature);
+      existing.lastUsed = ++_useCounter;
+      return existing.image;
+    }
+
+    final image = await _composeImage(cut, signature);
+    final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
+    _images[signature] = entry;
+    _pointIndexAt(indexKey, signature);
+    return image;
+  }
+
+  Future<ui.Image> _composeImage(
+    Cut cut,
+    CutFrameCompositeSignature signature,
+  ) async {
+    final raster = scaledCanvasSize(cut.canvasSize, signature.quality);
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    for (final layer in signature.layers) {
+      final layerImage = await layerImages.prepare(
+        key: frameKeyOf(cut, layer.layerId, layer.frameId),
+        canvasSize: cut.canvasSize,
+        quality: signature.quality,
+      );
+      if (layerImage == null) {
+        continue;
+      }
+      canvas.drawImage(
+        layerImage,
+        ui.Offset.zero,
+        ui.Paint()
+          ..filterQuality = ui.FilterQuality.low
+          ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity),
+      );
+    }
+    final picture = recorder.endRecording();
+    try {
+      return await picture.toImage(raster.width, raster.height);
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  /// Eagerly drops composites containing one layer frame (sink events).
+  void invalidateWhereLayerFrame({
+    required LayerId layerId,
+    required FrameId frameId,
+  }) {
+    final stale = _index.entries
+        .where(
+          (entry) => entry.value.layers.any(
+            (layer) => layer.layerId == layerId && layer.frameId == frameId,
+          ),
+        )
+        .map((entry) => entry.key)
+        .toList();
+    for (final key in stale) {
+      _releaseIndexEntry(key);
+    }
+  }
+
+  void invalidateCut(CutId cutId) {
+    final stale = _index.keys.where((key) => key.$1 == cutId).toList();
+    for (final key in stale) {
+      _releaseIndexEntry(key);
+    }
+  }
+
+  int get estimatedBytes {
+    var total = 0;
+    for (final entry in _images.values) {
+      total += estimatedImageBytes(entry.image.width, entry.image.height);
+    }
+    return total;
+  }
+
+  /// Evicts least-recently-used composites until at or under [maxBytes],
+  /// never touching frames inside [protect].
+  void enforceBudget({required int maxBytes, PlaybackProtectedRange? protect}) {
+    if (estimatedBytes <= maxBytes) {
+      return;
+    }
+    final protectedSignatures = <CutFrameCompositeSignature>{};
+    if (protect != null) {
+      for (final entry in _index.entries) {
+        if (protect.contains(entry.key.$1, entry.key.$2, entry.key.$3)) {
+          protectedSignatures.add(entry.value);
+        }
+      }
+    }
+
+    final evictable =
+        _images.entries
+            .where((entry) => !protectedSignatures.contains(entry.key))
+            .toList()
+          ..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
+    for (final candidate in evictable) {
+      if (estimatedBytes <= maxBytes) {
+        break;
+      }
+      final stale = _index.entries
+          .where((entry) => entry.value == candidate.key)
+          .map((entry) => entry.key)
+          .toList();
+      for (final key in stale) {
+        _releaseIndexEntry(key);
+      }
+    }
+  }
+
+  void dispose() {
+    for (final key in _index.keys.toList()) {
+      _releaseIndexEntry(key);
+    }
+  }
+
+  void _pointIndexAt(
+    (CutId, int, PlaybackQuality) indexKey,
+    CutFrameCompositeSignature signature,
+  ) {
+    final previous = _index[indexKey];
+    if (previous == signature) {
+      return;
+    }
+    if (previous != null) {
+      _releaseSignature(previous);
+    }
+    _index[indexKey] = signature;
+    _images[signature]!.referenceCount += 1;
+  }
+
+  void _releaseIndexEntry((CutId, int, PlaybackQuality) indexKey) {
+    final signature = _index.remove(indexKey);
+    if (signature != null) {
+      _releaseSignature(signature);
+    }
+  }
+
+  void _releaseSignature(CutFrameCompositeSignature signature) {
+    final entry = _images[signature];
+    if (entry == null) {
+      return;
+    }
+    entry.referenceCount -= 1;
+    if (entry.referenceCount <= 0) {
+      _images.remove(signature);
+      DeferredImageDisposer.instance.retire(entry.image);
+    }
+  }
+}

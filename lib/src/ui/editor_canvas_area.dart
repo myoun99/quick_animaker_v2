@@ -313,6 +313,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                               : session.activeBrushEditorSelection,
                           canvasSize: session.activeCut.canvasSize,
                           frameStore: session.brushFrameStore,
+                          cacheInvalidationSink: session.cacheInvalidationHub,
                           historyManager: session.historyManager,
                           viewport: _canvasViewport,
                           onViewportChanged: (viewport) {
