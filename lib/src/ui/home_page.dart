@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
+import '../models/canvas_size.dart';
+import '../models/cut.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
 import 'cut/cut_note_dialog.dart';
@@ -15,9 +19,12 @@ import 'dialogs/rename_layer_dialog.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'export/export_dialog.dart';
+import 'export/export_frame_renderer.dart';
+import 'export/export_plan.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
+import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_action_toolbar.dart';
@@ -41,20 +48,44 @@ class _HomePageState extends State<HomePage> {
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   bool _showStoryboard = false;
 
+  late final StoryboardCutThumbnailStore _storyboardThumbnails;
+
   @override
   void initState() {
     super.initState();
     final project = widget.initialProject ?? createDefaultProject();
     _session = EditorSessionManager(initialProject: project)
       ..addListener(_onSessionChanged);
+    _storyboardThumbnails = StoryboardCutThumbnailStore(
+      render: _renderStoryboardThumbnail,
+      invalidationHub: _session.cacheInvalidationHub,
+    )..addListener(_onSessionChanged);
     widget.onRepositoryCreated?.call(_session.repository);
   }
 
   @override
   void dispose() {
+    _storyboardThumbnails.removeListener(_onSessionChanged);
+    _storyboardThumbnails.dispose();
     _session.removeListener(_onSessionChanged);
     _session.dispose();
     super.dispose();
+  }
+
+  /// Thumbnails render the cut's first frame at raw-canvas view, scaled to
+  /// a small output — always current (a fresh renderer replays surfaces
+  /// straight from the brush store).
+  Future<ui.Image?> _renderStoryboardThumbnail(Cut cut) {
+    const thumbnailWidth = 96;
+    final height = math.max(
+      1,
+      (thumbnailWidth * cut.canvasSize.height / cut.canvasSize.width).round(),
+    );
+    return ExportFrameRenderer(session: _session).renderComposite(
+      ExportFrameTask(cut: cut, frameIndex: 0),
+      ExportSizeMode.canvas,
+      outputSize: CanvasSize(width: thumbnailWidth, height: height),
+    );
   }
 
   void _onSessionChanged() {
@@ -367,6 +398,7 @@ class _HomePageState extends State<HomePage> {
                         onCutReordered: _session.reorderCut,
                         playheadGlobalFrame: _storyboardPlayheadFrame(),
                         onSeekGlobalFrame: _seekStoryboardGlobalFrame,
+                        thumbnailFor: _storyboardThumbnails.thumbnailFor,
                         onNewCut: _session.createCut,
                         onRenameActiveCut: _renameActiveCut,
                         onEditActiveCutNote: _editActiveCutNote,

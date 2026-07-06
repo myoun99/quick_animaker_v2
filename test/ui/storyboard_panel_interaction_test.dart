@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -390,6 +392,56 @@ void main() {
       );
     });
 
+    testWidgets('blocks show resolver thumbnails, placeholder when pending', (
+      tester,
+    ) async {
+      final image = await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 2, 2), Paint());
+        final picture = recorder.endRecording();
+        try {
+          return picture.toImage(2, 2);
+        } finally {
+          picture.dispose();
+        }
+      });
+      addTearDown(() => image!.dispose());
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-cut-a')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-b')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('no thumbnail slots without a resolver', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
+        findsNothing,
+      );
+    });
+
     testWidgets('tap-to-select still works when dragging is enabled', (
       tester,
     ) async {
@@ -429,6 +481,7 @@ Future<void> _pumpStoryboardPanel(
   CutReorderedCallback? onCutReordered,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
+  ui.Image? Function(Cut cut)? thumbnailFor,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -440,6 +493,7 @@ Future<void> _pumpStoryboardPanel(
           onCutReordered: onCutReordered,
           playheadGlobalFrame: playheadGlobalFrame,
           onSeekGlobalFrame: onSeekGlobalFrame,
+          thumbnailFor: thumbnailFor,
         ),
       ),
     ),

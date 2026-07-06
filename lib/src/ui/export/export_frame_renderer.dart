@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -53,7 +54,13 @@ class ExportFrameRenderer {
   /// One composited frame. [ExportSizeMode.canvas] renders the identity
   /// camera over the cut's own canvas size (centered, zoom 1, no rotation),
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
-  Future<ui.Image> renderComposite(ExportFrameTask task, ExportSizeMode mode) {
+  /// [outputSize] scales the same view down (storyboard thumbnails); null
+  /// exports at full size.
+  Future<ui.Image> renderComposite(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    CanvasSize? outputSize,
+  }) {
     final cut = task.cut;
     final pose = mode == ExportSizeMode.camera
         ? session.cameraPoseForCut(cut, task.frameIndex)
@@ -73,6 +80,7 @@ class ExportFrameRenderer {
       cameraFrameSize: mode == ExportSizeMode.camera
           ? session.cameraFrameSize
           : cut.canvasSize,
+      outputSize: outputSize,
     );
   }
 
