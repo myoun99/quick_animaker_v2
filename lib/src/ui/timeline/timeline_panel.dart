@@ -145,7 +145,7 @@ class TimelinePanel extends StatelessWidget {
                       onLayerOpacityChanged: onLayerOpacityChanged,
                     )
                   : XSheetTimelineGrid(
-                      layers: layers,
+                      layers: xsheetLayerDisplayOrder(layers),
                       activeLayerId: activeLayerId,
                       currentFrameIndex: currentFrameIndex,
                       frameCount: playbackFrameCount,

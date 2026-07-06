@@ -14,6 +14,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.sectionStart = false,
   });
 
   final Layer layer;
@@ -23,12 +24,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
+  /// Whether this row opens a new timesheet section (drawing/SE/camera);
+  /// draws a heavier divider along the rail row's top edge.
+  final bool sectionStart;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
 
-    return InkWell(
+    final row = InkWell(
       key: ValueKey<String>('timeline-layer-row-${layer.id}'),
       onTap: () => onSelectLayer(layer.id),
       child: Container(
@@ -128,6 +133,29 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (!sectionStart) {
+      return row;
+    }
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          child: IgnorePointer(
+            child: Container(
+              key: ValueKey<String>(
+                'timeline-section-divider-rail-${layer.id}',
+              ),
+              color: colorScheme.outline,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

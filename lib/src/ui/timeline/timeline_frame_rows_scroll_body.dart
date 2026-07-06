@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_section_policy.dart';
 
 class TimelineFrameRowsScrollBody extends StatelessWidget {
   const TimelineFrameRowsScrollBody({
@@ -50,10 +51,11 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final layer in layers)
+          for (var index = 0; index < layers.length; index += 1)
             TimelineFrameCellsRow(
-              layer: layer,
-              active: layer.id == activeLayerId,
+              layer: layers[index],
+              active: layers[index].id == activeLayerId,
+              sectionStart: timelineSectionStartsAt(layers, index),
               currentFrameIndex: currentFrameIndex,
               playbackFrameCount: playbackFrameCount,
               frameStartIndex: frameStartIndex,

@@ -19,6 +19,7 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
+import 'timeline_section_policy.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
@@ -384,12 +385,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            for (final layer in widget.layers)
+                                            for (
+                                              var index = 0;
+                                              index < widget.layers.length;
+                                              index += 1
+                                            )
                                               TimelineLayerControlsRow(
-                                                layer: layer,
+                                                layer: widget.layers[index],
                                                 active:
-                                                    layer.id ==
+                                                    widget.layers[index].id ==
                                                     widget.activeLayerId,
+                                                sectionStart:
+                                                    timelineSectionStartsAt(
+                                                      widget.layers,
+                                                      index,
+                                                    ),
                                                 metrics:
                                                     LayerTimelineGrid._metrics,
                                                 onSelectLayer:

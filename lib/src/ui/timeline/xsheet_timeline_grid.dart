@@ -18,6 +18,7 @@ import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_playhead.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
+import 'timeline_section_policy.dart';
 import 'timeline_selected_exposure_outline.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
@@ -393,11 +394,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 children: [
                                   Row(
                                     children: [
-                                      for (final layer in widget.layers)
+                                      for (
+                                        var index = 0;
+                                        index < widget.layers.length;
+                                        index += 1
+                                      )
                                         _LayerHeader(
-                                          layer: layer,
+                                          layer: widget.layers[index],
                                           active:
-                                              layer.id == widget.activeLayerId,
+                                              widget.layers[index].id ==
+                                              widget.activeLayerId,
+                                          sectionStart: timelineSectionStartsAt(
+                                            widget.layers,
+                                            index,
+                                          ),
                                           onSelectLayer: widget.onSelectLayer,
                                           onToggleLayerVisibility:
                                               widget.onToggleLayerVisibility,
@@ -420,13 +430,23 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                for (final layer
-                                                    in widget.layers)
+                                                for (
+                                                  var index = 0;
+                                                  index < widget.layers.length;
+                                                  index += 1
+                                                )
                                                   _XSheetFrameCellsColumn(
-                                                    layer: layer,
+                                                    layer: widget.layers[index],
                                                     active:
-                                                        layer.id ==
+                                                        widget
+                                                            .layers[index]
+                                                            .id ==
                                                         widget.activeLayerId,
+                                                    sectionStart:
+                                                        timelineSectionStartsAt(
+                                                          widget.layers,
+                                                          index,
+                                                        ),
                                                     currentFrameIndex: widget
                                                         .currentFrameIndex,
                                                     playbackFrameCount:
@@ -654,10 +674,15 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.sectionStart = false,
   });
 
   final Layer layer;
   final bool active;
+
+  /// Whether this column opens a new timesheet section; draws a heavier
+  /// divider along the column's left edge.
+  final bool sectionStart;
   final int currentFrameIndex;
   final int playbackFrameCount;
   final int frameStartIndex;
@@ -751,6 +776,21 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
             borderColor: timelineSelectedFrameBorderColor,
             borderRadius: const BorderRadius.all(Radius.circular(6)),
           ),
+          if (sectionStart)
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: 2,
+              child: IgnorePointer(
+                child: Container(
+                  key: ValueKey<String>(
+                    'xsheet-section-divider-column-${layer.id}',
+                  ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -764,6 +804,7 @@ class _LayerHeader extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.sectionStart = false,
   });
 
   final Layer layer;
@@ -772,11 +813,15 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
+  /// Whether this column opens a new timesheet section; draws a heavier
+  /// divider along the header's left edge.
+  final bool sectionStart;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    final header = InkWell(
       key: ValueKey<String>('xsheet-layer-header-${layer.id}'),
       onTap: () => onSelectLayer(layer.id),
       child: Container(
@@ -863,6 +908,29 @@ class _LayerHeader extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (!sectionStart) {
+      return header;
+    }
+    return Stack(
+      children: [
+        header,
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: 2,
+          child: IgnorePointer(
+            child: Container(
+              key: ValueKey<String>(
+                'xsheet-section-divider-header-${layer.id}',
+              ),
+              color: colorScheme.outline,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

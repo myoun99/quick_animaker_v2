@@ -27,7 +27,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.sectionStart = false,
   });
+
+  /// Whether this row opens a new timesheet section (drawing/SE/camera);
+  /// draws a heavier divider along the row's top edge without changing the
+  /// row geometry.
+  final bool sectionStart;
 
   final Layer layer;
   final bool active;
@@ -114,6 +120,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
           borderColor: timelineSelectedFrameBorderColor,
           borderRadius: const BorderRadius.all(Radius.circular(6)),
         ),
+        if (sectionStart)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            child: IgnorePointer(
+              child: Container(
+                key: ValueKey<String>(
+                  'timeline-section-divider-row-${layer.id}',
+                ),
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+          ),
       ],
     );
   }
