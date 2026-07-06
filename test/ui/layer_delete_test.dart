@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -84,12 +84,12 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
-    expect(find.text('Layer: B'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'B');
 
     await _deleteActiveLayer(tester);
 
     expect(_layerNames(repository), ['A', 'C']);
-    expect(find.text('Layer: C'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'C');
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-row-layer-b')),
       findsNothing,
@@ -101,16 +101,16 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
-    expect(find.text('Layer: B'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'B');
     await _deleteActiveLayer(tester);
 
     await _tapKey(tester, _undoKey);
     expect(_layerNames(repository), ['A', 'B', 'C']);
-    expect(find.text('Layer: B'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'B');
 
     await _tapKey(tester, _redoKey);
     expect(_layerNames(repository), ['A', 'C']);
-    expect(find.text('Layer: C'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'C');
   });
 
   testWidgets(
@@ -118,7 +118,7 @@ void main() {
     (tester) async {
       await _pumpHome(tester);
       await _selectLayer(tester, _layerBId);
-      expect(find.text('Layer: B'), findsOneWidget);
+      expect(_selectedLayerName(tester), 'B');
       await _deleteActiveLayer(tester);
 
       expect(_visibleTimelineLayerNames(tester), ['C', 'A']);
@@ -167,7 +167,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
-    expect(find.text('Layer: B'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'B');
     await _deleteActiveLayer(tester);
 
     expect(
@@ -184,7 +184,7 @@ void main() {
     await _tapKey(tester, _renameOkButtonKey);
 
     expect(_layer(repository, _layerCId).name, 'BG');
-    expect(find.text('Layer: BG'), findsOneWidget);
+    expect(_selectedLayerName(tester), 'BG');
   });
 }
 

@@ -57,11 +57,10 @@ class CutListBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Cuts:',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            Icon(
+              Icons.local_movies_outlined,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 6),
             for (var index = 0; index < entries.length; index += 1) ...[

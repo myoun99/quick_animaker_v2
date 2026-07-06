@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class TimelineBodyCutEndBoundary extends StatelessWidget {
   const TimelineBodyCutEndBoundary({
     super.key = const ValueKey<String>('timeline-cut-end-boundary'),
@@ -16,7 +18,7 @@ class TimelineBodyCutEndBoundary extends StatelessWidget {
       bottom: 0,
       width: 2,
       child: const IgnorePointer(
-        child: DecoratedBox(decoration: BoxDecoration(color: Colors.red)),
+        child: DecoratedBox(decoration: BoxDecoration(color: AppColors.danger)),
       ),
     );
   }

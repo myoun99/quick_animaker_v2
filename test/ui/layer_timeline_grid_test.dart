@@ -10,14 +10,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
-
-bool _isGray(Color color) {
-  final value = color.toARGB32();
-  final red = (value >> 16) & 0xff;
-  final green = (value >> 8) & 0xff;
-  final blue = value & 0xff;
-  return red == green && green == blue;
-}
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_playhead.dart';
 
 final Matcher _isInsideTestRoot = isA<Rect>()
     .having((rect) => rect.left, 'left', greaterThanOrEqualTo(0))
@@ -1379,7 +1372,7 @@ void main() {
     expect(tester.getSize(column), const Size(48, 104));
 
     final container = tester.widget<Container>(column);
-    expect(container.color, Colors.red.withValues(alpha: 0.18));
+    expect(container.color, timelinePlayheadColor.withValues(alpha: 0.18));
     expect(container.decoration, isNull);
   });
 
@@ -2262,13 +2255,12 @@ void main() {
     expect(drawingStart.background, timelineDrawingStartColor);
     expect(drawingStart.background, heldDrawing.background);
     expect(drawingStart.border, timelineDrawingStartBorderColor);
-    expect(_isGray(blankStart.background), isTrue);
     expect(blankStart.background, timelineBlankStartColor);
     expect(blankHeld.background, timelineBlankHeldColor);
     expect(blankStart.background, blankHeld.background);
     expect(blankStart.background, isNot(heldDrawing.background));
     expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
-    expect(selectedDrawing.border, Colors.red);
+    expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }

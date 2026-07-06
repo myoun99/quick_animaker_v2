@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'src/ui/home_page.dart';
+import 'src/ui/theme/app_theme.dart';
 
 void main() {
   runApp(const QuickAnimakerApp());
@@ -11,6 +12,10 @@ class QuickAnimakerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(title: 'QuickAnimaker v2.1', home: HomePage());
+    return MaterialApp(
+      title: 'QuickAnimaker v2.1',
+      theme: buildAppTheme(),
+      home: const HomePage(),
+    );
   }
 }

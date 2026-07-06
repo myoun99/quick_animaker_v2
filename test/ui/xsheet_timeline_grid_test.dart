@@ -8,14 +8,6 @@ import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 
-bool _isGray(Color color) {
-  final value = color.toARGB32();
-  final red = (value >> 16) & 0xff;
-  final green = (value >> 8) & 0xff;
-  final blue = value & 0xff;
-  return red == green && green == blue;
-}
-
 void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
     await tester.pumpWidget(_grid());
@@ -392,13 +384,12 @@ void main() {
     expect(drawingStart.background, timelineDrawingStartColor);
     expect(drawingStart.background, heldDrawing.background);
     expect(drawingStart.border, timelineDrawingStartBorderColor);
-    expect(_isGray(blankStart.background), isTrue);
     expect(blankStart.background, timelineBlankStartColor);
     expect(blankHeld.background, timelineBlankHeldColor);
     expect(blankStart.background, blankHeld.background);
     expect(blankStart.background, isNot(heldDrawing.background));
     expect(blankStart.background.toARGB32() & 0xff, lessThan(0xe0));
-    expect(selectedDrawing.border, Colors.red);
+    expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });
 }

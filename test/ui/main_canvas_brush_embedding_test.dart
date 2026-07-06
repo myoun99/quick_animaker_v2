@@ -44,8 +44,8 @@ void main() {
     );
     expect(find.byType(MainCanvasBrushHost), findsOneWidget);
     expect(find.textContaining('Active strokes:'), findsNothing);
-    expect(find.text('Undo'), findsOneWidget);
-    expect(find.text('Redo'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
     expect(find.text('Project Undo'), findsNothing);
     expect(find.text('Project Redo'), findsNothing);
   });

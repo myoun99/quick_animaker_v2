@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -64,12 +64,12 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-name-layer-a')),
       findsOneWidget,
     );
-    expect(find.text('Layer: A'), findsOneWidget);
+    expect(_layerNameText(tester, _layerAId).data, 'A');
 
     await _renameLayer(tester, 'BG');
 
     expect(_layer(repository, _layerAId).name, 'BG');
-    expect(find.text('Layer: BG'), findsOneWidget);
+    expect(_layerNameText(tester, _layerAId).data, 'BG');
     expect(find.text('BG'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -87,7 +87,7 @@ void main() {
     await _tapKey(tester, _cancelButtonKey);
 
     expect(_layer(repository, _layerAId).name, 'A');
-    expect(find.text('Layer: A'), findsOneWidget);
+    expect(_layerNameText(tester, _layerAId).data, 'A');
     expect(find.byKey(_dialogKey), findsNothing);
   });
 
@@ -122,11 +122,11 @@ void main() {
 
     await _tapKey(tester, _undoKey);
     expect(_layer(repository, _layerAId).name, 'A');
-    expect(find.text('Layer: A'), findsOneWidget);
+    expect(_layerNameText(tester, _layerAId).data, 'A');
 
     await _tapKey(tester, _redoKey);
     expect(_layer(repository, _layerAId).name, 'BG');
-    expect(find.text('Layer: BG'), findsOneWidget);
+    expect(_layerNameText(tester, _layerAId).data, 'BG');
   });
 
   testWidgets('layer kind icon remains visible after rename', (tester) async {

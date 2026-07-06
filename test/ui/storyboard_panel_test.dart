@@ -231,11 +231,6 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-panel-title')),
-      findsOneWidget,
-    );
-    expect(find.text('STORYBOARD'), findsOneWidget);
-    expect(
       find.byKey(const ValueKey<String>('storyboard-track-label-track-a')),
       findsOneWidget,
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 
 class TimelineCellStyleColors {
@@ -12,12 +13,12 @@ class TimelineCellStyleColors {
   final Color border;
 }
 
-const Color timelineDrawingHeldColor = Colors.white;
+const Color timelineDrawingHeldColor = AppColors.surfaceHigh;
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
-const Color timelineDrawingStartBorderColor = Color(0xFFBDBDBD);
-const Color timelineBlankStartColor = Color(0xFFD0D0D0);
+const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
+const Color timelineBlankStartColor = Color(0xFF232527);
 const Color timelineBlankHeldColor = timelineBlankStartColor;
-const Color timelineSelectedFrameBorderColor = Colors.red;
+const Color timelineSelectedFrameBorderColor = AppColors.accent;
 
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,

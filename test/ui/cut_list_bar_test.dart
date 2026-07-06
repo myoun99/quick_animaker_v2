@@ -24,7 +24,7 @@ void main() {
         find.byKey(const ValueKey<String>('cut-list-bar')),
         findsOneWidget,
       );
-      expect(find.text('Cuts:'), findsOneWidget);
+      expect(find.byIcon(Icons.local_movies_outlined), findsOneWidget);
       expect(find.text('Cut 1'), findsOneWidget);
       expect(find.text('Cut 2'), findsOneWidget);
     });

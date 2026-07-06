@@ -1,13 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 
-/// The layer/frame/cell action toolbar shown beneath the canvas.
+/// The layer/frame/cell action toolbar shown above the timeline grid.
 ///
-/// Reads all of its state from [session] and invokes session commands directly.
-/// The three actions that must run a dialog first (which needs the hosting
-/// widget's [BuildContext]) are delegated back to the host via [onRenameLayer],
-/// [onDeleteLayer] and [onRenameFrame].
+/// Icon-only with tooltips: layer actions on the left, cell actions on the
+/// right, separated by hairline dividers. Reads all of its state from
+/// [session] and invokes session commands directly. The three actions that
+/// must run a dialog first (which needs the hosting widget's [BuildContext])
+/// are delegated back to the host via [onRenameLayer], [onDeleteLayer] and
+/// [onRenameFrame].
 class TimelineActionToolbar extends StatelessWidget {
   const TimelineActionToolbar({
     super.key,
@@ -33,9 +35,9 @@ class TimelineActionToolbar extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon),
-      iconSize: 20,
-      padding: const EdgeInsets.all(6),
-      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      iconSize: 18,
+      padding: const EdgeInsets.all(5),
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
       visualDensity: VisualDensity.compact,
     );
   }
@@ -49,9 +51,9 @@ class TimelineActionToolbar extends StatelessWidget {
 
   Widget _groupDivider(BuildContext context) {
     return SizedBox(
-      height: 28,
+      height: 22,
       child: VerticalDivider(
-        width: 16,
+        width: 14,
         thickness: 1,
         color: Theme.of(context).colorScheme.outlineVariant,
       ),
@@ -60,34 +62,23 @@ class TimelineActionToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedFrame = session.selectedFrame;
-    final selectedEffectiveDuration = session.selectedEffectiveDuration;
     return DecoratedBox(
       key: const ValueKey<String>('timeline-action-toolbar'),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _group(
+                key: const ValueKey<String>('timeline-toolbar-layer-group'),
                 children: [
-                  Text(
-                    session.currentLayerStatusText,
-                    key: const ValueKey<String>('current-layer-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    session.activeLayerKindLabelText,
-                    key: const ValueKey<String>('active-layer-kind-label'),
-                  ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>(
                       'toggle-storyboard-layer-button',
@@ -98,7 +89,6 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? session.toggleTargetLayerKind
                         : null,
                   ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>('rename-layer-button'),
                     tooltip: 'Rename Layer',
@@ -107,7 +97,6 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? null
                         : onRenameLayer,
                   ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>('duplicate-layer-button'),
                     tooltip: 'Duplicate Layer',
@@ -116,7 +105,6 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? null
                         : session.duplicateActiveLayer,
                   ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>('copy-layer-button'),
                     tooltip: 'Copy Layer',
@@ -125,23 +113,16 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? null
                         : session.copyActiveLayer,
                   ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>('paste-layer-button'),
-                    tooltip: 'Paste Layer',
+                    tooltip: session.layerClipboardName == null
+                        ? 'Paste Layer'
+                        : 'Paste Layer (${session.layerClipboardName})',
                     icon: Icons.content_paste,
                     onPressed: session.hasLayerClipboard
                         ? session.pasteLayerFromClipboard
                         : null,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    session.layerClipboardName == null
-                        ? 'Layer Clipboard: empty'
-                        : 'Layer Clipboard: ${session.layerClipboardName}',
-                    key: const ValueKey<String>('layer-clipboard-status'),
-                  ),
-                  const SizedBox(width: 8),
                   _iconButton(
                     key: const ValueKey<String>('delete-layer-button'),
                     tooltip: 'Delete Layer',
@@ -150,179 +131,106 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? onDeleteLayer
                         : null,
                   ),
-                  const SizedBox(width: 16),
-                  Text(
-                    session.currentFrameStatusText,
-                    key: const ValueKey<String>('current-frame-status'),
+                ],
+              ),
+              _groupDivider(context),
+              _group(
+                key: const ValueKey<String>('timeline-toolbar-create-group'),
+                children: [
+                  _iconButton(
+                    key: const ValueKey<String>('new-frame-button'),
+                    tooltip: 'New Frame',
+                    icon: Icons.add_box_outlined,
+                    onPressed: session.hasActiveNonNegativeCell
+                        ? session.createDrawingAtCurrentFrame
+                        : null,
                   ),
-                  const SizedBox(width: 16),
-                  Text(
-                    session.currentCellStatusText,
-                    key: const ValueKey<String>('current-cell-status'),
+                  _iconButton(
+                    key: const ValueKey<String>('blank-exposure-button'),
+                    tooltip: 'Blank / X',
+                    icon: Icons.close,
+                    onPressed: session.hasActiveNonNegativeCell
+                        ? session.createBlankAtCurrentFrame
+                        : null,
                   ),
-                  const SizedBox(width: 16),
-                  Text('Drawing: ${selectedFrame == null ? 'no' : 'yes'}'),
-                  const SizedBox(width: 16),
-                  Text('Duration: ${selectedEffectiveDuration ?? '-'}'),
-                  const SizedBox(width: 16),
-                  Text(
-                    session.linkedFrameUsesStatusText,
-                    key: const ValueKey<String>('linked-frame-uses-status'),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    session.copiedFrameStatusText,
-                    key: const ValueKey<String>('copied-frame-status'),
+                  _iconButton(
+                    key: const ValueKey<String>('toggle-mark-button'),
+                    tooltip: 'Mark ●',
+                    icon: Icons.circle,
+                    onPressed: session.hasActiveNonNegativeCell
+                        ? session.toggleMarkAtCurrentFrame
+                        : null,
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 6),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DecoratedBox(
-                key: const ValueKey<String>('cell-actions-section'),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
+              _groupDivider(context),
+              _group(
+                key: const ValueKey<String>('timeline-toolbar-copy-group'),
+                children: [
+                  _iconButton(
+                    key: const ValueKey<String>('copy-frame-button'),
+                    tooltip: 'Copy Frame',
+                    icon: Icons.content_copy,
+                    onPressed: session.canCopyFrameAtCurrentFrame
+                        ? session.copyFrameAtCurrentFrame
+                        : null,
                   ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                  _iconButton(
+                    key: const ValueKey<String>('paste-linked-frame-button'),
+                    tooltip: 'Paste Linked Frame',
+                    icon: Icons.link,
+                    onPressed: session.canPasteLinkedFrameAtCurrentFrame
+                        ? session.pasteLinkedFrameAtCurrentFrame
+                        : null,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Cell Actions',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      _group(
-                        key: const ValueKey<String>(
-                          'timeline-toolbar-create-group',
-                        ),
-                        children: [
-                          _iconButton(
-                            key: const ValueKey<String>('new-frame-button'),
-                            tooltip: 'New Frame',
-                            icon: Icons.add_box_outlined,
-                            onPressed: session.hasActiveNonNegativeCell
-                                ? session.createDrawingAtCurrentFrame
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>(
-                              'blank-exposure-button',
-                            ),
-                            tooltip: 'Blank / X',
-                            icon: Icons.close,
-                            onPressed: session.hasActiveNonNegativeCell
-                                ? session.createBlankAtCurrentFrame
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>('toggle-mark-button'),
-                            tooltip: 'Mark ●',
-                            icon: Icons.circle,
-                            onPressed: session.hasActiveNonNegativeCell
-                                ? session.toggleMarkAtCurrentFrame
-                                : null,
-                          ),
-                        ],
-                      ),
-                      _groupDivider(context),
-                      _group(
-                        key: const ValueKey<String>(
-                          'timeline-toolbar-copy-group',
-                        ),
-                        children: [
-                          _iconButton(
-                            key: const ValueKey<String>('copy-frame-button'),
-                            tooltip: 'Copy Frame',
-                            icon: Icons.content_copy,
-                            onPressed: session.canCopyFrameAtCurrentFrame
-                                ? session.copyFrameAtCurrentFrame
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>(
-                              'paste-linked-frame-button',
-                            ),
-                            tooltip: 'Paste Linked Frame',
-                            icon: Icons.link,
-                            onPressed: session.canPasteLinkedFrameAtCurrentFrame
-                                ? session.pasteLinkedFrameAtCurrentFrame
-                                : null,
-                          ),
-                        ],
-                      ),
-                      _groupDivider(context),
-                      _group(
-                        key: const ValueKey<String>(
-                          'timeline-toolbar-edit-group',
-                        ),
-                        children: [
-                          _iconButton(
-                            key: const ValueKey<String>('rename-frame-button'),
-                            tooltip: 'Rename Frame',
-                            icon: Icons.edit_outlined,
-                            onPressed: session.canRenameFrameAtCurrentFrame
-                                ? onRenameFrame
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>('delete-cell-button'),
-                            tooltip: 'Delete Cell',
-                            icon: Icons.delete_outline,
-                            onPressed: session.canDeleteCellAtCurrentFrame
-                                ? session.deleteCellAtCurrentFrame
-                                : null,
-                          ),
-                        ],
-                      ),
-                      _groupDivider(context),
-                      _group(
-                        key: const ValueKey<String>(
-                          'timeline-toolbar-exposure-group',
-                        ),
-                        children: [
-                          _iconButton(
-                            key: const ValueKey<String>(
-                              'decrease-exposure-button',
-                            ),
-                            tooltip: 'Decrease Exposure',
-                            icon: Icons.remove,
-                            onPressed: session.canDecreaseSelectedExposure
-                                ? session.decreaseSelectedExposure
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>(
-                              'increase-exposure-button',
-                            ),
-                            tooltip: 'Increase Exposure',
-                            icon: Icons.add,
-                            onPressed: session.canIncreaseSelectedExposure
-                                ? session.increaseSelectedExposure
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              session.compactCellActionText,
-              key: const ValueKey<String>('cell-action-hint'),
-            ),
-          ],
+              _groupDivider(context),
+              _group(
+                key: const ValueKey<String>('timeline-toolbar-edit-group'),
+                children: [
+                  _iconButton(
+                    key: const ValueKey<String>('rename-frame-button'),
+                    tooltip: 'Rename Frame',
+                    icon: Icons.edit_outlined,
+                    onPressed: session.canRenameFrameAtCurrentFrame
+                        ? onRenameFrame
+                        : null,
+                  ),
+                  _iconButton(
+                    key: const ValueKey<String>('delete-cell-button'),
+                    tooltip: 'Delete Cell',
+                    icon: Icons.delete_outline,
+                    onPressed: session.canDeleteCellAtCurrentFrame
+                        ? session.deleteCellAtCurrentFrame
+                        : null,
+                  ),
+                ],
+              ),
+              _groupDivider(context),
+              _group(
+                key: const ValueKey<String>('timeline-toolbar-exposure-group'),
+                children: [
+                  _iconButton(
+                    key: const ValueKey<String>('decrease-exposure-button'),
+                    tooltip: 'Decrease Exposure',
+                    icon: Icons.remove,
+                    onPressed: session.canDecreaseSelectedExposure
+                        ? session.decreaseSelectedExposure
+                        : null,
+                  ),
+                  _iconButton(
+                    key: const ValueKey<String>('increase-exposure-button'),
+                    tooltip: 'Increase Exposure',
+                    icon: Icons.add,
+                    onPressed: session.canIncreaseSelectedExposure
+                        ? session.increaseSelectedExposure
+                        : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

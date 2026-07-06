@@ -212,7 +212,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Show X-sheet'));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
 
     expect(selectedOrientation, TimelineOrientation.vertical);
   });
@@ -309,9 +311,17 @@ void main() {
   ) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
-    expect(find.text('4'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey<String>('timeline-current-frame-counter'),
+            ),
+          )
+          .data,
+      '4',
+    );
     expect(find.text('▶ 4'), findsNothing);
-    expect(find.textContaining('Current frame: 4'), findsOneWidget);
   });
 
   testWidgets('passes frame names to horizontal and x-sheet renderers', (

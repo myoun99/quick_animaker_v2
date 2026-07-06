@@ -38,26 +38,35 @@ class StoryboardPanel extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'STORYBOARD',
-              key: const ValueKey<String>('storyboard-panel-title'),
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
+        child: SingleChildScrollView(
+          key: const ValueKey<String>('storyboard-vertical-viewport'),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                key: const ValueKey<String>('storyboard-track-label-rail'),
+                width: _trackLabelWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var index = 0; index < project.tracks.length; index++)
+                      _StoryboardTrackLabel(
+                        track: project.tracks[index],
+                        trackLabel: 'V${index + 1}',
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  key: const ValueKey<String>('storyboard-track-label-rail'),
-                  width: _trackLabelWidth,
+              Expanded(
+                child: SingleChildScrollView(
+                  key: const ValueKey<String>(
+                    'storyboard-timeline-horizontal-viewport',
+                  ),
+                  scrollDirection: Axis.horizontal,
                   child: Column(
+                    key: const ValueKey<String>(
+                      'storyboard-timeline-scroll-content',
+                    ),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (
@@ -65,46 +74,21 @@ class StoryboardPanel extends StatelessWidget {
                         index < project.tracks.length;
                         index++
                       )
-                        _StoryboardTrackLabel(
+                        _StoryboardTrackRow(
                           track: project.tracks[index],
-                          trackLabel: 'V${index + 1}',
+                          layoutEntries: layoutEntries
+                              .where((entry) => entry.trackIndex == index)
+                              .toList(growable: false),
+                          activeCutId: activeCutId,
+                          onCutSelected: onCutSelected,
+                          timelineScale: _timelineScale,
                         ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    key: const ValueKey<String>(
-                      'storyboard-timeline-horizontal-viewport',
-                    ),
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      key: const ValueKey<String>(
-                        'storyboard-timeline-scroll-content',
-                      ),
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (
-                          var index = 0;
-                          index < project.tracks.length;
-                          index++
-                        )
-                          _StoryboardTrackRow(
-                            track: project.tracks[index],
-                            layoutEntries: layoutEntries
-                                .where((entry) => entry.trackIndex == index)
-                                .toList(growable: false),
-                            activeCutId: activeCutId,
-                            onCutSelected: onCutSelected,
-                            timelineScale: _timelineScale,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

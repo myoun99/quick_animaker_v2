@@ -31,6 +31,7 @@ class _HomePageState extends State<HomePage> {
   late final EditorSessionManager _session;
 
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
+  bool _showStoryboard = false;
   final ScrollController _topToolbarScrollController = ScrollController();
 
   @override
@@ -188,15 +189,17 @@ class _HomePageState extends State<HomePage> {
                       onCutReordered: _session.reorderCut,
                     ),
                     const SizedBox(width: 16),
-                    TextButton(
+                    IconButton(
                       key: const ValueKey<String>('undo-button'),
+                      tooltip: 'Undo',
                       onPressed: _session.canUndo ? _session.undo : null,
-                      child: const Text('Undo'),
+                      icon: const Icon(Icons.undo),
                     ),
-                    TextButton(
+                    IconButton(
                       key: const ValueKey<String>('redo-button'),
+                      tooltip: 'Redo',
                       onPressed: _session.canRedo ? _session.redo : null,
-                      child: const Text('Redo'),
+                      icon: const Icon(Icons.redo),
                     ),
                   ],
                 ),
@@ -204,12 +207,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           Expanded(child: EditorCanvasArea(session: _session)),
-          StoryboardPanel(
-            project: _session.repository.requireProject(),
-            activeCutId: _session.activeCutId,
-            onCutSelected: _session.selectCut,
-          ),
-          const SizedBox(height: 8),
           TimelinePanel(
             layers: _session.layers,
             activeLayerId: _session.activeLayerId,
@@ -229,6 +226,15 @@ class _HomePageState extends State<HomePage> {
             onOrientationChanged: (orientation) {
               setState(() => _timelineOrientation = orientation);
             },
+            showStoryboard: _showStoryboard,
+            onShowStoryboardChanged: (show) {
+              setState(() => _showStoryboard = show);
+            },
+            storyboardPanel: StoryboardPanel(
+              project: _session.repository.requireProject(),
+              activeCutId: _session.activeCutId,
+              onCutSelected: _session.selectCut,
+            ),
             timelineActionToolbar: TimelineActionToolbar(
               session: _session,
               onRenameLayer: _renameActiveLayer,

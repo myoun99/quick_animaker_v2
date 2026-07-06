@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
@@ -26,7 +26,6 @@ import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
-const _labelKey = ValueKey<String>('active-layer-kind-label');
 const _undoKey = ValueKey<String>('undo-button');
 const _redoKey = ValueKey<String>('redo-button');
 const _cutId = CutId('phase-73-cut');
@@ -167,12 +166,12 @@ void main() {
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(find.text('Animation Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
 
     await _tapKey(tester, _toggleKey);
 
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(find.text('Storyboard Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
   });
 
   testWidgets('toggles storyboard layer back to animation', (tester) async {
@@ -184,12 +183,12 @@ void main() {
     );
 
     expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(find.text('Storyboard Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
 
     await _tapKey(tester, _toggleKey);
 
     expect(_layer(repository).kind, LayerKind.animation);
-    expect(find.text('Animation Layer'), findsOneWidget);
+    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
   });
 
   testWidgets('undo and redo work after toggling to storyboard', (
@@ -242,7 +241,6 @@ void main() {
 
     expect(find.byKey(_toggleKey), findsOneWidget);
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
-    expect(tester.widget<Text>(find.byKey(_labelKey)).data, 'No Layer');
     expect(
       repository.requireProject().tracks.single.cuts.single.layers,
       isEmpty,

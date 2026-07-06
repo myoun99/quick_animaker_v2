@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'timeline_grid_metrics.dart';
+
+/// The playhead tint color, exported so tests can assert against it.
+const Color timelinePlayheadColor = AppColors.accent;
 
 class TimelinePlayhead extends StatelessWidget {
   const TimelinePlayhead({
@@ -40,7 +44,7 @@ class TimelinePlayhead extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    const playheadColor = Colors.red;
+    const playheadColor = timelinePlayheadColor;
 
     return IgnorePointer(
       child: SizedBox(
