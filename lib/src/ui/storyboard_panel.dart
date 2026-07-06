@@ -44,7 +44,15 @@ class StoryboardPanel extends StatefulWidget {
     this.onDeleteActiveCut,
   });
 
-  static const TimelineScale _timelineScale = TimelineScale();
+  /// Frame-axis zoom steps (pixels per frame); index 2 is the classic 8px.
+  static const List<double> _zoomSteps = [2, 4, 8, 16, 32];
+  static const int _defaultZoomIndex = 2;
+
+  /// Blocks are strictly frame-linear (Premiere-style): a large minimum
+  /// width would make neighbours overlap when zoomed out. The tiny floor
+  /// only keeps zero-length cuts visible.
+  static const double _minBlockWidth = 8;
+
   static const double _trackLabelWidth = 56;
   static const double _trackLaneHeight = 64;
   static const double _trackRowBottomPadding = 4;
@@ -102,6 +110,29 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   final ScrollController _verticalController = ScrollController();
   final ScrollController _horizontalController = ScrollController();
 
+  int _zoomIndex = StoryboardPanel._defaultZoomIndex;
+
+  TimelineScale get _scale => TimelineScale(
+    pixelsPerFrame: StoryboardPanel._zoomSteps[_zoomIndex],
+    minBlockWidth: StoryboardPanel._minBlockWidth,
+  );
+
+  bool get _canZoomIn => _zoomIndex < StoryboardPanel._zoomSteps.length - 1;
+  bool get _canZoomOut => _zoomIndex > 0;
+
+  void _applyZoom(int nextIndex) {
+    final previousPixels = StoryboardPanel._zoomSteps[_zoomIndex];
+    setState(() => _zoomIndex = nextIndex);
+    // Keep the frame at the viewport's left edge anchored through the zoom.
+    if (_horizontalController.hasClients) {
+      final factor = StoryboardPanel._zoomSteps[nextIndex] / previousPixels;
+      final position = _horizontalController.position;
+      _horizontalController.jumpTo(
+        (position.pixels * factor).clamp(0.0, double.maxFinite),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _verticalController.dispose();
@@ -112,12 +143,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// The widest content edge across every track (blocks can outgrow their
   /// duration via the minimum block width) plus trailing padding — the
   /// ruler and playhead overlay both span it.
-  double _timelineContentWidth(List<StoryboardTimelineLayoutEntry> entries) {
+  double _timelineContentWidth(
+    List<StoryboardTimelineLayoutEntry> entries,
+    TimelineScale scale,
+  ) {
     var width = 0.0;
     for (final entry in entries) {
       final right =
-          StoryboardPanel._timelineScale.leftForFrame(entry.startFrame) +
-          StoryboardPanel._timelineScale.widthForDuration(entry.duration);
+          scale.leftForFrame(entry.startFrame) +
+          scale.widthForDuration(entry.duration);
       if (right > width) {
         width = right;
       }
@@ -139,7 +173,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
-    final contentWidth = _timelineContentWidth(layoutEntries);
+    final scale = _scale;
+    final contentWidth = _timelineContentWidth(layoutEntries, scale);
     final totalFrames = _totalFrames(layoutEntries);
     final playheadFrame = widget.playheadGlobalFrame;
 
@@ -154,8 +189,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (widget._hasCutActions)
-              _StoryboardCutActionsToolbar(panel: widget),
+            _StoryboardCutActionsToolbar(
+              panel: widget,
+              onZoomIn: _canZoomIn ? () => _applyZoom(_zoomIndex + 1) : null,
+              onZoomOut: _canZoomOut ? () => _applyZoom(_zoomIndex - 1) : null,
+            ),
             Expanded(
               child: PanelScrollbar(
                 controller: _verticalController,
@@ -214,8 +252,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     _StoryboardRuler(
                                       width: contentWidth,
                                       totalFrames: totalFrames,
-                                      timelineScale:
-                                          StoryboardPanel._timelineScale,
+                                      timelineScale: scale,
                                       onSeekGlobalFrame:
                                           widget.onSeekGlobalFrame,
                                     ),
@@ -236,8 +273,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         onCutSelected: widget.onCutSelected,
                                         onCutReordered: widget.onCutReordered,
                                         thumbnailFor: widget.thumbnailFor,
-                                        timelineScale:
-                                            StoryboardPanel._timelineScale,
+                                        timelineScale: scale,
                                       ),
                                   ],
                                 ),
@@ -246,10 +282,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     key: const ValueKey<String>(
                                       'storyboard-playhead',
                                     ),
-                                    left:
-                                        StoryboardPanel._timelineScale
-                                            .leftForFrame(playheadFrame) -
-                                        1,
+                                    left: scale.leftForFrame(playheadFrame) - 1,
                                     top: 0,
                                     bottom: 0,
                                     child: const IgnorePointer(
@@ -281,16 +314,49 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 /// The compact cut-management toolbar at the top of the storyboard: the
 /// storyboard owns the cut lifecycle, so new/rename/note/canvas/duplicate/
 /// move/delete live here (icon-only with tooltips, acting on the active
-/// cut).
+/// cut). The frame-zoom cluster sits at the right edge.
 class _StoryboardCutActionsToolbar extends StatelessWidget {
-  const _StoryboardCutActionsToolbar({required this.panel});
+  const _StoryboardCutActionsToolbar({
+    required this.panel,
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
 
   final StoryboardPanel panel;
+  final VoidCallback? onZoomIn;
+  final VoidCallback? onZoomOut;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 32,
+      child: Row(
+        children: [
+          Expanded(
+            child: panel._hasCutActions
+                ? _cutActionsScroller()
+                : const SizedBox.shrink(),
+          ),
+          _CutActionButton(
+            key: const ValueKey<String>('storyboard-zoom-out-button'),
+            tooltip: 'Zoom Out',
+            icon: Icons.zoom_out,
+            onPressed: onZoomOut,
+          ),
+          _CutActionButton(
+            key: const ValueKey<String>('storyboard-zoom-in-button'),
+            tooltip: 'Zoom In',
+            icon: Icons.zoom_in,
+            onPressed: onZoomIn,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cutActionsScroller() {
+    return Align(
+      alignment: Alignment.centerLeft,
       child: SingleChildScrollView(
         key: const ValueKey<String>('storyboard-cut-actions'),
         scrollDirection: Axis.horizontal,
@@ -444,13 +510,20 @@ class _StoryboardRulerPainter extends CustomPainter {
     required this.labelStyle,
   });
 
-  static const int _labelEveryFrames = 12;
-  static const int _minorTickEveryFrames = 4;
-
   final int totalFrames;
   final double pixelsPerFrame;
   final Color tickColor;
   final TextStyle? labelStyle;
+
+  /// Smallest multiple of 12 frames whose label spacing stays readable
+  /// (≥72px) at the current zoom.
+  int get _labelEveryFrames {
+    var every = 12;
+    while (every * pixelsPerFrame < 72) {
+      every += 12;
+    }
+    return every;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -464,12 +537,14 @@ class _StoryboardRulerPainter extends CustomPainter {
       tickPaint,
     );
 
-    for (var frame = 0; frame <= totalFrames; frame += _minorTickEveryFrames) {
+    final labelEveryFrames = _labelEveryFrames;
+    final minorTickEveryFrames = labelEveryFrames ~/ 3;
+    for (var frame = 0; frame <= totalFrames; frame += minorTickEveryFrames) {
       final x = frame * pixelsPerFrame;
       if (x > size.width) {
         break;
       }
-      final isLabeled = frame % _labelEveryFrames == 0;
+      final isLabeled = frame % labelEveryFrames == 0;
       canvas.drawLine(
         Offset(x, size.height - (isLabeled ? 10 : 5)),
         Offset(x, size.height - 1),
@@ -746,7 +821,10 @@ class _StoryboardCutBlock extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (showThumbnail) ...[
+              // Zoomed-out blocks are too narrow for the fixed-width thumb;
+              // the flexible texts just ellipsize.
+              if (showThumbnail &&
+                  width >= _StoryboardCutBlock._thumbnailWidth + 28) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(3),
                   child: SizedBox(
@@ -790,15 +868,17 @@ class _StoryboardCutBlock extends StatelessWidget {
                     const SizedBox(height: 1),
                     Row(
                       children: [
-                        Text(
-                          '${layoutEntry.duration}f',
-                          key: ValueKey<String>(
-                            'storyboard-cut-duration-${cut.id.value}',
+                        Flexible(
+                          child: Text(
+                            '${layoutEntry.duration}f',
+                            key: ValueKey<String>(
+                              'storyboard-cut-duration-${cut.id.value}',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: Theme.of(context).textTheme.labelSmall,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          softWrap: false,
-                          style: Theme.of(context).textTheme.labelSmall,
                         ),
                         const SizedBox(width: 4),
                         Expanded(

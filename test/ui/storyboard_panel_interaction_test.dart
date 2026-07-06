@@ -442,6 +442,130 @@ void main() {
       );
     });
 
+    testWidgets('zoom buttons rescale blocks, ruler and playhead', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        playheadGlobalFrame: 24,
+      );
+
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final playhead = find.byKey(
+        const ValueKey<String>('storyboard-playhead'),
+      );
+      expect(tester.getSize(blockA).width, 24 * 8);
+      expect(tester.widget<Positioned>(playhead).left, 24 * 8 - 1);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-in-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(blockA).width, 24 * 16);
+      expect(tester.widget<Positioned>(playhead).left, 24 * 16 - 1);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(blockA).width, 24 * 4);
+    });
+
+    testWidgets('zoom-out keeps blocks frame-linear (no overlap)', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      // Two zoom-outs: 24-frame cuts at 2px/frame are 48px wide — far
+      // below the old 96px minimum that made neighbours overlap.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+
+      final rightOfA = tester
+          .getTopRight(
+            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
+          )
+          .dx;
+      final leftOfB = tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
+          )
+          .dx;
+      expect(rightOfA, lessThanOrEqualTo(leftOfB));
+
+      // Fully zoomed out: the out button disables.
+      final zoomOut = tester.widget<IconButton>(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('storyboard-zoom-out-button'),
+          ),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(zoomOut.onPressed, isNull);
+    });
+
+    testWidgets('narrow blocks drop the thumbnail slot', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        thumbnailFor: (_) => null,
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('tap-to-select still works when dragging is enabled', (
       tester,
     ) async {
