@@ -19,6 +19,7 @@ class CutListBar extends StatelessWidget {
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
+    this.onResizeActiveCutCanvas,
     this.onDuplicateActiveCut,
     this.onMoveActiveCutLeft,
     this.onMoveActiveCutRight,
@@ -31,6 +32,7 @@ class CutListBar extends StatelessWidget {
   final VoidCallback? onNewCut;
   final VoidCallback? onRenameActiveCut;
   final VoidCallback? onEditActiveCutNote;
+  final VoidCallback? onResizeActiveCutCanvas;
   final VoidCallback? onDuplicateActiveCut;
   final VoidCallback? onMoveActiveCutLeft;
   final VoidCallback? onMoveActiveCutRight;
@@ -93,6 +95,12 @@ class CutListBar extends StatelessWidget {
                 onPressed: onEditActiveCutNote,
               ),
               _CutCommandIconButton(
+                key: const ValueKey<String>('resize-cut-canvas-button'),
+                tooltip: 'Canvas Size',
+                icon: Icons.aspect_ratio,
+                onPressed: onResizeActiveCutCanvas,
+              ),
+              _CutCommandIconButton(
                 key: const ValueKey<String>('duplicate-cut-button'),
                 tooltip: 'Duplicate Cut',
                 icon: Icons.content_copy,
@@ -127,6 +135,7 @@ class CutListBar extends StatelessWidget {
       onNewCut != null ||
       onRenameActiveCut != null ||
       onEditActiveCutNote != null ||
+      onResizeActiveCutCanvas != null ||
       onDuplicateActiveCut != null ||
       onMoveActiveCutLeft != null ||
       onMoveActiveCutRight != null ||

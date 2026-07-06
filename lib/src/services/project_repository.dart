@@ -1,3 +1,4 @@
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
@@ -153,6 +154,23 @@ class ProjectRepository {
         project,
         cutId,
         (cut) => cut.copyWith(name: name),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void updateCutCanvasSize({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(canvasSize: canvasSize),
       );
       if (next == null) {
         throw StateError('Cut not found: $cutId');

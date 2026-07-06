@@ -1,4 +1,6 @@
+import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
+import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -21,6 +23,7 @@ import 'duplicate_cut_command.dart';
 import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
+import 'resize_cut_canvas_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_name_command.dart';
@@ -37,7 +40,11 @@ class CutCommandCoordinator {
   final EditingSessionState editingSession;
   final HistoryManager historyManager;
 
-  void createCut({required TrackId trackId, String name = 'New Cut'}) {
+  void createCut({
+    required TrackId trackId,
+    String name = 'New Cut',
+    CanvasSize? canvasSize,
+  }) {
     final project = repository.requireProject();
     final plan = planCreateCutCommandInput(project);
 
@@ -49,6 +56,30 @@ class CutCommandCoordinator {
         cutId: plan.cutId,
         layerId: plan.layerId,
         name: name,
+        canvasSize: canvasSize ?? defaultCutCanvasSize,
+      ),
+    );
+  }
+
+  void resizeCutCanvas({required CutId cutId, required CanvasSize canvasSize}) {
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) {
+      throw ArgumentError.value(
+        canvasSize,
+        'canvasSize',
+        'Canvas size must be positive.',
+      );
+    }
+
+    final cut = _requireCut(cutId);
+    if (cut.canvasSize == canvasSize) {
+      return;
+    }
+
+    historyManager.execute(
+      ResizeCutCanvasCommand(
+        repository: repository,
+        cutId: cutId,
+        canvasSize: canvasSize,
       ),
     );
   }

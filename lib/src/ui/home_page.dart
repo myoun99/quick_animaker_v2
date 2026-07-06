@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
+import '../models/canvas_size.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
+import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
@@ -12,6 +14,7 @@ import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_orientation.dart';
@@ -89,6 +92,19 @@ class _HomePageState extends State<HomePage> {
     _session.renameActiveCut(nextName);
   }
 
+  Future<void> _resizeActiveCutCanvas() async {
+    final nextSize = await showDialog<CanvasSize>(
+      context: context,
+      builder: (context) =>
+          CanvasSizeDialog(initialSize: _session.activeCut.canvasSize),
+    );
+    if (!mounted || nextSize == null) {
+      return;
+    }
+
+    _session.resizeActiveCutCanvas(nextSize);
+  }
+
   Future<void> _deleteActiveLayer() async {
     final activeLayer = _session.activeLayer;
     if (activeLayer == null || !_session.canDeleteActiveLayer) {
@@ -162,13 +178,14 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: Scrollbar(
+            child: PanelScrollbar(
               controller: _topToolbarScrollController,
               child: SingleChildScrollView(
                 key: const ValueKey<String>('top-toolbar-scroll-view'),
                 controller: _topToolbarScrollController,
                 scrollDirection: Axis.horizontal,
                 primary: false,
+                padding: const EdgeInsets.only(bottom: panelScrollbarGutter),
                 child: Row(
                   key: const ValueKey<String>('top-toolbar-row'),
                   children: [
@@ -178,6 +195,7 @@ class _HomePageState extends State<HomePage> {
                       onNewCut: _session.createCut,
                       onRenameActiveCut: _renameActiveCut,
                       onEditActiveCutNote: _editActiveCutNote,
+                      onResizeActiveCutCanvas: _resizeActiveCutCanvas,
                       onDuplicateActiveCut: _session.duplicateActiveCut,
                       onMoveActiveCutLeft: _session.canMoveActiveCutLeft
                           ? _session.moveActiveCutLeft

@@ -67,7 +67,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     super.didUpdateWidget(oldWidget);
     _frameKeys = _resolveFrameKeys();
     if (widget.canvasSize != oldWidget.canvasSize) {
-      _coordinator = null;
+      // Keep the coordinator (and with it the paint commands and undo
+      // history); it rebuilds the session surfaces at the new size from the
+      // durable commands.
+      _coordinator?.resizeCanvas(widget.canvasSize);
     }
     _selectResolvedFrame();
   }

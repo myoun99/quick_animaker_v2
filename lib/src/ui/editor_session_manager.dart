@@ -7,6 +7,7 @@ import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -143,7 +144,21 @@ class EditorSessionManager extends ChangeNotifier {
   // --- Cut commands -------------------------------------------------------
 
   void createCut() {
-    _cutCommandCoordinator.createCut(trackId: activeCutTrackId);
+    _cutCommandCoordinator.createCut(
+      trackId: activeCutTrackId,
+      // New cuts inherit the active cut's canvas size, like new scenes in
+      // TVPaint/Clip Studio inherit the project size.
+      canvasSize: activeCutOrNull?.canvasSize,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void resizeActiveCutCanvas(CanvasSize canvasSize) {
+    _cutCommandCoordinator.resizeCutCanvas(
+      cutId: _editingSession.activeCutId,
+      canvasSize: canvasSize,
+    );
     _refreshAfterCutCommand();
     notifyListeners();
   }

@@ -49,6 +49,12 @@ class BrushFrameStore {
     return cache != null && cache.isValid ? cache.previewSurface : null;
   }
 
+  /// Drops every derived display cache, e.g. after a canvas resize makes the
+  /// cached preview surfaces the wrong size. Source paint commands are kept.
+  void clearDisplayCaches() {
+    _displayCaches.clear();
+  }
+
   BrushFrameDisplayCache storeRebuiltDisplayCache({
     required BrushFrameKey key,
     required BitmapSurface previewSurface,
