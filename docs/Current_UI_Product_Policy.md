@@ -45,7 +45,7 @@ Phase 303 establishes the first long-term editor panel frame direction. Reusable
 
 The right-side `EditorPanelDock` is the first durable panel dock direction, not a full docking framework. It should remain compact editor UI and must not add drag-to-dock, floating panels, workspace persistence, source-data changes, save/load schema changes, or broad app-wide state management unless a later phase explicitly designs those systems.
 
-`BrushSettingsPanel` is now the primary editable brush settings UI. `BrushCanvasPanel` should stay focused on the canvas viewport, panbars, zoom/fit/reset controls, and drawing input. Do not reintroduce duplicate editable brush settings into the canvas panel or route brush setting mutation callbacks through the canvas/host layer.
+The right dock stacks `BrushPresetPanel` ("Brushes" — the preset library list with tip previews, import, save, delete) above `BrushSettingsPanel` (the editable tool properties). This is the Clip-Studio-like list/properties split; future panels (for example a tool panel) join the same dock as additional `EditorPanelFrame` children. `BrushSettingsPanel` remains the only editable brush settings UI. `BrushCanvasPanel` should stay focused on the canvas viewport, panbars, zoom/fit/reset controls, and drawing input. Do not reintroduce duplicate editable brush settings into the canvas panel or route brush setting mutation callbacks through the canvas/host layer.
 
 This is a Photoshop-like panel and brush-settings structure, but it is not Photoshop ABR compatibility and does not claim exact Photoshop brush engine parity.
 

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_dock.dart';
@@ -36,12 +34,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('right dock can host BrushSettingsPanel', (tester) async {
+  testWidgets('right dock hosts the preset and settings panels', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: EditorPanelDock(
             children: [
+              const BrushPresetPanel(presets: []),
               BrushSettingsPanel(
                 state: BrushToolState.defaults,
                 onChanged: (_) {},
@@ -56,6 +57,7 @@ void main() {
       find.byKey(const ValueKey<String>('editor-panel-dock-right')),
       findsOneWidget,
     );
+    expect(find.text('Brushes'), findsOneWidget);
     expect(find.text('Brush Settings'), findsOneWidget);
   });
 
@@ -153,115 +155,6 @@ void main() {
     expect(inputSettings.tipShape, BrushTipShape.square);
   });
 
-  testWidgets('BrushSettingsPanel applies, saves, and deletes presets', (
-    tester,
-  ) async {
-    final calligraphy = BrushPreset(
-      id: const BrushPresetId('preset-calligraphy'),
-      name: 'Calligraphy',
-      settings: BrushSettings(
-        size: 14,
-        hardness: 0.9,
-        roundness: 0.3,
-        angleDegrees: 45,
-        pressureSize: true,
-      ),
-    );
-    final marker = BrushPreset(
-      id: const BrushPresetId('preset-marker'),
-      name: 'Marker',
-      settings: BrushSettings(size: 16, opacity: 0.7),
-    );
-
-    final applied = <BrushPreset>[];
-    final deleted = <BrushPresetId>[];
-    var saveRequests = 0;
-    var importRequests = 0;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: BrushSettingsPanel(
-              state: BrushToolState.defaults,
-              onChanged: (_) {},
-              presets: [calligraphy, marker],
-              onPresetApplied: applied.add,
-              onPresetSaveRequested: () => saveRequests += 1,
-              onPresetDeleted: deleted.add,
-              onPresetImportRequested: () => importRequests += 1,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    // One chip per preset.
-    expect(
-      find.byKey(const ValueKey<String>('brush-preset-chip-preset-calligraphy')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-preset-chip-preset-marker')),
-      findsOneWidget,
-    );
-
-    // Tapping a chip applies its preset.
-    await tester.tap(find.text('Calligraphy'));
-    await tester.pumpAndSettle();
-    expect(applied.single, calligraphy);
-
-    // The save affordance requests a preset save.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-save-button')),
-    );
-    await tester.pumpAndSettle();
-    expect(saveRequests, 1);
-
-    // The import affordance requests a brush-file import.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-import-button')),
-    );
-    await tester.pumpAndSettle();
-    expect(importRequests, 1);
-
-    // The chip's delete affordance reports the preset id.
-    final markerChip = find.byKey(
-      const ValueKey<String>('brush-preset-chip-preset-marker'),
-    );
-    await tester.tap(
-      find.descendant(
-        of: markerChip,
-        matching: find.byIcon(Icons.close),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(deleted.single, const BrushPresetId('preset-marker'));
-  });
-
-  testWidgets('BrushSettingsPanel hides the preset section when unused', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: BrushSettingsPanel(
-              state: BrushToolState.defaults,
-              onChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('Presets'), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('brush-preset-save-button')),
-      findsNothing,
-    );
-  });
-
   testWidgets('BrushSettingsPanel updates tip roundness and angle', (
     tester,
   ) async {
@@ -288,10 +181,7 @@ void main() {
     await tester.drag(roundnessSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
     expect(state.roundness, lessThan(BrushToolState.defaultRoundness));
-    expect(
-      state.roundness,
-      greaterThanOrEqualTo(BrushToolState.minRoundness),
-    );
+    expect(state.roundness, greaterThanOrEqualTo(BrushToolState.minRoundness));
 
     final angleSlider = find.byKey(
       const ValueKey<String>('brush-tool-angle-slider'),

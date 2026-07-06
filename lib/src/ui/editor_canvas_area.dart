@@ -11,6 +11,7 @@ import '../models/canvas_viewport.dart';
 import '../services/abr/abr_decoder.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/sut/sut_decoder.dart';
+import 'brush/brush_preset_panel.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
@@ -76,6 +77,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       widget.presetFileService ?? BrushPresetFileService();
   List<BrushPreset> _brushPresets = const <BrushPreset>[];
 
+  /// The last-applied (or last-saved) preset, highlighted in the list.
+  /// Tweaking settings keeps the highlight; deleting the preset clears it.
+  BrushPresetId? _activePresetId;
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +94,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   void _applyPreset(BrushPreset preset) {
     setState(() {
       _brushToolState = BrushToolState.fromBrushSettings(preset.settings);
+      _activePresetId = preset.id;
     });
   }
 
@@ -100,6 +106,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
     setState(() {
       _brushPresets = [..._brushPresets, preset];
+      _activePresetId = preset.id;
     });
     _persistPresets();
   }
@@ -110,6 +117,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         for (final preset in _brushPresets)
           if (preset.id != id) preset,
       ];
+      if (_activePresetId == id) {
+        _activePresetId = null;
+      }
     });
     _persistPresets();
   }
@@ -258,17 +268,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         ),
         EditorPanelDock(
           children: [
-            BrushSettingsPanel(
-              state: _brushToolState,
-              onChanged: (state) {
-                setState(() => _brushToolState = state);
-              },
+            BrushPresetPanel(
               presets: _brushPresets,
+              selectedPresetId: _activePresetId,
               onPresetApplied: _applyPreset,
               onPresetSaveRequested: _saveCurrentAsPreset,
               onPresetDeleted: _deletePreset,
               onPresetImportRequested: () {
                 unawaited(_importBrushFile());
+              },
+            ),
+            BrushSettingsPanel(
+              state: _brushToolState,
+              onChanged: (state) {
+                setState(() => _brushToolState = state);
               },
             ),
           ],

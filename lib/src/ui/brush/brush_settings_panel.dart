@@ -1,42 +1,23 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_preset.dart';
-import '../../models/brush_preset_id.dart';
 import '../../models/brush_tip_shape.dart';
 import '../panels/editor_panel_frame.dart';
 import 'brush_tool_color_swatch.dart';
 import 'brush_tool_state.dart';
 
+/// Editable brush tool properties (sliders, tip shape, pressure, color).
+///
+/// The brush library lives in the separate [BrushPresetPanel]; this panel
+/// only mutates the live [BrushToolState].
 class BrushSettingsPanel extends StatelessWidget {
   const BrushSettingsPanel({
     super.key,
     required this.state,
     required this.onChanged,
-    this.presets = const <BrushPreset>[],
-    this.onPresetApplied,
-    this.onPresetSaveRequested,
-    this.onPresetDeleted,
-    this.onPresetImportRequested,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
-
-  /// Saved brush presets shown as chips; tapping one applies its settings.
-  final List<BrushPreset> presets;
-
-  /// Called with the preset whose chip was tapped.
-  final ValueChanged<BrushPreset>? onPresetApplied;
-
-  /// Called when the user asks to save the current settings as a preset.
-  final VoidCallback? onPresetSaveRequested;
-
-  /// Called with the id of the preset whose delete affordance was tapped.
-  final ValueChanged<BrushPresetId>? onPresetDeleted;
-
-  /// Called when the user asks to import brushes (e.g. a Photoshop `.abr`
-  /// file) into the preset library.
-  final VoidCallback? onPresetImportRequested;
 
   static const swatches = <_BrushSwatch>[
     _BrushSwatch('Black', 0xFF000000),
@@ -61,64 +42,6 @@ class BrushSettingsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (presets.isNotEmpty || onPresetSaveRequested != null) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Presets',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-                if (onPresetImportRequested != null)
-                  IconButton(
-                    key: const ValueKey<String>('brush-preset-import-button'),
-                    icon: const Icon(Icons.file_open_outlined, size: 16),
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Import brushes (.abr, .sut, .sutg)',
-                    onPressed: onPresetImportRequested,
-                  ),
-                if (onPresetSaveRequested != null)
-                  IconButton(
-                    key: const ValueKey<String>('brush-preset-save-button'),
-                    icon: const Icon(Icons.add, size: 16),
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Save current settings as preset',
-                    onPressed: onPresetSaveRequested,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                for (final preset in presets)
-                  InputChip(
-                    key: ValueKey<String>(
-                      'brush-preset-chip-${preset.id.value}',
-                    ),
-                    label: Text(preset.name),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    deleteIcon: const Icon(Icons.close, size: 14),
-                    onPressed: onPresetApplied == null
-                        ? null
-                        : () => onPresetApplied!(preset),
-                    onDeleted: onPresetDeleted == null
-                        ? null
-                        : () => onPresetDeleted!(preset.id),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          ],
-          Text(
-            'Size $sizeLabel · Opacity $opacityLabel · Spacing $spacingLabel',
-            key: const ValueKey<String>('brush-tool-current-display'),
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
-          const SizedBox(height: 10),
           _PanelSlider(
             label: 'Size',
             valueLabel: sizeLabel,
