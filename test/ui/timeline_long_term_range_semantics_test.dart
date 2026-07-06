@@ -197,6 +197,8 @@ Widget _panel(_TimelineRangeFixture fixture, {int currentFrameIndex = 0}) {
           onAddLayer: () {},
           onToggleLayerVisibility: (_) {},
           onLayerOpacityChanged: (_, _) {},
+          onToggleLayerTimesheet: (_) {},
+          onLayerMarkSelected: (_, _) {},
           orientation: TimelineOrientation.horizontal,
           onOrientationChanged: (_) {},
         ),

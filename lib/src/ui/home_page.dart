@@ -269,6 +269,8 @@ class _HomePageState extends State<HomePage> {
                 onLayerOpacityChanged: (layerId, opacity) {
                   _session.setLayerOpacity(layerId: layerId, opacity: opacity);
                 },
+                onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+                onLayerMarkSelected: _session.setLayerMark,
                 // Comma edge drags preview live from the session's
                 // drag-start snapshot and commit as ONE undo entry on
                 // release.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -23,6 +24,8 @@ class TimelinePanel extends StatelessWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    required this.onToggleLayerTimesheet,
+    required this.onLayerMarkSelected,
     this.commaDrag,
     this.isFrameCached,
     required this.orientation,
@@ -45,6 +48,8 @@ class TimelinePanel extends StatelessWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
@@ -151,6 +156,8 @@ class TimelinePanel extends StatelessWidget {
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      onToggleLayerTimesheet: onToggleLayerTimesheet,
+                      onLayerMarkSelected: onLayerMarkSelected,
                       commaDrag: commaDrag,
                       isFrameCached: isFrameCached,
                     )
@@ -166,6 +173,8 @@ class TimelinePanel extends StatelessWidget {
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      onToggleLayerTimesheet: onToggleLayerTimesheet,
+                      onLayerMarkSelected: onLayerMarkSelected,
                       commaDrag: commaDrag,
                     ),
             ),

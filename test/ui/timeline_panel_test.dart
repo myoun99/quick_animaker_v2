@@ -415,6 +415,8 @@ Widget _panel({
         onAddLayer: onAddLayer ?? () {},
         onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
         onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
         orientation: orientation,
         onOrientationChanged: onOrientationChanged ?? (_) {},
         timelineActionToolbar: timelineActionToolbar,

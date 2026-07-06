@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -37,6 +38,8 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    required this.onToggleLayerTimesheet,
+    required this.onLayerMarkSelected,
     this.commaDrag,
     this.isFrameCached,
   });
@@ -53,6 +56,8 @@ class LayerTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
@@ -418,6 +423,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     .onToggleLayerVisibility,
                                                 onLayerOpacityChanged: widget
                                                     .onLayerOpacityChanged,
+                                                onToggleLayerTimesheet: widget
+                                                    .onToggleLayerTimesheet,
+                                                onLayerMarkSelected: widget
+                                                    .onLayerMarkSelected,
                                               ),
                                             if (widget.layers.isEmpty)
                                               SizedBox(

@@ -20,6 +20,7 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/timeline_coverage.dart';
 import '../models/track_id.dart';
@@ -939,6 +940,28 @@ class EditorSessionManager extends ChangeNotifier {
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _layerController.setLayerOpacity(layerId: layerId, opacity: opacity);
+    notifyListeners();
+  }
+
+  /// Flips whether [layerId] is recorded on the timesheet output. One undo
+  /// step; no controller rebuild — the flag never affects rendering.
+  void toggleLayerTimesheet(LayerId layerId) {
+    final layer = layers.firstWhere((layer) => layer.id == layerId);
+    _cutCommandCoordinator.setLayerTimesheet(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      onTimesheet: !layer.onTimesheet,
+    );
+    notifyListeners();
+  }
+
+  /// Sets [layerId]'s organizational color mark. One undo step.
+  void setLayerMark(LayerId layerId, LayerMark mark) {
+    _cutCommandCoordinator.setLayerMark(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      mark: mark,
+    );
     notifyListeners();
   }
 

@@ -284,6 +284,8 @@ Widget _xsheetHarness({
         onAddLayer: () {},
         onToggleLayerVisibility: (_) {},
         onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
         commaDrag: commaDrag,
       ),
     ),

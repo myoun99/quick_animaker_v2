@@ -128,6 +128,8 @@ Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {
           onAddLayer: () {},
           onToggleLayerVisibility: (_) {},
           onLayerOpacityChanged: (_, _) {},
+          onToggleLayerTimesheet: (_) {},
+          onLayerMarkSelected: (_, _) {},
         ),
       ),
     ),

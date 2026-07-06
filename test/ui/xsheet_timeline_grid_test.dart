@@ -4,6 +4,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
@@ -71,6 +72,46 @@ void main() {
 
     expect(changedLayerId, const LayerId('layer-1'));
     expect(changedOpacity, isNotNull);
+  });
+
+  testWidgets('timesheet toggle calls callback from the header', (
+    tester,
+  ) async {
+    LayerId? toggledLayerId;
+
+    await tester.pumpWidget(
+      _grid(onToggleLayerTimesheet: (layerId) => toggledLayerId = layerId),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('xsheet-layer-timesheet-layer-2')),
+    );
+
+    expect(toggledLayerId, const LayerId('layer-2'));
+  });
+
+  testWidgets('mark chip popup reports the selected mark', (tester) async {
+    LayerId? markedLayerId;
+    LayerMark? selectedMark;
+
+    await tester.pumpWidget(
+      _grid(
+        onLayerMarkSelected: (layerId, mark) {
+          markedLayerId = layerId;
+          selectedMark = mark;
+        },
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('xsheet-layer-mark-layer-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-mark-option-red')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(markedLayerId, const LayerId('layer-1'));
+    expect(selectedMark, LayerMark.red);
   });
 
   testWidgets('renders frame rows and cells', (tester) async {
@@ -526,6 +567,8 @@ Widget _grid({
   VoidCallback? onAddLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
+  ValueChanged<LayerId>? onToggleLayerTimesheet,
+  void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
 }) {
   return MaterialApp(
@@ -547,6 +590,8 @@ Widget _grid({
           onAddLayer: onAddLayer ?? () {},
           onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
           onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+          onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
+          onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
         ),
       ),
     ),

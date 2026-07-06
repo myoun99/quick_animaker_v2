@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
+import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
 class TimelineLayerControlsRow extends StatelessWidget {
@@ -14,6 +16,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    required this.onToggleLayerTimesheet,
+    required this.onLayerMarkSelected,
     this.sectionStart = false,
   });
 
@@ -23,6 +27,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Whether this row opens a new timesheet section (drawing/SE/camera);
   /// draws a heavier divider along the rail row's top edge.
@@ -56,6 +62,28 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
+              // Timesheet + mark chips lead the label; ineligible rows keep
+              // empty slots so kind icons and names stay column-aligned.
+              if (layer.kind == LayerKind.animation)
+                LayerTimesheetToggleButton(
+                  keyPrefix: 'timeline',
+                  layerId: layer.id,
+                  onTimesheet: layer.onTimesheet,
+                  onToggle: onToggleLayerTimesheet,
+                )
+              else
+                const SizedBox(width: layerTimesheetSlotWidth),
+              const SizedBox(width: 4),
+              if (layer.kind != LayerKind.camera)
+                LayerMarkChip(
+                  keyPrefix: 'timeline',
+                  layerId: layer.id,
+                  mark: layer.mark,
+                  onMarkSelected: onLayerMarkSelected,
+                )
+              else
+                const SizedBox(width: layerMarkSlotWidth),
+              const SizedBox(width: 6),
               Expanded(
                 child: InkWell(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),

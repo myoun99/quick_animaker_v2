@@ -280,7 +280,7 @@ void main() {
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(220));
+    expect(leftSpacerRect.width, moreOrLessEquals(264));
     expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
     expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
     expect(verticalSlotRect.width, moreOrLessEquals(14));
@@ -713,7 +713,12 @@ void main() {
   testWidgets('displays playback frames plus safety work-area frames', (
     tester,
   ) async {
-    await tester.pumpWidget(_grid(playbackFrameCount: 24));
+    // Same frame-viewport width as when the rail was 220px wide, so the
+    // scroll offsets below keep exercising the same frame windows.
+    await tester.binding.setSurfaceSize(const Size(944, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_grid(playbackFrameCount: 24, width: 944));
 
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-0')),
@@ -2041,8 +2046,14 @@ void main() {
   testWidgets('authored outside-playback selected range remains outlined', (
     tester,
   ) async {
+    // Same frame-viewport width as when the rail was 220px wide, so cells
+    // 28-32 stay materialized together once 28 scrolls into view.
+    await tester.binding.setSurfaceSize(const Size(944, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(
       _grid(
+        width: 944,
         currentFrameIndex: 28,
         playbackFrameCount: 24,
         exposureStateForLayer: (layer, frameIndex) {
@@ -2372,6 +2383,8 @@ Widget _grid({
           onAddLayer: onAddLayer ?? () {},
           onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
           onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+          onToggleLayerTimesheet: (_) {},
+          onLayerMarkSelected: (_, _) {},
         ),
       ),
     ),

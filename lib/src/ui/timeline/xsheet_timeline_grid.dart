@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
+import 'layer_label_controls.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -49,6 +51,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    required this.onToggleLayerTimesheet,
+    required this.onLayerMarkSelected,
     this.commaDrag,
   });
 
@@ -67,6 +71,8 @@ class XSheetTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -418,6 +424,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               widget.onToggleLayerVisibility,
                                           onLayerOpacityChanged:
                                               widget.onLayerOpacityChanged,
+                                          onToggleLayerTimesheet:
+                                              widget.onToggleLayerTimesheet,
+                                          onLayerMarkSelected:
+                                              widget.onLayerMarkSelected,
                                         ),
                                     ],
                                   ),
@@ -826,6 +836,8 @@ class _LayerHeader extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    required this.onToggleLayerTimesheet,
+    required this.onLayerMarkSelected,
     this.sectionStart = false,
   });
 
@@ -834,6 +846,8 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the header's left edge.
@@ -866,20 +880,48 @@ class _LayerHeader extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              InkWell(
-                key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
-                onTap: () => onSelectLayer(layer.id),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Text(
-                    layer.name,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontWeight: active ? FontWeight.bold : null,
+              Row(
+                children: [
+                  // Timesheet + mark chips lead the name; ineligible layers
+                  // keep empty slots so names align across columns.
+                  if (layer.kind == LayerKind.animation)
+                    LayerTimesheetToggleButton(
+                      keyPrefix: 'xsheet',
+                      layerId: layer.id,
+                      onTimesheet: layer.onTimesheet,
+                      onToggle: onToggleLayerTimesheet,
+                    )
+                  else
+                    const SizedBox(width: layerTimesheetSlotWidth),
+                  const SizedBox(width: 4),
+                  if (layer.kind != LayerKind.camera)
+                    LayerMarkChip(
+                      keyPrefix: 'xsheet',
+                      layerId: layer.id,
+                      mark: layer.mark,
+                      onMarkSelected: onLayerMarkSelected,
+                    )
+                  else
+                    const SizedBox(width: layerMarkSlotWidth),
+                  Expanded(
+                    child: InkWell(
+                      key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
+                      onTap: () => onSelectLayer(layer.id),
+                      child: Text(
+                        layer.name,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: active ? FontWeight.bold : null,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  // Balance the leading chips so the name stays centered.
+                  const SizedBox(
+                    width: layerTimesheetSlotWidth + layerMarkSlotWidth + 4,
+                  ),
+                ],
               ),
               Row(
                 children: [

@@ -7,7 +7,7 @@ class TimelineGridMetrics {
 
   const TimelineGridMetrics({
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
-    this.layerControlsWidth = 220,
+    this.layerControlsWidth = 264,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,
     this.verticalScrollbarWidth = 14,

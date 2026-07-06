@@ -11,6 +11,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
@@ -31,7 +32,9 @@ import 'resize_cut_canvas_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_layer_kind_command.dart';
+import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
+import 'update_layer_timesheet_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
 class CutCommandCoordinator {
@@ -269,6 +272,51 @@ class CutCommandCoordinator {
     );
 
     return plan.layer.id;
+  }
+
+  void setLayerTimesheet({
+    required CutId cutId,
+    required LayerId layerId,
+    required bool onTimesheet,
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind == LayerKind.camera) {
+      throw StateError(
+        'The camera layer is always recorded on the timesheet.',
+      );
+    }
+    if (layer.onTimesheet == onTimesheet) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerTimesheetCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        onTimesheet: onTimesheet,
+      ),
+    );
+  }
+
+  void setLayerMark({
+    required CutId cutId,
+    required LayerId layerId,
+    required LayerMark mark,
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.mark == mark) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerMarkCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        mark: mark,
+      ),
+    );
   }
 
   void updateLayerKind({

@@ -5,6 +5,7 @@ import 'frame.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'layer_mark.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_exposure_type.dart';
@@ -23,6 +24,8 @@ class Layer {
     this.isVisible = true,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
+    this.onTimesheet = true,
+    this.mark = LayerMark.none,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames));
 
@@ -34,6 +37,14 @@ class Layer {
   final double opacity;
   final LayerKind kind;
 
+  /// Whether this layer's exposures are recorded on the timesheet output
+  /// (preview/export). Only meaningful for cel layers — the camera track has
+  /// its own sheet column regardless.
+  final bool onTimesheet;
+
+  /// Organizational color label; see [LayerMark].
+  final LayerMark mark;
+
   Layer copyWith({
     LayerId? id,
     String? name,
@@ -42,6 +53,8 @@ class Layer {
     bool? isVisible,
     double? opacity,
     LayerKind? kind,
+    bool? onTimesheet,
+    LayerMark? mark,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -52,6 +65,8 @@ class Layer {
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
+      onTimesheet: onTimesheet ?? this.onTimesheet,
+      mark: mark ?? this.mark,
     );
   }
 
@@ -65,6 +80,8 @@ class Layer {
     'isVisible': isVisible,
     'opacity': opacity,
     'kind': kind.toJson(),
+    'onTimesheet': onTimesheet,
+    'mark': mark.toJson(),
   };
 
   factory Layer.fromJson(Map<String, dynamic> json) {
@@ -87,6 +104,12 @@ class Layer {
       kind: json.containsKey('kind')
           ? LayerKind.fromJson(json['kind'])
           : LayerKind.animation,
+      onTimesheet: json.containsKey('onTimesheet')
+          ? json['onTimesheet'] as bool
+          : true,
+      mark: json.containsKey('mark')
+          ? LayerMark.fromJson(json['mark'])
+          : LayerMark.none,
     );
   }
 
@@ -100,7 +123,9 @@ class Layer {
           mapEquals(other.timeline, timeline) &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
-          other.kind == kind;
+          other.kind == kind &&
+          other.onTimesheet == onTimesheet &&
+          other.mark == mark;
 
   @override
   int get hashCode => Object.hash(
@@ -113,12 +138,15 @@ class Layer {
     isVisible,
     opacity,
     kind,
+    onTimesheet,
+    mark,
   );
 
   @override
   String toString() =>
       'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, '
-      'isVisible: $isVisible, opacity: $opacity, kind: $kind)';
+      'isVisible: $isVisible, opacity: $opacity, kind: $kind, '
+      'onTimesheet: $onTimesheet, mark: $mark)';
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(
