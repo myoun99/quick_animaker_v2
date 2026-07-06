@@ -174,6 +174,21 @@ BrushSettings _settingsFromVariant(
   final pressureOpacity =
       _effectorUsesPressure(variant['BrushOpacityEffector']) ||
       _effectorUsesPressure(variant['BrushFlowEffector']);
+  final minimumSizeRatio = pressureSize
+      ? _effectorMinimumRatio(variant['BrushSizeEffector'])
+      : 0.0;
+
+  // Spray mode scatters dabs around the stroke; the spray size is a
+  // percentage of the brush size (its diameter), so the radius is half.
+  var scatterRadiusRatio = 0.0;
+  var scatterCount = 1;
+  if (_intOf(variant['BrushUseSpray']) == 1) {
+    final spraySize = _doubleOf(variant['BrushSpraySize']) ?? 0.0;
+    scatterRadiusRatio = spraySize.isFinite
+        ? (spraySize / 100.0 / 2.0).clamp(0.0, 10.0).toDouble()
+        : 0.0;
+    scatterCount = (_intOf(variant['BrushSprayDensity']) ?? 1).clamp(1, 16);
+  }
 
   return BrushSettings(
     size: size.isFinite && size > 0 ? size : 24,
@@ -188,6 +203,9 @@ BrushSettings _settingsFromVariant(
     pressureSize: pressureSize,
     pressureOpacity: pressureOpacity,
     tipMask: mask,
+    minimumSizeRatio: minimumSizeRatio,
+    scatterRadiusRatio: scatterRadiusRatio,
+    scatterCount: scatterCount,
   );
 }
 
@@ -200,6 +218,16 @@ bool _effectorUsesPressure(Object? blob) {
   }
   final flags = ByteData.sublistView(blob).getInt32(8);
   return (flags & 0x10) != 0;
+}
+
+/// The effector's minimum-output percentage (byte offset 12) — Clip
+/// Studio's 최소치 slider, the pressure floor for the affected value.
+double _effectorMinimumRatio(Object? blob) {
+  if (blob is! Uint8List || blob.length < 16) {
+    return 0.0;
+  }
+  final minimum = ByteData.sublistView(blob).getInt32(12);
+  return (minimum / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
 Future<BrushTipMask?> _tipMaskFromPatternArray(

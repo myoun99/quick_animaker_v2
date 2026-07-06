@@ -141,7 +141,17 @@ Layout: `Node` rows are the tools (NodeName, NodeUuid -> preset id `sut-<uuid he
 
 Tip bitmaps: when the brush was exported with materials, `MaterialFile.FileData` holds a CSP material archive containing PNGs — the LARGEST PNG is the tip image (smaller ones are thumbnails; PNG boundaries walked chunk-by-chunk to IEND). The join goes through `BrushPatternImageArray`, whose catalog paths are UTF-16 **little-endian** (the decoder scans both byte orders). Coverage = alpha shaped by inverted luminance (black-on-transparent and black-on-white tips both resolve; all-zero results fall back to the alpha channel). Tips longer than 256px are bilinearly downscaled, then padded to the centered square the engine requires. Missing/unmatched materials degrade to a round tip with a warning — never a failed import.
 
-Unmapped CSP features (by design for now): watercolor mixing, spray/scatter, dual brush, paper texture overlay, in/out taper.
+Unmapped CSP features (by design for now): watercolor mixing, dual brush, paper texture overlay, in/out taper.
+
+## Placement-time stroke dynamics (P20)
+
+`BrushStrokeDynamics` (`services/brush_stroke_dynamics.dart`) applies scatter, size/opacity/angle jitter, and direction-following tip rotation when dabs are GENERATED (in the interactive view, after interpolation and pressure scaling). The emitted dabs carry their final randomized values; committed source dabs remain the durable source of truth, so commit/undo/redo replay exactly the on-screen pixels — the rasterizers and their parity guarantees are untouched, and randomness is safe by construction. Interpolation anchors on the UNTRANSFORMED base chain (`_previousBaseDab`), never on scattered dabs, so spacing does not wander.
+
+Settings fields on `BrushSettings`/`InputSettings`/`BrushToolState` (no panel controls yet, pending the UI pass — values arrive via presets/imports): `rotationMode` (fixed | direction; direction adds the stroke's visual-CCW direction to `angleDegrees`), `minimumSizeRatio` (pressure size floor: `size * (min + (1-min)*pressure)` — Photoshop minimum diameter / CSP 최소치), `sizeJitter`/`opacityJitter` (random reduction, 0..1), `angleJitter` (0..1 of ±180°), `scatterRadiusRatio` (of dab size; 0 = off), `scatterCount` (1..16), `scatterBothAxes` (false = perpendicular to the stroke only).
+
+Import mappings (ground truth from real files via `tool/abr_inspect.dart` / `tool/sut_inspect.dart`):
+- ABR (preset-level, gated by `useTipDynamics`/`usePaintDynamics`): `brVr` control `bVTy` 2 = pen pressure -> pressureSize (szVr) / pressureOpacity (opVr or prVr); `jitter`% -> the matching jitter; `minimumDiameter`% -> minimumSizeRatio; `angleDynamics` control 6/7 -> direction rotation; `useScatter` + `scatterDynamics.jitter`% (up to 1000) -> scatterRadiusRatio, `Cnt ` -> count, `bothAxes`.
+- CSP: size-effector minimum (int32 at blob offset 12, percent) -> minimumSizeRatio; `BrushUseSpray` -> scatter (`BrushSpraySize`% is the spray-area diameter relative to brush size, so radius ratio = /100/2; `BrushSprayDensity` -> count).
 
 ## Pen pressure dynamics (P14)
 

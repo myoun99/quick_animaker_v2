@@ -24,11 +24,12 @@ void main() {
     }
   });
 
-  Uint8List effector(int flags) {
-    final bytes = ByteData(12)
+  Uint8List effector(int flags, {int minimumPercent = 0}) {
+    final bytes = ByteData(16)
       ..setInt32(0, 44)
       ..setInt32(4, 0xf0)
-      ..setInt32(8, flags);
+      ..setInt32(8, flags)
+      ..setInt32(12, minimumPercent);
     return bytes.buffer.asUint8List();
   }
 
@@ -74,7 +75,9 @@ void main() {
         BrushHardness INTEGER, BrushInterval REAL, BrushThickness INTEGER,
         BrushRotation REAL, BrushUsePatternImage INTEGER,
         BrushPatternImageArray BLOB, BrushSizeEffector BLOB,
-        BrushOpacityEffector BLOB, BrushFlowEffector BLOB);
+        BrushOpacityEffector BLOB, BrushFlowEffector BLOB,
+        BrushUseSpray INTEGER, BrushSpraySize REAL,
+        BrushSprayDensity INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -97,9 +100,16 @@ void main() {
       'INSERT INTO Variant(VariantID, Opacity, BrushSize, BrushFlow, '
       'BrushHardness, BrushInterval, BrushThickness, BrushRotation, '
       'BrushUsePatternImage, BrushPatternImageArray, BrushSizeEffector, '
-      'BrushOpacityEffector, BrushFlowEffector) '
-      'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?)',
-      [patternArray(catalogPath), effector(0x10), effector(0x00), effector(0x30)],
+      'BrushOpacityEffector, BrushFlowEffector, BrushUseSpray, '
+      'BrushSpraySize, BrushSprayDensity) '
+      'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
+      '1, 200.0, 4)',
+      [
+        patternArray(catalogPath),
+        effector(0x10, minimumPercent: 59),
+        effector(0x00),
+        effector(0x30),
+      ],
     );
     // Round brush without pattern data.
     database.execute(
@@ -169,6 +179,10 @@ void main() {
     expect(s.angleDegrees, closeTo(20.0, 1e-9)); // 200 normalized into 0-180
     expect(s.pressureSize, isTrue); // effector flag 0x10
     expect(s.pressureOpacity, isTrue); // via the flow effector's 0x30
+    expect(s.minimumSizeRatio, closeTo(0.59, 1e-9)); // effector minimum 59%
+    // Spray maps to scatter: 200% spray size -> radius ratio 1.0.
+    expect(s.scatterRadiusRatio, closeTo(1.0, 1e-9));
+    expect(s.scatterCount, 4);
 
     // The larger PNG is the tip (the 2x2 one is a thumbnail); 6x4 pads to
     // a centered 6x6 square, black-opaque pixels become full coverage.
