@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_tip_preview.dart';
 
 BrushPreset _calligraphy() {
   return BrushPreset(
@@ -77,7 +78,7 @@ Future<void> _pumpPanel(
 }
 
 void main() {
-  testWidgets('renders one row per preset with a stroke preview', (
+  testWidgets('renders icon, stroke preview, and name for every preset', (
     tester,
   ) async {
     await _pumpPanel(tester, presets: [_calligraphy(), _marker(), _sampled()]);
@@ -97,7 +98,9 @@ void main() {
       find.byKey(const ValueKey<String>('brush-preset-chip-preset-sampled')),
       findsOneWidget,
     );
+    expect(find.byType(BrushTipPreview), findsNWidgets(3));
     expect(find.byType(BrushStrokePreview), findsNWidgets(3));
+    expect(find.text('Marker'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -175,7 +178,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final item = tester.widget<PopupMenuItem<String>>(
+    final item = tester.widget<PopupMenuItem<Object?>>(
       find.byKey(const ValueKey<String>('brush-preset-menu-delete')),
     );
     expect(item.enabled, isFalse);
@@ -235,14 +238,90 @@ void main() {
     expect(find.byIcon(Icons.brush_outlined), findsOneWidget);
   });
 
-  testWidgets('hides the options menu when deletion is not wired', (
+  testWidgets('omits the delete item when deletion is not wired', (
     tester,
   ) async {
     await _pumpPanel(tester, presets: [_marker()]);
 
-    expect(
+    await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-view-stroke-toggle')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-menu-delete')),
       findsNothing,
     );
+  });
+
+  testWidgets('view toggles hide the icon, stroke preview, and name', (
+    tester,
+  ) async {
+    Future<void> toggle(String keyValue) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(keyValue)));
+      await tester.pumpAndSettle();
+    }
+
+    await _pumpPanel(tester, presets: [_marker()]);
+    expect(find.byType(BrushTipPreview), findsOneWidget);
+    expect(find.byType(BrushStrokePreview), findsOneWidget);
+    expect(find.text('Marker'), findsOneWidget);
+
+    await toggle('brush-preset-view-icon-toggle');
+    expect(find.byType(BrushTipPreview), findsNothing);
+    expect(find.byType(BrushStrokePreview), findsOneWidget);
+
+    await toggle('brush-preset-view-stroke-toggle');
+    expect(find.byType(BrushStrokePreview), findsNothing);
+    // The name falls back to a plain row label when the stroke is hidden.
+    expect(find.text('Marker'), findsOneWidget);
+
+    await toggle('brush-preset-view-icon-toggle');
+    await toggle('brush-preset-view-name-toggle');
+    expect(find.text('Marker'), findsNothing);
+    expect(find.byType(BrushTipPreview), findsOneWidget);
+  });
+
+  testWidgets('the last visible element cannot be hidden', (tester) async {
+    Future<void> toggle(String keyValue) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey<String>(keyValue)),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await _pumpPanel(tester, presets: [_marker()]);
+    await toggle('brush-preset-view-icon-toggle');
+    await toggle('brush-preset-view-name-toggle');
+
+    // Only the stroke preview is left; its toggle must be disabled.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    final strokeToggle = tester.widget<CheckedPopupMenuItem<Object?>>(
+      find.byKey(const ValueKey<String>('brush-preset-view-stroke-toggle')),
+    );
+    expect(strokeToggle.enabled, isFalse);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-view-stroke-toggle')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(BrushStrokePreview), findsOneWidget);
   });
 }
