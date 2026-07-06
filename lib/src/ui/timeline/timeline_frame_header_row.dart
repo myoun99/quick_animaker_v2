@@ -14,6 +14,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     required this.trailingFrameSpacerWidth,
     required this.metrics,
     required this.onSelectFrame,
+    this.isFrameCached,
   });
 
   final int frameStartIndex;
@@ -24,6 +25,10 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
+
+  /// Whether a frame's playback composite is warmed — drawn as the AE-style
+  /// green cached-range strip along the header's bottom edge.
+  final bool Function(int frameIndex)? isFrameCached;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +49,9 @@ class TimelineFrameHeaderRow extends StatelessWidget {
             frameIndex: frameIndex,
             selected: frameIndex == currentFrameIndex,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
+            cached:
+                frameIndex < playbackFrameCount &&
+                (isFrameCached?.call(frameIndex) ?? false),
             metrics: metrics,
             onSelectFrame: onSelectFrame,
           ),
@@ -62,6 +70,7 @@ class _FrameHeader extends StatelessWidget {
     required this.frameIndex,
     required this.selected,
     required this.outsidePlaybackRange,
+    required this.cached,
     required this.metrics,
     required this.onSelectFrame,
   });
@@ -69,6 +78,7 @@ class _FrameHeader extends StatelessWidget {
   final int frameIndex;
   final bool selected;
   final bool outsidePlaybackRange;
+  final bool cached;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
 
@@ -82,7 +92,6 @@ class _FrameHeader extends StatelessWidget {
       child: Container(
         width: metrics.frameCellWidth,
         height: metrics.layerRowHeight,
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
               ? Color.alphaBlend(
@@ -98,13 +107,29 @@ class _FrameHeader extends StatelessWidget {
                 : colorScheme.outlineVariant,
           ),
         ),
-        child: Text(
-          '${frameIndex + 1}',
-          style: TextStyle(
-            color: outsidePlaybackRange
-                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                : colorScheme.onSurface,
-          ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(
+              '${frameIndex + 1}',
+              style: TextStyle(
+                color: outsidePlaybackRange
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                    : colorScheme.onSurface,
+              ),
+            ),
+            if (cached)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  key: ValueKey<String>('timeline-frame-cached-$frameIndex'),
+                  height: 3,
+                  color: const Color(0xFF54B435),
+                ),
+              ),
+          ],
         ),
       ),
     );

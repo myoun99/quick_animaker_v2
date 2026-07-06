@@ -28,8 +28,10 @@ import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/playback_quality.dart';
+import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
+import 'canvas/canvas_layer_stack_view.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
@@ -521,6 +523,69 @@ class EditorSessionManager extends ChangeNotifier {
     canvasSize: cut.canvasSize,
     frameIndex: frameIndex,
   );
+
+  /// The editing canvas's layer stack at the playhead: which non-active
+  /// layers composite below/above the interactive layer (bottom → top,
+  /// hidden/transparent/undrawn layers skipped) and the active layer's own
+  /// display opacity (0 while hidden).
+  ({
+    List<CanvasLayerImageRequest> below,
+    List<CanvasLayerImageRequest> above,
+    double activeLayerOpacity,
+  })
+  get editingCanvasStack {
+    final cut = activeCutOrNull;
+    final activeLayerId = this.activeLayerId;
+    final below = <CanvasLayerImageRequest>[];
+    final above = <CanvasLayerImageRequest>[];
+    var activeLayerOpacity = 1.0;
+    if (cut == null) {
+      return (below: below, above: above, activeLayerOpacity: 1.0);
+    }
+
+    final frameIndex = _timelineController.currentFrameIndex;
+    var seenActiveLayer = false;
+    for (final layer in cut.layers) {
+      if (layer.id == activeLayerId) {
+        seenActiveLayer = true;
+        activeLayerOpacity = layer.isVisible
+            ? layer.opacity.clamp(0.0, 1.0).toDouble()
+            : 0.0;
+        continue;
+      }
+      if (layer.kind == LayerKind.camera ||
+          !layer.isVisible ||
+          layer.opacity <= 0) {
+        continue;
+      }
+      final frame = resolveExposedFrameAt(layer, frameIndex);
+      if (frame == null) {
+        continue;
+      }
+      (seenActiveLayer ? above : below).add(
+        CanvasLayerImageRequest(
+          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
+          opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
+        ),
+      );
+    }
+    return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+  }
+
+  /// Whether the playback composite for [frameIndex] is warmed at the
+  /// current quality (the timeline's cached-range "green bar").
+  bool isPlaybackFrameCached(int frameIndex) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    return cutFrameCompositeCache.validCompositeOrNull(
+          cut: cut,
+          frameIndex: frameIndex,
+          quality: playbackQuality,
+        ) !=
+        null;
+  }
 
   /// The drawable artwork of one layer frame in the active cut, replayed
   /// from the brush store's paint commands; `null` when nothing is drawn.

@@ -17,6 +17,7 @@ import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'camera/camera_panel.dart';
+import 'canvas/canvas_layer_stack_view.dart';
 import 'editor_session_manager.dart';
 import 'panels/editor_panel_dock.dart';
 import 'playback/canvas_playback_view.dart';
@@ -349,6 +350,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required bool showCameraOverlay,
   }) {
     final isPlaybackActive = session.playback.isActive;
+    final layerStack = session.editingCanvasStack;
+    final showAboveLayers = !isPlaybackActive && layerStack.above.isNotEmpty;
     return RepaintBoundary(
       child: KeyedSubtree(
         key: const ValueKey<String>('main-canvas-brush-host-container'),
@@ -368,18 +371,52 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           },
           selectionLabels: session.canvasSelectionLabels,
           brushToolState: _brushToolState,
+          // Layers below/above the active one composite around the
+          // interactive view from the layer image cache — this is what makes
+          // the other layers (and their visibility/opacity) visible while
+          // editing. During playback the composite covers everything.
+          viewportUnderlayBuilder: isPlaybackActive
+              ? null
+              : (context, viewport) => CanvasLayerStackView(
+                  layers: layerStack.below,
+                  imageCache: session.layerFrameImageCache,
+                  canvasSize: session.activeCut.canvasSize,
+                  viewport: viewport,
+                  paintPaper: true,
+                ),
+          interactiveContentOpacity: layerStack.activeLayerOpacity,
           // The playback view renders the camera framing itself; the editing
           // overlay would show a stale playhead pose on top of it.
-          viewportOverlayBuilder: showCameraOverlay && !isPlaybackActive
-              ? (context, viewport) => CameraFrameOverlay(
-                  pose: session.cameraPoseAtCurrentFrame,
-                  cameraFrameSize: session.cameraFrameSize,
-                  viewport: viewport,
-                  // Dim belongs to camera-view mode; plain
-                  // manipulation keeps the artwork undimmed.
-                  dimOpacity: _cameraViewEnabled ? _cameraDimOpacity : 0,
-                  interactive: isCameraLayerActive,
-                  onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+          viewportOverlayBuilder:
+              (showCameraOverlay || showAboveLayers) && !isPlaybackActive
+              ? (context, viewport) => Stack(
+                  children: [
+                    if (showAboveLayers)
+                      Positioned.fill(
+                        child: CanvasLayerStackView(
+                          layers: layerStack.above,
+                          imageCache: session.layerFrameImageCache,
+                          canvasSize: session.activeCut.canvasSize,
+                          viewport: viewport,
+                        ),
+                      ),
+                    if (showCameraOverlay)
+                      Positioned.fill(
+                        child: CameraFrameOverlay(
+                          pose: session.cameraPoseAtCurrentFrame,
+                          cameraFrameSize: session.cameraFrameSize,
+                          viewport: viewport,
+                          // Dim belongs to camera-view mode; plain
+                          // manipulation keeps the artwork undimmed.
+                          dimOpacity: _cameraViewEnabled
+                              ? _cameraDimOpacity
+                              : 0,
+                          interactive: isCameraLayerActive,
+                          onPoseCommitted:
+                              session.setCameraKeyframeAtCurrentFrame,
+                        ),
+                      ),
+                  ],
                 )
               : null,
           contentOverride: isPlaybackActive

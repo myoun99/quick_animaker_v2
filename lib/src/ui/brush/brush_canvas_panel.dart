@@ -32,6 +32,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.viewportOverlayBuilder,
+    this.viewportUnderlayBuilder,
+    this.interactiveContentOpacity = 1.0,
     this.contentOverride,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -53,9 +55,19 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
-  /// (e.g. the camera frame overlay).
+  /// (e.g. the camera frame overlay, layers above the active one).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Optional layer painted UNDER the interactive canvas (layers below the
+  /// active one + the paper). When present, the interactive view skips its
+  /// own opaque background so the underlay shows through.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportUnderlayBuilder;
+
+  /// Display opacity of the interactive layer itself (the active layer's
+  /// visibility/opacity preview); strokes still commit at full strength.
+  final double interactiveContentOpacity;
 
   /// Replaces the interactive canvas INSIDE the panel shell (title, zoom
   /// toolbar and panbars keep working) — playback and the blank-canvas
@@ -130,20 +142,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
                   final canvasView = _buildViewportContent(context);
                   final overlayBuilder = widget.viewportOverlayBuilder;
+                  final underlayBuilder = widget.viewportUnderlayBuilder;
 
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
                     // Nothing drawn in the viewport (canvas, playback frames,
                     // camera overlay) may paint outside the panel.
                     child: ClipRect(
-                      child: overlayBuilder == null
+                      child: overlayBuilder == null && underlayBuilder == null
                           ? canvasView
                           : Stack(
                               children: [
+                                if (underlayBuilder != null)
+                                  Positioned.fill(
+                                    child: underlayBuilder(context, _viewport),
+                                  ),
                                 Positioned.fill(child: canvasView),
-                                Positioned.fill(
-                                  child: overlayBuilder(context, _viewport),
-                                ),
+                                if (overlayBuilder != null)
+                                  Positioned.fill(
+                                    child: overlayBuilder(context, _viewport),
+                                  ),
                               ],
                             ),
                     ),
@@ -165,7 +183,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
     final coordinator = widget.coordinator!;
     final activeKey = coordinator.activeFrameKey;
-    return InteractiveBrushEditCanvasView(
+    final interactiveView = InteractiveBrushEditCanvasView(
       key: ValueKey<String>('brush-canvas-${activeKey.frameId.value}'),
       sessionState: coordinator.activeSessionState,
       layerId: activeKey.layerId,
@@ -174,6 +192,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       viewport: _viewport,
       onViewportChanged: _setViewport,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+      // The underlay paints the paper (and the layers below); an opaque
+      // background here would hide them.
+      showTransparentBackground: widget.viewportUnderlayBuilder == null,
+    );
+    if (widget.interactiveContentOpacity >= 1.0) {
+      return interactiveView;
+    }
+    return Opacity(
+      opacity: widget.interactiveContentOpacity.clamp(0.0, 1.0).toDouble(),
+      child: interactiveView,
     );
   }
 

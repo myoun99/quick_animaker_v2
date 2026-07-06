@@ -36,6 +36,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
+    this.viewportUnderlayBuilder,
+    this.interactiveContentOpacity = 1.0,
     this.contentOverride,
   });
 
@@ -62,6 +64,14 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// editor viewport (e.g. the camera frame overlay).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: painted under the interactive canvas
+  /// (paper + layers below the active one).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportUnderlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: the active layer's display opacity.
+  final double interactiveContentOpacity;
 
   /// Forwarded to [BrushCanvasPanel]: replaces the interactive canvas inside
   /// the panel shell (playback). Without an editable frame the host supplies
@@ -126,6 +136,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       selectionLabels: widget.selectionLabels,
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
+      viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
+      interactiveContentOpacity: widget.interactiveContentOpacity,
       contentOverride: contentOverride,
     );
   }

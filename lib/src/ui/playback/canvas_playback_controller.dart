@@ -65,6 +65,12 @@ class CanvasPlaybackController extends ChangeNotifier {
   bool _isPlaying = false;
   int _baseGlobalFrame = 0;
   int _currentGlobalFrame = 0;
+  int _droppedFrames = 0;
+  int? _lastRawFrame;
+
+  /// Frames skipped to keep real time since [play] (DaVinci-style dropped
+  /// frame indicator).
+  int get droppedFrames => _droppedFrames;
 
   /// Playback mode is entered (playing or paused); the canvas shows the
   /// playback view while active.
@@ -118,6 +124,8 @@ class CanvasPlaybackController extends ChangeNotifier {
     }
     _scope = scope;
     _playlist = playlist;
+    _droppedFrames = 0;
+    _lastRawFrame = null;
     _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
       0,
       playlistTotalFrames(playlist) - 1,
@@ -222,6 +230,13 @@ class CanvasPlaybackController extends ChangeNotifier {
     }
     final total = playlistTotalFrames(playlist);
     var frame = _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFps());
+    // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
+    // more than one frame between ticks means rendering fell behind.
+    final lastRawFrame = _lastRawFrame;
+    if (lastRawFrame != null && frame > lastRawFrame + 1) {
+      _droppedFrames += frame - lastRawFrame - 1;
+    }
+    _lastRawFrame = frame;
     if (frame >= total) {
       if (_loopMode == PlaybackLoopMode.loop) {
         frame %= total;

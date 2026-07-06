@@ -40,6 +40,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onLayerOpacityChanged,
     this.onTryIncreaseExposure,
     this.onTryDecreaseExposure,
+    this.isFrameCached,
   });
 
   final List<Layer> layers;
@@ -60,6 +61,9 @@ class LayerTimelineGrid extends StatefulWidget {
   /// is null the drag handle is not offered.
   final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
   final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+
+  /// Cached-range resolver for the ruler's green strip.
+  final bool Function(int frameIndex)? isFrameCached;
 
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
@@ -354,6 +358,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         ._metrics,
                                                     onSelectFrame:
                                                         _selectClampedFrameFromRuler,
+                                                    isFrameCached:
+                                                        widget.isFrameCached,
                                                   ),
                                                 ),
                                               ),

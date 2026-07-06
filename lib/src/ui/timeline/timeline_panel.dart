@@ -26,6 +26,7 @@ class TimelinePanel extends StatelessWidget {
     required this.onLayerOpacityChanged,
     this.onTryIncreaseExposure,
     this.onTryDecreaseExposure,
+    this.isFrameCached,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
@@ -52,6 +53,10 @@ class TimelinePanel extends StatelessWidget {
   /// block, shared by both orientations; null hides the drag handles.
   final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
   final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+
+  /// Cached-range resolver for the horizontal ruler's green strip.
+  final bool Function(int frameIndex)? isFrameCached;
+
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final Widget? timelineActionToolbar;
@@ -153,6 +158,7 @@ class TimelinePanel extends StatelessWidget {
                       onLayerOpacityChanged: onLayerOpacityChanged,
                       onTryIncreaseExposure: onTryIncreaseExposure,
                       onTryDecreaseExposure: onTryDecreaseExposure,
+                      isFrameCached: isFrameCached,
                     )
                   : XSheetTimelineGrid(
                       layers: xsheetLayerDisplayOrder(layers),

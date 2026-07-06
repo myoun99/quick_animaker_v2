@@ -116,6 +116,17 @@ class PlaybackTransportControls extends StatelessWidget {
                 ),
               ),
             ),
+            if (controlsThisScope && controller.droppedFrames > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text(
+                  '${controller.droppedFrames} dropped',
+                  key: const ValueKey<String>('playback-dropped-indicator'),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
           ],
         );
       },

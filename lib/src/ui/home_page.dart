@@ -17,6 +17,7 @@ import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'export/png_sequence_export_dialog.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
@@ -235,97 +236,110 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           Expanded(child: EditorCanvasArea(session: _session)),
-          TimelinePanel(
-            layers: _session.layers,
-            activeLayerId: _session.activeLayerId,
-            currentFrameIndex: _session.currentFrameIndex,
-            playbackFrameCount: _session.activeCutPlaybackFrameCount,
-            exposureStateForLayer: _session.exposureStateForLayer,
-            hasMarkForLayer: _session.hasMarkForLayer,
-            frameNameForLayer: _session.frameNameForLayer,
-            onSelectLayer: _session.selectLayer,
-            onSelectFrame: _session.selectFrameIndex,
-            onAddLayer: _session.addLayer,
-            onToggleLayerVisibility: _session.toggleLayerVisibility,
-            onLayerOpacityChanged: (layerId, opacity) {
-              _session.setLayerOpacity(layerId: layerId, opacity: opacity);
-            },
-            // Comma-drag steps reuse the toolbar increase/decrease commands
-            // (one undo entry per frame step, same as the buttons).
-            onTryIncreaseExposure: () {
-              if (!_session.canIncreaseSelectedExposure) {
-                return false;
-              }
-              _session.increaseSelectedExposure();
-              return true;
-            },
-            onTryDecreaseExposure: () {
-              if (!_session.canDecreaseSelectedExposure) {
-                return false;
-              }
-              _session.decreaseSelectedExposure();
-              return true;
-            },
-            orientation: _timelineOrientation,
-            onOrientationChanged: (orientation) {
-              setState(() => _timelineOrientation = orientation);
-            },
-            showStoryboard: _showStoryboard,
-            onShowStoryboardChanged: (show) {
-              setState(() => _showStoryboard = show);
-            },
-            // The storyboard context plays every cut of the track; the
-            // timeline context plays the active cut from the playhead.
-            // Composing the transports into the existing slots keeps
-            // TimelinePanel/StoryboardPanel untouched.
-            storyboardPanel: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                PlaybackTransportControls(
-                  controller: _session.playback,
-                  scope: PlaybackScope.allCuts,
-                  quality: _session.playbackQuality,
-                  onQualityChanged: _session.setPlaybackQuality,
+          // Playback ticks flow through the playback-only frame listenable —
+          // never the session's notifyListeners — so during playback only
+          // this panel rebuilds and the playhead follows every frame. The
+          // prerender progress listenable keeps the cached-range green bar
+          // live while frames warm in the background.
+          ValueListenableBuilder<PrerenderProgress>(
+            valueListenable: _session.prerenderScheduler.progress,
+            builder: (context, _, _) => ValueListenableBuilder<int?>(
+              valueListenable: _session.playback.localFrameIndexListenable,
+              builder: (context, playbackFrameIndex, _) => TimelinePanel(
+                layers: _session.layers,
+                activeLayerId: _session.activeLayerId,
+                currentFrameIndex:
+                    playbackFrameIndex ?? _session.currentFrameIndex,
+                isFrameCached: _session.isPlaybackFrameCached,
+                playbackFrameCount: _session.activeCutPlaybackFrameCount,
+                exposureStateForLayer: _session.exposureStateForLayer,
+                hasMarkForLayer: _session.hasMarkForLayer,
+                frameNameForLayer: _session.frameNameForLayer,
+                onSelectLayer: _session.selectLayer,
+                onSelectFrame: _session.selectFrameIndex,
+                onAddLayer: _session.addLayer,
+                onToggleLayerVisibility: _session.toggleLayerVisibility,
+                onLayerOpacityChanged: (layerId, opacity) {
+                  _session.setLayerOpacity(layerId: layerId, opacity: opacity);
+                },
+                // Comma-drag steps reuse the toolbar increase/decrease commands
+                // (one undo entry per frame step, same as the buttons).
+                onTryIncreaseExposure: () {
+                  if (!_session.canIncreaseSelectedExposure) {
+                    return false;
+                  }
+                  _session.increaseSelectedExposure();
+                  return true;
+                },
+                onTryDecreaseExposure: () {
+                  if (!_session.canDecreaseSelectedExposure) {
+                    return false;
+                  }
+                  _session.decreaseSelectedExposure();
+                  return true;
+                },
+                orientation: _timelineOrientation,
+                onOrientationChanged: (orientation) {
+                  setState(() => _timelineOrientation = orientation);
+                },
+                showStoryboard: _showStoryboard,
+                onShowStoryboardChanged: (show) {
+                  setState(() => _showStoryboard = show);
+                },
+                // The storyboard context plays every cut of the track; the
+                // timeline context plays the active cut from the playhead.
+                // Composing the transports into the existing slots keeps
+                // TimelinePanel/StoryboardPanel untouched.
+                storyboardPanel: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    PlaybackTransportControls(
+                      controller: _session.playback,
+                      scope: PlaybackScope.allCuts,
+                      quality: _session.playbackQuality,
+                      onQualityChanged: _session.setPlaybackQuality,
+                    ),
+                    Expanded(
+                      child: StoryboardPanel(
+                        project: _session.repository.requireProject(),
+                        activeCutId: _session.activeCutId,
+                        onCutSelected: _session.selectCut,
+                        onNewCut: _session.createCut,
+                        onRenameActiveCut: _renameActiveCut,
+                        onEditActiveCutNote: _editActiveCutNote,
+                        onResizeActiveCutCanvas: _resizeActiveCutCanvas,
+                        onDuplicateActiveCut: _session.duplicateActiveCut,
+                        onMoveActiveCutLeft: _session.canMoveActiveCutLeft
+                            ? _session.moveActiveCutLeft
+                            : null,
+                        onMoveActiveCutRight: _session.canMoveActiveCutRight
+                            ? _session.moveActiveCutRight
+                            : null,
+                        onDeleteActiveCut: _session.deleteActiveCut,
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: StoryboardPanel(
-                    project: _session.repository.requireProject(),
-                    activeCutId: _session.activeCutId,
-                    onCutSelected: _session.selectCut,
-                    onNewCut: _session.createCut,
-                    onRenameActiveCut: _renameActiveCut,
-                    onEditActiveCutNote: _editActiveCutNote,
-                    onResizeActiveCutCanvas: _resizeActiveCutCanvas,
-                    onDuplicateActiveCut: _session.duplicateActiveCut,
-                    onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                        ? _session.moveActiveCutLeft
-                        : null,
-                    onMoveActiveCutRight: _session.canMoveActiveCutRight
-                        ? _session.moveActiveCutRight
-                        : null,
-                    onDeleteActiveCut: _session.deleteActiveCut,
-                  ),
+                timelineActionToolbar: Row(
+                  children: [
+                    PlaybackTransportControls(
+                      controller: _session.playback,
+                      scope: PlaybackScope.activeCut,
+                      quality: _session.playbackQuality,
+                      onQualityChanged: _session.setPlaybackQuality,
+                      playbackStartFrame: () => _session.currentFrameIndex,
+                    ),
+                    Expanded(
+                      child: TimelineActionToolbar(
+                        session: _session,
+                        onRenameLayer: _renameActiveLayer,
+                        onDeleteLayer: _deleteActiveLayer,
+                        onRenameFrame: _renameSelectedFrame,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            timelineActionToolbar: Row(
-              children: [
-                PlaybackTransportControls(
-                  controller: _session.playback,
-                  scope: PlaybackScope.activeCut,
-                  quality: _session.playbackQuality,
-                  onQualityChanged: _session.setPlaybackQuality,
-                  playbackStartFrame: () => _session.currentFrameIndex,
-                ),
-                Expanded(
-                  child: TimelineActionToolbar(
-                    session: _session,
-                    onRenameLayer: _renameActiveLayer,
-                    onDeleteLayer: _deleteActiveLayer,
-                    onRenameFrame: _renameSelectedFrame,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
