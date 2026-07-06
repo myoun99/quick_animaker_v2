@@ -9,6 +9,7 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
@@ -90,6 +91,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
 
+  /// True while a brush stroke is in progress; the viewport gesture layer
+  /// ignores wheel zooms and new pans so they cannot disturb the stroke.
+  bool _strokeActive = false;
+
   @override
   Widget build(BuildContext context) {
     if (widget.viewport != null && widget.viewport != _lastWidgetViewport) {
@@ -152,24 +157,38 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    // Nothing drawn in the viewport (canvas, playback frames,
-                    // camera overlay) may paint outside the panel.
-                    child: ClipRect(
-                      child: overlayBuilder == null && underlayBuilder == null
-                          ? canvasView
-                          : Stack(
-                              children: [
-                                if (underlayBuilder != null)
-                                  Positioned.fill(
-                                    child: underlayBuilder(context, _viewport),
-                                  ),
-                                Positioned.fill(child: canvasView),
-                                if (overlayBuilder != null)
-                                  Positioned.fill(
-                                    child: overlayBuilder(context, _viewport),
-                                  ),
-                              ],
-                            ),
+                    // Pan/zoom input lives on the panel — not the interactive
+                    // canvas — so navigation keeps working when the viewport
+                    // shows the blank paper or playback instead of a frame.
+                    child: CanvasViewportGestureLayer(
+                      viewport: _viewport,
+                      onViewportChanged: _setViewport,
+                      strokeActive: _strokeActive,
+                      // Nothing drawn in the viewport (canvas, playback
+                      // frames, camera overlay) may paint outside the panel.
+                      child: ClipRect(
+                        child: overlayBuilder == null && underlayBuilder == null
+                            ? canvasView
+                            : Stack(
+                                children: [
+                                  if (underlayBuilder != null)
+                                    Positioned.fill(
+                                      child: underlayBuilder(
+                                        context,
+                                        _viewport,
+                                      ),
+                                    ),
+                                  Positioned.fill(child: canvasView),
+                                  if (overlayBuilder != null)
+                                    Positioned.fill(
+                                      child: overlayBuilder(
+                                        context,
+                                        _viewport,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
                     ),
                   );
                 },
@@ -196,8 +215,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       frameId: activeKey.frameId,
       inputSettings: widget.brushToolState.toInputSettings(),
       viewport: _viewport,
-      onViewportChanged: _setViewport,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+      onActiveStrokeChanged: (active) {
+        if (_strokeActive != active) {
+          setState(() => _strokeActive = active);
+        }
+      },
       // The underlay paints the paper (and the layers below); an opaque
       // background here would hide them.
       showTransparentBackground: widget.viewportUnderlayBuilder == null,

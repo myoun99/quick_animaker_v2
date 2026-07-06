@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -589,6 +590,222 @@ void main() {
 
     expect(syncedViewports, hasLength(1));
     expect(syncedViewports.single.panX, isNot(0));
+  });
+
+  group('viewport gestures (panel-level, frame-independent)', () {
+    // The gesture layer lives on the panel, so navigation must work when the
+    // viewport shows the blank paper (no editable frame) — coordinator null,
+    // contentOverride only.
+    Widget blankPanel({
+      required ValueChanged<CanvasViewport> onViewportChanged,
+    }) {
+      return MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: null,
+              availableFrameKeys: const [],
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: const CanvasSize(width: 300, height: 300),
+              onViewportChanged: onViewportChanged,
+              contentOverride: (context, viewport) => const SizedBox.expand(),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Offset viewportPoint(WidgetTester tester, Offset offset) {
+      return tester.getTopLeft(
+            find.byKey(
+              const ValueKey<String>('brush-canvas-editor-viewport'),
+            ),
+          ) +
+          offset;
+    }
+
+    testWidgets('scroll wheel alone zooms without an editable frame', (
+      tester,
+    ) async {
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pump();
+
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      pointer.hover(viewportPoint(tester, const Offset(40, 40)));
+      await tester.sendEventToBinding(
+        pointer.scroll(const Offset(0, -120)),
+      );
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+      await tester.pump();
+
+      expect(viewports.last.zoom, closeTo(1.0, 1e-9));
+    });
+
+    testWidgets('middle mouse drag pans without an editable frame', (
+      tester,
+    ) async {
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pump();
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+        buttons: kMiddleMouseButton,
+      );
+      await gesture.down(viewportPoint(tester, const Offset(30, 30)));
+      await gesture.moveTo(viewportPoint(tester, const Offset(42, 51)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.panX, 12);
+      expect(viewports.last.panY, 21);
+    });
+
+    testWidgets('trackpad two-finger pan pans the viewport', (tester) async {
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pump();
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.trackpad,
+      );
+      final start = viewportPoint(tester, const Offset(50, 50));
+      await gesture.panZoomStart(start);
+      await gesture.panZoomUpdate(start, pan: const Offset(14, -9));
+      await gesture.panZoomEnd();
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, 1.0);
+      expect(viewports.last.panX, 14);
+      expect(viewports.last.panY, -9);
+    });
+
+    testWidgets('trackpad pinch zooms the viewport', (tester) async {
+      final viewports = <CanvasViewport>[];
+      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pump();
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.trackpad,
+      );
+      final start = viewportPoint(tester, const Offset(50, 50));
+      await gesture.panZoomStart(start);
+      await gesture.panZoomUpdate(start, scale: 2.0);
+      await gesture.panZoomEnd();
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, closeTo(2.0, 1e-9));
+    });
+
+    testWidgets('scroll wheel zooms with an editable frame too', (
+      tester,
+    ) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
+      final viewports = <CanvasViewport>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                onViewportChanged: viewports.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final pointer = TestPointer(7, PointerDeviceKind.mouse);
+      pointer.hover(viewportPoint(tester, const Offset(60, 60)));
+      await tester.sendEventToBinding(
+        pointer.scroll(const Offset(0, -120)),
+      );
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+    });
+
+    testWidgets('wheel zoom is suppressed while a stroke is active', (
+      tester,
+    ) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
+      final viewports = <CanvasViewport>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                onViewportChanged: viewports.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Start a stroke with the primary button and keep it held.
+      final strokeGesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await strokeGesture.down(viewportPoint(tester, const Offset(50, 50)));
+      await tester.pump();
+
+      final wheelPointer = TestPointer(9, PointerDeviceKind.mouse);
+      wheelPointer.hover(viewportPoint(tester, const Offset(60, 60)));
+      await tester.sendEventToBinding(
+        wheelPointer.scroll(const Offset(0, -120)),
+      );
+      await tester.pump();
+
+      expect(viewports, isEmpty);
+
+      await strokeGesture.up();
+      await tester.pumpAndSettle();
+      viewports.clear();
+
+      await tester.sendEventToBinding(
+        wheelPointer.scroll(const Offset(0, -120)),
+      );
+      await tester.pump();
+
+      expect(viewports, isNotEmpty);
+      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+    });
   });
 }
 

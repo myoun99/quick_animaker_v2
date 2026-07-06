@@ -40,93 +40,30 @@ class BrushEditCanvasView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No canvas-bounds outline here: the paper edge over the dark backdrop
+    // IS the boundary, and the stroked rect showed up as a stray 1px line
+    // that the blank-canvas placeholder (PlaybackFramePainter) never drew.
     return RepaintBoundary(
       key: const ValueKey<String>('brush-edit-canvas-view-boundary'),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(
-            key: const ValueKey<String>('brush-edit-canvas-custom-paint'),
-            // Keep the Skia raster cache from baking this picture while
-            // idle: the cached layer's origin snaps to integer device
-            // pixels while direct rendering uses the fractional layout
-            // offset, so the cached<->live transition shifted the artwork
-            // by a subpixel at fractional zoom (and a focus switch purges
-            // the cache, which is why the shift appeared after switching
-            // apps).
-            willChange: true,
-            painter: BitmapSurfacePainter(
-              surface: sessionState.canvasState.currentSurface,
-              viewport: viewport,
-              overlayModel: overlayModel,
-              showTransparentBackground: showTransparentBackground,
-              staleScope: staleScope,
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                key: const ValueKey<String>('brush-edit-canvas-bounds'),
-                painter: _CanvasBoundsPainter(
-                  canvasWidth: sessionState
-                      .canvasState
-                      .currentSurface
-                      .canvasSize
-                      .width
-                      .toDouble(),
-                  canvasHeight: sessionState
-                      .canvasState
-                      .currentSurface
-                      .canvasSize
-                      .height
-                      .toDouble(),
-                  viewport: viewport,
-                ),
-              ),
-            ),
-          ),
-        ],
+      child: CustomPaint(
+        key: const ValueKey<String>('brush-edit-canvas-custom-paint'),
+        // Keep the Skia raster cache from baking this picture while
+        // idle: the cached layer's origin snaps to integer device
+        // pixels while direct rendering uses the fractional layout
+        // offset, so the cached<->live transition shifted the artwork
+        // by a subpixel at fractional zoom (and a focus switch purges
+        // the cache, which is why the shift appeared after switching
+        // apps).
+        willChange: true,
+        painter: BitmapSurfacePainter(
+          surface: sessionState.canvasState.currentSurface,
+          viewport: viewport,
+          overlayModel: overlayModel,
+          showTransparentBackground: showTransparentBackground,
+          staleScope: staleScope,
+        ),
+        child: const SizedBox.expand(),
       ),
     );
-  }
-}
-
-/// Draws the canvas boundary rectangle in viewport space.
-class _CanvasBoundsPainter extends CustomPainter {
-  const _CanvasBoundsPainter({
-    required this.canvasWidth,
-    required this.canvasHeight,
-    required this.viewport,
-  });
-
-  final double canvasWidth;
-  final double canvasHeight;
-  final CanvasViewport? viewport;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final zoom = viewport?.zoom ?? 1.0;
-    final panX = viewport?.panX ?? 0.0;
-    final panY = viewport?.panY ?? 0.0;
-    final rect = Rect.fromLTWH(
-      panX,
-      panY,
-      canvasWidth * zoom,
-      canvasHeight * zoom,
-    );
-    canvas.drawRect(
-      rect.deflate(0.75),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = Colors.blueGrey,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _CanvasBoundsPainter oldDelegate) {
-    return oldDelegate.canvasWidth != canvasWidth ||
-        oldDelegate.canvasHeight != canvasHeight ||
-        oldDelegate.viewport != viewport;
   }
 }

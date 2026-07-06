@@ -401,16 +401,12 @@ void main() {
       },
     );
 
-    testWidgets('middle mouse drag pans viewport without committing dabs', (
-      tester,
-    ) async {
+    testWidgets('middle mouse drag never commits dabs', (tester) async {
+      // Viewport panning itself moved to the panel's
+      // CanvasViewportGestureLayer; the view must simply not draw from a
+      // middle-button drag.
       final results = <List<BrushDab>>[];
-      final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(
-        _app(
-          _view(_sessionState(), results.add, onViewportChanged: viewports.add),
-        ),
-      );
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
       final gesture = await tester.createGesture(
         kind: PointerDeviceKind.mouse,
@@ -422,9 +418,6 @@ void main() {
       await tester.pump();
 
       expect(results, isEmpty);
-      expect(viewports, isNotEmpty);
-      expect(viewports.last.panX, 3);
-      expect(viewports.last.panY, 5);
     });
 
     testWidgets('pointer outside surface does not emit a result', (
@@ -864,7 +857,6 @@ InteractiveBrushEditCanvasView _view(
   BrushEditCanvasInputSettings inputSettings =
       const BrushEditCanvasInputSettings(),
   CanvasViewport? viewport,
-  ValueChanged<CanvasViewport>? onViewportChanged,
 }) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
@@ -872,7 +864,6 @@ InteractiveBrushEditCanvasView _view(
     frameId: const FrameId('frame-a'),
     inputSettings: inputSettings,
     viewport: viewport,
-    onViewportChanged: onViewportChanged,
     // Tests observe the committed source dabs; the exact pre-rasterized
     // stroke pixels travel alongside them in the commit data.
     onSourceStrokeCommitted: (strokeData) => onResult(strokeData.sourceDabs),

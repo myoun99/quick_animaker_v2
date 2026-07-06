@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -36,7 +35,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     CanvasViewport? viewport,
-    this.onViewportChanged,
   }) : viewport = viewport ?? CanvasViewport();
 
   final BrushEditSessionState sessionState;
@@ -48,8 +46,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushDabInterpolator dabInterpolator;
   final CanvasSegmentClipper segmentClipper;
   final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// Zoom/pan applied to the canvas display and input mapping. Viewport
+  /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
+  /// [CanvasViewportGestureLayer], not here — this view only draws.
   final CanvasViewport viewport;
-  final ValueChanged<CanvasViewport>? onViewportChanged;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -59,9 +60,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
-  int? _activePanPointer;
-  Offset? _panStartLocalPosition;
-  CanvasViewport? _panStartViewport;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
@@ -145,7 +143,6 @@ class _InteractiveBrushEditCanvasViewState
             onPointerMove: _handlePointerMove,
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
-            onPointerSignal: _handlePointerSignal,
             child: ClipRect(
               key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
               // The viewport transform is applied inside the painter (not by
@@ -166,14 +163,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (_isPanButton(event.buttons)) {
-      _startPan(event);
-      return;
-    }
-
-    if (_activePanPointer != null ||
-        _activeDrawingPointer != null ||
-        !_isPrimaryButton(event.buttons)) {
+    if (_activeDrawingPointer != null || !_isPrimaryButton(event.buttons)) {
       return;
     }
 
@@ -218,11 +208,6 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _updatePan(event.localPosition);
-      return;
-    }
-
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -311,11 +296,6 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _clearPan();
-      return;
-    }
-
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -346,36 +326,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _clearPan();
-      return;
-    }
-
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
 
     _endStrokeInput();
     _resetOverlay();
-  }
-
-  void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        widget.onViewportChanged == null ||
-        !_hasZoomModifier()) {
-      return;
-    }
-
-    final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
-    _emitViewport(
-      widget.viewport.zoomedAround(
-        nextZoom: widget.viewport.zoom * factor,
-        anchor: ViewportPoint(
-          x: event.localPosition.dx,
-          y: event.localPosition.dy,
-        ),
-      ),
-    );
   }
 
   bool _isInsideSurface(CanvasPoint localPosition) {
@@ -466,49 +422,8 @@ class _InteractiveBrushEditCanvasViewState
   double get _activeStrokeSpacing =>
       (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
 
-  bool _isPanButton(int buttons) {
-    return buttons == kMiddleMouseButton;
-  }
-
   bool _isPrimaryButton(int buttons) {
     return buttons == kPrimaryMouseButton;
-  }
-
-  void _startPan(PointerDownEvent event) {
-    if (_activePanPointer != null || _activeDrawingPointer != null) {
-      return;
-    }
-    _activePanPointer = event.pointer;
-    _panStartLocalPosition = event.localPosition;
-    _panStartViewport = widget.viewport;
-  }
-
-  void _updatePan(Offset localPosition) {
-    final startPosition = _panStartLocalPosition;
-    final startViewport = _panStartViewport;
-    if (startPosition == null || startViewport == null) {
-      return;
-    }
-    final delta = localPosition - startPosition;
-    _emitViewport(startViewport.translated(dx: delta.dx, dy: delta.dy));
-  }
-
-  void _clearPan() {
-    _activePanPointer = null;
-    _panStartLocalPosition = null;
-    _panStartViewport = null;
-  }
-
-  bool _hasZoomModifier() {
-    final keys = HardwareKeyboard.instance.logicalKeysPressed;
-    return keys.contains(LogicalKeyboardKey.controlLeft) ||
-        keys.contains(LogicalKeyboardKey.controlRight) ||
-        keys.contains(LogicalKeyboardKey.metaLeft) ||
-        keys.contains(LogicalKeyboardKey.metaRight);
-  }
-
-  void _emitViewport(CanvasViewport viewport) {
-    widget.onViewportChanged?.call(viewport.clamped());
   }
 
   void _endStrokeInput() {
