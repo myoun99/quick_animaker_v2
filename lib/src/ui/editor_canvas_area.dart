@@ -10,6 +10,7 @@ import '../models/brush_preset_id.dart';
 import '../models/canvas_viewport.dart';
 import '../services/abr/abr_decoder.dart';
 import '../services/brush_preset_file_service.dart';
+import '../services/sut/sut_decoder.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
@@ -33,21 +34,19 @@ typedef BrushFilePick = ({String name, Uint8List bytes});
 /// Opens a brush file picker; `null` when the user cancels.
 typedef BrushFilePicker = Future<BrushFilePick?> Function();
 
-/// Production picker: the platform open-file dialog filtered to `.abr`.
-Future<BrushFilePick?> _openAbrFileDialog() async {
+/// Production picker: the platform open-file dialog filtered to the
+/// supported brush formats.
+Future<BrushFilePick?> _openBrushFileDialog() async {
   const typeGroup = XTypeGroup(
-    label: 'Photoshop brushes',
-    extensions: ['abr'],
+    label: 'Brushes (Photoshop, Clip Studio)',
+    extensions: ['abr', 'sut', 'sutg'],
   );
   final file = await openFile(acceptedTypeGroups: const [typeGroup]);
   if (file == null) {
     return null;
   }
   final bytes = await File(file.path).readAsBytes();
-  final name = file.name.toLowerCase().endsWith('.abr')
-      ? file.name.substring(0, file.name.length - 4)
-      : file.name;
-  return (name: name, bytes: bytes);
+  return (name: file.name, bytes: bytes);
 }
 
 class EditorCanvasArea extends StatefulWidget {
@@ -116,7 +115,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   Future<void> _importBrushFile() async {
-    final picker = widget.brushFilePicker ?? _openAbrFileDialog;
+    final picker = widget.brushFilePicker ?? _openBrushFileDialog;
     final BrushFilePick? pick;
     try {
       pick = await picker();
@@ -127,14 +126,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (pick == null || !mounted) {
       return;
     }
-    final AbrImportResult result;
+
+    final lowerName = pick.name.toLowerCase();
+    final baseName = pick.name.contains('.')
+        ? pick.name.substring(0, pick.name.lastIndexOf('.'))
+        : pick.name;
+    final List<BrushPreset> imported;
+    final List<String> warnings;
     try {
-      result = decodeAbrBrushFile(pick.bytes, sourceName: pick.name);
+      if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
+        final result = await _decodeSutBytes(pick.bytes, sourceName: baseName);
+        imported = result.presets;
+        warnings = result.warnings;
+      } else {
+        final result = decodeAbrBrushFile(pick.bytes, sourceName: baseName);
+        imported = result.presets;
+        warnings = result.warnings;
+      }
     } on AbrDecodeException catch (error) {
       _showImportMessage(error.message);
       return;
+    } on SutDecodeException catch (error) {
+      _showImportMessage(error.message);
+      return;
     } on Exception {
-      _showImportMessage('This file could not be read as an ABR brush file.');
+      _showImportMessage('This file could not be read as a brush file.');
       return;
     }
     if (!mounted) {
@@ -142,22 +158,43 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     }
     setState(() {
       // Re-importing replaces presets with the same id (same brush/tip).
-      final importedIds = {for (final preset in result.presets) preset.id};
+      final importedIds = {for (final preset in imported) preset.id};
       _brushPresets = [
         for (final preset in _brushPresets)
           if (!importedIds.contains(preset.id)) preset,
-        ...result.presets,
+        ...imported,
       ];
     });
     _persistPresets();
-    final summary = result.presets.length == 1
+    final summary = imported.length == 1
         ? 'Imported 1 brush from "${pick.name}".'
-        : 'Imported ${result.presets.length} brushes from "${pick.name}".';
+        : 'Imported ${imported.length} brushes from "${pick.name}".';
     _showImportMessage(
-      result.warnings.isEmpty
+      warnings.isEmpty
           ? summary
-          : '$summary (${result.warnings.length} entries skipped)',
+          : '$summary (${warnings.length} entries with warnings)',
     );
+  }
+
+  /// The SQLite reader needs a file path; work on a scratch copy so the
+  /// user's original brush file is never opened for writing or locked.
+  Future<SutImportResult> _decodeSutBytes(
+    Uint8List bytes, {
+    required String sourceName,
+  }) async {
+    final directory = await Directory.systemTemp.createTemp('sut_import');
+    try {
+      final file = File('${directory.path}/import.sut');
+      await file.writeAsBytes(bytes, flush: true);
+      return await decodeSutBrushFile(
+        filePath: file.path,
+        sourceName: sourceName,
+      );
+    } finally {
+      unawaited(
+        directory.delete(recursive: true).catchError((Object _) => directory),
+      );
+    }
   }
 
   void _showImportMessage(String message) {

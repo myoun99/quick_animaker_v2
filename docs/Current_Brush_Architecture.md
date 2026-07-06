@@ -133,6 +133,16 @@ Robustness rules: a corrupt or unparseable `desc` degrades to importing the tip 
 
 The synthetic-fixture tests encode the wire format from scratch (8BIM sections, subversion-2 sample preambles, PackBits scanlines, versioned descriptors), so decoder regressions are caught without binary fixtures. Real-world ABR files may still surface writer quirks — verify imports against real files and extend the fixtures when a quirk is fixed.
 
+## Clip Studio brush import (P19)
+
+`decodeSutBrushFile` (`services/sut/sut_decoder.dart`) imports Clip Studio Paint `.sut`/`.sutg` files — SQLite databases (read through `package:sqlite3` + `sqlite3_flutter_libs`; the import flow works on a scratch temp copy so the user's file is never locked). Verified against real CSP 1.x/3.x exports.
+
+Layout: `Node` rows are the tools (NodeName, NodeUuid -> preset id `sut-<uuid hex>`, NodeVariantID); `Variant` rows carry the parameters — `BrushSize` px, `Opacity`/`BrushFlow`/`BrushHardness`/`BrushThickness` (roundness) percent, `BrushInterval` percent -> spacing ratio, `BrushRotation` degrees (normalized 0-180). The Variant schema VARIES across CSP versions, so every column read tolerates absence. `*Effector` blobs carry input-source flags at byte offset 8: bit 0x10 = pen pressure (`BrushSizeEffector` -> pressureSize; `BrushOpacityEffector` OR `BrushFlowEffector` -> pressureOpacity). Group/root nodes (no usable Variant) are skipped.
+
+Tip bitmaps: when the brush was exported with materials, `MaterialFile.FileData` holds a CSP material archive containing PNGs — the LARGEST PNG is the tip image (smaller ones are thumbnails; PNG boundaries walked chunk-by-chunk to IEND). The join goes through `BrushPatternImageArray`, whose catalog paths are UTF-16 **little-endian** (the decoder scans both byte orders). Coverage = alpha shaped by inverted luminance (black-on-transparent and black-on-white tips both resolve; all-zero results fall back to the alpha channel). Tips longer than 256px are bilinearly downscaled, then padded to the centered square the engine requires. Missing/unmatched materials degrade to a round tip with a warning — never a failed import.
+
+Unmapped CSP features (by design for now): watercolor mixing, spray/scatter, dual brush, paper texture overlay, in/out taper.
+
 ## Pen pressure dynamics (P14)
 
 `BrushToolState`/`BrushEditCanvasInputSettings` carry `pressureSize` and `pressureOpacity` toggles (both default false, so a mouse or a stroke with the toggles off behaves exactly as before). `BrushSettingsPanel` exposes them under a "Pen Pressure" section as `brush-tool-pressure-size-toggle` / `brush-tool-pressure-opacity-toggle`.

@@ -75,7 +75,7 @@ class BrushSettingsPanel extends StatelessWidget {
                     key: const ValueKey<String>('brush-preset-import-button'),
                     icon: const Icon(Icons.file_open_outlined, size: 16),
                     visualDensity: VisualDensity.compact,
-                    tooltip: 'Import Photoshop brushes (.abr)',
+                    tooltip: 'Import brushes (.abr, .sut, .sutg)',
                     onPressed: onPresetImportRequested,
                   ),
                 if (onPresetSaveRequested != null)
