@@ -972,7 +972,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || targetLayer.kind == LayerKind.camera) {
+    if (targetLayer == null ||
+        targetLayer.kind == LayerKind.camera ||
+        targetLayer.kind == LayerKind.se) {
       return false;
     }
     if (targetLayer.kind == LayerKind.storyboard) {
@@ -985,11 +987,38 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
+  /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
+  /// carry several SE columns); storyboard/camera layers are not eligible.
+  bool get canToggleTargetLayerSe {
+    final targetLayer = _targetLayerForKindToggle;
+    return targetLayer != null &&
+        (targetLayer.kind == LayerKind.animation ||
+            targetLayer.kind == LayerKind.se);
+  }
+
+  void toggleTargetLayerSe() {
+    final targetLayer = _targetLayerForKindToggle;
+    if (targetLayer == null || !canToggleTargetLayerSe) {
+      return;
+    }
+
+    _cutCommandCoordinator.updateLayerKind(
+      cutId: _editingSession.activeCutId,
+      layerId: targetLayer.id,
+      kind: targetLayer.kind == LayerKind.se
+          ? LayerKind.animation
+          : LayerKind.se,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   String get activeLayerKindLabelText {
     final targetLayer = _targetLayerForKindToggle;
     return switch (targetLayer?.kind) {
       LayerKind.animation => 'Animation Layer',
       LayerKind.storyboard => 'Storyboard Layer',
+      LayerKind.se => 'SE Layer',
       LayerKind.camera => 'Camera Layer',
       null => 'No Layer',
     };

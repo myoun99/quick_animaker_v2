@@ -34,6 +34,7 @@ void main() {
         timelineSectionForLayerKind(LayerKind.storyboard),
         TimelineSection.drawing,
       );
+      expect(timelineSectionForLayerKind(LayerKind.se), TimelineSection.se);
       expect(
         timelineSectionForLayerKind(LayerKind.camera),
         TimelineSection.camera,
@@ -53,6 +54,30 @@ void main() {
       final ordered = sectionedLayerOrder(layers);
 
       expect(ordered.map((layer) => layer.id.value), ['a', 'b', 'sb', 'cam']);
+    });
+
+    test('SE layers sort between the drawing cels and the camera', () {
+      final layers = [
+        _layer('se1', LayerKind.se),
+        _layer('a', LayerKind.animation),
+        _layer('cam', LayerKind.camera),
+        _layer('se2', LayerKind.se),
+        _layer('b', LayerKind.animation),
+      ];
+
+      final ordered = sectionedLayerOrder(layers);
+
+      expect(ordered.map((layer) => layer.id.value), [
+        'a',
+        'b',
+        'se1',
+        'se2',
+        'cam',
+      ]);
+      // Dividers open at the drawing→SE and SE→camera boundaries.
+      expect(timelineSectionStartsAt(ordered, 2), isTrue);
+      expect(timelineSectionStartsAt(ordered, 3), isFalse);
+      expect(timelineSectionStartsAt(ordered, 4), isTrue);
     });
 
     test('horizontal display order reverses sections (camera on top)', () {

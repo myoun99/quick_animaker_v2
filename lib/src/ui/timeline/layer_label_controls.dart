@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 
@@ -13,6 +14,13 @@ import '../theme/app_theme.dart';
 /// names stay column-aligned across rows.
 const double layerTimesheetSlotWidth = 24;
 const double layerMarkSlotWidth = 14;
+
+/// Which layer kinds carry the timesheet-output toggle: sheet-recordable
+/// rows (cel columns + the SE column). Camera always has its own sheet
+/// column, storyboard never appears on the sheet.
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) {
+  return kind == LayerKind.animation || kind == LayerKind.se;
+}
 
 /// Chip color of [mark]; null for [LayerMark.none].
 Color? layerMarkColor(LayerMark mark) {

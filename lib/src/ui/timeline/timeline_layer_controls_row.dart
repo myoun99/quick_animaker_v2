@@ -64,7 +64,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
             children: [
               // Timesheet + mark chips lead the label; ineligible rows keep
               // empty slots so kind icons and names stay column-aligned.
-              if (layer.kind == LayerKind.animation)
+              if (layerKindEligibleForTimesheetToggle(layer.kind))
                 LayerTimesheetToggleButton(
                   keyPrefix: 'timeline',
                   layerId: layer.id,
@@ -192,6 +192,7 @@ IconData _iconForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => Icons.brush_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
+    LayerKind.se => Icons.music_note_outlined,
     LayerKind.camera => Icons.videocam_outlined,
   };
 }
@@ -200,6 +201,7 @@ String _semanticLabelForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => 'Animation layer',
     LayerKind.storyboard => 'Storyboard layer',
+    LayerKind.se => 'SE layer',
     LayerKind.camera => 'Camera layer',
   };
 }

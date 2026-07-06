@@ -6,11 +6,15 @@ void main() {
     test('serializes stable strings', () {
       expect(LayerKind.animation.toJson(), 'animation');
       expect(LayerKind.storyboard.toJson(), 'storyboard');
+      expect(LayerKind.se.toJson(), 'se');
+      expect(LayerKind.camera.toJson(), 'camera');
     });
 
     test('deserializes stable strings', () {
       expect(LayerKind.fromJson('animation'), LayerKind.animation);
       expect(LayerKind.fromJson('storyboard'), LayerKind.storyboard);
+      expect(LayerKind.fromJson('se'), LayerKind.se);
+      expect(LayerKind.fromJson('camera'), LayerKind.camera);
     });
 
     test('throws for invalid JSON values', () {

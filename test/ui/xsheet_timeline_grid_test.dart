@@ -114,6 +114,33 @@ void main() {
     expect(selectedMark, LayerMark.red);
   });
 
+  testWidgets('frame rail shows the cached-range strip inside playback', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(frameCount: 3, isFrameCached: (frameIndex) => frameIndex < 2),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-frame-cached-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-frame-cached-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-frame-cached-2')),
+      findsNothing,
+    );
+    // Frames past the playback range never show the strip even when the
+    // resolver claims them cached.
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-frame-cached-3')),
+      findsNothing,
+    );
+  });
+
   testWidgets('renders frame rows and cells', (tester) async {
     await tester.pumpWidget(_grid());
 
@@ -570,6 +597,7 @@ Widget _grid({
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
+  bool Function(int frameIndex)? isFrameCached,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -592,6 +620,7 @@ Widget _grid({
           onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
           onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
           onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
+          isFrameCached: isFrameCached,
         ),
       ),
     ),

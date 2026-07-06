@@ -54,6 +54,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.commaDrag,
+    this.isFrameCached,
   });
 
   final List<Layer> layers;
@@ -77,6 +78,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Cached-range resolver for the frame rail's green strip (the transposed
+  /// counterpart of the horizontal ruler's strip).
+  final bool Function(int frameIndex)? isFrameCached;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -343,6 +348,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             metrics: _metrics,
                                             onSelectFrame:
                                                 _selectClampedFrameFromRail,
+                                            isFrameCached:
+                                                widget.isFrameCached,
                                           ),
                                           TimelineRulerCutEndBoundary(
                                             axis: Axis.vertical,
@@ -573,6 +580,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.trailingFrameSpacerHeight,
     required this.metrics,
     required this.onSelectFrame,
+    this.isFrameCached,
   });
 
   final int frameStartIndex;
@@ -583,6 +591,10 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final double trailingFrameSpacerHeight;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
+
+  /// Whether a frame's playback composite is warmed; drawn as the green
+  /// strip along the cell edge that faces the frame cells.
+  final bool Function(int frameIndex)? isFrameCached;
 
   @override
   Widget build(BuildContext context) {
@@ -603,6 +615,9 @@ class _XSheetFrameNumberRail extends StatelessWidget {
             frameIndex: frameIndex,
             selected: frameIndex == currentFrameIndex,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
+            cached:
+                frameIndex < playbackFrameCount &&
+                (isFrameCached?.call(frameIndex) ?? false),
             metrics: metrics,
             onSelectFrame: onSelectFrame,
           ),
@@ -621,6 +636,7 @@ class _FrameNumberCell extends StatelessWidget {
     required this.frameIndex,
     required this.selected,
     required this.outsidePlaybackRange,
+    required this.cached,
     required this.metrics,
     required this.onSelectFrame,
   });
@@ -628,6 +644,7 @@ class _FrameNumberCell extends StatelessWidget {
   final int frameIndex;
   final bool selected;
   final bool outsidePlaybackRange;
+  final bool cached;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
 
@@ -658,13 +675,32 @@ class _FrameNumberCell extends StatelessWidget {
                 : colorScheme.outlineVariant,
           ),
         ),
-        child: Text(
-          '${frameIndex + 1}',
-          style: TextStyle(
-            color: outsidePlaybackRange
-                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                : colorScheme.onSurface,
-          ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(
+              '${frameIndex + 1}',
+              style: TextStyle(
+                color: outsidePlaybackRange
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                    : colorScheme.onSurface,
+              ),
+            ),
+            // Transposed cached-range strip: the horizontal header draws it
+            // along the bottom edge (facing the cells); here the cells sit
+            // to the RIGHT of the rail.
+            if (cached)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  key: ValueKey<String>('xsheet-frame-cached-$frameIndex'),
+                  width: 3,
+                  color: const Color(0xFF54B435),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -884,7 +920,7 @@ class _LayerHeader extends StatelessWidget {
                 children: [
                   // Timesheet + mark chips lead the name; ineligible layers
                   // keep empty slots so names align across columns.
-                  if (layer.kind == LayerKind.animation)
+                  if (layerKindEligibleForTimesheetToggle(layer.kind))
                     LayerTimesheetToggleButton(
                       keyPrefix: 'xsheet',
                       layerId: layer.id,

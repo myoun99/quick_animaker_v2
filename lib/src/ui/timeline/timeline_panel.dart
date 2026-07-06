@@ -55,7 +55,8 @@ class TimelinePanel extends StatelessWidget {
   /// orientations; null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Cached-range resolver for the horizontal ruler's green strip.
+  /// Cached-range resolver for the green strip (horizontal ruler and the
+  /// X-sheet frame rail).
   final bool Function(int frameIndex)? isFrameCached;
 
   final TimelineOrientation orientation;
@@ -176,6 +177,7 @@ class TimelinePanel extends StatelessWidget {
                       onToggleLayerTimesheet: onToggleLayerTimesheet,
                       onLayerMarkSelected: onLayerMarkSelected,
                       commaDrag: commaDrag,
+                      isFrameCached: isFrameCached,
                     ),
             ),
           ],
