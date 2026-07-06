@@ -330,6 +330,72 @@ void main() {
       );
     });
 
+    test('brushes sharing one sampled tip get unique preset ids', () {
+      // Real packs commonly define several brushes as variants of the SAME
+      // tip bitmap. Duplicate preset ids crashed the preset chips (duplicate
+      // widget keys), so the decoder must de-collide them deterministically.
+      final desc = _AbrBytes();
+      desc.i32(16);
+      desc.unicode('');
+      desc.key('null');
+      desc.i32(1);
+      desc.key('Brsh');
+      desc.asciiChars('VlLs');
+      desc.i32(2);
+      for (final name in ['Variant A', 'Variant B']) {
+        desc.asciiChars('Objc');
+        desc.unicode('');
+        desc.key('null');
+        desc.i32(2);
+        desc.key('Nm  ');
+        desc.text(name);
+        desc.key('Brsh');
+        desc.asciiChars('Objc');
+        desc.unicode('');
+        desc.key('sampledBrush');
+        desc.i32(2);
+        desc.key('sampledData');
+        desc.text('shared-tip');
+        desc.key('Dmtr');
+        desc.untf('#Pxl', 20);
+      }
+
+      final samp = _AbrBytes();
+      _writeSampEntry(
+        samp,
+        uuid: 'shared-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(4, 7),
+      );
+      final file = _AbrBytes()
+        ..i16(6)
+        ..i16(2);
+      _write8bimSection(file, 'samp', samp.bytes);
+      _write8bimSection(file, 'desc', desc.bytes);
+
+      final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
+      expect(result.presets, hasLength(2));
+      expect(result.presets[0].id.value, 'abr-shared-tip');
+      expect(result.presets[1].id.value, 'abr-shared-tip-2');
+      expect(result.presets[0].name, 'Variant A');
+      expect(result.presets[1].name, 'Variant B');
+      // Both variants carry the shared tip bitmap.
+      expect(result.presets[0].settings.tipMask, isNotNull);
+      expect(
+        result.presets[1].settings.tipMask,
+        result.presets[0].settings.tipMask,
+      );
+
+      // Decoding the same file again yields the same ids (re-import
+      // replaces instead of duplicating).
+      final again = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
+      expect(
+        again.presets.map((p) => p.id.value),
+        result.presets.map((p) => p.id.value),
+      );
+    });
+
     test('skips unsupported 16-bit tips with a warning', () {
       final samp = _AbrBytes();
       _writeSampEntry(

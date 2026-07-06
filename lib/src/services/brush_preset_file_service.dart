@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/brush_preset.dart';
+import '../models/brush_preset_id.dart';
 import 'brush_preset_defaults.dart';
 
 /// Loads and saves the app-level brush preset library.
@@ -50,10 +51,10 @@ class BrushPresetFileService {
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final entries = decoded['presets'] as List<dynamic>;
       // An empty saved library is a valid user choice (all presets deleted).
-      final presets = [
+      final presets = _withUniqueIds([
         for (final entry in entries)
           BrushPreset.fromJson(entry as Map<String, dynamic>),
-      ];
+      ]);
       final savedVersion = decoded['version'] as int? ?? 1;
       if (savedVersion < libraryVersion) {
         final knownIds = {for (final preset in presets) preset.id};
@@ -67,6 +68,32 @@ class BrushPresetFileService {
       // A corrupt library must not fail the editor: fall back to the
       // defaults; the file is replaced on the next save.
       return List.of(defaultBrushPresets);
+    }
+  }
+
+  /// Ids must be unique (they key preset chips and drive replace-on-import),
+  /// so duplicates in a saved library — e.g. written by the pre-fix ABR
+  /// importer when several brushes shared one tip — are healed on load by
+  /// suffixing later occurrences deterministically.
+  static List<BrushPreset> _withUniqueIds(List<BrushPreset> presets) {
+    final seen = <BrushPresetId>{};
+    return [
+      for (final preset in presets)
+        if (seen.add(preset.id))
+          preset
+        else
+          preset.copyWith(id: _nextFreeId(preset.id, seen)),
+    ];
+  }
+
+  static BrushPresetId _nextFreeId(BrushPresetId id, Set<BrushPresetId> seen) {
+    var suffix = 2;
+    while (true) {
+      final candidate = BrushPresetId('${id.value}-$suffix');
+      if (seen.add(candidate)) {
+        return candidate;
+      }
+      suffix += 1;
     }
   }
 

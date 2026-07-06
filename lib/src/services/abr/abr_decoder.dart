@@ -100,6 +100,22 @@ AbrImportResult decodeAbrBrushFile(Uint8List bytes, {required String sourceName}
 
   final presets = <BrushPreset>[];
   final usedTipKeys = <String>{};
+  // Multiple brushes may share one sampled tip (variants of the same
+  // bitmap with different settings — common in artist packs), so preset
+  // ids must be de-collided; the suffixes are order-deterministic, keeping
+  // re-imports of the same file replacing instead of duplicating.
+  final usedPresetIds = <String>{};
+  BrushPresetId uniquePresetId(String base) {
+    if (usedPresetIds.add(base)) {
+      return BrushPresetId(base);
+    }
+    var suffix = 2;
+    while (!usedPresetIds.add('$base-$suffix')) {
+      suffix += 1;
+    }
+    return BrushPresetId('$base-$suffix');
+  }
+
   final brushList = _brushListOf(descriptor);
   if (brushList != null) {
     var computedIndex = 0;
@@ -113,6 +129,7 @@ AbrImportResult decodeAbrBrushFile(Uint8List bytes, {required String sourceName}
         usedTipKeys: usedTipKeys,
         sourceName: sourceName,
         computedIndex: () => ++computedIndex,
+        uniquePresetId: uniquePresetId,
         warnings: warnings,
       );
       if (preset != null) {
@@ -131,7 +148,7 @@ AbrImportResult decodeAbrBrushFile(Uint8List bytes, {required String sourceName}
     unnamedIndex += 1;
     presets.add(
       BrushPreset(
-        id: BrushPresetId('abr-$key'),
+        id: uniquePresetId('abr-$key'),
         name: '$sourceName tip $unnamedIndex',
         settings: _settingsForTip(
           tipsByKey[key]!,
@@ -324,6 +341,7 @@ BrushPreset? _presetFromBrushDescriptor(
   required Set<String> usedTipKeys,
   required String sourceName,
   required int Function() computedIndex,
+  required BrushPresetId Function(String base) uniquePresetId,
   required List<String> warnings,
 }) {
   final tip = entry.childDescriptor('Brsh') ?? entry;
@@ -350,9 +368,11 @@ BrushPreset? _presetFromBrushDescriptor(
   final roundnessPercent = tip.numberValue('Rndn') ?? 100.0;
   final hardnessPercent = tip.numberValue('Hrdn') ?? 100.0;
 
-  final id = sampledKey != null
-      ? BrushPresetId('abr-$sampledKey')
-      : BrushPresetId('abr-$sourceName-computed-${computedIndex()}');
+  final id = uniquePresetId(
+    sampledKey != null
+        ? 'abr-$sampledKey'
+        : 'abr-$sourceName-computed-${computedIndex()}',
+  );
   final fallbackName = sampledKey != null
       ? '$sourceName brush'
       : '$sourceName round';
