@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
@@ -19,6 +20,7 @@ import 'camera/camera_frame_overlay.dart';
 import 'camera/camera_panel.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'editor_session_manager.dart';
+import 'export/ae_keyframe_data.dart';
 import 'panels/editor_panel_dock.dart';
 import 'playback/canvas_playback_view.dart';
 
@@ -97,6 +99,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         setState(() => _brushPresets = presets);
       }
     });
+  }
+
+  /// Copies the active cut's camera work to the clipboard as AE keyframe
+  /// data (baked per frame; paste onto the canvas-sequence layer in a
+  /// camera-frame-sized comp).
+  void _copyCameraAeKeyframes() {
+    final session = widget.session;
+    final cut = session.activeCut;
+    final cameraSize = session.cameraFrameSize;
+    final text = buildAeTransformKeyframeData(
+      framesPerSecond: session.projectFps,
+      sourceWidth: cameraSize.width,
+      sourceHeight: cameraSize.height,
+      samples: bakeCameraAeSamples(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameCount: session.activeCutPlaybackFrameCount,
+      ),
+    );
+    unawaited(Clipboard.setData(ClipboardData(text: text)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Camera keyframes copied for After Effects.'),
+      ),
+    );
   }
 
   void _applyPreset(BrushPreset preset) {
@@ -306,6 +333,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   session.hasCameraKeyframeAtCurrentFrame,
               onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
               onRemoveKeyframe: session.removeCameraKeyframeAtCurrentFrame,
+              onCopyAeKeyframes: _copyCameraAeKeyframes,
             ),
           ],
         ),

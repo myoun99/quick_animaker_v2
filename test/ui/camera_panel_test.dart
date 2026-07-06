@@ -14,6 +14,7 @@ void main() {
     bool hasKeyframe = false,
     ValueChanged<CameraPose>? onPoseCommitted,
     VoidCallback? onRemoveKeyframe,
+    VoidCallback? onCopyAeKeyframes,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -33,6 +34,7 @@ void main() {
                 hasKeyframeAtCurrentFrame: hasKeyframe,
                 onPoseCommitted: onPoseCommitted ?? (_) {},
                 onRemoveKeyframe: onRemoveKeyframe ?? () {},
+                onCopyAeKeyframes: onCopyAeKeyframes,
               ),
             ),
           ),
@@ -40,6 +42,26 @@ void main() {
       ),
     );
   }
+
+  testWidgets('AE copy button shows with the pose controls and fires its '
+      'callback', (tester) async {
+    var copied = 0;
+    await pumpToolbar(tester, onCopyAeKeyframes: () => copied += 1);
+    expect(
+      find.byKey(const ValueKey<String>('camera-copy-ae-button')),
+      findsNothing,
+    );
+
+    await pumpToolbar(
+      tester,
+      isCameraLayerActive: true,
+      onCopyAeKeyframes: () => copied += 1,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('camera-copy-ae-button')),
+    );
+    expect(copied, 1);
+  });
 
   testWidgets('camera view toggle reports the flipped state', (tester) async {
     bool? reported;

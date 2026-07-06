@@ -22,6 +22,7 @@ class CameraPanel extends StatefulWidget {
     required this.hasKeyframeAtCurrentFrame,
     required this.onPoseCommitted,
     required this.onRemoveKeyframe,
+    this.onCopyAeKeyframes,
   });
 
   final bool cameraViewEnabled;
@@ -39,6 +40,10 @@ class CameraPanel extends StatefulWidget {
   final ValueChanged<CameraPose> onPoseCommitted;
 
   final VoidCallback onRemoveKeyframe;
+
+  /// Copies the cut's camera work to the clipboard as After Effects
+  /// keyframe data; the button hides when null.
+  final VoidCallback? onCopyAeKeyframes;
 
   @override
   State<CameraPanel> createState() => _CameraPanelState();
@@ -201,6 +206,15 @@ class _CameraPanelState extends State<CameraPanel> {
                       ? widget.onRemoveKeyframe
                       : null,
                 ),
+                if (widget.onCopyAeKeyframes != null)
+                  IconButton(
+                    key: const ValueKey<String>('camera-copy-ae-button'),
+                    tooltip: 'Copy AE Keyframes',
+                    iconSize: 18,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.copy_all_outlined),
+                    onPressed: widget.onCopyAeKeyframes,
+                  ),
               ],
             ),
           ],
