@@ -24,9 +24,10 @@ void main() {
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
       expect(cut.canvasSize, defaultCutCanvasSize);
-      expect(cut.layers, hasLength(1));
+      // One drawing layer plus the always-present camera layer.
+      expect(cut.layers, hasLength(2));
 
-      final layer = cut.layers.single;
+      final layer = cut.layers.first;
       expect(layer.id, const LayerId('layer-new'));
       expect(layer.name, 'A');
       expect(layer.kind, LayerKind.animation);
@@ -35,6 +36,13 @@ void main() {
       expect(layer.marks, isEmpty);
       expect(layer.isVisible, isTrue);
       expect(layer.opacity, 1.0);
+
+      final cameraLayer = cut.layers.last;
+      expect(cameraLayer.id, cameraLayerIdForCut(const CutId('cut-new')));
+      expect(cameraLayer.name, 'Camera');
+      expect(cameraLayer.kind, LayerKind.camera);
+      expect(cameraLayer.frames, isEmpty);
+      expect(cameraLayer.timeline, isEmpty);
     });
 
     test('uses the Phase 104 default duration for newly created cuts', () {
@@ -73,7 +81,7 @@ void main() {
 
       expect(first.name, second.name);
       expect(first.id, isNot(second.id));
-      expect(first.layers.single.id, isNot(second.layers.single.id));
+      expect(first.layers.first.id, isNot(second.layers.first.id));
     });
 
     test('does not mutate a project', () {

@@ -15,6 +15,8 @@ import 'brush/brush_preset_panel.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
+import 'camera/camera_frame_overlay.dart';
+import 'camera/camera_toolbar.dart';
 import 'editor_session_manager.dart';
 import 'panels/editor_panel_dock.dart';
 
@@ -73,6 +75,10 @@ class EditorCanvasArea extends StatefulWidget {
 class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   CanvasViewport _canvasViewport = CanvasViewport();
   BrushToolState _brushToolState = BrushToolState.defaults;
+
+  /// Camera view mode: overlay shown with the outside dimmed.
+  bool _cameraViewEnabled = false;
+  double _cameraDimOpacity = 0.5;
   late final BrushPresetFileService _presetFileService =
       widget.presetFileService ?? BrushPresetFileService();
   List<BrushPreset> _brushPresets = const <BrushPreset>[];
@@ -234,37 +240,86 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
+    final isCameraLayerActive = session.isCameraLayerActive;
+    final showCameraOverlay = _cameraViewEnabled || isCameraLayerActive;
     return Row(
       children: [
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                ),
-              ),
-              child: RepaintBoundary(
-                child: KeyedSubtree(
-                  key: const ValueKey<String>(
-                    'main-canvas-brush-host-container',
-                  ),
-                  child: MainCanvasBrushHost(
-                    selection: session.activeBrushEditorSelection,
-                    canvasSize: session.activeCut.canvasSize,
-                    frameStore: session.brushFrameStore,
-                    historyManager: session.historyManager,
-                    viewport: _canvasViewport,
-                    onViewportChanged: (viewport) {
-                      setState(() => _canvasViewport = viewport);
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 16, top: 4, right: 16),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: CameraToolbar(
+                    cameraViewEnabled: _cameraViewEnabled,
+                    onCameraViewChanged: (enabled) {
+                      setState(() => _cameraViewEnabled = enabled);
                     },
-                    selectionLabels: session.canvasSelectionLabels,
-                    brushToolState: _brushToolState,
+                    dimOpacity: _cameraDimOpacity,
+                    onDimOpacityChanged: (opacity) {
+                      setState(() => _cameraDimOpacity = opacity);
+                    },
+                    isCameraLayerActive: isCameraLayerActive,
+                    pose: session.cameraPoseAtCurrentFrame,
+                    hasKeyframeAtCurrentFrame:
+                        session.hasCameraKeyframeAtCurrentFrame,
+                    onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+                    onRemoveKeyframe: session.removeCameraKeyframeAtCurrentFrame,
                   ),
                 ),
               ),
-            ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: RepaintBoundary(
+                      child: KeyedSubtree(
+                        key: const ValueKey<String>(
+                          'main-canvas-brush-host-container',
+                        ),
+                        child: MainCanvasBrushHost(
+                          // Camera mode still needs artwork on screen: fall
+                          // back to the first drawn layer at the playhead.
+                          selection: isCameraLayerActive
+                              ? session.cameraBackdropSelection
+                              : session.activeBrushEditorSelection,
+                          canvasSize: session.activeCut.canvasSize,
+                          frameStore: session.brushFrameStore,
+                          historyManager: session.historyManager,
+                          viewport: _canvasViewport,
+                          onViewportChanged: (viewport) {
+                            setState(() => _canvasViewport = viewport);
+                          },
+                          selectionLabels: session.canvasSelectionLabels,
+                          brushToolState: _brushToolState,
+                          viewportOverlayBuilder: showCameraOverlay
+                              ? (context, viewport) => CameraFrameOverlay(
+                                  pose: session.cameraPoseAtCurrentFrame,
+                                  cameraFrameSize: session.cameraFrameSize,
+                                  viewport: viewport,
+                                  // Dim belongs to camera-view mode; plain
+                                  // manipulation keeps the artwork undimmed.
+                                  dimOpacity: _cameraViewEnabled
+                                      ? _cameraDimOpacity
+                                      : 0,
+                                  interactive: isCameraLayerActive,
+                                  onPoseCommitted:
+                                      session.setCameraKeyframeAtCurrentFrame,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         EditorPanelDock(

@@ -2333,7 +2333,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      // Drawing rows plus the always-present camera row.
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2343,10 +2344,10 @@ Line 8''';
       );
 
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-      expect(_timelineLayerRows(), findsOneWidget);
+      expect(_timelineLayerRows(), findsNWidgets(2));
 
       await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2420,7 +2421,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      // Drawing rows plus the always-present camera row.
+      expect(_timelineLayerRows(), findsNWidgets(3));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),

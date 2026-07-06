@@ -48,7 +48,7 @@ void main() {
         const CutId('cut-1'),
       ]);
       expect(cuts.last.name, 'Created');
-      expect(cuts.last.layers.single.id, const LayerId('layer-1'));
+      expect(cuts.last.layers.first.id, const LayerId('layer-1'));
       expect(fixture.editingSession.activeCutId, const CutId('cut-1'));
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -587,7 +587,7 @@ void main() {
       var cuts = fixture.cutsFor(const TrackId('track-1'));
       expect(cuts, hasLength(1));
       expect(cuts.single.id, const CutId('cut-2'));
-      expect(cuts.single.layers.single.id, const LayerId('layer-2'));
+      expect(cuts.single.layers.first.id, const LayerId('layer-2'));
       expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
       expect(fixture.historyManager.undoCount, 1);
 

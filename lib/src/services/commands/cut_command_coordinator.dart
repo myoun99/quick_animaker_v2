@@ -204,8 +204,8 @@ class CutCommandCoordinator {
 
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
-    _requireLayer(cutId: cutId, layerId: layerId);
-    if (cut.layers.length <= 1) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind == LayerKind.camera || cut.layers.length <= 1) {
       return;
     }
 
@@ -224,6 +224,9 @@ class CutCommandCoordinator {
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
+    if (sourceLayer.kind == LayerKind.camera) {
+      throw StateError('The camera layer cannot be duplicated.');
+    }
     final sourceIndex = cut.layers.indexWhere(
       (layer) => layer.id == sourceLayerId,
     );
@@ -243,6 +246,10 @@ class CutCommandCoordinator {
     required LayerCopyPayload payload,
     required int insertionIndex,
   }) {
+    if (payload.kind == LayerKind.camera) {
+      throw StateError('The camera layer cannot be pasted.');
+    }
+
     final project = repository.requireProject();
     final cut = _requireCut(cutId);
     final plan = planPasteLayerCommandInput(
@@ -272,6 +279,11 @@ class CutCommandCoordinator {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (layer.kind == kind) {
       return;
+    }
+    if (layer.kind == LayerKind.camera || kind == LayerKind.camera) {
+      throw StateError(
+        'The camera layer kind is fixed; layers cannot become cameras.',
+      );
     }
 
     historyManager.execute(

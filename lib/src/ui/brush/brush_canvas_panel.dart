@@ -31,6 +31,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewport,
     this.onViewportChanged,
     this.selectionLabels = const CanvasEditorSelectionLabels(),
+    this.viewportOverlayBuilder,
   });
 
   final BrushFrameEditingCoordinator coordinator;
@@ -42,6 +43,12 @@ class BrushCanvasPanel extends StatefulWidget {
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
+
+  /// Optional layer stacked over the canvas inside the editor viewport,
+  /// receiving the live viewport so it can transform canvas coordinates
+  /// (e.g. the camera frame overlay).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportOverlayBuilder;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -110,20 +117,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   );
                   _rememberEditorViewportSize(viewportSize);
 
+                  final canvasView = InteractiveBrushEditCanvasView(
+                    key: ValueKey<String>(
+                      'brush-canvas-${activeKey.frameId.value}',
+                    ),
+                    sessionState: session,
+                    layerId: activeKey.layerId,
+                    frameId: activeKey.frameId,
+                    inputSettings: widget.brushToolState.toInputSettings(),
+                    viewport: _viewport,
+                    onViewportChanged: _setViewport,
+                    onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+                  );
+                  final overlayBuilder = widget.viewportOverlayBuilder;
+
                   return SizedBox.expand(
                     key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    child: InteractiveBrushEditCanvasView(
-                      key: ValueKey<String>(
-                        'brush-canvas-${activeKey.frameId.value}',
-                      ),
-                      sessionState: session,
-                      layerId: activeKey.layerId,
-                      frameId: activeKey.frameId,
-                      inputSettings: widget.brushToolState.toInputSettings(),
-                      viewport: _viewport,
-                      onViewportChanged: _setViewport,
-                      onSourceStrokeCommitted: _handleSourceStrokeCommitted,
-                    ),
+                    child: overlayBuilder == null
+                        ? canvasView
+                        : Stack(
+                            children: [
+                              Positioned.fill(child: canvasView),
+                              Positioned.fill(
+                                child: overlayBuilder(context, _viewport),
+                              ),
+                            ],
+                          ),
                   );
                 },
               ),

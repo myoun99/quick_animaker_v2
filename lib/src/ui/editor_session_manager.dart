@@ -327,6 +327,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   CutCamera get activeCutCamera => activeCut.camera;
 
+  /// The camera's output frame size (the exported picture size); the camera
+  /// view rect on canvas is this divided by the pose zoom.
+  CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
+
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work).
   CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
@@ -433,8 +437,46 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  bool get canDeleteActiveLayer =>
-      activeLayer != null && activeCut.layers.length >= 2;
+  bool get canDeleteActiveLayer {
+    final activeLayer = this.activeLayer;
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
+      return false;
+    }
+    final drawingLayerCount = activeCut.layers
+        .where((layer) => layer.kind != LayerKind.camera)
+        .length;
+    return drawingLayerCount >= 2;
+  }
+
+  /// Whether the canvas is in camera manipulation mode.
+  bool get isCameraLayerActive => activeLayer?.kind == LayerKind.camera;
+
+  /// What the canvas shows while the camera layer is active: the first
+  /// visible drawing layer with a frame at the playhead, so there is artwork
+  /// to frame. `null` when the cut has nothing drawn at this frame.
+  BrushEditorSelection? get cameraBackdropSelection {
+    final frameIndex = _timelineController.currentFrameIndex;
+    for (final layer in activeCut.layers) {
+      if (layer.kind == LayerKind.camera || !layer.isVisible) {
+        continue;
+      }
+      final frame = _timelineController.resolveFrameForLayer(
+        layer: layer,
+        frameIndex: frameIndex,
+      );
+      if (frame == null) {
+        continue;
+      }
+      return BrushEditorSelection(
+        projectId: _repository.requireProject().id,
+        trackId: activeCutTrackId,
+        cutId: _editingSession.activeCutId,
+        layerId: layer.id,
+        frameId: frame.id,
+      );
+    }
+    return null;
+  }
 
   LayerId? _stableLayerIdAfterDeleting({
     required List<Layer> beforeLayers,
@@ -489,7 +531,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void copyActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
       return;
     }
 
@@ -523,7 +565,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void duplicateActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
       return;
     }
 
@@ -609,7 +651,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
+    if (targetLayer == null || targetLayer.kind == LayerKind.camera) {
       return false;
     }
     if (targetLayer.kind == LayerKind.storyboard) {
@@ -627,6 +669,7 @@ class EditorSessionManager extends ChangeNotifier {
     return switch (targetLayer?.kind) {
       LayerKind.animation => 'Animation Layer',
       LayerKind.storyboard => 'Storyboard Layer',
+      LayerKind.camera => 'Camera Layer',
       null => 'No Layer',
     };
   }
@@ -658,7 +701,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
@@ -716,7 +759,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canCreateBlankAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
@@ -810,7 +853,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleMarkAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    if (layer == null || layer.kind == LayerKind.camera) {
       return false;
     }
 
@@ -919,6 +962,9 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      return false;
+    }
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
   }
 
@@ -929,6 +975,13 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      // The camera row's cells mirror the cut's camera keyframes.
+      return activeCut.camera.keyframeAt(frameIndex) != null
+          ? TimelineCellExposureState.drawingStart
+          : TimelineCellExposureState.empty;
+    }
+
     if (_timelineController.isDrawingStartForLayer(
       layer: layer,
       frameIndex: frameIndex,

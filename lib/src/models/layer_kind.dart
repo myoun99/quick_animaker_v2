@@ -1,6 +1,11 @@
 enum LayerKind {
   animation('animation'),
-  storyboard('storyboard');
+  storyboard('storyboard'),
+
+  /// The cut's camera track: selecting it puts the canvas into camera
+  /// manipulation mode and its timeline row shows camera keyframes. Exactly
+  /// one per cut, auto-created, holds no drawing frames.
+  camera('camera');
 
   const LayerKind(this.jsonValue);
 
@@ -9,13 +14,16 @@ enum LayerKind {
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {
-    if (json == animation.jsonValue) return animation;
-    if (json == storyboard.jsonValue) return storyboard;
+    for (final kind in LayerKind.values) {
+      if (json == kind.jsonValue) {
+        return kind;
+      }
+    }
 
     throw ArgumentError.value(
       json,
       'kind',
-      'Layer kind must be "animation" or "storyboard".',
+      'Layer kind must be "animation", "storyboard" or "camera".',
     );
   }
 }
