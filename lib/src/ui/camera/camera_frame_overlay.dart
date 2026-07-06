@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
@@ -7,13 +8,82 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 
+/// The camera pose's center in viewport (screen) coordinates.
+Offset cameraCenterInViewport({
+  required CameraPose pose,
+  required CanvasViewport viewport,
+}) {
+  return Offset(
+    pose.center.x * viewport.zoom + viewport.panX,
+    pose.center.y * viewport.zoom + viewport.panY,
+  );
+}
+
+/// The camera frame's corners in viewport (screen) coordinates:
+/// top-left, top-right, bottom-right, bottom-left.
+List<Offset> cameraFrameCornersInViewport({
+  required CameraPose pose,
+  required CanvasSize cameraFrameSize,
+  required CanvasViewport viewport,
+}) {
+  final halfWidth = cameraFrameSize.width / pose.zoom / 2;
+  final halfHeight = cameraFrameSize.height / pose.zoom / 2;
+  final radians = pose.rotationDegrees * math.pi / 180;
+  final cos = math.cos(radians);
+  final sin = math.sin(radians);
+
+  Offset corner(double dx, double dy) {
+    // Clockwise rotation in y-down screen space, then canvas → viewport.
+    final x = pose.center.x + dx * cos - dy * sin;
+    final y = pose.center.y + dx * sin + dy * cos;
+    return Offset(
+      x * viewport.zoom + viewport.panX,
+      y * viewport.zoom + viewport.panY,
+    );
+  }
+
+  return [
+    corner(-halfWidth, -halfHeight),
+    corner(halfWidth, -halfHeight),
+    corner(halfWidth, halfHeight),
+    corner(-halfWidth, halfHeight),
+  ];
+}
+
+/// The rotate lever's knob center in viewport coordinates: it sticks out of
+/// the top edge's midpoint, away from the frame center, by
+/// [CameraFrameOverlay.rotateLeverLength] screen pixels.
+Offset cameraRotateKnobInViewport({
+  required CameraPose pose,
+  required CanvasSize cameraFrameSize,
+  required CanvasViewport viewport,
+}) {
+  final corners = cameraFrameCornersInViewport(
+    pose: pose,
+    cameraFrameSize: cameraFrameSize,
+    viewport: viewport,
+  );
+  final center = cameraCenterInViewport(pose: pose, viewport: viewport);
+  final topMid = Offset(
+    (corners[0].dx + corners[1].dx) / 2,
+    (corners[0].dy + corners[1].dy) / 2,
+  );
+  final direction = topMid - center;
+  final distance = direction.distance;
+  final unit = distance == 0 ? const Offset(0, -1) : direction / distance;
+  return topMid + unit * CameraFrameOverlay.rotateLeverLength;
+}
+
 /// The TVPaint-style camera view drawn over the canvas: everything outside
 /// the camera frame is dimmed and the frame silhouette gets a blue outline.
 ///
-/// When [interactive] (the camera layer is active) dragging anywhere moves
-/// the camera; the moved pose is committed once on release via
-/// [onPoseCommitted] (one undo entry per drag). When not interactive the
-/// overlay ignores pointers so canvas panning/drawing still works below it.
+/// When [interactive] (the camera layer is active) the frame shows its
+/// manipulation handles: dragging a corner square scales the zoom around the
+/// camera center, dragging the lever knob above the top edge rotates around
+/// the center, and dragging anywhere else moves the camera. Every drag
+/// previews live and commits ONE keyframe on release via [onPoseCommitted]
+/// (one undo entry per drag). When not interactive the overlay ignores
+/// pointers so canvas panning/drawing still works below it.
 class CameraFrameOverlay extends StatefulWidget {
   const CameraFrameOverlay({
     super.key,
@@ -26,6 +96,16 @@ class CameraFrameOverlay extends StatefulWidget {
   });
 
   static const Color outlineColor = Color(0xFF40C4FF);
+
+  /// Screen-space pointer slack around a handle before the drag falls back
+  /// to moving the camera.
+  static const double handleHitRadius = 12;
+
+  /// How far the rotate knob sticks out of the top edge, in screen pixels.
+  static const double rotateLeverLength = 24;
+
+  static const double minZoom = 0.01;
+  static const double maxZoom = 100;
 
   final CameraPose pose;
 
@@ -45,21 +125,103 @@ class CameraFrameOverlay extends StatefulWidget {
   State<CameraFrameOverlay> createState() => _CameraFrameOverlayState();
 }
 
+enum _CameraDragMode { move, zoom, rotate }
+
 class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   CameraPose? _dragPose;
+  _CameraDragMode _dragMode = _CameraDragMode.move;
+  double _zoomStartDistance = 0;
+  double _zoomStartZoom = 1;
+  double _lastPointerAngle = 0;
 
   CameraPose get _displayPose => _dragPose ?? widget.pose;
 
+  Offset get _centerInViewport =>
+      cameraCenterInViewport(pose: _displayPose, viewport: widget.viewport);
+
+  double _pointerAngleDegrees(Offset position) {
+    final fromCenter = position - _centerInViewport;
+    return math.atan2(fromCenter.dy, fromCenter.dx) * 180 / math.pi;
+  }
+
+  void _dragStart(DragStartDetails details) {
+    final position = details.localPosition;
+    final pose = widget.pose;
+
+    final knob = cameraRotateKnobInViewport(
+      pose: pose,
+      cameraFrameSize: widget.cameraFrameSize,
+      viewport: widget.viewport,
+    );
+    if ((position - knob).distance <= CameraFrameOverlay.handleHitRadius) {
+      _dragMode = _CameraDragMode.rotate;
+      _lastPointerAngle = _pointerAngleDegrees(position);
+      return;
+    }
+
+    final corners = cameraFrameCornersInViewport(
+      pose: pose,
+      cameraFrameSize: widget.cameraFrameSize,
+      viewport: widget.viewport,
+    );
+    for (final corner in corners) {
+      if ((position - corner).distance <= CameraFrameOverlay.handleHitRadius) {
+        _dragMode = _CameraDragMode.zoom;
+        _zoomStartDistance = math.max(
+          (position - _centerInViewport).distance,
+          0.001,
+        );
+        _zoomStartZoom = pose.zoom;
+        return;
+      }
+    }
+
+    _dragMode = _CameraDragMode.move;
+  }
+
   void _dragUpdate(DragUpdateDetails details) {
     final pose = _displayPose;
-    setState(() {
-      _dragPose = pose.copyWith(
-        center: CanvasPoint(
-          x: pose.center.x + details.delta.dx / widget.viewport.zoom,
-          y: pose.center.y + details.delta.dy / widget.viewport.zoom,
-        ),
-      );
-    });
+    switch (_dragMode) {
+      case _CameraDragMode.move:
+        setState(() {
+          _dragPose = pose.copyWith(
+            center: CanvasPoint(
+              x: pose.center.x + details.delta.dx / widget.viewport.zoom,
+              y: pose.center.y + details.delta.dy / widget.viewport.zoom,
+            ),
+          );
+        });
+      case _CameraDragMode.zoom:
+        // The corner sits at a distance ∝ 1/zoom from the center, so
+        // dragging it outward zooms out and inward zooms in.
+        final distance = math.max(
+          (details.localPosition - _centerInViewport).distance,
+          0.001,
+        );
+        final zoom = (_zoomStartZoom * _zoomStartDistance / distance).clamp(
+          CameraFrameOverlay.minZoom,
+          CameraFrameOverlay.maxZoom,
+        );
+        setState(() => _dragPose = pose.copyWith(zoom: zoom));
+      case _CameraDragMode.rotate:
+        // Accumulate wrapped angular deltas so the rotation stays continuous
+        // across the ±180° seam and supports full extra turns (0 → 360
+        // keyframes are meaningful — poses lerp as-is).
+        final angle = _pointerAngleDegrees(details.localPosition);
+        var delta = angle - _lastPointerAngle;
+        while (delta > 180) {
+          delta -= 360;
+        }
+        while (delta < -180) {
+          delta += 360;
+        }
+        _lastPointerAngle = angle;
+        setState(() {
+          _dragPose = pose.copyWith(
+            rotationDegrees: pose.rotationDegrees + delta,
+          );
+        });
+    }
   }
 
   void _dragEnd() {
@@ -80,6 +242,7 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
         viewport: widget.viewport,
         dimOpacity: widget.dimOpacity,
         outlineColor: CameraFrameOverlay.outlineColor,
+        showHandles: widget.interactive,
       ),
       // A bare CustomPaint sizes to zero under loose constraints; the overlay
       // must always cover (and hit-test across) the whole viewport.
@@ -93,6 +256,11 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     return GestureDetector(
       key: const ValueKey<String>('camera-frame-overlay-gesture'),
       behavior: HitTestBehavior.opaque,
+      // Handles are small: report the true pointer-down position (not the
+      // post-touch-slop accept position) so corner/knob hit tests don't
+      // miss the handle the user pressed.
+      dragStartBehavior: DragStartBehavior.down,
+      onPanStart: _dragStart,
       onPanUpdate: _dragUpdate,
       onPanEnd: (_) => _dragEnd(),
       onPanCancel: _dragEnd,
@@ -108,6 +276,7 @@ class CameraFramePainter extends CustomPainter {
     required this.viewport,
     required this.dimOpacity,
     required this.outlineColor,
+    this.showHandles = false,
   });
 
   final CameraPose pose;
@@ -116,32 +285,17 @@ class CameraFramePainter extends CustomPainter {
   final double dimOpacity;
   final Color outlineColor;
 
+  /// Corner zoom squares + the rotate lever; drawn only while the camera
+  /// layer is being manipulated.
+  final bool showHandles;
+
   /// The camera frame's corners in viewport (screen) coordinates:
   /// top-left, top-right, bottom-right, bottom-left.
-  List<Offset> frameCornersInViewport() {
-    final halfWidth = cameraFrameSize.width / pose.zoom / 2;
-    final halfHeight = cameraFrameSize.height / pose.zoom / 2;
-    final radians = pose.rotationDegrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-
-    Offset corner(double dx, double dy) {
-      // Clockwise rotation in y-down screen space, then canvas → viewport.
-      final x = pose.center.x + dx * cos - dy * sin;
-      final y = pose.center.y + dx * sin + dy * cos;
-      return Offset(
-        x * viewport.zoom + viewport.panX,
-        y * viewport.zoom + viewport.panY,
-      );
-    }
-
-    return [
-      corner(-halfWidth, -halfHeight),
-      corner(halfWidth, -halfHeight),
-      corner(halfWidth, halfHeight),
-      corner(-halfWidth, halfHeight),
-    ];
-  }
+  List<Offset> frameCornersInViewport() => cameraFrameCornersInViewport(
+    pose: pose,
+    cameraFrameSize: cameraFrameSize,
+    viewport: viewport,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -171,10 +325,7 @@ class CameraFramePainter extends CustomPainter {
     );
 
     // Small center cross so the pivot reads at a glance.
-    final center = Offset(
-      pose.center.x * viewport.zoom + viewport.panX,
-      pose.center.y * viewport.zoom + viewport.panY,
-    );
+    final center = cameraCenterInViewport(pose: pose, viewport: viewport);
     final crossPaint = Paint()
       ..strokeWidth = 1
       ..color = outlineColor;
@@ -188,6 +339,34 @@ class CameraFramePainter extends CustomPainter {
       center + const Offset(0, 6),
       crossPaint,
     );
+
+    if (showHandles) {
+      final fill = Paint()..color = outlineColor;
+      for (final corner in corners) {
+        canvas.drawRect(
+          Rect.fromCenter(center: corner, width: 8, height: 8),
+          fill,
+        );
+      }
+
+      final topMid = Offset(
+        (corners[0].dx + corners[1].dx) / 2,
+        (corners[0].dy + corners[1].dy) / 2,
+      );
+      final knob = cameraRotateKnobInViewport(
+        pose: pose,
+        cameraFrameSize: cameraFrameSize,
+        viewport: viewport,
+      );
+      canvas.drawLine(
+        topMid,
+        knob,
+        Paint()
+          ..strokeWidth = 2
+          ..color = outlineColor,
+      );
+      canvas.drawCircle(knob, 4.5, fill);
+    }
   }
 
   @override
@@ -196,5 +375,6 @@ class CameraFramePainter extends CustomPainter {
       oldDelegate.cameraFrameSize != cameraFrameSize ||
       oldDelegate.viewport != viewport ||
       oldDelegate.dimOpacity != dimOpacity ||
-      oldDelegate.outlineColor != outlineColor;
+      oldDelegate.outlineColor != outlineColor ||
+      oldDelegate.showHandles != showHandles;
 }

@@ -49,8 +49,14 @@ void main() {
         viewport: CanvasViewport(zoom: 0.5, panX: 10, panY: 20),
       ).frameCornersInViewport();
 
-      expect(corners[0], const Offset((1000 - 960) * 0.5 + 10, (600 - 540) * 0.5 + 20));
-      expect(corners[2], const Offset((1000 + 960) * 0.5 + 10, (600 + 540) * 0.5 + 20));
+      expect(
+        corners[0],
+        const Offset((1000 - 960) * 0.5 + 10, (600 - 540) * 0.5 + 20),
+      );
+      expect(
+        corners[2],
+        const Offset((1000 + 960) * 0.5 + 10, (600 + 540) * 0.5 + 20),
+      );
     });
 
     test('90 degrees rotates the frame clockwise around the center', () {
@@ -68,10 +74,22 @@ void main() {
     });
   });
 
+  test('rotate knob sits above the top edge midpoint', () {
+    final knob = cameraRotateKnobInViewport(
+      pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
+      cameraFrameSize: frameSize,
+      viewport: CanvasViewport(zoom: 0.5),
+    );
+
+    // Top edge midpoint (500, 30), sticking 24 screen px away from the
+    // center (500, 300).
+    expect(knob, const Offset(500, 6));
+  });
+
   group('CameraFrameOverlay interaction', () {
-    testWidgets('dragging moves the camera and commits once on release', (
-      tester,
-    ) async {
+    // Camera center (1000, 600) at viewport zoom 0.5 = screen (500, 300);
+    // top-left corner handle (20, 30); rotate knob (500, 6).
+    Future<List<CameraPose>> pumpInteractiveOverlay(WidgetTester tester) async {
       final committed = <CameraPose>[];
       await tester.pumpWidget(
         MaterialApp(
@@ -87,6 +105,17 @@ void main() {
           ),
         ),
       );
+      return committed;
+    }
+
+    Offset overlayOrigin(WidgetTester tester) => tester.getTopLeft(
+      find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
+    );
+
+    testWidgets('dragging moves the camera and commits once on release', (
+      tester,
+    ) async {
+      final committed = await pumpInteractiveOverlay(tester);
 
       await tester.drag(
         find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
@@ -98,6 +127,44 @@ void main() {
       expect(committed, hasLength(1));
       expect(committed.single.center.x, closeTo(1000 + 100, 1e-6));
       expect(committed.single.center.y, closeTo(600 - 60, 1e-6));
+    });
+
+    testWidgets('dragging a corner handle scales the zoom around the '
+        'center', (tester) async {
+      final committed = await pumpInteractiveOverlay(tester);
+      final origin = overlayOrigin(tester);
+
+      // From the top-left corner to half its distance from the center:
+      // the view rect halves, so the zoom doubles.
+      final gesture = await tester.startGesture(origin + const Offset(20, 30));
+      await gesture.moveTo(origin + const Offset(260, 165));
+      await gesture.up();
+      await tester.pump();
+
+      expect(committed, hasLength(1));
+      expect(committed.single.zoom, closeTo(2, 1e-6));
+      expect(committed.single.center.x, closeTo(1000, 1e-6));
+      expect(committed.single.center.y, closeTo(600, 1e-6));
+      expect(committed.single.rotationDegrees, closeTo(0, 1e-6));
+    });
+
+    testWidgets('dragging the rotate knob spins the camera around the '
+        'center', (tester) async {
+      final committed = await pumpInteractiveOverlay(tester);
+      final origin = overlayOrigin(tester);
+
+      // The knob starts straight above the center (-90°); dragging to the
+      // center's right (0°) is a 90° clockwise turn.
+      final gesture = await tester.startGesture(origin + const Offset(500, 6));
+      await gesture.moveTo(origin + const Offset(770, 300));
+      await gesture.up();
+      await tester.pump();
+
+      expect(committed, hasLength(1));
+      expect(committed.single.rotationDegrees, closeTo(90, 1e-6));
+      expect(committed.single.zoom, closeTo(1, 1e-6));
+      expect(committed.single.center.x, closeTo(1000, 1e-6));
+      expect(committed.single.center.y, closeTo(600, 1e-6));
     });
 
     testWidgets('non-interactive overlay ignores pointers', (tester) async {
