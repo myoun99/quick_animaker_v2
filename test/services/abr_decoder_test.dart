@@ -1,0 +1,391 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/services/abr/abr_byte_reader.dart';
+import 'package:quick_animaker_v2/src/services/abr/abr_decoder.dart';
+import 'package:quick_animaker_v2/src/services/abr/photoshop_descriptor.dart';
+
+/// Big-endian byte builder mirroring the ABR/descriptor wire format, used
+/// to construct synthetic fixture files.
+class _AbrBytes {
+  final BytesBuilder _builder = BytesBuilder();
+
+  Uint8List get bytes => _builder.toBytes();
+  int get length => _builder.length;
+
+  void u8(int value) => _builder.addByte(value & 0xFF);
+
+  void i16(int value) {
+    u8(value >> 8);
+    u8(value);
+  }
+
+  void i32(int value) {
+    u8(value >> 24);
+    u8(value >> 16);
+    u8(value >> 8);
+    u8(value);
+  }
+
+  void f64(double value) {
+    final data = ByteData(8)..setFloat64(0, value);
+    _builder.add(data.buffer.asUint8List());
+  }
+
+  void asciiChars(String value) => _builder.add(ascii.encode(value));
+
+  void raw(List<int> value) => _builder.add(value);
+
+  void pascal(String value) {
+    u8(value.length);
+    asciiChars(value);
+  }
+
+  /// Descriptor key/classID: zero length means four characters.
+  void key(String value) {
+    if (value.length == 4) {
+      i32(0);
+    } else {
+      i32(value.length);
+    }
+    asciiChars(value);
+  }
+
+  /// Photoshop unicode string with a trailing NUL, as Photoshop writes.
+  void unicode(String value) {
+    i32(value.length + 1);
+    for (final unit in value.codeUnits) {
+      i16(unit);
+    }
+    i16(0);
+  }
+
+  void untf(String unit, double value) {
+    asciiChars('UntF');
+    asciiChars(unit);
+    f64(value);
+  }
+
+  void text(String value) {
+    asciiChars('TEXT');
+    unicode(value);
+  }
+}
+
+/// One samp-section entry (subversion 2 layout: 301-byte preamble).
+void _writeSampEntry(
+  _AbrBytes samp, {
+  required String uuid,
+  required int width,
+  required int height,
+  required List<int> pixels,
+  bool rle = false,
+  int depth = 8,
+}) {
+  final entry = _AbrBytes();
+  entry.pascal(uuid);
+  // Pad the preamble (key + coordinates + unknown) out to 301 bytes.
+  entry.raw(List<int>.filled(301 - 1 - uuid.length, 0));
+  entry.i32(0); // top
+  entry.i32(0); // left
+  entry.i32(height); // bottom
+  entry.i32(width); // right
+  entry.i16(depth);
+  entry.u8(rle ? 1 : 0);
+  if (rle) {
+    final rows = <List<int>>[];
+    for (var y = 0; y < height; y += 1) {
+      final row = pixels.sublist(y * width, (y + 1) * width);
+      // Naive PackBits: encode the whole row as one literal chunk.
+      rows.add([row.length - 1, ...row]);
+    }
+    for (final row in rows) {
+      entry.i16(row.length);
+    }
+    for (final row in rows) {
+      entry.raw(row);
+    }
+  } else {
+    entry.raw(pixels);
+  }
+
+  final entryBytes = entry.bytes;
+  samp.i32(entryBytes.length);
+  samp.raw(entryBytes);
+  // Entries are padded to four-byte boundaries.
+  final padding = (4 - entryBytes.length % 4) % 4;
+  samp.raw(List<int>.filled(padding, 0));
+}
+
+void _write8bimSection(_AbrBytes file, String tag, Uint8List payload) {
+  file.asciiChars('8BIM');
+  file.asciiChars(tag);
+  file.i32(payload.length);
+  file.raw(payload);
+}
+
+/// Sampled + computed brush descriptor payload (`desc` section).
+Uint8List _descPayload({required String sampledUuid}) {
+  final desc = _AbrBytes();
+  desc.i32(16); // descriptor version
+  desc.unicode(''); // root class name
+  desc.key('null'); // root classID
+  desc.i32(1); // one item: the brush list
+  desc.key('Brsh');
+  desc.asciiChars('VlLs');
+  desc.i32(2);
+
+  // Brush 1: sampled, wrapped element with a name and nested tip object.
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('null');
+  desc.i32(2);
+  desc.key('Nm  ');
+  desc.text('Fancy Chalk');
+  desc.key('Brsh');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('sampledBrush');
+  desc.i32(6);
+  desc.key('sampledData');
+  desc.text(sampledUuid);
+  desc.key('Dmtr');
+  desc.untf('#Pxl', 44);
+  desc.key('Spcn');
+  desc.untf('#Prc', 25);
+  desc.key('Angl');
+  desc.untf('#Ang', -60);
+  desc.key('Rndn');
+  desc.untf('#Prc', 40);
+  desc.key('Intr');
+  desc.asciiChars('bool');
+  desc.u8(1);
+
+  // Brush 2: computed round brush.
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('null');
+  desc.i32(2);
+  desc.key('Nm  ');
+  desc.text('Soft Round 16');
+  desc.key('Brsh');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('computedBrush');
+  desc.i32(5);
+  desc.key('Dmtr');
+  desc.untf('#Pxl', 16);
+  desc.key('Hrdn');
+  desc.untf('#Prc', 80);
+  desc.key('Spcn');
+  desc.untf('#Prc', 30);
+  desc.key('Angl');
+  desc.untf('#Ang', 0);
+  desc.key('Rndn');
+  desc.untf('#Prc', 100);
+
+  return desc.bytes;
+}
+
+/// A 6x4 gradient tip (non-square, to exercise padding).
+final List<int> _tipOnePixels = [
+  for (var index = 0; index < 24; index += 1) (index * 10 + 5) % 256,
+];
+
+/// A 4x4 uniform tip.
+final List<int> _tipTwoPixels = List<int>.filled(16, 200);
+
+Uint8List _fixtureAbr({bool includeDesc = true, bool corruptDesc = false}) {
+  final samp = _AbrBytes();
+  _writeSampEntry(
+    samp,
+    uuid: 'tip-one-uuid',
+    width: 6,
+    height: 4,
+    pixels: _tipOnePixels,
+    rle: true,
+  );
+  _writeSampEntry(
+    samp,
+    uuid: 'tip-two-uuid',
+    width: 4,
+    height: 4,
+    pixels: _tipTwoPixels,
+  );
+
+  final file = _AbrBytes();
+  file.i16(6); // version
+  file.i16(2); // subversion
+  _write8bimSection(file, 'samp', samp.bytes);
+  if (includeDesc) {
+    final payload = corruptDesc
+        ? Uint8List.fromList([0, 0, 0, 99, 1, 2, 3])
+        : _descPayload(sampledUuid: 'tip-one-uuid');
+    _write8bimSection(file, 'desc', payload);
+  }
+  return file.bytes;
+}
+
+void main() {
+  group('decodeAbrBrushFile', () {
+    test('imports sampled and computed brushes with their parameters', () {
+      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+
+      expect(result.warnings, isEmpty);
+      expect(result.presets, hasLength(3));
+
+      final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
+      expect(chalk.id.value, 'abr-tip-one-uuid');
+      expect(chalk.settings.size, 44.0);
+      expect(chalk.settings.spacing, 0.25);
+      expect(chalk.settings.angleDegrees, 120.0); // -60 normalized into 0-180
+      expect(chalk.settings.roundness, 0.4);
+      expect(chalk.settings.tipMask, isNotNull);
+
+      final round = result.presets.firstWhere(
+        (p) => p.name == 'Soft Round 16',
+      );
+      expect(round.settings.tipMask, isNull);
+      expect(round.settings.size, 16.0);
+      expect(round.settings.hardness, closeTo(0.8, 1e-9));
+      expect(round.settings.spacing, closeTo(0.3, 1e-9));
+
+      // The unreferenced tip still imports with default settings.
+      final orphan = result.presets.firstWhere(
+        (p) => p.id.value == 'abr-tip-two-uuid',
+      );
+      expect(orphan.name, 'fixture tip 1');
+      expect(orphan.settings.tipMask!.size, 4);
+    });
+
+    test('pads non-square tips to a centered square mask', () {
+      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+      final mask = result.presets
+          .firstWhere((p) => p.name == 'Fancy Chalk')
+          .settings
+          .tipMask!;
+
+      // 6x4 source -> 6x6 mask with one empty row above and below.
+      expect(mask.size, 6);
+      for (var x = 0; x < 6; x += 1) {
+        expect(mask.alpha[x], 0); // padded top row
+        expect(mask.alpha[5 * 6 + x], 0); // padded bottom row
+      }
+      for (var y = 0; y < 4; y += 1) {
+        for (var x = 0; x < 6; x += 1) {
+          expect(mask.alpha[(y + 1) * 6 + x], _tipOnePixels[y * 6 + x]);
+        }
+      }
+    });
+
+    test('RLE and raw tips decode to the exact pixel bytes', () {
+      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+      final uniform = result.presets
+          .firstWhere((p) => p.id.value == 'abr-tip-two-uuid')
+          .settings
+          .tipMask!;
+      expect(uniform.alpha, everyElement(200));
+    });
+
+    test('imports tips with default settings when desc is corrupt', () {
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(corruptDesc: true),
+        sourceName: 'fixture',
+      );
+
+      expect(result.warnings, isNotEmpty);
+      expect(result.presets, hasLength(2));
+      expect(result.presets.first.name, 'fixture tip 1');
+      expect(result.presets.first.settings.tipMask, isNotNull);
+    });
+
+    test('imports tips when there is no desc section at all', () {
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(includeDesc: false),
+        sourceName: 'fixture',
+      );
+      expect(result.presets, hasLength(2));
+      expect(result.presets.every((p) => p.settings.tipMask != null), isTrue);
+    });
+
+    test('rejects legacy and non-ABR files with clear errors', () {
+      final legacy = _AbrBytes()
+        ..i16(1)
+        ..i16(0);
+      expect(
+        () => decodeAbrBrushFile(legacy.bytes, sourceName: 'old'),
+        throwsA(isA<AbrDecodeException>()),
+      );
+      expect(
+        () => decodeAbrBrushFile(
+          Uint8List.fromList([0x50, 0x4B, 3, 4, 0, 0, 0, 0]),
+          sourceName: 'zip',
+        ),
+        throwsA(isA<AbrDecodeException>()),
+      );
+      expect(
+        () => decodeAbrBrushFile(Uint8List(2), sourceName: 'tiny'),
+        throwsA(isA<AbrDecodeException>()),
+      );
+    });
+
+    test('skips unsupported 16-bit tips with a warning', () {
+      final samp = _AbrBytes();
+      _writeSampEntry(
+        samp,
+        uuid: 'deep-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(8, 1),
+        depth: 16,
+      );
+      _writeSampEntry(
+        samp,
+        uuid: 'ok-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(4, 9),
+      );
+      final file = _AbrBytes()
+        ..i16(6)
+        ..i16(2);
+      _write8bimSection(file, 'samp', samp.bytes);
+
+      final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
+      expect(result.warnings.single, contains('16-bit'));
+      expect(result.presets.single.id.value, 'abr-ok-tip');
+    });
+  });
+
+  group('photoshop descriptor parser', () {
+    test('round-trips the fixture descriptor structure', () {
+      final reader = AbrByteReader(_descPayload(sampledUuid: 'u'));
+      final descriptor = readVersionedDescriptor(reader);
+
+      final brushes = descriptor['Brsh'] as List;
+      expect(brushes, hasLength(2));
+      final sampled = (brushes.first as PsDescriptor);
+      expect(sampled.textValue('Nm  '), 'Fancy Chalk');
+      final tip = sampled.childDescriptor('Brsh')!;
+      expect(tip.classId, 'sampledBrush');
+      expect(tip.textValue('sampledData'), 'u');
+      expect(tip.numberValue('Dmtr'), 44.0);
+      expect(tip['Intr'], isTrue);
+    });
+
+    test('fails cleanly on unknown value types', () {
+      final bytes = _AbrBytes()
+        ..i32(16)
+        ..unicode('')
+        ..key('null')
+        ..i32(1)
+        ..key('Wht?')
+        ..asciiChars('XXXX');
+      expect(
+        () => readVersionedDescriptor(AbrByteReader(bytes.bytes)),
+        throwsFormatException,
+      );
+    });
+  });
+}

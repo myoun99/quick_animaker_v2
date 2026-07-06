@@ -16,6 +16,7 @@ class BrushSettingsPanel extends StatelessWidget {
     this.onPresetApplied,
     this.onPresetSaveRequested,
     this.onPresetDeleted,
+    this.onPresetImportRequested,
   });
 
   final BrushToolState state;
@@ -32,6 +33,10 @@ class BrushSettingsPanel extends StatelessWidget {
 
   /// Called with the id of the preset whose delete affordance was tapped.
   final ValueChanged<BrushPresetId>? onPresetDeleted;
+
+  /// Called when the user asks to import brushes (e.g. a Photoshop `.abr`
+  /// file) into the preset library.
+  final VoidCallback? onPresetImportRequested;
 
   static const swatches = <_BrushSwatch>[
     _BrushSwatch('Black', 0xFF000000),
@@ -65,6 +70,14 @@ class BrushSettingsPanel extends StatelessWidget {
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),
+                if (onPresetImportRequested != null)
+                  IconButton(
+                    key: const ValueKey<String>('brush-preset-import-button'),
+                    icon: const Icon(Icons.file_open_outlined, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Import Photoshop brushes (.abr)',
+                    onPressed: onPresetImportRequested,
+                  ),
                 if (onPresetSaveRequested != null)
                   IconButton(
                     key: const ValueKey<String>('brush-preset-save-button'),

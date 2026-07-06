@@ -176,6 +176,7 @@ void main() {
     final applied = <BrushPreset>[];
     final deleted = <BrushPresetId>[];
     var saveRequests = 0;
+    var importRequests = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -188,6 +189,7 @@ void main() {
               onPresetApplied: applied.add,
               onPresetSaveRequested: () => saveRequests += 1,
               onPresetDeleted: deleted.add,
+              onPresetImportRequested: () => importRequests += 1,
             ),
           ),
         ),
@@ -215,6 +217,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(saveRequests, 1);
+
+    // The import affordance requests a brush-file import.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-import-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(importRequests, 1);
 
     // The chip's delete affordance reports the preset id.
     final markerChip = find.byKey(
