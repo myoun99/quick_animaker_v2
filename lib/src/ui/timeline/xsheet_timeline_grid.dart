@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -831,24 +832,31 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  Expanded(
-                    child: Slider(
-                      key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
-                      min: 0,
-                      max: 1,
-                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                      onChanged: (opacity) =>
-                          onLayerOpacityChanged(layer.id, opacity),
+                  // The camera track has no compositing opacity; hide the
+                  // slider rather than offering a dead control.
+                  if (layer.kind != LayerKind.camera) ...[
+                    Expanded(
+                      child: Slider(
+                        key: ValueKey<String>(
+                          'xsheet-layer-opacity-${layer.id}',
+                        ),
+                        min: 0,
+                        max: 1,
+                        value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                        onChanged: (opacity) =>
+                            onLayerOpacityChanged(layer.id, opacity),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 34,
-                    child: Text(
-                      '${(layer.opacity * 100).round()}%',
-                      textAlign: TextAlign.right,
-                      style: Theme.of(context).textTheme.labelSmall,
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        '${(layer.opacity * 100).round()}%',
+                        textAlign: TextAlign.right,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
                     ),
-                  ),
+                  ] else
+                    const Spacer(),
                 ],
               ),
             ],

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_toolbar.dart';
+import 'package:quick_animaker_v2/src/ui/camera/camera_panel.dart';
 
 void main() {
   Future<void> pumpToolbar(
@@ -18,20 +18,22 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: CameraToolbar(
-              cameraViewEnabled: cameraViewEnabled,
-              onCameraViewChanged: onCameraViewChanged ?? (_) {},
-              dimOpacity: 0.5,
-              onDimOpacityChanged: (_) {},
-              isCameraLayerActive: isCameraLayerActive,
-              pose:
-                  pose ??
-                  CameraPose(center: CanvasPoint(x: 100, y: 100), zoom: 1.5),
-              hasKeyframeAtCurrentFrame: hasKeyframe,
-              onPoseCommitted: onPoseCommitted ?? (_) {},
-              onRemoveKeyframe: onRemoveKeyframe ?? () {},
+          body: SizedBox(
+            width: 260,
+            child: SingleChildScrollView(
+              child: CameraPanel(
+                cameraViewEnabled: cameraViewEnabled,
+                onCameraViewChanged: onCameraViewChanged ?? (_) {},
+                dimOpacity: 0.5,
+                onDimOpacityChanged: (_) {},
+                isCameraLayerActive: isCameraLayerActive,
+                pose:
+                    pose ??
+                    CameraPose(center: CanvasPoint(x: 100, y: 100), zoom: 1.5),
+                hasKeyframeAtCurrentFrame: hasKeyframe,
+                onPoseCommitted: onPoseCommitted ?? (_) {},
+                onRemoveKeyframe: onRemoveKeyframe ?? () {},
+              ),
             ),
           ),
         ),

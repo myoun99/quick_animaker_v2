@@ -16,7 +16,7 @@ import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
-import 'camera/camera_toolbar.dart';
+import 'camera/camera_panel.dart';
 import 'editor_session_manager.dart';
 import 'panels/editor_panel_dock.dart';
 
@@ -270,37 +270,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 setState(() => _brushToolState = state);
               },
             ),
+            CameraPanel(
+              cameraViewEnabled: _cameraViewEnabled,
+              onCameraViewChanged: (enabled) {
+                setState(() => _cameraViewEnabled = enabled);
+              },
+              dimOpacity: _cameraDimOpacity,
+              onDimOpacityChanged: (opacity) {
+                setState(() => _cameraDimOpacity = opacity);
+              },
+              isCameraLayerActive: isCameraLayerActive,
+              pose: session.cameraPoseAtCurrentFrame,
+              hasKeyframeAtCurrentFrame:
+                  session.hasCameraKeyframeAtCurrentFrame,
+              onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+              onRemoveKeyframe: session.removeCameraKeyframeAtCurrentFrame,
+            ),
           ],
         ),
         Expanded(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 16, top: 4, right: 16),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: CameraToolbar(
-                    cameraViewEnabled: _cameraViewEnabled,
-                    onCameraViewChanged: (enabled) {
-                      setState(() => _cameraViewEnabled = enabled);
-                    },
-                    dimOpacity: _cameraDimOpacity,
-                    onDimOpacityChanged: (opacity) {
-                      setState(() => _cameraDimOpacity = opacity);
-                    },
-                    isCameraLayerActive: isCameraLayerActive,
-                    pose: session.cameraPoseAtCurrentFrame,
-                    hasKeyframeAtCurrentFrame:
-                        session.hasCameraKeyframeAtCurrentFrame,
-                    onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
-                    onRemoveKeyframe:
-                        session.removeCameraKeyframeAtCurrentFrame,
-                  ),
-                ),
-              ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  padding: const EdgeInsets.all(16),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(
