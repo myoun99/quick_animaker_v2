@@ -131,6 +131,41 @@ void main() {
       expect(loaded, [defaultBrushPresets.last]);
     });
 
+    test('duplicate preset ids in a saved library are healed on load', () async {
+      // The pre-fix ABR importer could persist duplicate ids when several
+      // brushes shared one tip; duplicate ids crash the preset chips.
+      final path = pathIn('duplicates.json');
+      final duplicated = BrushPreset(
+        id: const BrushPresetId('abr-shared'),
+        name: 'Variant A',
+        settings: BrushSettings(size: 5),
+      );
+      await File(path).writeAsString(
+        jsonEncode({
+          'version': BrushPresetFileService.libraryVersion,
+          'presets': [
+            duplicated.toJson(),
+            duplicated.copyWith(name: 'Variant B').toJson(),
+            duplicated.copyWith(name: 'Variant C').toJson(),
+          ],
+        }),
+      );
+      final service = BrushPresetFileService(filePath: path);
+
+      final loaded = await service.loadOrDefaults();
+
+      expect(loaded.map((p) => p.id.value), [
+        'abr-shared',
+        'abr-shared-2',
+        'abr-shared-3',
+      ]);
+      expect(loaded.map((p) => p.name), [
+        'Variant A',
+        'Variant B',
+        'Variant C',
+      ]);
+    });
+
     test('default path points into the per-user app-data directory', () {
       final path = BrushPresetFileService.defaultBrushPresetFilePath();
       expect(path, endsWith('quick_animaker_v2/brush_presets.json'));
