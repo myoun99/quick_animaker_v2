@@ -311,6 +311,7 @@ class _HomePageState extends State<HomePage> {
                         project: _session.repository.requireProject(),
                         activeCutId: _session.activeCutId,
                         onCutSelected: _session.selectCut,
+                        onCutReordered: _session.reorderCut,
                         onNewCut: _session.createCut,
                         onRenameActiveCut: _renameActiveCut,
                         onEditActiveCutNote: _editActiveCutNote,

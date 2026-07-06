@@ -74,6 +74,33 @@ void main() {
     });
   });
 
+  group('cameraFrameBoundsInCanvas', () {
+    test('unrotated bounds match the frame rect around the center', () {
+      final bounds = cameraFrameBoundsInCanvas(
+        pose: CameraPose(center: CanvasPoint(x: 1000, y: 600), zoom: 2),
+        cameraFrameSize: frameSize,
+      );
+
+      expect(bounds, const Rect.fromLTRB(1000 - 480, 600 - 270, 1000 + 480, 600 + 270));
+    });
+
+    test('rotation expands the bounds to the rotated corners', () {
+      final bounds = cameraFrameBoundsInCanvas(
+        pose: CameraPose(
+          center: CanvasPoint(x: 1000, y: 600),
+          rotationDegrees: 90,
+        ),
+        cameraFrameSize: frameSize,
+      );
+
+      // At 90° the 1920×1080 frame occupies 1080×1920 around the center.
+      expect(bounds.left, closeTo(1000 - 540, 1e-6));
+      expect(bounds.right, closeTo(1000 + 540, 1e-6));
+      expect(bounds.top, closeTo(600 - 960, 1e-6));
+      expect(bounds.bottom, closeTo(600 + 960, 1e-6));
+    });
+  });
+
   test('rotate knob sits above the top edge midpoint', () {
     final knob = cameraRotateKnobInViewport(
       pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),

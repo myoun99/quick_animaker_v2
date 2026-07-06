@@ -39,6 +39,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewportUnderlayBuilder,
     this.interactiveContentOpacity = 1.0,
     this.contentOverride,
+    this.fitFocusRect,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -78,6 +79,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// its own blank-canvas override, so the paper always shows.
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   contentOverride;
+
+  /// Forwarded to [BrushCanvasPanel]: canvas-space rect the Fit button
+  /// frames instead of the whole canvas.
+  final Rect? fitFocusRect;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -139,6 +144,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
       interactiveContentOpacity: widget.interactiveContentOpacity,
       contentOverride: contentOverride,
+      fitFocusRect: widget.fitFocusRect,
     );
   }
 

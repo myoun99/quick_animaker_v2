@@ -16,6 +16,10 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_dialog.dart';
+import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
+import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
+
+import 'fake_ffmpeg_process.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -88,6 +92,8 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session, {
     ExportDirectoryPicker? exportDirectoryPicker,
+    ExportVideoPathPicker? exportVideoPathPicker,
+    VideoExportService videoExportService = const VideoExportService(),
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -95,11 +101,22 @@ void main() {
           body: ExportDialog(
             session: session,
             exportDirectoryPicker: exportDirectoryPicker,
+            exportVideoPathPicker: exportVideoPathPicker,
+            videoExportService: videoExportService,
           ),
         ),
       ),
     );
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
+  }
+
+  Future<void> selectMp4Format(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-format-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MP4 video').last);
+    await tester.pumpAndSettle();
   }
 
   Directory tempDirectory(String prefix) {
@@ -326,6 +343,143 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Opaque background (white paper)'), findsOneWidget);
+  });
+
+  testWidgets('MP4 export pipes rendered frames into ffmpeg at project fps', (
+    tester,
+  ) async {
+    final process = FakeFfmpegProcess();
+    List<String>? capturedArguments;
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      // Deliberately without the .mp4 extension: the dialog appends it.
+      exportVideoPathPicker: (suggestedName) async {
+        expect(suggestedName, 'Project.mp4');
+        return 'C:/out/take';
+      },
+      videoExportService: VideoExportService(
+        processStarter: (executable, arguments) async {
+          capturedArguments = arguments;
+          return process;
+        },
+      ),
+    );
+
+    await selectMp4Format(tester);
+    expect(
+      find.text('Encoded with FFmpeg — it must be installed and on PATH.'),
+      findsOneWidget,
+    );
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    final arguments = capturedArguments!;
+    expect(arguments.last, 'C:/out/take.mp4');
+    final framerateIndex = arguments.indexOf('-framerate');
+    expect(arguments[framerateIndex + 1], '24');
+    expect(process.receivedPngCount, 2);
+    expect(find.text('Exported video (2 frames).'), findsOneWidget);
+  });
+
+  testWidgets('video export with mixed canvas sizes is blocked', (
+    tester,
+  ) async {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        cameraSize: const CanvasSize(width: 32, height: 18),
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [
+              Cut(
+                id: const CutId('cut'),
+                name: 'Cut',
+                duration: 2,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+                layers: [createCameraLayer(cutId: const CutId('cut'))],
+              ),
+              Cut(
+                id: const CutId('cut-b'),
+                name: 'Cut B',
+                duration: 2,
+                canvasSize: const CanvasSize(width: 16, height: 16),
+                layers: [createCameraLayer(cutId: const CutId('cut-b'))],
+              ),
+            ],
+          ),
+        ],
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    await pumpDialog(tester, session);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-range-all-cuts')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('export-size-canvas')));
+    await tester.pump();
+    await selectMp4Format(tester);
+
+    expect(
+      find.textContaining('Video needs one picture size'),
+      findsOneWidget,
+    );
+    final runButton = tester.widget<TextButton>(
+      find.byKey(const ValueKey<String>('export-run-button')),
+    );
+    expect(runButton.onPressed, isNull);
+
+    // The camera size is constant, so switching back re-enables export.
+    await tester.tap(find.byKey(const ValueKey<String>('export-size-camera')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextButton>(
+            find.byKey(const ValueKey<String>('export-run-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('instance export forces the PNG sequence format', (
+    tester,
+  ) async {
+    await pumpDialog(tester, exportSession());
+    await selectMp4Format(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-instance-toggle')),
+    );
+    await tester.pump();
+
+    final dropdown = tester.widget<DropdownButton<ExportFormat>>(
+      find.byKey(const ValueKey<String>('export-format-dropdown')),
+    );
+    expect(dropdown.value, ExportFormat.pngSequence);
+    expect(dropdown.onChanged, isNull);
+  });
+
+  testWidgets('cancelling the video path picker leaves no status', (
+    tester,
+  ) async {
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      exportVideoPathPicker: (_) async => null,
+    );
+
+    await selectMp4Format(tester);
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('export-status')), findsNothing);
   });
 
   testWidgets('cancelling the directory picker leaves no status', (

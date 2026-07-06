@@ -35,6 +35,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewportUnderlayBuilder,
     this.interactiveContentOpacity = 1.0,
     this.contentOverride,
+    this.fitFocusRect,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -74,6 +75,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// placeholder render through this. Receives the live viewport.
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   contentOverride;
+
+  /// Canvas-space rectangle the Fit button frames instead of the whole
+  /// canvas (e.g. the camera frame's bounds while the camera layer is
+  /// active). Null keeps Fit on the canvas itself.
+  final Rect? fitFocusRect;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -251,14 +257,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _fitToView() {
     final canvasSize = widget.canvasSize;
+    final focusRect = widget.fitFocusRect;
     final viewportSize = _resolvedEditorViewportSize();
     setState(() {
-      _viewport = CanvasViewport.fitToView(
-        canvasWidth: canvasSize.width.toDouble(),
-        canvasHeight: canvasSize.height.toDouble(),
-        viewportWidth: viewportSize.width,
-        viewportHeight: viewportSize.height,
-      );
+      _viewport = focusRect != null
+          ? CanvasViewport.fitToCanvasRect(
+              left: focusRect.left,
+              top: focusRect.top,
+              width: focusRect.width,
+              height: focusRect.height,
+              viewportWidth: viewportSize.width,
+              viewportHeight: viewportSize.height,
+            )
+          : CanvasViewport.fitToView(
+              canvasWidth: canvasSize.width.toDouble(),
+              canvasHeight: canvasSize.height.toDouble(),
+              viewportWidth: viewportSize.width,
+              viewportHeight: viewportSize.height,
+            );
     });
     widget.onViewportChanged?.call(_viewport);
   }

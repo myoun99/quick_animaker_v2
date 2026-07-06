@@ -51,15 +51,40 @@ class CanvasViewport {
     required double viewportHeight,
     double padding = 24.0,
   }) {
-    _validatePositiveFinite(canvasWidth, 'canvasWidth');
-    _validatePositiveFinite(canvasHeight, 'canvasHeight');
+    return CanvasViewport.fitToCanvasRect(
+      left: 0,
+      top: 0,
+      width: canvasWidth,
+      height: canvasHeight,
+      viewportWidth: viewportWidth,
+      viewportHeight: viewportHeight,
+      padding: padding,
+    );
+  }
+
+  /// Fits an arbitrary canvas-space rectangle (e.g. the camera frame's
+  /// bounds) centered into the viewport.
+  factory CanvasViewport.fitToCanvasRect({
+    required double left,
+    required double top,
+    required double width,
+    required double height,
+    required double viewportWidth,
+    required double viewportHeight,
+    double padding = 24.0,
+  }) {
+    _validateFinitePan(left, 'left');
+    _validateFinitePan(top, 'top');
+    _validatePositiveFinite(width, 'width');
+    _validatePositiveFinite(height, 'height');
     _validatePositiveFinite(viewportWidth, 'viewportWidth');
     _validatePositiveFinite(viewportHeight, 'viewportHeight');
     if (!padding.isFinite || padding < 0) {
       throw ArgumentError.value(
         padding,
         'padding',
-        'CanvasViewport.fitToView padding must be finite and non-negative.',
+        'CanvasViewport.fitToCanvasRect padding must be finite and '
+            'non-negative.',
       );
     }
 
@@ -68,15 +93,15 @@ class CanvasViewport {
       1.0,
       viewportHeight,
     );
-    final zoom = (usableWidth / canvasWidth) < (usableHeight / canvasHeight)
-        ? usableWidth / canvasWidth
-        : usableHeight / canvasHeight;
+    final zoom = (usableWidth / width) < (usableHeight / height)
+        ? usableWidth / width
+        : usableHeight / height;
     final clampedZoom = zoom.clamp(minZoom, maxZoom).toDouble();
 
     return CanvasViewport(
       zoom: clampedZoom,
-      panX: (viewportWidth - canvasWidth * clampedZoom) / 2,
-      panY: (viewportHeight - canvasHeight * clampedZoom) / 2,
+      panX: (viewportWidth - width * clampedZoom) / 2 - left * clampedZoom,
+      panY: (viewportHeight - height * clampedZoom) / 2 - top * clampedZoom,
     );
   }
 

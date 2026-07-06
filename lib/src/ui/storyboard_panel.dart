@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
 import '../models/track.dart';
+import 'cut/cut_list_bar.dart' show CutReorderedCallback;
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
@@ -15,6 +16,7 @@ class StoryboardPanel extends StatefulWidget {
     required this.project,
     required this.activeCutId,
     required this.onCutSelected,
+    this.onCutReordered,
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
@@ -33,6 +35,10 @@ class StoryboardPanel extends StatefulWidget {
   final Project project;
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
+
+  /// Dragging a cut block onto another block of the same track reorders the
+  /// cuts (same semantics as the top-bar chips). Null disables dragging.
+  final CutReorderedCallback? onCutReordered;
 
   // Cut management actions (the storyboard owns cut lifecycle; these were
   // the temporary top-toolbar controls). All act on the active cut.
@@ -150,6 +156,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         .toList(growable: false),
                                     activeCutId: widget.activeCutId,
                                     onCutSelected: widget.onCutSelected,
+                                    onCutReordered: widget.onCutReordered,
                                     timelineScale:
                                         StoryboardPanel._timelineScale,
                                   ),
@@ -307,6 +314,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.layoutEntries,
     required this.activeCutId,
     required this.onCutSelected,
+    required this.onCutReordered,
     required this.timelineScale,
   });
 
@@ -314,6 +322,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
+  final CutReorderedCallback? onCutReordered;
   final TimelineScale timelineScale;
 
   @override
@@ -342,11 +351,13 @@ class _StoryboardTrackRow extends StatelessWidget {
                 width: timelineScale.widthForDuration(entry.duration),
                 top: 0,
                 bottom: 0,
-                child: _StoryboardCutBlock(
+                child: _ReorderableStoryboardCutBlock(
                   layoutEntry: entry,
                   width: timelineScale.widthForDuration(entry.duration),
                   isActive: entry.cutId == activeCutId,
                   onSelected: onCutSelected,
+                  canReorder: onCutReordered != null && layoutEntries.length > 1,
+                  onCutReordered: onCutReordered,
                 ),
               ),
           ],
@@ -375,6 +386,93 @@ class _StoryboardTrackRow extends StatelessWidget {
               (width, nextWidth) => width > nextWidth ? width : nextWidth,
             ) +
         trailingPadding;
+  }
+}
+
+/// The drag layer around a cut block: mirrors the top-bar chips' semantics
+/// (drop on a target block = same-track reorder to its index) so both
+/// surfaces stay interchangeable.
+class _ReorderableStoryboardCutBlock extends StatelessWidget {
+  const _ReorderableStoryboardCutBlock({
+    required this.layoutEntry,
+    required this.width,
+    required this.isActive,
+    required this.onSelected,
+    required this.canReorder,
+    required this.onCutReordered,
+  });
+
+  final StoryboardTimelineLayoutEntry layoutEntry;
+  final double width;
+  final bool isActive;
+  final ValueChanged<CutId> onSelected;
+  final bool canReorder;
+  final CutReorderedCallback? onCutReordered;
+
+  @override
+  Widget build(BuildContext context) {
+    final block = _StoryboardCutBlock(
+      layoutEntry: layoutEntry,
+      width: width,
+      isActive: isActive,
+      onSelected: onSelected,
+    );
+    if (!canReorder) {
+      return block;
+    }
+
+    return DragTarget<CutId>(
+      onWillAcceptWithDetails: (details) => details.data != layoutEntry.cutId,
+      onAcceptWithDetails: (details) {
+        if (details.data == layoutEntry.cutId) {
+          return;
+        }
+
+        onCutReordered?.call(
+          draggedCutId: details.data,
+          targetTrackId: layoutEntry.trackId,
+          targetCutIndex: layoutEntry.cutIndex,
+        );
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isDropTarget = candidateData.isNotEmpty;
+        return Draggable<CutId>(
+          key: ValueKey<String>(
+            'storyboard-cut-draggable-${layoutEntry.cutId.value}',
+          ),
+          data: layoutEntry.cutId,
+          axis: Axis.horizontal,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Opacity(
+              opacity: 0.85,
+              child: SizedBox(
+                width: width,
+                height: StoryboardPanel._trackLaneHeight,
+                child: _StoryboardCutBlock(
+                  layoutEntry: layoutEntry,
+                  width: width,
+                  isActive: isActive,
+                  onSelected: (_) {},
+                ),
+              ),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.45, child: block),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: isDropTarget
+                  ? Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    )
+                  : null,
+            ),
+            child: block,
+          ),
+        );
+      },
+    );
   }
 }
 

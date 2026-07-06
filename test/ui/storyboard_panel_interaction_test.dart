@@ -12,6 +12,8 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/ui/cut/cut_list_bar.dart'
+    show CutReorderedCallback;
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 
 void main() {
@@ -183,6 +185,153 @@ void main() {
       },
     );
   });
+
+  group('StoryboardPanel cut drag reorder', () {
+    testWidgets('dragging a block onto another emits the target index', (
+      tester,
+    ) async {
+      CutId? reorderedCutId;
+      TrackId? capturedTargetTrackId;
+      int? capturedTargetCutIndex;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+          _cut('cut-c', name: 'Cut C'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onCutReordered:
+            ({
+              required CutId draggedCutId,
+              required TrackId targetTrackId,
+              required int targetCutIndex,
+            }) {
+              reorderedCutId = draggedCutId;
+              capturedTargetTrackId = targetTrackId;
+              capturedTargetCutIndex = targetCutIndex;
+            },
+      );
+
+      final source = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final target = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-c'),
+      );
+      await tester.dragFrom(
+        tester.getCenter(source),
+        tester.getCenter(target) - tester.getCenter(source),
+      );
+      await tester.pumpAndSettle();
+
+      expect(reorderedCutId, const CutId('cut-a'));
+      expect(capturedTargetTrackId, const TrackId('track-a'));
+      expect(capturedTargetCutIndex, 2);
+    });
+
+    testWidgets('dropping a block onto itself does not reorder', (
+      tester,
+    ) async {
+      var reorderCalls = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onCutReordered:
+            ({
+              required CutId draggedCutId,
+              required TrackId targetTrackId,
+              required int targetCutIndex,
+            }) {
+              reorderCalls += 1;
+            },
+      );
+
+      final source = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      await tester.dragFrom(tester.getCenter(source), const Offset(4, 0));
+      await tester.pumpAndSettle();
+
+      expect(reorderCalls, 0);
+    });
+
+    testWidgets('without onCutReordered blocks are not draggable', (
+      tester,
+    ) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-draggable-cut-a')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a single-cut track is not draggable', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onCutReordered:
+            ({
+              required CutId draggedCutId,
+              required TrackId targetTrackId,
+              required int targetCutIndex,
+            }) {},
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-draggable-cut-a')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('tap-to-select still works when dragging is enabled', (
+      tester,
+    ) async {
+      final selectedCutIds = <CutId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: selectedCutIds.add,
+        onCutReordered:
+            ({
+              required CutId draggedCutId,
+              required TrackId targetTrackId,
+              required int targetCutIndex,
+            }) {},
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(selectedCutIds, [const CutId('cut-b')]);
+    });
+  });
 }
 
 Future<void> _pumpStoryboardPanel(
@@ -190,6 +339,7 @@ Future<void> _pumpStoryboardPanel(
   Project project, {
   required CutId activeCutId,
   required ValueChanged<CutId> onCutSelected,
+  CutReorderedCallback? onCutReordered,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -198,6 +348,7 @@ Future<void> _pumpStoryboardPanel(
           project: project,
           activeCutId: activeCutId,
           onCutSelected: onCutSelected,
+          onCutReordered: onCutReordered,
         ),
       ),
     ),

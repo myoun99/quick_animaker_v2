@@ -19,12 +19,11 @@ Offset cameraCenterInViewport({
   );
 }
 
-/// The camera frame's corners in viewport (screen) coordinates:
+/// The camera frame's corners in canvas coordinates:
 /// top-left, top-right, bottom-right, bottom-left.
-List<Offset> cameraFrameCornersInViewport({
+List<Offset> cameraFrameCornersInCanvas({
   required CameraPose pose,
   required CanvasSize cameraFrameSize,
-  required CanvasViewport viewport,
 }) {
   final halfWidth = cameraFrameSize.width / pose.zoom / 2;
   final halfHeight = cameraFrameSize.height / pose.zoom / 2;
@@ -33,12 +32,10 @@ List<Offset> cameraFrameCornersInViewport({
   final sin = math.sin(radians);
 
   Offset corner(double dx, double dy) {
-    // Clockwise rotation in y-down screen space, then canvas → viewport.
-    final x = pose.center.x + dx * cos - dy * sin;
-    final y = pose.center.y + dx * sin + dy * cos;
+    // Clockwise rotation in y-down screen space.
     return Offset(
-      x * viewport.zoom + viewport.panX,
-      y * viewport.zoom + viewport.panY,
+      pose.center.x + dx * cos - dy * sin,
+      pose.center.y + dx * sin + dy * cos,
     );
   }
 
@@ -47,6 +44,48 @@ List<Offset> cameraFrameCornersInViewport({
     corner(halfWidth, -halfHeight),
     corner(halfWidth, halfHeight),
     corner(-halfWidth, halfHeight),
+  ];
+}
+
+/// The axis-aligned canvas-space bounds of the (possibly rotated) camera
+/// frame — what the Fit button frames while the camera layer is active.
+Rect cameraFrameBoundsInCanvas({
+  required CameraPose pose,
+  required CanvasSize cameraFrameSize,
+}) {
+  final corners = cameraFrameCornersInCanvas(
+    pose: pose,
+    cameraFrameSize: cameraFrameSize,
+  );
+  var left = corners.first.dx;
+  var top = corners.first.dy;
+  var right = corners.first.dx;
+  var bottom = corners.first.dy;
+  for (final corner in corners.skip(1)) {
+    left = math.min(left, corner.dx);
+    top = math.min(top, corner.dy);
+    right = math.max(right, corner.dx);
+    bottom = math.max(bottom, corner.dy);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
+/// The camera frame's corners in viewport (screen) coordinates:
+/// top-left, top-right, bottom-right, bottom-left.
+List<Offset> cameraFrameCornersInViewport({
+  required CameraPose pose,
+  required CanvasSize cameraFrameSize,
+  required CanvasViewport viewport,
+}) {
+  return [
+    for (final corner in cameraFrameCornersInCanvas(
+      pose: pose,
+      cameraFrameSize: cameraFrameSize,
+    ))
+      Offset(
+        corner.dx * viewport.zoom + viewport.panX,
+        corner.dy * viewport.zoom + viewport.panY,
+      ),
   ];
 }
 

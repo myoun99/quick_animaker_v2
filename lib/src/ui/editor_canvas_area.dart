@@ -383,6 +383,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final isPlaybackActive = session.playback.isActive;
     final layerStack = session.editingCanvasStack;
     final showAboveLayers = !isPlaybackActive && layerStack.above.isNotEmpty;
+    // Camera mode retargets the Fit button at the camera frame's bounds —
+    // fitting the cut canvas there framed the wrong rectangle.
+    final fitFocusRect = isCameraLayerActive
+        ? cameraFrameBoundsInCanvas(
+            pose: session.cameraPoseAtCurrentFrame,
+            cameraFrameSize: session.cameraFrameSize,
+          )
+        : null;
     return RepaintBoundary(
       child: KeyedSubtree(
         key: const ValueKey<String>('main-canvas-brush-host-container'),
@@ -402,6 +410,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           },
           selectionLabels: session.canvasSelectionLabels,
           brushToolState: _brushToolState,
+          fitFocusRect: fitFocusRect,
           // Layers below/above the active one composite around the
           // interactive view from the layer image cache — this is what makes
           // the other layers (and their visibility/opacity) visible while

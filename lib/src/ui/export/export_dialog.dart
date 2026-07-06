@@ -10,11 +10,25 @@ import '../editor_session_manager.dart';
 import 'export_frame_renderer.dart';
 import 'export_plan.dart';
 import 'png_sequence_export_service.dart';
+import 'video_export_service.dart';
 
 /// Picks the directory export files are written into; `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
 
+/// Picks the video output file path; `null` on cancel.
+typedef ExportVideoPathPicker = Future<String?> Function(String suggestedName);
+
 Future<String?> _pickExportDirectory() => getDirectoryPath();
+
+Future<String?> _pickExportVideoPath(String suggestedName) async {
+  final location = await getSaveLocation(
+    suggestedName: suggestedName,
+    acceptedTypeGroups: const [
+      XTypeGroup(label: 'MP4 video', extensions: ['mp4']),
+    ],
+  );
+  return location?.path;
+}
 
 /// The TVPaint-style export window: range (active cut / all cuts / frame
 /// subrange), output size (through the camera or the raw cut canvas),
@@ -25,12 +39,20 @@ class ExportDialog extends StatefulWidget {
     super.key,
     required this.session,
     this.exportDirectoryPicker,
+    this.exportVideoPathPicker,
+    this.videoExportService = const VideoExportService(),
   });
 
   final EditorSessionManager session;
 
   /// Injectable for tests; defaults to the platform directory picker.
   final ExportDirectoryPicker? exportDirectoryPicker;
+
+  /// Injectable for tests; defaults to the platform save-file dialog.
+  final ExportVideoPathPicker? exportVideoPathPicker;
+
+  /// Injectable for tests; the real one shells out to ffmpeg.
+  final VideoExportService videoExportService;
 
   @override
   State<ExportDialog> createState() => ExportDialogState();
@@ -41,6 +63,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   ExportRange _range = ExportRange.activeCut;
   ExportSizeMode _sizeMode = ExportSizeMode.camera;
+  ExportFormat _format = ExportFormat.pngSequence;
   bool _instanceOnly = false;
   bool _celTransparent = true;
   bool _celIncludeProject = false;
@@ -127,6 +150,14 @@ class ExportDialogState extends State<ExportDialog> {
     ).map((cut) => cut.canvasSize).toSet();
   }
 
+  /// Video needs one constant picture size; the camera size always is, but
+  /// raw canvas mode breaks when the range mixes cut canvas sizes.
+  bool get _videoSizeConflict =>
+      _format == ExportFormat.mp4Video &&
+      !_instanceOnly &&
+      _sizeMode == ExportSizeMode.canvas &&
+      _rangeCanvasSizes().length > 1;
+
   String _planSummary() {
     if (_instanceOnly) {
       final count = _celPlan().length;
@@ -148,6 +179,10 @@ class ExportDialogState extends State<ExportDialog> {
     if (sizes.length == 1) {
       final size = sizes.first;
       return '$frames at ${size.width}×${size.height} (raw canvas).';
+    }
+    if (_videoSizeConflict) {
+      return 'Video needs one picture size, but the cuts in this range have '
+          'different canvas sizes — use the camera size instead.';
     }
     return "$frames at each cut's own canvas size.";
   }
@@ -179,17 +214,33 @@ class ExportDialogState extends State<ExportDialog> {
     final instanceOnly = _instanceOnly;
     final celTransparent = _celTransparent;
     final sizeMode = _sizeMode;
+    final isVideo = !instanceOnly && _format == ExportFormat.mp4Video;
     final celPlan = instanceOnly ? _celPlan() : const <ExportCelTask>[];
     final framePlan = instanceOnly ? const <ExportFrameTask>[] : _framePlan();
     final count = instanceOnly ? celPlan.length : (framePlan?.length ?? 0);
-    if (count == 0 || _isExporting) {
+    if (count == 0 || _isExporting || _videoSizeConflict) {
       return;
     }
 
-    final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
-    final directoryPath = await picker();
-    if (directoryPath == null || !mounted) {
-      return;
+    String? directoryPath;
+    String? videoPath;
+    if (isVideo) {
+      final picker = widget.exportVideoPathPicker ?? _pickExportVideoPath;
+      final suggestedName =
+          '${sanitizeExportFileComponent(widget.session.repository.requireProject().name)}.mp4';
+      videoPath = await picker(suggestedName);
+      if (videoPath == null || !mounted) {
+        return;
+      }
+      if (!videoPath.toLowerCase().endsWith('.mp4')) {
+        videoPath = '$videoPath.mp4';
+      }
+    } else {
+      final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
+      directoryPath = await picker();
+      if (directoryPath == null || !mounted) {
+        return;
+      }
     }
 
     final renderer = ExportFrameRenderer(session: widget.session);
@@ -200,28 +251,45 @@ class ExportDialogState extends State<ExportDialog> {
       _statusMessage = 'Exporting…';
     });
     try {
-      final summary = await _exportService.exportImages(
-        count: count,
-        renderImage: (index) => instanceOnly
-            ? renderer.renderCel(celPlan[index], transparent: celTransparent)
-            : renderer.renderComposite(framePlan![index], sizeMode),
-        fileNameFor: (index) => instanceOnly
-            ? celPlan[index].fileName
-            : cameraSequenceFileName(index),
-        directoryPath: directoryPath,
-        isCancelled: () => _cancelRequested,
-        onProgress: (completed, total) {
-          if (mounted) {
-            setState(() {
-              _progress = (completed, total);
-              _statusMessage = 'Exporting… $completed/$total';
-            });
-          }
-        },
-      );
+      void reportProgress(int completed, int total) {
+        if (mounted) {
+          setState(() {
+            _progress = (completed, total);
+            _statusMessage = 'Exporting… $completed/$total';
+          });
+        }
+      }
+
+      final summary = isVideo
+          ? await widget.videoExportService.exportVideo(
+              count: count,
+              renderImage: (index) =>
+                  renderer.renderComposite(framePlan![index], sizeMode),
+              outputFilePath: videoPath!,
+              fps: widget.session.projectFps,
+              isCancelled: () => _cancelRequested,
+              onProgress: reportProgress,
+            )
+          : await _exportService.exportImages(
+              count: count,
+              renderImage: (index) => instanceOnly
+                  ? renderer.renderCel(
+                      celPlan[index],
+                      transparent: celTransparent,
+                    )
+                  : renderer.renderComposite(framePlan![index], sizeMode),
+              fileNameFor: (index) => instanceOnly
+                  ? celPlan[index].fileName
+                  : cameraSequenceFileName(index),
+              directoryPath: directoryPath!,
+              isCancelled: () => _cancelRequested,
+              onProgress: reportProgress,
+            );
       if (mounted) {
         setState(
-          () => _statusMessage = _summaryMessage(summary, count, instanceOnly),
+          () => _statusMessage = isVideo
+              ? _videoSummaryMessage(summary, count)
+              : _summaryMessage(summary, count, instanceOnly),
         );
       }
     } catch (error) {
@@ -236,6 +304,17 @@ class ExportDialogState extends State<ExportDialog> {
         });
       }
     }
+  }
+
+  String _videoSummaryMessage(ExportWriteSummary summary, int planned) {
+    if (summary.processed < planned) {
+      return summary.written == 0
+          ? 'Export cancelled.'
+          : 'Export cancelled after ${summary.written} '
+                '${_plural(summary.written, 'frame')} (partial video kept).';
+    }
+    return 'Exported video (${summary.written} '
+        '${_plural(summary.written, 'frame')}).';
   }
 
   void cancelExport() {
@@ -314,6 +393,7 @@ class ExportDialogState extends State<ExportDialog> {
     final celPlan = _instanceOnly ? _celPlan() : const <ExportCelTask>[];
     final canExport =
         !_isExporting &&
+        !_videoSizeConflict &&
         (_instanceOnly
             ? celPlan.isNotEmpty
             : (_framePlan()?.isNotEmpty ?? false));
@@ -392,19 +472,31 @@ class ExportDialogState extends State<ExportDialog> {
                 children: [
                   DropdownButton<ExportFormat>(
                     key: const ValueKey<String>('export-format-dropdown'),
-                    value: ExportFormat.pngSequence,
+                    // Cels are always individual PNGs.
+                    value: _instanceOnly ? ExportFormat.pngSequence : _format,
                     items: const [
                       DropdownMenuItem(
                         value: ExportFormat.pngSequence,
                         child: Text('PNG sequence'),
                       ),
+                      DropdownMenuItem(
+                        value: ExportFormat.mp4Video,
+                        child: Text('MP4 video'),
+                      ),
                     ],
-                    onChanged: _isExporting ? null : (_) {},
+                    onChanged: _isExporting || _instanceOnly
+                        ? null
+                        : (format) => setState(
+                            () => _format = format ?? ExportFormat.pngSequence,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Video export lands later.',
+                      _format == ExportFormat.mp4Video && !_instanceOnly
+                          ? 'Encoded with FFmpeg — it must be installed and '
+                                'on PATH.'
+                          : 'One PNG file per frame.',
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
