@@ -9,6 +9,8 @@ import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_exposure_comma_drag_handle.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
@@ -48,6 +50,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
   });
 
   final List<Layer> layers;
@@ -66,6 +70,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Comma-drag step attempts (shared policy with the horizontal timeline);
+  /// when either is null the drag handle is not offered.
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -471,6 +480,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                         widget.onSelectLayer,
                                                     onSelectFrame:
                                                         widget.onSelectFrame,
+                                                    onTryIncreaseExposure: widget
+                                                        .onTryIncreaseExposure,
+                                                    onTryDecreaseExposure: widget
+                                                        .onTryDecreaseExposure,
                                                   ),
                                               ],
                                             ),
@@ -674,6 +687,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
     this.sectionStart = false,
   });
 
@@ -696,6 +711,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
 
   @override
   Widget build(BuildContext context) {
@@ -707,6 +724,19 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
       exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
+    final onTryIncreaseExposure = this.onTryIncreaseExposure;
+    final onTryDecreaseExposure = this.onTryDecreaseExposure;
+    // Comma-drag dispatches by LayerKind inside the shared cell widgets:
+    // the camera column mirrors keyframes, not exposure runs.
+    final showCommaDragHandle =
+        onTryIncreaseExposure != null &&
+        onTryDecreaseExposure != null &&
+        layer.kind != LayerKind.camera &&
+        timelineCommaDragHandleVisible(
+          displayRange: selectedExposureDisplayRange,
+          exposureStateAt: (frameIndex) =>
+              exposureStateForLayer(layer, frameIndex),
+        );
     return SizedBox(
       width: metrics.layerRowHeight,
       child: Stack(
@@ -790,6 +820,18 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.outline,
                 ),
               ),
+            ),
+          if (showCommaDragHandle)
+            TimelineExposureCommaDragHandle(
+              axis: Axis.vertical,
+              layerId: layer.id,
+              displayRange: selectedExposureDisplayRange,
+              frameStartIndex: frameStartIndex,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              onTryIncreaseExposure: onTryIncreaseExposure,
+              onTryDecreaseExposure: onTryDecreaseExposure,
             ),
         ],
       ),

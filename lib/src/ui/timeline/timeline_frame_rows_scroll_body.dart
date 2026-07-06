@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_section_policy.dart';
@@ -25,6 +26,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
   });
 
   final List<Layer> layers;
@@ -43,6 +46,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +73,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
+              onTryIncreaseExposure: onTryIncreaseExposure,
+              onTryDecreaseExposure: onTryDecreaseExposure,
             ),
           if (layers.isEmpty)
             SizedBox(

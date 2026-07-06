@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_exposure_comma_drag_handle.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_selected_exposure_outline.dart';
@@ -27,6 +30,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
     this.sectionStart = false,
   });
 
@@ -51,6 +56,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
+  /// Comma-drag step attempts for the active layer's selected exposure
+  /// block; when either is null the drag handle is not offered.
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
+
   @override
   Widget build(BuildContext context) {
     final selectedExposureDisplayRange = resolveSelectedExposureDisplayRange(
@@ -61,6 +71,20 @@ class TimelineFrameCellsRow extends StatelessWidget {
       exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
+    final onTryIncreaseExposure = this.onTryIncreaseExposure;
+    final onTryDecreaseExposure = this.onTryDecreaseExposure;
+    // Comma-drag dispatches by LayerKind inside the shared row widget: the
+    // camera row's cells mirror keyframes, not exposure runs, so it gets no
+    // handle.
+    final showCommaDragHandle =
+        onTryIncreaseExposure != null &&
+        onTryDecreaseExposure != null &&
+        layer.kind != LayerKind.camera &&
+        timelineCommaDragHandleVisible(
+          displayRange: selectedExposureDisplayRange,
+          exposureStateAt: (frameIndex) =>
+              exposureStateForLayer(layer, frameIndex),
+        );
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
@@ -134,6 +158,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 color: Theme.of(context).colorScheme.outline,
               ),
             ),
+          ),
+        if (showCommaDragHandle)
+          TimelineExposureCommaDragHandle(
+            layerId: layer.id,
+            displayRange: selectedExposureDisplayRange,
+            frameStartIndex: frameStartIndex,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            onTryIncreaseExposure: onTryIncreaseExposure,
+            onTryDecreaseExposure: onTryDecreaseExposure,
           ),
       ],
     );

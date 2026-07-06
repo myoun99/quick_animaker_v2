@@ -1564,6 +1564,70 @@ Line 8''';
   });
 
   testWidgets(
+    'comma-drag handle lengthens and shortens the selected exposure',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
+
+      // Drawing block at frames 1-2 followed by a blank at frame 3: the
+      // handle needs a real end edge (a following authored entry).
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('new-frame-button'),
+      );
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-2'),
+      );
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('blank-exposure-button'),
+      );
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-0'),
+      );
+      _expectCellText('default-layer-1', 2, 'X');
+
+      final handleFinder = find.byKey(
+        const ValueKey<String>(
+          'timeline-exposure-comma-drag-handle-default-layer-1',
+        ),
+      );
+      expect(handleFinder, findsOneWidget);
+
+      // Drag one cell toward longer: the exposure grows and pushes the
+      // blank entry from frame 3 to frame 4.
+      final lengthen = await tester.startGesture(
+        tester.getCenter(handleFinder),
+      );
+      await lengthen.moveBy(const Offset(19, 0));
+      await tester.pump();
+      await lengthen.moveBy(const Offset(48, 0));
+      await tester.pumpAndSettle();
+      await lengthen.up();
+      await tester.pumpAndSettle();
+
+      _expectNoCellText('default-layer-1', 2, 'X');
+      _expectCellText('default-layer-1', 3, 'X');
+      expect(_selectedCellStateLabel(tester), 'drawing start');
+
+      // Drag one cell back toward shorter: the blank returns to frame 3.
+      final shorten = await tester.startGesture(
+        tester.getCenter(handleFinder),
+      );
+      await shorten.moveBy(const Offset(-19, 0));
+      await tester.pump();
+      await shorten.moveBy(const Offset(-48, 0));
+      await tester.pumpAndSettle();
+      await shorten.up();
+      await tester.pumpAndSettle();
+
+      _expectCellText('default-layer-1', 2, 'X');
+      _expectNoCellText('default-layer-1', 3, 'X');
+    },
+  );
+
+  testWidgets(
     'cut switching clears copied frame before cross-cut linked paste',
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());

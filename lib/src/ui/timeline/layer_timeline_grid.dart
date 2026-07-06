@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_frame_range_policy.dart';
@@ -37,6 +38,8 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
   });
 
   final List<Layer> layers;
@@ -52,6 +55,11 @@ class LayerTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Comma-drag step attempts (shared policy with the X-sheet); when either
+  /// is null the drag handle is not offered.
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
 
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
@@ -518,6 +526,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onSelectLayer,
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
+                                                  onTryIncreaseExposure: widget
+                                                      .onTryIncreaseExposure,
+                                                  onTryDecreaseExposure: widget
+                                                      .onTryDecreaseExposure,
                                                 ),
                                                 cutEndBoundaryLeft:
                                                     timelineCutEndBoundaryX(

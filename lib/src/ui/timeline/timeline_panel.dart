@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_orientation.dart';
 import 'xsheet_timeline_grid.dart';
 
@@ -23,6 +24,8 @@ class TimelinePanel extends StatelessWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onTryIncreaseExposure,
+    this.onTryDecreaseExposure,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
@@ -44,6 +47,11 @@ class TimelinePanel extends StatelessWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Comma-drag step attempts for the active layer's selected exposure
+  /// block, shared by both orientations; null hides the drag handles.
+  final TimelineExposureCommaStepAttempt? onTryIncreaseExposure;
+  final TimelineExposureCommaStepAttempt? onTryDecreaseExposure;
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final Widget? timelineActionToolbar;
@@ -143,6 +151,8 @@ class TimelinePanel extends StatelessWidget {
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      onTryIncreaseExposure: onTryIncreaseExposure,
+                      onTryDecreaseExposure: onTryDecreaseExposure,
                     )
                   : XSheetTimelineGrid(
                       layers: xsheetLayerDisplayOrder(layers),
@@ -157,6 +167,8 @@ class TimelinePanel extends StatelessWidget {
                       onAddLayer: onAddLayer,
                       onToggleLayerVisibility: onToggleLayerVisibility,
                       onLayerOpacityChanged: onLayerOpacityChanged,
+                      onTryIncreaseExposure: onTryIncreaseExposure,
+                      onTryDecreaseExposure: onTryDecreaseExposure,
                     ),
             ),
           ],

@@ -250,6 +250,22 @@ class _HomePageState extends State<HomePage> {
             onLayerOpacityChanged: (layerId, opacity) {
               _session.setLayerOpacity(layerId: layerId, opacity: opacity);
             },
+            // Comma-drag steps reuse the toolbar increase/decrease commands
+            // (one undo entry per frame step, same as the buttons).
+            onTryIncreaseExposure: () {
+              if (!_session.canIncreaseSelectedExposure) {
+                return false;
+              }
+              _session.increaseSelectedExposure();
+              return true;
+            },
+            onTryDecreaseExposure: () {
+              if (!_session.canDecreaseSelectedExposure) {
+                return false;
+              }
+              _session.decreaseSelectedExposure();
+              return true;
+            },
             orientation: _timelineOrientation,
             onOrientationChanged: (orientation) {
               setState(() => _timelineOrientation = orientation);
