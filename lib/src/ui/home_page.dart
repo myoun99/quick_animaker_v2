@@ -280,7 +280,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('QuickAnimaker v2.1'),
+        title: const Text('QuickAnimaker'),
         actions: [
           IconButton(
             key: const ValueKey<String>('undo-button'),
