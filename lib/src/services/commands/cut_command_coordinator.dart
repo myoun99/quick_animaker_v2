@@ -1,7 +1,10 @@
 import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
+import '../../models/camera_pose.dart';
+import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -11,6 +14,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
+import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../history_manager.dart';
 import '../project_lookup.dart';
@@ -24,6 +28,7 @@ import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'reorder_cut_command.dart';
 import 'resize_cut_canvas_command.dart';
+import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_name_command.dart';
@@ -34,11 +39,16 @@ class CutCommandCoordinator {
     required this.repository,
     required this.editingSession,
     required this.historyManager,
+    this.brushFrameStore,
   });
 
   final ProjectRepository repository;
   final EditingSessionState editingSession;
   final HistoryManager historyManager;
+
+  /// Optional app-level brush stroke store; when present, canvas resizes
+  /// translate the cut's strokes to honor the chosen anchor.
+  final BrushFrameStore? brushFrameStore;
 
   void createCut({
     required TrackId trackId,
@@ -61,7 +71,11 @@ class CutCommandCoordinator {
     );
   }
 
-  void resizeCutCanvas({required CutId cutId, required CanvasSize canvasSize}) {
+  void resizeCutCanvas({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+  }) {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) {
       throw ArgumentError.value(
         canvasSize,
@@ -80,6 +94,8 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         canvasSize: canvasSize,
+        anchor: anchor,
+        brushFrameStore: brushFrameStore,
       ),
     );
   }
@@ -98,6 +114,66 @@ class CutCommandCoordinator {
 
     historyManager.execute(
       UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    );
+  }
+
+  void setCutCameraKeyframe({
+    required CutId cutId,
+    required int frameIndex,
+    required CameraPose pose,
+  }) {
+    if (frameIndex < 0) {
+      throw ArgumentError.value(
+        frameIndex,
+        'frameIndex',
+        'Camera keyframe index must be non-negative.',
+      );
+    }
+
+    final cut = _requireCut(cutId);
+    if (cut.camera.keyframeAt(frameIndex) == pose) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutCameraCommand(
+        repository: repository,
+        cutId: cutId,
+        camera: cut.camera.withKeyframe(frameIndex, pose),
+        description: 'Set camera keyframe at frame ${frameIndex + 1}',
+      ),
+    );
+  }
+
+  void removeCutCameraKeyframe({required CutId cutId, required int frameIndex}) {
+    final cut = _requireCut(cutId);
+    if (cut.camera.keyframeAt(frameIndex) == null) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutCameraCommand(
+        repository: repository,
+        cutId: cutId,
+        camera: cut.camera.withoutKeyframe(frameIndex),
+        description: 'Remove camera keyframe at frame ${frameIndex + 1}',
+      ),
+    );
+  }
+
+  void clearCutCamera({required CutId cutId}) {
+    final cut = _requireCut(cutId);
+    if (cut.camera.isEmpty) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutCameraCommand(
+        repository: repository,
+        cutId: cutId,
+        camera: CutCamera.empty(),
+        description: 'Clear camera keyframes',
+      ),
     );
   }
 

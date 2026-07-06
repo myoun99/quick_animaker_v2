@@ -5,6 +5,8 @@ import '../models/brush_frame_key.dart';
 import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
 import '../models/brush_paint_command_state.dart';
+import '../models/canvas_point.dart';
+import '../models/cut_id.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/layer_id.dart';
 import '../models/undo_payload_ref.dart';
@@ -53,6 +55,43 @@ class BrushFrameStore {
   /// cached preview surfaces the wrong size. Source paint commands are kept.
   void clearDisplayCaches() {
     _displayCaches.clear();
+  }
+
+  /// Shifts every stored stroke of [cutId]'s frames by ([dx], [dy]) in canvas
+  /// space, for canvas resizes anchored anywhere but the top-left corner.
+  /// Coordinates are doubles, so the inverse translation restores them
+  /// exactly (used by resize undo).
+  void translateCutContent({
+    required CutId cutId,
+    required double dx,
+    required double dy,
+  }) {
+    if (dx == 0 && dy == 0) {
+      return;
+    }
+    for (final key in _frames.keys.toList()) {
+      if (key.cutId != cutId) {
+        continue;
+      }
+      _update(key, (state) {
+        final commands = state.paintCommands
+            .map(
+              (command) => command.copyWith(
+                sourceDabs: [
+                  for (final dab in command.sourceDabs)
+                    dab.copyWith(
+                      center: CanvasPoint(
+                        x: dab.center.x + dx,
+                        y: dab.center.y + dy,
+                      ),
+                    ),
+                ],
+              ),
+            )
+            .toList();
+        return _markCacheDirty(state.copyWith(paintCommands: commands));
+      });
+    }
   }
 
   BrushFrameDisplayCache storeRebuiltDisplayCache({

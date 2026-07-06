@@ -26,6 +26,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selection,
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
+    this.frameStore,
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
@@ -37,6 +38,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
   final CanvasSize canvasSize;
+
+  /// Injectable stroke store (the session-owned one in production, so
+  /// app-level commands can transform stroke data); defaults to a local one.
+  final BrushFrameStore? frameStore;
+
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
@@ -51,7 +57,8 @@ class MainCanvasBrushHost extends StatefulWidget {
 
 class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   final _cacheInvalidationSink = BrushEditCacheInvalidationSink();
-  final _frameStore = BrushFrameStore();
+  late final BrushFrameStore _frameStore =
+      widget.frameStore ?? BrushFrameStore();
 
   late List<BrushFrameKey> _frameKeys = _resolveFrameKeys();
   BrushFrameEditingCoordinator? _coordinator;

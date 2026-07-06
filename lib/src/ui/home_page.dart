@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
-import '../models/canvas_size.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
 import 'cut/cut_list_bar.dart';
@@ -93,16 +92,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _resizeActiveCutCanvas() async {
-    final nextSize = await showDialog<CanvasSize>(
+    final request = await showDialog<CanvasResizeRequest>(
       context: context,
       builder: (context) =>
           CanvasSizeDialog(initialSize: _session.activeCut.canvasSize),
     );
-    if (!mounted || nextSize == null) {
+    if (!mounted || request == null) {
       return;
     }
 
-    _session.resizeActiveCutCanvas(nextSize);
+    _session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
   }
 
   Future<void> _deleteActiveLayer() async {

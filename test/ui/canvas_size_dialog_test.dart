@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_resize_anchor.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/ui/dialogs/canvas_size_dialog.dart';
 
 void main() {
-  CanvasSize? dialogResult;
+  CanvasResizeRequest? dialogResult;
 
   Future<void> pumpOpenDialog(
     WidgetTester tester, {
@@ -17,7 +18,7 @@ void main() {
           builder: (context) => Scaffold(
             body: TextButton(
               onPressed: () async {
-                dialogResult = await showDialog<CanvasSize>(
+                dialogResult = await showDialog<CanvasResizeRequest>(
                   context: context,
                   builder: (context) =>
                       CanvasSizeDialog(initialSize: initialSize),
@@ -49,7 +50,9 @@ void main() {
         '1080');
   });
 
-  testWidgets('confirms with the entered size', (tester) async {
+  testWidgets('confirms with the entered size and the center anchor default', (
+    tester,
+  ) async {
     await pumpOpenDialog(tester);
 
     await tester.enterText(
@@ -66,7 +69,29 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(dialogResult, const CanvasSize(width: 640, height: 480));
+    expect(
+      dialogResult,
+      const CanvasResizeRequest(
+        size: CanvasSize(width: 640, height: 480),
+        anchor: CanvasResizeAnchor.center,
+      ),
+    );
+  });
+
+  testWidgets('confirms with a picked anchor', (tester) async {
+    await pumpOpenDialog(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-anchor-bottomRight')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(dialogResult!.anchor, CanvasResizeAnchor.bottomRight);
+    expect(dialogResult!.size, const CanvasSize(width: 1920, height: 1080));
   });
 
   testWidgets('disables confirm for empty or out-of-range input', (

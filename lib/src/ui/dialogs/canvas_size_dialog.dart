@@ -1,11 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 
-/// Canvas-size dialog for a cut. Pops the new [CanvasSize], or nothing on
-/// cancel. Existing artwork keeps its coordinates (top-left anchor), so
-/// shrinking crops non-destructively and growing adds transparent space.
+/// What the canvas-size dialog confirms: the new size plus the anchor the
+/// existing artwork stays pinned to.
+class CanvasResizeRequest {
+  const CanvasResizeRequest({required this.size, required this.anchor});
+
+  final CanvasSize size;
+  final CanvasResizeAnchor anchor;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CanvasResizeRequest &&
+          other.size == size &&
+          other.anchor == anchor;
+
+  @override
+  int get hashCode => Object.hash(size, anchor);
+
+  @override
+  String toString() => 'CanvasResizeRequest(size: $size, anchor: $anchor)';
+}
+
+/// Canvas-size dialog for a cut. Pops a [CanvasResizeRequest], or nothing on
+/// cancel. The 9-way anchor grid (center by default, like Photoshop/Clip
+/// Studio) chooses where existing artwork stays pinned; cropped strokes are
+/// kept and reappear if the canvas grows again.
 class CanvasSizeDialog extends StatefulWidget {
   const CanvasSizeDialog({super.key, required this.initialSize});
 
@@ -32,6 +56,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
   late final TextEditingController _heightController = TextEditingController(
     text: '${widget.initialSize.height}',
   );
+  CanvasResizeAnchor _anchor = CanvasResizeAnchor.center;
 
   @override
   void dispose() {
@@ -50,13 +75,16 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     return value;
   }
 
-  CanvasSize? get _enteredSize {
+  CanvasResizeRequest? get _enteredRequest {
     final width = _parseDimension(_widthController);
     final height = _parseDimension(_heightController);
     if (width == null || height == null) {
       return null;
     }
-    return CanvasSize(width: width, height: height);
+    return CanvasResizeRequest(
+      size: CanvasSize(width: width, height: height),
+      anchor: _anchor,
+    );
   }
 
   void _applyPreset(CanvasSize size) {
@@ -68,7 +96,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final enteredSize = _enteredSize;
+    final enteredRequest = _enteredRequest;
 
     return AlertDialog(
       title: const Text('Canvas Size'),
@@ -121,11 +149,24 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            'Artwork keeps its position from the top-left corner. '
-            'Cropped strokes are restored if the canvas is enlarged again. '
-            '(${CanvasSizeDialog.minDimension}–${CanvasSizeDialog.maxDimension} px)',
-            style: Theme.of(context).textTheme.bodySmall,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _AnchorGrid(
+                selected: _anchor,
+                onSelected: (anchor) => setState(() => _anchor = anchor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Anchor: existing artwork stays pinned here. '
+                  'Cropped strokes are kept and reappear if the canvas '
+                  'grows again. '
+                  '(${CanvasSizeDialog.minDimension}–${CanvasSizeDialog.maxDimension} px)',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -137,12 +178,88 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
         ),
         TextButton(
           key: const ValueKey<String>('canvas-size-confirm-button'),
-          onPressed: enteredSize == null
+          onPressed: enteredRequest == null
               ? null
-              : () => Navigator.of(context).pop(enteredSize),
+              : () => Navigator.of(context).pop(enteredRequest),
           child: const Text('Resize'),
         ),
       ],
+    );
+  }
+}
+
+/// The Photoshop-style 3×3 anchor picker.
+class _AnchorGrid extends StatelessWidget {
+  const _AnchorGrid({required this.selected, required this.onSelected});
+
+  static const _rows = <List<CanvasResizeAnchor>>[
+    [
+      CanvasResizeAnchor.topLeft,
+      CanvasResizeAnchor.topCenter,
+      CanvasResizeAnchor.topRight,
+    ],
+    [
+      CanvasResizeAnchor.centerLeft,
+      CanvasResizeAnchor.center,
+      CanvasResizeAnchor.centerRight,
+    ],
+    [
+      CanvasResizeAnchor.bottomLeft,
+      CanvasResizeAnchor.bottomCenter,
+      CanvasResizeAnchor.bottomRight,
+    ],
+  ];
+
+  final CanvasResizeAnchor selected;
+  final ValueChanged<CanvasResizeAnchor> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final row in _rows)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final anchor in row)
+                  InkWell(
+                    key: ValueKey<String>(
+                      'canvas-size-anchor-${anchor.name}',
+                    ),
+                    onTap: () => onSelected(anchor),
+                    child: SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: Center(
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: anchor == selected
+                                ? colorScheme.primary
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: anchor == selected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }

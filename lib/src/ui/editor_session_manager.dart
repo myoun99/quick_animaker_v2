@@ -7,8 +7,11 @@ import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/camera_pose.dart';
+import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -17,6 +20,8 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
 import '../models/track_id.dart';
+import '../services/brush_frame_store.dart';
+import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -43,6 +48,7 @@ class EditorSessionManager extends ChangeNotifier {
       repository: _repository,
       editingSession: _editingSession,
       historyManager: _historyManager,
+      brushFrameStore: brushFrameStore,
     );
     _rebuildActiveCutControllers();
   }
@@ -51,6 +57,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   final EditingSessionState _editingSession;
   final ProjectRepository _repository;
+
+  /// App-level brush stroke store shared with the canvas host, so commands
+  /// (e.g. anchored canvas resize) can transform stroke data.
+  final BrushFrameStore brushFrameStore = BrushFrameStore();
+
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;
   final CutReorderPlanner _cutReorderPlanner = const CutReorderPlanner();
@@ -154,10 +165,14 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resizeActiveCutCanvas(CanvasSize canvasSize) {
+  void resizeActiveCutCanvas(
+    CanvasSize canvasSize, {
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+  }) {
     _cutCommandCoordinator.resizeCutCanvas(
       cutId: _editingSession.activeCutId,
       canvasSize: canvasSize,
+      anchor: anchor,
     );
     _refreshAfterCutCommand();
     notifyListeners();
@@ -304,6 +319,47 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: _editingSession.activeCutId,
       newName: newName,
     );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  // --- Camera --------------------------------------------------------------
+
+  CutCamera get activeCutCamera => activeCut.camera;
+
+  /// The resolved camera pose at the current playhead frame (keyframe,
+  /// interpolation, or the default pose when the cut has no camera work).
+  CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
+    camera: activeCut.camera,
+    canvasSize: activeCut.canvasSize,
+    frameIndex: _timelineController.currentFrameIndex,
+  );
+
+  bool get hasCameraKeyframeAtCurrentFrame =>
+      activeCut.camera.keyframeAt(_timelineController.currentFrameIndex) !=
+      null;
+
+  void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
+    _cutCommandCoordinator.setCutCameraKeyframe(
+      cutId: _editingSession.activeCutId,
+      frameIndex: _timelineController.currentFrameIndex,
+      pose: pose,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void removeCameraKeyframeAtCurrentFrame() {
+    _cutCommandCoordinator.removeCutCameraKeyframe(
+      cutId: _editingSession.activeCutId,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void clearActiveCutCamera() {
+    _cutCommandCoordinator.clearCutCamera(cutId: _editingSession.activeCutId);
     _refreshAfterCutCommand();
     notifyListeners();
   }

@@ -1,4 +1,5 @@
 import '../models/cut.dart';
+import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -31,6 +32,7 @@ Cut duplicateCutAsIndependentCopy({
     duration: source.duration,
     canvasSize: source.canvasSize,
     metadata: source.metadata,
+    camera: CutCamera(keyframes: source.camera.keyframes),
   );
 }
 
