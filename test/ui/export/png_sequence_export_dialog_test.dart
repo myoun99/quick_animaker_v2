@@ -12,11 +12,11 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_preview_dialog.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/export/png_sequence_export_dialog.dart';
 
 void main() {
-  EditorSessionManager smallSession({int duration = 2}) {
+  EditorSessionManager smallSession({int duration = 3}) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -50,7 +50,7 @@ void main() {
     );
   }
 
-  Future<CameraPreviewDialogState> pumpDialog(
+  Future<PngSequenceExportDialogState> pumpDialog(
     WidgetTester tester,
     EditorSessionManager session, {
     ExportDirectoryPicker? exportDirectoryPicker,
@@ -58,38 +58,25 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CameraPreviewDialog(
+          body: PngSequenceExportDialog(
             session: session,
             exportDirectoryPicker: exportDirectoryPicker,
           ),
         ),
       ),
     );
-    final state = tester.state<CameraPreviewDialogState>(
-      find.byType(CameraPreviewDialog),
+    return tester.state<PngSequenceExportDialogState>(
+      find.byType(PngSequenceExportDialog),
     );
-    await tester.runAsync(() => state.prerenderDone);
-    await tester.pump();
-    return state;
   }
 
-  testWidgets('prerenders all frames then plays', (tester) async {
+  testWidgets('summarizes the cut and camera output size', (tester) async {
     await pumpDialog(tester, smallSession());
 
     expect(
-      find.byKey(const ValueKey<String>('camera-preview-progress')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('camera-preview-image')),
+      find.text('Cut: 3 frames through the camera at 32×18.'),
       findsOneWidget,
     );
-
-    final playButton = tester.widget<IconButton>(
-      find.byKey(const ValueKey<String>('camera-preview-play-button')),
-    );
-    expect(playButton.onPressed, isNotNull);
-    expect(playButton.tooltip, 'Pause');
   });
 
   testWidgets('exports one PNG per frame into the picked directory', (
@@ -97,16 +84,16 @@ void main() {
   ) async {
     // Sync IO: real async IO futures never complete inside the widget-test
     // fake-async zone.
-    final directory = Directory.systemTemp.createTempSync('camera_export_test');
+    final directory = Directory.systemTemp.createTempSync('png_export_test');
     addTearDown(() => directory.deleteSync(recursive: true));
 
     final state = await pumpDialog(
       tester,
-      smallSession(duration: 3),
+      smallSession(),
       exportDirectoryPicker: () async => directory.path,
     );
 
-    await tester.runAsync(state.exportPngSequence);
+    await tester.runAsync(state.export);
     await tester.pump();
 
     final files =
@@ -132,11 +119,11 @@ void main() {
       exportDirectoryPicker: () async => null,
     );
 
-    await tester.runAsync(state.exportPngSequence);
+    await tester.runAsync(state.export);
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('camera-preview-status')),
+      find.byKey(const ValueKey<String>('png-export-status')),
       findsNothing,
     );
   });

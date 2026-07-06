@@ -26,7 +26,16 @@ import '../services/brush_frame_display_cache_renderer.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
+import '../models/brush_frame_cache_invalidation.dart';
+import '../models/playback_quality.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
+import '../services/playback/playback_frame_mapping.dart';
+import 'playback/canvas_playback_controller.dart';
+import 'playback/cut_frame_composite_cache.dart';
+import 'playback/layer_frame_image_cache.dart';
+import 'playback/playback_cache_budget.dart';
+import 'playback/playback_prerender_scheduler.dart';
+import 'storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
@@ -55,6 +64,7 @@ class EditorSessionManager extends ChangeNotifier {
       brushFrameStore: brushFrameStore,
     );
     _rebuildActiveCutControllers();
+    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -70,6 +80,93 @@ class EditorSessionManager extends ChangeNotifier {
   /// prerender scheduler listen here.
   final EditorCacheInvalidationHub cacheInvalidationHub =
       EditorCacheInvalidationHub();
+
+  // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
+
+  late final LayerFrameImageCache layerFrameImageCache = LayerFrameImageCache(
+    frameStore: brushFrameStore,
+  );
+
+  late final CutFrameCompositeCache cutFrameCompositeCache =
+      CutFrameCompositeCache(
+        layerImages: layerFrameImageCache,
+        frameStore: brushFrameStore,
+        frameKeyOf: brushFrameKeyForCut,
+      );
+
+  late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
+      PlaybackCacheBudgetEnforcer(
+        layerImages: layerFrameImageCache,
+        composites: cutFrameCompositeCache,
+      );
+
+  late final PlaybackPrerenderScheduler prerenderScheduler =
+      PlaybackPrerenderScheduler(
+        composites: cutFrameCompositeCache,
+        resolveCut: cutById,
+        afterFrameCached: () => _playbackCacheBudgetEnforcer.enforce(
+          protect: _playbackProtectedRange(),
+        ),
+      );
+
+  /// The active cut's full range at the current quality: what budget
+  /// eviction must never touch (it is what's playing or about to play).
+  PlaybackProtectedRange? _playbackProtectedRange() {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
+    return PlaybackProtectedRange(
+      cutId: cut.id,
+      startFrame: 0,
+      endFrame: math.max(0, cut.duration - 1),
+      quality: playbackQuality,
+    );
+  }
+
+  /// Playback preview quality (Premiere/AE monitor resolution analogue).
+  PlaybackQuality playbackQuality = defaultPlaybackQuality;
+
+  void setPlaybackQuality(PlaybackQuality quality) {
+    if (playbackQuality == quality) {
+      return;
+    }
+    playbackQuality = quality;
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Canvas playback state machine; only the playback view and transport
+  /// controls listen (the session playhead syncs once on stop).
+  late final CanvasPlaybackController playback = CanvasPlaybackController(
+    resolveProject: () => _repository.requireProject(),
+    resolveActiveCutId: () => _editingSession.activeCutId,
+    resolveActiveTrackId: () => activeCutTrackId,
+    resolveFps: () => projectFps,
+    onStopped: _onPlaybackStopped,
+    onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
+  );
+
+  void _onPlaybackStopped(PlaybackPosition lastPosition) {
+    if (lastPosition.cutId != _editingSession.activeCutId) {
+      selectCut(lastPosition.cutId);
+    }
+    selectFrameIndex(_clampedFrameIndex(lastPosition.localFrameIndex));
+  }
+
+  void _onPlaybackPlaylistWarmRequested(
+    List<StoryboardTimelineLayoutEntry> playlist,
+    PlaybackScope scope,
+  ) {
+    prerenderScheduler.requestWarmFrames(
+      frames: [
+        for (final entry in playlist)
+          for (var index = 0; index < entry.duration; index += 1)
+            (entry.cutId, index),
+      ],
+      quality: playbackQuality,
+    );
+  }
 
   late final HistoryManager _historyManager;
   late final CutCommandCoordinator _cutCommandCoordinator;
@@ -148,6 +245,75 @@ class EditorSessionManager extends ChangeNotifier {
       preferredFrameIndex:
           preferredFrameIndex ?? _timelineController.currentFrameIndex,
     );
+    _warmActiveCut();
+  }
+
+  /// The cut with [cutId] anywhere in the project, or `null`.
+  Cut? cutById(CutId cutId) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == cutId) {
+          return cut;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// The brush store key of a layer frame within [cut] — same derivation the
+  /// canvas selection uses (track containing the cut, first track fallback).
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId) {
+    final project = _repository.requireProject();
+    var trackId = project.tracks.isEmpty
+        ? const TrackId('')
+        : project.tracks.first.id;
+    for (final track in project.tracks) {
+      if (track.cuts.any((candidate) => candidate.id == cut.id)) {
+        trackId = track.id;
+        break;
+      }
+    }
+    return BrushFrameKey(
+      projectId: project.id,
+      trackId: trackId,
+      cutId: cut.id,
+      layerId: layerId,
+      frameId: frameId,
+    );
+  }
+
+  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
+    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
+    cutFrameCompositeCache.invalidateWhereLayerFrame(
+      layerId: invalidation.frameKey.layerId,
+      frameId: invalidation.frameKey.frameId,
+    );
+    // Warming yields to the edit and then re-renders the dirty frames.
+    prerenderScheduler.notifyEditActivity();
+    _warmActiveCut();
+  }
+
+  /// Warms the active cut's composites around the playhead ("navigate away
+  /// from a frame and it gets pre-rendered").
+  void _warmActiveCut() {
+    if (activeCutOrNull == null) {
+      return;
+    }
+    prerenderScheduler.requestWarmCut(
+      cutId: _editingSession.activeCutId,
+      quality: playbackQuality,
+      aroundFrameIndex: _timelineController.currentFrameIndex,
+    );
+  }
+
+  @override
+  void dispose() {
+    cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
+    playback.dispose();
+    prerenderScheduler.dispose();
+    cutFrameCompositeCache.dispose();
+    layerFrameImageCache.dispose();
+    super.dispose();
   }
 
   bool _activeCutHasLayer(LayerId? layerId) {
@@ -349,6 +515,13 @@ class EditorSessionManager extends ChangeNotifier {
     frameIndex: frameIndex,
   );
 
+  /// Resolved camera pose for any cut (play-all renders other cuts too).
+  CameraPose cameraPoseForCut(Cut cut, int frameIndex) => resolveCameraPoseAt(
+    camera: cut.camera,
+    canvasSize: cut.canvasSize,
+    frameIndex: frameIndex,
+  );
+
   /// The drawable artwork of one layer frame in the active cut, replayed
   /// from the brush store's paint commands; `null` when nothing is drawn.
   /// This is the production [LayerFrameSurfaceResolver] for camera
@@ -452,6 +625,7 @@ class EditorSessionManager extends ChangeNotifier {
     _editingSession.setActiveCutId(cutId);
     _copiedFrame = null;
     _rebuildActiveCutControllers();
+    _warmActiveCut();
     notifyListeners();
   }
 
@@ -998,6 +1172,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectFrameIndex(int frameIndex) {
     _timelineController.selectFrameIndex(frameIndex);
+    _warmActiveCut();
     notifyListeners();
   }
 

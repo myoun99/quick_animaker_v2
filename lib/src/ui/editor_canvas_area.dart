@@ -19,6 +19,7 @@ import 'camera/camera_frame_overlay.dart';
 import 'camera/camera_panel.dart';
 import 'editor_session_manager.dart';
 import 'panels/editor_panel_dock.dart';
+import 'playback/canvas_playback_view.dart';
 
 /// The central drawing area: the brush canvas plus the brush-settings dock.
 ///
@@ -113,6 +114,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     setState(() {
       _brushPresets = [..._brushPresets, preset];
       _activePresetId = preset.id;
+    });
+    _persistPresets();
+  }
+
+  void _renamePreset(BrushPresetId id, String name) {
+    setState(() {
+      _brushPresets = [
+        for (final preset in _brushPresets)
+          preset.id == id ? preset.copyWith(name: name) : preset,
+      ];
+    });
+    _persistPresets();
+  }
+
+  void _reorderPresets(List<BrushPreset> presets) {
+    setState(() {
+      _brushPresets = List.of(presets);
     });
     _persistPresets();
   }
@@ -260,6 +278,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onPresetApplied: _applyPreset,
               onPresetSaveRequested: _saveCurrentAsPreset,
               onPresetDeleted: _deletePreset,
+              onPresetRenamed: _renamePreset,
+              onPresetsReordered: _reorderPresets,
               onPresetImportRequested: () {
                 unawaited(_importBrushFile());
               },
@@ -300,44 +320,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         color: Theme.of(context).colorScheme.outlineVariant,
                       ),
                     ),
-                    child: RepaintBoundary(
-                      child: KeyedSubtree(
-                        key: const ValueKey<String>(
-                          'main-canvas-brush-host-container',
-                        ),
-                        child: MainCanvasBrushHost(
-                          // Camera mode still needs artwork on screen: fall
-                          // back to the first drawn layer at the playhead.
-                          selection: isCameraLayerActive
-                              ? session.cameraBackdropSelection
-                              : session.activeBrushEditorSelection,
-                          canvasSize: session.activeCut.canvasSize,
-                          frameStore: session.brushFrameStore,
-                          cacheInvalidationSink: session.cacheInvalidationHub,
-                          historyManager: session.historyManager,
-                          viewport: _canvasViewport,
-                          onViewportChanged: (viewport) {
-                            setState(() => _canvasViewport = viewport);
-                          },
-                          selectionLabels: session.canvasSelectionLabels,
-                          brushToolState: _brushToolState,
-                          viewportOverlayBuilder: showCameraOverlay
-                              ? (context, viewport) => CameraFrameOverlay(
-                                  pose: session.cameraPoseAtCurrentFrame,
-                                  cameraFrameSize: session.cameraFrameSize,
-                                  viewport: viewport,
-                                  // Dim belongs to camera-view mode; plain
-                                  // manipulation keeps the artwork undimmed.
-                                  dimOpacity: _cameraViewEnabled
-                                      ? _cameraDimOpacity
-                                      : 0,
-                                  interactive: isCameraLayerActive,
-                                  onPoseCommitted:
-                                      session.setCameraKeyframeAtCurrentFrame,
-                                )
-                              : null,
-                        ),
-                      ),
+                    // Playback replaces the interactive canvas with the
+                    // cached-composite monitor while active.
+                    child: AnimatedBuilder(
+                      animation: session.playback,
+                      builder: (context, _) {
+                        if (session.playback.isActive) {
+                          return CanvasPlaybackView(
+                            controller: session.playback,
+                            compositeCache: session.cutFrameCompositeCache,
+                            qualityOf: () => session.playbackQuality,
+                            prerenderProgress:
+                                session.prerenderScheduler.progress,
+                            cameraViewEnabled: _cameraViewEnabled,
+                            cameraFrameSize: session.cameraFrameSize,
+                            cameraPoseOf: session.cameraPoseForCut,
+                          );
+                        }
+                        return _buildInteractiveCanvas(
+                          session,
+                          isCameraLayerActive: isCameraLayerActive,
+                          showCameraOverlay: showCameraOverlay,
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -346,6 +351,47 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInteractiveCanvas(
+    EditorSessionManager session, {
+    required bool isCameraLayerActive,
+    required bool showCameraOverlay,
+  }) {
+    return RepaintBoundary(
+      child: KeyedSubtree(
+        key: const ValueKey<String>('main-canvas-brush-host-container'),
+        child: MainCanvasBrushHost(
+          // Camera mode still needs artwork on screen: fall
+          // back to the first drawn layer at the playhead.
+          selection: isCameraLayerActive
+              ? session.cameraBackdropSelection
+              : session.activeBrushEditorSelection,
+          canvasSize: session.activeCut.canvasSize,
+          frameStore: session.brushFrameStore,
+          cacheInvalidationSink: session.cacheInvalidationHub,
+          historyManager: session.historyManager,
+          viewport: _canvasViewport,
+          onViewportChanged: (viewport) {
+            setState(() => _canvasViewport = viewport);
+          },
+          selectionLabels: session.canvasSelectionLabels,
+          brushToolState: _brushToolState,
+          viewportOverlayBuilder: showCameraOverlay
+              ? (context, viewport) => CameraFrameOverlay(
+                  pose: session.cameraPoseAtCurrentFrame,
+                  cameraFrameSize: session.cameraFrameSize,
+                  viewport: viewport,
+                  // Dim belongs to camera-view mode; plain
+                  // manipulation keeps the artwork undimmed.
+                  dimOpacity: _cameraViewEnabled ? _cameraDimOpacity : 0,
+                  interactive: isCameraLayerActive,
+                  onPoseCommitted: session.setCameraKeyframeAtCurrentFrame,
+                )
+              : null,
+        ),
+      ),
     );
   }
 }

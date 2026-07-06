@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
-import 'camera/camera_preview_dialog.dart';
 import 'cut/cut_list_bar.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
@@ -16,6 +15,9 @@ import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'export/png_sequence_export_dialog.dart';
+import 'playback/canvas_playback_controller.dart';
+import 'playback/playback_transport_controls.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_panel.dart';
 import 'timeline/timeline_action_toolbar.dart';
@@ -222,18 +224,18 @@ class _HomePageState extends State<HomePage> {
                       icon: const Icon(Icons.redo),
                     ),
                     IconButton(
-                      key: const ValueKey<String>('camera-preview-button'),
-                      tooltip: 'Camera Preview',
+                      key: const ValueKey<String>('export-png-button'),
+                      tooltip: 'Export PNG Sequence',
                       onPressed: () {
                         unawaited(
                           showDialog<void>(
                             context: context,
                             builder: (context) =>
-                                CameraPreviewDialog(session: _session),
+                                PngSequenceExportDialog(session: _session),
                           ),
                         );
                       },
-                      icon: const Icon(Icons.movie_outlined),
+                      icon: const Icon(Icons.save_alt),
                     ),
                   ],
                 ),
@@ -264,16 +266,46 @@ class _HomePageState extends State<HomePage> {
             onShowStoryboardChanged: (show) {
               setState(() => _showStoryboard = show);
             },
-            storyboardPanel: StoryboardPanel(
-              project: _session.repository.requireProject(),
-              activeCutId: _session.activeCutId,
-              onCutSelected: _session.selectCut,
+            // The storyboard context plays every cut of the track; the
+            // timeline context plays the active cut from the playhead.
+            // Composing the transports into the existing slots keeps
+            // TimelinePanel/StoryboardPanel untouched.
+            storyboardPanel: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PlaybackTransportControls(
+                  controller: _session.playback,
+                  scope: PlaybackScope.allCuts,
+                  quality: _session.playbackQuality,
+                  onQualityChanged: _session.setPlaybackQuality,
+                ),
+                Expanded(
+                  child: StoryboardPanel(
+                    project: _session.repository.requireProject(),
+                    activeCutId: _session.activeCutId,
+                    onCutSelected: _session.selectCut,
+                  ),
+                ),
+              ],
             ),
-            timelineActionToolbar: TimelineActionToolbar(
-              session: _session,
-              onRenameLayer: _renameActiveLayer,
-              onDeleteLayer: _deleteActiveLayer,
-              onRenameFrame: _renameSelectedFrame,
+            timelineActionToolbar: Row(
+              children: [
+                PlaybackTransportControls(
+                  controller: _session.playback,
+                  scope: PlaybackScope.activeCut,
+                  quality: _session.playbackQuality,
+                  onQualityChanged: _session.setPlaybackQuality,
+                  playbackStartFrame: () => _session.currentFrameIndex,
+                ),
+                Expanded(
+                  child: TimelineActionToolbar(
+                    session: _session,
+                    onRenameLayer: _renameActiveLayer,
+                    onDeleteLayer: _deleteActiveLayer,
+                    onRenameFrame: _renameSelectedFrame,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
