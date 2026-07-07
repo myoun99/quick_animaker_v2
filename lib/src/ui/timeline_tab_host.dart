@@ -12,6 +12,7 @@ import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import '../models/transform_track.dart';
+import '../services/camera_pose_resolver.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
@@ -64,7 +65,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (layer.kind != LayerKind.camera) {
       return const [];
     }
-    return transformPropertyLanes(_session.activeCut.camera.track);
+    final cut = _session.activeCut;
+    return transformPropertyLanes(
+      cut.camera.track,
+      poseAt: (frameIndex) => resolveCameraPoseAt(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
+    );
   }
 
   /// Commits an edited camera track as one undo step; non-camera layers
@@ -124,6 +133,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           frameIndex: frameIndex,
         ),
         'Toggle hold on ${lane.label} keyframe',
+      );
+    },
+    onSetValue: (layer, lane, frameIndex, input) {
+      _commitLaneEdit(
+        layer,
+        transformTrackWithLaneValueEdited(
+          _session.activeCut.camera.track,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+          input: input,
+        ),
+        'Set ${lane.label} at frame ${frameIndex + 1}',
       );
     },
   );

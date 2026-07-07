@@ -5,9 +5,10 @@ import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
 
 /// The label-rail row of one property lane: an indented AE-style property
-/// name plus the keyframe navigator (◀ previous key · ◆ toggle key at the
-/// playhead · ▶ next key).
-class TimelineLaneControlsRow extends StatelessWidget {
+/// name, the keyframe navigator (◀ previous key · ◆ toggle key at the
+/// playhead · ▶ next key) and the property's value at the playhead —
+/// tappable to type a new value (which keys it, AE-style).
+class TimelineLaneControlsRow extends StatefulWidget {
   const TimelineLaneControlsRow({
     super.key,
     required this.layer,
@@ -25,10 +26,28 @@ class TimelineLaneControlsRow extends StatelessWidget {
   final ValueChanged<int>? onSelectFrame;
   final PropertyLaneEditCallbacks? laneEdit;
 
+  @override
+  State<TimelineLaneControlsRow> createState() =>
+      _TimelineLaneControlsRowState();
+}
+
+class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
+  bool _editingValue = false;
+  late final TextEditingController _valueController = TextEditingController();
+
+  Layer get layer => widget.layer;
+  PropertyLaneRow get lane => widget.lane;
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    super.dispose();
+  }
+
   int? get _previousKeyFrame {
     int? best;
     for (final frame in lane.keyedFrames) {
-      if (frame < currentFrameIndex && (best == null || frame > best)) {
+      if (frame < widget.currentFrameIndex && (best == null || frame > best)) {
         best = frame;
       }
     }
@@ -38,24 +57,43 @@ class TimelineLaneControlsRow extends StatelessWidget {
   int? get _nextKeyFrame {
     int? best;
     for (final frame in lane.keyedFrames) {
-      if (frame > currentFrameIndex && (best == null || frame < best)) {
+      if (frame > widget.currentFrameIndex && (best == null || frame < best)) {
         best = frame;
       }
     }
     return best;
   }
 
+  void _startValueEdit(String currentValue) {
+    _valueController.text = currentValue;
+    setState(() => _editingValue = true);
+  }
+
+  void _commitValueEdit() {
+    final input = _valueController.text;
+    setState(() => _editingValue = false);
+    widget.laneEdit?.onSetValue?.call(
+      layer,
+      lane,
+      widget.currentFrameIndex,
+      input,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final keyedNow = lane.keyedFrames.contains(currentFrameIndex);
+    final keyedNow = lane.keyedFrames.contains(widget.currentFrameIndex);
     final previousKey = _previousKeyFrame;
     final nextKey = _nextKeyFrame;
+    final onSelectFrame = widget.onSelectFrame;
+    final laneEdit = widget.laneEdit;
+    final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
 
     return Container(
       key: ValueKey<String>('timeline-lane-label-${layer.id}-${lane.laneId}'),
-      width: metrics.layerControlsWidth,
-      height: metrics.layerRowHeight,
+      width: widget.metrics.layerControlsWidth,
+      height: widget.metrics.layerRowHeight,
       padding: const EdgeInsets.only(left: 24, right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
@@ -79,7 +117,7 @@ class TimelineLaneControlsRow extends StatelessWidget {
             ),
             enabled: laneEdit != null,
             onTap: () =>
-                laneEdit!.onToggleKeyAt(layer, lane, currentFrameIndex),
+                laneEdit!.onToggleKeyAt(layer, lane, widget.currentFrameIndex),
             child: Transform.rotate(
               angle: 0.785398,
               child: Container(
@@ -115,6 +153,59 @@ class TimelineLaneControlsRow extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(width: 4),
+          // AE's blue value column: the property's value at the playhead;
+          // tap to type (Enter commits and keys the value there).
+          if (valueLabel != null)
+            Expanded(
+              child: _editingValue
+                  ? SizedBox(
+                      height: 20,
+                      child: TextField(
+                        key: ValueKey<String>(
+                          'timeline-lane-value-field-${layer.id}-${lane.laneId}',
+                        ),
+                        controller: _valueController,
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 11),
+                        textAlign: TextAlign.right,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _commitValueEdit(),
+                        onTapOutside: (_) {
+                          // Tap-away cancels (Enter commits, AE-style).
+                          setState(() => _editingValue = false);
+                        },
+                      ),
+                    )
+                  : Align(
+                      alignment: Alignment.centerRight,
+                      child: InkWell(
+                        key: ValueKey<String>(
+                          'timeline-lane-value-${layer.id}-${lane.laneId}',
+                        ),
+                        onTap: laneEdit?.onSetValue == null
+                            ? null
+                            : () => _startValueEdit(valueLabel),
+                        child: Text(
+                          valueLabel,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+            )
+          else
+            const Spacer(),
         ],
       ),
     );

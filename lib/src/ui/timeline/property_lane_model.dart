@@ -10,6 +10,7 @@ class PropertyLaneRow {
     required this.label,
     required this.keyedFrames,
     this.holdOutFrames = const {},
+    this.valueLabel,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -23,6 +24,10 @@ class PropertyLaneRow {
 
   /// Keys whose OUT interpolation is HOLD (drawn as squares, AE-style).
   final Set<int> holdOutFrames;
+
+  /// The property's display value at a frame (AE's blue value column —
+  /// already unit-formatted); null hides the value.
+  final String Function(int frameIndex)? valueLabel;
 }
 
 /// One display row of the timeline grids: a layer row or one of its
@@ -59,6 +64,7 @@ class PropertyLaneEditCallbacks {
     required this.onMoveKey,
     required this.onRemoveKey,
     required this.onToggleHold,
+    this.onSetValue,
   });
 
   /// Adds a key (freezing the property's current value, AE-style) or
@@ -81,6 +87,18 @@ class PropertyLaneEditCallbacks {
   /// AE's Toggle Hold Keyframe.
   final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
   onToggleHold;
+
+  /// A value typed into the lane's value editor: sets/updates a key at the
+  /// frame (AE: changing an animated value keys it at the playhead). The
+  /// raw input is parsed by the property's own policy; invalid input is
+  /// ignored. Null hides the editor.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    String input,
+  )?
+  onSetValue;
 }
 
 /// Builds the grid's display rows: every layer row, plus the property lane

@@ -3,6 +3,7 @@
 // (or null when the edit is a no-op/invalid) — callers commit it as ONE
 // undo step.
 
+import '../../models/canvas_point.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 
@@ -109,6 +110,74 @@ TransformTrack? transformTrackWithLaneHoldToggled(
       return next == null ? null : track.copyWith(rotation: next);
   }
   return null;
+}
+
+/// Applies a value typed into a lane's value editor: sets/updates the key
+/// at [frameIndex] (AE: changing an animated value keys it at the
+/// playhead), preserving an existing key's interpolation. Accepted input
+/// per lane (AE display units): position `x, y`; scale `150` or `150%`
+/// (zoom·100); rotation `45` or `45°`. Null on parse failure.
+TransformTrack? transformTrackWithLaneValueEdited(
+  TransformTrack track, {
+  required String laneId,
+  required int frameIndex,
+  required String input,
+}) {
+  if (frameIndex < 0) {
+    return null;
+  }
+  switch (laneId) {
+    case 'position':
+      final parts = input.split(',');
+      if (parts.length != 2) {
+        return null;
+      }
+      final x = double.tryParse(parts[0].trim());
+      final y = double.tryParse(parts[1].trim());
+      if (x == null || y == null) {
+        return null;
+      }
+      return track.copyWith(
+        position: track.position.withKey(
+          frameIndex,
+          CanvasPoint(x: x, y: y),
+          interpolation: _keptInterpolation(track.position, frameIndex),
+        ),
+      );
+    case 'scale':
+      final percent = double.tryParse(input.replaceAll('%', '').trim());
+      if (percent == null || percent <= 0) {
+        return null;
+      }
+      return track.copyWith(
+        scale: track.scale.withKey(
+          frameIndex,
+          percent / 100,
+          interpolation: _keptInterpolation(track.scale, frameIndex),
+        ),
+      );
+    case 'rotation':
+      final degrees = double.tryParse(input.replaceAll('°', '').trim());
+      if (degrees == null) {
+        return null;
+      }
+      return track.copyWith(
+        rotation: track.rotation.withKey(
+          frameIndex,
+          degrees,
+          interpolation: _keptInterpolation(track.rotation, frameIndex),
+        ),
+      );
+  }
+  return null;
+}
+
+PropertyKeyInterpolation _keptInterpolation<T>(
+  PropertyTrack<T> lane,
+  int frameIndex,
+) {
+  return lane.keyAt(frameIndex)?.interpolation ??
+      PropertyKeyInterpolation.linear;
 }
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.

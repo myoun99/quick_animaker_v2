@@ -283,6 +283,65 @@ void main() {
       );
     });
 
+    test('value edits parse AE units and preserve interpolation', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<double>().withKey(
+          0,
+          1,
+          interpolation: PropertyKeyInterpolation.hold,
+        ),
+      );
+
+      final scaled = transformTrackWithLaneValueEdited(
+        track,
+        laneId: 'scale',
+        frameIndex: 0,
+        input: '250%',
+      )!;
+      expect(scaled.scale.keyAt(0)!.value, 2.5);
+      expect(
+        scaled.scale.keyAt(0)!.interpolation,
+        PropertyKeyInterpolation.hold,
+        reason: 'editing a value keeps the key interpolation',
+      );
+
+      final positioned = transformTrackWithLaneValueEdited(
+        track,
+        laneId: 'position',
+        frameIndex: 4,
+        input: ' 320, 180 ',
+      )!;
+      expect(positioned.position.keyAt(4)!.value, CanvasPoint(x: 320, y: 180));
+
+      final rotated = transformTrackWithLaneValueEdited(
+        track,
+        laneId: 'rotation',
+        frameIndex: 2,
+        input: '-45°',
+      )!;
+      expect(rotated.rotation.keyAt(2)!.value, -45);
+
+      // Garbage input is rejected.
+      expect(
+        transformTrackWithLaneValueEdited(
+          track,
+          laneId: 'scale',
+          frameIndex: 0,
+          input: 'abc',
+        ),
+        isNull,
+      );
+      expect(
+        transformTrackWithLaneValueEdited(
+          track,
+          laneId: 'position',
+          frameIndex: 0,
+          input: '12',
+        ),
+        isNull,
+      );
+    });
+
     test('hold toggle flips a key between linear and hold', () {
       final track = TransformTrack.empty().copyWith(
         rotation: PropertyTrack<double>().withKey(3, 45),
@@ -392,6 +451,69 @@ void main() {
 
       expect(_laneKey('rotation', 8), findsNothing);
       expect(_laneKey('position', 8), findsOneWidget);
+    });
+
+    testWidgets('the value column shows AE units and typing keys the '
+        'value at the playhead', (tester) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      // Resolved values at the playhead (frame 0), AE display units.
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'timeline-lane-value-lane-cam-layer-scale',
+                  ),
+                ),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '150%',
+      );
+
+      // Type a new scale: Enter commits and keys the value there.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-value-field-lane-cam-layer-scale',
+          ),
+        ),
+        '200%',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'timeline-lane-value-lane-cam-layer-scale',
+                  ),
+                ),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '200%',
+      );
+      // The scale lane stays keyed at frame 0 with the new value; other
+      // lanes are untouched.
+      expect(_laneKey('scale', 0), findsOneWidget);
     });
 
     testWidgets('prev/next navigator jumps the playhead between keys', (
