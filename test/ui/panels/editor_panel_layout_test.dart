@@ -2,33 +2,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_layout.dart';
 
 EditorPanelLayoutModel _model() => EditorPanelLayoutModel(
-  groups: {
-    'left': ['tools', 'brushes', 'camera'],
-    'bottom': ['timeline', 'storyboard'],
+  docks: {
+    'left': [
+      DockSection(tabs: ['tools', 'brushes', 'camera'], activeTabId: 'brushes'),
+    ],
+    'bottom': [
+      DockSection(tabs: ['timeline', 'storyboard']),
+    ],
+    'right': <DockSection>[],
   },
-  activeTabs: {'left': 'brushes', 'bottom': 'timeline'},
 );
+
+List<List<String>> _tabsOf(EditorPanelLayoutModel model, String dockId) => [
+  for (final section in model.sectionsIn(dockId)) section.tabs,
+];
 
 void main() {
   group('EditorPanelLayoutModel', () {
-    test('exposes groups, orders and active tabs', () {
+    test('exposes docks, sections and active tabs', () {
       final model = _model();
-      expect(model.tabsIn('left'), ['tools', 'brushes', 'camera']);
-      expect(model.tabsIn('bottom'), ['timeline', 'storyboard']);
-      expect(model.activeTabIn('left'), 'brushes');
-      expect(model.activeTabIn('bottom'), 'timeline');
-      expect(model.groupOf('camera'), 'left');
-      expect(model.groupOf('storyboard'), 'bottom');
-      expect(model.groupOf('unknown'), isNull);
-    });
-
-    test('falls back to the first tab when no active tab is given', () {
-      final model = EditorPanelLayoutModel(
-        groups: {
-          'left': ['a', 'b'],
-        },
-      );
-      expect(model.activeTabIn('left'), 'a');
+      expect(_tabsOf(model, 'left'), [
+        ['tools', 'brushes', 'camera'],
+      ]);
+      expect(model.sectionsIn('left').single.activeTabId, 'brushes');
+      expect(model.sectionsIn('bottom').single.activeTabId, 'timeline');
+      expect(model.sectionsIn('right'), isEmpty);
+      expect(model.locateTab('camera'), (
+        dockId: 'left',
+        sectionIndex: 0,
+        tabIndex: 2,
+      ));
+      expect(model.locateTab('unknown'), isNull);
     });
 
     test('selectTab switches the active tab and notifies', () {
@@ -36,9 +40,9 @@ void main() {
       var notified = 0;
       model.addListener(() => notified += 1);
 
-      model.selectTab('left', 'camera');
+      model.selectTab('left', 0, 'camera');
 
-      expect(model.activeTabIn('left'), 'camera');
+      expect(model.sectionsIn('left').single.activeTabId, 'camera');
       expect(notified, 1);
     });
 
@@ -47,116 +51,222 @@ void main() {
       var notified = 0;
       model.addListener(() => notified += 1);
 
-      model.selectTab('left', 'storyboard');
-      model.selectTab('left', 'brushes');
+      model.selectTab('left', 0, 'storyboard');
+      model.selectTab('left', 0, 'brushes');
+      model.selectTab('left', 5, 'camera');
 
-      expect(model.activeTabIn('left'), 'brushes');
       expect(notified, 0);
     });
 
-    test('same-group move reorders with insertion-index semantics', () {
+    test('same-section move reorders with insertion-index semantics', () {
       final model = _model();
 
-      // Insert 'tools' before 'camera' (index counted pre-removal).
-      model.moveTab(tabId: 'tools', toGroupId: 'left', toIndex: 2);
+      model.moveTabToSection(
+        tabId: 'tools',
+        toDockId: 'left',
+        toSectionIndex: 0,
+        insertIndex: 2,
+      );
 
-      expect(model.tabsIn('left'), ['brushes', 'tools', 'camera']);
+      expect(_tabsOf(model, 'left'), [
+        ['brushes', 'tools', 'camera'],
+      ]);
     });
 
-    test('same-group move to end appends', () {
-      final model = _model();
-
-      model.moveTab(tabId: 'tools', toGroupId: 'left', toIndex: 3);
-
-      expect(model.tabsIn('left'), ['brushes', 'camera', 'tools']);
-    });
-
-    test('same-group move onto its own slot is a silent no-op', () {
+    test('same-section move onto its own slot is a silent no-op', () {
       final model = _model();
       var notified = 0;
       model.addListener(() => notified += 1);
 
-      model.moveTab(tabId: 'brushes', toGroupId: 'left', toIndex: 1);
-      model.moveTab(tabId: 'brushes', toGroupId: 'left', toIndex: 2);
+      model.moveTabToSection(
+        tabId: 'brushes',
+        toDockId: 'left',
+        toSectionIndex: 0,
+        insertIndex: 1,
+      );
+      model.moveTabToSection(
+        tabId: 'brushes',
+        toDockId: 'left',
+        toSectionIndex: 0,
+        insertIndex: 2,
+      );
 
-      expect(model.tabsIn('left'), ['tools', 'brushes', 'camera']);
       expect(notified, 0);
     });
 
-    test('cross-group move activates the moved tab in the target', () {
+    test('cross-dock move joins the target section and activates', () {
       final model = _model();
 
-      model.moveTab(tabId: 'camera', toGroupId: 'bottom', toIndex: 1);
+      model.moveTabToSection(
+        tabId: 'camera',
+        toDockId: 'bottom',
+        toSectionIndex: 0,
+        insertIndex: 1,
+      );
 
-      expect(model.tabsIn('left'), ['tools', 'brushes']);
-      expect(model.tabsIn('bottom'), ['timeline', 'camera', 'storyboard']);
-      expect(model.activeTabIn('bottom'), 'camera');
-      expect(model.groupOf('camera'), 'bottom');
+      expect(_tabsOf(model, 'left'), [
+        ['tools', 'brushes'],
+      ]);
+      expect(_tabsOf(model, 'bottom'), [
+        ['timeline', 'camera', 'storyboard'],
+      ]);
+      expect(model.sectionsIn('bottom').single.activeTabId, 'camera');
     });
 
     test('moving the active tab out falls back to a neighbour', () {
       final model = _model();
-      expect(model.activeTabIn('left'), 'brushes');
 
-      model.moveTab(tabId: 'brushes', toGroupId: 'bottom', toIndex: 0);
-
-      // The element that took the moved tab's index becomes active.
-      expect(model.activeTabIn('left'), 'camera');
-      expect(model.tabsIn('bottom'), ['brushes', 'timeline', 'storyboard']);
-    });
-
-    test('moving the LAST tab of a group empties it', () {
-      final model = EditorPanelLayoutModel(
-        groups: {
-          'left': ['camera'],
-          'bottom': ['timeline', 'storyboard'],
-        },
+      model.moveTabToSection(
+        tabId: 'brushes',
+        toDockId: 'bottom',
+        toSectionIndex: 0,
+        insertIndex: 0,
       );
 
-      expect(model.canMoveTab(tabId: 'camera', toGroupId: 'bottom'), isTrue);
-      model.moveTab(tabId: 'camera', toGroupId: 'bottom', toIndex: 0);
-
-      expect(model.tabsIn('left'), isEmpty);
-      expect(model.activeTabIn('left'), isNull);
-      expect(model.tabsIn('bottom'), ['camera', 'timeline', 'storyboard']);
-      expect(model.activeTabIn('bottom'), 'camera');
+      expect(model.sectionsIn('left').single.activeTabId, 'camera');
     });
 
-    test('a tab can dock into an initially empty group', () {
-      final model = EditorPanelLayoutModel(
-        groups: {
-          'left': ['camera', 'brushes'],
-          'right': <String>[],
-        },
+    test('moveTabToNewSection stacks a panel below a panel', () {
+      final model = _model();
+
+      model.moveTabToNewSection(
+        tabId: 'camera',
+        toDockId: 'left',
+        atSectionIndex: 1,
       );
-      expect(model.activeTabIn('right'), isNull);
 
-      model.moveTab(tabId: 'camera', toGroupId: 'right', toIndex: 0);
-
-      expect(model.tabsIn('right'), ['camera']);
-      expect(model.activeTabIn('right'), 'camera');
-      expect(model.activeTabIn('left'), 'brushes');
-    });
-
-    test('unknown tabs or groups cannot move', () {
-      final model = _model();
-      expect(model.canMoveTab(tabId: 'nope', toGroupId: 'left'), isFalse);
-      expect(model.canMoveTab(tabId: 'tools', toGroupId: 'nope'), isFalse);
-    });
-
-    test('out-of-range target indices clamp', () {
-      final model = _model();
-
-      model.moveTab(tabId: 'tools', toGroupId: 'bottom', toIndex: 99);
-      expect(model.tabsIn('bottom'), ['timeline', 'storyboard', 'tools']);
-
-      model.moveTab(tabId: 'camera', toGroupId: 'bottom', toIndex: -5);
-      expect(model.tabsIn('bottom'), [
-        'camera',
-        'timeline',
-        'storyboard',
-        'tools',
+      expect(_tabsOf(model, 'left'), [
+        ['tools', 'brushes'],
+        ['camera'],
       ]);
+      expect(model.sectionsIn('left')[1].activeTabId, 'camera');
+    });
+
+    test('a new section can open an empty dock', () {
+      final model = _model();
+
+      model.moveTabToNewSection(
+        tabId: 'camera',
+        toDockId: 'right',
+        atSectionIndex: 0,
+      );
+
+      expect(_tabsOf(model, 'right'), [
+        ['camera'],
+      ]);
+      expect(_tabsOf(model, 'left'), [
+        ['tools', 'brushes'],
+      ]);
+    });
+
+    test('emptied sections are removed and can empty the dock', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'left': [
+            DockSection(tabs: ['camera']),
+          ],
+          'bottom': [
+            DockSection(tabs: ['timeline']),
+          ],
+        },
+      );
+
+      model.moveTabToSection(
+        tabId: 'camera',
+        toDockId: 'bottom',
+        toSectionIndex: 0,
+        insertIndex: 0,
+      );
+
+      expect(model.sectionsIn('left'), isEmpty);
+      expect(_tabsOf(model, 'bottom'), [
+        ['camera', 'timeline'],
+      ]);
+    });
+
+    test('same-dock section removal shifts the target section index', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'left': [
+            DockSection(tabs: ['a']),
+            DockSection(tabs: ['b']),
+            DockSection(tabs: ['c', 'd']),
+          ],
+        },
+      );
+
+      // Moving lone 'a' into the LAST section: removing a's section shifts
+      // that section from index 2 to 1.
+      model.moveTabToSection(
+        tabId: 'a',
+        toDockId: 'left',
+        toSectionIndex: 2,
+        insertIndex: 0,
+      );
+
+      expect(_tabsOf(model, 'left'), [
+        ['b'],
+        ['a', 'c', 'd'],
+      ]);
+    });
+
+    test('lifting a lone-section tab beside itself is a no-op', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'left': [
+            DockSection(tabs: ['a']),
+            DockSection(tabs: ['b']),
+          ],
+        },
+      );
+      var notified = 0;
+      model.addListener(() => notified += 1);
+
+      model.moveTabToNewSection(
+        tabId: 'a',
+        toDockId: 'left',
+        atSectionIndex: 0,
+      );
+      model.moveTabToNewSection(
+        tabId: 'a',
+        toDockId: 'left',
+        atSectionIndex: 1,
+      );
+
+      expect(_tabsOf(model, 'left'), [
+        ['a'],
+        ['b'],
+      ]);
+      expect(notified, 0);
+    });
+
+    test('moveTabToNewSection below its own section reorders sections', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'left': [
+            DockSection(tabs: ['a']),
+            DockSection(tabs: ['b']),
+          ],
+        },
+      );
+
+      model.moveTabToNewSection(
+        tabId: 'a',
+        toDockId: 'left',
+        atSectionIndex: 2,
+      );
+
+      expect(_tabsOf(model, 'left'), [
+        ['b'],
+        ['a'],
+      ]);
+    });
+
+    test('unknown tabs or docks cannot move', () {
+      final model = _model();
+      expect(model.canMoveTab(tabId: 'nope', toDockId: 'left'), isFalse);
+      expect(model.canMoveTab(tabId: 'tools', toDockId: 'nope'), isFalse);
+      expect(model.canMoveTab(tabId: 'tools', toDockId: 'right'), isTrue);
     });
   });
 }

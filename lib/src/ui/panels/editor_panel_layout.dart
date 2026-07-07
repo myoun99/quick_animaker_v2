@@ -1,107 +1,190 @@
 import 'package:flutter/foundation.dart';
 
-/// Which panel tabs live in which dock group, in what order, and which one
-/// is active per group. This is pure layout state — the panel definitions
-/// (label/icon/content) stay with the workspace that owns the panels.
+/// One stacked region inside a dock: a tab group with its own strip.
+class DockSection {
+  DockSection({required List<String> tabs, String? activeTabId})
+    : _tabs = List.of(tabs),
+      _activeTabId = tabs.contains(activeTabId) ? activeTabId! : tabs.first,
+      assert(tabs.isNotEmpty);
+
+  final List<String> _tabs;
+  String _activeTabId;
+
+  List<String> get tabs => List.unmodifiable(_tabs);
+  String get activeTabId => _activeTabId;
+}
+
+/// Where a tab currently lives.
+typedef DockTabLocation = ({String dockId, int sectionIndex, int tabIndex});
+
+/// Which panel tabs live in which dock, stacked into SECTIONS (panel below
+/// panel — each section is a tab group with its own strip), in what order,
+/// and which tab is active per section. This is pure layout state — the
+/// panel definitions (label/icon/content) stay with the workspace that owns
+/// the panels.
 ///
-/// Groups may be empty ([activeTabIn] is null then); the dock UI renders an
-/// empty group as a collapsed drop rail so tabs can still be dragged back.
+/// Docks may be empty (no sections); the dock UI renders an empty dock as a
+/// collapsed drop rail so tabs can still be dragged back. Sections are
+/// never empty — removing a section's last tab removes the section.
 class EditorPanelLayoutModel extends ChangeNotifier {
-  EditorPanelLayoutModel({
-    required Map<String, List<String>> groups,
-    Map<String, String> activeTabs = const <String, String>{},
-  }) : _groups = {
-         for (final entry in groups.entries) entry.key: List.of(entry.value),
-       },
-       _activeTabs = {
-         for (final entry in groups.entries)
-           if (entry.value.isNotEmpty)
-             entry.key: entry.value.contains(activeTabs[entry.key])
-                 ? activeTabs[entry.key]!
-                 : entry.value.first,
-       };
+  EditorPanelLayoutModel({required Map<String, List<DockSection>> docks})
+    : _docks = {
+        for (final entry in docks.entries) entry.key: List.of(entry.value),
+      };
 
-  final Map<String, List<String>> _groups;
-  final Map<String, String> _activeTabs;
+  final Map<String, List<DockSection>> _docks;
 
-  Iterable<String> get groupIds => _groups.keys;
+  Iterable<String> get dockIds => _docks.keys;
 
-  List<String> tabsIn(String groupId) =>
-      List.unmodifiable(_groups[groupId] ?? const <String>[]);
+  List<DockSection> sectionsIn(String dockId) =>
+      List.unmodifiable(_docks[dockId] ?? const <DockSection>[]);
 
-  /// The active tab of a group; null for empty groups and unknown ids.
-  String? activeTabIn(String groupId) => _activeTabs[groupId];
-
-  /// The group currently holding a tab; null for unknown tab ids.
-  String? groupOf(String tabId) {
-    for (final entry in _groups.entries) {
-      if (entry.value.contains(tabId)) {
-        return entry.key;
+  /// The dock/section/tab position of a tab; null for unknown ids.
+  DockTabLocation? locateTab(String tabId) {
+    for (final entry in _docks.entries) {
+      for (var s = 0; s < entry.value.length; s += 1) {
+        final t = entry.value[s]._tabs.indexOf(tabId);
+        if (t >= 0) {
+          return (dockId: entry.key, sectionIndex: s, tabIndex: t);
+        }
       }
     }
     return null;
   }
 
-  void selectTab(String groupId, String tabId) {
-    final tabs = _groups[groupId];
-    if (tabs == null || !tabs.contains(tabId)) {
+  /// The active tab of every section in every dock, for visibility checks.
+  Iterable<String> get activeTabs sync* {
+    for (final sections in _docks.values) {
+      for (final section in sections) {
+        yield section._activeTabId;
+      }
+    }
+  }
+
+  void selectTab(String dockId, int sectionIndex, String tabId) {
+    final sections = _docks[dockId];
+    if (sections == null ||
+        sectionIndex < 0 ||
+        sectionIndex >= sections.length) {
       return;
     }
-    if (_activeTabs[groupId] == tabId) {
+    final section = sections[sectionIndex];
+    if (!section._tabs.contains(tabId) || section._activeTabId == tabId) {
       return;
     }
-    _activeTabs[groupId] = tabId;
+    section._activeTabId = tabId;
     notifyListeners();
   }
 
-  /// Whether a tab may be dropped into [toGroupId]: any known tab may move
-  /// to any known group (panels dock anywhere; an emptied group collapses).
-  bool canMoveTab({required String tabId, required String toGroupId}) {
-    return groupOf(tabId) != null && _groups.containsKey(toGroupId);
+  /// Whether a tab may be dropped into [toDockId]: any known tab may move
+  /// to any known dock (panels dock anywhere; an emptied dock collapses).
+  bool canMoveTab({required String tabId, required String toDockId}) {
+    return locateTab(tabId) != null && _docks.containsKey(toDockId);
   }
 
-  /// Moves a tab to [toIndex] in [toGroupId] (insertion index counted in the
-  /// target group BEFORE the tab is removed from its current position).
-  /// A moved tab becomes the target group's active tab; the source group's
-  /// active tab falls back to the nearest remaining neighbour.
-  void moveTab({
+  /// Moves a tab into an EXISTING section at [insertIndex] (insertion index
+  /// counted in the target section's tabs BEFORE the tab is removed from
+  /// its current position). The moved tab becomes the section's active tab.
+  void moveTabToSection({
     required String tabId,
-    required String toGroupId,
-    required int toIndex,
+    required String toDockId,
+    required int toSectionIndex,
+    required int insertIndex,
   }) {
-    if (!canMoveTab(tabId: tabId, toGroupId: toGroupId)) {
+    final from = locateTab(tabId);
+    final targetSections = _docks[toDockId];
+    if (from == null ||
+        targetSections == null ||
+        toSectionIndex < 0 ||
+        toSectionIndex >= targetSections.length) {
       return;
     }
-    final fromGroupId = groupOf(tabId)!;
-    final source = _groups[fromGroupId]!;
-    final oldIndex = source.indexOf(tabId);
+    final sourceSection = _docks[from.dockId]![from.sectionIndex];
+    final targetSection = targetSections[toSectionIndex];
 
-    if (fromGroupId == toGroupId) {
-      var insertIndex = toIndex.clamp(0, source.length);
-      if (insertIndex > oldIndex) {
-        insertIndex -= 1;
+    if (identical(sourceSection, targetSection)) {
+      var index = insertIndex.clamp(0, sourceSection._tabs.length);
+      if (index > from.tabIndex) {
+        index -= 1;
       }
-      if (insertIndex == oldIndex) {
+      if (index == from.tabIndex) {
         return;
       }
-      source
-        ..removeAt(oldIndex)
-        ..insert(insertIndex, tabId);
+      sourceSection._tabs
+        ..removeAt(from.tabIndex)
+        ..insert(index, tabId);
       notifyListeners();
       return;
     }
 
-    source.removeAt(oldIndex);
-    if (_activeTabs[fromGroupId] == tabId) {
-      if (source.isEmpty) {
-        _activeTabs.remove(fromGroupId);
-      } else {
-        _activeTabs[fromGroupId] = source[oldIndex.clamp(0, source.length - 1)];
-      }
+    // Removing the source tab may drop its whole section, shifting the
+    // TARGET section index when both live in the same dock.
+    var targetIndex = toSectionIndex;
+    final removedSection = _removeTab(from);
+    if (removedSection &&
+        from.dockId == toDockId &&
+        from.sectionIndex < targetIndex) {
+      targetIndex -= 1;
     }
-    final target = _groups[toGroupId]!;
-    target.insert(toIndex.clamp(0, target.length), tabId);
-    _activeTabs[toGroupId] = tabId;
+    final target = _docks[toDockId]![targetIndex];
+    target._tabs.insert(insertIndex.clamp(0, target._tabs.length), tabId);
+    target._activeTabId = tabId;
     notifyListeners();
+  }
+
+  /// Moves a tab into a NEW section of its own at [atSectionIndex]
+  /// (insertion position in the dock's section stack, counted BEFORE the
+  /// tab is removed from its current position) — panel below panel.
+  void moveTabToNewSection({
+    required String tabId,
+    required String toDockId,
+    required int atSectionIndex,
+  }) {
+    final from = locateTab(tabId);
+    final targetSections = _docks[toDockId];
+    if (from == null || targetSections == null) {
+      return;
+    }
+    // Lifting a lone-section tab next to its own slot rebuilds the same
+    // stack — skip the phantom mutation.
+    if (from.dockId == toDockId &&
+        _docks[toDockId]![from.sectionIndex]._tabs.length == 1 &&
+        (atSectionIndex == from.sectionIndex ||
+            atSectionIndex == from.sectionIndex + 1)) {
+      return;
+    }
+
+    var targetIndex = atSectionIndex;
+    final removedSection = _removeTab(from);
+    if (removedSection &&
+        from.dockId == toDockId &&
+        from.sectionIndex < targetIndex) {
+      targetIndex -= 1;
+    }
+    final sections = _docks[toDockId]!;
+    sections.insert(
+      targetIndex.clamp(0, sections.length),
+      DockSection(tabs: [tabId]),
+    );
+    notifyListeners();
+  }
+
+  /// Removes a tab from its location; empty sections are dropped. Returns
+  /// whether the whole section was removed.
+  bool _removeTab(DockTabLocation from) {
+    final sections = _docks[from.dockId]!;
+    final section = sections[from.sectionIndex];
+    section._tabs.removeAt(from.tabIndex);
+    if (section._tabs.isEmpty) {
+      sections.removeAt(from.sectionIndex);
+      return true;
+    }
+    // If the moved tab was the section's active one, fall back to the
+    // nearest remaining neighbour.
+    if (!section._tabs.contains(section._activeTabId)) {
+      section._activeTabId =
+          section._tabs[from.tabIndex.clamp(0, section._tabs.length - 1)];
+    }
+    return false;
   }
 }
