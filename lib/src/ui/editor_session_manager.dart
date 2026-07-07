@@ -1614,6 +1614,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// Returns `null` when the rename was applied (or was not possible). When the
   /// new [name] collides with another frame, returns that frame's id without
   /// mutating so the caller can offer to link instead (see [linkSelectedFrame]).
+  /// SE rows are exempt from the collision rule — the same dialogue can
+  /// legitimately repeat on a sheet, so duplicates just apply.
   FrameId? renameSelectedFrame(String name) {
     final layer = activeLayer;
     final frame = selectedFrame;
@@ -1621,22 +1623,50 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
 
-    final conflictingFrameId = _timelineController.conflictingFrameIdForRename(
-      layer: layer,
-      frameId: frame.id,
-      name: name,
-    );
-    if (conflictingFrameId != null) {
-      return conflictingFrameId;
+    final allowDuplicateName = layer.kind == LayerKind.se;
+    if (!allowDuplicateName) {
+      final conflictingFrameId = _timelineController
+          .conflictingFrameIdForRename(
+            layer: layer,
+            frameId: frame.id,
+            name: name,
+          );
+      if (conflictingFrameId != null) {
+        return conflictingFrameId;
+      }
     }
 
     _timelineController.renameFrameForLayer(
       layerId: layer.id,
       frameId: frame.id,
       name: name,
+      allowDuplicateName: allowDuplicateName,
     );
     notifyListeners();
     return null;
+  }
+
+  /// Creates an SE entry at the current cell carrying [name] (the sheet's
+  /// name/dialogue text) in ONE undo step. Sheet semantics: the entry holds
+  /// until the next entry or the cut's end, whichever comes first.
+  void createSeEntryAtCurrentFrame({required String name}) {
+    final layer = activeLayer;
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        !canCreateDrawingAtCurrentFrame) {
+      return;
+    }
+
+    final remaining =
+        activeCut.duration - _timelineController.currentFrameIndex;
+    _frameSequence += 1;
+    _timelineController.createDrawingFrameForLayer(
+      layerId: layer.id,
+      frameId: FrameId(_nextFrameId(layer.id)),
+      length: remaining < 1 ? 1 : remaining,
+      name: name,
+    );
+    notifyListeners();
   }
 
   void linkSelectedFrame(FrameId targetFrameId) {

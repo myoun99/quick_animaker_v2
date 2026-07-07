@@ -183,6 +183,40 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
+  /// Double-tap on an SE cell: edit the entry's name/dialogue in place —
+  /// covered cells rename the covering entry, empty cells create an entry
+  /// holding to the next one / cut end, carrying the entered text (one undo).
+  Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
+    final layer = _session.activeLayer;
+    if (layer == null || layer.id != layerId || layer.kind != LayerKind.se) {
+      return;
+    }
+
+    final creating = _session.selectedFrame == null;
+    if (creating && !_session.canCreateDrawingAtCurrentFrame) {
+      return;
+    }
+
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => RenameFrameDialog(
+        initialName: creating ? '' : _session.selectedFrameName ?? '',
+        title: 'SE Label',
+        fieldLabel: 'Name / dialogue',
+      ),
+    );
+    if (!mounted || nextName == null) {
+      return;
+    }
+
+    if (creating) {
+      _session.createSeEntryAtCurrentFrame(name: nextName);
+    } else {
+      // SE renames never hit the link-conflict flow (duplicates allowed).
+      _session.renameSelectedFrame(nextName);
+    }
+  }
+
   Future<void> _renameSelectedFrame() async {
     if (_session.selectedFrame == null ||
         !_session.canRenameFrameAtCurrentFrame) {
@@ -246,6 +280,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session.selectFrameIndex(frameIndex);
             }
           },
+          onActivateCell: _activateCellEditor,
           onAddLayer: _session.addLayer,
           onToggleLayerVisibility: _session.toggleLayerVisibility,
           onLayerOpacityChanged: (layerId, opacity) {

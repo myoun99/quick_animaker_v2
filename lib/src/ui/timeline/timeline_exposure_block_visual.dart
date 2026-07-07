@@ -9,6 +9,13 @@ class TimelineExposureBlockVisualSegment {
     required this.continuesToNext,
   });
 
+  static const TimelineExposureBlockVisualSegment none =
+      TimelineExposureBlockVisualSegment(
+        kind: TimelineExposureBlockKind.none,
+        continuesFromPrevious: false,
+        continuesToNext: false,
+      );
+
   final TimelineExposureBlockKind kind;
   final bool continuesFromPrevious;
   final bool continuesToNext;

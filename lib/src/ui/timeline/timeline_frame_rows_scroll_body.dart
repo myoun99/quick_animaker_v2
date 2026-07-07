@@ -28,6 +28,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     this.commaDrag,
     this.laneEdit,
   });
@@ -51,6 +52,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -91,6 +93,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     frameNameForLayer: frameNameForLayer,
                     onSelectLayer: onSelectLayer,
                     onSelectFrame: onSelectFrame,
+                    onActivateCell: onActivateCell,
                     commaDrag: commaDrag,
                   ),
           if (rows.isEmpty)

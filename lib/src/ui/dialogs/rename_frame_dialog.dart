@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 
 /// Rename dialog for a frame. Pops the new name text, or nothing on cancel.
+/// SE rows reuse it with sheet wording (title/label overrides) — the frame
+/// name IS the sheet's name/dialogue text there.
 class RenameFrameDialog extends StatefulWidget {
-  const RenameFrameDialog({super.key, required this.initialName});
+  const RenameFrameDialog({
+    super.key,
+    required this.initialName,
+    this.title = 'Rename Frame',
+    this.fieldLabel = 'Frame name',
+  });
 
   final String initialName;
+  final String title;
+  final String fieldLabel;
 
   @override
   State<RenameFrameDialog> createState() => _RenameFrameDialogState();
@@ -28,12 +37,12 @@ class _RenameFrameDialogState extends State<RenameFrameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Rename Frame'),
+      title: Text(widget.title),
       content: TextField(
         key: const ValueKey<String>('rename-frame-text-field'),
         controller: _textController,
         autofocus: true,
-        decoration: const InputDecoration(labelText: 'Frame name'),
+        decoration: InputDecoration(labelText: widget.fieldLabel),
       ),
       actions: [
         TextButton(

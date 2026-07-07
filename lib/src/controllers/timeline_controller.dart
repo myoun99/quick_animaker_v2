@@ -188,6 +188,7 @@ class TimelineController {
     required LayerId layerId,
     required FrameId frameId,
     int length = 1,
+    String? name,
   }) {
     if (length < 1) {
       throw ArgumentError.value(
@@ -223,7 +224,12 @@ class TimelineController {
     final after = before.copyWith(
       frames: [
         ...before.frames,
-        Frame(id: frameId, duration: clampedLength, strokes: const []),
+        Frame(
+          id: frameId,
+          duration: clampedLength,
+          strokes: const [],
+          name: _normalizeFrameName(name),
+        ),
       ],
       timeline: nextTimeline,
     );
@@ -425,16 +431,19 @@ class TimelineController {
     required LayerId layerId,
     required FrameId frameId,
     required String? name,
+    bool allowDuplicateName = false,
   }) {
     final before = _requireLayer(layerId);
     _requireFrameInLayer(layer: before, frameId: frameId);
-    final conflictingFrameId = conflictingFrameIdForRename(
-      layer: before,
-      frameId: frameId,
-      name: name,
-    );
-    if (conflictingFrameId != null) {
-      return;
+    if (!allowDuplicateName) {
+      final conflictingFrameId = conflictingFrameIdForRename(
+        layer: before,
+        frameId: frameId,
+        name: name,
+      );
+      if (conflictingFrameId != null) {
+        return;
+      }
     }
 
     final normalizedName = _normalizeFrameName(name);

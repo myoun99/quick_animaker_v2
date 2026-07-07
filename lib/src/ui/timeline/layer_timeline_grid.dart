@@ -37,6 +37,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -60,6 +61,10 @@ class LayerTimelineGrid extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Double-tap cell editor hook (SE label dialog; see
+  /// [layerKindOpensCellEditorOnDoubleTap]).
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -599,6 +604,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onSelectLayer,
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
+                                                  onActivateCell:
+                                                      widget.onActivateCell,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

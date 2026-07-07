@@ -24,6 +24,7 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -54,6 +55,10 @@ class TimelinePanel extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Double-tap cell editor hook (SE label dialog), shared by both
+  /// orientations.
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -227,6 +232,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onActivateCell: widget.onActivateCell,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -249,6 +255,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onActivateCell: widget.onActivateCell,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,

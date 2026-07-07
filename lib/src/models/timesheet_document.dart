@@ -199,6 +199,8 @@ class TimesheetDocument {
                   layer: seLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
+                  // SE columns stay blank between entries on paper — no X.
+                  markEmptyRuns: false,
                 )
               : _blankCells(rowCount),
         ),
@@ -285,6 +287,7 @@ class TimesheetDocument {
     required Layer layer,
     required int rowCount,
     required int playbackFrameCount,
+    bool markEmptyRuns = true,
   }) {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
 
@@ -319,6 +322,9 @@ class TimesheetDocument {
 
     // X only at the first uncovered row of each run, only inside the
     // playback range; a mark row continues the run instead of restarting it.
+    if (!markEmptyRuns) {
+      return cells;
+    }
     var inEmptyRun = false;
     for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
       if (covered[row]) {

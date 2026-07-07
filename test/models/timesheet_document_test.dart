@@ -271,6 +271,45 @@ void main() {
       );
     });
 
+    test('SE columns carry the name/dialogue label and never mark X runs', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'voice',
+              kind: LayerKind.se,
+              frames: [
+                Frame(
+                  id: const FrameId('se-f1'),
+                  duration: 3,
+                  name: '안녕하세요',
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                2: const TimelineExposure.drawing(FrameId('se-f1'), length: 3),
+              },
+            ),
+          ],
+          duration: 12,
+        ),
+      );
+
+      final seColumn = document.columns.firstWhere(
+        (column) => column.kind == TimesheetColumnKind.se,
+      );
+      expect(seColumn.cells[2].kind, TimesheetCellKind.drawing);
+      expect(seColumn.cells[2].label, '안녕하세요');
+      expect(seColumn.cells[3].kind, TimesheetCellKind.held);
+      // SE columns stay blank between entries on paper — no X anywhere.
+      expect(
+        seColumn.cells.where(
+          (cell) => cell.kind == TimesheetCellKind.emptyRunStart,
+        ),
+        isEmpty,
+      );
+    });
+
     test('rows beyond the playback range stay paper-blank', () {
       final document = _document(_cut(layers: [_layer('A')], duration: 10));
 

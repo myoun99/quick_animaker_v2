@@ -18,6 +18,7 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_se_row_visual.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_playhead.dart';
@@ -48,6 +49,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -70,6 +72,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Double-tap cell editor hook (SE label dialog; see
+  /// [layerKindOpensCellEditorOnDoubleTap]).
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -494,6 +500,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   index += 1
                                                 )
                                                   _XSheetFrameCellsColumn(
+                                                    onActivateCell:
+                                                        widget.onActivateCell,
                                                     layer: widget.layers[index],
                                                     active:
                                                         widget
@@ -763,6 +771,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -785,6 +794,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final TimelineCommaDragCallbacks? commaDrag;
 
   @override
@@ -844,6 +854,10 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   frameName: frameNameForLayer?.call(layer, frameIndex),
                   onSelectLayer: onSelectLayer,
                   onSelectFrame: onSelectFrame,
+                  onActivateCell:
+                      layerKindOpensCellEditorOnDoubleTap(layer.kind)
+                      ? onActivateCell
+                      : null,
                   axis: Axis.vertical,
                   width: metrics.layerRowHeight,
                   height: metrics.frameCellWidth,
@@ -886,6 +900,24 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.outline,
                 ),
               ),
+            ),
+          // SE columns: paper-sheet label + duration line spanning each
+          // entry (the cells themselves stay unfilled).
+          if (layerKindUsesSeSheetCells(layer.kind))
+            ...timelineRowSeLabelOverlays(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              frameNameForLayer: frameNameForLayer,
+              textColor: Theme.of(context).colorScheme.onSurface,
+              lineColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              keyPrefix: 'xsheet',
             ),
           if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
             ...timelineRowBlockEdgeGrips(
