@@ -78,6 +78,93 @@ void main() {
     });
   });
 
+  group('EditorWorkspace tab drag-docking', () {
+    Future<void> dragTab(WidgetTester tester, Finder tab, Offset target) async {
+      final gesture = await tester.startGesture(tester.getCenter(tab));
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveTo(target + const Offset(0, -10));
+      await tester.pump();
+      await gesture.moveTo(target);
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('camera tab re-docks into the bottom strip and back', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+
+      // Drop on the bottom strip's tail (right of the storyboard tab).
+      final bottomTail =
+          tester.getCenter(find.byKey(_storyboardTabKey)) +
+          const Offset(150, 0);
+      await dragTab(tester, find.byKey(_cameraTabKey), bottomTail);
+
+      // The camera panel now renders in the bottom region as its active
+      // tab; the left dock keeps Brushes active.
+      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(TimelinePanel), findsNothing);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+
+      // Timeline is still reachable in the bottom group.
+      await tester.tap(find.byKey(_timelineTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(TimelinePanel), findsOneWidget);
+      expect(find.byType(CameraPanel), findsNothing);
+
+      // Drag the camera tab back to the left strip (tail after Settings).
+      final leftTail =
+          tester.getCenter(find.byKey(_brushSettingsTabKey)) +
+          const Offset(60, 0);
+      await dragTab(tester, find.byKey(_cameraTabKey), leftTail);
+
+      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(TimelinePanel), findsOneWidget);
+    });
+
+    testWidgets('frame-axis tabs refuse to dock into the side dock', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+
+      // The timeline's label rail and toolbar need the full-width bottom
+      // region; a drop onto the left strip must be rejected.
+      final leftTail =
+          tester.getCenter(find.byKey(_cameraTabKey)) + const Offset(60, 0);
+      await dragTab(tester, find.byKey(_timelineTabKey), leftTail);
+
+      expect(find.byType(TimelinePanel), findsOneWidget);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+      // Still selectable in the bottom strip afterwards.
+      await tester.tap(find.byKey(_storyboardTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(StoryboardPanel), findsOneWidget);
+      await tester.tap(find.byKey(_timelineTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(TimelinePanel), findsOneWidget);
+    });
+
+    testWidgets('left strip tabs can be drag-reordered', (tester) async {
+      await _pumpHome(tester);
+
+      // Drop Tools on the right half of the Camera tab: order becomes
+      // Brushes, Settings, Camera, Tools.
+      final cameraRightHalf = Offset(
+        tester.getTopRight(find.byKey(_cameraTabKey)).dx - 3,
+        tester.getCenter(find.byKey(_cameraTabKey)).dy,
+      );
+      await dragTab(tester, find.byKey(_toolsTabKey), cameraRightHalf);
+
+      expect(
+        tester.getCenter(find.byKey(_toolsTabKey)).dx,
+        greaterThan(tester.getCenter(find.byKey(_cameraTabKey)).dx),
+      );
+      // Selection is untouched by reordering.
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+    });
+  });
+
   group('EditorWorkspace bottom tabs', () {
     testWidgets('keeps the legacy timeline/storyboard toggle keys working', (
       tester,

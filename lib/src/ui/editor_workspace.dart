@@ -68,6 +68,11 @@ class EditorWorkspace extends StatefulWidget {
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
 
+  /// Frame-axis panels need the full-width bottom region — their label
+  /// rails and toolbars don't fit the 260px side dock (revisit when docks
+  /// become resizable).
+  static const Set<String> _bottomOnlyTabIds = {timelineTabId, storyboardTabId};
+
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
 }
@@ -373,10 +378,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Widget _buildTabGroup(String groupId, {bool compact = false}) {
     return EditorPanelTabs(
+      groupId: groupId,
       compact: compact,
       tabs: [for (final id in _layout.tabsIn(groupId)) _tabFor(id)],
       activeTabId: _layout.activeTabIn(groupId)!,
       onTabSelected: (tabId) => _selectTab(groupId, tabId),
+      // Drag-docking: reorder within a strip or move a tab to the other
+      // dock; the layout model refuses moves that would empty a group.
+      canAcceptTab: (data) =>
+          (groupId == EditorWorkspace.bottomGroupId ||
+              !EditorWorkspace._bottomOnlyTabIds.contains(data.tabId)) &&
+          _layout.canMoveTab(tabId: data.tabId, toGroupId: groupId),
+      onTabMoved: (data, insertIndex) => _mutatingLayout(() {
+        _layout.moveTab(
+          tabId: data.tabId,
+          toGroupId: groupId,
+          toIndex: insertIndex,
+        );
+      }),
     );
   }
 
