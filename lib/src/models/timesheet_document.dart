@@ -151,9 +151,14 @@ class TimesheetDocument {
         );
     final rowCount = pageCount * pageFrameCount;
 
+    // Art cels (BG/BOOK) ride the ACTION block alongside animation cels —
+    // the user keeps them behaviorally identical, only the kind differs.
     final animationLayers = [
       for (final layer in cut.layers)
-        if (layer.kind == LayerKind.animation && layer.onTimesheet) layer,
+        if ((layer.kind == LayerKind.animation ||
+                layer.kind == LayerKind.art) &&
+            layer.onTimesheet)
+          layer,
     ];
     final seLayers = [
       for (final layer in cut.layers)

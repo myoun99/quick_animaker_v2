@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 
 void main() {
   group('Cut storyboard layer correction', () {
@@ -30,7 +31,14 @@ void main() {
 
       final restoredCut = Cut.fromJson(json);
 
-      expect(restoredCut, _cut());
+      // Loading backfills the SE/instruction fixture rows.
+      final expected = _cut();
+      expect(
+        restoredCut,
+        expected.copyWith(
+          layers: withEnsuredSectionLayers(expected.id, expected.layers),
+        ),
+      );
       expect(restoredCut.toJson().containsKey('storyboardLayer'), isFalse);
     });
 
@@ -50,7 +58,13 @@ void main() {
 
         final restoredCut = Cut.fromJson(cut.toJson());
 
-        expect(restoredCut.layers.single.kind, LayerKind.storyboard);
+        expect(restoredCut.layers.first.kind, LayerKind.storyboard);
+        expect(
+          restoredCut.layers.where(
+            (layer) => layer.kind == LayerKind.storyboard,
+          ),
+          hasLength(1),
+        );
       },
     );
   });

@@ -253,7 +253,29 @@ class CutCommandCoordinator {
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (layer.kind == LayerKind.camera || cut.layers.length <= 1) {
+    // Mirrors the session's canDeleteActiveLayer floors: camera fixed, at
+    // least two SE rows (S1·S2), one instruction row and one drawing cel.
+    final refused = switch (layer.kind) {
+      LayerKind.camera => true,
+      LayerKind.se =>
+        cut.layers.where((other) => other.kind == LayerKind.se).length <= 2,
+      LayerKind.instruction =>
+        cut.layers
+                .where((other) => other.kind == LayerKind.instruction)
+                .length <=
+            1,
+      LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
+        cut.layers
+                .where(
+                  (other) =>
+                      other.kind == LayerKind.animation ||
+                      other.kind == LayerKind.storyboard ||
+                      other.kind == LayerKind.art,
+                )
+                .length <=
+            1,
+    };
+    if (refused) {
       return;
     }
 
@@ -385,6 +407,19 @@ class CutCommandCoordinator {
       throw StateError(
         'The camera layer kind is fixed; layers cannot become cameras.',
       );
+    }
+    if (layer.kind == LayerKind.instruction || kind == LayerKind.instruction) {
+      throw StateError(
+        'Instruction rows are created as such; layer kinds cannot cross '
+        'into or out of instruction.',
+      );
+    }
+    if (layer.kind == LayerKind.se) {
+      final cut = _requireCut(cutId);
+      // Converting an SE row away must not break the S1·S2 floor of two.
+      if (cut.layers.where((other) => other.kind == LayerKind.se).length <= 2) {
+        return;
+      }
     }
 
     historyManager.execute(

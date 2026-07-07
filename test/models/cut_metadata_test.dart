@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 
 void main() {
   group('CutMetadata', () {
@@ -96,7 +97,11 @@ void main() {
 
       final restoredCut = Cut.fromJson(cut.toJson());
 
-      expect(restoredCut, cut);
+      // Loading backfills the SE/instruction fixture rows.
+      expect(
+        restoredCut,
+        cut.copyWith(layers: withEnsuredSectionLayers(cut.id, cut.layers)),
+      );
       expect(restoredCut.metadata, cut.metadata);
     });
 

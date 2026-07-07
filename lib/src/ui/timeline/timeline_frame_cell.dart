@@ -208,10 +208,12 @@ String _markerForCell({
 }) {
   return switch (exposureState) {
     // The timesheet "X": the FIRST cell of each empty run inside the
-    // playback range (paper-sheet style). Camera rows mirror keyframes,
-    // not cel exposure — no X there.
+    // playback range (paper-sheet style). Camera rows mirror keyframes and
+    // instruction rows carry instruction events, not cel exposure — no X.
     TimelineCellExposureState.uncovered =>
-      layer.kind == LayerKind.camera || outsidePlaybackRange || !emptyRunStart
+      !layerKindHoldsDrawings(layer.kind) ||
+              outsidePlaybackRange ||
+              !emptyRunStart
           ? ''
           : 'X',
     TimelineCellExposureState.drawingStart =>

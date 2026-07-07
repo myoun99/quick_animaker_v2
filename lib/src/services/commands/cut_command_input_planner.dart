@@ -161,9 +161,14 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
   final hasStoryboardLayer = targetCut.layers.any(
     (layer) => layer.kind == LayerKind.storyboard,
   );
-  final pastedKind = payload.kind == LayerKind.storyboard && !hasStoryboardLayer
-      ? LayerKind.storyboard
-      : LayerKind.animation;
+  // Kinds survive the paste except storyboard (unique per cut — extra copies
+  // land as animation) and camera (refused upstream).
+  final pastedKind = switch (payload.kind) {
+    LayerKind.storyboard =>
+      hasStoryboardLayer ? LayerKind.animation : LayerKind.storyboard,
+    LayerKind.camera => LayerKind.animation,
+    final kind => kind,
+  };
   final layer = Layer(
     id: newLayerId,
     name: payload.name,

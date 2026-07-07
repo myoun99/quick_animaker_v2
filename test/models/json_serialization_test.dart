@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
@@ -30,7 +31,9 @@ void main() {
             Cut(
               id: const CutId('cut-1'),
               name: 'Cut 1',
-              layers: [
+              // Include the SE/instruction fixture rows loading would
+              // backfill, so the round-trip stays an identity.
+              layers: withEnsuredSectionLayers(const CutId('cut-1'), [
                 Layer(
                   id: const LayerId('layer-1'),
                   name: 'Line',
@@ -55,7 +58,7 @@ void main() {
                     ),
                   ],
                 ),
-              ],
+              ]),
               duration: 48,
               canvasSize: const CanvasSize(width: 1920, height: 1080),
             ),

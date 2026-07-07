@@ -4,6 +4,7 @@ import 'cut_camera.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
+import 'layer_section_defaults.dart';
 
 class Cut {
   Cut({
@@ -56,12 +57,18 @@ class Cut {
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
+    final id = CutId.fromJson(json['id'] as Map<String, dynamic>);
     return Cut(
-      id: CutId.fromJson(json['id'] as Map<String, dynamic>),
+      id: id,
       name: json['name'] as String,
-      layers: (json['layers'] as List<dynamic>)
-          .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
-          .toList(),
+      // Older files predate the SE/instruction fixture rows; backfill them
+      // on load so every cut meets the S1·S2 + CAM floors.
+      layers: withEnsuredSectionLayers(
+        id,
+        (json['layers'] as List<dynamic>)
+            .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
+            .toList(),
+      ),
       duration: json['duration'] as int,
       canvasSize: CanvasSize.fromJson(
         json['canvasSize'] as Map<String, dynamic>,

@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
@@ -120,10 +121,13 @@ Track _sampleTrack() {
 }
 
 Cut _sampleCut() {
+  const id = CutId('cut-1');
   return Cut(
-    id: const CutId('cut-1'),
+    id: id,
     name: 'Cut 1',
-    layers: [_sampleLayer()],
+    // Include the SE/instruction fixture rows loading would backfill, so
+    // save → load stays an identity round-trip.
+    layers: withEnsuredSectionLayers(id, [_sampleLayer()]),
     duration: 24,
     canvasSize: const CanvasSize(width: 1280, height: 720),
   );

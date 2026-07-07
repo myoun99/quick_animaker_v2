@@ -21,6 +21,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
+import '../models/layer_section_defaults.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/timeline_coverage.dart';
@@ -48,6 +49,7 @@ import '../services/project_repository.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
+import 'timeline/timeline_section_policy.dart';
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -761,13 +763,29 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canDeleteActiveLayer {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
+    if (activeLayer == null) {
       return false;
     }
-    final drawingLayerCount = activeCut.layers
-        .where((layer) => layer.kind != LayerKind.camera)
-        .length;
-    return drawingLayerCount >= 2;
+    final layers = activeCut.layers;
+    return switch (activeLayer.kind) {
+      LayerKind.camera => false,
+      // The sheet's fixture floors: at least two SE rows (S1·S2) and one
+      // instruction row survive.
+      LayerKind.se =>
+        layers.where((layer) => layer.kind == LayerKind.se).length > 2,
+      LayerKind.instruction =>
+        layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
+      // Keep at least one drawing-section layer in the cut.
+      LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
+        layers
+                .where(
+                  (layer) =>
+                      timelineSectionForLayerKind(layer.kind) ==
+                      TimelineSection.drawing,
+                )
+                .length >=
+            2,
+    };
   }
 
   /// Whether the canvas is in camera manipulation mode.
@@ -974,8 +992,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
-  TimesheetInfo get timesheetInfo =>
-      _repository.requireProject().timesheetInfo;
+  TimesheetInfo get timesheetInfo => _repository.requireProject().timesheetInfo;
 
   /// One undo step; no-op when unchanged.
   void updateTimesheetInfo(TimesheetInfo info) {
@@ -1006,9 +1023,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
+    // Only the animation ⇄ storyboard pair; other kinds have their own
+    // toggles (SE/art) or are fixed (camera/instruction).
     if (targetLayer == null ||
-        targetLayer.kind == LayerKind.camera ||
-        targetLayer.kind == LayerKind.se) {
+        targetLayer.kind != LayerKind.animation &&
+            targetLayer.kind != LayerKind.storyboard) {
       return false;
     }
     if (targetLayer.kind == LayerKind.storyboard) {
@@ -1022,12 +1041,21 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
-  /// carry several SE columns); storyboard/camera layers are not eligible.
+  /// carry several SE columns), but converting one away must not break the
+  /// S1·S2 floor of two.
   bool get canToggleTargetLayerSe {
     final targetLayer = _targetLayerForKindToggle;
-    return targetLayer != null &&
-        (targetLayer.kind == LayerKind.animation ||
-            targetLayer.kind == LayerKind.se);
+    if (targetLayer == null) {
+      return false;
+    }
+    if (targetLayer.kind == LayerKind.animation) {
+      return true;
+    }
+    return targetLayer.kind == LayerKind.se &&
+        _layerController.layers
+                .where((layer) => layer.kind == LayerKind.se)
+                .length >
+            2;
   }
 
   void toggleTargetLayerSe() {
@@ -1052,10 +1080,54 @@ class EditorSessionManager extends ChangeNotifier {
     return switch (targetLayer?.kind) {
       LayerKind.animation => 'Animation Layer',
       LayerKind.storyboard => 'Storyboard Layer',
+      LayerKind.art => 'Art Layer',
       LayerKind.se => 'SE Layer',
+      LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
       null => 'No Layer',
     };
+  }
+
+  /// Art toggle: animation ⇄ art (BG/BOOK cels behave like animation cels;
+  /// only the material differs).
+  bool get canToggleTargetLayerArt {
+    final targetLayer = _targetLayerForKindToggle;
+    return targetLayer != null &&
+        (targetLayer.kind == LayerKind.animation ||
+            targetLayer.kind == LayerKind.art);
+  }
+
+  void toggleTargetLayerArt() {
+    final targetLayer = _targetLayerForKindToggle;
+    if (targetLayer == null || !canToggleTargetLayerArt) {
+      return;
+    }
+
+    _cutCommandCoordinator.updateLayerKind(
+      cutId: _editingSession.activeCutId,
+      layerId: targetLayer.id,
+      kind: targetLayer.kind == LayerKind.art
+          ? LayerKind.animation
+          : LayerKind.art,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Adds another camera-work instruction row (CAM 2, CAM 3, …). The display
+  /// sorts it into the camera section regardless of insertion position.
+  void addInstructionLayer() {
+    _layerSequence += 1;
+    _layerController.addLayer(
+      layer: Layer(
+        id: defaultLayerIdForSequence(_layerSequence),
+        name: nextInstructionLayerName(_layerController.layers),
+        frames: const [],
+        timeline: const {},
+        kind: LayerKind.instruction,
+      ),
+    );
+    notifyListeners();
   }
 
   void toggleTargetLayerKind() {
@@ -1085,7 +1157,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || layer.kind == LayerKind.camera) {
+    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
 
@@ -1145,7 +1217,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// current cell (and the rest of the old hold) becomes empty.
   bool get canCutExposureAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || layer.kind == LayerKind.camera) {
+    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
 
@@ -1262,7 +1334,7 @@ class EditorSessionManager extends ChangeNotifier {
   }) {
     final layer = _layerById(layerId);
     if (layer == null ||
-        layer.kind == LayerKind.camera ||
+        !layerKindHoldsDrawings(layer.kind) ||
         !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
       return false;
     }
@@ -1491,7 +1563,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleMarkAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || layer.kind == LayerKind.camera) {
+    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
 
@@ -1601,7 +1673,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
-    if (layer.kind == LayerKind.camera) {
+    if (!layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
