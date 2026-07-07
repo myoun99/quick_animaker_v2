@@ -5,15 +5,15 @@ import 'package:flutter/material.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
-import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'editor_workspace.dart';
 import 'export/export_dialog.dart';
-import 'timeline_storyboard_tabs.dart';
 
-/// The editor shell: app bar, canvas area and the bottom panel tabs. Every
+/// The editor shell: app bar plus the dockable-panel workspace. Every
 /// panel's WIRING lives in its own host file (timeline_tab_host.dart,
 /// storyboard_tab_host.dart, editor_canvas_area.dart) so parallel work on
-/// different panels stays in different files.
+/// different panels stays in different files; the workspace only owns the
+/// dock layout and shared panel view state.
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
 
@@ -81,12 +81,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(child: EditorCanvasArea(session: _session)),
-          TimelineStoryboardTabs(session: _session),
-        ],
-      ),
+      body: EditorWorkspace(session: _session),
     );
   }
 }

@@ -7,14 +7,25 @@ import 'panel_scrollbar.dart';
 enum EditorPanelDockSide { left, right }
 
 class EditorPanelDock extends StatefulWidget {
+  /// A dock stacking [children] vertically in a scrollable list.
   const EditorPanelDock({
     super.key,
-    required this.children,
+    required List<Widget> this.children,
     this.width = 260,
     this.side = EditorPanelDockSide.right,
-  });
+  }) : child = null;
 
-  final List<Widget> children;
+  /// A dock filled by a single [child] (e.g. a tab shell) flush against the
+  /// dock edges — no padding, no scroll list.
+  const EditorPanelDock.filled({
+    super.key,
+    required Widget this.child,
+    this.width = 260,
+    this.side = EditorPanelDockSide.right,
+  }) : children = null;
+
+  final List<Widget>? children;
+  final Widget? child;
   final double width;
   final EditorPanelDockSide side;
 
@@ -36,11 +47,14 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
     final colorScheme = Theme.of(context).colorScheme;
     final isLeft = widget.side == EditorPanelDockSide.left;
     final borderSide = BorderSide(color: colorScheme.outlineVariant);
+    final children = widget.children;
     return Container(
       key: ValueKey<String>('editor-panel-dock-${isLeft ? 'left' : 'right'}'),
       width: widget.width,
       constraints: const BoxConstraints(minWidth: 180),
-      padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
+      padding: children == null
+          ? EdgeInsets.zero
+          : const EdgeInsets.fromLTRB(8, 8, 0, 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border(
@@ -48,16 +62,18 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
           right: isLeft ? borderSide : BorderSide.none,
         ),
       ),
-      child: PanelScrollbar(
-        controller: _scrollController,
-        child: ListView.separated(
-          controller: _scrollController,
-          padding: const EdgeInsets.only(right: panelScrollbarGutter),
-          itemCount: widget.children.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => widget.children[index],
-        ),
-      ),
+      child: children == null
+          ? widget.child!
+          : PanelScrollbar(
+              controller: _scrollController,
+              child: ListView.separated(
+                controller: _scrollController,
+                padding: const EdgeInsets.only(right: panelScrollbarGutter),
+                itemCount: children.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) => children[index],
+              ),
+            ),
     );
   }
 }

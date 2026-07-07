@@ -35,11 +35,16 @@ class EditorPanelTabs extends StatelessWidget {
     required this.tabs,
     required this.activeTabId,
     required this.onTabSelected,
+    this.compact = false,
   }) : assert(tabs.length > 0);
 
   final List<EditorPanelTab> tabs;
   final String activeTabId;
   final ValueChanged<String> onTabSelected;
+
+  /// Icon-only tab buttons (the label moves into the tooltip) — for narrow
+  /// docks where full labels would overflow the strip.
+  final bool compact;
 
   static const double stripHeight = 30;
 
@@ -64,6 +69,7 @@ class EditorPanelTabs extends StatelessWidget {
                   key: tab.buttonKey ?? ValueKey<String>('panel-tab-${tab.id}'),
                   label: tab.label,
                   icon: tab.icon,
+                  compact: compact,
                   selected: tab.id == active.id,
                   onPressed: () => onTabSelected(tab.id),
                 ),
@@ -82,12 +88,14 @@ class _PanelTabButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.icon,
+    required this.compact,
     required this.selected,
     required this.onPressed,
   });
 
   final String label;
   final IconData icon;
+  final bool compact;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -103,7 +111,7 @@ class _PanelTabButton extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
           decoration: BoxDecoration(
             color: selected
                 ? colorScheme.surfaceContainerHighest
@@ -119,15 +127,17 @@ class _PanelTabButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, size: 14, color: foreground),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: foreground,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              if (!compact) ...[
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
