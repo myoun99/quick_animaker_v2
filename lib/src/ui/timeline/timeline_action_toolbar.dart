@@ -17,12 +17,17 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onRenameLayer,
     required this.onDeleteLayer,
     required this.onRenameFrame,
+    this.onImportAudio,
   });
 
   final EditorSessionManager session;
   final VoidCallback onRenameLayer;
   final VoidCallback onDeleteLayer;
   final VoidCallback onRenameFrame;
+
+  /// Opens the audio file picker for the active SE layer (host-provided —
+  /// it needs the platform dialog); null hides nothing, just disables.
+  final VoidCallback? onImportAudio;
 
   Widget _iconButton({
     required ValueKey<String> key,
@@ -110,6 +115,16 @@ class TimelineActionToolbar extends StatelessWidget {
                     tooltip: 'Add Instruction Layer',
                     icon: Icons.theaters_outlined,
                     onPressed: session.addInstructionLayer,
+                  ),
+                  _iconButton(
+                    key: const ValueKey<String>('import-audio-button'),
+                    tooltip: 'Import Audio',
+                    icon: Icons.audio_file_outlined,
+                    onPressed:
+                        session.canImportAudioToActiveLayer &&
+                            onImportAudio != null
+                        ? onImportAudio
+                        : null,
                   ),
                   _iconButton(
                     key: const ValueKey<String>('rename-layer-button'),

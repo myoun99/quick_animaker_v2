@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
@@ -15,13 +16,15 @@ class LayerCopyPayload {
     required List<Frame> frames,
     required Map<int, TimelineExposure> timeline,
     Map<int, InstructionEvent> instructions = const {},
+    List<AudioClip> audioClips = const [],
   }) : frames = List.unmodifiable(frames),
        timeline = UnmodifiableMapView(
          SplayTreeMap<int, TimelineExposure>.of(timeline),
        ),
        instructions = UnmodifiableMapView(
          SplayTreeMap<int, InstructionEvent>.of(instructions),
-       );
+       ),
+       audioClips = List.unmodifiable(audioClips);
 
   final String name;
   final LayerKind kind;
@@ -32,6 +35,9 @@ class LayerCopyPayload {
 
   /// Instruction spans ride copies so duplicating a CAM row keeps its data.
   final Map<int, InstructionEvent> instructions;
+
+  /// Audio clips ride copies so duplicating an SE row keeps its sound.
+  final List<AudioClip> audioClips;
 }
 
 LayerCopyPayload copyLayerToPayload(Layer source) {
@@ -43,5 +49,6 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     frames: source.frames,
     timeline: source.timeline,
     instructions: source.instructions,
+    audioClips: source.audioClips,
   );
 }

@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'audio_clip.dart';
 import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -23,6 +24,7 @@ class Layer {
     required List<Frame> frames,
     Map<int, TimelineExposure>? timeline,
     Map<int, InstructionEvent>? instructions,
+    List<AudioClip> audioClips = const [],
     this.isVisible = true,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
@@ -30,7 +32,8 @@ class Layer {
     this.mark = LayerMark.none,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
-       instructions = immutableInstructionMap(instructions ?? const {});
+       instructions = immutableInstructionMap(instructions ?? const {}),
+       audioClips = List.unmodifiable(audioClips);
 
   final LayerId id;
   final String name;
@@ -40,6 +43,9 @@ class Layer {
   /// Camera-work instruction spans (instruction rows only; empty elsewhere).
   /// Keyed by start frame; see [InstructionEvent].
   final SplayTreeMap<int, InstructionEvent> instructions;
+
+  /// Sound files placed on this SE layer (empty on other kinds).
+  final List<AudioClip> audioClips;
   final bool isVisible;
   final double opacity;
   final LayerKind kind;
@@ -58,6 +64,7 @@ class Layer {
     List<Frame>? frames,
     Map<int, TimelineExposure>? timeline,
     Map<int, InstructionEvent>? instructions,
+    List<AudioClip>? audioClips,
     bool? isVisible,
     double? opacity,
     LayerKind? kind,
@@ -71,6 +78,7 @@ class Layer {
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
       instructions: instructions ?? this.instructions,
+      audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
@@ -88,6 +96,8 @@ class Layer {
         .toList(),
     if (instructions.isNotEmpty)
       'instructions': instructionMapToJson(instructions),
+    if (audioClips.isNotEmpty)
+      'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
     'opacity': opacity,
     'kind': kind.toJson(),
@@ -111,6 +121,12 @@ class Layer {
             )
           : _deriveTimeline(frames),
       instructions: instructionMapFromJson(json['instructions']),
+      audioClips: json['audioClips'] == null
+          ? const []
+          : [
+              for (final clip in json['audioClips'] as List<dynamic>)
+                AudioClip.fromJson(clip as Map<String, dynamic>),
+            ],
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),
       kind: json.containsKey('kind')
@@ -134,6 +150,7 @@ class Layer {
           listEquals(other.frames, frames) &&
           mapEquals(other.timeline, timeline) &&
           mapEquals(other.instructions, instructions) &&
+          listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
           other.kind == kind &&
@@ -151,6 +168,7 @@ class Layer {
     Object.hashAll(
       instructions.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
+    Object.hashAll(audioClips),
     isVisible,
     opacity,
     kind,
