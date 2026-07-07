@@ -207,15 +207,7 @@ void main() {
           const CutId('replacement-cut'),
         );
         expect(
-          repository
-              .requireProject()
-              .tracks
-              .single
-              .cuts
-              .single
-              .layers
-              .first
-              .id,
+          repository.requireProject().tracks.single.cuts.single.layers.first.id,
           const LayerId('replacement-layer'),
         );
         expect(editingSession.activeCutId, const CutId('replacement-cut'));

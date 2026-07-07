@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -160,6 +162,107 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets('tapping timesheet toggle reports the layer', (tester) async {
+      final layer = _layer();
+      LayerId? toggledLayerId;
+
+      await tester.pumpWidget(
+        _row(
+          layer: layer,
+          onToggleLayerTimesheet: (layerId) => toggledLayerId = layerId,
+        ),
+      );
+
+      expect(find.byTooltip('Remove from timesheet'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('timeline-layer-timesheet-${layer.id}')),
+      );
+
+      expect(toggledLayerId, layer.id);
+    });
+
+    testWidgets('excluded layer offers the add-to-timesheet tooltip', (
+      tester,
+    ) async {
+      final layer = _layer().copyWith(onTimesheet: false);
+
+      await tester.pumpWidget(_row(layer: layer));
+
+      expect(find.byTooltip('Add to timesheet'), findsOneWidget);
+      expect(find.byTooltip('Remove from timesheet'), findsNothing);
+    });
+
+    testWidgets('selecting a mark from the chip popup reports it', (
+      tester,
+    ) async {
+      final layer = _layer();
+      LayerId? markedLayerId;
+      LayerMark? selectedMark;
+
+      await tester.pumpWidget(
+        _row(
+          layer: layer,
+          onLayerMarkSelected: (layerId, mark) {
+            markedLayerId = layerId;
+            selectedMark = mark;
+          },
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('timeline-layer-mark-${layer.id}')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('layer-mark-option-blue')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(markedLayerId, layer.id);
+      expect(selectedMark, LayerMark.blue);
+    });
+
+    testWidgets('non-animation layers hide the timesheet toggle', (
+      tester,
+    ) async {
+      final storyboardLayer = _layer().copyWith(kind: LayerKind.storyboard);
+
+      await tester.pumpWidget(_row(layer: storyboardLayer));
+
+      expect(
+        find.byKey(
+          ValueKey<String>('timeline-layer-timesheet-${storyboardLayer.id}'),
+        ),
+        findsNothing,
+      );
+      // The mark chip stays available for storyboard layers.
+      expect(
+        find.byKey(
+          ValueKey<String>('timeline-layer-mark-${storyboardLayer.id}'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('camera layer hides both chips', (tester) async {
+      final cameraLayer = _layer().copyWith(kind: LayerKind.camera);
+
+      await tester.pumpWidget(_row(layer: cameraLayer));
+
+      expect(
+        find.byKey(
+          ValueKey<String>('timeline-layer-timesheet-${cameraLayer.id}'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey<String>('timeline-layer-mark-${cameraLayer.id}')),
+        findsNothing,
+      );
+    });
   });
 }
 
@@ -180,6 +283,8 @@ Widget _row({
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
+  ValueChanged<LayerId>? onToggleLayerTimesheet,
+  void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
 }) {
   return MaterialApp(
     home: Material(
@@ -190,6 +295,8 @@ Widget _row({
         onSelectLayer: onSelectLayer ?? (_) {},
         onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
         onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+        onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
+        onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
       ),
     ),
   );

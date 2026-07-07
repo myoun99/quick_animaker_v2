@@ -5,27 +5,15 @@ import 'package:flutter/material.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/project_repository.dart';
-import 'cut/cut_list_bar.dart';
-import 'cut/cut_note_dialog.dart';
-import 'dialogs/canvas_size_dialog.dart';
-import 'dialogs/delete_layer_dialog.dart';
-import 'dialogs/frame_name_conflict_dialog.dart';
-import 'dialogs/rename_cut_dialog.dart';
-import 'dialogs/rename_frame_dialog.dart';
-import 'dialogs/rename_layer_dialog.dart';
-import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'editor_workspace.dart';
 import 'export/export_dialog.dart';
-import 'playback/canvas_playback_controller.dart';
-import 'playback/playback_prerender_scheduler.dart';
-import 'playback/playback_transport_controls.dart';
-import 'panels/panel_scrollbar.dart';
-import 'storyboard_panel.dart';
-import 'timeline/timeline_action_toolbar.dart';
-import 'timeline/timeline_exposure_comma_drag_policy.dart';
-import 'timeline/timeline_orientation.dart';
-import 'timeline/timeline_panel.dart';
 
+/// The editor shell: app bar plus the dockable-panel workspace. Every
+/// panel's WIRING lives in its own host file (timeline_tab_host.dart,
+/// storyboard_tab_host.dart, editor_canvas_area.dart) so parallel work on
+/// different panels stays in different files; the workspace only owns the
+/// dock layout and shared panel view state.
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.initialProject, this.onRepositoryCreated});
 
@@ -38,10 +26,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final EditorSessionManager _session;
-
-  TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
-  bool _showStoryboard = false;
-  final ScrollController _topToolbarScrollController = ScrollController();
 
   @override
   void initState() {
@@ -56,7 +40,6 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _session.removeListener(_onSessionChanged);
     _session.dispose();
-    _topToolbarScrollController.dispose();
     super.dispose();
   }
 
@@ -64,123 +47,11 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  // --- Dialog-driven commands --------------------------------------------
-  // These orchestrate dialogs (which need a BuildContext) and then delegate the
-  // actual mutation to the session.
-
-  Future<void> _editActiveCutNote() async {
-    final initialNote = _session.activeCutNote;
-    if (initialNote == null) {
-      return;
-    }
-
-    final nextNote = await showDialog<String>(
-      context: context,
-      builder: (context) => CutNoteDialog(initialNote: initialNote),
-    );
-    if (!mounted || nextNote == null) {
-      return;
-    }
-
-    _session.updateActiveCutNote(nextNote);
-  }
-
-  Future<void> _renameActiveCut() async {
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          RenameCutDialog(initialName: _session.activeCut.name),
-    );
-    if (!mounted || nextName == null || nextName.trim().isEmpty) {
-      return;
-    }
-
-    _session.renameActiveCut(nextName);
-  }
-
-  Future<void> _resizeActiveCutCanvas() async {
-    final request = await showDialog<CanvasResizeRequest>(
-      context: context,
-      builder: (context) =>
-          CanvasSizeDialog(initialSize: _session.activeCut.canvasSize),
-    );
-    if (!mounted || request == null) {
-      return;
-    }
-
-    _session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
-  }
-
-  Future<void> _deleteActiveLayer() async {
-    final activeLayer = _session.activeLayer;
-    if (activeLayer == null || !_session.canDeleteActiveLayer) {
-      return;
-    }
-
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => DeleteLayerDialog(layerName: activeLayer.name),
-    );
-    if (!mounted || shouldDelete != true) {
-      return;
-    }
-
-    _session.deleteActiveLayer();
-  }
-
-  Future<void> _renameActiveLayer() async {
-    final activeLayer = _session.activeLayer;
-    if (activeLayer == null) {
-      return;
-    }
-
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => RenameLayerDialog(initialName: activeLayer.name),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-
-    _session.renameActiveLayer(nextName);
-  }
-
-  Future<void> _renameSelectedFrame() async {
-    if (_session.selectedFrame == null ||
-        !_session.canRenameFrameAtCurrentFrame) {
-      return;
-    }
-
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          RenameFrameDialog(initialName: _session.selectedFrameName ?? ''),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-
-    final conflictingFrameId = _session.renameSelectedFrame(nextName);
-    if (conflictingFrameId == null) {
-      return;
-    }
-
-    final shouldLink = await showDialog<bool>(
-      context: context,
-      builder: (context) => const FrameNameConflictDialog(),
-    );
-    if (!mounted || shouldLink != true) {
-      return;
-    }
-
-    _session.linkSelectedFrame(conflictingFrameId);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('QuickAnimaker v2.1'),
+        title: const Text('QuickAnimaker'),
         actions: [
           IconButton(
             key: const ValueKey<String>('undo-button'),
@@ -210,145 +81,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: PanelScrollbar(
-              controller: _topToolbarScrollController,
-              child: SingleChildScrollView(
-                key: const ValueKey<String>('top-toolbar-scroll-view'),
-                controller: _topToolbarScrollController,
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                padding: const EdgeInsets.only(bottom: panelScrollbarGutter),
-                child: Row(
-                  key: const ValueKey<String>('top-toolbar-row'),
-                  children: [
-                    CutListBar(
-                      entries: _session.cutListEntries,
-                      onCutSelected: _session.selectCut,
-                      onCutReordered: _session.reorderCut,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Expanded(child: EditorCanvasArea(session: _session)),
-          // Playback ticks flow through the playback-only frame listenable —
-          // never the session's notifyListeners — so during playback only
-          // this panel rebuilds and the playhead follows every frame. The
-          // prerender progress listenable keeps the cached-range green bar
-          // live while frames warm in the background.
-          ValueListenableBuilder<PrerenderProgress>(
-            valueListenable: _session.prerenderScheduler.progress,
-            builder: (context, _, _) => ValueListenableBuilder<int?>(
-              valueListenable: _session.playback.localFrameIndexListenable,
-              builder: (context, playbackFrameIndex, _) => TimelinePanel(
-                layers: _session.layers,
-                activeLayerId: _session.activeLayerId,
-                currentFrameIndex:
-                    playbackFrameIndex ?? _session.currentFrameIndex,
-                isFrameCached: _session.isPlaybackFrameCached,
-                playbackFrameCount: _session.activeCutPlaybackFrameCount,
-                exposureStateForLayer: _session.exposureStateForLayer,
-                frameNameForLayer: _session.frameNameForLayer,
-                onSelectLayer: _session.selectLayer,
-                // Ruler scrubs during playback SEEK the playback clock
-                // instead of moving the (hidden) editing playhead.
-                onSelectFrame: (frameIndex) {
-                  if (_session.playback.isActive) {
-                    _session.playback.seekToLocalFrame(frameIndex);
-                  } else {
-                    _session.selectFrameIndex(frameIndex);
-                  }
-                },
-                onAddLayer: _session.addLayer,
-                onToggleLayerVisibility: _session.toggleLayerVisibility,
-                onLayerOpacityChanged: (layerId, opacity) {
-                  _session.setLayerOpacity(layerId: layerId, opacity: opacity);
-                },
-                // Comma edge drags preview live from the session's
-                // drag-start snapshot and commit as ONE undo entry on
-                // release.
-                commaDrag: TimelineCommaDragCallbacks(
-                  onBegin: (layerId, blockStartIndex, edge) =>
-                      _session.beginExposureEdgeDrag(
-                        layerId: layerId,
-                        blockStartIndex: blockStartIndex,
-                        edge: edge,
-                      ),
-                  onUpdate: _session.updateExposureEdgeDrag,
-                  onEnd: _session.endExposureEdgeDrag,
-                  onCancel: _session.cancelExposureEdgeDrag,
-                ),
-                orientation: _timelineOrientation,
-                onOrientationChanged: (orientation) {
-                  setState(() => _timelineOrientation = orientation);
-                },
-                showStoryboard: _showStoryboard,
-                onShowStoryboardChanged: (show) {
-                  setState(() => _showStoryboard = show);
-                },
-                // The storyboard context plays every cut of the track; the
-                // timeline context plays the active cut from the playhead.
-                // Composing the transports into the existing slots keeps
-                // TimelinePanel/StoryboardPanel untouched.
-                storyboardPanel: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    PlaybackTransportControls(
-                      controller: _session.playback,
-                      scope: PlaybackScope.allCuts,
-                      quality: _session.playbackQuality,
-                      onQualityChanged: _session.setPlaybackQuality,
-                    ),
-                    Expanded(
-                      child: StoryboardPanel(
-                        project: _session.repository.requireProject(),
-                        activeCutId: _session.activeCutId,
-                        onCutSelected: _session.selectCut,
-                        onNewCut: _session.createCut,
-                        onRenameActiveCut: _renameActiveCut,
-                        onEditActiveCutNote: _editActiveCutNote,
-                        onResizeActiveCutCanvas: _resizeActiveCutCanvas,
-                        onDuplicateActiveCut: _session.duplicateActiveCut,
-                        onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                            ? _session.moveActiveCutLeft
-                            : null,
-                        onMoveActiveCutRight: _session.canMoveActiveCutRight
-                            ? _session.moveActiveCutRight
-                            : null,
-                        onDeleteActiveCut: _session.deleteActiveCut,
-                      ),
-                    ),
-                  ],
-                ),
-                timelineActionToolbar: Row(
-                  children: [
-                    PlaybackTransportControls(
-                      controller: _session.playback,
-                      scope: PlaybackScope.activeCut,
-                      quality: _session.playbackQuality,
-                      onQualityChanged: _session.setPlaybackQuality,
-                      playbackStartFrame: () => _session.currentFrameIndex,
-                    ),
-                    Expanded(
-                      child: TimelineActionToolbar(
-                        session: _session,
-                        onRenameLayer: _renameActiveLayer,
-                        onDeleteLayer: _deleteActiveLayer,
-                        onRenameFrame: _renameSelectedFrame,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: EditorWorkspace(session: _session),
     );
   }
 }

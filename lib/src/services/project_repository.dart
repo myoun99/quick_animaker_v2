@@ -8,6 +8,7 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/layer_mark.dart';
 import '../models/storyboard_frame_metadata.dart';
 import '../models/project.dart';
 import '../models/stroke.dart';
@@ -180,6 +181,20 @@ class ProjectRepository {
     });
   }
 
+  void updateCutDuration({required CutId cutId, required int duration}) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(duration: duration),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
   void updateCutCamera({required CutId cutId, required CutCamera camera}) {
     updateProject((project) {
       final next = updateCutAnywhere(
@@ -287,6 +302,54 @@ class ProjectRepository {
           cut,
           layerId,
           (layer) => layer.copyWith(name: name),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void updateLayerTimesheet({
+    required CutId cutId,
+    required LayerId layerId,
+    required bool onTimesheet,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(onTimesheet: onTimesheet),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void updateLayerMark({
+    required CutId cutId,
+    required LayerId layerId,
+    required LayerMark mark,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(mark: mark),
         );
         if (updatedCut == null) {
           throw StateError('Layer not found in cut $cutId: $layerId');

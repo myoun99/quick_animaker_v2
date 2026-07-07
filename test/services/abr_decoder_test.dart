@@ -309,10 +309,7 @@ void main() {
       expect(chalk.settings.minimumSizeRatio, closeTo(0.65, 1e-9));
       expect(chalk.settings.sizeJitter, closeTo(0.3, 1e-9));
       expect(chalk.settings.pressureOpacity, isTrue);
-      expect(
-        chalk.settings.rotationMode,
-        BrushTipRotationMode.direction,
-      );
+      expect(chalk.settings.rotationMode, BrushTipRotationMode.direction);
       expect(chalk.settings.angleJitter, closeTo(0.1, 1e-9));
       expect(chalk.settings.scatterRadiusRatio, closeTo(2.0, 1e-9));
       expect(chalk.settings.scatterCount, 3);
@@ -323,9 +320,7 @@ void main() {
       expect(chalk.settings.dualMask!.id, 'abr-tip-two-uuid');
       expect(chalk.settings.dualMaskScale, closeTo(0.5, 1e-9));
 
-      final round = result.presets.firstWhere(
-        (p) => p.name == 'Soft Round 16',
-      );
+      final round = result.presets.firstWhere((p) => p.name == 'Soft Round 16');
       expect(round.settings.tipMask, isNull);
       expect(round.settings.size, 16.0);
       expect(round.settings.hardness, closeTo(0.8, 1e-9));

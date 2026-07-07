@@ -34,33 +34,30 @@ void main() {
     expect(point.copyWith(y: 3), const StrokePoint(x: 1, y: 3));
   });
 
-  test(
-    'timeline marks default empty, copyWith replaces the timeline, and '
-    'equality includes mark entries',
-    () {
-      final layer = Layer(
+  test('timeline marks default empty, copyWith replaces the timeline, and '
+      'equality includes mark entries', () {
+    final layer = Layer(
+      id: const LayerId('layer-1'),
+      name: 'Layer',
+      frames: const [],
+    );
+    final markedLayer = layer.copyWith(
+      timeline: const {3: TimelineExposure.mark()},
+    );
+
+    expect(layer.timeline, isEmpty);
+    expect(markedLayer.timeline[3], const TimelineExposure.mark());
+    expect(markedLayer, isNot(layer));
+    expect(
+      markedLayer,
+      Layer(
         id: const LayerId('layer-1'),
         name: 'Layer',
         frames: const [],
-      );
-      final markedLayer = layer.copyWith(
         timeline: const {3: TimelineExposure.mark()},
-      );
-
-      expect(layer.timeline, isEmpty);
-      expect(markedLayer.timeline[3], const TimelineExposure.mark());
-      expect(markedLayer, isNot(layer));
-      expect(
-        markedLayer,
-        Layer(
-          id: const LayerId('layer-1'),
-          name: 'Layer',
-          frames: const [],
-          timeline: const {3: TimelineExposure.mark()},
-        ),
-      );
-    },
-  );
+      ),
+    );
+  });
 
   test(
     'copyWith preserves nested lists unless replaced and leaves original unchanged',

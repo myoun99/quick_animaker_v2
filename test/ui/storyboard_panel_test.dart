@@ -291,16 +291,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Cut A'), findsOneWidget);
+    // The conte-sheet TIME column: cumulative time at the cut's end sits
+    // bottom-right (the old duration/frame-range row is gone).
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
+      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
       findsOneWidget,
     );
     expect(find.text('24f'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-a')),
-      findsOneWidget,
-    );
-    expect(find.text('0f - 24f'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
       findsOneWidget,
@@ -331,44 +328,19 @@ void main() {
     },
   );
 
-  testWidgets('shows cumulative frame ranges for sequential cuts', (
-    tester,
-  ) async {
+  testWidgets('shows cumulative end times for sequential cuts', (tester) async {
     await _pumpPanel(tester, _twoCutProject());
 
     expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-frame-range-cut-short'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-short')),
       findsOneWidget,
     );
-    expect(find.text('0f - 12f'), findsOneWidget);
+    expect(find.text('12f'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-long')),
+      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-long')),
       findsOneWidget,
     );
-    expect(find.text('12f - 48f'), findsOneWidget);
-  });
-
-  testWidgets('shows active indicator only for the active cut', (tester) async {
-    await _pumpPanel(
-      tester,
-      _twoCutProject(),
-      activeCutId: const CutId('cut-long'),
-    );
-
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-long'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-short'),
-      ),
-      findsNothing,
-    );
+    expect(find.text('48f'), findsOneWidget);
   });
 
   testWidgets('tapping inactive cut block calls onCutSelected with cut id', (
@@ -443,11 +415,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-a')),
+      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
       findsOneWidget,
     );
     expect(

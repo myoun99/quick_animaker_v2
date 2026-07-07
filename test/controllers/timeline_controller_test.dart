@@ -242,9 +242,7 @@ void main() {
           0: TimelineExposure.drawing(const FrameId('a'), length: 2),
           4: TimelineExposure.drawing(const FrameId('a'), length: 1),
         },
-        frames: [
-          Frame(id: const FrameId('a'), duration: 1, strokes: const []),
-        ],
+        frames: [Frame(id: const FrameId('a'), duration: 1, strokes: const [])],
       );
       fixture.controller.selectFrameIndex(0);
 
@@ -262,17 +260,11 @@ void main() {
       final fixture = _fixture();
 
       expect(
-        fixture.controller.canDeleteCellAt(
-          layer: fixture.layer,
-          frameIndex: 1,
-        ),
+        fixture.controller.canDeleteCellAt(layer: fixture.layer, frameIndex: 1),
         isFalse,
       );
       expect(
-        fixture.controller.canDeleteCellAt(
-          layer: fixture.layer,
-          frameIndex: 0,
-        ),
+        fixture.controller.canDeleteCellAt(layer: fixture.layer, frameIndex: 0),
         isTrue,
       );
     });

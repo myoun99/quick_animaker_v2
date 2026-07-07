@@ -55,7 +55,9 @@ void main() {
         frames: [
           Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1)},
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+        },
       ),
     ],
   );
@@ -71,10 +73,7 @@ void main() {
     createdAt: DateTime.utc(2026),
   );
 
-  ({
-    CutFrameCompositeCache composites,
-    CanvasPlaybackController controller,
-  })
+  ({CutFrameCompositeCache composites, CanvasPlaybackController controller})
   fixture() {
     final store = BrushFrameStore();
     BrushFrameEditingCoordinator(
@@ -175,11 +174,7 @@ void main() {
     });
 
     f.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: f.controller,
-      composites: f.composites,
-    );
+    await pumpView(tester, controller: f.controller, composites: f.composites);
 
     expect(painterOf(tester).image, isNotNull);
     expect(painterOf(tester).cameraPose, isNull);
@@ -226,11 +221,7 @@ void main() {
     });
 
     f.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: f.controller,
-      composites: f.composites,
-    );
+    await pumpView(tester, controller: f.controller, composites: f.composites);
     expect(painterOf(tester).image, isNotNull);
 
     // Advance to the uncached frame 1 (10fps → 100ms per frame).
@@ -248,11 +239,7 @@ void main() {
   testWidgets('tapping the canvas cancels playback', (tester) async {
     final f = fixture();
     f.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: f.controller,
-      composites: f.composites,
-    );
+    await pumpView(tester, controller: f.controller, composites: f.composites);
     expect(f.controller.isActive, isTrue);
 
     await tester.tap(
@@ -301,11 +288,7 @@ void main() {
   ) async {
     final f = fixture();
     f.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: f.controller,
-      composites: f.composites,
-    );
+    await pumpView(tester, controller: f.controller, composites: f.composites);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(f.controller.position!.localFrameIndex, 1);

@@ -143,6 +143,24 @@ void main() {
       expect(viewport.panY, 25);
     });
 
+    test('fitToCanvasRect centers an off-origin rect in the viewport', () {
+      final viewport = CanvasViewport.fitToCanvasRect(
+        left: 50,
+        top: 100,
+        width: 100,
+        height: 50,
+        viewportWidth: 300,
+        viewportHeight: 200,
+        padding: 0,
+      );
+
+      expect(viewport.zoom, 3);
+      // Rect center (100, 125) lands on the viewport center (150, 100).
+      final center = viewport.canvasToViewport(CanvasPoint(x: 100, y: 125));
+      expect(center.x, closeTo(150, 0.000001));
+      expect(center.y, closeTo(100, 0.000001));
+    });
+
     test('zoomedAround preserves the canvas point under the anchor', () {
       final viewport = CanvasViewport(zoom: 2, panX: 10, panY: 20);
       final anchor = ViewportPoint(x: 30, y: 60);

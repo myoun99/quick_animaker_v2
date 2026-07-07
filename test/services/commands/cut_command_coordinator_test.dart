@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
@@ -743,6 +744,123 @@ void main() {
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('setLayerTimesheet flips the flag through history', () {
+      final layer = _layer(id: 'layer-1');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.setLayerTimesheet(
+        cutId: cutA.id,
+        layerId: layer.id,
+        onTimesheet: false,
+      );
+
+      expect(_layerById(fixture.project, layer.id).onTimesheet, isFalse);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+
+      expect(_layerById(fixture.project, layer.id).onTimesheet, isTrue);
+      expect(fixture.historyManager.redoCount, 1);
+
+      fixture.historyManager.redo();
+
+      expect(_layerById(fixture.project, layer.id).onTimesheet, isFalse);
+      expect(fixture.historyManager.undoCount, 1);
+    });
+
+    test('setLayerTimesheet skips unchanged flag without history entry', () {
+      final layer = _layer(id: 'layer-1');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final beforeJson = fixture.project.toJson();
+
+      fixture.coordinator.setLayerTimesheet(
+        cutId: cutA.id,
+        layerId: layer.id,
+        onTimesheet: true,
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.historyManager.undoCount, 0);
+    });
+
+    test('setLayerTimesheet rejects the camera layer', () {
+      final cameraLayer = _layer(id: 'camera-1', kind: LayerKind.camera);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [cameraLayer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      expect(
+        () => fixture.coordinator.setLayerTimesheet(
+          cutId: cutA.id,
+          layerId: cameraLayer.id,
+          onTimesheet: false,
+        ),
+        throwsStateError,
+      );
+      expect(fixture.historyManager.undoCount, 0);
+    });
+
+    test('setLayerMark sets the mark through history and dedupes', () {
+      final layer = _layer(id: 'layer-1');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.setLayerMark(
+        cutId: cutA.id,
+        layerId: layer.id,
+        mark: LayerMark.orange,
+      );
+
+      expect(_layerById(fixture.project, layer.id).mark, LayerMark.orange);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.coordinator.setLayerMark(
+        cutId: cutA.id,
+        layerId: layer.id,
+        mark: LayerMark.orange,
+      );
+
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+
+      expect(_layerById(fixture.project, layer.id).mark, LayerMark.none);
+      expect(fixture.historyManager.redoCount, 1);
+
+      fixture.historyManager.redo();
+
+      expect(_layerById(fixture.project, layer.id).mark, LayerMark.orange);
     });
 
     test(

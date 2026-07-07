@@ -18,6 +18,23 @@ void main() {
       },
     );
 
+    test('eraser tool maps to erase input settings', () {
+      const state = BrushToolState.defaults;
+      expect(state.tool, CanvasTool.brush);
+      expect(state.toInputSettings().erase, isFalse);
+
+      final eraser = state.copyWith(tool: CanvasTool.eraser);
+      expect(eraser.toInputSettings().erase, isTrue);
+      // Brush options ride along unchanged.
+      expect(eraser.toInputSettings().size, state.size);
+
+      // Presets never carry the tool: applying one returns to the brush.
+      final reapplied = BrushToolState.fromBrushSettings(
+        eraser.toBrushSettings(),
+      );
+      expect(reapplied.tool, CanvasTool.brush);
+    });
+
     test('public constructor always stores a clamped size', () {
       expect(BrushToolState(size: -10).size, BrushToolState.minSize);
       expect(BrushToolState(size: 10000).size, BrushToolState.maxSize);

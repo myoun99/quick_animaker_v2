@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
@@ -69,8 +69,7 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
         offsetU: 0.0,
         offsetV: 0.0,
       );
-      result *=
-          (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+      result *= (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
     }
     return result;
   }

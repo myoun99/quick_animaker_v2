@@ -1,82 +1,52 @@
 import 'dart:collection';
 
-import '../core/collection_equality.dart';
 import 'camera_pose.dart';
+import 'transform_track.dart';
 
 /// Per-cut camera animation: camera poses keyframed by playback frame index.
 ///
-/// An empty keyframe map means the cut has no camera work; consumers fall back
-/// to the default pose (canvas centered, zoom 1, no rotation).
+/// A thin cut-level wrapper over the shared [TransformTrack] mechanics (the
+/// same track type layer transforms use). An empty track means the cut has
+/// no camera work; consumers fall back to the default pose (canvas centered,
+/// zoom 1, no rotation).
 class CutCamera {
   CutCamera({Map<int, CameraPose>? keyframes})
-    : keyframes = _immutableKeyframes(keyframes ?? const {});
+    : track = TransformTrack(keyframes: keyframes);
+
+  const CutCamera.fromTrack(this.track);
 
   factory CutCamera.empty() => CutCamera();
 
-  final SplayTreeMap<int, CameraPose> keyframes;
+  final TransformTrack track;
 
-  bool get isEmpty => keyframes.isEmpty;
-  bool get isNotEmpty => keyframes.isNotEmpty;
+  SplayTreeMap<int, CameraPose> get keyframes => track.keyframes;
 
-  CameraPose? keyframeAt(int frameIndex) => keyframes[frameIndex];
+  bool get isEmpty => track.isEmpty;
+  bool get isNotEmpty => track.isNotEmpty;
+
+  CameraPose? keyframeAt(int frameIndex) => track.keyframeAt(frameIndex);
 
   CutCamera withKeyframe(int frameIndex, CameraPose pose) {
-    return CutCamera(keyframes: {...keyframes, frameIndex: pose});
+    return CutCamera.fromTrack(track.withKeyframe(frameIndex, pose));
   }
 
   CutCamera withoutKeyframe(int frameIndex) {
-    final next = Map<int, CameraPose>.of(keyframes)..remove(frameIndex);
-    return CutCamera(keyframes: next);
+    return CutCamera.fromTrack(track.withoutKeyframe(frameIndex));
   }
 
-  Map<String, dynamic> toJson() => {
-    'keyframes': keyframes.entries
-        .map((entry) => {'index': entry.key, 'pose': entry.value.toJson()})
-        .toList(),
-  };
+  Map<String, dynamic> toJson() => track.toJson();
 
   factory CutCamera.fromJson(Map<String, dynamic> json) {
-    final keyframes = <int, CameraPose>{};
-    for (final item in json['keyframes'] as List? ?? const []) {
-      final entry = item as Map<String, dynamic>;
-      final index = entry['index'] as int;
-      if (keyframes.containsKey(index)) {
-        throw FormatException('Duplicate camera keyframe index: $index');
-      }
-      keyframes[index] = CameraPose.fromJson(
-        entry['pose'] as Map<String, dynamic>,
-      );
-    }
-    return CutCamera(keyframes: keyframes);
+    return CutCamera.fromTrack(TransformTrack.fromJson(json));
   }
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CutCamera && mapEquals(other.keyframes, keyframes);
+      identical(this, other) || other is CutCamera && other.track == track;
 
   @override
-  int get hashCode => Object.hashAll(
-    keyframes.entries.map((entry) => Object.hash(entry.key, entry.value)),
-  );
+  int get hashCode => track.hashCode;
 
   @override
   String toString() => 'CutCamera(keyframes: $keyframes)';
-}
-
-SplayTreeMap<int, CameraPose> _immutableKeyframes(
-  Map<int, CameraPose> keyframes,
-) {
-  final result = SplayTreeMap<int, CameraPose>();
-  for (final entry in keyframes.entries) {
-    if (entry.key < 0) {
-      throw ArgumentError.value(
-        entry.key,
-        'keyframes',
-        'Camera keyframe indexes must be non-negative.',
-      );
-    }
-    result[entry.key] = entry.value;
-  }
-  return result;
 }

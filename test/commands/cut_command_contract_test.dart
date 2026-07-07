@@ -400,16 +400,25 @@ void main() {
         expect(duplicateLineLayer.timeline.keys, [0, 5]);
         expect(
           duplicateLineLayer.timeline[0],
-          TimelineExposure.drawing(const FrameId('frame-line-a-copy'), length: 2),
+          TimelineExposure.drawing(
+            const FrameId('frame-line-a-copy'),
+            length: 2,
+          ),
         );
         expect(
           duplicateLineLayer.timeline[5],
-          TimelineExposure.drawing(const FrameId('frame-line-b-copy'), length: 6),
+          TimelineExposure.drawing(
+            const FrameId('frame-line-b-copy'),
+            length: 6,
+          ),
         );
         expect(duplicatePaintLayer.timeline.keys, [1]);
         expect(
           duplicatePaintLayer.timeline[1],
-          TimelineExposure.drawing(const FrameId('frame-paint-a-copy'), length: 3),
+          TimelineExposure.drawing(
+            const FrameId('frame-paint-a-copy'),
+            length: 3,
+          ),
         );
         expect(duplicateLineLayer.frames.map((frame) => frame.duration), [
           3,
@@ -501,7 +510,10 @@ void main() {
                 sourceLineLayer.frames[1],
               ],
               timeline: {
-                0: TimelineExposure.drawing(const FrameId('frame-line-a'), length: 8),
+                0: TimelineExposure.drawing(
+                  const FrameId('frame-line-a'),
+                  length: 8,
+                ),
               },
             ),
           );
@@ -628,9 +640,7 @@ Cut _authoredSourceCut() {
         id: const LayerId('layer-paint'),
         name: 'Paint',
         frames: [paintFrameA],
-        timeline: {
-          1: TimelineExposure.drawing(paintFrameA.id, length: 3),
-        },
+        timeline: {1: TimelineExposure.drawing(paintFrameA.id, length: 3)},
       ),
     ],
     duration: 18,

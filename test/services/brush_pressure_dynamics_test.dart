@@ -4,11 +4,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_pressure_dynamics.dart';
 
-BrushDab _dab({
-  double size = 10,
-  double opacity = 0.8,
-  double pressure = 0.5,
-}) {
+BrushDab _dab({double size = 10, double opacity = 0.8, double pressure = 0.5}) {
   return BrushDab(
     center: CanvasPoint(x: 1, y: 1),
     color: 0xFF000000,

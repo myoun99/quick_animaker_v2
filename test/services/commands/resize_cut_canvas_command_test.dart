@@ -227,8 +227,13 @@ BrushFrameStore _storeWithDabAt({required double x, required double y}) {
     ..addLivePaintCommand(_frameKey(), _paintCommandWithDabAt(x: x, y: y));
 }
 
-CanvasPoint _dabCenter(BrushFrameStore store) =>
-    store.frameOrNull(_frameKey())!.paintCommands.single.sourceDabs.single.center;
+CanvasPoint _dabCenter(BrushFrameStore store) => store
+    .frameOrNull(_frameKey())!
+    .paintCommands
+    .single
+    .sourceDabs
+    .single
+    .center;
 
 final _targetCut = Cut(
   id: const CutId('cut-target'),

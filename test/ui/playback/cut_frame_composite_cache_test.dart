@@ -44,7 +44,9 @@ void main() {
       Layer(
         id: const LayerId('layer'),
         name: 'A',
-        frames: [Frame(id: const FrameId('frame-a'), duration: 1, strokes: const [])],
+        frames: [
+          Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
+        ],
         timeline: {
           0: TimelineExposure.drawing(const FrameId('frame-a'), length: 24),
         },
@@ -152,9 +154,7 @@ void main() {
     });
   });
 
-  testWidgets('a brush commit invalidates via source revision', (
-    tester,
-  ) async {
+  testWidgets('a brush commit invalidates via source revision', (tester) async {
     await tester.runAsync(() async {
       final (store, coordinator) = storeWithStroke();
       final cache = cacheFor(store);
@@ -206,9 +206,7 @@ void main() {
 
       final withCamera = cut().copyWith(
         camera: CutCamera(
-          keyframes: {
-            0: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2),
-          },
+          keyframes: {0: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2)},
         ),
       );
 
@@ -277,9 +275,9 @@ void main() {
         protect: const [
           PlaybackProtectedRange(
             cutId: CutId('cut'),
-          startFrame: 0,
-          endFrame: 23,
-          quality: PlaybackQuality.full,
+            startFrame: 0,
+            endFrame: 23,
+            quality: PlaybackQuality.full,
           ),
         ],
       );

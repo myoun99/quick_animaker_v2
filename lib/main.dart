@@ -13,7 +13,7 @@ class QuickAnimakerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'QuickAnimaker v2.1',
+      title: 'QuickAnimaker',
       theme: buildAppTheme(),
       home: const HomePage(),
     );

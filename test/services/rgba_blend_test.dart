@@ -3,6 +3,71 @@ import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/services/rgba_blend.dart';
 
 void main() {
+  group('rgbaDestinationOut', () {
+    final destination = RgbaColor(r: 200, g: 100, b: 50, a: 255);
+
+    test('removes destination alpha by the effective source alpha', () {
+      final result = rgbaDestinationOut(
+        source: RgbaColor(r: 0, g: 0, b: 0, a: 255),
+        destination: destination,
+        opacity: 0.5,
+        flow: 1,
+      );
+
+      expect(result.a, 128);
+      expect(result.r, 200);
+      expect(result.g, 100);
+      expect(result.b, 50);
+    });
+
+    test('full effective alpha zeroes the pixel', () {
+      final result = rgbaDestinationOut(
+        source: RgbaColor(r: 0, g: 0, b: 0, a: 255),
+        destination: destination,
+        opacity: 1,
+        flow: 1,
+      );
+
+      expect(result, RgbaColor(r: 0, g: 0, b: 0, a: 0));
+    });
+
+    test('non-effective source leaves the destination untouched', () {
+      for (final result in [
+        rgbaDestinationOut(
+          source: RgbaColor(r: 0, g: 0, b: 0, a: 0),
+          destination: destination,
+          opacity: 1,
+          flow: 1,
+        ),
+        rgbaDestinationOut(
+          source: RgbaColor(r: 0, g: 0, b: 0, a: 255),
+          destination: destination,
+          opacity: 0,
+          flow: 1,
+        ),
+        rgbaDestinationOut(
+          source: RgbaColor(r: 0, g: 0, b: 0, a: 255),
+          destination: destination,
+          opacity: 1,
+          flow: 0,
+        ),
+      ]) {
+        expect(result, destination);
+      }
+    });
+
+    test('erasing a transparent destination stays transparent', () {
+      final result = rgbaDestinationOut(
+        source: RgbaColor(r: 0, g: 0, b: 0, a: 255),
+        destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
+        opacity: 0.5,
+        flow: 1,
+      );
+
+      expect(result.a, 0);
+    });
+  });
+
   group('effectiveSourceAlpha', () {
     test('returns source alpha multiplied by opacity and flow', () {
       expect(

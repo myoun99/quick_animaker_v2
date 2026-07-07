@@ -332,9 +332,7 @@ Cut _sourceCut() {
     id: const LayerId('layer-source'),
     name: 'Line',
     frames: [frame],
-    timeline: {
-      0: TimelineExposure.drawing(frame.id, length: 1),
-    },
+    timeline: {0: TimelineExposure.drawing(frame.id, length: 1)},
     isVisible: false,
     opacity: 0.5,
   );

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/ui/cut/cut_list_bar.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
@@ -38,38 +39,105 @@ Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _switchToCut(WidgetTester tester, String cutId) async {
-  final cutListBar = _cutListBar(tester);
-  expect(cutListBar.entries.map((entry) => entry.cutId.value), contains(cutId));
+/// The top chips bar is retired: the storyboard panel is the cut oracle and
+/// actuator now. It only exists in storyboard mode, so these helpers hop in,
+/// act or read, and restore the timeline when they had to switch. Never call
+/// them while a dialog is open — the mode toggle would tap the modal barrier.
+Future<T> _withStoryboardPanel<T>(
+  WidgetTester tester,
+  Future<T> Function(StoryboardPanel panel) act,
+) async {
+  final wasHidden = find.byType(StoryboardPanel).evaluate().isEmpty;
+  if (wasHidden) {
+    await _showStoryboardPanel(tester);
+  }
+  final result = await act(
+    tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)),
+  );
+  if (wasHidden) {
+    await _showTimelinePanel(tester);
+  }
+  return result;
+}
 
-  cutListBar.onCutSelected?.call(CutId(cutId));
-  await tester.pumpAndSettle();
+Future<void> _switchToCut(WidgetTester tester, String cutId) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    final entries = buildStoryboardTimelineLayout(panel.project);
+    expect(entries.map((entry) => entry.cutId.value), contains(cutId));
+
+    panel.onCutSelected(CutId(cutId));
+    await tester.pumpAndSettle();
+  });
+}
+
+Future<void> _tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    await tester.tap(
+      find.byKey(ValueKey<String>('storyboard-cut-block-$cutId')),
+    );
+    await tester.pumpAndSettle();
+  });
 }
 
 Future<void> _createSecondCut(WidgetTester tester) async {
   await _tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
 }
 
-Finder _cutListEntryLabel(String cutId) {
-  return find.byKey(ValueKey<String>('cut-list-entry-label-$cutId'));
-}
-
-void _expectCutListEntryLabelText(
+Future<void> _expectCutName(
   WidgetTester tester,
   String cutId,
   String text,
-) {
-  expect(_cutListEntryLabel(cutId), findsOneWidget);
-  expect(tester.widget<Text>(_cutListEntryLabel(cutId)).data, text);
+) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    final title = find.byKey(ValueKey<String>('storyboard-cut-title-$cutId'));
+    expect(title, findsOneWidget);
+    expect(tester.widget<Text>(title).data, text);
+  });
 }
 
-Finder _cutListEntryLabelsNamed(String name) {
-  return find.byWidgetPredicate((widget) {
-    final key = widget.key;
-    return widget is Text &&
-        key is ValueKey<String> &&
-        key.value.startsWith('cut-list-entry-label-') &&
-        widget.data == name;
+Future<void> _expectCutExists(
+  WidgetTester tester,
+  String cutId, {
+  required bool exists,
+}) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    expect(
+      find.byKey(ValueKey<String>('storyboard-cut-block-$cutId')),
+      exists ? findsOneWidget : findsNothing,
+    );
+  });
+}
+
+Future<void> _expectCutsNamed(
+  WidgetTester tester,
+  String name,
+  int count,
+) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    final titles = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      return widget is Text &&
+          key is ValueKey<String> &&
+          key.value.startsWith('storyboard-cut-title-') &&
+          widget.data == name;
+    });
+    expect(titles, findsNWidgets(count));
+  });
+}
+
+Future<void> _expectActiveCutName(WidgetTester tester, String name) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    // The block highlight carries the active state (no ACTIVE badge);
+    // the panel's activeCutId is the oracle for WHICH cut that is.
+    final activeId = panel.activeCutId.value;
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(ValueKey<String>('storyboard-cut-title-$activeId')),
+          )
+          .data,
+      name,
+    );
   });
 }
 
@@ -78,18 +146,19 @@ Future<void> _dragCutOnto(
   required String sourceCutId,
   required String targetCutId,
 }) async {
-  final cutListBar = _cutListBar(tester);
-  final targetEntry = cutListBar.entries.singleWhere(
-    (entry) => entry.cutId.value == targetCutId,
-  );
+  await _withStoryboardPanel(tester, (panel) async {
+    final targetEntry = buildStoryboardTimelineLayout(
+      panel.project,
+    ).singleWhere((entry) => entry.cutId.value == targetCutId);
 
-  cutListBar.onCutReordered?.call(
-    draggedCutId: CutId(sourceCutId),
-    targetTrackId: targetEntry.trackId,
-    targetCutIndex: targetEntry.cutIndex,
-  );
+    panel.onCutReordered?.call(
+      draggedCutId: CutId(sourceCutId),
+      targetTrackId: targetEntry.trackId,
+      targetCutIndex: targetEntry.cutIndex,
+    );
 
-  await tester.pumpAndSettle();
+    await tester.pumpAndSettle();
+  });
 }
 
 Finder _timelineCell(String layerId, int frameIndex) {
@@ -288,22 +357,19 @@ IconData _layerKindIcon(WidgetTester tester, String layerId) {
   return tester.widget<Icon>(finder).icon!;
 }
 
-void _expectCutOrder(WidgetTester tester, List<String> cutIds) {
-  final cutListBar = tester.widget<CutListBar>(find.byType(CutListBar));
-  expect(cutListBar.entries.map((entry) => entry.cutId.value).toList(), cutIds);
+Future<void> _expectCutOrder(WidgetTester tester, List<String> cutIds) async {
+  await _withStoryboardPanel(tester, (panel) async {
+    expect(
+      buildStoryboardTimelineLayout(
+        panel.project,
+      ).map((entry) => entry.cutId.value).toList(),
+      cutIds,
+    );
+  });
 }
 
-CutListBar _cutListBar(WidgetTester tester) {
-  return tester.widget<CutListBar>(find.byType(CutListBar));
-}
-
-CutId _activeCutIdFromCutListBar(WidgetTester tester) {
-  final activeEntries = _cutListBar(
-    tester,
-  ).entries.where((entry) => entry.isActive).toList(growable: false);
-
-  expect(activeEntries, hasLength(1));
-  return activeEntries.single.cutId;
+Future<CutId> _activeCutId(WidgetTester tester) {
+  return _withStoryboardPanel(tester, (panel) async => panel.activeCutId);
 }
 
 Future<void> _tapCutCommandButton(
@@ -398,15 +464,14 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.text('QuickAnimaker v2.1'), findsOneWidget);
+    expect(find.text('QuickAnimaker'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
     );
     expect(find.byTooltip('New Frame'), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('cut-list-bar')), findsOneWidget);
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectActiveCutName(tester, 'Cut 1');
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management actions live in the storyboard panel's toolbar.
@@ -438,23 +503,163 @@ void main() {
     );
   });
 
+  testWidgets('timeline frame axis extends endlessly while scrolling', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    // Base extent = 24-frame cut + safety/minimum cells (48 frames). Keep
+    // dragging right: the endless runway must materialize headers beyond it.
+    for (var i = 0; i < 5; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1200, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final beyondBaseHeaders = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      if (key is! ValueKey<String> ||
+          !key.value.startsWith('timeline-frame-header-')) {
+        return false;
+      }
+      final index = int.tryParse(
+        key.value.substring('timeline-frame-header-'.length),
+      );
+      return index != null && index >= 48;
+    });
+    expect(beyondBaseHeaders, findsWidgets);
+  });
+
+  testWidgets('timeline zoom buttons rescale the frame axis', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    final header0 = find.byKey(
+      const ValueKey<String>('timeline-frame-header-0'),
+    );
+    expect(tester.getSize(header0).width, 48);
+    // Wide cells label every frame in-cell.
+    expect(
+      find.descendant(of: header0, matching: find.text('1')),
+      findsOneWidget,
+    );
+
+    Future<void> zoomTo(double pixelsPerFrame) async {
+      tester
+          .widget<Slider>(
+            find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+          )
+          .onChanged!(pixelsPerFrame);
+      await tester.pumpAndSettle();
+    }
+
+    await zoomTo(72);
+    expect(tester.getSize(header0).width, 72);
+
+    await zoomTo(24);
+    expect(tester.getSize(header0).width, 24);
+    // Narrow cells move their labels to the every-Nth overlay: no in-cell
+    // texts anywhere in the header cells.
+    expect(
+      find.descendant(of: header0, matching: find.byType(Text)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('xsheet zoom rescales the frame row height', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
+
+    final row0 = find.byKey(const ValueKey<String>('xsheet-frame-row-0'));
+    expect(tester.getSize(row0).height, 36);
+
+    // The X-sheet row height tracks the slider proportionally (36 at 48).
+    tester
+        .widget<Slider>(
+          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+        )
+        .onChanged!(72);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(row0).height, 54);
+  });
+
+  testWidgets('the time display toggle switches the counter to seconds', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    String counterText() => tester
+        .widget<Text>(
+          find.byKey(const ValueKey<String>('timeline-current-frame-counter')),
+        )
+        .data!;
+    expect(counterText(), '1');
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-time-display-toggle-button'),
+    );
+    // Frame 1 at 24fps in conte notation.
+    expect(counterText(), '0+01');
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-time-display-toggle-button'),
+    );
+    expect(counterText(), '1');
+  });
+
+  testWidgets('xsheet frame axis extends endlessly while scrolling', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
+
+    for (var i = 0; i < 5; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('xsheet-frame-vertical-viewport')),
+        const Offset(0, -1200),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final beyondBaseRows = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      if (key is! ValueKey<String> ||
+          !key.value.startsWith('xsheet-frame-row-')) {
+        return false;
+      }
+      final index = int.tryParse(
+        key.value.substring('xsheet-frame-row-'.length),
+      );
+      return index != null && index >= 48;
+    });
+    expect(beyondBaseRows, findsWidgets);
+  });
+
   testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
+    // The old top chips bar is retired; cut switching lives in the
+    // storyboard panel now.
     expect(
       find.byKey(const ValueKey<String>('top-toolbar-scroll-view')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(
-      find.byKey(const ValueKey<String>('top-toolbar-row')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-      findsOneWidget,
-    );
+    await _expectCutExists(tester, 'default-cut-1', exists: true);
     expect(find.byKey(const ValueKey<String>('undo-button')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
 
@@ -514,8 +719,8 @@ void main() {
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _dragCutOnto(
       tester,
@@ -523,9 +728,9 @@ void main() {
       targetCutId: 'default-cut-1',
     );
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
   });
 
   testWidgets('dragging Cut 1 after Cut 2 supports undo and redo', (
@@ -535,8 +740,8 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _dragCutOnto(
       tester,
@@ -544,21 +749,21 @@ void main() {
       targetCutId: 'cut-1',
     );
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapRedoButton(tester);
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
   testWidgets('move cut buttons reorder active cut left with undo and redo', (
@@ -568,27 +773,27 @@ void main() {
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('move-cut-left-button'),
     );
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
 
     await _tapRedoButton(tester);
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'New Cut');
   });
 
   testWidgets('move cut buttons reorder active cut right with undo and redo', (
@@ -598,27 +803,27 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('move-cut-right-button'),
     );
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
-    _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
 
     await _tapRedoButton(tester);
 
-    _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('move cut buttons are disabled at cut list edges', (
@@ -668,24 +873,18 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsNothing,
-    );
+    await _expectCutExists(tester, 'cut-1', exists: false);
 
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('new-cut-button'),
     );
 
-    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
+    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectCutExists(tester, 'cut-1', exists: true);
+    await _expectActiveCutName(tester, 'New Cut');
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutsNamed(tester, 'Cut 2', 0);
   });
 
   testWidgets('duplicates the active cut from the cut list command', (
@@ -693,28 +892,19 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsNothing,
-    );
+    await _expectCutExists(tester, 'cut-1', exists: false);
 
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('duplicate-cut-button'),
     );
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    _expectCutListEntryLabelText(tester, 'cut-1', 'Cut 1 Copy');
-    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Active: Cut 1 Copy'), findsOneWidget);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'cut-1', 'Cut 1 Copy');
+    await _expectCutsNamed(tester, 'Cut 2', 0);
+    await _expectCutExists(tester, 'default-cut-1', exists: true);
+    await _expectCutExists(tester, 'cut-1', exists: true);
+    await _expectActiveCutName(tester, 'Cut 1 Copy');
     expect(find.byTooltip('Linked Cut'), findsNothing);
   });
 
@@ -725,21 +915,18 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'cut-1', 'New Cut');
 
     await _tapCutCommandButton(
       tester,
       const ValueKey<String>('delete-cut-button'),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-      findsNothing,
-    );
-    expect(_cutListEntryLabel('default-cut-1'), findsNothing);
-    expect(_cutListEntryLabel('cut-1'), findsOneWidget);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectCutExists(tester, 'default-cut-1', exists: false);
+    await _expectCutExists(tester, 'default-cut-1', exists: false);
+    await _expectCutExists(tester, 'cut-1', exists: true);
+    await _expectActiveCutName(tester, 'New Cut');
   });
 
   testWidgets('replaces the last deleted cut through the cut command action', (
@@ -752,16 +939,10 @@ void main() {
       const ValueKey<String>('delete-cut-button'),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsOneWidget,
-    );
-    _expectCutListEntryLabelText(tester, 'cut-1', 'Cut 1');
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutExists(tester, 'default-cut-1', exists: false);
+    await _expectCutExists(tester, 'cut-1', exists: true);
+    await _expectCutName(tester, 'cut-1', 'Cut 1');
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('long multi-line cut note remains editable and savable', (
@@ -805,7 +986,7 @@ Line 8''';
     await _tapCutNoteSaveButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), longNote);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('different cuts keep separate cut notes', (
@@ -841,14 +1022,14 @@ Line 8''';
     await _saveCutNote(tester, 'Cut 2 old note');
     await _saveCutNote(tester, 'Cut 2 new note');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 old note');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 1 note');
@@ -857,8 +1038,8 @@ Line 8''';
     await _tapRedoButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 1 note');
@@ -897,27 +1078,27 @@ Line 8''';
 
       await _saveCutNote(tester, 'Old note');
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+      await _expectActiveCutName(tester, 'Cut 1');
+      expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _saveCutNote(tester, 'New note');
 
       expect(find.text('Edit Cut Note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), 'New note');
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+      await _expectActiveCutName(tester, 'Cut 1');
+      expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _tapUndoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+      await _expectActiveCutName(tester, 'Cut 1');
+      expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _tapRedoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'New note');
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-      expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+      await _expectActiveCutName(tester, 'Cut 1');
+      expect(await _activeCutId(tester), const CutId('default-cut-1'));
     },
   );
 
@@ -935,7 +1116,7 @@ Line 8''';
 
       expect(find.text('Edit Cut Note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), '');
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      await _expectActiveCutName(tester, 'Cut 1');
       expect(
         _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
         isFalse,
@@ -958,7 +1139,7 @@ Line 8''';
       _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
       isFalse,
     );
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('opens and cancels rename cut dialog without mutation', (
@@ -996,9 +1177,9 @@ Line 8''';
     await tester.pumpAndSettle();
 
     expect(find.text('Rename Cut'), findsNothing);
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(_cutListEntryLabelsNamed('Canceled Cut'), findsNothing);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutsNamed(tester, 'Canceled Cut', 0);
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('renames active cut and supports undo and redo', (
@@ -1008,24 +1189,24 @@ Line 8''';
 
     await _renameActiveCut(tester, 'Scene A');
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Scene A');
-    expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
-    expect(find.byTooltip('Active: Scene A'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutName(tester, 'default-cut-1', 'Scene A');
+    await _expectCutsNamed(tester, 'Cut 1', 0);
+    await _expectActiveCutName(tester, 'Scene A');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(_cutListEntryLabelsNamed('Scene A'), findsNothing);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutsNamed(tester, 'Scene A', 0);
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapRedoButton(tester);
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Scene A');
-    expect(_cutListEntryLabelsNamed('Cut 1'), findsNothing);
-    expect(find.byTooltip('Active: Scene A'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectCutName(tester, 'default-cut-1', 'Scene A');
+    await _expectCutsNamed(tester, 'Cut 1', 0);
+    await _expectActiveCutName(tester, 'Scene A');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
   testWidgets('ignores empty rename cut input', (WidgetTester tester) async {
@@ -1033,8 +1214,8 @@ Line 8''';
 
     await _renameActiveCut(tester, '   ');
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectActiveCutName(tester, 'Cut 1');
     final undoButton = tester.widget<IconButton>(
       find.byKey(const ValueKey<String>('undo-button')),
     );
@@ -1049,17 +1230,10 @@ Line 8''';
 
     await _renameActiveCut(tester, 'Cut 1');
 
-    expect(_cutListEntryLabelsNamed('Cut 1'), findsNWidgets(2));
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Switch to Cut 1'), findsOneWidget);
+    await _expectCutsNamed(tester, 'Cut 1', 2);
+    await _expectCutExists(tester, 'default-cut-1', exists: true);
+    await _expectCutExists(tester, 'cut-1', exists: true);
+    await _expectActiveCutName(tester, 'Cut 1');
     expect(find.textContaining('already'), findsNothing);
     expect(find.textContaining('duplicate'), findsNothing);
   });
@@ -1069,11 +1243,11 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutsNamed(tester, 'Cut 2', 0);
     _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
-    expect(_cutListEntryLabelsNamed('New Cut'), findsNothing);
+    await _expectCutsNamed(tester, 'New Cut', 0);
     expect(find.text('A'), findsWidgets);
     expect(find.text('X'), findsWidgets);
     expect(
@@ -1084,7 +1258,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectActiveCutName(tester, 'Cut 1');
   });
 
   testWidgets('initial timeline layer shows animation kind icon', (
@@ -1330,21 +1504,16 @@ Line 8''';
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    _expectCutListEntryLabelText(tester, 'default-cut-1', 'Cut 1');
-    _expectCutListEntryLabelText(tester, 'cut-1', 'New Cut');
-    expect(_cutListEntryLabelsNamed('Cut 2'), findsNothing);
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
+    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectCutsNamed(tester, 'Cut 2', 0);
+    await _expectActiveCutName(tester, 'Cut 1');
     _expectActiveLayerName('A');
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('cut-list-entry-cut-1')),
-    );
-    await tester.pumpAndSettle();
+    await _tapStoryboardCutBlock(tester, 'cut-1');
 
-    expect(find.byTooltip('Switch to Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'New Cut');
     _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
@@ -1353,17 +1522,14 @@ Line 8''';
       findsOneWidget,
     );
     expect(find.text('X'), findsWidgets);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('cut-list-entry-default-cut-1')),
-    );
-    await tester.pumpAndSettle();
+    await _tapStoryboardCutBlock(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(find.byTooltip('Switch to New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutName(tester, 'cut-1', 'New Cut');
     _expectActiveLayerName('A');
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
   testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
@@ -1378,40 +1544,16 @@ Line 8''';
       find.byKey(const ValueKey<String>('storyboard-panel')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsNothing,
-    );
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('default-cut-1'));
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('storyboard-cut-block-cut-1')),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
-    expect(_activeCutIdFromCutListBar(tester), const CutId('cut-1'));
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsNothing,
-    );
+    await _expectActiveCutName(tester, 'New Cut');
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _showTimelinePanel(tester);
 
@@ -1425,35 +1567,19 @@ Line 8''';
     );
   });
 
-  testWidgets('CutListBar switching updates StoryboardPanel highlight', (
+  testWidgets('cut switching updates StoryboardPanel highlight', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
     await _showStoryboardPanel(tester);
 
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsOneWidget,
-    );
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsNothing,
-    );
+    await _expectActiveCutName(tester, 'Cut 1');
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
   testWidgets('new frame after switching to Cut 2 stays scoped to Cut 2', (
@@ -1463,7 +1589,7 @@ Line 8''';
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'New Cut');
     _expectActiveLayerName('A');
     _expectCellText('layer-1', 0, 'X');
 
@@ -1479,14 +1605,14 @@ Line 8''';
 
     await _switchToCut(tester, 'default-cut-1');
 
-    expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+    await _expectActiveCutName(tester, 'Cut 1');
     _expectActiveLayerName('A');
     _expectCellText('default-layer-1', 0, 'X');
     _expectNoCellText('default-layer-1', 1, '○');
 
     await _switchToCut(tester, 'cut-1');
 
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'New Cut');
     _expectCellText('layer-1', 1, '○');
   });
 
@@ -1526,7 +1652,7 @@ Line 8''';
 
       await _switchToCut(tester, 'default-cut-1');
 
-      expect(find.byTooltip('Active: Cut 1'), findsOneWidget);
+      await _expectActiveCutName(tester, 'Cut 1');
       // Cut 1's layer is untouched: one empty run whose first cell reads X.
       _expectCellText('default-layer-1', 0, 'X');
       _expectNoCellText('default-layer-1', 1, 'X');
@@ -1625,9 +1751,7 @@ Line 8''';
       // preview moves the block's start every step, and the drag must
       // survive it (regression: start grips died after one step). B grows
       // backward through the gap until it touches A.
-      final frontDrag = await tester.startGesture(
-        tester.getCenter(startGripB),
-      );
+      final frontDrag = await tester.startGesture(tester.getCenter(startGripB));
       await frontDrag.moveBy(const Offset(-19, 0));
       await tester.pump();
       await frontDrag.moveBy(const Offset(-48, 0));
@@ -1661,7 +1785,7 @@ Line 8''';
 
       await _switchToCut(tester, 'cut-1');
 
-      expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+      await _expectActiveCutName(tester, 'New Cut');
       expect(
         _isActionButtonEnabled(
           tester,
@@ -1702,13 +1826,13 @@ Line 8''';
 
     await _tapUndoButton(tester);
 
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'New Cut');
     _expectActiveLayerName('A');
     _expectNoCellText('layer-1', 1, '○');
 
     await _tapRedoButton(tester);
 
-    expect(find.byTooltip('Active: New Cut'), findsOneWidget);
+    await _expectActiveCutName(tester, 'New Cut');
     _expectCellText('layer-1', 1, '○');
   });
 
@@ -2352,67 +2476,71 @@ Line 8''';
     );
   });
 
-  testWidgets('linked paste on a marked empty cell replaces the mark with a drawing', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+  testWidgets(
+    'linked paste on a marked empty cell replaces the mark with a drawing',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('copy-frame-button'),
-    );
-    await _addLayer(tester);
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('new-frame-button'),
+      );
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('copy-frame-button'),
+      );
+      await _addLayer(tester);
 
-    await _tapTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-2-0'),
-    );
-    expect(
-      _isActionButtonEnabled(
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-2-0'),
+      );
+      expect(
+        _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('paste-linked-frame-button'),
+        ),
+        isFalse,
+      );
+
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-1'),
+      );
+      final secondCell = find.byKey(
+        const ValueKey<String>('timeline-cell-default-layer-1-1'),
+      );
+      expect(
+        find.descendant(of: secondCell, matching: find.text('X')),
+        findsOneWidget,
+      );
+
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('toggle-mark-button'),
+      );
+      expect(
+        find.descendant(of: secondCell, matching: find.text('●')),
+        findsOneWidget,
+      );
+
+      // One entry per cell: pasting a linked frame REPLACES the mark.
+      await _tapToolbarButton(
         tester,
         const ValueKey<String>('paste-linked-frame-button'),
-      ),
-      isFalse,
-    );
+      );
 
-    await _tapTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    final secondCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('X')),
-      findsOneWidget,
-    );
-
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-mark-button'),
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('●')),
-      findsOneWidget,
-    );
-
-    // One entry per cell: pasting a linked frame REPLACES the mark.
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('paste-linked-frame-button'),
-    );
-
-    expect(
-      find.descendant(of: secondCell, matching: find.text('●')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('○')),
-      findsOneWidget,
-    );
-    expect(_selectedCellStateLabel(tester), 'drawing start');
-  });
+      expect(
+        find.descendant(of: secondCell, matching: find.text('●')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: secondCell, matching: find.text('○')),
+        findsOneWidget,
+      );
+      expect(_selectedCellStateLabel(tester), 'drawing start');
+    },
+  );
 
   testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (
     WidgetTester tester,

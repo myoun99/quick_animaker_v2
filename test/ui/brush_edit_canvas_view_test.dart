@@ -34,9 +34,11 @@ void main() {
         find.byKey(const ValueKey<String>('brush-edit-canvas-custom-paint')),
         findsOneWidget,
       );
+      // The canvas-bounds outline was removed: the paper edge is the
+      // boundary, and the stroked rect read as a stray 1px line.
       expect(
         find.byKey(const ValueKey<String>('brush-edit-canvas-bounds')),
-        findsOneWidget,
+        findsNothing,
       );
 
       final canvasViewFinder = find.byType(BrushEditCanvasView);

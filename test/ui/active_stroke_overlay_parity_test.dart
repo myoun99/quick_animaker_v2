@@ -350,6 +350,109 @@ void main() {
       );
     });
 
+    test('erase stroke with hard square dabs is exact', () {
+      // Binary coverage (square tip, hardness 1, full opacity/flow) has no
+      // per-dab quantization: buffer-then-one-destination-out equals the
+      // per-dab destination-out route byte for byte.
+      final baseDabs = [
+        for (var i = 0; i < 5; i += 1)
+          _dab(
+            x: 8.5 + i * 4.0,
+            y: 12.5,
+            color: 0xFF994411,
+            opacity: 1.0,
+            flow: 1.0,
+            hardness: 1.0,
+            sequence: i,
+          ),
+      ];
+      final base = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        sequence: BrushDabSequence(baseDabs),
+      ).surface;
+
+      final eraseDabs = [
+        for (var i = 0; i < 4; i += 1)
+          _dab(
+            x: 10.0 + i * 3.0,
+            y: 12.0,
+            size: 6,
+            opacity: 1.0,
+            flow: 1.0,
+            hardness: 1.0,
+            tipShape: BrushTipShape.square,
+            sequence: i,
+          ).copyWith(erase: true),
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      rasterizer.blendFrom(eraseDabs, from: 0);
+
+      final composite = compositeStrokePixelsOntoBitmapSurface(
+        surface: base,
+        strokePixels: rasterizer.pixels,
+        bounds: rasterizer.strokeBounds!,
+        erase: true,
+      );
+      final reference = materializeBrushDabSequenceOnBitmapSurface(
+        surface: base,
+        sequence: BrushDabSequence(eraseDabs),
+      );
+
+      expect(composite.dirtyTiles.isNotEmpty, isTrue);
+      _expectExact(
+        _surfaceBytes(composite.surface),
+        _surfaceBytes(reference.surface),
+        'erase composite vs per-dab erase',
+      );
+    });
+
+    test('translucent erase drifts at most a rounding step per overlap', () {
+      final baseDabs = [
+        for (var i = 0; i < 5; i += 1)
+          _dab(
+            x: 8.5 + i * 4.0,
+            y: 12.5,
+            color: 0xFF994411,
+            opacity: 1.0,
+            flow: 1.0,
+            hardness: 1.0,
+            sequence: i,
+          ),
+      ];
+      final base = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        sequence: BrushDabSequence(baseDabs),
+      ).surface;
+
+      final eraseDabs = [
+        for (var i = 0; i < 5; i += 1)
+          _dab(x: 10.2 + i * 3.6, y: 13.4, sequence: i).copyWith(erase: true),
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      rasterizer.blendFrom(eraseDabs, from: 0);
+
+      final composite = compositeStrokePixelsOntoBitmapSurface(
+        surface: base,
+        strokePixels: rasterizer.pixels,
+        bounds: rasterizer.strokeBounds!,
+        erase: true,
+      );
+      final reference = materializeBrushDabSequenceOnBitmapSurface(
+        surface: base,
+        sequence: BrushDabSequence(eraseDabs),
+      );
+
+      // Same quantization-point argument as the paint fast path above; the
+      // committed pixels are exactly the erase the user watched (the buffer
+      // drives both the overlay preview and the commit).
+      _expectClose(
+        _surfaceBytes(composite.surface),
+        _surfaceBytes(reference.surface),
+        'erase composite vs per-dab erase',
+        tolerance: 8,
+      );
+    });
+
     test('opaque stroke over blank base is exact', () {
       final strokeDabs = [
         for (var i = 0; i < 4; i += 1)
@@ -540,22 +643,25 @@ void main() {
       expect(model.dabs, isEmpty);
     });
 
-    test('a decode landing after reset is discarded, not resurrected', () async {
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
-      final dabs = [_dab(x: 8.5, y: 8.5)];
-      final region = rasterizer.blendFrom(dabs, from: 0)!;
-      final model = ActiveStrokeOverlayModel(tileSize: 16);
-      addTearDown(model.dispose);
-      updateRegion(model, rasterizer, region);
+    test(
+      'a decode landing after reset is discarded, not resurrected',
+      () async {
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final dabs = [_dab(x: 8.5, y: 8.5)];
+        final region = rasterizer.blendFrom(dabs, from: 0)!;
+        final model = ActiveStrokeOverlayModel(tileSize: 16);
+        addTearDown(model.dispose);
+        updateRegion(model, rasterizer, region);
 
-      // Reset while the decode is still in flight (pointer cancel / next
-      // stroke starting): the late image must be dropped.
-      model.reset();
-      await model.waitForPendingDecodes();
+        // Reset while the decode is still in flight (pointer cancel / next
+        // stroke starting): the late image must be dropped.
+        model.reset();
+        await model.waitForPendingDecodes();
 
-      expect(model.hasStrokeContent, isFalse);
-      expect(model.tileImages, isEmpty);
-    });
+        expect(model.hasStrokeContent, isFalse);
+        expect(model.tileImages, isEmpty);
+      },
+    );
   });
 }
 

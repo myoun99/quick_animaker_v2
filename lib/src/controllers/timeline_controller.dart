@@ -70,7 +70,10 @@ class TimelineController {
   }
 
   /// The drawing block covering [frameIndex] (or the current frame).
-  TimelineDrawingBlock? blockForLayerAt({required Layer layer, int? frameIndex}) {
+  TimelineDrawingBlock? blockForLayerAt({
+    required Layer layer,
+    int? frameIndex,
+  }) {
     final targetIndex = frameIndex ?? _currentFrameIndex;
     if (targetIndex < 0) {
       return null;

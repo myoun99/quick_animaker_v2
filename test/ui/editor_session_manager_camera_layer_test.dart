@@ -21,7 +21,10 @@ void main() {
     final layers = s.activeCut.layers;
     expect(layers.last.kind, LayerKind.camera);
     expect(layers.last.name, 'Camera');
-    expect(layers.where((layer) => layer.kind == LayerKind.camera), hasLength(1));
+    expect(
+      layers.where((layer) => layer.kind == LayerKind.camera),
+      hasLength(1),
+    );
     // The drawing layer stays the default active layer.
     expect(s.activeLayer?.kind, LayerKind.animation);
     expect(s.isCameraLayerActive, isFalse);
@@ -99,9 +102,6 @@ void main() {
   });
 
   test('camera layer id derives from the cut id', () {
-    expect(
-      cameraLayerIdForCut(const CutId('cut-9')).value,
-      'cut-9-camera',
-    );
+    expect(cameraLayerIdForCut(const CutId('cut-9')).value, 'cut-9-camera');
   });
 }

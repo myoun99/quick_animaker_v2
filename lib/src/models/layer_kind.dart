@@ -2,6 +2,12 @@ enum LayerKind {
   animation('animation'),
   storyboard('storyboard'),
 
+  /// Sound-effect track: rows for the timesheet's SE column. Drawable like
+  /// an animation layer (exposure blocks mark SE timing; frame names carry
+  /// the labels); sorts into its own timeline section between the drawing
+  /// cels and the camera.
+  se('se'),
+
   /// The cut's camera track: selecting it puts the canvas into camera
   /// manipulation mode and its timeline row shows camera keyframes. Exactly
   /// one per cut, auto-created, holds no drawing frames.
@@ -23,7 +29,7 @@ enum LayerKind {
     throw ArgumentError.value(
       json,
       'kind',
-      'Layer kind must be "animation", "storyboard" or "camera".',
+      'Layer kind must be "animation", "storyboard", "se" or "camera".',
     );
   }
 }

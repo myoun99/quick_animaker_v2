@@ -67,8 +67,14 @@ void main() {
         home: Scaffold(
           body: CanvasLayerStackView(
             layers: [
-              CanvasLayerImageRequest(frameKey: key('layer-below'), opacity: 0.5),
-              CanvasLayerImageRequest(frameKey: key('layer-undrawn'), opacity: 1),
+              CanvasLayerImageRequest(
+                frameKey: key('layer-below'),
+                opacity: 0.5,
+              ),
+              CanvasLayerImageRequest(
+                frameKey: key('layer-undrawn'),
+                opacity: 1,
+              ),
             ],
             imageCache: cache,
             canvasSize: canvasSize,

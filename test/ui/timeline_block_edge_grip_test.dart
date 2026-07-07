@@ -238,10 +238,7 @@ final _defaultCallbacks = TimelineCommaDragCallbacks(
   onCancel: () {},
 );
 
-Widget _rowHarness({
-  required Layer layer,
-  Object? commaDrag = const _Unset(),
-}) {
+Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
   return MaterialApp(
     home: Scaffold(
       body: Material(
@@ -284,6 +281,8 @@ Widget _xsheetHarness({
         onAddLayer: () {},
         onToggleLayerVisibility: (_) {},
         onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
         commaDrag: commaDrag,
       ),
     ),

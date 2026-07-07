@@ -242,6 +242,58 @@ void main() {
     c.detachTicker();
   });
 
+  testWidgets('seekToGlobalFrame crosses cut boundaries and clamps', (
+    tester,
+  ) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.allCuts);
+    await tester.pump();
+    c.pause();
+
+    // cut-a covers frames 0-3, cut-b 4-9.
+    c.seekToGlobalFrame(7);
+    expect(c.position!.cutId, const CutId('cut-b'));
+    expect(c.position!.localFrameIndex, 3);
+    expect(c.globalFrameIndexListenable.value, 7);
+
+    c.seekToGlobalFrame(99);
+    expect(c.position!.globalFrameIndex, 9);
+
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets(
+    'global listenable fires on same-local cross-cut seeks and nulls on stop',
+    (tester) async {
+      final c = controller();
+      c.attachTicker(const TestVSync());
+      addTearDown(c.dispose);
+      final globalFrames = <int?>[];
+      c.globalFrameIndexListenable.addListener(
+        () => globalFrames.add(c.globalFrameIndexListenable.value),
+      );
+
+      c.play(scope: PlaybackScope.allCuts);
+      await tester.pump();
+      c.pause();
+
+      // Local frame 2 of cut-a → local frame 2 of cut-b: the local
+      // listenable stays silent (same value), the global one must not.
+      c.seekToGlobalFrame(2);
+      c.seekToGlobalFrame(6);
+      expect(c.position!.localFrameIndex, 2);
+      expect(globalFrames, containsAllInOrder([2, 6]));
+
+      c.stop();
+      expect(c.globalFrameIndexListenable.value, isNull);
+      c.detachTicker();
+    },
+  );
+
   testWidgets('dropped frames reset on every loop pass', (tester) async {
     final c = controller();
     c.attachTicker(const TestVSync());
@@ -264,9 +316,7 @@ void main() {
     c.detachTicker();
   });
 
-  testWidgets('stop syncs the last position through onStopped', (
-    tester,
-  ) async {
+  testWidgets('stop syncs the last position through onStopped', (tester) async {
     final stopped = <PlaybackPosition>[];
     final c = controller(onStopped: stopped.add);
     c.attachTicker(const TestVSync());

@@ -92,9 +92,7 @@ void main() {
     });
   });
 
-  testWidgets('camera zoom 2 magnifies around the pose center', (
-    tester,
-  ) async {
+  testWidgets('camera zoom 2 magnifies around the pose center', (tester) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
         layers: [
@@ -128,10 +126,7 @@ void main() {
             opacity: 1,
           ),
         ],
-        pose: CameraPose(
-          center: CanvasPoint(x: 4, y: 4),
-          rotationDegrees: 90,
-        ),
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4), rotationDegrees: 90),
         cameraFrameSize: canvasSize,
       );
 

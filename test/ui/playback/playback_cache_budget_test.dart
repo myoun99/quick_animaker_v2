@@ -48,7 +48,9 @@ void main() {
         frames: [
           Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1)},
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+        },
       ),
     ],
   );
@@ -118,9 +120,9 @@ void main() {
           protect: const [
             PlaybackProtectedRange(
               cutId: CutId('cut'),
-            startFrame: 0,
-            endFrame: 3,
-            quality: PlaybackQuality.full,
+              startFrame: 0,
+              endFrame: 3,
+              quality: PlaybackQuality.full,
             ),
           ],
         );
@@ -159,9 +161,9 @@ void main() {
         protect: const [
           PlaybackProtectedRange(
             cutId: CutId('cut'),
-          startFrame: 0,
-          endFrame: 3,
-          quality: PlaybackQuality.full,
+            startFrame: 0,
+            endFrame: 3,
+            quality: PlaybackQuality.full,
           ),
         ],
       );

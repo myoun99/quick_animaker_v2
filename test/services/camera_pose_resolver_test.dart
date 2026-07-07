@@ -52,7 +52,10 @@ void main() {
   test('frames after the last keyframe hold the last pose', () {
     final last = CameraPose(center: CanvasPoint(x: 100, y: 100), zoom: 0.5);
     final camera = CutCamera(
-      keyframes: {0: CameraPose(center: CanvasPoint(x: 0, y: 0)), 8: last},
+      keyframes: {
+        0: CameraPose(center: CanvasPoint(x: 0, y: 0)),
+        8: last,
+      },
     );
 
     expect(resolve(camera, 9), last);

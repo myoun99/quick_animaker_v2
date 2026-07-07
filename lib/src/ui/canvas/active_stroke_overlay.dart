@@ -40,6 +40,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// uses [tileImages], which carry the exact rasterized pixels.
   final List<BrushDab> dabs = <BrushDab>[];
 
+  /// Whether the current stroke ERASES: the painter then draws the overlay
+  /// tiles destination-out so the preview removes committed pixels exactly
+  /// where the commit will. Set by the interactive view at stroke start and
+  /// kept through settling (the commit needs the same mode until the
+  /// committed tiles decode).
+  bool erase = false;
+
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
   final Set<TileCoord> _decoding = <TileCoord>{};
   final Set<TileCoord> _dirtyWhileDecoding = <TileCoord>{};

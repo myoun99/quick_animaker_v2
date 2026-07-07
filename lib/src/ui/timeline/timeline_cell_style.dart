@@ -50,8 +50,7 @@ TimelineCellStyleColors timelineCellStyleColors({
     TimelineCellExposureState.uncovered ||
     TimelineCellExposureState.markUncovered => colorScheme.outlineVariant,
     TimelineCellExposureState.drawingStart => timelineDrawingStartBorderColor,
-    TimelineCellExposureState.held ||
-    TimelineCellExposureState.markHeld =>
+    TimelineCellExposureState.held || TimelineCellExposureState.markHeld =>
       colorScheme.outlineVariant.withValues(alpha: 0.65),
   };
 

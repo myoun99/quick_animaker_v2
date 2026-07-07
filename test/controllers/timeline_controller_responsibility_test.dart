@@ -185,9 +185,7 @@ List<Layer> _defaultLayers() => [
     id: const LayerId('animation-b'),
     name: 'Animation B',
     frames: [Frame(id: const FrameId('b-1'), duration: 3, strokes: const [])],
-    timeline: {
-      10: TimelineExposure.drawing(const FrameId('b-1'), length: 3),
-    },
+    timeline: {10: TimelineExposure.drawing(const FrameId('b-1'), length: 3)},
   ),
   Layer(
     id: const LayerId('empty-layer'),

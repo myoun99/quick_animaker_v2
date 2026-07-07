@@ -25,6 +25,7 @@ import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
+const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
 const _undoKey = ValueKey<String>('undo-button');
 const _redoKey = ValueKey<String>('redo-button');
 const _cutId = CutId('phase-73-cut');
@@ -271,6 +272,49 @@ void main() {
       repository.requireProject().tracks.single.cuts.single.metadata,
       const CutMetadata(note: 'cut note only'),
     );
+  });
+
+  testWidgets('SE toggle flips animation to SE and back with undo', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+
+    expect(find.byTooltip('Toggle SE Layer'), findsOneWidget);
+
+    await _tapKey(tester, _seToggleKey);
+
+    expect(_layer(repository).kind, LayerKind.se);
+    expect(find.bySemanticsLabel('SE layer'), findsOneWidget);
+
+    await _tapKey(tester, _undoKey);
+    expect(_layer(repository).kind, LayerKind.animation);
+
+    await _tapKey(tester, _redoKey);
+    expect(_layer(repository).kind, LayerKind.se);
+
+    // Back to animation via the same toggle.
+    await _tapKey(tester, _seToggleKey);
+    expect(_layer(repository).kind, LayerKind.animation);
+  });
+
+  // A storyboard layer cannot become SE directly, and an SE layer cannot
+  // become a storyboard directly — go through animation.
+  testWidgets('storyboard toggle is disabled for an SE layer', (tester) async {
+    await _pumpHome(tester, project: _projectWithLayer(kind: LayerKind.se));
+
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isTrue);
+    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+  });
+
+  testWidgets('SE toggle is disabled for a storyboard layer', (tester) async {
+    await _pumpHome(
+      tester,
+      project: _projectWithLayer(kind: LayerKind.storyboard),
+    );
+
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
+    expect(_isIconButtonEnabled(tester, _toggleKey), isTrue);
   });
 
   testWidgets('does not expose future storyboard or inspector UI', (

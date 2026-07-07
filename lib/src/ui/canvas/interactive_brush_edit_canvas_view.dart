@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -36,7 +35,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     CanvasViewport? viewport,
-    this.onViewportChanged,
   }) : viewport = viewport ?? CanvasViewport();
 
   final BrushEditSessionState sessionState;
@@ -48,8 +46,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushDabInterpolator dabInterpolator;
   final CanvasSegmentClipper segmentClipper;
   final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// Zoom/pan applied to the canvas display and input mapping. Viewport
+  /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
+  /// [CanvasViewportGestureLayer], not here — this view only draws.
   final CanvasViewport viewport;
-  final ValueChanged<CanvasViewport>? onViewportChanged;
 
   @override
   State<InteractiveBrushEditCanvasView> createState() =>
@@ -59,9 +60,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
-  int? _activePanPointer;
-  Offset? _panStartLocalPosition;
-  CanvasViewport? _panStartViewport;
+
+  /// Live touch contacts. A second finger switches the interaction to
+  /// viewport navigation (handled by the panel's gesture layer): the
+  /// in-progress stroke is cancelled without committing, and no new stroke
+  /// starts until every finger lifts — a quick pinch never leaves marks.
+  final Set<int> _activeTouchPointers = <int>{};
+  bool _multiTouchNavigation = false;
   var _nextSequence = 0;
   final List<BrushDab> _collectedDabs = <BrushDab>[];
   var _breakCurrentVisibleSegment = false;
@@ -145,7 +150,6 @@ class _InteractiveBrushEditCanvasViewState
             onPointerMove: _handlePointerMove,
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
-            onPointerSignal: _handlePointerSignal,
             child: ClipRect(
               key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
               // The viewport transform is applied inside the painter (not by
@@ -166,12 +170,24 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (_isPanButton(event.buttons)) {
-      _startPan(event);
-      return;
+    if (event.kind == PointerDeviceKind.touch) {
+      _activeTouchPointers.add(event.pointer);
+      if (_activeTouchPointers.length >= 2) {
+        _multiTouchNavigation = true;
+        // Discard only a TOUCH stroke — the first finger turned out to be
+        // the start of a pinch, not a stroke. A stylus/mouse stroke keeps
+        // drawing: extra touch contacts alongside it are palm rests, and
+        // the gesture layer holds navigation while any stroke is active.
+        if (_activeDrawingPointer != null &&
+            _activeTouchPointers.contains(_activeDrawingPointer)) {
+          _endStrokeInput();
+          _resetOverlay();
+        }
+        return;
+      }
     }
 
-    if (_activePanPointer != null ||
+    if (_multiTouchNavigation ||
         _activeDrawingPointer != null ||
         !_isPrimaryButton(event.buttons)) {
       return;
@@ -182,6 +198,9 @@ class _InteractiveBrushEditCanvasViewState
 
     _activeDrawingPointer = event.pointer;
     _activeStrokeInputSettings = widget.inputSettings;
+    // The overlay must display in the stroke's blend mode (paint vs erase)
+    // from the first dab through settling.
+    _overlayModel.erase = widget.inputSettings.erase;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -218,11 +237,6 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _updatePan(event.localPosition);
-      return;
-    }
-
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -311,11 +325,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _clearPan();
-      return;
-    }
-
+    _forgetTouchPointer(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -346,11 +356,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (event.pointer == _activePanPointer) {
-      _clearPan();
-      return;
-    }
-
+    _forgetTouchPointer(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -359,23 +365,11 @@ class _InteractiveBrushEditCanvasViewState
     _resetOverlay();
   }
 
-  void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        widget.onViewportChanged == null ||
-        !_hasZoomModifier()) {
-      return;
+  void _forgetTouchPointer(int pointer) {
+    _activeTouchPointers.remove(pointer);
+    if (_activeTouchPointers.isEmpty) {
+      _multiTouchNavigation = false;
     }
-
-    final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
-    _emitViewport(
-      widget.viewport.zoomedAround(
-        nextZoom: widget.viewport.zoom * factor,
-        anchor: ViewportPoint(
-          x: event.localPosition.dx,
-          y: event.localPosition.dy,
-        ),
-      ),
-    );
   }
 
   bool _isInsideSurface(CanvasPoint localPosition) {
@@ -423,6 +417,7 @@ class _InteractiveBrushEditCanvasViewState
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
+      erase: settings.erase,
     );
   }
 
@@ -466,49 +461,8 @@ class _InteractiveBrushEditCanvasViewState
   double get _activeStrokeSpacing =>
       (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
 
-  bool _isPanButton(int buttons) {
-    return buttons == kMiddleMouseButton;
-  }
-
   bool _isPrimaryButton(int buttons) {
     return buttons == kPrimaryMouseButton;
-  }
-
-  void _startPan(PointerDownEvent event) {
-    if (_activePanPointer != null || _activeDrawingPointer != null) {
-      return;
-    }
-    _activePanPointer = event.pointer;
-    _panStartLocalPosition = event.localPosition;
-    _panStartViewport = widget.viewport;
-  }
-
-  void _updatePan(Offset localPosition) {
-    final startPosition = _panStartLocalPosition;
-    final startViewport = _panStartViewport;
-    if (startPosition == null || startViewport == null) {
-      return;
-    }
-    final delta = localPosition - startPosition;
-    _emitViewport(startViewport.translated(dx: delta.dx, dy: delta.dy));
-  }
-
-  void _clearPan() {
-    _activePanPointer = null;
-    _panStartLocalPosition = null;
-    _panStartViewport = null;
-  }
-
-  bool _hasZoomModifier() {
-    final keys = HardwareKeyboard.instance.logicalKeysPressed;
-    return keys.contains(LogicalKeyboardKey.controlLeft) ||
-        keys.contains(LogicalKeyboardKey.controlRight) ||
-        keys.contains(LogicalKeyboardKey.metaLeft) ||
-        keys.contains(LogicalKeyboardKey.metaRight);
-  }
-
-  void _emitViewport(CanvasViewport viewport) {
-    widget.onViewportChanged?.call(viewport.clamped());
   }
 
   void _endStrokeInput() {

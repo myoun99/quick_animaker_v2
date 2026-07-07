@@ -19,13 +19,15 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
 }) {
   // Pen-up fast path: when the interactive view already rasterized the
   // stroke incrementally while drawing (same per-dab math), commit is a
-  // single composite pass instead of re-running the whole dab loop.
+  // single composite pass instead of re-running the whole dab loop. A
+  // stroke is homogeneous: every dab shares the tool's erase mode.
   final materialization =
       prerasterizedStrokePixels != null && prerasterizedStrokeBounds != null
       ? compositeStrokePixelsOntoBitmapSurface(
           surface: surface,
           strokePixels: prerasterizedStrokePixels,
           bounds: prerasterizedStrokeBounds,
+          erase: sequence.dabs.isNotEmpty && sequence.dabs.first.erase,
         )
       : materializeBrushDabSequenceOnBitmapSurface(
           surface: surface,

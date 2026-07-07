@@ -9,13 +9,12 @@ import '../../models/layer_kind.dart';
 /// keeps raw order and reads left-to-right like a paper timesheet (ACTION
 /// cel columns, then CAMERA on the right).
 ///
-/// [TimelineSection.se] has no [LayerKind] mapped yet — the slot is
-/// reserved so the section order stays stable when SE layers arrive.
 enum TimelineSection { drawing, se, camera }
 
 TimelineSection timelineSectionForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation || LayerKind.storyboard => TimelineSection.drawing,
+    LayerKind.se => TimelineSection.se,
     LayerKind.camera => TimelineSection.camera,
   };
 }

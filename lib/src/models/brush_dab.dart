@@ -25,6 +25,7 @@ class BrushDab {
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.erase = false,
   }) {
     if (!textureScale.isFinite || textureScale <= 0.0) {
       throw ArgumentError.value(
@@ -127,6 +128,11 @@ class BrushDab {
   final double textureScale;
   final double textureDensity;
 
+  /// Erase mode: the dab's coverage REMOVES destination alpha
+  /// (destination-out) instead of painting color over it. The color still
+  /// supplies the source alpha; RGB is ignored.
+  final bool erase;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -147,6 +153,7 @@ class BrushDab {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? erase,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -168,6 +175,7 @@ class BrushDab {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      erase: erase ?? this.erase,
     );
   }
 
@@ -191,6 +199,7 @@ class BrushDab {
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
     'textureScale': textureScale,
     'textureDensity': textureDensity,
+    if (erase) 'erase': true,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -217,11 +226,10 @@ class BrushDab {
       dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
       textureMask: json['textureMask'] == null
           ? null
-          : BrushTipMask.fromJson(
-              json['textureMask'] as Map<String, dynamic>,
-            ),
+          : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
+      erase: json['erase'] as bool? ?? false,
     );
   }
 
@@ -247,7 +255,8 @@ class BrushDab {
           other.dualOffsetV == dualOffsetV &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
-          other.textureDensity == textureDensity;
+          other.textureDensity == textureDensity &&
+          other.erase == erase;
 
   @override
   int get hashCode => Object.hashAll([
@@ -270,6 +279,7 @@ class BrushDab {
     textureMask,
     textureScale,
     textureDensity,
+    erase,
   ]);
 
   @override

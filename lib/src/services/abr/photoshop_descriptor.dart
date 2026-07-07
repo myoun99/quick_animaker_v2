@@ -103,8 +103,7 @@ Object? _readTypedValue(AbrByteReader reader) {
     case 'VlLs':
       final count = reader.readInt32();
       return [
-        for (var index = 0; index < count; index += 1)
-          _readTypedValue(reader),
+        for (var index = 0; index < count; index += 1) _readTypedValue(reader),
       ];
     case 'doub':
       return reader.readFloat64();

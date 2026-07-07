@@ -90,6 +90,14 @@ class TimelineActionToolbar extends StatelessWidget {
                         : null,
                   ),
                   _iconButton(
+                    key: const ValueKey<String>('toggle-se-layer-button'),
+                    tooltip: 'Toggle SE Layer',
+                    icon: Icons.music_note_outlined,
+                    onPressed: session.canToggleTargetLayerSe
+                        ? session.toggleTargetLayerSe
+                        : null,
+                  ),
+                  _iconButton(
                     key: const ValueKey<String>('rename-layer-button'),
                     tooltip: 'Rename Layer',
                     icon: Icons.drive_file_rename_outline,

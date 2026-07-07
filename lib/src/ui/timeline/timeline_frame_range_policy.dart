@@ -45,3 +45,41 @@ double timelineCutEndBoundaryX({
 }) {
   return playbackFrameCount * metrics.frameCellWidth;
 }
+
+/// Conte-sheet time notation for a frame COUNT: whole seconds plus leftover
+/// frames — 54 frames at 24fps reads `2+06` (秒+コマ).
+String timelineSecondsLabel(int frames, int fps) {
+  final safeFps = math.max(1, fps);
+  final seconds = frames ~/ safeFps;
+  final leftover = frames % safeFps;
+  return '$seconds+${leftover.toString().padLeft(2, '0')}';
+}
+
+/// Frames of runway kept ahead of the scrolled position on the endless
+/// frame axis.
+const int defaultEndlessRunwayFrames = 120;
+
+/// Premiere-style endless frame axis, shared by the timeline, the X-sheet
+/// and the storyboard: the rendered frame extent grows with how far the
+/// user has scrolled, always keeping [runwayFrames] of empty frames ahead,
+/// so the axis never runs out. Monotonic — the extent never shrinks while
+/// the panel lives (virtualized grids only pay for what is on screen).
+///
+/// Call from the frame-axis scroll listener and add the result to the
+/// policy's base frame count for RENDER extents only; interaction clamps
+/// keep using the base count.
+int endlessTrailingFrames({
+  required int baseFrameCount,
+  required int currentTrailingFrames,
+  required double scrollOffset,
+  required double viewportExtent,
+  required double frameCellExtent,
+  int runwayFrames = defaultEndlessRunwayFrames,
+}) {
+  if (frameCellExtent <= 0) {
+    return currentTrailingFrames;
+  }
+  final targetFrames =
+      ((scrollOffset + viewportExtent) / frameCellExtent).ceil() + runwayFrames;
+  return math.max(currentTrailingFrames, targetFrames - baseFrameCount);
+}

@@ -4,6 +4,11 @@ import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
+/// Which canvas tool the pointer drives. The eraser reuses every brush
+/// option (size, hardness, tip) but its dabs remove alpha instead of
+/// painting color.
+enum CanvasTool { brush, eraser }
+
 /// Editor-session state for the active brush tool options.
 ///
 /// This is UI/tool state owned by the editor session. It is intentionally
@@ -36,6 +41,7 @@ class BrushToolState {
     BrushTipMask? textureMask,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    CanvasTool tool = CanvasTool.brush,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -63,6 +69,7 @@ class BrushToolState {
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      tool: tool,
     );
   }
 
@@ -92,6 +99,7 @@ class BrushToolState {
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.tool = CanvasTool.brush,
   });
 
   factory BrushToolState.clamped({
@@ -120,6 +128,7 @@ class BrushToolState {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    CanvasTool? tool,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -147,6 +156,7 @@ class BrushToolState {
       textureMask: textureMask,
       textureScale: clampDualMaskScale(textureScale ?? 1.0),
       textureDensity: clampZeroToOne(textureDensity ?? 1.0),
+      tool: tool ?? CanvasTool.brush,
     );
   }
 
@@ -235,6 +245,10 @@ class BrushToolState {
   final BrushTipMask? textureMask;
   final double textureScale;
   final double textureDensity;
+
+  /// The active canvas tool. Not part of presets ([toBrushSettings] omits
+  /// it); applying a preset returns to the brush, CSP-style.
+  final CanvasTool tool;
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -327,6 +341,7 @@ class BrushToolState {
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      erase: tool == CanvasTool.eraser,
     );
   }
 
@@ -356,6 +371,7 @@ class BrushToolState {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    CanvasTool? tool,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -383,6 +399,7 @@ class BrushToolState {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      tool: tool ?? this.tool,
     );
   }
 
@@ -487,7 +504,8 @@ class BrushToolState {
           other.dualMaskScale == dualMaskScale &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
-          other.textureDensity == textureDensity;
+          other.textureDensity == textureDensity &&
+          other.tool == tool;
 
   @override
   int get hashCode => Object.hashAll([
@@ -516,5 +534,6 @@ class BrushToolState {
     textureMask,
     textureScale,
     textureDensity,
+    tool,
   ]);
 }

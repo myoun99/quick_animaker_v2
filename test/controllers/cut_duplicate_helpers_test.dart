@@ -284,7 +284,10 @@ void main() {
               ),
             ],
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('missing-frame'), length: 1),
+              0: TimelineExposure.drawing(
+                const FrameId('missing-frame'),
+                length: 1,
+              ),
             },
           ),
         ],
@@ -348,7 +351,9 @@ Cut _sourceCut() {
             ),
           ),
         ],
-        timeline: {2: TimelineExposure.drawing(const FrameId('frame-c'), length: 1)},
+        timeline: {
+          2: TimelineExposure.drawing(const FrameId('frame-c'), length: 1),
+        },
         isVisible: true,
         opacity: 0.75,
         kind: LayerKind.storyboard,

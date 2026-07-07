@@ -7,7 +7,7 @@ class TimelineGridMetrics {
 
   const TimelineGridMetrics({
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
-    this.layerControlsWidth = 220,
+    this.layerControlsWidth = 264,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,
     this.verticalScrollbarWidth = 14,
@@ -19,6 +19,33 @@ class TimelineGridMetrics {
 
   /// Default metrics matching the current [LayerTimelineGrid] behavior.
   static const TimelineGridMetrics defaults = TimelineGridMetrics();
+
+  /// Same geometry with a different frame-axis cell extent (zoom).
+  TimelineGridMetrics copyWith({double? frameCellWidth}) {
+    return TimelineGridMetrics(
+      minimumVisibleFrameCells: minimumVisibleFrameCells,
+      layerControlsWidth: layerControlsWidth,
+      frameCellWidth: frameCellWidth ?? this.frameCellWidth,
+      layerRowHeight: layerRowHeight,
+      verticalScrollbarWidth: verticalScrollbarWidth,
+    );
+  }
+
+  /// Frame-number label cadence for the header/rail: every frame when cells
+  /// are wide, every Nth (nice animation steps) when they are narrow, so
+  /// labels never crowd or overflow.
+  int get frameLabelEveryFrames {
+    if (frameCellWidth >= 28) {
+      return 1;
+    }
+    const niceSteps = [2, 3, 4, 6, 12, 24, 48, 96];
+    for (final step in niceSteps) {
+      if (frameCellWidth * step >= 40) {
+        return step;
+      }
+    }
+    return niceSteps.last;
+  }
 
   /// Minimum frame cells kept visible even when the cut has fewer frames.
   final int minimumVisibleFrameCells;

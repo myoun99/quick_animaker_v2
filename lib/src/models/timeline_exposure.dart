@@ -12,9 +12,11 @@ import 'timeline_exposure_type.dart';
 /// whatever the covering block shows (or nothing when the mark sits in
 /// empty space).
 class TimelineExposure {
-  const TimelineExposure.drawing(FrameId this.frameId, {required int this.length})
-    : type = TimelineExposureType.drawing,
-      assert(length >= 1, 'Drawing exposure length must be at least 1.');
+  const TimelineExposure.drawing(
+    FrameId this.frameId, {
+    required int this.length,
+  }) : type = TimelineExposureType.drawing,
+       assert(length >= 1, 'Drawing exposure length must be at least 1.');
 
   const TimelineExposure.mark()
     : type = TimelineExposureType.mark,

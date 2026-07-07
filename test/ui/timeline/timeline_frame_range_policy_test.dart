@@ -35,4 +35,62 @@ void main() {
       expect(range.visibleFrameCount, 24);
     });
   });
+
+  group('endlessTrailingFrames', () {
+    test('keeps a runway ahead of the scrolled position', () {
+      // Scrolled edge at frame (960+480)/48 = 30; runway 120 → 150 target,
+      // 48 base → 102 trailing frames.
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 0,
+          scrollOffset: 960,
+          viewportExtent: 480,
+          frameCellExtent: 48,
+          runwayFrames: 120,
+        ),
+        102,
+      );
+    });
+
+    test('never shrinks when scrolling back', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 200,
+          scrollOffset: 0,
+          viewportExtent: 480,
+          frameCellExtent: 48,
+        ),
+        200,
+      );
+    });
+
+    test('unscrolled short content adds nothing', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 480,
+          currentTrailingFrames: 0,
+          scrollOffset: 0,
+          viewportExtent: 480,
+          frameCellExtent: 48,
+          runwayFrames: 120,
+        ),
+        0,
+      );
+    });
+
+    test('zero cell extent is a no-op', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 7,
+          scrollOffset: 5000,
+          viewportExtent: 480,
+          frameCellExtent: 0,
+        ),
+        7,
+      );
+    });
+  });
 }

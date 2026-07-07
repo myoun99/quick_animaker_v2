@@ -39,7 +39,10 @@ class AbrDecodeException implements Exception {
 /// brushes, joined to their bitmaps by the sampled-data UUID. When the
 /// descriptor cannot be parsed, the tip bitmaps still import with default
 /// settings and a warning.
-AbrImportResult decodeAbrBrushFile(Uint8List bytes, {required String sourceName}) {
+AbrImportResult decodeAbrBrushFile(
+  Uint8List bytes, {
+  required String sourceName,
+}) {
   final reader = AbrByteReader(bytes);
   if (bytes.length < 4) {
     throw const AbrDecodeException('File is too short to be an ABR file.');
@@ -226,9 +229,7 @@ void _readSampledTips(
         throw const FormatException('Empty tip bitmap.');
       }
       if (depth != 8) {
-        warnings.add(
-          'Skipped tip "$key": $depth-bit tips are not supported.',
-        );
+        warnings.add('Skipped tip "$key": $depth-bit tips are not supported.');
         continue;
       }
 
@@ -362,8 +363,7 @@ BrushPreset? _presetFromBrushDescriptor(
     usedTipKeys.add(sampledKey);
   }
 
-  final diameter =
-      tip.numberValue('Dmtr') ?? mask?.size.toDouble() ?? 24.0;
+  final diameter = tip.numberValue('Dmtr') ?? mask?.size.toDouble() ?? 24.0;
   final spacingPercent = tip.numberValue('Spcn') ?? 25.0;
   final angle = tip.numberValue('Angl') ?? 0.0;
   final roundnessPercent = tip.numberValue('Rndn') ?? 100.0;
@@ -536,9 +536,7 @@ BrushSettings _settingsForTip(
         ? spacingRatio.clamp(0.01, 10.0).toDouble()
         : 0.25,
     angleDegrees: normalizedAngle.isFinite ? normalizedAngle : 0.0,
-    roundness: roundness.isFinite
-        ? roundness.clamp(0.01, 1.0).toDouble()
-        : 1.0,
+    roundness: roundness.isFinite ? roundness.clamp(0.01, 1.0).toDouble() : 1.0,
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
     tipMask: mask,
     pressureSize: pressureSize,

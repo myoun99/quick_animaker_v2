@@ -32,7 +32,8 @@ class TimelineFrameHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final labelEveryFrames = metrics.frameLabelEveryFrames;
+    final row = Row(
       key: const ValueKey<String>('timeline-frame-header-row'),
       children: [
         SizedBox(
@@ -52,6 +53,9 @@ class TimelineFrameHeaderRow extends StatelessWidget {
             cached:
                 frameIndex < playbackFrameCount &&
                 (isFrameCached?.call(frameIndex) ?? false),
+            // Wide cells label themselves; narrow-cell labels overflow the
+            // cell, so they move to the overlay below.
+            showLabel: labelEveryFrames == 1,
             metrics: metrics,
             onSelectFrame: onSelectFrame,
           ),
@@ -60,6 +64,40 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           width: trailingFrameSpacerWidth,
           height: metrics.layerRowHeight,
         ),
+      ],
+    );
+    if (labelEveryFrames == 1) {
+      return row;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    var firstLabeledFrame =
+        ((frameStartIndex + labelEveryFrames - 1) ~/ labelEveryFrames) *
+        labelEveryFrames;
+    return Stack(
+      children: [
+        row,
+        for (
+          var frameIndex = firstLabeledFrame;
+          frameIndex < frameEndIndexExclusive;
+          frameIndex += labelEveryFrames
+        )
+          Positioned(
+            left:
+                leadingFrameSpacerWidth +
+                (frameIndex - frameStartIndex) * metrics.frameCellWidth +
+                2,
+            top: 2,
+            child: IgnorePointer(
+              child: Text(
+                '${frameIndex + 1}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -71,6 +109,7 @@ class _FrameHeader extends StatelessWidget {
     required this.selected,
     required this.outsidePlaybackRange,
     required this.cached,
+    required this.showLabel,
     required this.metrics,
     required this.onSelectFrame,
   });
@@ -79,12 +118,20 @@ class _FrameHeader extends StatelessWidget {
   final bool selected;
   final bool outsidePlaybackRange;
   final bool cached;
+  final bool showLabel;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Zoomed-out cells label every Nth frame and drop the per-cell border
+    // noise (labeled cells keep a left tick; the baseline always draws).
+    final labeled = frameIndex % metrics.frameLabelEveryFrames == 0;
+    final narrow = metrics.frameCellWidth < 16;
+    final borderColor = outsidePlaybackRange
+        ? colorScheme.outlineVariant.withValues(alpha: 0.55)
+        : colorScheme.outlineVariant;
 
     return InkWell(
       key: ValueKey<String>('timeline-frame-header-$frameIndex'),
@@ -101,23 +148,27 @@ class _FrameHeader extends StatelessWidget {
               : outsidePlaybackRange
               ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
               : colorScheme.surface,
-          border: Border.all(
-            color: outsidePlaybackRange
-                ? colorScheme.outlineVariant.withValues(alpha: 0.55)
-                : colorScheme.outlineVariant,
-          ),
+          border: narrow
+              ? Border(
+                  bottom: BorderSide(color: borderColor),
+                  left: labeled
+                      ? BorderSide(color: borderColor)
+                      : BorderSide.none,
+                )
+              : Border.all(color: borderColor),
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Text(
-              '${frameIndex + 1}',
-              style: TextStyle(
-                color: outsidePlaybackRange
-                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                    : colorScheme.onSurface,
+            if (showLabel)
+              Text(
+                '${frameIndex + 1}',
+                style: TextStyle(
+                  color: outsidePlaybackRange
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                      : colorScheme.onSurface,
+                ),
               ),
-            ),
             if (cached)
               Positioned(
                 left: 0,

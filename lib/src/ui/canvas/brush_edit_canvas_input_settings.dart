@@ -29,6 +29,7 @@ class BrushEditCanvasInputSettings {
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.erase = false,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
        assert(
          textureScale > 0.0,
@@ -134,6 +135,10 @@ class BrushEditCanvasInputSettings {
   final double textureScale;
   final double textureDensity;
 
+  /// Eraser mode: dabs remove destination alpha (destination-out) instead
+  /// of painting color.
+  final bool erase;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -160,6 +165,7 @@ class BrushEditCanvasInputSettings {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? erase,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -187,6 +193,7 @@ class BrushEditCanvasInputSettings {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      erase: erase ?? this.erase,
     );
   }
 
@@ -218,7 +225,8 @@ class BrushEditCanvasInputSettings {
           other.dualMaskScale == dualMaskScale &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
-          other.textureDensity == textureDensity;
+          other.textureDensity == textureDensity &&
+          other.erase == erase;
 
   @override
   int get hashCode => Object.hashAll([
@@ -247,6 +255,7 @@ class BrushEditCanvasInputSettings {
     textureMask,
     textureScale,
     textureDensity,
+    erase,
   ]);
 
   @override

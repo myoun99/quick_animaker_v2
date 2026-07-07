@@ -46,7 +46,9 @@ void main() {
         frames: [
           Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
         ],
-        timeline: {0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1)},
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+        },
       ),
     ],
   );
@@ -124,7 +126,10 @@ void main() {
           reason: 'frame $index should be warmed',
         );
       }
-      expect(scheduler.progress.value, const PrerenderProgress(cached: 4, total: 4));
+      expect(
+        scheduler.progress.value,
+        const PrerenderProgress(cached: 4, total: 4),
+      );
       scheduler.dispose();
       f.composites.dispose();
     });

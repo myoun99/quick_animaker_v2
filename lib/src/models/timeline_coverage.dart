@@ -124,7 +124,9 @@ int authoredTimelineExtent(SplayTreeMap<int, TimelineExposure> timeline) {
 
   final lastKey = timeline.lastKey()!;
   final lastEntry = timeline[lastKey]!;
-  final lastAuthoredEnd = lastEntry.isMark ? lastKey + 1 : lastKey + lastEntry.length!;
+  final lastAuthoredEnd = lastEntry.isMark
+      ? lastKey + 1
+      : lastKey + lastEntry.length!;
 
   // The last drawing block can end past a trailing mark; compare both.
   final lastDrawing = lastEntry.isDrawing

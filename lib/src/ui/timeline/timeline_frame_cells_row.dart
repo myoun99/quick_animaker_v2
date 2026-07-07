@@ -90,6 +90,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               TimelineFrameCell(
                 layer: layer,
                 frameIndex: frameIndex,
+                width: metrics.frameCellWidth,
+                height: metrics.layerRowHeight,
                 active: active,
                 selected: active && frameIndex == currentFrameIndex,
                 outsidePlaybackRange: frameIndex >= playbackFrameCount,
