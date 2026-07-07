@@ -2,16 +2,27 @@ import 'package:flutter/foundation.dart';
 
 /// One stacked region inside a dock: a tab group with its own strip.
 class DockSection {
-  DockSection({required List<String> tabs, String? activeTabId})
-    : _tabs = List.of(tabs),
-      _activeTabId = tabs.contains(activeTabId) ? activeTabId! : tabs.first,
-      assert(tabs.isNotEmpty);
+  DockSection({
+    required List<String> tabs,
+    String? activeTabId,
+    double weight = 1,
+  }) : _tabs = List.of(tabs),
+       _activeTabId = tabs.contains(activeTabId) ? activeTabId! : tabs.first,
+       _weight = weight.clamp(_minWeight, double.infinity).toDouble(),
+       assert(tabs.isNotEmpty);
+
+  /// No section may be squashed below this share of a unit weight.
+  static const double _minWeight = 0.2;
 
   final List<String> _tabs;
   String _activeTabId;
+  double _weight;
 
   List<String> get tabs => List.unmodifiable(_tabs);
   String get activeTabId => _activeTabId;
+
+  /// Relative share of the dock's stacking axis (splitter-resizable).
+  double get weight => _weight;
 }
 
 /// Where a tab currently lives.
@@ -27,14 +38,73 @@ typedef DockTabLocation = ({String dockId, int sectionIndex, int tabIndex});
 /// collapsed drop rail so tabs can still be dragged back. Sections are
 /// never empty — removing a section's last tab removes the section.
 class EditorPanelLayoutModel extends ChangeNotifier {
-  EditorPanelLayoutModel({required Map<String, List<DockSection>> docks})
-    : _docks = {
-        for (final entry in docks.entries) entry.key: List.of(entry.value),
-      };
+  EditorPanelLayoutModel({
+    required Map<String, List<DockSection>> docks,
+    Map<String, double> dockExtents = const <String, double>{},
+  }) : _docks = {
+         for (final entry in docks.entries) entry.key: List.of(entry.value),
+       },
+       _dockExtents = Map.of(dockExtents);
 
   final Map<String, List<DockSection>> _docks;
 
+  /// Resizable dock extents (side dock widths, bottom dock height) in
+  /// logical pixels; docks without an entry use their built-in size.
+  final Map<String, double> _dockExtents;
+
+  static const double _minDockExtent = 160;
+  static const double _maxDockExtent = 640;
+
   Iterable<String> get dockIds => _docks.keys;
+
+  double dockExtent(String dockId, {required double fallback}) =>
+      _dockExtents[dockId] ?? fallback;
+
+  /// Adjusts a dock's extent by a drag delta (positive grows the dock).
+  void resizeDock(String dockId, double delta, {required double fallback}) {
+    final next = (dockExtent(dockId, fallback: fallback) + delta)
+        .clamp(_minDockExtent, _maxDockExtent)
+        .toDouble();
+    if (next == _dockExtents[dockId]) {
+      return;
+    }
+    _dockExtents[dockId] = next;
+    notifyListeners();
+  }
+
+  /// Shifts extent between two adjacent sections of a dock via a splitter
+  /// drag: [delta]/[totalExtent] moves weight from the section below to
+  /// the one above (positive delta grows the upper section).
+  void resizeSections(
+    String dockId,
+    int upperSectionIndex, {
+    required double delta,
+    required double totalExtent,
+  }) {
+    final sections = _docks[dockId];
+    if (sections == null ||
+        totalExtent <= 0 ||
+        upperSectionIndex < 0 ||
+        upperSectionIndex + 1 >= sections.length) {
+      return;
+    }
+    final upper = sections[upperSectionIndex];
+    final lower = sections[upperSectionIndex + 1];
+    final totalWeight = sections.fold<double>(0, (sum, s) => sum + s._weight);
+    final weightDelta = delta / totalExtent * totalWeight;
+    final shift = weightDelta
+        .clamp(
+          DockSection._minWeight - upper._weight,
+          lower._weight - DockSection._minWeight,
+        )
+        .toDouble();
+    if (shift == 0) {
+      return;
+    }
+    upper._weight += shift;
+    lower._weight -= shift;
+    notifyListeners();
+  }
 
   List<DockSection> sectionsIn(String dockId) =>
       List.unmodifiable(_docks[dockId] ?? const <DockSection>[]);
@@ -166,6 +236,40 @@ class EditorPanelLayoutModel extends ChangeNotifier {
       targetIndex.clamp(0, sections.length),
       DockSection(tabs: [tabId]),
     );
+    notifyListeners();
+  }
+
+  /// Serializes the whole dock layout (tabs, active tabs, section weights,
+  /// dock extents) for persistence.
+  Map<String, Object?> toJson() => {
+    'docks': {
+      for (final entry in _docks.entries)
+        entry.key: [
+          for (final section in entry.value)
+            {
+              'tabs': section._tabs,
+              'active': section._activeTabId,
+              'weight': section._weight,
+            },
+        ],
+    },
+    'extents': _dockExtents,
+  };
+
+  /// Replaces the whole layout with a restored one (e.g. from the saved
+  /// workspace file).
+  void restore({
+    required Map<String, List<DockSection>> docks,
+    Map<String, double> dockExtents = const <String, double>{},
+  }) {
+    _docks
+      ..clear()
+      ..addAll({
+        for (final entry in docks.entries) entry.key: List.of(entry.value),
+      });
+    _dockExtents
+      ..clear()
+      ..addAll(dockExtents);
     notifyListeners();
   }
 

@@ -119,7 +119,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           final boundedHeight = constraints.hasBoundedHeight
               ? constraints.maxHeight
               : fallbackSize.height +
-                    _CanvasEditorPanelShell.topBarHeight +
+                    _CanvasEditorPanelShell.statusStripHeight +
                     _CanvasViewportBottomBar.height;
 
           return SizedBox(
@@ -340,7 +340,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 }
 
 class _CanvasEditorPanelShell extends StatelessWidget {
-  static const double topBarHeight = 32;
+  static const double statusStripHeight = 20;
   static const double rightStripWidth = 18;
 
   const _CanvasEditorPanelShell({
@@ -362,9 +362,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       builder: (context, constraints) {
         final maxHeight = constraints.hasBoundedHeight
             ? constraints.maxHeight.clamp(0.0, double.infinity).toDouble()
-            : topBarHeight + _CanvasViewportBottomBar.height;
-        final titleHeight = topBarHeight.clamp(0.0, maxHeight).toDouble();
-        final remainingHeight = (maxHeight - titleHeight)
+            : statusStripHeight + _CanvasViewportBottomBar.height;
+        // The selection labels live in a slim STATUS strip at the panel's
+        // bottom (the canvas tab already names the panel — a full-height
+        // title bar up top would just repeat chrome).
+        final statusHeight = statusStripHeight.clamp(0.0, maxHeight).toDouble();
+        final remainingHeight = (maxHeight - statusHeight)
             .clamp(0.0, double.infinity)
             .toDouble();
         final compactBottomHeight = remainingHeight == 0
@@ -386,24 +389,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                height: titleHeight,
-                child: ClipRect(
-                  child: Container(
-                    key: const ValueKey<String>(
-                      'canvas-editor-panel-title-bar',
-                    ),
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    color: colorScheme.surfaceContainerHighest,
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelMedium,
-                    ),
-                  ),
-                ),
-              ),
               SizedBox(
                 height: contentHeight,
                 child: Row(
@@ -458,6 +443,32 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         ),
                       );
                     },
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: statusHeight,
+                child: ClipRect(
+                  child: Container(
+                    key: const ValueKey<String>(
+                      'canvas-editor-panel-status-strip',
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      border: Border(
+                        top: BorderSide(color: colorScheme.outlineVariant),
+                      ),
+                    ),
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
               ),

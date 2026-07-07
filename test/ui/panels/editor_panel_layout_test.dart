@@ -268,5 +268,70 @@ void main() {
       expect(model.canMoveTab(tabId: 'tools', toDockId: 'nope'), isFalse);
       expect(model.canMoveTab(tabId: 'tools', toDockId: 'right'), isTrue);
     });
+
+    test('resizeSections shifts weight between neighbours with a floor', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'left': [
+            DockSection(tabs: ['a']),
+            DockSection(tabs: ['b']),
+          ],
+        },
+      );
+
+      // +100px of 400px total moves 0.5 weight down to the upper section.
+      model.resizeSections('left', 0, delta: 100, totalExtent: 400);
+      expect(model.sectionsIn('left')[0].weight, closeTo(1.5, 1e-9));
+      expect(model.sectionsIn('left')[1].weight, closeTo(0.5, 1e-9));
+
+      // The lower section can never squash below the minimum weight.
+      model.resizeSections('left', 0, delta: 10000, totalExtent: 400);
+      expect(model.sectionsIn('left')[1].weight, closeTo(0.2, 1e-9));
+    });
+
+    test('dock extents clamp and notify', () {
+      final model = _model();
+      expect(model.dockExtent('left', fallback: 260), 260);
+
+      model.resizeDock('left', 40, fallback: 260);
+      expect(model.dockExtent('left', fallback: 260), 300);
+
+      model.resizeDock('left', -1000, fallback: 260);
+      expect(model.dockExtent('left', fallback: 260), 160);
+    });
+
+    test('toJson/restore round-trips the layout', () {
+      final model = _model();
+      model.moveTabToNewSection(
+        tabId: 'camera',
+        toDockId: 'left',
+        atSectionIndex: 1,
+      );
+      model.resizeDock('bottom', 50, fallback: 350);
+      final json = model.toJson();
+
+      final other = _model();
+      final docksJson = (json['docks'] as Map).cast<String, Object?>();
+      other.restore(
+        docks: {
+          for (final entry in docksJson.entries)
+            entry.key: [
+              for (final section in entry.value as List)
+                DockSection(
+                  tabs: ((section as Map)['tabs'] as List).cast<String>(),
+                  activeTabId: section['active'] as String,
+                  weight: (section['weight'] as num).toDouble(),
+                ),
+            ],
+        },
+        dockExtents: (json['extents'] as Map).cast<String, double>(),
+      );
+
+      expect(_tabsOf(other, 'left'), [
+        ['tools', 'brushes'],
+        ['camera'],
+      ]);
+      expect(other.dockExtent('bottom', fallback: 350), 400);
+    });
   });
 }
