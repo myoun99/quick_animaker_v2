@@ -8,6 +8,7 @@ import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
+import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
@@ -1006,6 +1007,33 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: _editingSession.activeCutId,
       layerId: layerId,
       mark: mark,
+    );
+    notifyListeners();
+  }
+
+  /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
+  CameraInstructionSet get cameraInstructionSet =>
+      _repository.requireProject().cameraInstructions;
+
+  /// One undo step; no-op when unchanged.
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
+    _cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
+    notifyListeners();
+  }
+
+  /// Replaces [layerId]'s instruction span map (instruction rows only).
+  /// One undo step; no-op when unchanged. Never touches rendering caches —
+  /// instruction spans are timeline annotations, not composite inputs.
+  void updateLayerInstructions(
+    LayerId layerId,
+    Map<int, InstructionEvent> instructions, {
+    String description = 'Edit instructions',
+  }) {
+    _cutCommandCoordinator.updateLayerInstructions(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      instructions: instructions,
+      description: description,
     );
     notifyListeners();
   }

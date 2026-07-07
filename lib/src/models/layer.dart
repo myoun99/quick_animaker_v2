@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
@@ -21,18 +22,24 @@ class Layer {
     required this.name,
     required List<Frame> frames,
     Map<int, TimelineExposure>? timeline,
+    Map<int, InstructionEvent>? instructions,
     this.isVisible = true,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
   }) : frames = List.unmodifiable(frames),
-       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames));
+       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
+       instructions = immutableInstructionMap(instructions ?? const {});
 
   final LayerId id;
   final String name;
   final List<Frame> frames;
   final SplayTreeMap<int, TimelineExposure> timeline;
+
+  /// Camera-work instruction spans (instruction rows only; empty elsewhere).
+  /// Keyed by start frame; see [InstructionEvent].
+  final SplayTreeMap<int, InstructionEvent> instructions;
   final bool isVisible;
   final double opacity;
   final LayerKind kind;
@@ -50,6 +57,7 @@ class Layer {
     String? name,
     List<Frame>? frames,
     Map<int, TimelineExposure>? timeline,
+    Map<int, InstructionEvent>? instructions,
     bool? isVisible,
     double? opacity,
     LayerKind? kind,
@@ -62,6 +70,7 @@ class Layer {
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
+      instructions: instructions ?? this.instructions,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
@@ -77,6 +86,8 @@ class Layer {
     'timeline': timeline.entries
         .map((entry) => {'index': entry.key, 'exposure': entry.value.toJson()})
         .toList(),
+    if (instructions.isNotEmpty)
+      'instructions': instructionMapToJson(instructions),
     'isVisible': isVisible,
     'opacity': opacity,
     'kind': kind.toJson(),
@@ -99,6 +110,7 @@ class Layer {
               frames: frames,
             )
           : _deriveTimeline(frames),
+      instructions: instructionMapFromJson(json['instructions']),
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),
       kind: json.containsKey('kind')
@@ -121,6 +133,7 @@ class Layer {
           other.name == name &&
           listEquals(other.frames, frames) &&
           mapEquals(other.timeline, timeline) &&
+          mapEquals(other.instructions, instructions) &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
           other.kind == kind &&
@@ -135,6 +148,9 @@ class Layer {
     Object.hashAll(
       timeline.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
+    Object.hashAll(
+      instructions.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
     isVisible,
     opacity,
     kind,
@@ -145,6 +161,7 @@ class Layer {
   @override
   String toString() =>
       'Layer(id: $id, name: $name, frames: $frames, timeline: $timeline, '
+      'instructions: $instructions, '
       'isVisible: $isVisible, opacity: $opacity, kind: $kind, '
       'onTimesheet: $onTimesheet, mark: $mark)';
 }

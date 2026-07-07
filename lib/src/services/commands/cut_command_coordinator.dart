@@ -1,5 +1,7 @@
 import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
+import '../../core/collection_equality.dart';
+import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
@@ -31,8 +33,10 @@ import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
 import 'resize_cut_canvas_command.dart';
+import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
@@ -390,6 +394,47 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         mark: mark,
+      ),
+    );
+  }
+
+  /// Replaces an instruction row's span map; one undo step, no-op when
+  /// unchanged.
+  void updateLayerInstructions({
+    required CutId cutId,
+    required LayerId layerId,
+    required Map<int, InstructionEvent> instructions,
+    String description = 'Edit instructions',
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind != LayerKind.instruction) {
+      throw StateError('Instruction spans belong on instruction rows only.');
+    }
+    if (mapEquals(layer.instructions, instructions)) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerInstructionsCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        instructions: instructions,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces the project's instruction vocabulary; one undo step, no-op
+  /// when unchanged.
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
+    if (repository.requireProject().cameraInstructions == instructionSet) {
+      return;
+    }
+    historyManager.execute(
+      UpdateCameraInstructionSetCommand(
+        repository: repository,
+        instructionSet: instructionSet,
       ),
     );
   }

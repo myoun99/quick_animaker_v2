@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
@@ -15,7 +16,9 @@ class Project {
     this.fps = 24,
     this.cameraSize = defaultProjectCameraSize,
     this.timesheetInfo = TimesheetInfo.empty,
-  }) : tracks = List.unmodifiable(tracks);
+    CameraInstructionSet? cameraInstructions,
+  }) : tracks = List.unmodifiable(tracks),
+       cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard;
 
   final ProjectId id;
   final String name;
@@ -27,6 +30,10 @@ class Project {
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
 
+  /// The instruction vocabulary instruction rows pick from; seeds with the
+  /// standard 撮影 terms and is user-editable.
+  final CameraInstructionSet cameraInstructions;
+
   Project copyWith({
     ProjectId? id,
     String? name,
@@ -35,6 +42,7 @@ class Project {
     int? fps,
     CanvasSize? cameraSize,
     TimesheetInfo? timesheetInfo,
+    CameraInstructionSet? cameraInstructions,
   }) {
     return Project(
       id: id ?? this.id,
@@ -44,6 +52,7 @@ class Project {
       fps: fps ?? this.fps,
       cameraSize: cameraSize ?? this.cameraSize,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
+      cameraInstructions: cameraInstructions ?? this.cameraInstructions,
     );
   }
 
@@ -55,6 +64,7 @@ class Project {
     'fps': fps,
     'cameraSize': cameraSize.toJson(),
     'timesheetInfo': timesheetInfo.toJson(),
+    'cameraInstructions': cameraInstructions.toJson(),
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -74,6 +84,11 @@ class Project {
           : TimesheetInfo.fromJson(
               json['timesheetInfo'] as Map<String, dynamic>,
             ),
+      cameraInstructions: json['cameraInstructions'] == null
+          ? null
+          : CameraInstructionSet.fromJson(
+              json['cameraInstructions'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -87,7 +102,8 @@ class Project {
           other.createdAt == createdAt &&
           other.fps == fps &&
           other.cameraSize == cameraSize &&
-          other.timesheetInfo == timesheetInfo;
+          other.timesheetInfo == timesheetInfo &&
+          other.cameraInstructions == cameraInstructions;
 
   @override
   int get hashCode => Object.hash(
@@ -98,6 +114,7 @@ class Project {
     fps,
     cameraSize,
     timesheetInfo,
+    cameraInstructions,
   );
 
   @override
