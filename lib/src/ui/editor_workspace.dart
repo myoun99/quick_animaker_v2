@@ -63,8 +63,10 @@ class EditorWorkspace extends StatefulWidget {
 
   static const String leftGroupId = 'left';
   static const String rightGroupId = 'right';
+  static const String centerGroupId = 'center';
   static const String bottomGroupId = 'bottom';
 
+  static const String canvasTabId = 'canvas';
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
   static const String cameraTabId = 'camera';
@@ -83,27 +85,44 @@ class EditorWorkspace extends StatefulWidget {
 
 class _EditorWorkspaceState extends State<EditorWorkspace> {
   final EditorPanelLayoutModel _layout = EditorPanelLayoutModel(
-    groups: {
+    docks: {
       EditorWorkspace.leftGroupId: [
-        EditorWorkspace.brushesTabId,
-        EditorWorkspace.brushSettingsTabId,
-        EditorWorkspace.cameraTabId,
+        DockSection(
+          tabs: [
+            EditorWorkspace.brushesTabId,
+            EditorWorkspace.brushSettingsTabId,
+            EditorWorkspace.cameraTabId,
+          ],
+          activeTabId: EditorWorkspace.brushesTabId,
+        ),
       ],
-      EditorWorkspace.rightGroupId: <String>[],
+      EditorWorkspace.rightGroupId: <DockSection>[],
+      EditorWorkspace.centerGroupId: [
+        DockSection(tabs: [EditorWorkspace.canvasTabId]),
+      ],
       EditorWorkspace.bottomGroupId: [
-        EditorWorkspace.timelineTabId,
-        EditorWorkspace.storyboardTabId,
+        DockSection(
+          tabs: [
+            EditorWorkspace.timelineTabId,
+            EditorWorkspace.storyboardTabId,
+          ],
+          activeTabId: EditorWorkspace.timelineTabId,
+        ),
       ],
-    },
-    activeTabs: {
-      EditorWorkspace.leftGroupId: EditorWorkspace.brushesTabId,
-      EditorWorkspace.bottomGroupId: EditorWorkspace.timelineTabId,
     },
   );
 
   /// True while a panel tab is in flight — empty docks reveal their drop
-  /// rails only then.
+  /// rails and the section-split zones appear only then.
   final ValueNotifier<bool> _tabDragActive = ValueNotifier(false);
+
+  /// Drag-locked tabs (the canvas by default: a stray drag must not undock
+  /// the drawing surface — unlock via the strip's lock toggle).
+  final Set<String> _lockedTabIds = {EditorWorkspace.canvasTabId};
+
+  /// Keeps the canvas element (and its viewport state) alive when the
+  /// canvas tab re-docks.
+  final GlobalKey _canvasAreaKey = GlobalKey();
 
   final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
     BrushToolState.defaults,
@@ -218,12 +237,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     )?.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Whether the storyboard tab is the active tab of any group (visible on
-  /// screen).
-  bool get _isStoryboardVisible => _layout.groupIds.any(
-    (groupId) =>
-        _layout.activeTabIn(groupId) == EditorWorkspace.storyboardTabId,
-  );
+  /// Whether the storyboard tab is the active tab of any section (visible
+  /// on screen).
+  bool get _isStoryboardVisible =>
+      _layout.activeTabs.contains(EditorWorkspace.storyboardTabId);
 
   /// Runs a layout mutation and clamps the playhead when the storyboard
   /// just came on screen (over-end playheads on non-last cuts must land
@@ -236,17 +253,37 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
-  void _selectTab(String groupId, String tabId) {
-    _mutatingLayout(() => _layout.selectTab(groupId, tabId));
+  void _toggleTabLock(String tabId) {
+    setState(() {
+      if (!_lockedTabIds.remove(tabId)) {
+        _lockedTabIds.add(tabId);
+      }
+    });
   }
 
   EditorPanelTab _tabFor(String tabId) {
+    final locked = _lockedTabIds.contains(tabId);
     switch (tabId) {
+      case EditorWorkspace.canvasTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Canvas',
+          icon: Icons.image_outlined,
+          locked: locked,
+          builder: (context) => EditorCanvasArea(
+            key: _canvasAreaKey,
+            session: widget.session,
+            brushToolState: _brushTool,
+            cameraViewEnabled: _cameraViewEnabled,
+            cameraDimOpacity: _cameraDimOpacity,
+          ),
+        );
       case EditorWorkspace.brushesTabId:
         return EditorPanelTab(
           id: tabId,
           label: 'Brushes',
           icon: Icons.brush_outlined,
+          locked: locked,
           builder: (context) => ListenableBuilder(
             listenable: _presetLibrary,
             builder: (context, _) => BrushPresetPanel(
@@ -270,6 +307,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           id: tabId,
           label: 'Brush Settings',
           icon: Icons.tune,
+          locked: locked,
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _brushTool,
             builder: (context, toolState, _) => BrushSettingsPanel(
@@ -283,6 +321,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           id: tabId,
           label: 'Camera',
           icon: Icons.videocam_outlined,
+          locked: locked,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _cameraViewEnabled,
@@ -318,6 +357,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          locked: locked,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _timelineOrientation,
@@ -349,6 +389,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          locked: locked,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _storyboardPixelsPerFrame,
@@ -374,61 +415,149 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
-  void _moveTab(String toGroupId, EditorPanelTabDragData data, int toIndex) {
+  /// One dock section: a tab strip plus the active tab's content.
+  Widget _buildSection(String dockId, int sectionIndex, DockSection section) {
+    return EditorPanelTabs(
+      groupId: dockId,
+      compact:
+          dockId == EditorWorkspace.leftGroupId ||
+          dockId == EditorWorkspace.rightGroupId,
+      tabs: [for (final id in section.tabs) _tabFor(id)],
+      activeTabId: section.activeTabId,
+      onTabSelected: (tabId) => _mutatingLayout(() {
+        _layout.selectTab(dockId, sectionIndex, tabId);
+      }),
+      canAcceptTab: (data) =>
+          _layout.canMoveTab(tabId: data.tabId, toDockId: dockId),
+      // Dropping on a strip joins that section as a tab; the split zones
+      // between sections stack a new panel instead.
+      onTabMoved: (data, insertIndex) => _mutatingLayout(() {
+        _layout.moveTabToSection(
+          tabId: data.tabId,
+          toDockId: dockId,
+          toSectionIndex: sectionIndex,
+          insertIndex: insertIndex,
+        );
+      }),
+      onDragActiveChanged: (active) => _tabDragActive.value = active,
+      onToggleLock: _toggleTabLock,
+    );
+  }
+
+  /// A dock's stacked sections (panel below panel), with split drop zones
+  /// between them while a tab is in flight.
+  Widget _buildDockSections(String dockId) {
+    final sections = _layout.sectionsIn(dockId);
+    return Column(
+      children: [
+        for (var i = 0; i < sections.length; i += 1) ...[
+          _SectionSplitZone(
+            dockId: dockId,
+            atSectionIndex: i,
+            dragActive: _tabDragActive,
+            willAccept: (data) =>
+                _layout.canMoveTab(tabId: data.tabId, toDockId: dockId),
+            onDropped: (data, index) => _mutatingLayout(() {
+              _layout.moveTabToNewSection(
+                tabId: data.tabId,
+                toDockId: dockId,
+                atSectionIndex: index,
+              );
+            }),
+          ),
+          Expanded(child: _buildSection(dockId, i, sections[i])),
+        ],
+        _SectionSplitZone(
+          dockId: dockId,
+          atSectionIndex: sections.length,
+          dragActive: _tabDragActive,
+          willAccept: (data) =>
+              _layout.canMoveTab(tabId: data.tabId, toDockId: dockId),
+          onDropped: (data, index) => _mutatingLayout(() {
+            _layout.moveTabToNewSection(
+              tabId: data.tabId,
+              toDockId: dockId,
+              atSectionIndex: index,
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  void _dropIntoEmptyDock(String dockId, EditorPanelTabDragData data) {
     _mutatingLayout(() {
-      _layout.moveTab(
+      _layout.moveTabToNewSection(
         tabId: data.tabId,
-        toGroupId: toGroupId,
-        toIndex: toIndex,
+        toDockId: dockId,
+        atSectionIndex: 0,
       );
     });
   }
 
-  Widget _buildTabGroup(String groupId, {bool compact = false}) {
-    return EditorPanelTabs(
-      groupId: groupId,
-      compact: compact,
-      tabs: [for (final id in _layout.tabsIn(groupId)) _tabFor(id)],
-      activeTabId: _layout.activeTabIn(groupId)!,
-      onTabSelected: (tabId) => _selectTab(groupId, tabId),
-      // Drag-docking: long-press a tab to reorder within a strip or move
-      // it to any other dock (an emptied dock collapses).
-      canAcceptTab: (data) =>
-          _layout.canMoveTab(tabId: data.tabId, toGroupId: groupId),
-      onTabMoved: (data, insertIndex) => _moveTab(groupId, data, insertIndex),
-      onDragActiveChanged: (active) => _tabDragActive.value = active,
-    );
-  }
-
   /// A side dock: full tab dock when populated, collapsed otherwise (a slim
   /// drop rail appears while a tab is being dragged).
-  Widget _buildSideDock(String groupId, EditorPanelDockSide side) {
-    if (_layout.tabsIn(groupId).isEmpty) {
+  Widget _buildSideDock(String dockId, EditorPanelDockSide side) {
+    if (_layout.sectionsIn(dockId).isEmpty) {
       return _EmptyDockDropRail(
-        groupId: groupId,
+        groupId: dockId,
         axis: Axis.vertical,
         dragActive: _tabDragActive,
-        onDropped: (data) => _moveTab(groupId, data, 0),
+        onDropped: (data) => _dropIntoEmptyDock(dockId, data),
       );
     }
     return EditorPanelDock.filled(
       side: side,
-      child: _buildTabGroup(groupId, compact: true),
+      child: _buildDockSections(dockId),
     );
   }
 
   Widget _buildBottomDock() {
-    if (_layout.tabsIn(EditorWorkspace.bottomGroupId).isEmpty) {
+    if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _EmptyDockDropRail(
         groupId: EditorWorkspace.bottomGroupId,
         axis: Axis.horizontal,
         dragActive: _tabDragActive,
-        onDropped: (data) => _moveTab(EditorWorkspace.bottomGroupId, data, 0),
+        onDropped: (data) =>
+            _dropIntoEmptyDock(EditorWorkspace.bottomGroupId, data),
       );
     }
     return SizedBox(
       height: EditorWorkspace.bottomPanelHeight,
-      child: _buildTabGroup(EditorWorkspace.bottomGroupId),
+      child: _buildDockSections(EditorWorkspace.bottomGroupId),
+    );
+  }
+
+  /// The center dock hosts the canvas tab by default. Unlike the edge
+  /// docks it always occupies its region — when emptied it stays a
+  /// full-size drop surface.
+  Widget _buildCenterDock() {
+    if (_layout.sectionsIn(EditorWorkspace.centerGroupId).isEmpty) {
+      return _EmptyDockDropRail(
+        groupId: EditorWorkspace.centerGroupId,
+        axis: Axis.vertical,
+        dragActive: _tabDragActive,
+        expandToFill: true,
+        onDropped: (data) =>
+            _dropIntoEmptyDock(EditorWorkspace.centerGroupId, data),
+      );
+    }
+    return _buildDockSections(EditorWorkspace.centerGroupId);
+  }
+
+  Widget _buildToolsBar(ToolsPanelSide side) {
+    // PS/CSP-style: the tool switcher is a pinned vertical bar on BOTH
+    // workspace edges (mirror layout for left-handed use), not a dockable
+    // tab; both bars share the tool state.
+    return ValueListenableBuilder<BrushToolState>(
+      valueListenable: _brushTool,
+      builder: (context, toolState, _) => ToolsPanel(
+        tool: toolState.tool,
+        side: side,
+        onToolChanged: (tool) {
+          _brushTool.value = _brushTool.value.copyWith(tool: tool);
+        },
+      ),
     );
   }
 
@@ -437,46 +566,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return ListenableBuilder(
       listenable: _layout,
       builder: (context, _) {
-        return Column(
+        return Row(
           children: [
+            // The tool bars span the FULL workspace height; the bottom dock
+            // runs between them.
+            _buildToolsBar(ToolsPanelSide.left),
             Expanded(
-              child: Row(
+              child: Column(
                 children: [
-                  // PS/CSP-style: the tool switcher is a pinned vertical
-                  // bar, not a dockable tab.
-                  ValueListenableBuilder<BrushToolState>(
-                    valueListenable: _brushTool,
-                    builder: (context, toolState, _) => ToolsPanel(
-                      tool: toolState.tool,
-                      onToolChanged: (tool) {
-                        _brushTool.value = _brushTool.value.copyWith(
-                          tool: tool,
-                        );
-                      },
-                    ),
-                  ),
-                  // CSP-like layout: palettes dock beside the canvas as
-                  // compact tabs.
-                  _buildSideDock(
-                    EditorWorkspace.leftGroupId,
-                    EditorPanelDockSide.left,
-                  ),
                   Expanded(
-                    child: EditorCanvasArea(
-                      session: widget.session,
-                      brushToolState: _brushTool,
-                      cameraViewEnabled: _cameraViewEnabled,
-                      cameraDimOpacity: _cameraDimOpacity,
+                    child: Row(
+                      children: [
+                        _buildSideDock(
+                          EditorWorkspace.leftGroupId,
+                          EditorPanelDockSide.left,
+                        ),
+                        Expanded(child: _buildCenterDock()),
+                        _buildSideDock(
+                          EditorWorkspace.rightGroupId,
+                          EditorPanelDockSide.right,
+                        ),
+                      ],
                     ),
                   ),
-                  _buildSideDock(
-                    EditorWorkspace.rightGroupId,
-                    EditorPanelDockSide.right,
-                  ),
+                  _buildBottomDock(),
                 ],
               ),
             ),
-            _buildBottomDock(),
+            _buildToolsBar(ToolsPanelSide.right),
           ],
         );
       },
@@ -484,22 +601,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 }
 
-/// A collapsed (empty) dock: invisible until a panel tab is in flight, then
-/// a slim rail appears; dropping a tab there re-populates the dock.
-class _EmptyDockDropRail extends StatelessWidget {
-  const _EmptyDockDropRail({
-    required this.groupId,
-    required this.axis,
+/// A drop zone between (and around) a dock's sections: dropping a tab there
+/// stacks it as a NEW panel section instead of joining a strip. Zero-size
+/// until a tab is in flight.
+class _SectionSplitZone extends StatelessWidget {
+  const _SectionSplitZone({
+    required this.dockId,
+    required this.atSectionIndex,
     required this.dragActive,
+    required this.willAccept,
     required this.onDropped,
   });
 
-  final String groupId;
-  final Axis axis;
+  final String dockId;
+  final int atSectionIndex;
   final ValueListenable<bool> dragActive;
-  final ValueChanged<EditorPanelTabDragData> onDropped;
+  final bool Function(EditorPanelTabDragData data) willAccept;
+  final void Function(EditorPanelTabDragData data, int atSectionIndex)
+  onDropped;
 
-  static const double thickness = 26;
+  static const double thickness = 14;
 
   @override
   Widget build(BuildContext context) {
@@ -511,13 +632,80 @@ class _EmptyDockDropRail extends StatelessWidget {
           return const SizedBox.shrink();
         }
         return DragTarget<EditorPanelTabDragData>(
+          onWillAcceptWithDetails: (details) => willAccept(details.data),
+          onAcceptWithDetails: (details) =>
+              onDropped(details.data, atSectionIndex),
+          builder: (context, candidateData, rejectedData) {
+            final hovered = candidateData.isNotEmpty;
+            return Container(
+              key: ValueKey<String>(
+                'dock-section-split-$dockId-$atSectionIndex',
+              ),
+              height: thickness,
+              color: hovered
+                  ? colorScheme.primary.withValues(alpha: 0.35)
+                  : colorScheme.surfaceContainerLow,
+              child: Center(
+                child: Container(
+                  height: 2,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  color: hovered
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// A collapsed (empty) dock: invisible until a panel tab is in flight, then
+/// a slim rail appears; dropping a tab there re-populates the dock. With
+/// [expandToFill] the dock keeps its region instead (the center dock must
+/// not collapse the whole workspace middle) and the rail covers it all.
+class _EmptyDockDropRail extends StatelessWidget {
+  const _EmptyDockDropRail({
+    required this.groupId,
+    required this.axis,
+    required this.dragActive,
+    required this.onDropped,
+    this.expandToFill = false,
+  });
+
+  final String groupId;
+  final Axis axis;
+  final ValueListenable<bool> dragActive;
+  final ValueChanged<EditorPanelTabDragData> onDropped;
+  final bool expandToFill;
+
+  static const double thickness = 26;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<bool>(
+      valueListenable: dragActive,
+      builder: (context, active, _) {
+        if (!active) {
+          return expandToFill
+              ? ColoredBox(color: colorScheme.surfaceContainerLowest)
+              : const SizedBox.shrink();
+        }
+        return DragTarget<EditorPanelTabDragData>(
           onAcceptWithDetails: (details) => onDropped(details.data),
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
             return Container(
               key: ValueKey<String>('editor-dock-drop-rail-$groupId'),
-              width: axis == Axis.vertical ? thickness : null,
-              height: axis == Axis.horizontal ? thickness : null,
+              width: expandToFill
+                  ? null
+                  : (axis == Axis.vertical ? thickness : null),
+              height: expandToFill
+                  ? null
+                  : (axis == Axis.horizontal ? thickness : null),
               decoration: BoxDecoration(
                 color: hovered
                     ? colorScheme.primary.withValues(alpha: 0.2)

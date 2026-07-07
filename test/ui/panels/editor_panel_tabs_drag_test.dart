@@ -1,15 +1,15 @@
-import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_layout.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_tabs.dart';
 
-/// Two draggable tab groups wired to one layout model, the way the
-/// workspace docks are.
+/// Two draggable single-section tab groups wired to one layout model, the
+/// way the workspace dock sections are.
 class _Harness extends StatelessWidget {
-  const _Harness({required this.model});
+  const _Harness({required this.model, this.lockedTabIds = const {}});
 
   final EditorPanelLayoutModel model;
+  final Set<String> lockedTabIds;
 
   static const Map<String, IconData> _icons = {
     'a': Icons.abc,
@@ -19,39 +19,42 @@ class _Harness extends StatelessWidget {
     'y': Icons.face,
   };
 
-  Widget _group(String groupId) {
-    // Empty groups collapse in the real dock layout; a bare drop target
+  Widget _group(String dockId) {
+    // Empty docks collapse in the real dock layout; a bare drop target
     // stands in for the workspace's drop rail here.
-    if (model.tabsIn(groupId).isEmpty) {
+    if (model.sectionsIn(dockId).isEmpty) {
       return DragTarget<EditorPanelTabDragData>(
-        onAcceptWithDetails: (details) => model.moveTab(
+        onAcceptWithDetails: (details) => model.moveTabToNewSection(
           tabId: details.data.tabId,
-          toGroupId: groupId,
-          toIndex: 0,
+          toDockId: dockId,
+          atSectionIndex: 0,
         ),
         builder: (context, _, _) =>
-            SizedBox.expand(key: ValueKey<String>('empty-group-$groupId')),
+            SizedBox.expand(key: ValueKey<String>('empty-group-$dockId')),
       );
     }
+    final section = model.sectionsIn(dockId).single;
     return EditorPanelTabs(
-      groupId: groupId,
+      groupId: dockId,
       tabs: [
-        for (final id in model.tabsIn(groupId))
+        for (final id in section.tabs)
           EditorPanelTab(
             id: id,
             label: id.toUpperCase(),
             icon: _icons[id]!,
+            locked: lockedTabIds.contains(id),
             builder: (context) => Text('content-$id'),
           ),
       ],
-      activeTabId: model.activeTabIn(groupId)!,
-      onTabSelected: (tabId) => model.selectTab(groupId, tabId),
+      activeTabId: section.activeTabId,
+      onTabSelected: (tabId) => model.selectTab(dockId, 0, tabId),
       canAcceptTab: (data) =>
-          model.canMoveTab(tabId: data.tabId, toGroupId: groupId),
-      onTabMoved: (data, insertIndex) => model.moveTab(
+          model.canMoveTab(tabId: data.tabId, toDockId: dockId),
+      onTabMoved: (data, insertIndex) => model.moveTabToSection(
         tabId: data.tabId,
-        toGroupId: groupId,
-        toIndex: insertIndex,
+        toDockId: dockId,
+        toSectionIndex: 0,
+        insertIndex: insertIndex,
       ),
     );
   }
@@ -75,19 +78,28 @@ class _Harness extends StatelessWidget {
 }
 
 EditorPanelLayoutModel _twoGroups() => EditorPanelLayoutModel(
-  groups: {
-    'one': ['a', 'b', 'c'],
-    'two': ['x', 'y'],
+  docks: {
+    'one': [
+      DockSection(tabs: ['a', 'b', 'c']),
+    ],
+    'two': [
+      DockSection(tabs: ['x', 'y']),
+    ],
   },
 );
 
+List<String> _tabsIn(EditorPanelLayoutModel model, String dockId) {
+  final sections = model.sectionsIn(dockId);
+  return sections.isEmpty ? const [] : sections.single.tabs;
+}
+
 Finder _tab(String id) => find.byKey(ValueKey<String>('panel-tab-$id'));
 
-/// Long-presses a tab to lift it, then drags it to [target].
+/// Drags a tab to [target] with a plain pointer drag (drags start
+/// immediately on movement).
 Future<void> _dragTab(WidgetTester tester, String id, Offset target) async {
   final gesture = await tester.startGesture(tester.getCenter(_tab(id)));
-  // LongPressDraggable lifts after the long-press timeout.
-  await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+  await tester.pump(const Duration(milliseconds: 20));
   // Two hops so DragTarget onMove sees the final hover position.
   await gesture.moveTo(target + const Offset(0, -10));
   await tester.pump();
@@ -115,7 +127,7 @@ void main() {
 
     await _dragTab(tester, 'a', _tabHalf(tester, 'c', right: true));
 
-    expect(model.tabsIn('one'), ['b', 'c', 'a']);
+    expect(_tabsIn(model, 'one'), ['b', 'c', 'a']);
   });
 
   testWidgets('dropping on a tab\'s left half inserts before it', (
@@ -126,7 +138,7 @@ void main() {
 
     await _dragTab(tester, 'c', _tabHalf(tester, 'a', right: false));
 
-    expect(model.tabsIn('one'), ['c', 'a', 'b']);
+    expect(_tabsIn(model, 'one'), ['c', 'a', 'b']);
   });
 
   testWidgets('dropping on the strip tail appends to that group', (
@@ -139,10 +151,10 @@ void main() {
     final tail = tester.getCenter(_tab('y')) + const Offset(200, 0);
     await _dragTab(tester, 'a', tail);
 
-    expect(model.tabsIn('one'), ['b', 'c']);
-    expect(model.tabsIn('two'), ['x', 'y', 'a']);
+    expect(_tabsIn(model, 'one'), ['b', 'c']);
+    expect(_tabsIn(model, 'two'), ['x', 'y', 'a']);
     // A re-docked tab becomes active in its new group.
-    expect(model.activeTabIn('two'), 'a');
+    expect(model.sectionsIn('two').single.activeTabId, 'a');
     expect(find.text('content-a'), findsOneWidget);
   });
 
@@ -154,46 +166,63 @@ void main() {
 
     await _dragTab(tester, 'b', _tabHalf(tester, 'y', right: false));
 
-    expect(model.tabsIn('one'), ['a', 'c']);
-    expect(model.tabsIn('two'), ['x', 'b', 'y']);
+    expect(_tabsIn(model, 'one'), ['a', 'c']);
+    expect(_tabsIn(model, 'two'), ['x', 'b', 'y']);
   });
 
   testWidgets('a group\'s last tab can leave, emptying the group', (
     tester,
   ) async {
     final model = EditorPanelLayoutModel(
-      groups: {
-        'one': ['a', 'b', 'c'],
-        'two': ['x'],
+      docks: {
+        'one': [
+          DockSection(tabs: ['a', 'b', 'c']),
+        ],
+        'two': [
+          DockSection(tabs: ['x']),
+        ],
       },
     );
     await tester.pumpWidget(_Harness(model: model));
 
     await _dragTab(tester, 'x', _tabHalf(tester, 'b', right: false));
 
-    expect(model.tabsIn('one'), ['a', 'x', 'b', 'c']);
-    expect(model.tabsIn('two'), isEmpty);
-    expect(model.activeTabIn('two'), isNull);
+    expect(_tabsIn(model, 'one'), ['a', 'x', 'b', 'c']);
+    expect(model.sectionsIn('two'), isEmpty);
   });
 
   testWidgets('a tab can drop into an emptied group\'s drop target', (
     tester,
   ) async {
     final model = EditorPanelLayoutModel(
-      groups: {
-        'one': ['a', 'b', 'c'],
-        'two': ['x'],
+      docks: {
+        'one': [
+          DockSection(tabs: ['a', 'b', 'c']),
+        ],
+        'two': [
+          DockSection(tabs: ['x']),
+        ],
       },
     );
     await tester.pumpWidget(_Harness(model: model));
     await _dragTab(tester, 'x', _tabHalf(tester, 'b', right: false));
-    expect(model.tabsIn('two'), isEmpty);
+    expect(model.sectionsIn('two'), isEmpty);
 
     final emptyGroup = find.byKey(const ValueKey<String>('empty-group-two'));
     await _dragTab(tester, 'x', tester.getCenter(emptyGroup));
 
-    expect(model.tabsIn('two'), ['x']);
-    expect(model.activeTabIn('two'), 'x');
+    expect(_tabsIn(model, 'two'), ['x']);
+    expect(model.sectionsIn('two').single.activeTabId, 'x');
+  });
+
+  testWidgets('locked tabs refuse to lift', (tester) async {
+    final model = _twoGroups();
+    await tester.pumpWidget(_Harness(model: model, lockedTabIds: const {'a'}));
+
+    await _dragTab(tester, 'a', _tabHalf(tester, 'y', right: false));
+
+    expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
+    expect(_tabsIn(model, 'two'), ['x', 'y']);
   });
 
   testWidgets('plain taps still switch tabs on a draggable strip', (
@@ -206,8 +235,8 @@ void main() {
     await tester.tap(_tab('b'));
     await tester.pumpAndSettle();
 
-    expect(model.activeTabIn('one'), 'b');
+    expect(model.sectionsIn('one').single.activeTabId, 'b');
     expect(find.text('content-b'), findsOneWidget);
-    expect(model.tabsIn('one'), ['a', 'b', 'c']);
+    expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
   });
 }

@@ -12,6 +12,7 @@ class EditorPanelTab {
     this.buttonKey,
     this.minContentWidth,
     this.minContentHeight,
+    this.locked = false,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -34,6 +35,10 @@ class EditorPanelTab {
   /// overflow.
   final double? minContentWidth;
   final double? minContentHeight;
+
+  /// Drag-locked tabs stay put (the canvas panel defaults to locked so a
+  /// stray drag can't undock the drawing surface).
+  final bool locked;
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -52,11 +57,13 @@ class EditorPanelTabDragData {
 /// persist per-view state across switches). Rule of thumb: the strip only
 /// switches — tools/buttons belong to each panel's own toolbar below it.
 ///
-/// When [groupId] and [onTabMoved] are given, tabs become draggable (LONG
-/// PRESS starts the drag — a plain tap still just switches): within the
-/// strip to reorder, and onto another group's strip to re-dock. Drop
-/// position follows the pointer (left/right half of a hovered tab inserts
-/// before/after it; the empty strip tail appends).
+/// When [groupId] and [onTabMoved] are given, tabs become draggable (drag
+/// starts immediately on pointer movement; a plain tap still just
+/// switches): within the strip to reorder, and onto another group's strip
+/// to re-dock. Drop position follows the pointer (left/right half of a
+/// hovered tab inserts before/after it; the empty strip tail appends).
+/// LOCKED tabs ([EditorPanelTab.locked]) refuse to lift; [onToggleLock]
+/// puts a lock toggle for the active tab at the strip's end.
 class EditorPanelTabs extends StatelessWidget {
   const EditorPanelTabs({
     super.key,
@@ -68,6 +75,7 @@ class EditorPanelTabs extends StatelessWidget {
     this.onTabMoved,
     this.canAcceptTab,
     this.onDragActiveChanged,
+    this.onToggleLock,
   }) : assert(tabs.length > 0),
        assert(
          onTabMoved == null || groupId != null,
@@ -96,6 +104,10 @@ class EditorPanelTabs extends StatelessWidget {
   /// Fires when a drag leaves this strip's tabs (true) and when it ends
   /// (false) — lets the dock layout reveal drop rails for empty docks.
   final ValueChanged<bool>? onDragActiveChanged;
+
+  /// Toggles the drag lock of a tab (the strip shows the toggle for its
+  /// active tab). Null hides the toggle.
+  final ValueChanged<String>? onToggleLock;
 
   static const double stripHeight = 30;
 
@@ -131,11 +143,34 @@ class EditorPanelTabs extends StatelessWidget {
                 )
               else
                 const Spacer(),
+              if (onToggleLock != null) _buildLockToggle(active, colorScheme),
             ],
           ),
         ),
         Expanded(child: _buildActiveContent(active)),
       ],
+    );
+  }
+
+  /// The active tab's drag-lock toggle at the strip's end.
+  Widget _buildLockToggle(EditorPanelTab active, ColorScheme colorScheme) {
+    return Tooltip(
+      message: active.locked ? 'Unlock panel drag' : 'Lock panel drag',
+      triggerMode: TooltipTriggerMode.manual,
+      child: InkWell(
+        key: ValueKey<String>('panel-lock-${active.id}'),
+        onTap: () => onToggleLock!(active.id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Icon(
+            active.locked ? Icons.lock_outline : Icons.lock_open,
+            size: 12,
+            color: active.locked
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 
@@ -185,6 +220,7 @@ class EditorPanelTabs extends StatelessWidget {
       icon: tab.icon,
       compact: compact,
       selected: tab.id == activeTabId,
+      locked: tab.locked,
       onPressed: () => onTabSelected(tab.id),
     );
     if (!_dragEnabled) {
@@ -196,24 +232,26 @@ class EditorPanelTabs extends StatelessWidget {
       // Left half inserts before this tab, right half after it.
       onDropped: (dropped, after) =>
           onTabMoved!(dropped, after ? index + 1 : index),
-      // Long press to lift a tab: an immediate drag would swallow plain
-      // taps' neighbours on touch and fight the tooltips.
-      child: LongPressDraggable<EditorPanelTabDragData>(
-        data: data,
-        maxSimultaneousDrags: 1,
-        // The avatar origin IS the pointer, so drop regions can split
-        // themselves into exact before/after halves from the drag offset.
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        feedback: FractionalTranslation(
-          translation: const Offset(-0.5, -0.5),
-          child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
-        ),
-        childWhenDragging: Opacity(opacity: 0.35, child: button),
-        onDragStarted: () => onDragActiveChanged?.call(true),
-        // onDragEnd covers completion AND cancellation.
-        onDragEnd: (_) => onDragActiveChanged?.call(false),
-        child: button,
-      ),
+      // Locked tabs stay drop targets but refuse to lift.
+      child: tab.locked
+          ? button
+          : Draggable<EditorPanelTabDragData>(
+              data: data,
+              maxSimultaneousDrags: 1,
+              // The avatar origin IS the pointer, so drop regions can split
+              // themselves into exact before/after halves from the drag
+              // offset.
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              feedback: FractionalTranslation(
+                translation: const Offset(-0.5, -0.5),
+                child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
+              ),
+              childWhenDragging: Opacity(opacity: 0.35, child: button),
+              onDragStarted: () => onDragActiveChanged?.call(true),
+              // onDragEnd covers completion AND cancellation.
+              onDragEnd: (_) => onDragActiveChanged?.call(false),
+              child: button,
+            ),
     );
   }
 }
@@ -358,6 +396,7 @@ class _PanelTabButton extends StatelessWidget {
     required this.icon,
     required this.compact,
     required this.selected,
+    required this.locked,
     required this.onPressed,
   });
 
@@ -365,6 +404,7 @@ class _PanelTabButton extends StatelessWidget {
   final IconData icon;
   final bool compact;
   final bool selected;
+  final bool locked;
   final VoidCallback onPressed;
 
   @override
@@ -408,6 +448,10 @@ class _PanelTabButton extends StatelessWidget {
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
+              ],
+              if (locked) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.lock_outline, size: 10, color: foreground),
               ],
             ],
           ),

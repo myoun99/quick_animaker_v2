@@ -491,9 +491,12 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
+    // The bottom dock runs between the two vertical tool bars, so the
+    // grid viewport is 88px narrower than the window — scroll far enough
+    // for the cut's last frame header to materialize.
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-520, 0),
+      const Offset(-700, 0),
     );
     await tester.pumpAndSettle();
 
