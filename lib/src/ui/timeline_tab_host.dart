@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
+import 'dialogs/instruction_event_dialog.dart';
+import 'dialogs/instruction_set_editor_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_session_manager.dart';
@@ -183,15 +186,30 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
-  /// Double-tap on an SE cell: edit the entry's name/dialogue in place —
-  /// covered cells rename the covering entry, empty cells create an entry
-  /// holding to the next one / cut end, carrying the entered text (one undo).
+  /// Double-tap cell editor, dispatched by row kind: SE rows edit their
+  /// name/dialogue, instruction rows their FI/FO/PAN … event.
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
     final layer = _session.activeLayer;
-    if (layer == null || layer.id != layerId || layer.kind != LayerKind.se) {
+    if (layer == null || layer.id != layerId) {
       return;
     }
+    switch (layer.kind) {
+      case LayerKind.se:
+        await _editSeLabel();
+      case LayerKind.instruction:
+        await _editInstructionEvent(layerId, frameIndex);
+      case LayerKind.animation ||
+          LayerKind.storyboard ||
+          LayerKind.art ||
+          LayerKind.camera:
+        return;
+    }
+  }
 
+  /// SE cells: covered cells rename the covering entry, empty cells create
+  /// an entry holding to the next one / cut end, carrying the entered text
+  /// (one undo).
+  Future<void> _editSeLabel() async {
     final creating = _session.selectedFrame == null;
     if (creating && !_session.canCreateDrawingAtCurrentFrame) {
       return;
@@ -215,6 +233,62 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // SE renames never hit the link-conflict flow (duplicates allowed).
       _session.renameSelectedFrame(nextName);
     }
+  }
+
+  /// Instruction cells: covered cells edit/delete the covering event, empty
+  /// cells add one holding to the next event / cut end (one undo each). The
+  /// vocabulary editor is reachable from inside the picker.
+  Future<void> _editInstructionEvent(LayerId layerId, int frameIndex) async {
+    final covering = _session.instructionSpanAt(layerId, frameIndex);
+
+    final result = await showDialog<InstructionEventDialogResult>(
+      context: context,
+      builder: (context) => InstructionEventDialog(
+        instructionSet: _session.cameraInstructionSet,
+        initialInstructionId: covering?.value.instructionId,
+        initialValueA: covering?.value.valueA,
+        initialValueB: covering?.value.valueB,
+        editing: covering != null,
+        onEditInstructionSet: () => _editInstructionSet(context),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+
+    if (result.delete) {
+      _session.removeInstructionEventAt(layerId, frameIndex);
+      return;
+    }
+    final instructionId = result.instructionId;
+    if (instructionId == null) {
+      return;
+    }
+    _session.upsertInstructionEventAt(
+      layerId,
+      frameIndex,
+      InstructionEvent(
+        instructionId: instructionId,
+        length: 1,
+        valueA: result.valueA,
+        valueB: result.valueB,
+      ),
+    );
+  }
+
+  /// Opens the vocabulary editor and commits the edited set immediately
+  /// (its own undo step), so it sticks even when the event dialog is then
+  /// cancelled. The already-open picker keeps its old list until reopened.
+  Future<void> _editInstructionSet(BuildContext dialogContext) async {
+    final edited = await showDialog<CameraInstructionSet>(
+      context: dialogContext,
+      builder: (context) =>
+          InstructionSetEditorDialog(initialSet: _session.cameraInstructionSet),
+    );
+    if (!mounted || edited == null) {
+      return;
+    }
+    _session.updateCameraInstructionSet(edited);
   }
 
   Future<void> _renameSelectedFrame() async {
@@ -281,6 +355,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             }
           },
           onActivateCell: _activateCellEditor,
+          instructionDefById: (instructionId) =>
+              _session.cameraInstructionSet.defById(instructionId),
           onAddLayer: _session.addLayer,
           onToggleLayerVisibility: _session.toggleLayerVisibility,
           onLayerOpacityChanged: (layerId, opacity) {

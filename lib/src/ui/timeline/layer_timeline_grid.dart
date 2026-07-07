@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -38,6 +39,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -65,6 +67,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// Resolves instruction ids to defs for CAM row chips.
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -606,6 +612,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onSelectFrame,
                                                   onActivateCell:
                                                       widget.onActivateCell,
+                                                  instructionDefById:
+                                                      widget.instructionDefById,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

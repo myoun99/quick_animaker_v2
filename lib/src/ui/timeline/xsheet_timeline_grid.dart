@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -18,6 +19,7 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -50,6 +52,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -76,6 +79,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// Resolves instruction ids to defs for CAM column chips.
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -502,6 +509,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   _XSheetFrameCellsColumn(
                                                     onActivateCell:
                                                         widget.onActivateCell,
+                                                    instructionDefById: widget
+                                                        .instructionDefById,
                                                     layer: widget.layers[index],
                                                     active:
                                                         widget
@@ -772,6 +781,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -795,6 +805,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final TimelineCommaDragCallbacks? commaDrag;
 
   @override
@@ -919,8 +931,37 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
               keyPrefix: 'xsheet',
             ),
+          // Instruction columns: the sheet's CAM column — [icon + name]
+          // chip, A → B endpoint values and a span line per event.
+          if (layer.kind == LayerKind.instruction && instructionDefById != null)
+            ...timelineRowInstructionOverlays(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              defById: instructionDefById!,
+              textColor: Theme.of(context).colorScheme.onSurface,
+              lineColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              keyPrefix: 'xsheet',
+            ),
           if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
             ...timelineRowBlockEdgeGrips(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              commaDrag: commaDrag,
+              axis: Axis.vertical,
+            ),
+          if (commaDrag != null && layer.kind == LayerKind.instruction)
+            ...timelineRowInstructionEdgeGrips(
               layer: layer,
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,

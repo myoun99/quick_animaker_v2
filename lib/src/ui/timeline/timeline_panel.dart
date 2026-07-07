@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -25,6 +26,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -59,6 +61,10 @@ class TimelinePanel extends StatefulWidget {
   /// Double-tap cell editor hook (SE label dialog), shared by both
   /// orientations.
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// Resolves instruction ids to defs for CAM row chips.
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -233,6 +239,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
                     onActivateCell: widget.onActivateCell,
+                    instructionDefById: widget.instructionDefById,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -256,6 +263,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
                     onActivateCell: widget.onActivateCell,
+                    instructionDefById: widget.instructionDefById,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
@@ -29,6 +30,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     this.commaDrag,
     this.laneEdit,
   });
@@ -53,6 +55,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -94,6 +98,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     onSelectLayer: onSelectLayer,
                     onSelectFrame: onSelectFrame,
                     onActivateCell: onActivateCell,
+                    instructionDefById: instructionDefById,
                     commaDrag: commaDrag,
                   ),
           if (rows.isEmpty)

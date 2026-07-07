@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -13,6 +14,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 import 'timeline_selected_exposure_outline.dart';
 
@@ -33,6 +35,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.instructionDefById,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -60,6 +63,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Double-tap cell editor hook; only kinds that open an editor get it
   /// (policy: [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// Resolves instruction ids to their vocabulary defs for CAM row chips;
+  /// null hides instruction overlays.
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
@@ -177,8 +185,36 @@ class TimelineFrameCellsRow extends StatelessWidget {
               context,
             ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           ),
+        // Instruction rows: the sheet's CAM column — [icon + name] chip,
+        // A → B endpoint values and a span line per event.
+        if (layer.kind == LayerKind.instruction && instructionDefById != null)
+          ...timelineRowInstructionOverlays(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+            defById: instructionDefById!,
+            textColor: Theme.of(context).colorScheme.onSurface,
+            lineColor: Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
         if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
           ...timelineRowBlockEdgeGrips(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            commaDrag: commaDrag,
+            axis: Axis.horizontal,
+          ),
+        if (commaDrag != null && layer.kind == LayerKind.instruction)
+          ...timelineRowInstructionEdgeGrips(
             layer: layer,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,

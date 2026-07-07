@@ -49,6 +49,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
+import 'timeline/instruction_span_editing.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_section_policy.dart';
 
@@ -1038,6 +1039,76 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The instruction span covering [frameIndex] on [layerId], as
+  /// (startIndex, event); null on empty cells / non-instruction rows.
+  MapEntry<int, InstructionEvent>? instructionSpanAt(
+    LayerId layerId,
+    int frameIndex,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return null;
+    }
+    return instructionSpanCovering(layer.instructions, frameIndex);
+  }
+
+  /// Creates or edits the instruction event at [frameIndex] in ONE undo
+  /// step: a covered cell replaces its span's event (start/length stay), an
+  /// empty cell starts a new span holding to the next one / the cut's end.
+  void upsertInstructionEventAt(
+    LayerId layerId,
+    int frameIndex,
+    InstructionEvent event,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+
+    final covering = instructionSpanCovering(layer.instructions, frameIndex);
+    final next = covering != null
+        ? instructionMapWithEventReplaced(
+            layer.instructions,
+            spanStartIndex: covering.key,
+            event: event,
+          )
+        : instructionMapWithEventAdded(
+            layer.instructions,
+            startIndex: frameIndex,
+            event: event.copyWith(
+              length: (activeCut.duration - frameIndex).clamp(1, 1 << 20),
+            ),
+          );
+    if (next == null) {
+      return;
+    }
+    updateLayerInstructions(
+      layerId,
+      next,
+      description: covering == null ? 'Add instruction' : 'Edit instruction',
+    );
+  }
+
+  /// Removes the instruction span covering [frameIndex]; one undo step.
+  void removeInstructionEventAt(LayerId layerId, int frameIndex) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+    final covering = instructionSpanCovering(layer.instructions, frameIndex);
+    if (covering == null) {
+      return;
+    }
+    final next = instructionMapWithEventRemoved(
+      layer.instructions,
+      spanStartIndex: covering.key,
+    );
+    if (next == null) {
+      return;
+    }
+    updateLayerInstructions(layerId, next, description: 'Delete instruction');
+  }
+
   Frame? get selectedFrame {
     final layer = activeLayer;
     if (layer == null) {
@@ -1355,15 +1426,24 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Starts a comma drag on [edge] of the block starting at
   /// [blockStartIndex]; returns false when there is no such block.
+  /// Instruction rows join the same pipeline — their spans live on
+  /// Layer.instructions and shift without ripple.
   bool beginExposureEdgeDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required TimelineBlockEdge edge,
   }) {
     final layer = _layerById(layerId);
-    if (layer == null ||
-        !layerKindHoldsDrawings(layer.kind) ||
-        !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
+    if (layer == null) {
+      return false;
+    }
+    final isInstructionSpan =
+        layer.kind == LayerKind.instruction &&
+        layer.instructions.containsKey(blockStartIndex);
+    final isDrawingBlock =
+        layerKindHoldsDrawings(layer.kind) &&
+        (layer.timeline[blockStartIndex]?.isDrawing ?? false);
+    if (!isInstructionSpan && !isDrawingBlock) {
       return false;
     }
 
@@ -1371,6 +1451,30 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragEdge = edge;
     _edgeDragBlockStart = blockStartIndex;
     return true;
+  }
+
+  Layer _edgeDraggedLayer({
+    required Layer before,
+    required int blockStart,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
+    if (before.kind == LayerKind.instruction) {
+      final shifted = instructionMapWithEdgeShifted(
+        before.instructions,
+        spanStartIndex: blockStart,
+        startEdge: edge == TimelineBlockEdge.start,
+        delta: delta,
+      );
+      return shifted == null ? before : before.copyWith(instructions: shifted);
+    }
+    return _timelineController.shiftedLayerForEdge(
+          layer: before,
+          blockStartIndex: blockStart,
+          edge: edge,
+          delta: delta,
+        ) ??
+        before;
   }
 
   /// Applies the drag's current cumulative frame delta as a live preview.
@@ -1382,14 +1486,12 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
-    final after =
-        _timelineController.shiftedLayerForEdge(
-          layer: before,
-          blockStartIndex: blockStart,
-          edge: edge,
-          delta: cumulativeDelta,
-        ) ??
-        before;
+    final after = _edgeDraggedLayer(
+      before: before,
+      blockStart: blockStart,
+      edge: edge,
+      delta: cumulativeDelta,
+    );
     final current = _layerById(before.id);
     if (current == null || current == after) {
       return;

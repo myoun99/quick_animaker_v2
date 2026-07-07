@@ -16,9 +16,9 @@ import 'timeline_frame_coordinate_policy.dart';
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
 /// Which layer kinds open the cell editor dialog on double tap: SE rows
-/// edit their name/dialogue. Instruction rows join with the picker (S4).
+/// edit their name/dialogue, instruction rows their FI/FO/PAN … events.
 bool layerKindOpensCellEditorOnDoubleTap(LayerKind kind) {
-  return kind == LayerKind.se;
+  return kind == LayerKind.se || kind == LayerKind.instruction;
 }
 
 /// The label + duration-line overlays for every SE block intersecting the

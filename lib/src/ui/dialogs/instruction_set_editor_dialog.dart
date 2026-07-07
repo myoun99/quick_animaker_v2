@@ -1,0 +1,234 @@
+import 'package:flutter/material.dart';
+
+import '../../models/camera_instruction.dart';
+import '../timeline/instruction_icon_palette.dart';
+
+/// Edits the project's instruction vocabulary: rename defs, repick their
+/// icons, add custom ones, delete. Pops the edited [CameraInstructionSet]
+/// (or nothing on cancel); the caller commits it as one undo step.
+///
+/// Deleting a def leaves events referencing it dangling by design — they
+/// render with the fallback glyph and the raw id, nothing breaks.
+class InstructionSetEditorDialog extends StatefulWidget {
+  const InstructionSetEditorDialog({super.key, required this.initialSet});
+
+  final CameraInstructionSet initialSet;
+
+  @override
+  State<InstructionSetEditorDialog> createState() =>
+      _InstructionSetEditorDialogState();
+}
+
+class _InstructionSetEditorDialogState
+    extends State<InstructionSetEditorDialog> {
+  late List<CameraInstructionDef> _defs = [...widget.initialSet.defs];
+
+  String _nextCustomId() {
+    final used = _defs.map((def) => def.id).toSet();
+    var index = 1;
+    while (used.contains('custom-$index')) {
+      index += 1;
+    }
+    return 'custom-$index';
+  }
+
+  Future<void> _editDef(int index) async {
+    final edited = await showDialog<CameraInstructionDef>(
+      context: context,
+      builder: (context) => _InstructionDefDialog(def: _defs[index]),
+    );
+    if (edited == null || !mounted) {
+      return;
+    }
+    setState(() => _defs = [..._defs]..[index] = edited);
+  }
+
+  Future<void> _addDef() async {
+    final created = await showDialog<CameraInstructionDef>(
+      context: context,
+      builder: (context) => _InstructionDefDialog(
+        def: CameraInstructionDef(
+          id: _nextCustomId(),
+          name: '',
+          iconKey: 'note',
+        ),
+      ),
+    );
+    if (created == null || !mounted || created.name.trim().isEmpty) {
+      return;
+    }
+    setState(() => _defs = [..._defs, created]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Instructions'),
+      content: SizedBox(
+        width: 380,
+        height: 420,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                itemCount: _defs.length,
+                itemBuilder: (context, index) {
+                  final def = _defs[index];
+                  return ListTile(
+                    key: ValueKey<String>('instruction-def-row-${def.id}'),
+                    dense: true,
+                    leading: Icon(instructionIconFor(def.iconKey), size: 20),
+                    title: Text(def.name),
+                    onTap: () => _editDef(index),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          key: ValueKey<String>(
+                            'instruction-def-edit-${def.id}',
+                          ),
+                          tooltip: 'Edit Instruction',
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          onPressed: () => _editDef(index),
+                        ),
+                        IconButton(
+                          key: ValueKey<String>(
+                            'instruction-def-delete-${def.id}',
+                          ),
+                          tooltip: 'Delete Instruction',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () => setState(
+                            () => _defs = [..._defs]..removeAt(index),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey<String>('instruction-def-add-button'),
+                onPressed: _addDef,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Instruction'),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('instruction-set-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey<String>('instruction-set-save-button'),
+          onPressed: () =>
+              Navigator.of(context).pop(CameraInstructionSet(defs: _defs)),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Edits one def: the sheet label plus an icon from the curated palette —
+/// the user pairs any icon with any name, which is the customization point.
+class _InstructionDefDialog extends StatefulWidget {
+  const _InstructionDefDialog({required this.def});
+
+  final CameraInstructionDef def;
+
+  @override
+  State<_InstructionDefDialog> createState() => _InstructionDefDialogState();
+}
+
+class _InstructionDefDialogState extends State<_InstructionDefDialog> {
+  late final TextEditingController _nameController = TextEditingController(
+    text: widget.def.name,
+  );
+  late String _iconKey = widget.def.iconKey;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('Instruction'),
+      content: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const ValueKey<String>('instruction-def-name-field'),
+              controller: _nameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Name (FI, PAN, …)'),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Icon',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final entry in instructionIconPalette.entries)
+                  InkWell(
+                    key: ValueKey<String>('instruction-icon-${entry.key}'),
+                    onTap: () => setState(() => _iconKey = entry.key),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _iconKey == entry.key
+                              ? colorScheme.secondary
+                              : colorScheme.outlineVariant,
+                          width: _iconKey == entry.key ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(entry.value, size: 18),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('instruction-def-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey<String>('instruction-def-save-button'),
+          onPressed: () => Navigator.of(context).pop(
+            widget.def.copyWith(
+              name: _nameController.text.trim(),
+              iconKey: _iconKey,
+            ),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
