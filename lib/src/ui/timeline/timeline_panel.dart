@@ -42,6 +42,7 @@ class TimelinePanel extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
+    this.laneEdit,
   });
 
   final List<Layer> layers;
@@ -96,6 +97,7 @@ class TimelinePanel extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+  final PropertyLaneEditCallbacks? laneEdit;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -236,6 +238,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
+                    laneEdit: widget.laneEdit,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

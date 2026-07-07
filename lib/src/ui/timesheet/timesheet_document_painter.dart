@@ -8,7 +8,9 @@ import '../theme/app_theme.dart';
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
 /// whose body splits into two side-by-side halves of
 /// [TimesheetDocument.halfFrameCount] rows; each half reads
-/// ACTION block (animation layers) | frame rail | S1·S2 | CELL block | CAM.
+/// frame-number gutter | ACTION block (animation layers) | S1·S2 |
+/// CELL block | CAM. The gutter is bare numbers on paper (user direction —
+/// no boxed rail, no grid), printed left of each half.
 ///
 /// The continuous mode keeps the SAME paper width and header band as the
 /// paged form (the paper size never changes with the view toggle — user
@@ -29,7 +31,10 @@ class TimesheetDocumentLayout {
   static const double seColumnWidth = 20;
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
-  static const double railWidth = 24;
+
+  /// Bare frame numbers print in this space LEFT of each half — no boxed
+  /// rail inside the columns (removed by user direction).
+  static const double frameNumberGutterWidth = 24;
   static const double groupRowHeight = 16;
   static const double letterRowHeight = 16;
   static const double headerBandHeight = 64;
@@ -57,39 +62,19 @@ class TimesheetDocumentLayout {
 
   double get columnsHeaderHeight => groupRowHeight + letterRowHeight;
 
-  /// x of a column within its half. The frame rail is not a document
-  /// column — it slots between the ACTION block and the S columns.
+  /// x of a column within its half (a plain prefix sum — frame numbers
+  /// live in the gutter left of the half, not between columns).
   double columnLeftInHalf(int columnIndex) {
     var x = 0.0;
-    var railInserted = false;
     for (var index = 0; index < columnIndex; index += 1) {
-      final kind = document.columns[index].kind;
-      if (!railInserted && kind != TimesheetColumnKind.action) {
-        x += railWidth;
-        railInserted = true;
-      }
-      x += columnWidthFor(kind);
-    }
-    if (!railInserted &&
-        document.columns[columnIndex].kind != TimesheetColumnKind.action) {
-      x += railWidth;
+      x += columnWidthFor(document.columns[index].kind);
     }
     return x;
   }
 
-  double get railLeftInHalf {
-    var x = 0.0;
-    for (final column in document.columns) {
-      if (column.kind != TimesheetColumnKind.action) {
-        break;
-      }
-      x += columnWidthFor(column.kind);
-    }
-    return x;
-  }
-
+  /// Width of a half's column area (the number gutter sits outside it).
   double get halfWidth {
-    var width = railWidth;
+    var width = 0.0;
     for (final column in document.columns) {
       width += columnWidthFor(column.kind);
     }
@@ -98,7 +83,8 @@ class TimesheetDocumentLayout {
 
   /// One fixed paper width in BOTH modes — the view toggle never resizes
   /// the paper (or the header band that spans it).
-  double get paperWidth => pagePadding * 2 + halfWidth * 2 + halfGap;
+  double get paperWidth =>
+      pagePadding * 2 + (frameNumberGutterWidth + halfWidth) * 2 + halfGap;
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
@@ -143,12 +129,15 @@ class TimesheetDocumentLayout {
     );
   }
 
-  /// Left edge of a half's column area.
+  /// Left edge of a half's column area (past its number gutter).
   double halfLeft(int pageIndex, int half) {
     if (continuous) {
-      return paperLeft + pagePadding;
+      return paperLeft + pagePadding + frameNumberGutterWidth;
     }
-    return paperLeft + pagePadding + half * (halfWidth + halfGap);
+    return paperLeft +
+        pagePadding +
+        frameNumberGutterWidth +
+        half * (frameNumberGutterWidth + halfWidth + halfGap);
   }
 
   /// Top of a half's first row.
@@ -479,8 +468,8 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
 
     // Row lines: light per frame, medium every 6 frames, bold on second
-    // boundaries with the second index in the rail.
-    final railLeft = left + layout.railLeftInHalf;
+    // boundaries with the second index in the number gutter.
+    final numbersRight = left - 4;
     for (var row = 0; row <= rowCount; row += 1) {
       final frame = startFrame + row;
       final y = rowsTop + row * TimesheetDocumentLayout.rowHeight;
@@ -500,7 +489,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         _text(
           canvas,
           '$second',
-          Offset(railLeft + TimesheetDocumentLayout.railWidth - 4, y + 2),
+          Offset(numbersRight, y + 2),
           fontSize: 8,
           bold: true,
           color: _gridBold,
@@ -509,8 +498,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
 
-    // Vertical lines: half edges, rail edges, column separators (bold at
-    // section changes).
+    // Vertical lines: half edges + column separators (bold at section
+    // changes). The number gutter draws NO lines — bare numbers on paper.
     canvas.drawLine(
       Offset(left, columnsTop),
       Offset(left, rowsBottom),
@@ -519,16 +508,6 @@ class TimesheetDocumentPainter extends CustomPainter {
     canvas.drawLine(
       Offset(right, columnsTop),
       Offset(right, rowsBottom),
-      boldPaint,
-    );
-    canvas.drawLine(
-      Offset(railLeft, columnsTop),
-      Offset(railLeft, rowsBottom),
-      boldPaint,
-    );
-    canvas.drawLine(
-      Offset(railLeft + TimesheetDocumentLayout.railWidth, columnsTop),
-      Offset(railLeft + TimesheetDocumentLayout.railWidth, rowsBottom),
       boldPaint,
     );
     for (var column = 1; column < document.columns.length; column += 1) {
@@ -542,8 +521,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       );
     }
 
-    // Rail frame numbers on even frames — page-local on paper, global in
-    // the continuous strip.
+    // Gutter frame numbers on even frames, bare on the paper left of the
+    // half — page-local on paper, global in the continuous strip.
     if (drawTexts) {
       for (var row = 0; row < rowCount; row += 1) {
         final frame = startFrame + row;
@@ -557,12 +536,12 @@ class TimesheetDocumentPainter extends CustomPainter {
           canvas,
           '$printed',
           Offset(
-            railLeft + TimesheetDocumentLayout.railWidth / 2,
+            numbersRight,
             rowsTop + row * TimesheetDocumentLayout.rowHeight + 4,
           ),
           fontSize: 8,
           color: _gridMedium,
-          centeredAtX: true,
+          rightAlignedAtX: true,
         );
       }
     }
