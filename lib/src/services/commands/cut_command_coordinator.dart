@@ -1,6 +1,7 @@
 import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../core/collection_equality.dart';
+import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_resize_anchor.dart';
@@ -36,6 +37,7 @@ import 'resize_cut_canvas_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
@@ -420,6 +422,33 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         instructions: instructions,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces an SE layer's audio clip list; one undo step, no-op when
+  /// unchanged.
+  void updateLayerAudioClips({
+    required CutId cutId,
+    required LayerId layerId,
+    required List<AudioClip> audioClips,
+    String description = 'Edit audio clips',
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind != LayerKind.se) {
+      throw StateError('Audio clips belong on SE layers only.');
+    }
+    if (listEquals(layer.audioClips, audioClips)) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerAudioClipsCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        audioClips: audioClips,
         description: description,
       ),
     );

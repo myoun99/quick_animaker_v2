@@ -7,6 +7,7 @@ import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
+import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
@@ -1108,6 +1109,52 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     updateLayerInstructions(layerId, next, description: 'Delete instruction');
+  }
+
+  /// Whether the active layer can take an audio clip (SE rows only).
+  bool get canImportAudioToActiveLayer => activeLayer?.kind == LayerKind.se;
+
+  /// Places [filePath] on the active SE layer at the playhead; one undo
+  /// step. The clip's length comes from the file (waveform pipeline).
+  void addAudioClipToActiveSeLayer(String filePath) {
+    final layer = activeLayer;
+    if (layer == null || layer.kind != LayerKind.se) {
+      return;
+    }
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layer.id,
+      audioClips: [
+        ...layer.audioClips,
+        AudioClip(
+          filePath: filePath,
+          startFrame: _timelineController.currentFrameIndex < 0
+              ? 0
+              : _timelineController.currentFrameIndex,
+        ),
+      ],
+      description: 'Import audio',
+    );
+    notifyListeners();
+  }
+
+  /// Removes the [clipIndex]th clip of [layerId]; one undo step.
+  void removeAudioClipAt(LayerId layerId, int clipIndex) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final next = [...layer.audioClips]..removeAt(clipIndex);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Remove audio',
+    );
+    notifyListeners();
   }
 
   Frame? get selectedFrame {

@@ -1,3 +1,4 @@
+import '../models/audio_clip.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -397,6 +398,30 @@ class ProjectRepository {
     updateProject(
       (project) => project.copyWith(cameraInstructions: instructionSet),
     );
+  }
+
+  void updateLayerAudioClips({
+    required CutId cutId,
+    required LayerId layerId,
+    required List<AudioClip> audioClips,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(audioClips: audioClips),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
   }
 
   void updateLayerKind({

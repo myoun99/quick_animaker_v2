@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -938,6 +939,81 @@ void main() {
         copy.instructions[3],
         const InstructionEvent(instructionId: 'pan', length: 6),
       );
+    });
+
+    test('updateLayerAudioClips edits SE rows through history, dedupes and '
+        'guards the kind', () {
+      final se = _layer(id: 'layer-1', kind: LayerKind.se);
+      final cel = _layer(id: 'layer-2');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [se, cel]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      const clips = [AudioClip(filePath: 'voice.wav', startFrame: 4)];
+
+      fixture.coordinator.updateLayerAudioClips(
+        cutId: cutA.id,
+        layerId: se.id,
+        audioClips: clips,
+      );
+      expect(_layerById(fixture.project, se.id).audioClips, clips);
+      expect(fixture.historyManager.undoCount, 1);
+
+      // Unchanged list: no new history entry.
+      fixture.coordinator.updateLayerAudioClips(
+        cutId: cutA.id,
+        layerId: se.id,
+        audioClips: clips,
+      );
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+      expect(_layerById(fixture.project, se.id).audioClips, isEmpty);
+      fixture.historyManager.redo();
+      expect(_layerById(fixture.project, se.id).audioClips, clips);
+
+      expect(
+        () => fixture.coordinator.updateLayerAudioClips(
+          cutId: cutA.id,
+          layerId: cel.id,
+          audioClips: clips,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('duplicateLayer carries audio clips to the SE copy', () {
+      final se = Layer(
+        id: const LayerId('layer-1'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: const [],
+        timeline: const {},
+        audioClips: const [AudioClip(filePath: 'voice.wav', startFrame: 2)],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [se]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      final copyId = fixture.coordinator.duplicateLayer(
+        cutId: cutA.id,
+        sourceLayerId: se.id,
+      );
+
+      final copy = _layerById(fixture.project, copyId);
+      expect(copy.kind, LayerKind.se);
+      expect(copy.audioClips.single.filePath, 'voice.wav');
     });
 
     test('deleteLayer keeps the SE, instruction and drawing floors', () {

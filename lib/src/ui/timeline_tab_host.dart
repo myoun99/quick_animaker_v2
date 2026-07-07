@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
@@ -43,6 +44,7 @@ class TimelineTabHost extends StatefulWidget {
     this.onToggleLayerLanes,
     this.collapsedSections = const {},
     this.onToggleSection,
+    this.audioFilePicker,
   });
 
   final EditorSessionManager session;
@@ -61,6 +63,9 @@ class TimelineTabHost extends StatefulWidget {
   /// SE/camera section fold state (host-owned, survives tab switches).
   final Set<TimelineSection> collapsedSections;
   final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// Injectable for tests; defaults to the platform open-file dialog.
+  final Future<String?> Function()? audioFilePicker;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -300,6 +305,31 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.updateCameraInstructionSet(edited);
   }
 
+  /// Imports a sound file onto the active SE layer at the playhead.
+  Future<void> _importAudio() async {
+    if (!_session.canImportAudioToActiveLayer) {
+      return;
+    }
+    final picker = widget.audioFilePicker ?? _pickAudioFile;
+    final path = await picker();
+    if (!mounted || path == null) {
+      return;
+    }
+    _session.addAudioClipToActiveSeLayer(path);
+  }
+
+  static Future<String?> _pickAudioFile() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Audio',
+          extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'],
+        ),
+      ],
+    );
+    return file?.path;
+  }
+
   Future<void> _renameSelectedFrame() async {
     if (_session.selectedFrame == null ||
         !_session.canRenameFrameAtCurrentFrame) {
@@ -414,6 +444,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   onRenameLayer: _renameActiveLayer,
                   onDeleteLayer: _deleteActiveLayer,
                   onRenameFrame: _renameSelectedFrame,
+                  onImportAudio: _importAudio,
                 ),
               ),
             ],
