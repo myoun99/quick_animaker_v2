@@ -16,9 +16,10 @@ enum ExportRange { activeCut, allCuts, frameRange }
 /// cut's camera) or the cut's raw canvas (no camera, 1:1 pixels).
 enum ExportSizeMode { camera, canvas }
 
-/// Export container: a PNG file per frame, or one H.264 MP4 encoded through
-/// an external ffmpeg (see VideoExportService).
-enum ExportFormat { pngSequence, mp4Video }
+/// Export container: a PNG file per frame, one H.264 MP4 encoded through
+/// an external ffmpeg (see VideoExportService), or XDTS digital timesheets
+/// (one .xdts per cut — sheet data, no rendering).
+enum ExportFormat { pngSequence, mp4Video, xdtsTimesheet }
 
 /// One composited output frame: [cut]'s local [frameIndex].
 class ExportFrameTask {

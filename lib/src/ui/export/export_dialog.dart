@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
+import '../../services/export/xdts_builder.dart';
 import '../camera/camera_frame_render_service.dart';
 import '../editor_session_manager.dart';
 import 'export_frame_renderer.dart';
@@ -18,6 +21,9 @@ typedef ExportDirectoryPicker = Future<String?> Function();
 /// Picks the video output file path; `null` on cancel.
 typedef ExportVideoPathPicker = Future<String?> Function(String suggestedName);
 
+/// Picks the XDTS output file path; `null` on cancel.
+typedef ExportXdtsPathPicker = Future<String?> Function(String suggestedName);
+
 Future<String?> _pickExportDirectory() => getDirectoryPath();
 
 Future<String?> _pickExportVideoPath(String suggestedName) async {
@@ -25,6 +31,16 @@ Future<String?> _pickExportVideoPath(String suggestedName) async {
     suggestedName: suggestedName,
     acceptedTypeGroups: const [
       XTypeGroup(label: 'MP4 video', extensions: ['mp4']),
+    ],
+  );
+  return location?.path;
+}
+
+Future<String?> _pickExportXdtsPath(String suggestedName) async {
+  final location = await getSaveLocation(
+    suggestedName: suggestedName,
+    acceptedTypeGroups: const [
+      XTypeGroup(label: 'XDTS timesheet', extensions: ['xdts']),
     ],
   );
   return location?.path;
@@ -40,6 +56,7 @@ class ExportDialog extends StatefulWidget {
     required this.session,
     this.exportDirectoryPicker,
     this.exportVideoPathPicker,
+    this.exportXdtsPathPicker,
     this.videoExportService = const VideoExportService(),
   });
 
@@ -50,6 +67,9 @@ class ExportDialog extends StatefulWidget {
 
   /// Injectable for tests; defaults to the platform save-file dialog.
   final ExportVideoPathPicker? exportVideoPathPicker;
+
+  /// Injectable for tests; defaults to the platform save-file dialog.
+  final ExportXdtsPathPicker? exportXdtsPathPicker;
 
   /// Injectable for tests; the real one shells out to ffmpeg.
   final VideoExportService videoExportService;
@@ -158,7 +178,15 @@ class ExportDialogState extends State<ExportDialog> {
       _sizeMode == ExportSizeMode.canvas &&
       _rangeCanvasSizes().length > 1;
 
+  /// Sheet-data export: size/frame-range/rendering do not apply.
+  bool get _isXdts => !_instanceOnly && _format == ExportFormat.xdtsTimesheet;
+
   String _planSummary() {
+    if (_isXdts) {
+      final count = _xdtsCuts().length;
+      return '$count XDTS ${_plural(count, 'sheet')} '
+          '(cels + serifu + camerawork columns).';
+    }
     if (_instanceOnly) {
       final count = _celPlan().length;
       final background = _celTransparent ? 'transparent' : 'opaque white';
@@ -209,11 +237,107 @@ class ExportDialogState extends State<ExportDialog> {
         '${_plural(summary.written, 'frame')}.';
   }
 
+  /// The 1-based position of [cut] within its track — the sheet/XDTS cut
+  /// number.
+  int _cutNumberOf(Cut cut) {
+    for (final track in widget.session.repository.requireProject().tracks) {
+      final index = track.cuts.indexWhere((entry) => entry.id == cut.id);
+      if (index != -1) {
+        return index + 1;
+      }
+    }
+    return 1;
+  }
+
+  List<Cut> _xdtsCuts() => resolveExportCuts(
+    project: widget.session.repository.requireProject(),
+    activeCutId: widget.session.activeCut.id,
+    // XDTS has no frame subrange — a sheet always covers its whole cut.
+    range: _range == ExportRange.allCuts
+        ? ExportRange.allCuts
+        : ExportRange.activeCut,
+  );
+
+  /// XDTS export writes sheet data straight to disk — no rendering: one
+  /// .xdts per cut (save dialog for the active cut, a directory for all).
+  Future<void> _exportXdts() async {
+    final cuts = _xdtsCuts();
+    if (cuts.isEmpty) {
+      return;
+    }
+    final defById = widget.session.cameraInstructionSet.defById;
+
+    final targets = <(Cut, String)>[];
+    if (cuts.length == 1) {
+      final picker = widget.exportXdtsPathPicker ?? _pickExportXdtsPath;
+      var path = await picker('CUT${_cutNumberOf(cuts.single)}.xdts');
+      if (path == null || !mounted) {
+        return;
+      }
+      if (!path.toLowerCase().endsWith('.xdts')) {
+        path = '$path.xdts';
+      }
+      targets.add((cuts.single, path));
+    } else {
+      final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
+      final directoryPath = await picker();
+      if (directoryPath == null || !mounted) {
+        return;
+      }
+      for (final cut in cuts) {
+        targets.add((
+          cut,
+          '$directoryPath${Platform.pathSeparator}'
+              'CUT${_cutNumberOf(cut)}.xdts',
+        ));
+      }
+    }
+
+    setState(() {
+      _isExporting = true;
+      _statusMessage = 'Exporting…';
+    });
+    try {
+      for (final (cut, path) in targets) {
+        final content = buildXdtsContent(
+          cut: cut,
+          cutNumber: _cutNumberOf(cut),
+          instructionDefById: defById,
+        );
+        final file = File(path);
+        await file.parent.create(recursive: true);
+        await file.writeAsString(content, flush: true);
+      }
+      if (mounted) {
+        setState(
+          () => _statusMessage =
+              'Exported ${targets.length} XDTS '
+              '${_plural(targets.length, 'sheet')}.',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _statusMessage = 'Export failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
   /// Public for tests; the Export button is the production entry point.
   Future<void> export() async {
     final instanceOnly = _instanceOnly;
     final celTransparent = _celTransparent;
     final sizeMode = _sizeMode;
+    if (!instanceOnly && _format == ExportFormat.xdtsTimesheet) {
+      if (_isExporting) {
+        return;
+      }
+      await _exportXdts();
+      return;
+    }
     final isVideo = !instanceOnly && _format == ExportFormat.mp4Video;
     final celPlan = instanceOnly ? _celPlan() : const <ExportCelTask>[];
     final framePlan = instanceOnly ? const <ExportFrameTask>[] : _framePlan();
@@ -329,11 +453,15 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   Widget _rangeChip(String label, ExportRange range, String keySuffix) {
+    // A sheet always covers its whole cut — no frame subrange for XDTS.
+    final unavailable = _isXdts && range == ExportRange.frameRange;
     return ChoiceChip(
       key: ValueKey<String>('export-range-$keySuffix'),
       label: Text(label),
       selected: _range == range,
-      onSelected: _isExporting ? null : (_) => setState(() => _range = range),
+      onSelected: _isExporting || unavailable
+          ? null
+          : (_) => setState(() => _range = range),
     );
   }
 
@@ -342,8 +470,9 @@ class ExportDialogState extends State<ExportDialog> {
       key: ValueKey<String>('export-size-$keySuffix'),
       label: Text(label),
       selected: _sizeMode == mode,
-      // Cels are always raw canvas artwork, so size mode is moot.
-      onSelected: _isExporting || _instanceOnly
+      // Cels are always raw canvas artwork and XDTS carries no pictures,
+      // so size mode is moot for both.
+      onSelected: _isExporting || _instanceOnly || _isXdts
           ? null
           : (_) => setState(() => _sizeMode = mode),
     );
@@ -394,7 +523,9 @@ class ExportDialogState extends State<ExportDialog> {
     final canExport =
         !_isExporting &&
         !_videoSizeConflict &&
-        (_instanceOnly
+        (_isXdts
+            ? _xdtsCuts().isNotEmpty
+            : _instanceOnly
             ? celPlan.isNotEmpty
             : (_framePlan()?.isNotEmpty ?? false));
 
@@ -483,6 +614,10 @@ class ExportDialogState extends State<ExportDialog> {
                         value: ExportFormat.mp4Video,
                         child: Text('MP4 video'),
                       ),
+                      DropdownMenuItem(
+                        value: ExportFormat.xdtsTimesheet,
+                        child: Text('XDTS timesheet'),
+                      ),
                     ],
                     onChanged: _isExporting || _instanceOnly
                         ? null
@@ -493,7 +628,10 @@ class ExportDialogState extends State<ExportDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      _format == ExportFormat.mp4Video && !_instanceOnly
+                      _isXdts
+                          ? 'One .xdts digital timesheet per cut (OpenToonz/'
+                                'CSP-compatible sheet data, no rendering).'
+                          : _format == ExportFormat.mp4Video && !_instanceOnly
                           ? 'Encoded with FFmpeg — it must be installed and '
                                 'on PATH.'
                           : 'One PNG file per frame.',

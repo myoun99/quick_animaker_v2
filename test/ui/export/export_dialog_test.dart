@@ -93,6 +93,7 @@ void main() {
     EditorSessionManager session, {
     ExportDirectoryPicker? exportDirectoryPicker,
     ExportVideoPathPicker? exportVideoPathPicker,
+    ExportXdtsPathPicker? exportXdtsPathPicker,
     VideoExportService videoExportService = const VideoExportService(),
   }) async {
     await tester.pumpWidget(
@@ -102,6 +103,7 @@ void main() {
             session: session,
             exportDirectoryPicker: exportDirectoryPicker,
             exportVideoPathPicker: exportVideoPathPicker,
+            exportXdtsPathPicker: exportXdtsPathPicker,
             videoExportService: videoExportService,
           ),
         ),
@@ -116,6 +118,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('MP4 video').last);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> selectXdtsFormat(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-format-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('XDTS timesheet').last);
     await tester.pumpAndSettle();
   }
 
@@ -459,6 +470,74 @@ void main() {
     );
     expect(dropdown.value, ExportFormat.pngSequence);
     expect(dropdown.onChanged, isNull);
+  });
+
+  testWidgets('XDTS export writes the active cut sheet through the save '
+      'picker', (tester) async {
+    final directory = tempDirectory('export_dialog_xdts');
+    final path = '${directory.path}${Platform.pathSeparator}sheet.xdts';
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      exportXdtsPathPicker: (suggestedName) async {
+        expect(suggestedName, 'CUT1.xdts');
+        return path;
+      },
+    );
+
+    await selectXdtsFormat(tester);
+    expect(
+      find.text('1 XDTS sheet (cels + serifu + camerawork columns).'),
+      findsOneWidget,
+    );
+    // Size/frame-range controls are moot for sheet data.
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey<String>('export-size-camera')),
+          )
+          .onSelected,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey<String>('export-range-frame-range')),
+          )
+          .onSelected,
+      isNull,
+    );
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    final content = File(path).readAsStringSync();
+    expect(content, startsWith('exchangeDigitalTimeSheet Save Data\n'));
+    expect(content, contains('"cut": "1"'));
+    expect(content, contains('"version": 5'));
+    expect(find.text('Exported 1 XDTS sheet.'), findsOneWidget);
+  });
+
+  testWidgets('XDTS all-cuts export writes one sheet per cut into the '
+      'directory', (tester) async {
+    final directory = tempDirectory('export_dialog_xdts_all');
+    final state = await pumpDialog(
+      tester,
+      exportSession(),
+      exportDirectoryPicker: () async => directory.path,
+    );
+
+    await selectXdtsFormat(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-range-all-cuts')),
+    );
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(fileNames(directory), ['CUT1.xdts', 'CUT2.xdts']);
+    expect(find.text('Exported 2 XDTS sheets.'), findsOneWidget);
   });
 
   testWidgets('cancelling the video path picker leaves no status', (
