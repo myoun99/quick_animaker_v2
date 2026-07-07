@@ -6,11 +6,13 @@ import 'timesheet_info.dart';
 
 /// What a timesheet column represents on the paper form.
 enum TimesheetColumnKind {
-  /// Handwriting space on the form's left block (timing charts, notes);
-  /// always blank in the document — ink annotations live above it.
+  /// A column of the form's left ACTION block — the animation layers land
+  /// here in order, headed by their real names; slots without a backing
+  /// layer stay blank handwriting space (no placeholder letters).
   action,
 
-  /// A cel exposure column (the CELL block's A, B, C... slots).
+  /// A CELL block form column — blank paper space with no printed letters;
+  /// its role (cel re-assignment) is still user-undecided.
   cel,
 
   /// A dialogue/SE column (the S1/S2 slots between the rail and CELL).
@@ -57,9 +59,9 @@ class TimesheetCell {
   final String? label;
 }
 
-/// One sheet column: the form slot label ('A'..'H', 'S1', '1'...) plus one
-/// cell per document row. Slots without a backing layer hold blank cells —
-/// the paper form always shows them.
+/// One sheet column: the printed column header plus one cell per document
+/// row. Slots without a backing layer hold blank cells — the paper form
+/// always shows them.
 class TimesheetColumn {
   const TimesheetColumn({
     required this.kind,
@@ -70,10 +72,12 @@ class TimesheetColumn {
 
   final TimesheetColumnKind kind;
 
-  /// The printed form slot label.
+  /// The printed column header: the backing layer's REAL name for
+  /// layer-backed slots, 'S1'/'S2'/camera indices for form slots, and empty
+  /// for unbacked slots (nothing prints — no placeholder letters).
   final String label;
 
-  /// The backing layer's name (cel/SE slots only); null for empty slots.
+  /// The backing layer's name (action/SE slots only); null for empty slots.
   final String? layerName;
 
   final List<TimesheetCell> cells;
@@ -98,9 +102,11 @@ class TimesheetPage {
 /// from the cut's unified timeline model; carries no widget or session
 /// references, so a snapshot can cross windows/isolates later.
 ///
-/// The column set follows the Japanese paper form: an ACTION handwriting
-/// block, the frame rail, S1/S2 dialogue-SE slots, the CELL block and the
-/// camera columns — fixed slots that stay blank when unbacked.
+/// The column set follows the Japanese paper form: the ACTION block carries
+/// the onTimesheet animation layers (headed by their real names, leftover
+/// slots blank), then the frame rail, S1/S2 dialogue-SE slots, a blank CELL
+/// block and the camera columns — fixed slots that stay blank when
+/// unbacked, with no placeholder letters anywhere.
 class TimesheetDocument {
   TimesheetDocument._({
     required this.title,
@@ -145,7 +151,7 @@ class TimesheetDocument {
         );
     final rowCount = pageCount * pageFrameCount;
 
-    final celLayers = [
+    final animationLayers = [
       for (final layer in cut.layers)
         if (layer.kind == LayerKind.animation && layer.onTimesheet) layer,
     ];
@@ -154,15 +160,29 @@ class TimesheetDocument {
         if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
     ];
 
-    String slotLetter(int slot) => String.fromCharCode(0x41 + slot); // A..
-
     final columns = <TimesheetColumn>[
-      // The ACTION handwriting block mirrors the CELL slots.
-      for (var slot = 0; slot < actionColumnCount; slot += 1)
+      // Animation layers fill the ACTION block in order, headed by their
+      // real names; unbacked slots stay blank handwriting space.
+      for (
+        var slot = 0;
+        slot < _slotCount(actionColumnCount, animationLayers);
+        slot += 1
+      )
         TimesheetColumn(
           kind: TimesheetColumnKind.action,
-          label: slotLetter(slot),
-          cells: _blankCells(rowCount),
+          label: slot < animationLayers.length
+              ? animationLayers[slot].name
+              : '',
+          layerName: slot < animationLayers.length
+              ? animationLayers[slot].name
+              : null,
+          cells: slot < animationLayers.length
+              ? _layerCells(
+                  layer: animationLayers[slot],
+                  rowCount: rowCount,
+                  playbackFrameCount: playbackFrameCount,
+                )
+              : _blankCells(rowCount),
         ),
       for (var slot = 0; slot < _slotCount(seColumnCount, seLayers); slot += 1)
         TimesheetColumn(
@@ -177,18 +197,13 @@ class TimesheetDocument {
                 )
               : _blankCells(rowCount),
         ),
-      for (var slot = 0; slot < _slotCount(celColumnCount, celLayers); slot += 1)
+      // The CELL block stays blank form space — no printed letters; its
+      // role is user-undecided (see plan backlog).
+      for (var slot = 0; slot < celColumnCount; slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.cel,
-          label: slotLetter(slot),
-          layerName: slot < celLayers.length ? celLayers[slot].name : null,
-          cells: slot < celLayers.length
-              ? _layerCells(
-                  layer: celLayers[slot],
-                  rowCount: rowCount,
-                  playbackFrameCount: playbackFrameCount,
-                )
-              : _blankCells(rowCount),
+          label: '',
+          cells: _blankCells(rowCount),
         ),
       for (var slot = 0; slot < cameraColumnCount; slot += 1)
         TimesheetColumn(

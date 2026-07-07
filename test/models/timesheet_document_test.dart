@@ -61,9 +61,9 @@ TimesheetDocument _document(
   );
 }
 
-TimesheetColumn _firstCelColumn(TimesheetDocument document) {
+TimesheetColumn _firstActionColumn(TimesheetDocument document) {
   return document.columns.firstWhere(
-    (column) => column.kind == TimesheetColumnKind.cel,
+    (column) => column.kind == TimesheetColumnKind.action,
   );
 }
 
@@ -116,49 +116,67 @@ void main() {
   });
 
   group('TimesheetDocument columns', () {
-    test(
-      'the paper form always shows fixed ACTION/S/CELL/CAM slots; the '
-      'onTimesheet animation layers fill the CELL slots in order',
-      () {
-        final document = _document(
-          _cut(
-            layers: [
-              _layer('Line'),
-              _layer('hidden', onTimesheet: false),
-              _layer('board', kind: LayerKind.storyboard),
-              _layer('Color'),
-            ],
-          ),
-        );
+    test('onTimesheet animation layers fill the ACTION slots in order, headed '
+        'by their real names; unbacked slots and the CELL block print no '
+        'placeholder letters', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer('Line'),
+            _layer('hidden', onTimesheet: false),
+            _layer('board', kind: LayerKind.storyboard),
+            _layer('Color'),
+          ],
+        ),
+      );
 
-        final celColumns = document.columns
-            .where((column) => column.kind == TimesheetColumnKind.cel)
-            .toList();
-        expect(celColumns, hasLength(8), reason: 'fixed CELL slots A..H');
-        expect(celColumns[0].label, 'A');
-        expect(celColumns[0].layerName, 'Line');
-        expect(celColumns[1].layerName, 'Color');
-        expect(celColumns[2].layerName, isNull);
-        expect(
-          document.columns
-              .where((column) => column.kind == TimesheetColumnKind.action)
-              .length,
-          8,
-        );
-        expect(
-          document.columns
-              .where((column) => column.kind == TimesheetColumnKind.se)
-              .map((column) => column.label),
-          ['S1', 'S2'],
-        );
-        expect(
-          document.columns
-              .where((column) => column.kind == TimesheetColumnKind.camera)
-              .map((column) => column.label),
-          ['1', '2'],
-        );
-      },
-    );
+      final actionColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.action)
+          .toList();
+      expect(actionColumns, hasLength(8), reason: 'fixed ACTION slots');
+      expect(actionColumns[0].label, 'Line');
+      expect(actionColumns[0].layerName, 'Line');
+      expect(actionColumns[1].label, 'Color');
+      expect(actionColumns[1].layerName, 'Color');
+      expect(actionColumns[2].label, isEmpty, reason: 'no A/B/C letters');
+      expect(actionColumns[2].layerName, isNull);
+
+      final celColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.cel)
+          .toList();
+      expect(celColumns, hasLength(8), reason: 'blank CELL form columns');
+      expect(
+        celColumns.every(
+          (column) => column.label.isEmpty && column.layerName == null,
+        ),
+        isTrue,
+        reason: 'the CELL block stays unlettered blank paper',
+      );
+      expect(
+        document.columns
+            .where((column) => column.kind == TimesheetColumnKind.se)
+            .map((column) => column.label),
+        ['S1', 'S2'],
+      );
+      expect(
+        document.columns
+            .where((column) => column.kind == TimesheetColumnKind.camera)
+            .map((column) => column.label),
+        ['1', '2'],
+      );
+    });
+
+    test('extra animation layers grow the ACTION block past the fixed 8', () {
+      final document = _document(
+        _cut(layers: [for (var i = 0; i < 10; i += 1) _layer('L$i')]),
+      );
+
+      final actionColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.action)
+          .toList();
+      expect(actionColumns, hasLength(10));
+      expect(actionColumns[9].layerName, 'L9');
+    });
 
     test('SE layers fill the S slots and extra ones grow the section', () {
       final twoSe = _document(
@@ -213,7 +231,7 @@ void main() {
         ),
       );
 
-      final cells = _firstCelColumn(document).cells;
+      final cells = _firstActionColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.drawing);
       expect(cells[0].label, 'A1');
       expect(cells[1].kind, TimesheetCellKind.held);
@@ -242,7 +260,7 @@ void main() {
         ),
       );
 
-      final cells = _firstCelColumn(document).cells;
+      final cells = _firstActionColumn(document).cells;
       expect(cells[1].kind, TimesheetCellKind.emptyRunStart);
       expect(cells[2].kind, TimesheetCellKind.empty);
       expect(cells[3].kind, TimesheetCellKind.mark);
@@ -256,7 +274,7 @@ void main() {
     test('rows beyond the playback range stay paper-blank', () {
       final document = _document(_cut(layers: [_layer('A')], duration: 10));
 
-      final cells = _firstCelColumn(document).cells;
+      final cells = _firstActionColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.emptyRunStart);
       expect(cells[10].kind, TimesheetCellKind.empty);
       expect(cells[143].kind, TimesheetCellKind.empty);
@@ -269,10 +287,7 @@ void main() {
           camera: CutCamera(
             keyframes: {
               2: CameraPose(center: CanvasPoint(x: 0, y: 0)),
-              6: CameraPose(
-                center: CanvasPoint(x: 5, y: 5),
-                zoom: 2,
-              ),
+              6: CameraPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
             },
           ),
         ),
