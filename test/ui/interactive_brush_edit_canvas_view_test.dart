@@ -4,7 +4,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
+import 'package:quick_animaker_v2/src/models/dirty_region.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -21,6 +24,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'brush_canvas_test_helpers.dart';
 
 void main() {
+  _settlingTileGroup();
   group('InteractiveBrushEditCanvasView', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
@@ -908,6 +912,40 @@ void main() {
 
       expect(find.byType(StoryboardPanel), findsNothing);
       expect(find.byType(TimelinePanel), findsNothing);
+    });
+  });
+}
+
+void _settlingTileGroup() {
+  group('settlingTilesForBounds', () {
+    BitmapTile tile(int x, int y) =>
+        BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2);
+
+    test('narrows the gate to the tiles the stroke touched', () {
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        tileSize: 2,
+        tiles: {
+          TileCoord(x: 0, y: 0): tile(0, 0),
+          TileCoord(x: 3, y: 3): tile(3, 3),
+        },
+      );
+
+      final touched = settlingTilesForBounds(
+        surface: surface,
+        bounds: DirtyRegion(
+          left: 0,
+          top: 0,
+          rightExclusive: 3,
+          bottomExclusive: 3,
+        ),
+      );
+      expect(touched.map((tile) => tile.coord), [
+        TileCoord(x: 0, y: 0),
+      ], reason: 'the far tile must not gate the overlay handoff');
+
+      final all = settlingTilesForBounds(surface: surface, bounds: null);
+      expect(all, hasLength(2), reason: 'unknown bounds fall back to all');
     });
   });
 }
