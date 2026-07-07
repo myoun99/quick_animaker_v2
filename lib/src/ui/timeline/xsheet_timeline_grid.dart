@@ -678,7 +678,6 @@ class _FrameNumberCell extends StatelessWidget {
       child: Container(
         width: metrics.layerControlsWidth,
         height: metrics.frameCellWidth,
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
               ? Color.alphaBlend(
@@ -694,15 +693,20 @@ class _FrameNumberCell extends StatelessWidget {
                 : colorScheme.outlineVariant,
           ),
         ),
+        // The Stack must FILL the cell (no Container alignment, which
+        // loosens constraints and shrink-wraps it to the text) so the
+        // cached strip's right edge is the rail/cells boundary — the
+        // transposed twin of the horizontal header's bottom-edge strip.
         child: Stack(
-          alignment: Alignment.center,
           children: [
-            Text(
-              '${frameIndex + 1}',
-              style: TextStyle(
-                color: outsidePlaybackRange
-                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                    : colorScheme.onSurface,
+            Center(
+              child: Text(
+                '${frameIndex + 1}',
+                style: TextStyle(
+                  color: outsidePlaybackRange
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                      : colorScheme.onSurface,
+                ),
               ),
             ),
             // Transposed cached-range strip: the horizontal header draws it
