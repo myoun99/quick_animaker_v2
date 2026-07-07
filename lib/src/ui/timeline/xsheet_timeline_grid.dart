@@ -887,7 +887,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                 ),
               ),
             ),
-          if (commaDrag != null && layer.kind != LayerKind.camera)
+          if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
             ...timelineRowBlockEdgeGrips(
               layer: layer,
               frameStartIndex: frameStartIndex,
@@ -1019,9 +1019,9 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  // The camera track has no compositing opacity; hide the
-                  // slider rather than offering a dead control.
-                  if (layer.kind != LayerKind.camera) ...[
+                  // Camera and instruction rows never composite; hide the
+                  // opacity slider rather than offering a dead control.
+                  if (layerKindHoldsDrawings(layer.kind)) ...[
                     Expanded(
                       child: Slider(
                         key: ValueKey<String>(

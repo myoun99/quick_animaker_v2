@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
@@ -41,22 +42,34 @@ void main() {
 
       final restored = serializer.decode(jsonString);
 
-      expect(restored, project);
+      // Decoding backfills each cut's SE/instruction fixture rows; the rest
+      // of the hierarchy round-trips verbatim and a second pass is stable.
+      expect(restored.id, project.id);
+      expect(restored.name, project.name);
+      expect(restored.fps, project.fps);
+      expect(restored.createdAt, project.createdAt);
+      final cut = _sampleCut();
+      expect(
+        restored.tracks.single.cuts.single,
+        cut.copyWith(layers: withEnsuredSectionLayers(cut.id, cut.layers)),
+      );
+      expect(serializer.decode(serializer.encode(restored)), restored);
     });
 
     test('preserves timeline marks through JSON', () {
       final restored = serializer.decode(serializer.encode(_sampleProject()));
 
+      // The ink layer stays first; loading appends the fixture rows after.
       expect(
-        restored.tracks.single.cuts.single.layers.single.timeline[3],
+        restored.tracks.single.cuts.single.layers.first.timeline[3],
         const TimelineExposure.mark(),
       );
       expect(
-        restored.tracks.single.cuts.single.layers.single.frames,
+        restored.tracks.single.cuts.single.layers.first.frames,
         hasLength(1),
       );
       expect(
-        restored.tracks.single.cuts.single.layers.single.timeline,
+        restored.tracks.single.cuts.single.layers.first.timeline,
         hasLength(2),
       );
     });
@@ -90,7 +103,7 @@ void main() {
       final restored = serializer.decode(jsonEncode(json));
 
       expect(
-        restored.tracks.single.cuts.single.layers.single.timeline[5],
+        restored.tracks.single.cuts.single.layers.first.timeline[5],
         const TimelineExposure.mark(),
       );
     });

@@ -159,9 +159,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
                 onPressed: () => onToggleLayerVisibility(layer.id),
               ),
-              // The camera track has no compositing opacity; hide the slider
-              // rather than offering a dead control.
-              if (layer.kind != LayerKind.camera) ...[
+              // Camera and instruction rows never composite; hide the
+              // opacity slider rather than offering a dead control.
+              if (layerKindHoldsDrawings(layer.kind)) ...[
                 SizedBox(
                   width: 64,
                   child: Slider(
@@ -217,7 +217,9 @@ IconData _iconForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => Icons.brush_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
+    LayerKind.art => Icons.landscape_outlined,
     LayerKind.se => Icons.music_note_outlined,
+    LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
   };
 }
@@ -226,7 +228,9 @@ String _semanticLabelForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => 'Animation layer',
     LayerKind.storyboard => 'Storyboard layer',
+    LayerKind.art => 'Art layer',
     LayerKind.se => 'SE layer',
+    LayerKind.instruction => 'Instruction layer',
     LayerKind.camera => 'Camera layer',
   };
 }

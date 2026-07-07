@@ -747,6 +747,108 @@ void main() {
       expect(fixture.historyManager.redoCount, 0);
     });
 
+    test('updateLayerKind refuses instruction on either side', () {
+      final cel = _layer(id: 'layer-1');
+      final instruction = _layer(id: 'layer-2', kind: LayerKind.instruction);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [cel, instruction]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      expect(
+        () => fixture.coordinator.updateLayerKind(
+          cutId: cutA.id,
+          layerId: cel.id,
+          kind: LayerKind.instruction,
+        ),
+        throwsStateError,
+      );
+      expect(
+        () => fixture.coordinator.updateLayerKind(
+          cutId: cutA.id,
+          layerId: instruction.id,
+          kind: LayerKind.animation,
+        ),
+        throwsStateError,
+      );
+      expect(fixture.historyManager.undoCount, 0);
+    });
+
+    test('updateLayerKind keeps the SE floor of two', () {
+      final se1 = _layer(id: 'layer-1', kind: LayerKind.se);
+      final se2 = _layer(id: 'layer-2', kind: LayerKind.se);
+      final se3 = _layer(id: 'layer-3', kind: LayerKind.se);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [se1, se2, se3]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      // Three SE rows: converting one away is fine.
+      fixture.coordinator.updateLayerKind(
+        cutId: cutA.id,
+        layerId: se3.id,
+        kind: LayerKind.animation,
+      );
+      expect(_layerById(fixture.project, se3.id).kind, LayerKind.animation);
+      expect(fixture.historyManager.undoCount, 1);
+
+      // Down at the floor: silently refused, no history entry.
+      fixture.coordinator.updateLayerKind(
+        cutId: cutA.id,
+        layerId: se2.id,
+        kind: LayerKind.animation,
+      );
+      expect(_layerById(fixture.project, se2.id).kind, LayerKind.se);
+      expect(fixture.historyManager.undoCount, 1);
+    });
+
+    test('deleteLayer keeps the SE, instruction and drawing floors', () {
+      final cel = _layer(id: 'layer-1');
+      final se1 = _layer(id: 'layer-2', kind: LayerKind.se);
+      final se2 = _layer(id: 'layer-3', kind: LayerKind.se);
+      final se3 = _layer(id: 'layer-4', kind: LayerKind.se);
+      final instruction = _layer(id: 'layer-5', kind: LayerKind.instruction);
+      final cutA = _cut(
+        id: 'cut-1',
+        name: 'Cut A',
+        layers: [cel, se1, se2, se3, instruction],
+      );
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      // The third SE row deletes; the floor pair does not.
+      fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: se3.id);
+      expect(fixture.historyManager.undoCount, 1);
+      fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: se2.id);
+      expect(fixture.historyManager.undoCount, 1);
+
+      // The only instruction row does not delete.
+      fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: instruction.id);
+      expect(fixture.historyManager.undoCount, 1);
+
+      // The last drawing-section layer does not delete even though SE and
+      // instruction rows remain.
+      fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: cel.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.project.tracks.single.cuts.single.layers, hasLength(4));
+    });
+
     test('setLayerTimesheet flips the flag through history', () {
       final layer = _layer(id: 'layer-1');
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);

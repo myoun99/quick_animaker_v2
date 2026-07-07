@@ -16,10 +16,13 @@ const double layerTimesheetSlotWidth = 24;
 const double layerMarkSlotWidth = 14;
 
 /// Which layer kinds carry the timesheet-output toggle: sheet-recordable
-/// rows (cel columns + the SE column). Camera always has its own sheet
-/// column, storyboard never appears on the sheet.
+/// rows (cel columns + the SE column; art cels ride the ACTION block like
+/// animation). Camera always has its own sheet column, storyboard and
+/// instruction rows never appear via this flag.
 bool layerKindEligibleForTimesheetToggle(LayerKind kind) {
-  return kind == LayerKind.animation || kind == LayerKind.se;
+  return kind == LayerKind.animation ||
+      kind == LayerKind.art ||
+      kind == LayerKind.se;
 }
 
 /// Chip color of [mark]; null for [LayerMark.none].

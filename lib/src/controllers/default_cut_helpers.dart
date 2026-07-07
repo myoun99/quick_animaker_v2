@@ -4,6 +4,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/layer_section_defaults.dart';
 import '../core/timeline/timeline_defaults.dart';
 import 'default_layer_helpers.dart';
 
@@ -47,6 +48,10 @@ Cut createDefaultCut({
           canvasSize: canvasSize,
         ),
       ),
+      // The timesheet fixture rows every cut carries: S1·S2 + CAM 1.
+      createSeLayer(cutId: cutId, slot: 1),
+      createSeLayer(cutId: cutId, slot: 2),
+      createInstructionLayer(cutId: cutId),
       // Last = bottom timeline row, and keeps the drawing layer as the
       // default active layer (selection falls back to layers.first).
       createCameraLayer(cutId: cutId),

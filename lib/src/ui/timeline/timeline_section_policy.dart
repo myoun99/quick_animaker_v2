@@ -13,9 +13,11 @@ enum TimelineSection { drawing, se, camera }
 
 TimelineSection timelineSectionForLayerKind(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation || LayerKind.storyboard => TimelineSection.drawing,
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,
-    LayerKind.camera => TimelineSection.camera,
+    LayerKind.instruction || LayerKind.camera => TimelineSection.camera,
   };
 }
 

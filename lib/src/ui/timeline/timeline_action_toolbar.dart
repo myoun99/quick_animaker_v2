@@ -98,6 +98,20 @@ class TimelineActionToolbar extends StatelessWidget {
                         : null,
                   ),
                   _iconButton(
+                    key: const ValueKey<String>('toggle-art-layer-button'),
+                    tooltip: 'Toggle Art Layer',
+                    icon: Icons.landscape_outlined,
+                    onPressed: session.canToggleTargetLayerArt
+                        ? session.toggleTargetLayerArt
+                        : null,
+                  ),
+                  _iconButton(
+                    key: const ValueKey<String>('add-instruction-layer-button'),
+                    tooltip: 'Add Instruction Layer',
+                    icon: Icons.theaters_outlined,
+                    onPressed: session.addInstructionLayer,
+                  ),
+                  _iconButton(
                     key: const ValueKey<String>('rename-layer-button'),
                     tooltip: 'Rename Layer',
                     icon: Icons.drive_file_rename_outline,

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
@@ -26,6 +26,7 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
 const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
+const _artToggleKey = ValueKey<String>('toggle-art-layer-button');
 const _undoKey = ValueKey<String>('undo-button');
 const _redoKey = ValueKey<String>('redo-button');
 const _cutId = CutId('phase-73-cut');
@@ -274,9 +275,8 @@ void main() {
     );
   });
 
-  testWidgets('SE toggle flips animation to SE and back with undo', (
-    tester,
-  ) async {
+  testWidgets('SE toggle flips animation to SE with undo; the floor of two '
+      'blocks toggling back', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
@@ -287,24 +287,84 @@ void main() {
     expect(_layer(repository).kind, LayerKind.se);
     expect(find.bySemanticsLabel('SE layer'), findsOneWidget);
 
+    // At (or below) the S1·S2 floor, an SE row cannot convert away — undo is
+    // the way back.
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
+
     await _tapKey(tester, _undoKey);
     expect(_layer(repository).kind, LayerKind.animation);
 
     await _tapKey(tester, _redoKey);
     expect(_layer(repository).kind, LayerKind.se);
-
-    // Back to animation via the same toggle.
-    await _tapKey(tester, _seToggleKey);
-    expect(_layer(repository).kind, LayerKind.animation);
   });
 
   // A storyboard layer cannot become SE directly, and an SE layer cannot
-  // become a storyboard directly — go through animation.
-  testWidgets('storyboard toggle is disabled for an SE layer', (tester) async {
+  // become a storyboard directly — go through animation. A lone SE row also
+  // sits below the S1·S2 floor, so its own toggle is disabled too.
+  testWidgets('kind toggles are disabled for a floor SE layer', (tester) async {
     await _pumpHome(tester, project: _projectWithLayer(kind: LayerKind.se));
 
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isTrue);
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+  });
+
+  testWidgets('art toggle flips animation to art and back with undo', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+
+    expect(find.byTooltip('Toggle Art Layer'), findsOneWidget);
+
+    await _tapKey(tester, _artToggleKey);
+
+    expect(_layer(repository).kind, LayerKind.art);
+    expect(find.bySemanticsLabel('Art layer'), findsOneWidget);
+    // Art rows use their own toggle; storyboard/SE toggles stay off.
+    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
+
+    await _tapKey(tester, _undoKey);
+    expect(_layer(repository).kind, LayerKind.animation);
+
+    await _tapKey(tester, _redoKey);
+    expect(_layer(repository).kind, LayerKind.art);
+
+    await _tapKey(tester, _artToggleKey);
+    expect(_layer(repository).kind, LayerKind.animation);
+  });
+
+  testWidgets('add instruction layer creates a protected CAM row', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+
+    await _tapKey(
+      tester,
+      const ValueKey<String>('add-instruction-layer-button'),
+    );
+
+    final layers = repository.requireProject().tracks.single.cuts.single.layers;
+    expect(layers, hasLength(2));
+    final instruction = layers.firstWhere(
+      (layer) => layer.kind == LayerKind.instruction,
+    );
+    expect(instruction.name, 'CAM 1');
+    expect(find.bySemanticsLabel('Instruction layer'), findsOneWidget);
+
+    // The new row is active; it is the only instruction row, so it cannot be
+    // deleted, and no kind toggle applies to it.
+    expect(
+      _isIconButtonEnabled(
+        tester,
+        const ValueKey<String>('delete-layer-button'),
+      ),
+      isFalse,
+    );
+    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
+    expect(_isIconButtonEnabled(tester, _artToggleKey), isFalse);
   });
 
   testWidgets('SE toggle is disabled for a storyboard layer', (tester) async {

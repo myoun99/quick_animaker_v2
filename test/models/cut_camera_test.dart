@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_camera.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 
 void main() {
   group('CameraPose', () {
@@ -117,7 +118,13 @@ void main() {
       final withCamera = cut.copyWith(
         camera: CutCamera(keyframes: {0: _pose(x: 10)}),
       );
-      expect(Cut.fromJson(withCamera.toJson()), withCamera);
+      // Loading backfills the SE/instruction fixture rows.
+      expect(
+        Cut.fromJson(withCamera.toJson()),
+        withCamera.copyWith(
+          layers: withEnsuredSectionLayers(withCamera.id, withCamera.layers),
+        ),
+      );
     });
 
     test('json without a camera field loads as an empty camera', () {

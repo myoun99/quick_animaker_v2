@@ -1700,9 +1700,18 @@ Line 8''';
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
+      // The drawing row sits at the bottom below the camera/CAM/SE fixture
+      // rows; scroll it into view via its RAIL row (cell-level ensureVisible
+      // would over-scroll the custom frame viewport and push frame 0 out of
+      // the virtualized window).
+      await tester.ensureVisible(
+        find.byKey(
+          const ValueKey<String>('timeline-layer-row-default-layer-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
       // Block A at index 0, block B at index 3 with an X gap between.
-      // Plain cell tap: ensureVisible over-scrolls the custom frame
-      // viewport and would push frame 0 out of the virtualized window.
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('new-frame-button'),
@@ -2581,8 +2590,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      // Drawing rows plus the always-present camera row.
-      expect(_timelineLayerRows(), findsNWidgets(3));
+      // Two drawing rows plus the always-present S1·S2/CAM 1/camera rows.
+      expect(_timelineLayerRows(), findsNWidgets(6));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2592,10 +2601,10 @@ Line 8''';
       );
 
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(2));
+      expect(_timelineLayerRows(), findsNWidgets(5));
 
       await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(3));
+      expect(_timelineLayerRows(), findsNWidgets(6));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2669,8 +2678,8 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      // Drawing rows plus the always-present camera row.
-      expect(_timelineLayerRows(), findsNWidgets(3));
+      // Two drawing rows plus the always-present S1·S2/CAM 1/camera rows.
+      expect(_timelineLayerRows(), findsNWidgets(6));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),

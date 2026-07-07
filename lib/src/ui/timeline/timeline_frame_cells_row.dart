@@ -151,7 +151,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
               ),
             ),
           ),
-        if (commaDrag != null && layer.kind != LayerKind.camera)
+        if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
           ...timelineRowBlockEdgeGrips(
             layer: layer,
             frameStartIndex: frameStartIndex,
