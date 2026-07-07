@@ -29,9 +29,11 @@ import 'panels/workspace_layout_store.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_tab_host.dart';
+import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline_tab_host.dart';
+import 'timesheet_tab_host.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
 /// bottom dock, plus the slim edge docks that home the PS/CSP-style tool
@@ -90,6 +92,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String cameraTabId = 'camera';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
+  static const String timesheetTabId = 'timesheet';
 
   /// The size frame-axis panels lay out at when docked somewhere smaller
   /// (their label rails and toolbars assume a wide region); the tab shell
@@ -125,7 +128,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ],
     EditorWorkspace.bottomGroupId: [
       DockSection(
-        tabs: [EditorWorkspace.timelineTabId, EditorWorkspace.storyboardTabId],
+        tabs: [
+          EditorWorkspace.timelineTabId,
+          EditorWorkspace.storyboardTabId,
+          EditorWorkspace.timesheetTabId,
+        ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
     ],
@@ -178,6 +185,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
+
+  /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
+  /// viewport (zoom/pan) — owned here so they survive tab switches.
+  final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
+  final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
 
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
@@ -255,6 +267,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
+    _timesheetContinuous.dispose();
+    _timesheetViewport.dispose();
     _draggingTab.dispose();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);
@@ -507,6 +521,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _showSecondsDisplay.value = show;
               },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
+            ),
+          ),
+        );
+      case EditorWorkspace.timesheetTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Timesheet',
+          icon: Icons.table_chart_outlined,
+          locked: locked,
+          builder: (context) => ListenableBuilder(
+            listenable: Listenable.merge([
+              _timesheetContinuous,
+              _timesheetViewport,
+            ]),
+            builder: (context, _) => TimesheetTabHost(
+              session: widget.session,
+              continuous: _timesheetContinuous.value,
+              onContinuousChanged: (continuous) {
+                _timesheetContinuous.value = continuous;
+              },
+              viewport: _timesheetViewport.value,
+              onViewportChanged: (viewport) {
+                _timesheetViewport.value = viewport;
+              },
             ),
           ),
         );
