@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -77,9 +78,13 @@ class TimelineFrameCell extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     // SE rows follow the paper sheet's SE-column rule: no paper block fill
     // (the row-level overlay draws the label + duration line instead), so
-    // covered cells keep the empty-cell background/border styling.
+    // covered cells keep the empty-cell background/border styling. Camera
+    // rows do the same — their "coverage" is the lane-key union summary,
+    // drawn as accent ◆/■ markers instead of paper cells.
+    final cameraSummaryCell = layer.kind == LayerKind.camera;
     final seSheetCell = layerKindUsesSeSheetCells(layer.kind);
-    final effectiveExposureState = seSheetCell && exposureState.isCovered
+    final effectiveExposureState =
+        (seSheetCell || cameraSummaryCell) && exposureState.isCovered
         ? TimelineCellExposureState.uncovered
         : exposureState;
     final styleColors = timelineCellStyleColors(
@@ -135,7 +140,7 @@ class TimelineFrameCell extends StatelessWidget {
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: borderWidth,
-          exposureBlockSegment: seSheetCell
+          exposureBlockSegment: seSheetCell || cameraSummaryCell
               ? TimelineExposureBlockVisualSegment.none
               : exposureBlockSegment,
           axis: axis,
@@ -156,11 +161,18 @@ class TimelineFrameCell extends StatelessWidget {
                       outsidePlaybackRange: outsidePlaybackRange,
                     ),
               semanticsLabel: _semanticsLabelForCell(
+                layer: layer,
                 exposureState: exposureState,
                 frameName: frameName,
               ),
               style: TextStyle(
-                color: timelineCellUsesDrawingInk(effectiveExposureState)
+                // Camera key-summary markers read like the lane key
+                // diamonds: accent, dimmed outside the playback range.
+                color: cameraSummaryCell && exposureState.isCovered
+                    ? AppColors.accent.withValues(
+                        alpha: outsidePlaybackRange ? 0.55 : 1,
+                      )
+                    : timelineCellUsesDrawingInk(effectiveExposureState)
                     ? (outsidePlaybackRange
                           ? timelineDrawingInkColor.withValues(alpha: 0.55)
                           : timelineDrawingInkColor)
@@ -256,13 +268,16 @@ String _markerForCell({
 }
 
 String? _semanticsLabelForCell({
+  required Layer layer,
   required TimelineCellExposureState exposureState,
   String? frameName,
 }) {
   return switch (exposureState) {
     TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>
-      frameName == null || frameName.isEmpty
+      layer.kind == LayerKind.camera
+          ? 'camera keyframe'
+          : frameName == null || frameName.isEmpty
           ? 'drawing start'
           : 'drawing start $frameName',
     TimelineCellExposureState.held => 'held exposure',

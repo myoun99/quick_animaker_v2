@@ -25,6 +25,7 @@ import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/track_id.dart';
 import '../services/brush_frame_display_cache_renderer.dart';
@@ -1839,7 +1840,29 @@ class EditorSessionManager extends ChangeNotifier {
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
   }
 
+  /// Camera rows summarize their property lanes Blender-dopesheet style:
+  /// the union of lane keys per frame, ■ when every keyed lane holds there
+  /// and ◆ otherwise. The glyph rides the frame-name channel — the cell
+  /// renders it marker-styled (no paper block).
   String? frameNameForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      final track = activeCut.camera.track;
+      final interpolations = [
+        track.anchorPoint.keyAt(frameIndex)?.interpolation,
+        track.position.keyAt(frameIndex)?.interpolation,
+        track.scale.keyAt(frameIndex)?.interpolation,
+        track.rotation.keyAt(frameIndex)?.interpolation,
+        track.opacity.keyAt(frameIndex)?.interpolation,
+      ].whereType<PropertyKeyInterpolation>().toList();
+      if (interpolations.isEmpty) {
+        return null;
+      }
+      return interpolations.every(
+            (interpolation) => interpolation == PropertyKeyInterpolation.hold,
+          )
+          ? '■'
+          : '◆';
+    }
     return _timelineController
         .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
         ?.name;
