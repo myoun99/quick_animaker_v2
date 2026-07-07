@@ -8,10 +8,11 @@ import '../models/dirty_region.dart';
 /// [sourceDabs] remain the durable source of truth. [strokePixels] /
 /// [strokeBounds], when present, carry the stroke already rasterized
 /// incrementally while drawing (`BrushLiveStrokeRasterizer`, straight-alpha
-/// canvas-sized RGBA): the commit then composites this buffer over the
-/// existing artwork in one pass instead of re-running the per-dab loop,
-/// which both removes the pen-up hiccup and guarantees the committed pixels
-/// are exactly the pixels that were on screen while drawing.
+/// RGBA, BOUNDS-LOCAL: row-major with stride = the bounds width): the
+/// commit then composites this buffer over the existing artwork in one
+/// pass instead of re-running the per-dab loop, which both removes the
+/// pen-up hiccup and guarantees the committed pixels are exactly the
+/// pixels that were on screen while drawing.
 class BrushStrokeCommitData {
   BrushStrokeCommitData({
     required List<BrushDab> sourceDabs,
