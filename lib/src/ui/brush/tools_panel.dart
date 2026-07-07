@@ -19,33 +19,38 @@ class ToolsPanel extends StatelessWidget {
   final ValueChanged<CanvasTool> onToolChanged;
 
   /// The edge dock width this panel is designed for (fits the compact
-  /// tools tab with its lock glyph plus the tool buttons).
-  static const double dockWidth = 56;
+  /// tools tab with its close/lock glyphs plus the tool buttons).
+  static const double dockWidth = 72;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      key: const ValueKey<String>('tools-panel'),
-      children: [
-        const SizedBox(height: 6),
-        _ToolButton(
-          keyValue: 'tool-brush-button',
-          tooltip: 'Brush Tool',
-          icon: Icons.brush_outlined,
-          selected: tool == CanvasTool.brush,
-          onPressed: () => onToolChanged(CanvasTool.brush),
-        ),
-        const SizedBox(height: 4),
-        _ToolButton(
-          keyValue: 'tool-eraser-button',
-          tooltip: 'Eraser Tool',
-          // No dedicated eraser glyph in this icon set; the "magic
-          // eraser" wand reads closest.
-          icon: Icons.auto_fix_normal,
-          selected: tool == CanvasTool.eraser,
-          onPressed: () => onToolChanged(CanvasTool.eraser),
-        ),
-      ],
+    // Left-aligned like a PS tool column: docked into a wide dock the
+    // buttons must hug the panel's left edge, not float centered.
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, top: 6),
+      child: Column(
+        key: const ValueKey<String>('tools-panel'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ToolButton(
+            keyValue: 'tool-brush-button',
+            tooltip: 'Brush Tool',
+            icon: Icons.brush_outlined,
+            selected: tool == CanvasTool.brush,
+            onPressed: () => onToolChanged(CanvasTool.brush),
+          ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-eraser-button',
+            tooltip: 'Eraser Tool',
+            // No dedicated eraser glyph in this icon set; the "magic
+            // eraser" wand reads closest.
+            icon: Icons.auto_fix_normal,
+            selected: tool == CanvasTool.eraser,
+            onPressed: () => onToolChanged(CanvasTool.eraser),
+          ),
+        ],
+      ),
     );
   }
 }

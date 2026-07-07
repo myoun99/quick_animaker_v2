@@ -76,6 +76,7 @@ class EditorPanelTabs extends StatelessWidget {
     this.canAcceptTab,
     this.onTabDragChanged,
     this.onToggleLock,
+    this.onCloseTab,
   }) : assert(tabs.length > 0),
        assert(
          onTabMoved == null || groupId != null,
@@ -106,9 +107,13 @@ class EditorPanelTabs extends StatelessWidget {
   /// for the tab in flight.
   final ValueChanged<EditorPanelTabDragData?>? onTabDragChanged;
 
-  /// Toggles a tab's drag lock (the ACTIVE tab button carries the toggle,
-  /// left of its name). Null hides the toggle.
+  /// Toggles a tab's drag lock (every tab button carries the toggle, left
+  /// of its name). Null hides the toggle.
   final ValueChanged<String>? onToggleLock;
+
+  /// Closes (hides) a panel via the X on its tab. Null hides the button;
+  /// locked tabs never show it (lock = pinned).
+  final ValueChanged<String>? onCloseTab;
 
   static const double stripHeight = 30;
 
@@ -131,19 +136,30 @@ class EditorPanelTabs extends StatelessWidget {
         Container(
           height: EditorPanelTabs.stripHeight,
           color: colorScheme.surfaceContainerLow,
-          child: Row(
+          child: Stack(
             children: [
-              for (var index = 0; index < tabs.length; index += 1)
-                _buildTabButton(index),
+              // The append drop target carpets the whole strip BEHIND the
+              // tabs: drops on empty strip space append, drops on a tab
+              // hit its own insertion targets above.
               if (_dragEnabled)
-                Expanded(
+                Positioned.fill(
                   child: _TabStripTailDropRegion(
                     willAccept: _willAccept,
                     onDropped: (data) => onTabMoved!(data, tabs.length),
                   ),
-                )
-              else
-                const Spacer(),
+                ),
+              // Tabs keep their natural width (name always visible) and
+              // the strip scrolls when they overflow the dock.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var index = 0; index < tabs.length; index += 1)
+                      _buildTabButton(index),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -201,9 +217,13 @@ class EditorPanelTabs extends StatelessWidget {
       selected: selected,
       locked: tab.locked,
       lockKey: ValueKey<String>('panel-lock-${tab.id}'),
-      // The ACTIVE tab carries the drag-lock toggle, left of its name.
-      onToggleLock: selected && onToggleLock != null
-          ? () => onToggleLock!(tab.id)
+      closeKey: ValueKey<String>('panel-close-${tab.id}'),
+      // Every tab carries its controls — selecting a tab must never
+      // reshape its button.
+      onToggleLock: onToggleLock != null ? () => onToggleLock!(tab.id) : null,
+      // Locked tabs are pinned: no close button.
+      onClose: onCloseTab != null && !tab.locked
+          ? () => onCloseTab!(tab.id)
           : null,
       onPressed: () => onTabSelected(tab.id),
     );
@@ -341,44 +361,6 @@ class _TabStripTailDropRegion extends StatelessWidget {
   }
 }
 
-/// The tappable drag-lock glyph on an active tab button.
-class _TabLockGlyph extends StatelessWidget {
-  const _TabLockGlyph({
-    required this.lockKey,
-    required this.label,
-    required this.locked,
-    required this.color,
-    required this.onToggleLock,
-  });
-
-  final Key lockKey;
-  final String label;
-  final bool locked;
-  final Color color;
-  final VoidCallback onToggleLock;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: locked ? 'Unlock $label drag' : 'Lock $label drag',
-      triggerMode: TooltipTriggerMode.manual,
-      child: GestureDetector(
-        key: lockKey,
-        behavior: HitTestBehavior.opaque,
-        onTap: onToggleLock,
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Icon(
-            locked ? Icons.lock_outline : Icons.lock_open,
-            size: 11,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The floating chip under the pointer while a tab is dragged.
 class _PanelTabDragFeedback extends StatelessWidget {
   const _PanelTabDragFeedback({required this.label, required this.icon});
@@ -420,8 +402,10 @@ class _PanelTabButton extends StatelessWidget {
     required this.selected,
     required this.locked,
     required this.lockKey,
+    required this.closeKey,
     required this.onPressed,
     this.onToggleLock,
+    this.onClose,
   });
 
   final String label;
@@ -430,11 +414,14 @@ class _PanelTabButton extends StatelessWidget {
   final bool selected;
   final bool locked;
   final Key lockKey;
+  final Key closeKey;
   final VoidCallback onPressed;
 
-  /// Non-null on the active tab: taps on the lock glyph toggle the drag
-  /// lock instead of re-selecting the tab.
+  /// Taps on the lock glyph toggle the drag lock instead of selecting.
   final VoidCallback? onToggleLock;
+
+  /// Taps on the X close (hide) the panel; null hides the button.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -443,15 +430,17 @@ class _PanelTabButton extends StatelessWidget {
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
 
+    // Every tab shows [X] [lock] [name] all the time — selection only
+    // changes colors, never the button's shape.
     return Tooltip(
       message: label,
       // Manual trigger: hover tooltips still work, but no long-press
-      // recognizer competes with the tab's LongPressDraggable lift.
+      // recognizer competes with drag lifts.
       triggerMode: TooltipTriggerMode.manual,
       child: InkWell(
         onTap: onPressed,
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: selected
                 ? colorScheme.surfaceContainerHighest
@@ -466,25 +455,34 @@ class _PanelTabButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: foreground),
-              // The drag-lock lives on the tab itself, left of the panel
-              // name: tappable on the active tab, a passive badge on
-              // locked inactive tabs.
-              if (onToggleLock != null) ...[
-                const SizedBox(width: 4),
-                _TabLockGlyph(
-                  lockKey: lockKey,
-                  label: label,
-                  locked: locked,
-                  color: foreground,
-                  onToggleLock: onToggleLock!,
+              if (onClose != null)
+                _TabGlyphButton(
+                  glyphKey: closeKey,
+                  tooltip: 'Close $label',
+                  icon: Icons.close,
+                  color: colorScheme.onSurfaceVariant,
+                  onTap: onClose!,
                 ),
-              ] else if (locked) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.lock_outline, size: 10, color: foreground),
-              ],
-              if (!compact) ...[
-                const SizedBox(width: 6),
+              if (onToggleLock != null)
+                _TabGlyphButton(
+                  glyphKey: lockKey,
+                  tooltip: locked ? 'Unlock $label drag' : 'Lock $label drag',
+                  icon: locked ? Icons.lock : Icons.lock_open_outlined,
+                  // The lock reads at a glance: accent ONLY when locked.
+                  color: locked
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                  onTap: onToggleLock!,
+                )
+              else if (locked)
+                Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.lock, size: 11, color: colorScheme.primary),
+                ),
+              const SizedBox(width: 4),
+              if (compact)
+                Icon(icon, size: 14, color: foreground)
+              else
                 Text(
                   label,
                   style: TextStyle(
@@ -493,9 +491,43 @@ class _PanelTabButton extends StatelessWidget {
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
-              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small tappable glyph inside a tab button (close / lock): its own hit
+/// region so taps don't select the tab.
+class _TabGlyphButton extends StatelessWidget {
+  const _TabGlyphButton({
+    required this.glyphKey,
+    required this.tooltip,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final Key glyphKey;
+  final String tooltip;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.manual,
+      child: GestureDetector(
+        key: glyphKey,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Icon(icon, size: 11, color: color),
         ),
       ),
     );

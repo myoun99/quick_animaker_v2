@@ -239,6 +239,28 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Hides a panel: removes its tab from the layout entirely (empty
+  /// sections are pruned; a dock may collapse). Reopen via [addTab].
+  void removeTab(String tabId) {
+    final from = locateTab(tabId);
+    if (from == null) {
+      return;
+    }
+    _removeTab(from);
+    notifyListeners();
+  }
+
+  /// Re-opens a hidden panel as a trailing section of [dockId]; no-op when
+  /// the tab is already placed or the dock is unknown.
+  void addTab(String tabId, {required String toDockId}) {
+    final sections = _docks[toDockId];
+    if (sections == null || locateTab(tabId) != null) {
+      return;
+    }
+    sections.add(DockSection(tabs: [tabId]));
+    notifyListeners();
+  }
+
   /// Serializes the whole dock layout (tabs, active tabs, section weights,
   /// dock extents) for persistence.
   Map<String, Object?> toJson() => {

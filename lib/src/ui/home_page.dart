@@ -8,6 +8,7 @@ import '../services/project_repository.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'export/export_dialog.dart';
+import 'panels/workspace_panels_menu.dart';
 
 /// The editor shell: app bar plus the dockable-panel workspace. Every
 /// panel's WIRING lives in its own host file (timeline_tab_host.dart,
@@ -26,6 +27,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final EditorSessionManager _session;
+  final WorkspacePanelsMenuController _panelsMenu =
+      WorkspacePanelsMenuController();
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _session.removeListener(_onSessionChanged);
     _session.dispose();
+    _panelsMenu.dispose();
     super.dispose();
   }
 
@@ -53,6 +57,26 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('QuickAnimaker'),
         actions: [
+          // The Panels menu: every panel with its visibility — closed
+          // (X-ed) panels reopen from here, PS Window-menu style.
+          ListenableBuilder(
+            listenable: _panelsMenu,
+            builder: (context, _) => PopupMenuButton<String>(
+              key: const ValueKey<String>('panels-menu-button'),
+              tooltip: 'Panels',
+              icon: const Icon(Icons.space_dashboard_outlined),
+              onSelected: _panelsMenu.toggle,
+              itemBuilder: (context) => [
+                for (final entry in _panelsMenu.entries)
+                  CheckedPopupMenuItem<String>(
+                    key: ValueKey<String>('panels-menu-item-${entry.tabId}'),
+                    value: entry.tabId,
+                    checked: entry.visible,
+                    child: Text(entry.label),
+                  ),
+              ],
+            ),
+          ),
           IconButton(
             key: const ValueKey<String>('undo-button'),
             tooltip: 'Undo',
@@ -81,7 +105,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: EditorWorkspace(session: _session),
+      body: EditorWorkspace(session: _session, panelsMenu: _panelsMenu),
     );
   }
 }

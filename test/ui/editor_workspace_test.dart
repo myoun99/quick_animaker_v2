@@ -26,6 +26,15 @@ const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
   await tester.pumpAndSettle();
+  // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
+  // every glyph 12px wide — the three palette tabs need ~480px, far past
+  // the default 260px dock. Widen the dock so every tab (and its drop
+  // target) is hittable.
+  await tester.drag(
+    find.byKey(const ValueKey<String>('dock-resize-left')),
+    const Offset(320, 0),
+  );
+  await tester.pumpAndSettle();
 }
 
 /// Drags a tab to a target (drags start immediately once the pointer
@@ -364,6 +373,54 @@ void main() {
       );
       // Selection is untouched by reordering.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
+    });
+  });
+
+  group('EditorWorkspace panel close + Panels menu', () {
+    testWidgets('the X on a tab closes the panel; the menu reopens it', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panel-close-brushes')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_brushesTabKey), findsNothing);
+      expect(find.byType(BrushPresetPanel), findsNothing);
+      // The neighbouring tab takes over the section.
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+
+      // Reopen from the AppBar's Panels menu.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panels-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panels-menu-item-brushes')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_brushesTabKey), findsOneWidget);
+    });
+
+    testWidgets('locked tabs show no close button', (tester) async {
+      await _pumpHome(tester);
+
+      // The canvas ships locked: no X.
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        findsNothing,
+      );
+      // Unlocking reveals it.
+      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        findsOneWidget,
+      );
     });
   });
 
