@@ -15,6 +15,7 @@ class TimelinePlayhead extends StatelessWidget {
     required this.leadingFrameSpacerWidth,
     required this.metrics,
     required this.layerCount,
+    this.crossAxisExtent,
     this.axis = Axis.horizontal,
   });
 
@@ -24,6 +25,11 @@ class TimelinePlayhead extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final int layerCount;
+
+  /// Explicit cross-axis extent (rows are no longer uniformly tall once a
+  /// section collapses to its slim strip); falls back to the uniform
+  /// [layerCount]-based height.
+  final double? crossAxisExtent;
 
   /// The frame axis direction: a column tint in the horizontal timeline, a
   /// row tint in the X-sheet. The offset math is shared.
@@ -40,7 +46,8 @@ class TimelinePlayhead extends StatelessWidget {
   }
 
   double get _height {
-    return metrics.layerRowHeight * (1 + (layerCount > 0 ? layerCount : 1));
+    return crossAxisExtent ??
+        metrics.layerRowHeight * (1 + (layerCount > 0 ? layerCount : 1));
   }
 
   @override

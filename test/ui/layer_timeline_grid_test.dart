@@ -1385,7 +1385,9 @@ void main() {
     );
 
     expect(column, findsOneWidget);
-    expect(tester.getSize(column), const Size(48, 104));
+    // The playhead tint spans exactly the rows' content extent (rows are
+    // no longer uniformly tall once a section collapses to its slim strip).
+    expect(tester.getSize(column), const Size(48, 52));
 
     final container = tester.widget<Container>(column);
     expect(container.color, timelinePlayheadColor.withValues(alpha: 0.18));

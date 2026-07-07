@@ -92,14 +92,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
     return Container(
       key: ValueKey<String>('timeline-lane-label-${layer.id}-${lane.laneId}'),
-      width: widget.metrics.layerControlsWidth,
+      // The section bracket occupies the leading gutter beside the rail.
+      width:
+          widget.metrics.layerControlsWidth -
+          widget.metrics.sectionLabelGutterWidth,
       height: widget.metrics.layerRowHeight,
-      // Indent past the section gutter so lane labels stay aligned under
-      // their layer's controls.
-      padding: EdgeInsets.only(
-        left: 24 + widget.metrics.sectionLabelGutterWidth,
-        right: 8,
-      ),
+      // Indent past the twirl-down chevron slot so lane labels stay aligned
+      // under their layer's controls.
+      padding: const EdgeInsets.only(left: 24, right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),

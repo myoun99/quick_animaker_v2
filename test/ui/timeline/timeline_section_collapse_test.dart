@@ -63,6 +63,14 @@ Future<void> _pump(WidgetTester tester) async {
 Finder _row(String layerId) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$layerId'));
 
+/// Taps near a section bracket/strip's top-left corner: a long bracket
+/// segment's CENTER can sit below the test viewport's fold, where a plain
+/// tap() silently misses.
+Future<void> _tapSectionControl(WidgetTester tester, Finder finder) async {
+  await tester.tapAt(tester.getRect(finder).topLeft + const Offset(10, 8));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('buildTimelineDisplayRows collapsedSections', () {
     test('folds a section to one anchored stub row', () {
@@ -118,7 +126,7 @@ void main() {
     ) async {
       await _pump(tester);
 
-      // Collapsible sections carry the gutter toggle on their first row.
+      // Collapsible sections carry the toggle on their bracket segment.
       expect(
         find.byKey(const ValueKey<String>('timeline-section-collapse-se')),
         findsOneWidget,
@@ -127,13 +135,13 @@ void main() {
         find.byKey(const ValueKey<String>('timeline-section-collapse-camera')),
         findsOneWidget,
       );
-      // The drawing section prints its label without a toggle.
+      // The drawing section prints its bracket label without a toggle.
       expect(find.text('ACTION'), findsOneWidget);
 
-      await tester.tap(
+      await _tapSectionControl(
+        tester,
         find.byKey(const ValueKey<String>('timeline-section-collapse-se')),
       );
-      await tester.pumpAndSettle();
 
       expect(_row('se-1'), findsNothing);
       expect(_row('se-2'), findsNothing);
@@ -146,11 +154,41 @@ void main() {
       expect(_row('cel-a'), findsOneWidget);
       expect(_row('cam'), findsOneWidget);
 
-      await tester.tap(stub);
-      await tester.pumpAndSettle();
+      await _tapSectionControl(tester, stub);
       expect(_row('se-1'), findsOneWidget);
       expect(_row('se-2'), findsOneWidget);
       expect(stub, findsNothing);
+    });
+
+    testWidgets('bracket labels read from the right; a collapsed section '
+        'folds to the slim strip with no frame row', (tester) async {
+      await _pump(tester);
+
+      // The bracket label is rotated to read bottom-to-top (tilt your head
+      // RIGHT — the paper sheet's heading laid time-axis-horizontal).
+      final rotated = tester.widget<RotatedBox>(
+        find.ancestor(
+          of: find.text('ACTION'),
+          matching: find.byType(RotatedBox),
+        ),
+      );
+      expect(rotated.quarterTurns, 3);
+
+      await _tapSectionControl(
+        tester,
+        find.byKey(const ValueKey<String>('timeline-section-collapse-se')),
+      );
+
+      // Fully folded: the rail strip and the frame-area band are both slim
+      // (22px, not a 52px row) and the frame band carries no cells.
+      final railStrip = tester.getSize(
+        find.byKey(const ValueKey<String>('timeline-section-stub-rail-se')),
+      );
+      expect(railStrip.height, 22);
+      final cellsBand = tester.getSize(
+        find.byKey(const ValueKey<String>('timeline-section-stub-row-se')),
+      );
+      expect(cellsBand.height, 22);
     });
 
     testWidgets('camera fold hides the camera AND instruction rows', (
@@ -158,10 +196,10 @@ void main() {
     ) async {
       await _pump(tester);
 
-      await tester.tap(
+      await _tapSectionControl(
+        tester,
         find.byKey(const ValueKey<String>('timeline-section-collapse-camera')),
       );
-      await tester.pumpAndSettle();
 
       expect(_row('cam'), findsNothing);
       expect(_row('cam-inst'), findsNothing);
@@ -177,10 +215,10 @@ void main() {
       await _pump(tester);
 
       // Collapse SE in the horizontal timeline first.
-      await tester.tap(
+      await _tapSectionControl(
+        tester,
         find.byKey(const ValueKey<String>('timeline-section-collapse-se')),
       );
-      await tester.pumpAndSettle();
 
       await tester.tap(
         find.byKey(
@@ -189,7 +227,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The X-sheet shows the same fold as a stub column.
+      // The X-sheet shows the same fold as a slim stub column.
       final stubHeader = find.byKey(
         const ValueKey<String>('xsheet-section-stub-header-se'),
       );
@@ -199,10 +237,9 @@ void main() {
         findsNothing,
       );
 
-      // Expand from the X-sheet; the columns return, and the section-start
-      // column now carries the fold chevron.
-      await tester.tap(stubHeader);
-      await tester.pumpAndSettle();
+      // Expand from the X-sheet; the columns return, and the section band
+      // above the headers carries the fold chevron.
+      await _tapSectionControl(tester, stubHeader);
       expect(
         find.byKey(const ValueKey<String>('xsheet-layer-header-se-1')),
         findsOneWidget,
