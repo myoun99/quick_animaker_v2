@@ -157,7 +157,9 @@ class _InstructionSpan extends StatelessWidget {
     final accent = def?.colorValue == null
         ? textColor
         : Color(def!.colorValue!);
-    final name = def?.name ?? event.instructionId;
+    // The mark and the writing are independent: free per-event text wins,
+    // the vocabulary name is the fallback.
+    final name = event.displayLabel(def);
     final valueStyle = TextStyle(
       color: textColor.withValues(alpha: 0.75),
       fontSize: 10,

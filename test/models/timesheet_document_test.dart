@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -308,6 +309,112 @@ void main() {
         ),
         isEmpty,
       );
+    });
+
+    test('instruction rows fill CAM 2+ with writing, arrow span and A→B', () {
+      final document = TimesheetDocument.fromCut(
+        cut: _cut(
+          layers: [
+            _layer('A'),
+            Layer(
+              id: const LayerId('cam-inst'),
+              name: 'CAM 1',
+              kind: LayerKind.instruction,
+              frames: const [],
+              timeline: const {},
+              instructions: {
+                2: const InstructionEvent(
+                  instructionId: 'pan',
+                  length: 4,
+                  valueA: 'A',
+                  valueB: 'B',
+                ),
+                10: const InstructionEvent(
+                  instructionId: 'fi',
+                  length: 1,
+                  text: 'ゆっくりFI',
+                ),
+              },
+            ),
+          ],
+          duration: 24,
+        ),
+        projectName: 'Project',
+        fps: 24,
+        pageSeconds: 6,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+
+      final cameraColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.camera)
+          .toList();
+      expect(cameraColumns, hasLength(2));
+      expect(cameraColumns[1].layerName, 'CAM 1');
+
+      final cells = cameraColumns[1].cells;
+      expect(cells[2].kind, TimesheetCellKind.instructionStart);
+      expect(cells[2].label, 'PAN', reason: 'vocabulary-name fallback');
+      expect(cells[2].spanLength, 4);
+      expect(cells[2].valueA, 'A');
+      expect(cells[3].kind, TimesheetCellKind.instructionSpan);
+      expect(cells[5].kind, TimesheetCellKind.instructionEnd);
+      expect(cells[5].valueB, 'B');
+      // Free per-event text wins over the vocabulary name.
+      expect(cells[10].kind, TimesheetCellKind.instructionStart);
+      expect(cells[10].label, 'ゆっくりFI');
+      expect(cells[10].spanLength, 1);
+      expect(cells[11].kind, TimesheetCellKind.empty);
+    });
+
+    test('a third instruction row grows the CAM block past the fixed 2', () {
+      Layer instruction(String id) => Layer(
+        id: LayerId(id),
+        name: id,
+        kind: LayerKind.instruction,
+        frames: const [],
+        timeline: const {},
+      );
+      final document = _document(
+        _cut(layers: [instruction('cam-1'), instruction('cam-2')]),
+      );
+
+      expect(
+        document.columns
+            .where((column) => column.kind == TimesheetColumnKind.camera)
+            .length,
+        3,
+        reason: 'camera keys + two instruction rows',
+      );
+    });
+
+    test('drawing starts carry spanLength for vertical sheet text', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'voice',
+              kind: LayerKind.se,
+              frames: [
+                Frame(
+                  id: const FrameId('f1'),
+                  duration: 5,
+                  name: 'せりふ',
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                1: const TimelineExposure.drawing(FrameId('f1'), length: 5),
+              },
+            ),
+          ],
+          duration: 12,
+        ),
+      );
+
+      final seColumn = document.columns.firstWhere(
+        (column) => column.kind == TimesheetColumnKind.se,
+      );
+      expect(seColumn.cells[1].spanLength, 5);
     });
 
     test('rows beyond the playback range stay paper-blank', () {

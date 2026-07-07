@@ -191,6 +191,44 @@ void main() {
     expect(_camLayer(repository).instructions, isEmpty);
   });
 
+  testWidgets('free event text shows over the vocabulary name and edits '
+      'through the dialog', (tester) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(
+        instructions: {
+          2: const InstructionEvent(
+            instructionId: 'pan',
+            length: 6,
+            text: 'メモリPAN',
+          ),
+        },
+      ),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    // The chip prints the free text, not 'PAN'.
+    expect(find.text('メモリPAN'), findsOneWidget);
+    expect(find.text('PAN'), findsNothing);
+
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-2')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instruction-text-field')),
+      '早いPAN',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_camLayer(repository).instructions[2]!.text, '早いPAN');
+    expect(find.text('早いPAN'), findsOneWidget);
+  });
+
   testWidgets('double-tap on an existing event edits it; Delete removes', (
     tester,
   ) async {

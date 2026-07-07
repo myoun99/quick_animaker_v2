@@ -107,6 +107,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           projectName: session.repository.requireProject().name,
           fps: session.projectFps,
           info: session.timesheetInfo,
+          instructionDefById: session.cameraInstructionSet.defById,
         );
         final layout = TimesheetDocumentLayout(
           document: document,

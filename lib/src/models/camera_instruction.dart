@@ -172,6 +172,7 @@ class InstructionEvent {
   const InstructionEvent({
     required this.instructionId,
     required this.length,
+    this.text,
     this.valueA,
     this.valueB,
   });
@@ -183,19 +184,35 @@ class InstructionEvent {
   /// Covered frames — [start, start + length).
   final int length;
 
+  /// Free per-event text (the mark and the writing are independent, like on
+  /// paper): when set it is what displays and prints; the vocabulary name is
+  /// only the fallback.
+  final String? text;
+
   /// The sheet's A → B endpoint values, free text ('A', '1.5倍', …).
   final String? valueA;
   final String? valueB;
 
+  /// What displays/prints for this event given its vocabulary [def].
+  String displayLabel(CameraInstructionDef? def) {
+    final text = this.text;
+    if (text != null && text.isNotEmpty) {
+      return text;
+    }
+    return def?.name ?? instructionId;
+  }
+
   InstructionEvent copyWith({
     String? instructionId,
     int? length,
+    String? Function()? text,
     String? Function()? valueA,
     String? Function()? valueB,
   }) {
     return InstructionEvent(
       instructionId: instructionId ?? this.instructionId,
       length: length ?? this.length,
+      text: text == null ? this.text : text(),
       valueA: valueA == null ? this.valueA : valueA(),
       valueB: valueB == null ? this.valueB : valueB(),
     );
@@ -204,6 +221,7 @@ class InstructionEvent {
   Map<String, dynamic> toJson() => {
     'instructionId': instructionId,
     'length': length,
+    if (text != null) 'text': text,
     if (valueA != null) 'valueA': valueA,
     if (valueB != null) 'valueB': valueB,
   };
@@ -212,6 +230,7 @@ class InstructionEvent {
     return InstructionEvent(
       instructionId: json['instructionId'] as String,
       length: json['length'] as int,
+      text: json['text'] as String?,
       valueA: json['valueA'] as String?,
       valueB: json['valueB'] as String?,
     );
@@ -223,16 +242,17 @@ class InstructionEvent {
       other is InstructionEvent &&
           other.instructionId == instructionId &&
           other.length == length &&
+          other.text == text &&
           other.valueA == valueA &&
           other.valueB == valueB;
 
   @override
-  int get hashCode => Object.hash(instructionId, length, valueA, valueB);
+  int get hashCode => Object.hash(instructionId, length, text, valueA, valueB);
 
   @override
   String toString() =>
       'InstructionEvent(instructionId: $instructionId, length: $length, '
-      'valueA: $valueA, valueB: $valueB)';
+      'text: $text, valueA: $valueA, valueB: $valueB)';
 }
 
 /// Validates an instruction map: non-negative starts, positive lengths and

@@ -253,6 +253,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       builder: (context) => InstructionEventDialog(
         instructionSet: _session.cameraInstructionSet,
         initialInstructionId: covering?.value.instructionId,
+        initialText: covering?.value.text,
         initialValueA: covering?.value.valueA,
         initialValueB: covering?.value.valueB,
         editing: covering != null,
@@ -277,6 +278,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       InstructionEvent(
         instructionId: instructionId,
         length: 1,
+        text: result.text,
         valueA: result.valueA,
         valueB: result.valueB,
       ),

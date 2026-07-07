@@ -563,24 +563,44 @@ class TimesheetDocumentPainter extends CustomPainter {
           continue;
         }
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
+        final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
+        // SE dialogue runs vertically beside its duration line; instruction
+        // writing runs beside the arrow shaft (paper notation).
+        final seColumn = spec.kind == TimesheetColumnKind.se;
+        final holdLineX = seColumn ? centerX + 5 : centerX;
+        final shaftX = centerX + 8;
         switch (cell.kind) {
           case TimesheetCellKind.drawing:
             if (drawTexts) {
-              _text(
-                canvas,
-                cell.label ?? '',
-                Offset(centerX, cellTop + 3),
-                fontSize: 10,
-                color: _ink,
-                centeredAtX: true,
-              );
+              if (seColumn) {
+                final rowsHere = (cell.spanLength ?? 1).clamp(
+                  1,
+                  rowCount - row,
+                );
+                _verticalText(
+                  canvas,
+                  cell.label ?? '',
+                  topCenter: Offset(centerX - 3, cellTop + 2),
+                  fontSize: 9,
+                  maxHeight: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
+                );
+              } else {
+                _text(
+                  canvas,
+                  cell.label ?? '',
+                  Offset(centerX, cellTop + 3),
+                  fontSize: 10,
+                  color: _ink,
+                  centeredAtX: true,
+                );
+              }
             }
           case TimesheetCellKind.held:
           case TimesheetCellKind.cameraSpan:
             canvas.drawLine(
-              Offset(centerX, cellTop),
-              Offset(centerX, cellTop + TimesheetDocumentLayout.rowHeight),
+              Offset(holdLineX, cellTop),
+              Offset(holdLineX, cellBottom),
               Paint()
                 ..color = _ink
                 ..strokeWidth = cell.kind == TimesheetCellKind.cameraSpan
@@ -613,11 +633,87 @@ class TimesheetDocumentPainter extends CustomPainter {
               3.4,
               Paint()..color = _ink,
             );
+          case TimesheetCellKind.instructionStart:
+            final shaft = Paint()
+              ..color = _ink
+              ..strokeWidth = 1.4;
+            final singleRow = (cell.spanLength ?? 1) <= 1;
+            // Shaft leaves from the row middle; single-frame instructions
+            // get the arrowhead right here.
+            canvas.drawLine(
+              Offset(shaftX, cellCenterY),
+              Offset(shaftX, cellBottom),
+              shaft,
+            );
+            if (singleRow) {
+              _paintArrowhead(canvas, Offset(shaftX, cellBottom), shaft);
+            }
+            if (drawTexts) {
+              final rowsHere = (cell.spanLength ?? 1).clamp(1, rowCount - row);
+              _verticalText(
+                canvas,
+                cell.label ?? '',
+                topCenter: Offset(centerX - 6, cellTop + 2),
+                fontSize: 9,
+                maxHeight: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
+              );
+              if (cell.valueA != null && cell.valueA!.isNotEmpty) {
+                _text(
+                  canvas,
+                  cell.valueA!,
+                  Offset(shaftX + 2, cellTop + 1),
+                  fontSize: 7,
+                  color: _ink,
+                );
+              }
+              if (singleRow && cell.valueB != null && cell.valueB!.isNotEmpty) {
+                _text(
+                  canvas,
+                  cell.valueB!,
+                  Offset(shaftX + 2, cellBottom - 9),
+                  fontSize: 7,
+                  color: _ink,
+                );
+              }
+            }
+          case TimesheetCellKind.instructionSpan:
+            canvas.drawLine(
+              Offset(shaftX, cellTop),
+              Offset(shaftX, cellBottom),
+              Paint()
+                ..color = _ink
+                ..strokeWidth = 1.4,
+            );
+          case TimesheetCellKind.instructionEnd:
+            final shaft = Paint()
+              ..color = _ink
+              ..strokeWidth = 1.4;
+            canvas.drawLine(
+              Offset(shaftX, cellTop),
+              Offset(shaftX, cellBottom - 1),
+              shaft,
+            );
+            _paintArrowhead(canvas, Offset(shaftX, cellBottom - 1), shaft);
+            if (drawTexts && cell.valueB != null && cell.valueB!.isNotEmpty) {
+              _text(
+                canvas,
+                cell.valueB!,
+                Offset(shaftX + 2, cellBottom - 9),
+                fontSize: 7,
+                color: _ink,
+              );
+            }
           case TimesheetCellKind.empty:
             break;
         }
       }
     }
+  }
+
+  /// A small downward arrowhead closing an instruction span.
+  void _paintArrowhead(Canvas canvas, Offset tip, Paint paint) {
+    canvas.drawLine(tip, tip + const Offset(-3.2, -4.5), paint);
+    canvas.drawLine(tip, tip + const Offset(3.2, -4.5), paint);
   }
 
   void _paintGroupTitles(Canvas canvas, double halfLeft, double groupTop) {
@@ -670,6 +766,47 @@ class TimesheetDocumentPainter extends CustomPainter {
       ),
       Paint()..color = _playhead,
     );
+  }
+
+  /// Vertical writing, Japanese-sheet style: upright glyphs stacked top to
+  /// bottom (no rotation), clamped to [maxHeight] with a closing ellipsis.
+  void _verticalText(
+    Canvas canvas,
+    String text, {
+    required Offset topCenter,
+    required double fontSize,
+    required double maxHeight,
+    Color color = _ink,
+  }) {
+    var y = topCenter.dy;
+    final bottom = topCenter.dy + maxHeight;
+    final glyphs = text.characters.toList(growable: false);
+    for (var index = 0; index < glyphs.length; index += 1) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: glyphs[index],
+          style: TextStyle(color: color, fontSize: fontSize),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final lastThatFits = y + painter.height > bottom - fontSize;
+      if (lastThatFits && index < glyphs.length - 1) {
+        final ellipsis = TextPainter(
+          text: TextSpan(
+            text: '…',
+            style: TextStyle(color: color, fontSize: fontSize),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        ellipsis.paint(canvas, Offset(topCenter.dx - ellipsis.width / 2, y));
+        return;
+      }
+      if (y + painter.height > bottom) {
+        return;
+      }
+      painter.paint(canvas, Offset(topCenter.dx - painter.width / 2, y));
+      y += painter.height - 2;
+    }
   }
 
   void _text(

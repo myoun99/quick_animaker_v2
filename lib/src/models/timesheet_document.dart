@@ -1,3 +1,4 @@
+import 'camera_instruction.dart';
 import 'cut.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -46,17 +47,44 @@ enum TimesheetCellKind {
 
   /// Between two camera keyframes (the camera column's motion line).
   cameraSpan,
+
+  /// A camera-work instruction span starts here (instruction CAM columns);
+  /// [TimesheetCell.label] carries the writing (event text or vocabulary
+  /// name), [TimesheetCell.valueA] the A endpoint.
+  instructionStart,
+
+  /// Inside an instruction span (the arrow shaft runs through this row).
+  instructionSpan,
+
+  /// The instruction span's last covered row (arrowhead + B endpoint).
+  instructionEnd,
 }
 
 class TimesheetCell {
-  const TimesheetCell(this.kind, {this.label});
+  const TimesheetCell(
+    this.kind, {
+    this.label,
+    this.spanLength,
+    this.valueA,
+    this.valueB,
+  });
 
   static const TimesheetCell blank = TimesheetCell(TimesheetCellKind.empty);
 
   final TimesheetCellKind kind;
 
-  /// Cel number for [TimesheetCellKind.drawing] cells.
+  /// Cel number for [TimesheetCellKind.drawing] cells; the writing for
+  /// [TimesheetCellKind.instructionStart] cells.
   final String? label;
+
+  /// Rows the span starting HERE covers (drawing/instruction starts only) —
+  /// vertical text and arrow painting need the extent up front.
+  final int? spanLength;
+
+  /// The sheet's A → B endpoint values (instruction start cells only; the
+  /// painter prints A at the start and B at the end row).
+  final String? valueA;
+  final String? valueB;
 }
 
 /// One sheet column: the printed column header plus one cell per document
@@ -130,6 +158,7 @@ class TimesheetDocument {
     int celColumnCount = 8,
     int seColumnCount = 2,
     int cameraColumnCount = 2,
+    CameraInstructionDef? Function(String instructionId)? instructionDefById,
   }) {
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
@@ -164,6 +193,14 @@ class TimesheetDocument {
       for (final layer in cut.layers)
         if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
     ];
+    final instructionLayers = [
+      for (final layer in cut.layers)
+        if (layer.kind == LayerKind.instruction) layer,
+    ];
+    // CAM slots: the camera-keyframe column plus one per instruction row.
+    final cameraSlotCount = 1 + instructionLayers.length > cameraColumnCount
+        ? 1 + instructionLayers.length
+        : cameraColumnCount;
 
     final columns = <TimesheetColumn>[
       // Animation layers fill the ACTION block in order, headed by their
@@ -212,12 +249,24 @@ class TimesheetDocument {
           label: '',
           cells: _blankCells(rowCount),
         ),
-      for (var slot = 0; slot < cameraColumnCount; slot += 1)
+      // CAM block: slot 0 keeps the camera transform keyframes; the
+      // instruction rows (CAM 2 …) follow in layer order, growing the block
+      // past the fixed count when a cut carries more.
+      for (var slot = 0; slot < cameraSlotCount; slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.camera,
           label: '${slot + 1}',
+          layerName: slot >= 1 && slot - 1 < instructionLayers.length
+              ? instructionLayers[slot - 1].name
+              : null,
           cells: slot == 0
               ? _cameraCells(cut: cut, rowCount: rowCount)
+              : slot - 1 < instructionLayers.length
+              ? _instructionCells(
+                  layer: instructionLayers[slot - 1],
+                  rowCount: rowCount,
+                  defById: instructionDefById,
+                )
               : _blankCells(rowCount),
         ),
     ];
@@ -312,6 +361,7 @@ class TimesheetDocument {
       cells[start] = TimesheetCell(
         TimesheetCellKind.drawing,
         label: labelsByFrameId[exposure.frameId] ?? '?',
+        spanLength: endExclusive - start,
       );
       covered[start] = true;
       for (var row = start + 1; row < endExclusive; row += 1) {
@@ -341,6 +391,42 @@ class TimesheetDocument {
       }
     }
 
+    return cells;
+  }
+
+  /// An instruction row's CAM column: each event prints its writing (free
+  /// text, vocabulary-name fallback) at the start with the A endpoint, an
+  /// arrow shaft through the covered rows and the arrowhead + B endpoint on
+  /// the last one — the paper sheet's camera-work notation.
+  static List<TimesheetCell> _instructionCells({
+    required Layer layer,
+    required int rowCount,
+    CameraInstructionDef? Function(String instructionId)? defById,
+  }) {
+    final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
+    for (final entry in layer.instructions.entries) {
+      final start = entry.key;
+      if (start >= rowCount) {
+        continue;
+      }
+      final event = entry.value;
+      final endExclusive = (start + event.length).clamp(0, rowCount);
+      cells[start] = TimesheetCell(
+        TimesheetCellKind.instructionStart,
+        label: event.displayLabel(defById?.call(event.instructionId)),
+        spanLength: endExclusive - start,
+        valueA: event.valueA,
+        valueB: event.valueB,
+      );
+      for (var row = start + 1; row < endExclusive; row += 1) {
+        cells[row] = TimesheetCell(
+          row == endExclusive - 1
+              ? TimesheetCellKind.instructionEnd
+              : TimesheetCellKind.instructionSpan,
+          valueB: row == endExclusive - 1 ? event.valueB : null,
+        );
+      }
+    }
     return cells;
   }
 
