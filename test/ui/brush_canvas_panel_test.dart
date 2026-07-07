@@ -619,9 +619,7 @@ void main() {
 
     Offset viewportPoint(WidgetTester tester, Offset offset) {
       return tester.getTopLeft(
-            find.byKey(
-              const ValueKey<String>('brush-canvas-editor-viewport'),
-            ),
+            find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
           ) +
           offset;
     }
@@ -635,9 +633,7 @@ void main() {
 
       final pointer = TestPointer(1, PointerDeviceKind.mouse);
       pointer.hover(viewportPoint(tester, const Offset(40, 40)));
-      await tester.sendEventToBinding(
-        pointer.scroll(const Offset(0, -120)),
-      );
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, -120)));
       await tester.pump();
 
       expect(viewports, isNotEmpty);
@@ -819,9 +815,7 @@ void main() {
 
       final pointer = TestPointer(7, PointerDeviceKind.mouse);
       pointer.hover(viewportPoint(tester, const Offset(60, 60)));
-      await tester.sendEventToBinding(
-        pointer.scroll(const Offset(0, -120)),
-      );
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, -120)));
       await tester.pump();
 
       expect(viewports, isNotEmpty);

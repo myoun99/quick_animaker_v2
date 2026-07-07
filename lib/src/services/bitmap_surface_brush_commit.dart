@@ -238,40 +238,59 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
           final destA = buffer[offset + 3];
 
           final destinationAlpha = destA / 255.0;
-          final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
 
           int outRByte;
           int outGByte;
           int outBByte;
           int outAByte;
-          if (outAlpha == 0.0) {
-            outRByte = 0;
-            outGByte = 0;
-            outBByte = 0;
-            outAByte = 0;
+          if (dab.erase) {
+            // Destination-out (same grouping as the reference
+            // rgbaDestinationOut): coverage removes destination alpha.
+            final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
+            if (outAlpha == 0.0) {
+              outRByte = 0;
+              outGByte = 0;
+              outBByte = 0;
+              outAByte = 0;
+            } else {
+              outRByte = destR;
+              outGByte = destG;
+              outBByte = destB;
+              outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+            }
           } else {
-            // Keep the exact floating-point grouping of the reference
-            // rgbaSourceOver: (dest * destinationAlpha) * inverseSourceAlpha.
-            final inverseSourceAlpha = 1.0 - sourceAlpha;
-            outRByte =
-                ((sourceR * sourceAlpha +
-                            destR * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outGByte =
-                ((sourceG * sourceAlpha +
-                            destG * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outBByte =
-                ((sourceB * sourceAlpha +
-                            destB * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+            final outAlpha =
+                sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+            if (outAlpha == 0.0) {
+              outRByte = 0;
+              outGByte = 0;
+              outBByte = 0;
+              outAByte = 0;
+            } else {
+              // Keep the exact floating-point grouping of the reference
+              // rgbaSourceOver: (dest * destinationAlpha) *
+              // inverseSourceAlpha.
+              final inverseSourceAlpha = 1.0 - sourceAlpha;
+              outRByte =
+                  ((sourceR * sourceAlpha +
+                              destR * destinationAlpha * inverseSourceAlpha) /
+                          outAlpha)
+                      .round()
+                      .clamp(0, 255);
+              outGByte =
+                  ((sourceG * sourceAlpha +
+                              destG * destinationAlpha * inverseSourceAlpha) /
+                          outAlpha)
+                      .round()
+                      .clamp(0, 255);
+              outBByte =
+                  ((sourceB * sourceAlpha +
+                              destB * destinationAlpha * inverseSourceAlpha) /
+                          outAlpha)
+                      .round()
+                      .clamp(0, 255);
+              outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+            }
           }
 
           if (outRByte != destR ||
@@ -332,6 +351,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required BitmapSurface surface,
   required Uint8List strokePixels,
   required DirtyRegion bounds,
+  bool erase = false,
 }) {
   final canvasWidth = surface.canvasSize.width;
   final canvasHeight = surface.canvasSize.height;
@@ -390,42 +410,61 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
         final destB = buffer[offset + 2];
         final destA = buffer[offset + 3];
 
-        // Same source-over math and rounding as the per-dab rasterizer, with
-        // the stroke pixel acting as the source.
+        // Same source-over / destination-out math and rounding as the
+        // per-dab rasterizer, with the stroke pixel acting as the source.
         final sourceAlpha = strokeA / 255.0;
         final destinationAlpha = destA / 255.0;
-        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
 
         int outRByte;
         int outGByte;
         int outBByte;
         int outAByte;
-        if (outAlpha == 0.0) {
-          outRByte = 0;
-          outGByte = 0;
-          outBByte = 0;
-          outAByte = 0;
+        if (erase) {
+          // The accumulated stroke alpha is the erase strength: per-dab
+          // destination-out compounds to dest * Π(1-aᵢ), which equals one
+          // destination-out pass of the source-over-accumulated stroke.
+          final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
+          if (outAlpha == 0.0) {
+            outRByte = 0;
+            outGByte = 0;
+            outBByte = 0;
+            outAByte = 0;
+          } else {
+            outRByte = destR;
+            outGByte = destG;
+            outBByte = destB;
+            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+          }
         } else {
-          final inverseSourceAlpha = 1.0 - sourceAlpha;
-          outRByte =
-              ((strokePixels[strokeOffset] * sourceAlpha +
-                          destR * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outGByte =
-              ((strokePixels[strokeOffset + 1] * sourceAlpha +
-                          destG * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outBByte =
-              ((strokePixels[strokeOffset + 2] * sourceAlpha +
-                          destB * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+          final outAlpha =
+              sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+          if (outAlpha == 0.0) {
+            outRByte = 0;
+            outGByte = 0;
+            outBByte = 0;
+            outAByte = 0;
+          } else {
+            final inverseSourceAlpha = 1.0 - sourceAlpha;
+            outRByte =
+                ((strokePixels[strokeOffset] * sourceAlpha +
+                            destR * destinationAlpha * inverseSourceAlpha) /
+                        outAlpha)
+                    .round()
+                    .clamp(0, 255);
+            outGByte =
+                ((strokePixels[strokeOffset + 1] * sourceAlpha +
+                            destG * destinationAlpha * inverseSourceAlpha) /
+                        outAlpha)
+                    .round()
+                    .clamp(0, 255);
+            outBByte =
+                ((strokePixels[strokeOffset + 2] * sourceAlpha +
+                            destB * destinationAlpha * inverseSourceAlpha) /
+                        outAlpha)
+                    .round()
+                    .clamp(0, 255);
+            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+          }
         }
 
         if (outRByte != destR ||

@@ -15,6 +15,14 @@ RgbaColor blendBrushDabPixelCoverage({
   required BrushPixelCoverage coverage,
   required RgbaColor destination,
 }) {
+  if (dab.erase) {
+    return rgbaDestinationOut(
+      source: RgbaColor.fromArgbInt(dab.color),
+      destination: destination,
+      opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
+      flow: dab.flow,
+    );
+  }
   return rgbaSourceOver(
     source: RgbaColor.fromArgbInt(dab.color),
     destination: destination,

@@ -16,6 +16,7 @@ import 'brush/brush_preset_panel.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
+import 'brush/tools_panel.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'camera/camera_panel.dart';
 import 'canvas/canvas_layer_stack_view.dart';
@@ -300,6 +301,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         EditorPanelDock(
           side: EditorPanelDockSide.left,
           children: [
+            ToolsPanel(
+              tool: _brushToolState.tool,
+              onToolChanged: (tool) {
+                setState(
+                  () => _brushToolState = _brushToolState.copyWith(tool: tool),
+                );
+              },
+            ),
             BrushPresetPanel(
               presets: _brushPresets,
               selectedPresetId: _activePresetId,

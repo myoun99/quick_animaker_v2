@@ -199,6 +199,17 @@ void main() {
       expect(BrushDab.fromJson(json).color, 0xFF000000);
     });
 
+    test('erase flag round-trips and defaults to false', () {
+      final eraseDab = dab().copyWith(erase: true);
+      expect(BrushDab.fromJson(eraseDab.toJson()).erase, isTrue);
+
+      // Paint dabs omit the key; legacy dabs without it stay paint dabs.
+      final paintJson = dab().toJson();
+      expect(paintJson.containsKey('erase'), isFalse);
+      expect(BrushDab.fromJson(paintJson).erase, isFalse);
+      expect(dab(), isNot(dab().copyWith(erase: true)));
+    });
+
     test('fromJson defaults legacy dabs to the classic full-round tip', () {
       final json = dab().toJson()
         ..remove('roundness')

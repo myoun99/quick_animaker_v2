@@ -73,6 +73,23 @@ class BitmapSurfacePainter extends CustomPainter {
       );
     }
 
+    // An erasing overlay draws destination-out against the committed tiles.
+    // With an opaque background painted in this same picture, dstOut would
+    // punch through the paper too — isolate tiles + overlay in a layer so
+    // only artwork pixels erase. (The production editing path paints the
+    // paper in the separate underlay, so no extra layer is needed there.)
+    final eraseOverlayLayer =
+        showTransparentBackground &&
+        overlayModel != null &&
+        overlayModel!.erase &&
+        overlayModel!.hasStrokeContent;
+    if (eraseOverlayLayer) {
+      canvas.saveLayer(
+        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
+        Paint(),
+      );
+    }
+
     final tileImagePaint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
@@ -109,7 +126,15 @@ class BitmapSurfacePainter extends CustomPainter {
       // nearest sampling — so live and committed pixels rasterize
       // identically at any zoom (one code path; rect-geometry replay
       // diverged from image sampling at fractional zoom). Overlay tiles
-      // never overlap, so plain source-over per tile is exact.
+      // never overlap, so plain source-over per tile is exact. An ERASE
+      // stroke draws destination-out instead: the accumulated stroke alpha
+      // removes committed pixels exactly like the commit pass will.
+      final overlayPaint = overlay.erase
+          ? (Paint()
+              ..filterQuality = FilterQuality.none
+              ..isAntiAlias = false
+              ..blendMode = BlendMode.dstOut)
+          : tileImagePaint;
       final overlayTileSize = overlay.tileSize.toDouble();
       for (final entry in overlay.tileImages.entries) {
         canvas.drawImage(
@@ -118,11 +143,14 @@ class BitmapSurfacePainter extends CustomPainter {
             entry.key.x * overlayTileSize,
             entry.key.y * overlayTileSize,
           ),
-          tileImagePaint,
+          overlayPaint,
         );
       }
     }
 
+    if (eraseOverlayLayer) {
+      canvas.restore();
+    }
     canvas.restore();
   }
 

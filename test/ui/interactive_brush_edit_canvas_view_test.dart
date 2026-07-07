@@ -441,9 +441,7 @@ void main() {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
-      final finger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
+      final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
       await finger.down(canvasGlobalOffset(tester, const Offset(1, 1)));
       await finger.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
       await finger.up();
@@ -804,15 +802,31 @@ void main() {
       expect(results, isEmpty);
     });
 
+    testWidgets('eraser input settings stamp erase dabs', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(erase: true),
+          ),
+        ),
+      );
+
+      await tapCanvas(tester, const Offset(3, 3));
+
+      expect(results, hasLength(1));
+      expect(results.single.every((dab) => dab.erase), isTrue);
+    });
+
     testWidgets('stray touches never cancel a stylus stroke (palm rest)', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
-      final stylus = await tester.createGesture(
-        kind: PointerDeviceKind.stylus,
-      );
+      final stylus = await tester.createGesture(kind: PointerDeviceKind.stylus);
       await stylus.down(canvasGlobalOffset(tester, const Offset(1.5, 1.5)));
 
       // Two palm contacts land while the stylus draws — only a TOUCH

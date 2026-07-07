@@ -198,6 +198,9 @@ class _InteractiveBrushEditCanvasViewState
 
     _activeDrawingPointer = event.pointer;
     _activeStrokeInputSettings = widget.inputSettings;
+    // The overlay must display in the stroke's blend mode (paint vs erase)
+    // from the first dab through settling.
+    _overlayModel.erase = widget.inputSettings.erase;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -414,6 +417,7 @@ class _InteractiveBrushEditCanvasViewState
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
+      erase: settings.erase,
     );
   }
 

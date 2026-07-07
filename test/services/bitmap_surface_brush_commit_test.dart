@@ -7,8 +7,11 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_tile_operation_apply.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:quick_animaker_v2/src/services/brush_dab_sequence_blend.dart';
 
 void main() {
   group('materializeBrushDabSequenceOnBitmapSurface', () {
@@ -146,6 +149,102 @@ void main() {
 
       expect(result.dirtyTiles.coords, {TileCoord(x: 0, y: 0)});
       expect(result.surface.tiles.length, 1);
+    });
+
+    group('erase dabs', () {
+      BrushDab eraseDab({
+        required double globalX,
+        required double globalY,
+        double opacity = 1,
+        int sequence = 0,
+      }) {
+        return onePixelDab(
+          globalX: globalX,
+          globalY: globalY,
+          opacity: opacity,
+          sequence: sequence,
+        ).copyWith(erase: true);
+      }
+
+      test('partial erase halves alpha and keeps the color', () {
+        final painted = materializeBrushDabSequenceOnBitmapSurface(
+          surface: surface(),
+          sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+        ).surface;
+
+        final erased = materializeBrushDabSequenceOnBitmapSurface(
+          surface: painted,
+          sequence: BrushDabSequence([
+            eraseDab(globalX: 0, globalY: 0, opacity: 0.5),
+          ]),
+        );
+
+        final pixel = readRgbaColorFromBitmapTile(
+          tile: erased.surface.tileAt(TileCoord(x: 0, y: 0))!,
+          x: 0,
+          y: 0,
+        );
+        expect(pixel.a, 128);
+        expect(pixel.r, 255);
+        expect(erased.dirtyTiles.contains(TileCoord(x: 0, y: 0)), isTrue);
+      });
+
+      test('full erase zeroes the pixel entirely', () {
+        final painted = materializeBrushDabSequenceOnBitmapSurface(
+          surface: surface(),
+          sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
+        ).surface;
+
+        final erased = materializeBrushDabSequenceOnBitmapSurface(
+          surface: painted,
+          sequence: BrushDabSequence([eraseDab(globalX: 0, globalY: 0)]),
+        );
+
+        final pixel = readRgbaColorFromBitmapTile(
+          tile: erased.surface.tileAt(TileCoord(x: 0, y: 0))!,
+          x: 0,
+          y: 0,
+        );
+        expect(pixel.a, 0);
+        expect(pixel.r, 0);
+      });
+
+      test('erasing empty canvas changes nothing', () {
+        final original = surface();
+        final result = materializeBrushDabSequenceOnBitmapSurface(
+          surface: original,
+          sequence: BrushDabSequence([eraseDab(globalX: 0, globalY: 0)]),
+        );
+
+        expect(result.hasChanges, isFalse);
+        expect(result.surface, original);
+      });
+
+      test('hot path matches the per-pixel oracle for mixed sequences', () {
+        final sequence = BrushDabSequence([
+          onePixelDab(globalX: 0, globalY: 0),
+          onePixelDab(globalX: 1, globalY: 0, opacity: 0.6, sequence: 1),
+          eraseDab(globalX: 0, globalY: 0, opacity: 0.4, sequence: 2),
+          eraseDab(globalX: 1, globalY: 0, sequence: 3),
+        ]);
+
+        final hot = materializeBrushDabSequenceOnBitmapSurface(
+          surface: surface(),
+          sequence: sequence,
+        ).surface;
+
+        var oracleTile = blankTile(0, 0);
+        final operations = brushPixelBlendOperationsForDabSequence(
+          sequence: sequence,
+          destinationAt: (x, y) => RgbaColor(r: 0, g: 0, b: 0, a: 0),
+        );
+        oracleTile = applyBrushPixelBlendOperationsToBitmapTile(
+          tile: oracleTile,
+          operations: operations,
+        );
+
+        expect(hot.tileAt(TileCoord(x: 0, y: 0))!.pixels, oracleTile.pixels);
+      });
     });
 
     test('does not mutate original BitmapSurface', () {
