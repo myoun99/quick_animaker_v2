@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/layer.dart';
+import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
@@ -8,10 +11,12 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
+import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'timeline/transform_lane_policy.dart';
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
 /// action toolbar and the layer/frame dialogs it triggers. All wiring lives
@@ -27,6 +32,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onPixelsPerFrameChanged,
     required this.showSeconds,
     required this.onShowSecondsChanged,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
   });
 
   final EditorSessionManager session;
@@ -37,12 +44,26 @@ class TimelineTabHost extends StatefulWidget {
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
 
+  /// AE-style property-lane twirl-down state (host-owned so it survives
+  /// tab switches).
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
+
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
 }
 
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
+
+  /// The camera layer's AE Transform lanes; other layer kinds get lanes
+  /// with the layer-transform work (L3) and FX features later.
+  List<PropertyLaneRow> _lanesForLayer(Layer layer) {
+    if (layer.kind != LayerKind.camera) {
+      return const [];
+    }
+    return transformPropertyLanes(_session.activeCut.camera.track);
+  }
 
   Future<void> _deleteActiveLayer() async {
     final activeLayer = _session.activeLayer;
@@ -168,6 +189,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           showSeconds: widget.showSeconds,
           onShowSecondsChanged: widget.onShowSecondsChanged,
           projectFps: _session.projectFps,
+          expandedLaneLayerIds: widget.expandedLaneLayerIds,
+          onToggleLayerLanes: widget.onToggleLayerLanes,
+          lanesForLayer: _lanesForLayer,
           timelineActionToolbar: Row(
             children: [
               PlaybackTransportControls(

@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
+import 'property_lane_model.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
@@ -38,6 +39,9 @@ class TimelinePanel extends StatefulWidget {
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.projectFps = 24,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
+    this.lanesForLayer,
   });
 
   final List<Layer> layers;
@@ -86,6 +90,12 @@ class TimelinePanel extends StatefulWidget {
   final bool showSeconds;
   final ValueChanged<bool>? onShowSecondsChanged;
   final int projectFps;
+
+  /// AE-style property lanes (twirl-down rows under a layer): expansion
+  /// state, toggle and the generic lane provider.
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
+  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -223,6 +233,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     commaDrag: widget.commaDrag,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
+                    expandedLaneLayerIds: widget.expandedLaneLayerIds,
+                    onToggleLayerLanes: widget.onToggleLayerLanes,
+                    lanesForLayer: widget.lanesForLayer,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

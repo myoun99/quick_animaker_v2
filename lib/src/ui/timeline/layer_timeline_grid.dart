@@ -16,6 +16,8 @@ import 'timeline_frame_rows_scroll_body.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
+import 'property_lane_model.dart';
+import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_layer_controls_row.dart';
@@ -43,6 +45,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.commaDrag,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
+    this.lanesForLayer,
   });
 
   final List<Layer> layers;
@@ -69,6 +74,12 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
   final TimelineGridMetrics metrics;
+
+  /// AE-style property lanes: layers whose twirl-down is open, the toggle,
+  /// and the lane provider (generic — transform lanes now, FX lanes later).
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
+  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -246,10 +257,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _lastRulerScrubbedFrameIndex = null;
   }
 
+  List<PropertyLaneRow> _lanesFor(Layer layer) =>
+      widget.lanesForLayer?.call(layer) ?? const [];
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     const bottomScrollbarRailHeight = 16.0;
+    final rows = buildTimelineDisplayRows(
+      layers: widget.layers,
+      expandedLayerIds: widget.expandedLaneLayerIds,
+      lanesForLayer: _lanesFor,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -273,8 +292,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                               .toDouble()
                         : viewportHeight;
                     final verticalContentHeight =
-                        _metrics.layerRowHeight *
-                        math.max(widget.layers.length, 1);
+                        _metrics.layerRowHeight * math.max(rows.length, 1);
 
                     return Column(
                       children: [
@@ -320,7 +338,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           viewportHeight: viewportHeight,
                                           visibleFrameCount:
                                               _renderedFrameCount,
-                                          layerCount: widget.layers.length,
+                                          layerCount: rows.length,
                                           metrics: _metrics,
                                         );
                                     final frameRange = plan.frameRange;
@@ -432,33 +450,46 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            for (
-                                              var index = 0;
-                                              index < widget.layers.length;
-                                              index += 1
-                                            )
-                                              TimelineLayerControlsRow(
-                                                layer: widget.layers[index],
-                                                active:
-                                                    widget.layers[index].id ==
-                                                    widget.activeLayerId,
-                                                sectionStart:
-                                                    timelineSectionStartsAt(
-                                                      widget.layers,
-                                                      index,
+                                            for (final row in rows)
+                                              row.isLane
+                                                  ? TimelineLaneControlsRow(
+                                                      layer: row.layer,
+                                                      lane: row.lane!,
+                                                      metrics: _metrics,
+                                                    )
+                                                  : TimelineLayerControlsRow(
+                                                      layer: row.layer,
+                                                      active:
+                                                          row.layer.id ==
+                                                          widget.activeLayerId,
+                                                      sectionStart:
+                                                          timelineSectionStartsAt(
+                                                            widget.layers,
+                                                            row.layerIndex,
+                                                          ),
+                                                      metrics: _metrics,
+                                                      onSelectLayer:
+                                                          widget.onSelectLayer,
+                                                      onToggleLayerVisibility:
+                                                          widget
+                                                              .onToggleLayerVisibility,
+                                                      onLayerOpacityChanged: widget
+                                                          .onLayerOpacityChanged,
+                                                      onToggleLayerTimesheet: widget
+                                                          .onToggleLayerTimesheet,
+                                                      onLayerMarkSelected: widget
+                                                          .onLayerMarkSelected,
+                                                      hasLanes: _lanesFor(
+                                                        row.layer,
+                                                      ).isNotEmpty,
+                                                      lanesExpanded: widget
+                                                          .expandedLaneLayerIds
+                                                          .contains(
+                                                            row.layer.id,
+                                                          ),
+                                                      onToggleLanes: widget
+                                                          .onToggleLayerLanes,
                                                     ),
-                                                metrics: _metrics,
-                                                onSelectLayer:
-                                                    widget.onSelectLayer,
-                                                onToggleLayerVisibility: widget
-                                                    .onToggleLayerVisibility,
-                                                onLayerOpacityChanged: widget
-                                                    .onLayerOpacityChanged,
-                                                onToggleLayerTimesheet: widget
-                                                    .onToggleLayerTimesheet,
-                                                onLayerMarkSelected:
-                                                    widget.onLayerMarkSelected,
-                                              ),
                                             if (widget.layers.isEmpty)
                                               SizedBox(
                                                 width:
@@ -517,8 +548,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       viewportHeight,
                                                   visibleFrameCount:
                                                       _renderedFrameCount,
-                                                  layerCount:
-                                                      widget.layers.length,
+                                                  layerCount: rows.length,
                                                   metrics: _metrics,
                                                 );
                                             final frameRange = plan.frameRange;
@@ -533,6 +563,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               child: TimelineFrameGridStack(
                                                 rowsBody: TimelineFrameRowsScrollBody(
                                                   layers: widget.layers,
+                                                  rows: rows,
                                                   activeLayerId:
                                                       widget.activeLayerId,
                                                   currentFrameIndex:
@@ -586,8 +617,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   leadingFrameSpacerWidth: plan
                                                       .leadingFrameSpacerWidth,
                                                   metrics: _metrics,
-                                                  layerCount:
-                                                      widget.layers.length,
+                                                  layerCount: rows.length,
                                                 ),
                                               ),
                                             );
