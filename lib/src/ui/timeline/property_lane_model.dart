@@ -50,6 +50,39 @@ class TimelineDisplayRow {
   bool get isLane => lane != null;
 }
 
+/// Lane key edit hooks — layer-generic on purpose: the camera routes them
+/// into its transform track today, and every layer (and FX property) plugs
+/// into the same signatures with the layer-transform work.
+class PropertyLaneEditCallbacks {
+  const PropertyLaneEditCallbacks({
+    required this.onToggleKeyAt,
+    required this.onMoveKey,
+    required this.onRemoveKey,
+    required this.onToggleHold,
+  });
+
+  /// Adds a key (freezing the property's current value, AE-style) or
+  /// removes the existing one — the keyframe navigator's diamond.
+  final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
+  onToggleKeyAt;
+
+  /// A key marker dragged to another frame.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int fromFrame,
+    int toFrame,
+  )
+  onMoveKey;
+
+  final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
+  onRemoveKey;
+
+  /// AE's Toggle Hold Keyframe.
+  final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
+  onToggleHold;
+}
+
 /// Builds the grid's display rows: every layer row, plus the property lane
 /// rows of layers whose twirl-down is expanded.
 List<TimelineDisplayRow> buildTimelineDisplayRows({

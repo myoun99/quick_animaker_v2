@@ -202,6 +202,29 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Replaces the cut's whole camera track in one undo step — the property
+  /// lanes edit per-property keys (move/toggle/hold) that the pose-level
+  /// APIs above cannot express.
+  void updateCutCamera({
+    required CutId cutId,
+    required CutCamera camera,
+    String description = 'Edit camera keyframes',
+  }) {
+    final cut = _requireCut(cutId);
+    if (cut.camera == camera) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutCameraCommand(
+        repository: repository,
+        cutId: cutId,
+        camera: camera,
+        description: description,
+      ),
+    );
+  }
+
   void renameLayer({
     required CutId cutId,
     required LayerId layerId,

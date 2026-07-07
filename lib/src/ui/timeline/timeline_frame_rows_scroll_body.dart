@@ -29,6 +29,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.commaDrag,
+    this.laneEdit,
   });
 
   /// Display layers (section-divider positions key off layer indexes).
@@ -51,6 +52,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final TimelineCommaDragCallbacks? commaDrag;
+  final PropertyLaneEditCallbacks? laneEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +71,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
                     trailingFrameSpacerWidth: trailingFrameSpacerWidth,
                     metrics: metrics,
+                    laneEdit: laneEdit,
                   )
                 : TimelineFrameCellsRow(
                     layer: row.layer,

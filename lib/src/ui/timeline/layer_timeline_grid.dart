@@ -48,6 +48,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
+    this.laneEdit,
   });
 
   final List<Layer> layers;
@@ -80,6 +81,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+
+  /// Lane key editing hooks (navigator toggle, marker drags, hold/delete).
+  final PropertyLaneEditCallbacks? laneEdit;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -456,6 +460,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       layer: row.layer,
                                                       lane: row.lane!,
                                                       metrics: _metrics,
+                                                      currentFrameIndex: widget
+                                                          .currentFrameIndex,
+                                                      onSelectFrame:
+                                                          widget.onSelectFrame,
+                                                      laneEdit: widget.laneEdit,
                                                     )
                                                   : TimelineLayerControlsRow(
                                                       layer: row.layer,
@@ -591,6 +600,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   onSelectFrame:
                                                       widget.onSelectFrame,
                                                   commaDrag: widget.commaDrag,
+                                                  laneEdit: widget.laneEdit,
                                                 ),
                                                 cutEndBoundaryLeft:
                                                     timelineCutEndBoundaryX(

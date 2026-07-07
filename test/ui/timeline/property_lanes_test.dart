@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_editing.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
 
 const _cameraLayerId = LayerId('lane-cam-layer');
@@ -208,6 +209,218 @@ void main() {
           const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
         ),
         findsNothing,
+      );
+    });
+  });
+
+  group('transform lane editing policy', () {
+    test('toggle adds a key with the resolved value and removes it again', () {
+      final track = TransformTrack(keyframes: {0: _pose(0), 8: _pose(80)});
+
+      final added = transformTrackWithLaneKeyToggled(
+        track,
+        laneId: 'position',
+        frameIndex: 4,
+        resolvedPose: track.resolveAt(frameIndex: 4, orElse: () => _pose(0)),
+      )!;
+      expect(added.position.keyAt(4)!.value, CanvasPoint(x: 40, y: 40));
+      // Only the position lane changed.
+      expect(added.scale.keyAt(4), isNull);
+
+      final removed = transformTrackWithLaneKeyToggled(
+        added,
+        laneId: 'position',
+        frameIndex: 4,
+        resolvedPose: _pose(0),
+      )!;
+      expect(removed.position.keyAt(4), isNull);
+    });
+
+    test('move keeps value + interpolation and overwrites the target', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<double>()
+            .withKey(2, 1.5, interpolation: PropertyKeyInterpolation.hold)
+            .withKey(6, 3),
+      );
+
+      final moved = transformTrackWithLaneKeyMoved(
+        track,
+        laneId: 'scale',
+        fromFrame: 2,
+        toFrame: 6,
+      )!;
+
+      expect(moved.scale.keyAt(2), isNull);
+      expect(moved.scale.keyAt(6)!.value, 1.5);
+      expect(
+        moved.scale.keyAt(6)!.interpolation,
+        PropertyKeyInterpolation.hold,
+      );
+    });
+
+    test('move to a negative frame or same frame is a no-op', () {
+      final track = TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(3, 45),
+      );
+
+      expect(
+        transformTrackWithLaneKeyMoved(
+          track,
+          laneId: 'rotation',
+          fromFrame: 3,
+          toFrame: 3,
+        ),
+        isNull,
+      );
+      expect(
+        transformTrackWithLaneKeyMoved(
+          track,
+          laneId: 'rotation',
+          fromFrame: 3,
+          toFrame: -1,
+        ),
+        isNull,
+      );
+    });
+
+    test('hold toggle flips a key between linear and hold', () {
+      final track = TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(3, 45),
+      );
+
+      final held = transformTrackWithLaneHoldToggled(
+        track,
+        laneId: 'rotation',
+        frameIndex: 3,
+      )!;
+      expect(
+        held.rotation.keyAt(3)!.interpolation,
+        PropertyKeyInterpolation.hold,
+      );
+
+      final linear = transformTrackWithLaneHoldToggled(
+        held,
+        laneId: 'rotation',
+        frameIndex: 3,
+      )!;
+      expect(
+        linear.rotation.keyAt(3)!.interpolation,
+        PropertyKeyInterpolation.linear,
+      );
+    });
+  });
+
+  group('camera lane key editing in the timeline', () {
+    Future<void> expand(WidgetTester tester) async {
+      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the navigator diamond toggles a key at the playhead on '
+        'ONE lane', (tester) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      // Playhead starts at frame 0 where all lanes are keyed; toggling the
+      // position lane removes only its key.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_laneKey('position', 0), findsNothing);
+      expect(_laneKey('scale', 0), findsOneWidget);
+
+      // Toggling again re-keys the property at its resolved value.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_laneKey('position', 0), findsOneWidget);
+
+      // One undo step per toggle.
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await tester.pumpAndSettle();
+      expect(_laneKey('position', 0), findsNothing);
+    });
+
+    testWidgets('dragging a marker moves the key (frame-snapped)', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      // Default zoom = 48px per frame: +96px = +2 frames.
+      await tester.drag(_laneKey('position', 8), const Offset(96, 0));
+      await tester.pumpAndSettle();
+
+      expect(_laneKey('position', 8), findsNothing);
+      expect(_laneKey('position', 10), findsOneWidget);
+      // Other lanes keep their key at 8.
+      expect(_laneKey('scale', 8), findsOneWidget);
+    });
+
+    testWidgets('the long-press menu deletes a key', (tester) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.ensureVisible(_laneKey('rotation', 8));
+      await tester.pumpAndSettle();
+      await tester.longPress(_laneKey('rotation', 8));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('lane-key-menu-delete')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_laneKey('rotation', 8), findsNothing);
+      expect(_laneKey('position', 8), findsOneWidget);
+    });
+
+    testWidgets('prev/next navigator jumps the playhead between keys', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-next-key-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const ValueKey<String>('timeline-current-frame-counter'),
+              ),
+            )
+            .data,
+        '9',
       );
     });
   });

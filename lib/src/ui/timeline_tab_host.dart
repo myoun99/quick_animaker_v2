@@ -11,11 +11,13 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
+import '../models/transform_track.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
@@ -64,6 +66,67 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
     return transformPropertyLanes(_session.activeCut.camera.track);
   }
+
+  /// Commits an edited camera track as one undo step; non-camera layers
+  /// join with the layer-transform work.
+  void _commitLaneEdit(Layer layer, TransformTrack? next, String description) {
+    if (layer.kind != LayerKind.camera || next == null) {
+      return;
+    }
+    _session.updateActiveCutCameraTrack(next, description: description);
+  }
+
+  PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
+    onToggleKeyAt: (layer, lane, frameIndex) {
+      final track = _session.activeCut.camera.track;
+      _commitLaneEdit(
+        layer,
+        transformTrackWithLaneKeyToggled(
+          track,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+          // The navigator toggles at the playhead: freeze the property's
+          // CURRENT resolved value there (AE behavior).
+          resolvedPose: _session.cameraPoseAtCurrentFrame,
+        ),
+        '${lane.label} keyframe at frame ${frameIndex + 1}',
+      );
+    },
+    onMoveKey: (layer, lane, fromFrame, toFrame) {
+      _commitLaneEdit(
+        layer,
+        transformTrackWithLaneKeyMoved(
+          _session.activeCut.camera.track,
+          laneId: lane.laneId,
+          fromFrame: fromFrame,
+          toFrame: toFrame,
+        ),
+        'Move ${lane.label} keyframe to frame ${toFrame + 1}',
+      );
+    },
+    onRemoveKey: (layer, lane, frameIndex) {
+      _commitLaneEdit(
+        layer,
+        transformTrackWithLaneKeyRemoved(
+          _session.activeCut.camera.track,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+        ),
+        'Delete ${lane.label} keyframe',
+      );
+    },
+    onToggleHold: (layer, lane, frameIndex) {
+      _commitLaneEdit(
+        layer,
+        transformTrackWithLaneHoldToggled(
+          _session.activeCut.camera.track,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+        ),
+        'Toggle hold on ${lane.label} keyframe',
+      );
+    },
+  );
 
   Future<void> _deleteActiveLayer() async {
     final activeLayer = _session.activeLayer;
@@ -192,6 +255,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
           lanesForLayer: _lanesForLayer,
+          laneEdit: _laneEdit,
           timelineActionToolbar: Row(
             children: [
               PlaybackTransportControls(

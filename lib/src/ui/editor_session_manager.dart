@@ -13,6 +13,7 @@ import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
+import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -669,6 +670,21 @@ class EditorSessionManager extends ChangeNotifier {
 
   void clearActiveCutCamera() {
     _cutCommandCoordinator.clearCutCamera(cutId: _editingSession.activeCutId);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Replaces the active cut's camera track (one undo step) — the property
+  /// lanes' per-property key edits route through here.
+  void updateActiveCutCameraTrack(
+    TransformTrack track, {
+    String description = 'Edit camera keyframes',
+  }) {
+    _cutCommandCoordinator.updateCutCamera(
+      cutId: _editingSession.activeCutId,
+      camera: CutCamera.fromTrack(track),
+      description: description,
+    );
     _refreshAfterCutCommand();
     notifyListeners();
   }
