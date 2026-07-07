@@ -40,13 +40,11 @@ enum TimesheetInkPlane {
 /// [BrushStrokeHistoryCommand] the drawing canvas uses (undo parity), and
 /// erase reuses the same blend routes untouched.
 class TimesheetInkController extends ChangeNotifier {
-  /// Ink resolution multiplier over document space (36px per frame row).
-  ///
-  /// The plan called for 4×, but the live-stroke rasterizer allocates a
-  /// CANVAS-SIZED RGBA buffer per stroke, so surfaces must stay a few
-  /// thousand px per side — 4× page bands would be ~160MB per stroke.
-  /// Raise this only after the rasterizer becomes region-sparse.
-  static const int inkScale = 2;
+  /// Ink resolution multiplier over document space (72px per frame row —
+  /// the plan's 4×). Affordable because the live-stroke rasterizer is
+  /// tile-sparse: stroke cost scales with the ink actually drawn, never
+  /// with the logical surface size.
+  static const int inkScale = 4;
 
   /// The ink store is namespaced by these synthetic ids; they only need to
   /// be unique inside the controller's own stores.

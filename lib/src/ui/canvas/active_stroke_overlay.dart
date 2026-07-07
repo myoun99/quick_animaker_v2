@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../services/brush_live_stroke_rasterizer.dart'
+    show ActiveStrokePixelSource;
 import 'deferred_image_disposal.dart';
 
 /// Mutable state of the in-progress stroke overlay.
@@ -64,30 +66,23 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// Whether the overlay currently has stroke content to draw.
   bool get hasStrokeContent => _tileImages.isNotEmpty;
 
-  /// Snapshots the overlay tiles that [region] touches from the live stroke
-  /// buffer and re-decodes them.
+  /// Snapshots the overlay tiles that [region] touches from the live
+  /// stroke [source] and re-decodes them.
   ///
   /// Decoding is asynchronous; a tile touched again while its decode is in
-  /// flight is re-snapshotted from the (newer) buffer content as soon as the
-  /// running decode lands, so the newest state always wins and per-frame
-  /// work stays bounded to one decode per touched tile.
+  /// flight is re-snapshotted from the (newer) stroke content as soon as
+  /// the running decode lands, so the newest state always wins and
+  /// per-frame work stays bounded to one decode per touched tile.
   void updateRegion({
-    required Uint8List pixels,
-    required int canvasWidth,
-    required int canvasHeight,
+    required ActiveStrokePixelSource source,
     required DirtyRegion region,
   }) {
     for (final coord in region.toTileCoords(tileSize: tileSize)) {
-      _decodeTile(coord, pixels, canvasWidth, canvasHeight);
+      _decodeTile(coord, source);
     }
   }
 
-  void _decodeTile(
-    TileCoord coord,
-    Uint8List pixels,
-    int canvasWidth,
-    int canvasHeight,
-  ) {
+  void _decodeTile(TileCoord coord, ActiveStrokePixelSource source) {
     if (_decoding.contains(coord)) {
       _dirtyWhileDecoding.add(coord);
       return;
@@ -97,32 +92,34 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
-    final width = math.min(tileSize, canvasWidth - left);
-    final height = math.min(tileSize, canvasHeight - top);
+    final width = math.min(tileSize, source.canvasWidth - left);
+    final height = math.min(tileSize, source.canvasHeight - top);
 
-    // Snapshot and premultiply in one pass: the engine interprets rgba8888
-    // uploads as premultiplied, and Skia's mul-div-255 rounding keeps the
-    // overlay byte-identical to the committed tile images.
+    // Snapshot the straight-alpha rows, then premultiply in place with the
+    // same per-pixel branches/rounding as before: the engine interprets
+    // rgba8888 uploads as premultiplied, and Skia's mul-div-255 rounding
+    // keeps the overlay byte-identical to the committed tile images. The
+    // alpha==0 case must ZERO the color bytes — a straight-alpha stroke
+    // pixel can round to alpha 0 while keeping non-zero color, which would
+    // be invalid premultiplied data.
     final bytes = Uint8List(width * height * 4);
     for (var y = 0; y < height; y += 1) {
-      var source = ((top + y) * canvasWidth + left) * 4;
-      var target = y * width * 4;
-      for (var x = 0; x < width; x += 1) {
-        final alpha = pixels[source + 3];
-        if (alpha == 255) {
-          bytes[target] = pixels[source];
-          bytes[target + 1] = pixels[source + 1];
-          bytes[target + 2] = pixels[source + 2];
-          bytes[target + 3] = 255;
-        } else if (alpha != 0) {
-          bytes[target] = _mul255Round(pixels[source], alpha);
-          bytes[target + 1] = _mul255Round(pixels[source + 1], alpha);
-          bytes[target + 2] = _mul255Round(pixels[source + 2], alpha);
-          bytes[target + 3] = alpha;
-        }
-        source += 4;
-        target += 4;
+      source.copyRow(left, top + y, width, bytes, y * width * 4);
+    }
+    for (var offset = 0; offset < bytes.length; offset += 4) {
+      final alpha = bytes[offset + 3];
+      if (alpha == 255) {
+        continue;
       }
+      if (alpha == 0) {
+        bytes[offset] = 0;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        continue;
+      }
+      bytes[offset] = _mul255Round(bytes[offset], alpha);
+      bytes[offset + 1] = _mul255Round(bytes[offset + 1], alpha);
+      bytes[offset + 2] = _mul255Round(bytes[offset + 2], alpha);
     }
 
     final generation = _generation;
@@ -148,7 +145,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       _tileImages[coord] = image;
       notifyListeners();
       if (_dirtyWhileDecoding.remove(coord)) {
-        _decodeTile(coord, pixels, canvasWidth, canvasHeight);
+        _decodeTile(coord, source);
       }
       _finishDecode();
     });

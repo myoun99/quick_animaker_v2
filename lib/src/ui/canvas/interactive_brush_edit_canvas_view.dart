@@ -419,9 +419,9 @@ class _InteractiveBrushEditCanvasViewState
       widget.onSourceStrokeCommitted(
         BrushStrokeCommitData(
           sourceDabs: _collectedDabs,
-          strokePixels: rasterizer?.strokeBounds == null
-              ? null
-              : rasterizer!.pixels,
+          // Bounds-local row-major buffer (stride = bounds width): its
+          // allocation scales with the stroke, never the canvas.
+          strokePixels: rasterizer?.strokePixelsWithinBounds(),
           strokeBounds: rasterizer?.strokeBounds,
         ),
       );
@@ -671,12 +671,7 @@ class _InteractiveBrushEditCanvasViewState
     _overlayModel.dabs.addAll(newDabs);
     final region = rasterizer.blendFrom(_overlayModel.dabs, from: from);
     if (region != null) {
-      _overlayModel.updateRegion(
-        pixels: rasterizer.pixels,
-        canvasWidth: rasterizer.canvasSize.width,
-        canvasHeight: rasterizer.canvasSize.height,
-        region: region,
-      );
+      _overlayModel.updateRegion(source: rasterizer, region: region);
     }
   }
 }
