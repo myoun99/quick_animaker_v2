@@ -772,62 +772,57 @@ void main() {
     expect(tester.getTopLeft(rulerBoundary).dx, boundaryLeft);
   });
 
-  testWidgets(
-    'keeps ruler/body aligned after viewport widens',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(500, 320));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('keeps ruler/body aligned after viewport widens', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(500, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(_grid(width: 500, playbackFrameCount: 12));
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-2400, 0),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(_grid(width: 500, playbackFrameCount: 12));
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(-2400, 0),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.binding.setSurfaceSize(const Size(4600, 320));
-      await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 12));
-      await tester.pump();
-      await tester.pump();
+    await tester.binding.setSurfaceSize(const Size(4600, 320));
+    await tester.pumpWidget(_grid(width: 4600, playbackFrameCount: 12));
+    await tester.pump();
+    await tester.pump();
 
-      // The endless frame axis grew a runway past the scrolled offset, so
-      // widening no longer clamps the offset back — return to the origin
-      // and check ruler/body alignment through the relayout.
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(2400, 0),
-      );
-      await tester.pumpAndSettle();
+    // The endless frame axis grew a runway past the scrolled offset, so
+    // widening no longer clamps the offset back — return to the origin
+    // and check ruler/body alignment through the relayout.
+    await tester.drag(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+      const Offset(2400, 0),
+    );
+    await tester.pumpAndSettle();
 
-      final frameGridArea = find.byKey(
-        const ValueKey<String>('timeline-frame-grid-area'),
-      );
-      final header = find.byKey(
-        const ValueKey<String>('timeline-frame-header-10'),
-      );
-      final cell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-1-10'),
-      );
-      final leadingSpacer = find.byKey(
-        const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
-      );
+    final frameGridArea = find.byKey(
+      const ValueKey<String>('timeline-frame-grid-area'),
+    );
+    final header = find.byKey(
+      const ValueKey<String>('timeline-frame-header-10'),
+    );
+    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-10'));
+    final leadingSpacer = find.byKey(
+      const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
+    );
 
-      expect(header, findsOneWidget);
-      expect(cell, findsOneWidget);
-      expect(
-        tester.getTopLeft(cell).dx,
-        moreOrLessEquals(tester.getTopLeft(header).dx, epsilon: 1),
-      );
-      expect(
-        tester.getTopLeft(leadingSpacer).dx,
-        lessThanOrEqualTo(tester.getTopLeft(frameGridArea).dx + 1),
-      );
-      expect(
-        tester.getTopLeft(cell).dx,
-        lessThan(tester.getTopRight(frameGridArea).dx),
-      );
-    },
-  );
+    expect(header, findsOneWidget);
+    expect(cell, findsOneWidget);
+    expect(
+      tester.getTopLeft(cell).dx,
+      moreOrLessEquals(tester.getTopLeft(header).dx, epsilon: 1),
+    );
+    expect(
+      tester.getTopLeft(leadingSpacer).dx,
+      lessThanOrEqualTo(tester.getTopLeft(frameGridArea).dx + 1),
+    );
+    expect(
+      tester.getTopLeft(cell).dx,
+      lessThan(tester.getTopRight(frameGridArea).dx),
+    );
+  });
 
   testWidgets(
     'selected exposure outline follows body cells after viewport widens',
@@ -1626,9 +1621,7 @@ void main() {
     );
   });
 
-  testWidgets('block cells keep divider-safe radius rules', (
-    tester,
-  ) async {
+  testWidgets('block cells keep divider-safe radius rules', (tester) async {
     await tester.pumpWidget(
       _grid(
         exposureStateForLayer: (_, frameIndex) => switch (frameIndex) {
@@ -1705,52 +1698,50 @@ void main() {
     },
   );
 
-  testWidgets(
-    'selecting a block start highlights its exposure range',
-    (tester) async {
-      await tester.pumpWidget(
-        _grid(
-          currentFrameIndex: 4,
-          exposureStateForLayer: (layer, frameIndex) {
-            if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.uncovered;
-            }
-            return switch (frameIndex) {
-              4 => TimelineCellExposureState.drawingStart,
-          5 || 6 => TimelineCellExposureState.held,
-              _ => TimelineCellExposureState.uncovered,
-            };
-          },
-        ),
-      );
+  testWidgets('selecting a block start highlights its exposure range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 4,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.uncovered;
+          }
+          return switch (frameIndex) {
+            4 => TimelineCellExposureState.drawingStart,
+            5 || 6 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
+          };
+        },
+      ),
+    );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
-      _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
-    },
-  );
+    _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
+    _expectNoSelectedExposureRangeBorder(tester, 'timeline-cell-layer-1-3');
+  });
 
-  testWidgets(
-    'selecting a held cell resolves back to its block range',
-    (tester) async {
-      await tester.pumpWidget(
-        _grid(
-          currentFrameIndex: 6,
-          exposureStateForLayer: (layer, frameIndex) {
-            if (layer.id != const LayerId('layer-1')) {
-              return TimelineCellExposureState.uncovered;
-            }
-            return switch (frameIndex) {
-              4 => TimelineCellExposureState.drawingStart,
-          5 || 6 => TimelineCellExposureState.held,
-              _ => TimelineCellExposureState.uncovered,
-            };
-          },
-        ),
-      );
+  testWidgets('selecting a held cell resolves back to its block range', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _grid(
+        currentFrameIndex: 6,
+        exposureStateForLayer: (layer, frameIndex) {
+          if (layer.id != const LayerId('layer-1')) {
+            return TimelineCellExposureState.uncovered;
+          }
+          return switch (frameIndex) {
+            4 => TimelineCellExposureState.drawingStart,
+            5 || 6 => TimelineCellExposureState.held,
+            _ => TimelineCellExposureState.uncovered,
+          };
+        },
+      ),
+    );
 
-      _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
-    },
-  );
+    _expectSelectedExposureRangeCells(tester, 'layer-1', const [4, 5, 6]);
+  });
 
   testWidgets('empty selected cells do not highlight an exposure range', (
     tester,

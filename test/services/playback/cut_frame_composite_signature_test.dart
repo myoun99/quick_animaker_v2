@@ -99,8 +99,10 @@ void main() {
   test('opacity, visibility, quality and canvas size change the signature', () {
     final base = signature();
 
-    expect(signature(forCut: cut(layers: [drawingLayer(opacity: 0.5)])),
-        isNot(base));
+    expect(
+      signature(forCut: cut(layers: [drawingLayer(opacity: 0.5)])),
+      isNot(base),
+    );
     expect(
       signature(
         forCut: cut(canvasSize: const CanvasSize(width: 200, height: 100)),
@@ -111,8 +113,18 @@ void main() {
   });
 
   test('layer order is part of the signature', () {
-    final ab = cut(layers: [drawingLayer(), drawingLayer(id: 'layer-2')]);
-    final ba = cut(layers: [drawingLayer(id: 'layer-2'), drawingLayer()]);
+    final ab = cut(
+      layers: [
+        drawingLayer(),
+        drawingLayer(id: 'layer-2'),
+      ],
+    );
+    final ba = cut(
+      layers: [
+        drawingLayer(id: 'layer-2'),
+        drawingLayer(),
+      ],
+    );
 
     expect(signature(forCut: ab), isNot(signature(forCut: ba)));
   });

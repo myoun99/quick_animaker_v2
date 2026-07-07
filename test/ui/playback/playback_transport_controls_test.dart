@@ -64,18 +64,14 @@ void main() {
     );
   }
 
-  testWidgets('play starts this scope from the provided frame', (
-    tester,
-  ) async {
+  testWidgets('play starts this scope from the provided frame', (tester) async {
     final c = controller();
     addTearDown(c.dispose);
-    await pumpControls(
-      tester,
-      controller: c,
-      playbackStartFrame: () => 2,
-    );
+    await pumpControls(tester, controller: c, playbackStartFrame: () => 2);
 
-    await tester.tap(find.byKey(const ValueKey<String>('playback-play-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
     await tester.pump();
 
     expect(c.isActive, isTrue);
@@ -84,7 +80,9 @@ void main() {
     expect(c.position!.globalFrameIndex, 2);
 
     // The button now pauses.
-    await tester.tap(find.byKey(const ValueKey<String>('playback-play-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
     await tester.pump();
     expect(c.isPlaying, isFalse);
     expect(c.isActive, isTrue);
@@ -108,7 +106,9 @@ void main() {
     await tester.pump();
     expect(stopButton().onPressed, isNotNull);
 
-    await tester.tap(find.byKey(const ValueKey<String>('playback-stop-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-stop-button')),
+    );
     await tester.pump();
     expect(c.isActive, isFalse);
   });
@@ -119,11 +119,15 @@ void main() {
     await pumpControls(tester, controller: c);
     expect(c.loopMode, PlaybackLoopMode.loop);
 
-    await tester.tap(find.byKey(const ValueKey<String>('playback-loop-toggle')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-loop-toggle')),
+    );
     await tester.pump();
     expect(c.loopMode, PlaybackLoopMode.once);
 
-    await tester.tap(find.byKey(const ValueKey<String>('playback-loop-toggle')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-loop-toggle')),
+    );
     await tester.pump();
     expect(c.loopMode, PlaybackLoopMode.loop);
   });
@@ -160,7 +164,9 @@ void main() {
     await pumpControls(tester, controller: c, scope: PlaybackScope.allCuts);
 
     // Play here starts all-cuts playback rather than pausing the other scope.
-    await tester.tap(find.byKey(const ValueKey<String>('playback-play-button')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
     await tester.pump();
     expect(c.scope, PlaybackScope.allCuts);
 

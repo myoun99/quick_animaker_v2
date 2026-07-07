@@ -38,7 +38,9 @@ void main() {
         id: const LayerId('layer'),
         name: 'A',
         isVisible: layerVisible,
-        frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
+        frames: [
+          Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+        ],
       ),
     ],
   );

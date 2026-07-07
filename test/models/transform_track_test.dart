@@ -43,29 +43,16 @@ void main() {
     });
 
     test('resolveAt: exact keyframes win', () {
-      final track = TransformTrack(
-        keyframes: {2: _pose(10), 6: _pose(50)},
-      );
+      final track = TransformTrack(keyframes: {2: _pose(10), 6: _pose(50)});
 
-      expect(
-        track.resolveAt(frameIndex: 2, orElse: () => _pose(0)),
-        _pose(10),
-      );
+      expect(track.resolveAt(frameIndex: 2, orElse: () => _pose(0)), _pose(10));
     });
 
     test('resolveAt holds before the first and after the last keyframe', () {
-      final track = TransformTrack(
-        keyframes: {2: _pose(10), 6: _pose(50)},
-      );
+      final track = TransformTrack(keyframes: {2: _pose(10), 6: _pose(50)});
 
-      expect(
-        track.resolveAt(frameIndex: 0, orElse: () => _pose(0)),
-        _pose(10),
-      );
-      expect(
-        track.resolveAt(frameIndex: 9, orElse: () => _pose(0)),
-        _pose(50),
-      );
+      expect(track.resolveAt(frameIndex: 0, orElse: () => _pose(0)), _pose(10));
+      expect(track.resolveAt(frameIndex: 9, orElse: () => _pose(0)), _pose(50));
     });
 
     test('resolveAt lerps component-wise between keyframes', () {

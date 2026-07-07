@@ -44,10 +44,14 @@ void main() {
   testWidgets('prefills the current canvas size', (tester) async {
     await pumpOpenDialog(tester);
 
-    expect(fieldByKey(tester, 'canvas-size-width-field').controller!.text,
-        '1920');
-    expect(fieldByKey(tester, 'canvas-size-height-field').controller!.text,
-        '1080');
+    expect(
+      fieldByKey(tester, 'canvas-size-width-field').controller!.text,
+      '1920',
+    );
+    expect(
+      fieldByKey(tester, 'canvas-size-height-field').controller!.text,
+      '1080',
+    );
   });
 
   testWidgets('confirms with the entered size and the center anchor default', (

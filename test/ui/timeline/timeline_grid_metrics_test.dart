@@ -17,7 +17,10 @@ void main() {
       final zoomed = TimelineGridMetrics.defaults.copyWith(frameCellWidth: 24);
 
       expect(zoomed.frameCellWidth, 24);
-      expect(zoomed.layerRowHeight, TimelineGridMetrics.defaults.layerRowHeight);
+      expect(
+        zoomed.layerRowHeight,
+        TimelineGridMetrics.defaults.layerRowHeight,
+      );
       expect(
         zoomed.layerControlsWidth,
         TimelineGridMetrics.defaults.layerControlsWidth,

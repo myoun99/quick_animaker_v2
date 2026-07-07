@@ -78,9 +78,8 @@ class FakeFfmpegProcess implements Process {
   Stream<List<int>> get stdout => const Stream<List<int>>.empty();
 
   @override
-  Stream<List<int>> get stderr => Stream<List<int>>.value(
-    utf8.encode(stderrText),
-  );
+  Stream<List<int>> get stderr =>
+      Stream<List<int>>.value(utf8.encode(stderrText));
 
   @override
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {

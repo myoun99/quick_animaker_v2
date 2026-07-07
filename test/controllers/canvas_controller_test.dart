@@ -519,7 +519,10 @@ Project _createTwoCutProject() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+                  0: TimelineExposure.drawing(
+                    const FrameId('frame-a'),
+                    length: 1,
+                  ),
                 },
               ),
             ],
@@ -542,7 +545,10 @@ Project _createTwoCutProject() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('frame-b'), length: 1),
+                  0: TimelineExposure.drawing(
+                    const FrameId('frame-b'),
+                    length: 1,
+                  ),
                 },
               ),
             ],

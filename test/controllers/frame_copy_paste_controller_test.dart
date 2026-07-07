@@ -154,20 +154,23 @@ void main() {
       },
     );
 
-    test('paste linked frame inside an X run creates authored drawingStart', () {
-      final fixture = _fixture(_layer());
-      fixture.controller.selectFrameIndex(4);
+    test(
+      'paste linked frame inside an X run creates authored drawingStart',
+      () {
+        final fixture = _fixture(_layer());
+        fixture.controller.selectFrameIndex(4);
 
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('a'),
-      );
+        fixture.controller.pasteLinkedFrameForLayer(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('a'),
+        );
 
-      expect(
-        _latestLayer(fixture.repository).timeline[4]?.frameId,
-        const FrameId('a'),
-      );
-    });
+        expect(
+          _latestLayer(fixture.repository).timeline[4]?.frameId,
+          const FrameId('a'),
+        );
+      },
+    );
 
     test('paste linked frame on empty creates authored drawingStart', () {
       final fixture = _fixture(_layer(timeline: const {}));
@@ -285,10 +288,7 @@ void main() {
       );
 
       history.undo();
-      expect(
-        _latestLayer(fixture.repository).timeline.containsKey(3),
-        isFalse,
-      );
+      expect(_latestLayer(fixture.repository).timeline.containsKey(3), isFalse);
 
       history.redo();
       expect(

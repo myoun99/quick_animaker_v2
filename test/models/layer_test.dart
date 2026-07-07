@@ -74,10 +74,7 @@ void main() {
     test('copyWith changes the flags and preserves other fields', () {
       final layer = _layer();
 
-      final updated = layer.copyWith(
-        onTimesheet: false,
-        mark: LayerMark.blue,
-      );
+      final updated = layer.copyWith(onTimesheet: false, mark: LayerMark.blue);
 
       expect(updated.onTimesheet, isFalse);
       expect(updated.mark, LayerMark.blue);

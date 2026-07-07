@@ -53,29 +53,35 @@ void main() {
       expect(layer.frames, hasLength(1));
     });
 
-    test('marks are allowed on held and empty cells but not drawing starts', () {
-      final fixture = _fixture(_markedTestLayer());
+    test(
+      'marks are allowed on held and empty cells but not drawing starts',
+      () {
+        final fixture = _fixture(_markedTestLayer());
 
-      expect(
-        fixture.controller.canToggleMarkAt(layer: fixture.layer, frameIndex: 0),
-        isFalse,
-      );
-      for (final index in [1, 4, 8]) {
         expect(
           fixture.controller.canToggleMarkAt(
             layer: fixture.layer,
-            frameIndex: index,
+            frameIndex: 0,
           ),
-          isTrue,
-          reason: 'index $index',
+          isFalse,
         );
-      }
+        for (final index in [1, 4, 8]) {
+          expect(
+            fixture.controller.canToggleMarkAt(
+              layer: fixture.layer,
+              frameIndex: index,
+            ),
+            isTrue,
+            reason: 'index $index',
+          );
+        }
 
-      // Toggling on the drawing start is a no-op.
-      fixture.controller.selectFrameIndex(0);
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(fixture.repository).timeline[0]!.isDrawing, isTrue);
-    });
+        // Toggling on the drawing start is a no-op.
+        fixture.controller.selectFrameIndex(0);
+        fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+        expect(_latestLayer(fixture.repository).timeline[0]!.isDrawing, isTrue);
+      },
+    );
 
     test('marks never affect blocks, canvas resolution, or block length', () {
       final fixture = _fixture(_markedTestLayer());
@@ -116,10 +122,7 @@ void main() {
       );
 
       history.undo();
-      expect(
-        _latestLayer(fixture.repository).timeline.containsKey(2),
-        isFalse,
-      );
+      expect(_latestLayer(fixture.repository).timeline.containsKey(2), isFalse);
 
       history.redo();
       expect(
@@ -128,10 +131,7 @@ void main() {
       );
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-      expect(
-        _latestLayer(fixture.repository).timeline.containsKey(2),
-        isFalse,
-      );
+      expect(_latestLayer(fixture.repository).timeline.containsKey(2), isFalse);
 
       history.undo();
       expect(
@@ -150,9 +150,7 @@ Layer _markedTestLayer() {
     id: const LayerId('layer'),
     name: 'Layer',
     frames: [Frame(id: const FrameId('a'), duration: 3, strokes: const [])],
-    timeline: {
-      0: TimelineExposure.drawing(const FrameId('a'), length: 3),
-    },
+    timeline: {0: TimelineExposure.drawing(const FrameId('a'), length: 3)},
   );
 }
 

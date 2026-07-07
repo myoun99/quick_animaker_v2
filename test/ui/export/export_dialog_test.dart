@@ -426,10 +426,7 @@ void main() {
     await tester.pump();
     await selectMp4Format(tester);
 
-    expect(
-      find.textContaining('Video needs one picture size'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Video needs one picture size'), findsOneWidget);
     final runButton = tester.widget<TextButton>(
       find.byKey(const ValueKey<String>('export-run-button')),
     );
@@ -448,9 +445,7 @@ void main() {
     );
   });
 
-  testWidgets('instance export forces the PNG sequence format', (
-    tester,
-  ) async {
+  testWidgets('instance export forces the PNG sequence format', (tester) async {
     await pumpDialog(tester, exportSession());
     await selectMp4Format(tester);
 

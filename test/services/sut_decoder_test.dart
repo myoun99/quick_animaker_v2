@@ -94,10 +94,7 @@ void main() {
     database.execute(
       'INSERT INTO Node(_PW_ID, NodeUuid, NodeName, NodeVariantID) '
       'VALUES (2, ?, ?, 9)',
-      [
-        Uint8List.fromList(List<int>.generate(16, (i) => i + 1)),
-        '테스트 브러시',
-      ],
+      [Uint8List.fromList(List<int>.generate(16, (i) => i + 1)), '테스트 브러시'],
     );
     database.execute(
       'INSERT INTO Variant(VariantID, Opacity, BrushSize, BrushFlow, '
@@ -120,10 +117,7 @@ void main() {
     database.execute(
       'INSERT INTO Node(_PW_ID, NodeUuid, NodeName, NodeVariantID) '
       'VALUES (3, ?, ?, 12)',
-      [
-        Uint8List.fromList(List<int>.generate(16, (i) => 40 + i)),
-        'Round Pen',
-      ],
+      [Uint8List.fromList(List<int>.generate(16, (i) => 40 + i)), 'Round Pen'],
     );
     database.execute(
       'INSERT INTO Variant(VariantID, Opacity, BrushSize, BrushHardness, '
@@ -144,11 +138,7 @@ void main() {
       database.execute(
         'INSERT INTO MaterialFile(CatalogPath, OriginalPath, FileData) '
         'VALUES (?, ?, ?)',
-        [
-          catalogPath,
-          '$catalogPath:data:material_0.layer',
-          fileData.toBytes(),
-        ],
+        [catalogPath, '$catalogPath:data:material_0.layer', fileData.toBytes()],
       );
       if (texturePng != null) {
         final textureData = BytesBuilder();
@@ -186,10 +176,7 @@ void main() {
     expect(result.presets, hasLength(2));
 
     final sampled = result.presets.first;
-    expect(
-      sampled.id.value,
-      'sut-0102030405060708090a0b0c0d0e0f10',
-    );
+    expect(sampled.id.value, 'sut-0102030405060708090a0b0c0d0e0f10');
     expect(sampled.name, '테스트 브러시');
     final s = sampled.settings;
     expect(s.size, 50.0);

@@ -68,10 +68,9 @@ void main() {
       ),
     );
 
-    expect(
-      Map<int, TimelineExposure>.from(layer.timeline),
-      {0: TimelineExposure.drawing(const FrameId('f1'), length: 2)},
-    );
+    expect(Map<int, TimelineExposure>.from(layer.timeline), {
+      0: TimelineExposure.drawing(const FrameId('f1'), length: 2),
+    });
     expect(exposedFrameIdAt(layer.timeline, 2), isNull);
   });
 
@@ -123,9 +122,7 @@ void main() {
     final layer = Layer(
       id: const LayerId('layer-1'),
       name: 'A',
-      frames: [
-        Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
-      ],
+      frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
       timeline: {
         0: TimelineExposure.drawing(const FrameId('f1'), length: 3),
         1: const TimelineExposure.mark(),

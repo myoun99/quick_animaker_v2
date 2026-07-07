@@ -69,9 +69,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(
-        const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
-      ),
+      find.byKey(const ValueKey<String>('main-canvas-brush-host-blank-canvas')),
       findsNothing,
     );
   });

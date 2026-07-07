@@ -158,9 +158,7 @@ void main() {
     },
   );
 
-  testWidgets('named drawing start title shows the frame name', (
-    tester,
-  ) async {
+  testWidgets('named drawing start title shows the frame name', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
@@ -178,22 +176,21 @@ void main() {
     );
   });
 
-  testWidgets(
-    'unnamed drawing start title shows the drawing marker',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('unnamed drawing start title shows the drawing marker', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.text(
-          'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○',
-        ),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(
+      find.text(
+        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○',
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('horizontal and vertical panbars update viewport pan', (
     tester,
@@ -586,7 +583,10 @@ Project _projectWithMarkedFrame({String? name}) {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('marked-frame'), length: 1),
+                  0: TimelineExposure.drawing(
+                    const FrameId('marked-frame'),
+                    length: 1,
+                  ),
                 },
               ),
             ],
@@ -625,7 +625,10 @@ Project _projectWithActiveFrame() {
                   ),
                 ],
                 timeline: {
-                  0: TimelineExposure.drawing(const FrameId('editor-frame-1'), length: 1),
+                  0: TimelineExposure.drawing(
+                    const FrameId('editor-frame-1'),
+                    length: 1,
+                  ),
                 },
               ),
             ],

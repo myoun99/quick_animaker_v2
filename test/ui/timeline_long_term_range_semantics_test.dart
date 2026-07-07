@@ -85,7 +85,9 @@ void main() {
         final fixture = _fixture(
           cutDuration: 3,
           layer: _layer(
-            timeline: {0: TimelineExposure.drawing(const FrameId('head'), length: 1)},
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('head'), length: 1),
+            },
           ),
         );
 

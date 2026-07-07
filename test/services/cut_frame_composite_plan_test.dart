@@ -59,13 +59,17 @@ void main() {
           id: const LayerId('bottom'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+          },
         ),
         Layer(
           id: const LayerId('top'),
           name: 'B',
           frames: [frame('frame-2')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1),
+          },
         ),
       ]),
       frameIndex: 0,
@@ -82,20 +86,26 @@ void main() {
           id: const LayerId('visible'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+          },
         ),
         Layer(
           id: const LayerId('hidden'),
           name: 'B',
           frames: [frame('frame-2')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-2'), length: 1),
+          },
           isVisible: false,
         ),
         Layer(
           id: const LayerId('transparent'),
           name: 'C',
           frames: [frame('frame-3')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-3'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-3'), length: 1),
+          },
           opacity: 0,
         ),
         Layer(
@@ -153,7 +163,9 @@ void main() {
           id: const LayerId('undrawn'),
           name: 'B',
           frames: [frame('frame-x')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-x'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-x'), length: 1),
+          },
         ),
       ]),
       frameIndex: 3,
@@ -170,7 +182,9 @@ void main() {
           id: const LayerId('faded'),
           name: 'A',
           frames: [frame('frame-1')],
-          timeline: {0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1)},
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
+          },
           opacity: 0.25,
         ),
       ]),

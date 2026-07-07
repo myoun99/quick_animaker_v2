@@ -70,9 +70,10 @@ void main() {
     );
 
     expect(emitted, hasLength(8));
-    expect([for (final dab in emitted) dab.sequence], [
-      for (var i = 0; i < 8; i += 1) i,
-    ]);
+    expect(
+      [for (final dab in emitted) dab.sequence],
+      [for (var i = 0; i < 8; i += 1) i],
+    );
     for (var i = 0; i < 4; i += 1) {
       final dx = emitted[i].center.x - 10;
       final dy = emitted[i].center.y - 10;

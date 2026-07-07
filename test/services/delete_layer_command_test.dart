@@ -221,9 +221,7 @@ Layer _layer(
       ),
       Frame(id: _frameBId, duration: 1, strokes: const [], name: '$name-2'),
     ],
-    timeline: {
-      0: TimelineExposure.drawing(_frameAId, length: 2),
-    },
+    timeline: {0: TimelineExposure.drawing(_frameAId, length: 2)},
   );
 }
 

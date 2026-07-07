@@ -24,32 +24,20 @@ void main() {
     test('growing into an empty gap consumes X cells and leaves the next '
         'block in place', () {
       // A[0,2) .. gap(2) .. B[4,6)
-      final harness = _Harness({
-        0: _drawing('a', 2),
-        4: _drawing('b', 2),
-      });
+      final harness = _Harness({0: _drawing('a', 2), 4: _drawing('b', 2)});
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 1);
 
-      harness.expectTimeline({
-        0: _drawing('a', 3),
-        4: _drawing('b', 2),
-      });
+      harness.expectTimeline({0: _drawing('a', 3), 4: _drawing('b', 2)});
     });
 
     test('growing past the gap pushes the separated block by the overlap '
         'only', () {
-      final harness = _Harness({
-        0: _drawing('a', 2),
-        4: _drawing('b', 2),
-      });
+      final harness = _Harness({0: _drawing('a', 2), 4: _drawing('b', 2)});
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 4);
 
-      harness.expectTimeline({
-        0: _drawing('a', 6),
-        6: _drawing('b', 2),
-      });
+      harness.expectTimeline({0: _drawing('a', 6), 6: _drawing('b', 2)});
     });
 
     test('growing pushes a glued chain rigidly, preserving commas and '
@@ -119,64 +107,40 @@ void main() {
     test('growing backward pushes the glued preceding chain left through '
         'its own gap', () {
       // gap(1) A[1,2) B[2,4): grow B's front by 2 → A pushed to 0.
-      final harness = _Harness({
-        1: _drawing('a', 1),
-        2: _drawing('b', 2),
-      });
+      final harness = _Harness({1: _drawing('a', 1), 2: _drawing('b', 2)});
 
       harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: -2);
 
-      harness.expectTimeline({
-        0: _drawing('a', 1),
-        1: _drawing('b', 3),
-      });
+      harness.expectTimeline({0: _drawing('a', 1), 1: _drawing('b', 3)});
     });
 
     test('growing backward is clamped by frame zero', () {
-      final harness = _Harness({
-        0: _drawing('a', 1),
-        1: _drawing('b', 2),
-      });
+      final harness = _Harness({0: _drawing('a', 1), 1: _drawing('b', 2)});
 
       // Requested -3; no room at all (A already at 0 and glued).
       harness.shift(blockStart: 1, edge: TimelineBlockEdge.start, delta: -3);
 
-      harness.expectTimeline({
-        0: _drawing('a', 1),
-        1: _drawing('b', 2),
-      });
+      harness.expectTimeline({0: _drawing('a', 1), 1: _drawing('b', 2)});
     });
 
     test('shrinking from the front pulls the glued preceding chain right', () {
       // A[0,1) B[1,4): shrink B's front by 2 → A follows right, staying
       // glued; B's end stays put.
-      final harness = _Harness({
-        0: _drawing('a', 1),
-        1: _drawing('b', 3),
-      });
+      final harness = _Harness({0: _drawing('a', 1), 1: _drawing('b', 3)});
 
       harness.shift(blockStart: 1, edge: TimelineBlockEdge.start, delta: 2);
 
-      harness.expectTimeline({
-        2: _drawing('a', 1),
-        3: _drawing('b', 1),
-      });
+      harness.expectTimeline({2: _drawing('a', 1), 3: _drawing('b', 1)});
     });
 
     test('shrinking from the front leaves a separated preceding block and '
         'opens X cells', () {
       // A[0,1) .. gap .. B[3,6)
-      final harness = _Harness({
-        0: _drawing('a', 1),
-        3: _drawing('b', 3),
-      });
+      final harness = _Harness({0: _drawing('a', 1), 3: _drawing('b', 3)});
 
       harness.shift(blockStart: 3, edge: TimelineBlockEdge.start, delta: 2);
 
-      harness.expectTimeline({
-        0: _drawing('a', 1),
-        5: _drawing('b', 1),
-      });
+      harness.expectTimeline({0: _drawing('a', 1), 5: _drawing('b', 1)});
     });
 
     test('front shrink clamps at one frame', () {
@@ -223,28 +187,19 @@ void main() {
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 3);
 
       // B glued follows to 5 where the free mark sat: drawing wins.
-      harness.expectTimeline({
-        0: _drawing('a', 5),
-        5: _drawing('b', 1),
-      });
+      harness.expectTimeline({0: _drawing('a', 5), 5: _drawing('b', 1)});
     });
   });
 
   group('undo', () {
     test('a shift is one undoable command', () {
-      final harness = _Harness({
-        0: _drawing('a', 2),
-        2: _drawing('b', 2),
-      });
+      final harness = _Harness({0: _drawing('a', 2), 2: _drawing('b', 2)});
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 3);
       expect(harness.history.undoCount, 1);
 
       harness.history.undo();
-      harness.expectTimeline({
-        0: _drawing('a', 2),
-        2: _drawing('b', 2),
-      });
+      harness.expectTimeline({0: _drawing('a', 2), 2: _drawing('b', 2)});
     });
   });
 }

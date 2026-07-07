@@ -81,7 +81,10 @@ void main() {
         cameraFrameSize: frameSize,
       );
 
-      expect(bounds, const Rect.fromLTRB(1000 - 480, 600 - 270, 1000 + 480, 600 + 270));
+      expect(
+        bounds,
+        const Rect.fromLTRB(1000 - 480, 600 - 270, 1000 + 480, 600 + 270),
+      );
     });
 
     test('rotation expands the bounds to the rotated corners', () {

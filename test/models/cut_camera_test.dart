@@ -37,10 +37,8 @@ void main() {
         throwsArgumentError,
       );
       expect(
-        () => CameraPose(
-          center: CanvasPoint(x: 0, y: 0),
-          zoom: double.infinity,
-        ),
+        () =>
+            CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: double.infinity),
         throwsArgumentError,
       );
     });
@@ -130,8 +128,10 @@ void main() {
   });
 }
 
-CameraPose _pose({required double x, double zoom = 1}) =>
-    CameraPose(center: CanvasPoint(x: x, y: 0), zoom: zoom);
+CameraPose _pose({required double x, double zoom = 1}) => CameraPose(
+  center: CanvasPoint(x: x, y: 0),
+  zoom: zoom,
+);
 
 Cut _cut() => Cut(
   id: const CutId('cut-1'),

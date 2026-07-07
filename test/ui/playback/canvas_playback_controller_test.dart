@@ -316,9 +316,7 @@ void main() {
     c.detachTicker();
   });
 
-  testWidgets('stop syncs the last position through onStopped', (
-    tester,
-  ) async {
+  testWidgets('stop syncs the last position through onStopped', (tester) async {
     final stopped = <PlaybackPosition>[];
     final c = controller(onStopped: stopped.add);
     c.attachTicker(const TestVSync());
