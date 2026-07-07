@@ -196,6 +196,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   isFrameCached: (frame) =>
                       storyboardFrameCached(_session, frame),
                   thumbnailFor: widget.thumbnailFor,
+                  audioPeaksFor: _session.audioPeaksStore.peaksFor,
                   onNewCut: _session.createCut,
                   onRenameActiveCut: _renameActiveCut,
                   onEditActiveCutNote: _editActiveCutNote,

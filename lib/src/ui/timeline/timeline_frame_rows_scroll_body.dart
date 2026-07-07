@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -32,6 +33,9 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.projectFps = 24,
+    this.onRemoveAudioClip,
     this.commaDrag,
     this.laneEdit,
   });
@@ -58,6 +62,9 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final int projectFps;
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -106,6 +113,9 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     onSelectFrame: onSelectFrame,
                     onActivateCell: onActivateCell,
                     instructionDefById: instructionDefById,
+                    audioPeaksFor: audioPeaksFor,
+                    projectFps: projectFps,
+                    onRemoveAudioClip: onRemoveAudioClip,
                     commaDrag: commaDrag,
                   ),
           if (rows.isEmpty)

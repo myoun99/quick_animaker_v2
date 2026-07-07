@@ -49,6 +49,7 @@ import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
+import 'audio/audio_peaks_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
@@ -343,8 +344,15 @@ class EditorSessionManager extends ChangeNotifier {
     prerenderScheduler.dispose();
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
+    audioPeaksStore.dispose();
     super.dispose();
   }
+
+  /// Waveform peaks per audio file (ffmpeg extraction, cached); its
+  /// notifications forward through the session so SE rows repaint when a
+  /// waveform lands.
+  late final AudioPeaksStore audioPeaksStore = AudioPeaksStore()
+    ..addListener(notifyListeners);
 
   bool _activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {

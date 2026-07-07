@@ -396,6 +396,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onActivateCell: _activateCellEditor,
           instructionDefById: (instructionId) =>
               _session.cameraInstructionSet.defById(instructionId),
+          audioPeaksFor: _session.audioPeaksStore.peaksFor,
+          onRemoveAudioClip: _session.removeAudioClipAt,
           onAddLayer: _session.addLayer,
           onToggleLayerVisibility: _session.toggleLayerVisibility,
           onLayerOpacityChanged: (layerId, opacity) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
@@ -36,6 +37,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.projectFps = 24,
+    this.onRemoveAudioClip,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -68,6 +72,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// null hides instruction overlays.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// Waveform peaks resolver for SE rows' audio clips; null hides them.
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final int projectFps;
+
+  /// Removes an audio clip by index (the waveform's context menu).
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
@@ -167,6 +178,24 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 color: Theme.of(context).colorScheme.outline,
               ),
             ),
+          ),
+        // SE audio clips paint UNDER the label spans.
+        if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
+          ...timelineRowAudioOverlays(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+            fps: projectFps,
+            audioPeaksFor: audioPeaksFor!,
+            onRemoveClip: onRemoveAudioClip == null
+                ? null
+                : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
+            color: Theme.of(
+              context,
+            ).colorScheme.tertiary.withValues(alpha: 0.4),
           ),
         // SE rows: paper-sheet label + duration line spanning each entry
         // (the cells themselves stay unfilled).

@@ -7,6 +7,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -55,6 +56,9 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.projectFps = 24,
+    this.onRemoveAudioClip,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -87,6 +91,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM column chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// Waveform peaks for SE columns' audio clips + the removal hook.
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final int projectFps;
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -593,6 +602,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               .onActivateCell,
                                                           instructionDefById: widget
                                                               .instructionDefById,
+                                                          audioPeaksFor: widget
+                                                              .audioPeaksFor,
+                                                          projectFps:
+                                                              widget.projectFps,
+                                                          onRemoveAudioClip: widget
+                                                              .onRemoveAudioClip,
                                                           layer: entries[index]
                                                               .layer,
                                                           active:
@@ -870,6 +885,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.projectFps = 24,
+    this.onRemoveAudioClip,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -895,6 +913,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final int projectFps;
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final TimelineCommaDragCallbacks? commaDrag;
 
   @override
@@ -1000,6 +1021,25 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.outline,
                 ),
               ),
+            ),
+          // SE audio clips paint UNDER the label spans.
+          if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
+            ...timelineRowAudioOverlays(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              fps: projectFps,
+              audioPeaksFor: audioPeaksFor!,
+              onRemoveClip: onRemoveAudioClip == null
+                  ? null
+                  : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
+              color: Theme.of(
+                context,
+              ).colorScheme.tertiary.withValues(alpha: 0.4),
+              keyPrefix: 'xsheet',
             ),
           // SE columns: paper-sheet label + duration line spanning each
           // entry (the cells themselves stay unfilled).
