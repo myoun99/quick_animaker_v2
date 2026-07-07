@@ -1,0 +1,257 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/camera_pose.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/cut_camera.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
+
+Layer _layer(
+  String id, {
+  LayerKind kind = LayerKind.animation,
+  bool onTimesheet = true,
+  List<Frame> frames = const [],
+  Map<int, TimelineExposure>? timeline,
+}) {
+  return Layer(
+    id: LayerId(id),
+    name: id,
+    kind: kind,
+    onTimesheet: onTimesheet,
+    frames: frames,
+    timeline: timeline ?? const {},
+  );
+}
+
+Cut _cut({
+  List<Layer> layers = const [],
+  int duration = 48,
+  CutCamera? camera,
+}) {
+  return Cut(
+    id: const CutId('cut-1'),
+    name: 'Cut 1',
+    layers: layers,
+    duration: duration,
+    canvasSize: const CanvasSize(width: 1280, height: 720),
+    camera: camera,
+  );
+}
+
+TimesheetDocument _document(
+  Cut cut, {
+  int fps = 24,
+  int pageSeconds = 6,
+}) {
+  return TimesheetDocument.fromCut(
+    cut: cut,
+    projectName: 'Project',
+    fps: fps,
+    pageSeconds: pageSeconds,
+  );
+}
+
+void main() {
+  group('TimesheetDocument pages', () {
+    test('splits into pageSeconds*fps pages, padding the last', () {
+      final document = _document(_cut(duration: 150));
+
+      expect(document.pageFrameCount, 144);
+      expect(document.pages, hasLength(2));
+      expect(document.pages[1].startFrame, 144);
+      expect(document.rowCount, 288);
+      expect(document.playbackFrameCount, 150);
+    });
+
+    test('short cut still fills one page', () {
+      final document = _document(_cut(duration: 10));
+
+      expect(document.pages, hasLength(1));
+      expect(document.rowCount, 144);
+    });
+
+    test('duration label uses the sheet 초+コマ notation', () {
+      expect(_document(_cut(duration: 60)).durationLabel, '2+12');
+      expect(_document(_cut(duration: 48)).durationLabel, '2+0');
+    });
+  });
+
+  group('TimesheetDocument columns', () {
+    test(
+      'cel columns are the onTimesheet animation layers; SE and camera '
+      'slots always exist',
+      () {
+        final document = _document(
+          _cut(
+            layers: [
+              _layer('A'),
+              _layer('hidden', onTimesheet: false),
+              _layer('board', kind: LayerKind.storyboard),
+              _layer('B'),
+            ],
+          ),
+        );
+
+        expect(
+          document.columns
+              .where((column) => column.kind == TimesheetColumnKind.cel)
+              .map((column) => column.label),
+          ['A', 'B'],
+        );
+        expect(
+          document.columns
+              .where((column) => column.kind == TimesheetColumnKind.se)
+              .length,
+          2,
+        );
+        expect(
+          document.columns
+              .where((column) => column.kind == TimesheetColumnKind.camera)
+              .length,
+          2,
+        );
+      },
+    );
+
+    test('SE layers fill the fixed slots and extra ones grow the section', () {
+      final twoSe = _document(
+        _cut(layers: [_layer('se1', kind: LayerKind.se)]),
+      );
+      final seColumns = twoSe.columns
+          .where((column) => column.kind == TimesheetColumnKind.se)
+          .toList();
+      expect(seColumns, hasLength(2));
+      expect(seColumns[0].label, 'se1');
+      expect(seColumns[1].label, 'SE');
+
+      final threeSe = _document(
+        _cut(
+          layers: [
+            for (var i = 0; i < 3; i += 1) _layer('se$i', kind: LayerKind.se),
+          ],
+        ),
+      );
+      expect(
+        threeSe.columns
+            .where((column) => column.kind == TimesheetColumnKind.se)
+            .length,
+        3,
+      );
+    });
+  });
+
+  group('TimesheetDocument cells', () {
+    test('drawing starts carry cel numbers with position fallback', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              frames: [
+                Frame(
+                  id: const FrameId('f1'),
+                  duration: 1,
+                  name: 'A1',
+                  strokes: const [],
+                ),
+                Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('f1'), length: 3),
+                4: const TimelineExposure.drawing(FrameId('f2'), length: 2),
+              },
+            ),
+          ],
+          duration: 8,
+        ),
+      );
+
+      final cells = document.columns.first.cells;
+      expect(cells[0].kind, TimesheetCellKind.drawing);
+      expect(cells[0].label, 'A1');
+      expect(cells[1].kind, TimesheetCellKind.held);
+      expect(cells[2].kind, TimesheetCellKind.held);
+      expect(cells[4].kind, TimesheetCellKind.drawing);
+      expect(cells[4].label, '2', reason: '1-based position fallback');
+      expect(cells[5].kind, TimesheetCellKind.held);
+    });
+
+    test('X sits only on the first row of an empty run; marks continue it', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              frames: [
+                Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('f1'), length: 1),
+                3: const TimelineExposure.mark(),
+              },
+            ),
+          ],
+          duration: 6,
+        ),
+      );
+
+      final cells = document.columns.first.cells;
+      expect(cells[1].kind, TimesheetCellKind.emptyRunStart);
+      expect(cells[2].kind, TimesheetCellKind.empty);
+      expect(cells[3].kind, TimesheetCellKind.mark);
+      expect(
+        cells[4].kind,
+        TimesheetCellKind.empty,
+        reason: 'a mark continues the run — no second X',
+      );
+    });
+
+    test('rows beyond the playback range stay paper-blank', () {
+      final document = _document(_cut(layers: [_layer('A')], duration: 10));
+
+      final cells = document.columns.first.cells;
+      expect(cells[0].kind, TimesheetCellKind.emptyRunStart);
+      expect(cells[10].kind, TimesheetCellKind.empty);
+      expect(cells[143].kind, TimesheetCellKind.empty);
+    });
+
+    test('camera keyframes land in the first camera column with spans', () {
+      final document = _document(
+        _cut(
+          duration: 12,
+          camera: CutCamera(
+            keyframes: {
+              2: CameraPose(center: CanvasPoint(x: 0, y: 0)),
+              6: CameraPose(
+                center: CanvasPoint(x: 5, y: 5),
+                zoom: 2,
+              ),
+            },
+          ),
+        ),
+      );
+
+      final cameraColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.camera)
+          .toList();
+      final cells = cameraColumns.first.cells;
+      expect(cells[2].kind, TimesheetCellKind.cameraKey);
+      expect(cells[3].kind, TimesheetCellKind.cameraSpan);
+      expect(cells[5].kind, TimesheetCellKind.cameraSpan);
+      expect(cells[6].kind, TimesheetCellKind.cameraKey);
+      expect(cells[7].kind, TimesheetCellKind.empty);
+      expect(
+        cameraColumns[1].cells[2].kind,
+        TimesheetCellKind.empty,
+        reason: 'the second camera slot stays blank',
+      );
+    });
+  });
+}
