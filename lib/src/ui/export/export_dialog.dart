@@ -384,31 +384,38 @@ class ExportDialogState extends State<ExportDialog> {
         }
       }
 
-      final summary = isVideo
-          ? await widget.videoExportService.exportVideo(
-              count: count,
-              renderImage: (index) =>
-                  renderer.renderComposite(framePlan![index], sizeMode),
-              outputFilePath: videoPath!,
-              fps: widget.session.projectFps,
-              isCancelled: () => _cancelRequested,
-              onProgress: reportProgress,
-            )
-          : await _exportService.exportImages(
-              count: count,
-              renderImage: (index) => instanceOnly
-                  ? renderer.renderCel(
-                      celPlan[index],
-                      transparent: celTransparent,
-                    )
-                  : renderer.renderComposite(framePlan![index], sizeMode),
-              fileNameFor: (index) => instanceOnly
-                  ? celPlan[index].fileName
-                  : cameraSequenceFileName(index),
-              directoryPath: directoryPath!,
-              isCancelled: () => _cancelRequested,
-              onProgress: reportProgress,
-            );
+      final ExportWriteSummary summary;
+      if (isVideo) {
+        final videoPlan = framePlan!;
+        summary = await widget.videoExportService.exportVideo(
+          count: count,
+          renderImage: (index) =>
+              renderer.renderComposite(videoPlan[index], sizeMode),
+          outputFilePath: videoPath!,
+          fps: widget.session.projectFps,
+          // SE audio clips muxed onto the video timeline (silent export
+          // when none are attached).
+          audioClips: buildExportAudioPlan(
+            plan: videoPlan,
+            fps: widget.session.projectFps,
+          ),
+          isCancelled: () => _cancelRequested,
+          onProgress: reportProgress,
+        );
+      } else {
+        summary = await _exportService.exportImages(
+          count: count,
+          renderImage: (index) => instanceOnly
+              ? renderer.renderCel(celPlan[index], transparent: celTransparent)
+              : renderer.renderComposite(framePlan![index], sizeMode),
+          fileNameFor: (index) => instanceOnly
+              ? celPlan[index].fileName
+              : cameraSequenceFileName(index),
+          directoryPath: directoryPath!,
+          isCancelled: () => _cancelRequested,
+          onProgress: reportProgress,
+        );
+      }
       if (mounted) {
         setState(
           () => _statusMessage = isVideo

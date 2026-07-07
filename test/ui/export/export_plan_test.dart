@@ -11,7 +11,10 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
+import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -297,6 +300,97 @@ void main() {
       expect(sanitizeExportFileComponent('name...'), 'name');
       expect(sanitizeExportFileComponent('   '), 'untitled');
       expect(sanitizeExportFileComponent(''), 'untitled');
+    });
+  });
+
+  group('buildExportAudioPlan', () {
+    Layer seLayer(String id, List<AudioClip> clips) => Layer(
+      id: LayerId(id),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      audioClips: clips,
+    );
+
+    // fps 10 for readable seconds. Cut a: 10 frames, clips at 0 and 6.
+    // Cut b: 20 frames, clip at local 3 (global 13 in all-cuts order).
+    Cut cutA() => cut(
+      'a',
+      duration: 10,
+      layers: [
+        seLayer('se-a', const [
+          AudioClip(filePath: 'a.wav', startFrame: 0),
+          AudioClip(filePath: 'b.wav', startFrame: 6),
+        ]),
+      ],
+    );
+    Cut cutB() => cut(
+      'b',
+      duration: 20,
+      layers: [
+        seLayer('se-b', const [AudioClip(filePath: 'c.wav', startFrame: 3)]),
+      ],
+    );
+
+    test('all-cuts export lays clips globally, capped at their cut blocks', () {
+      final plan = buildExportFramePlan(
+        project: project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [cutA(), cutB()],
+          ),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+      );
+
+      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+
+      expect(clips, const [
+        // a.wav fills its whole cut.
+        ExportAudioClip(filePath: 'a.wav', durationSeconds: 1.0),
+        // b.wav starts at frame 6 and caps at cut a's end (frame 10).
+        ExportAudioClip(
+          filePath: 'b.wav',
+          delaySeconds: 0.6,
+          durationSeconds: 0.4,
+        ),
+        // c.wav sits at global frame 13 (cut b local 3) and never bleeds
+        // past cut b.
+        ExportAudioClip(
+          filePath: 'c.wav',
+          delaySeconds: 1.3,
+          durationSeconds: 1.7,
+        ),
+      ]);
+    });
+
+    test('a frame-range export seeks into clips that started earlier and '
+        'drops clips past the range', () {
+      final plan = buildExportFramePlan(
+        project: project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [cutA()]),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.frameRange,
+        rangeStartFrame: 4,
+        rangeEndFrame: 5,
+      );
+
+      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+
+      expect(clips, const [
+        // a.wav began 4 frames before the range: seek 0.4s in, play from
+        // the video's start, for the 2-frame range.
+        ExportAudioClip(
+          filePath: 'a.wav',
+          seekSeconds: 0.4,
+          durationSeconds: 0.2,
+        ),
+        // b.wav (frame 6) starts after the exported range ends → silent.
+      ]);
     });
   });
 }
