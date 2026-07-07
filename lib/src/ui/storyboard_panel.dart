@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/layer.dart';
+import '../models/layer_kind.dart';
 import '../models/project.dart';
-import '../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import 'panels/panel_scrollbar.dart';
@@ -27,6 +29,7 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
+import 'timeline/timeline_se_row_visual.dart' show SeSpanVisual;
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
 /// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
@@ -313,11 +316,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               var index = 0;
                               index < widget.project.tracks.length;
                               index++
-                            )
+                            ) ...[
                               _StoryboardTrackLabel(
                                 track: widget.project.tracks[index],
                                 trackLabel: 'V${index + 1}',
                               ),
+                              // The track's synced SE rows (the timesheet's
+                              // S1·S2 columns laid along the conte sheet).
+                              for (
+                                var slot = 0;
+                                slot <
+                                    _seSlotCount(widget.project.tracks[index]);
+                                slot++
+                              )
+                                _StoryboardSeLabel(
+                                  track: widget.project.tracks[index],
+                                  slot: slot,
+                                ),
+                            ],
                           ],
                         ),
                       ),
@@ -383,7 +399,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                           var index = 0;
                                           index < widget.project.tracks.length;
                                           index++
-                                        )
+                                        ) ...[
                                           _StoryboardTrackRow(
                                             track: widget.project.tracks[index],
                                             layoutEntries: layoutEntries
@@ -402,6 +418,33 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             showSeconds: widget.showSeconds,
                                             projectFps: widget.projectFps,
                                           ),
+                                          // Synced SE rows: the same per-cut
+                                          // SE data the timeline edits,
+                                          // mapped to track-global frames
+                                          // (read-only; the audio waveform
+                                          // slots in here later).
+                                          for (
+                                            var slot = 0;
+                                            slot <
+                                                _seSlotCount(
+                                                  widget.project.tracks[index],
+                                                );
+                                            slot++
+                                          )
+                                            _StoryboardSeRow(
+                                              trackIndex: index,
+                                              slot: slot,
+                                              layoutEntries: layoutEntries
+                                                  .where(
+                                                    (entry) =>
+                                                        entry.trackIndex ==
+                                                        index,
+                                                  )
+                                                  .toList(growable: false),
+                                              width: contentWidth,
+                                              timelineScale: scale,
+                                            ),
+                                        ],
                                       ],
                                     ),
                                     if (playheadFrame != null)
@@ -655,6 +698,149 @@ class _StoryboardRuler extends StatelessWidget {
           onSelectFrame: _seekFrame,
           isFrameCached: isFrameCached,
         ),
+      ),
+    );
+  }
+}
+
+/// SE rows under a track: one per SE slot, S1·S2… like the sheet columns.
+const double _seRowHeight = 22;
+const double _seRowBottomPadding = 2;
+
+/// The track's SE row count: the widest cut decides (every cut carries the
+/// S1·S2 fixtures, more when the user added rows).
+int _seSlotCount(Track track) {
+  var slots = 0;
+  for (final cut in track.cuts) {
+    final count = cut.layers
+        .where((layer) => layer.kind == LayerKind.se)
+        .length;
+    if (count > slots) {
+      slots = count;
+    }
+  }
+  return slots;
+}
+
+/// The [slot]th SE layer of [cut], in layer order; null when the cut has
+/// fewer SE rows.
+Layer? _seLayerAt(Cut cut, int slot) {
+  var index = 0;
+  for (final layer in cut.layers) {
+    if (layer.kind != LayerKind.se) {
+      continue;
+    }
+    if (index == slot) {
+      return layer;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+class _StoryboardSeLabel extends StatelessWidget {
+  const _StoryboardSeLabel({required this.track, required this.slot});
+
+  final Track track;
+  final int slot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: SizedBox(
+        key: ValueKey<String>(
+          'storyboard-se-label-${track.id.value}-${slot + 1}',
+        ),
+        width: StoryboardPanel._trackLabelWidth,
+        height: _seRowHeight,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'S${slot + 1}',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One synced SE row: every cut's [slot]th SE layer, its entries mapped to
+/// track-global frames and clamped to the cut's span — exactly the data
+/// the timeline's SE rows edit. Read-only here; the audio waveform lands
+/// on this row with the audio work.
+class _StoryboardSeRow extends StatelessWidget {
+  const _StoryboardSeRow({
+    required this.trackIndex,
+    required this.slot,
+    required this.layoutEntries,
+    required this.width,
+    required this.timelineScale,
+  });
+
+  final int trackIndex;
+  final int slot;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
+  final double width;
+  final TimelineScale timelineScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final spans = <Widget>[];
+    for (final entry in layoutEntries) {
+      final layer = _seLayerAt(entry.cut, slot);
+      if (layer == null) {
+        continue;
+      }
+      for (final block in drawingBlocks(layer.timeline)) {
+        if (block.startIndex >= entry.duration) {
+          continue;
+        }
+        final endExclusive = math.min(block.endIndexExclusive, entry.duration);
+        final globalStart = entry.startFrame + block.startIndex;
+        String? label;
+        for (final frame in layer.frames) {
+          if (frame.id == block.frameId) {
+            label = frame.name;
+            break;
+          }
+        }
+        spans.add(
+          Positioned(
+            left: timelineScale.leftForFrame(globalStart),
+            top: 0,
+            bottom: 0,
+            width:
+                (endExclusive - block.startIndex) *
+                timelineScale.pixelsPerFrame,
+            child: IgnorePointer(
+              key: ValueKey<String>(
+                'storyboard-se-span-${entry.cut.id.value}-${block.startIndex}',
+              ),
+              child: SeSpanVisual(
+                axis: Axis.horizontal,
+                label: label ?? '',
+                textColor: colorScheme.onSurface,
+                lineColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: SizedBox(
+        key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
+        width: width,
+        height: _seRowHeight,
+        child: Stack(children: spans),
       ),
     );
   }

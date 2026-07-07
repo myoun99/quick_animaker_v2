@@ -63,7 +63,7 @@ List<Widget> timelineRowSeLabelOverlays({
       key: ValueKey<String>(
         '$keyPrefix-se-label-${layer.id}-${block.startIndex}',
       ),
-      child: _SeBlockSpan(
+      child: SeSpanVisual(
         axis: axis,
         label: label,
         textColor: textColor,
@@ -91,8 +91,11 @@ List<Widget> timelineRowSeLabelOverlays({
   return overlays;
 }
 
-class _SeBlockSpan extends StatelessWidget {
-  const _SeBlockSpan({
+/// The sheet's SE-entry visual — label, duration line, closing tick —
+/// shared by the timeline rows and the storyboard's synced SE track.
+class SeSpanVisual extends StatelessWidget {
+  const SeSpanVisual({
+    super.key,
     required this.axis,
     required this.label,
     required this.textColor,
