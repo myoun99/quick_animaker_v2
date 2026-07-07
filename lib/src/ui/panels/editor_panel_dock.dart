@@ -13,21 +13,28 @@ class EditorPanelDock extends StatefulWidget {
     required List<Widget> this.children,
     this.width = 260,
     this.side = EditorPanelDockSide.right,
-  }) : child = null;
+  }) : child = null,
+       dockId = null;
 
   /// A dock filled by a single [child] (e.g. a tab shell) flush against the
-  /// dock edges — no padding, no scroll list.
+  /// dock edges — no padding, no scroll list. Unlike the list variant the
+  /// width is taken as-is (slim edge docks go below the palette minimum).
   const EditorPanelDock.filled({
     super.key,
     required Widget this.child,
     this.width = 260,
     this.side = EditorPanelDockSide.right,
+    this.dockId,
   }) : children = null;
 
   final List<Widget>? children;
   final Widget? child;
   final double width;
   final EditorPanelDockSide side;
+
+  /// Distinguishes the dock's test key when several docks share a side
+  /// (e.g. the slim tool edge dock next to the left palette dock).
+  final String? dockId;
 
   @override
   State<EditorPanelDock> createState() => _EditorPanelDockState();
@@ -49,9 +56,13 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
     final borderSide = BorderSide(color: colorScheme.outlineVariant);
     final children = widget.children;
     return Container(
-      key: ValueKey<String>('editor-panel-dock-${isLeft ? 'left' : 'right'}'),
+      key: ValueKey<String>(
+        'editor-panel-dock-${widget.dockId ?? (isLeft ? 'left' : 'right')}',
+      ),
       width: widget.width,
-      constraints: const BoxConstraints(minWidth: 180),
+      constraints: children == null
+          ? null
+          : const BoxConstraints(minWidth: 180),
       padding: children == null
           ? EdgeInsets.zero
           : const EdgeInsets.fromLTRB(8, 8, 0, 8),

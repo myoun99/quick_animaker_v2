@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
+const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
 const _brushesTabKey = ValueKey<String>('panel-tab-brushes');
 const _brushSettingsTabKey = ValueKey<String>('panel-tab-brush-settings');
@@ -16,6 +17,7 @@ const _cameraTabKey = ValueKey<String>('panel-tab-camera');
 const _timelineTabKey = ValueKey<String>('timeline-mode-timeline-button');
 const _storyboardTabKey = ValueKey<String>('timeline-mode-storyboard-button');
 const _rightDropRailKey = ValueKey<String>('editor-dock-drop-rail-right');
+const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 
 Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -46,37 +48,74 @@ Future<void> _dragTab(
 }
 
 void main() {
-  group('EditorWorkspace tool bars', () {
-    testWidgets('vertical tool bars flank BOTH workspace edges', (
+  group('EditorWorkspace tool bar', () {
+    testWidgets('a single tool bar homes in the left edge dock', (
       tester,
     ) async {
       await _pumpHome(tester);
 
-      expect(find.byType(ToolsPanel), findsNWidgets(2));
+      expect(find.byType(ToolsPanel), findsOneWidget);
+      expect(find.byKey(_toolsTabKey), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey<String>('tool-brush-button')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('tool-brush-button-right')),
+        find.byKey(const ValueKey<String>('tool-eraser-button')),
         findsOneWidget,
       );
     });
 
-    testWidgets('both bars share the tool state', (tester) async {
+    testWidgets('the tool bar re-docks to the right edge', (tester) async {
       await _pumpHome(tester);
 
-      // Choose the eraser on the RIGHT bar; both bars reflect it.
+      await _dragTab(
+        tester,
+        find.byKey(_toolsTabKey),
+        () => tester.getCenter(find.byKey(_toolRightRailKey)),
+      );
+
+      expect(find.byType(ToolsPanel), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-right')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
+        findsNothing,
+      );
+      // Tools stay usable on the right edge.
       await tester.tap(
-        find.byKey(const ValueKey<String>('tool-eraser-button-right')),
+        find.byKey(const ValueKey<String>('tool-eraser-button')),
       );
       await tester.pumpAndSettle();
+      final toolsPanel = tester.widget<ToolsPanel>(find.byType(ToolsPanel));
+      expect(toolsPanel.tool.name, 'eraser');
+    });
 
-      for (final panel in tester.widgetList<ToolsPanel>(
-        find.byType(ToolsPanel),
-      )) {
-        expect(panel.tool.name, 'eraser');
-      }
+    testWidgets('wide panels may not dock into the slim edge docks', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+
+      // Lift a palette tab: the tool edge rails stay hidden (ineligible),
+      // while the normal right dock's rail IS revealed.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(_cameraTabKey)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump();
+
+      expect(find.byKey(_toolRightRailKey), findsNothing);
+      expect(find.byKey(_rightDropRailKey), findsOneWidget);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
   });
 
@@ -195,31 +234,63 @@ void main() {
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
-    testWidgets('a tab dropped on a split zone stacks a second panel', (
+    testWidgets('dropping on the BELOW zone stacks a second panel', (
       tester,
     ) async {
       await _pumpHome(tester);
 
-      // Lift the camera tab; the split zones appear while it is in
-      // flight. Drop it below the left dock's only section.
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(_cameraTabKey)),
+      // Lift the camera tab; the overlay drop zones appear while it is in
+      // flight. Drop on the left section's lower band.
+      await _dragTab(
+        tester,
+        find.byKey(_cameraTabKey),
+        () => tester.getCenter(
+          find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
+        ),
       );
-      await tester.pump(const Duration(milliseconds: 20));
-      await gesture.moveBy(const Offset(0, 30));
-      await tester.pump();
-      final splitZone = find.byKey(
-        const ValueKey<String>('dock-section-split-left-1'),
-      );
-      expect(splitZone, findsOneWidget);
-      await gesture.moveTo(tester.getCenter(splitZone));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
 
-      // Panel below panel: Brushes AND Camera visible at once.
+      // Panel below panel: Brushes AND Camera visible at once, separated
+      // by a draggable section splitter.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(CameraPanel), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('dock-splitter-left-1')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the section splitter resizes stacked panels', (tester) async {
+      await _pumpHome(tester);
+      await _dragTab(
+        tester,
+        find.byKey(_cameraTabKey),
+        () => tester.getCenter(
+          find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
+        ),
+      );
+
+      final splitter = find.byKey(
+        const ValueKey<String>('dock-splitter-left-1'),
+      );
+      final beforeY = tester.getCenter(splitter).dy;
+
+      await tester.drag(splitter, const Offset(0, -40));
+      await tester.pumpAndSettle();
+
+      expect(tester.getCenter(splitter).dy, lessThan(beforeY - 20));
+    });
+
+    testWidgets('the dock edge splitter resizes the left dock', (tester) async {
+      await _pumpHome(tester);
+
+      final splitter = find.byKey(const ValueKey<String>('dock-resize-left'));
+      final dock = find.byKey(const ValueKey<String>('editor-panel-dock-left'));
+      final beforeWidth = tester.getSize(dock).width;
+
+      await tester.drag(splitter, const Offset(-60, 0));
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(dock).width, lessThan(beforeWidth - 40));
     });
 
     testWidgets('frame-axis tabs may dock into the side dock', (tester) async {

@@ -158,7 +158,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('canvas-editor-panel-title-bar')),
+        find.byKey(const ValueKey<String>('canvas-editor-panel-status-strip')),
         findsOneWidget,
       );
       expect(
@@ -479,7 +479,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-title-bar')),
+      find.byKey(const ValueKey<String>('canvas-editor-panel-status-strip')),
       findsOneWidget,
     );
     expect(
