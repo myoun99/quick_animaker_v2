@@ -213,6 +213,73 @@ void main() {
     });
   });
 
+  group('collapsed camera row key-union summary', () {
+    Finder cameraCell(int frame) =>
+        find.byKey(ValueKey<String>('timeline-cell-lane-cam-layer-$frame'));
+
+    testWidgets('keyed frames show ◆ markers instead of paper cells', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
+      );
+
+      expect(
+        find.descendant(of: cameraCell(0), matching: find.text('◆')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: cameraCell(8), matching: find.text('◆')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: cameraCell(4), matching: find.text('◆')),
+        findsNothing,
+      );
+      // The old paper-cell ○ glyph is gone from the camera row.
+      final rowArea = find.byKey(
+        const ValueKey<String>('timeline-frame-row-area-lane-cam-layer'),
+      );
+      expect(
+        find.descendant(of: rowArea, matching: find.text('○')),
+        findsNothing,
+      );
+      expect(find.bySemanticsLabel('camera keyframe'), findsNWidgets(2));
+    });
+
+    testWidgets('a frame whose keyed lanes ALL hold shows ■', (tester) async {
+      await _pump(
+        tester,
+        _project(
+          camera: CutCamera.fromTrack(
+            TransformTrack.empty().copyWith(
+              position: PropertyTrack<CanvasPoint>().withKey(
+                4,
+                CanvasPoint(x: 1, y: 1),
+                interpolation: PropertyKeyInterpolation.hold,
+              ),
+              rotation: PropertyTrack<double>()
+                  .withKey(8, 12, interpolation: PropertyKeyInterpolation.hold)
+                  .withKey(8, 12),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.descendant(of: cameraCell(4), matching: find.text('■')),
+        findsOneWidget,
+      );
+      // A linear key (the second withKey overwrote hold with the default
+      // linear) reads ◆ even when another lane would hold elsewhere.
+      expect(
+        find.descendant(of: cameraCell(8), matching: find.text('◆')),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('transform lane editing policy', () {
     test('toggle adds a key with the resolved value and removes it again', () {
       final track = TransformTrack(keyframes: {0: _pose(0), 8: _pose(80)});

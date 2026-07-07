@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -11,6 +12,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
 import 'timeline_orientation.dart';
+import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
 class TimelinePanel extends StatefulWidget {
@@ -24,6 +26,8 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
+    this.instructionDefById,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -43,6 +47,8 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.collapsedSections = const {},
+    this.onToggleSection,
   });
 
   final List<Layer> layers;
@@ -54,6 +60,14 @@ class TimelinePanel extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Double-tap cell editor hook (SE label dialog), shared by both
+  /// orientations.
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// Resolves instruction ids to defs for CAM row chips.
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -98,6 +112,11 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// SE/camera sections folded to stub rows (columns in the X-sheet), and
+  /// the gutter/header toggle. Shared by both orientations.
+  final Set<TimelineSection> collapsedSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -227,6 +246,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onActivateCell: widget.onActivateCell,
+                    instructionDefById: widget.instructionDefById,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -239,6 +260,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
+                    collapsedSections: widget.collapsedSections,
+                    onToggleSection: widget.onToggleSection,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -249,6 +272,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onActivateCell: widget.onActivateCell,
+                    instructionDefById: widget.instructionDefById,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -257,6 +282,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     commaDrag: widget.commaDrag,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,
+                    collapsedSections: widget.collapsedSections,
+                    onToggleSection: widget.onToggleSection,
                   ),
           ),
         ],

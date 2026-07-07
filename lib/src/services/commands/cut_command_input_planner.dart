@@ -192,6 +192,11 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
       }
       return MapEntry(index, exposure.copyWith(frameId: newFrameId));
     }),
+    // Instruction spans only belong on instruction rows; a storyboard copy
+    // demoted to animation (or any cross-kind paste) drops them.
+    instructions: pastedKind == LayerKind.instruction
+        ? payload.instructions
+        : const {},
     isVisible: payload.isVisible,
     opacity: payload.opacity,
     kind: pastedKind,

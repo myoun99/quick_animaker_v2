@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
@@ -9,6 +10,7 @@ import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_section_stub_rows.dart';
 
 class TimelineFrameRowsScrollBody extends StatelessWidget {
   const TimelineFrameRowsScrollBody({
@@ -28,6 +30,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
+    this.instructionDefById,
     this.commaDrag,
     this.laneEdit,
   });
@@ -51,6 +55,9 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+  final CameraInstructionDef? Function(String instructionId)?
+  instructionDefById;
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -62,7 +69,13 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final row in rows)
-            row.isLane
+            row.isSectionStub
+                ? TimelineSectionStubCellsRow(
+                    section: row.stubSection!,
+                    mainAxisExtent: totalFrameContentWidth,
+                    metrics: metrics,
+                  )
+                : row.isLane
                 ? TimelineLaneFrameRow(
                     layer: row.layer,
                     lane: row.lane!,
@@ -91,6 +104,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     frameNameForLayer: frameNameForLayer,
                     onSelectLayer: onSelectLayer,
                     onSelectFrame: onSelectFrame,
+                    onActivateCell: onActivateCell,
+                    instructionDefById: instructionDefById,
                     commaDrag: commaDrag,
                   ),
           if (rows.isEmpty)

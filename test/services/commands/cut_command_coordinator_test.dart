@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
+import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -810,6 +811,133 @@ void main() {
       );
       expect(_layerById(fixture.project, se2.id).kind, LayerKind.se);
       expect(fixture.historyManager.undoCount, 1);
+    });
+
+    test('updateLayerInstructions edits CAM rows through history and '
+        'dedupes', () {
+      final instruction = _layer(id: 'layer-1', kind: LayerKind.instruction);
+      final cel = _layer(id: 'layer-2');
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [instruction, cel]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final spans = {
+        0: const InstructionEvent(
+          instructionId: 'fi',
+          length: 12,
+          valueA: 'A',
+          valueB: 'B',
+        ),
+      };
+
+      fixture.coordinator.updateLayerInstructions(
+        cutId: cutA.id,
+        layerId: instruction.id,
+        instructions: spans,
+      );
+      expect(
+        _layerById(fixture.project, instruction.id).instructions[0],
+        spans[0],
+      );
+      expect(fixture.historyManager.undoCount, 1);
+
+      // Unchanged map: no new history entry.
+      fixture.coordinator.updateLayerInstructions(
+        cutId: cutA.id,
+        layerId: instruction.id,
+        instructions: spans,
+      );
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+      expect(_layerById(fixture.project, instruction.id).instructions, isEmpty);
+      fixture.historyManager.redo();
+      expect(
+        _layerById(fixture.project, instruction.id).instructions[0],
+        spans[0],
+      );
+
+      // Only instruction rows carry spans.
+      expect(
+        () => fixture.coordinator.updateLayerInstructions(
+          cutId: cutA.id,
+          layerId: cel.id,
+          instructions: spans,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('updateCameraInstructionSet edits the vocabulary through history '
+        'and dedupes', () {
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      final custom = CameraInstructionSet(
+        defs: [
+          ...CameraInstructionSet.standard.defs,
+          const CameraInstructionDef(
+            id: 'custom-blur',
+            name: 'ブレ',
+            iconKey: 'shake',
+          ),
+        ],
+      );
+
+      fixture.coordinator.updateCameraInstructionSet(custom);
+      expect(fixture.project.cameraInstructions, custom);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.coordinator.updateCameraInstructionSet(custom);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+      expect(fixture.project.cameraInstructions, CameraInstructionSet.standard);
+    });
+
+    test('duplicateLayer carries instruction spans to the copy', () {
+      final instruction = Layer(
+        id: const LayerId('layer-1'),
+        name: 'CAM 1',
+        kind: LayerKind.instruction,
+        frames: const [],
+        timeline: const {},
+        instructions: {
+          3: const InstructionEvent(instructionId: 'pan', length: 6),
+        },
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [instruction]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      final copyId = fixture.coordinator.duplicateLayer(
+        cutId: cutA.id,
+        sourceLayerId: instruction.id,
+      );
+
+      final copy = _layerById(fixture.project, copyId);
+      expect(copy.kind, LayerKind.instruction);
+      expect(
+        copy.instructions[3],
+        const InstructionEvent(instructionId: 'pan', length: 6),
+      );
     });
 
     test('deleteLayer keeps the SE, instruction and drawing floors', () {

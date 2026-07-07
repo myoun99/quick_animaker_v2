@@ -8,6 +8,7 @@ import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
+import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
@@ -24,6 +25,7 @@ import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/track_id.dart';
 import '../services/brush_frame_display_cache_renderer.dart';
@@ -48,6 +50,7 @@ import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
+import 'timeline/instruction_span_editing.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_section_policy.dart';
 
@@ -1010,6 +1013,103 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
+  CameraInstructionSet get cameraInstructionSet =>
+      _repository.requireProject().cameraInstructions;
+
+  /// One undo step; no-op when unchanged.
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
+    _cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
+    notifyListeners();
+  }
+
+  /// Replaces [layerId]'s instruction span map (instruction rows only).
+  /// One undo step; no-op when unchanged. Never touches rendering caches —
+  /// instruction spans are timeline annotations, not composite inputs.
+  void updateLayerInstructions(
+    LayerId layerId,
+    Map<int, InstructionEvent> instructions, {
+    String description = 'Edit instructions',
+  }) {
+    _cutCommandCoordinator.updateLayerInstructions(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      instructions: instructions,
+      description: description,
+    );
+    notifyListeners();
+  }
+
+  /// The instruction span covering [frameIndex] on [layerId], as
+  /// (startIndex, event); null on empty cells / non-instruction rows.
+  MapEntry<int, InstructionEvent>? instructionSpanAt(
+    LayerId layerId,
+    int frameIndex,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return null;
+    }
+    return instructionSpanCovering(layer.instructions, frameIndex);
+  }
+
+  /// Creates or edits the instruction event at [frameIndex] in ONE undo
+  /// step: a covered cell replaces its span's event (start/length stay), an
+  /// empty cell starts a new span holding to the next one / the cut's end.
+  void upsertInstructionEventAt(
+    LayerId layerId,
+    int frameIndex,
+    InstructionEvent event,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+
+    final covering = instructionSpanCovering(layer.instructions, frameIndex);
+    final next = covering != null
+        ? instructionMapWithEventReplaced(
+            layer.instructions,
+            spanStartIndex: covering.key,
+            event: event,
+          )
+        : instructionMapWithEventAdded(
+            layer.instructions,
+            startIndex: frameIndex,
+            event: event.copyWith(
+              length: (activeCut.duration - frameIndex).clamp(1, 1 << 20),
+            ),
+          );
+    if (next == null) {
+      return;
+    }
+    updateLayerInstructions(
+      layerId,
+      next,
+      description: covering == null ? 'Add instruction' : 'Edit instruction',
+    );
+  }
+
+  /// Removes the instruction span covering [frameIndex]; one undo step.
+  void removeInstructionEventAt(LayerId layerId, int frameIndex) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+    final covering = instructionSpanCovering(layer.instructions, frameIndex);
+    if (covering == null) {
+      return;
+    }
+    final next = instructionMapWithEventRemoved(
+      layer.instructions,
+      spanStartIndex: covering.key,
+    );
+    if (next == null) {
+      return;
+    }
+    updateLayerInstructions(layerId, next, description: 'Delete instruction');
+  }
+
   Frame? get selectedFrame {
     final layer = activeLayer;
     if (layer == null) {
@@ -1327,15 +1427,24 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Starts a comma drag on [edge] of the block starting at
   /// [blockStartIndex]; returns false when there is no such block.
+  /// Instruction rows join the same pipeline — their spans live on
+  /// Layer.instructions and shift without ripple.
   bool beginExposureEdgeDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required TimelineBlockEdge edge,
   }) {
     final layer = _layerById(layerId);
-    if (layer == null ||
-        !layerKindHoldsDrawings(layer.kind) ||
-        !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
+    if (layer == null) {
+      return false;
+    }
+    final isInstructionSpan =
+        layer.kind == LayerKind.instruction &&
+        layer.instructions.containsKey(blockStartIndex);
+    final isDrawingBlock =
+        layerKindHoldsDrawings(layer.kind) &&
+        (layer.timeline[blockStartIndex]?.isDrawing ?? false);
+    if (!isInstructionSpan && !isDrawingBlock) {
       return false;
     }
 
@@ -1343,6 +1452,30 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragEdge = edge;
     _edgeDragBlockStart = blockStartIndex;
     return true;
+  }
+
+  Layer _edgeDraggedLayer({
+    required Layer before,
+    required int blockStart,
+    required TimelineBlockEdge edge,
+    required int delta,
+  }) {
+    if (before.kind == LayerKind.instruction) {
+      final shifted = instructionMapWithEdgeShifted(
+        before.instructions,
+        spanStartIndex: blockStart,
+        startEdge: edge == TimelineBlockEdge.start,
+        delta: delta,
+      );
+      return shifted == null ? before : before.copyWith(instructions: shifted);
+    }
+    return _timelineController.shiftedLayerForEdge(
+          layer: before,
+          blockStartIndex: blockStart,
+          edge: edge,
+          delta: delta,
+        ) ??
+        before;
   }
 
   /// Applies the drag's current cumulative frame delta as a live preview.
@@ -1354,14 +1487,12 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
-    final after =
-        _timelineController.shiftedLayerForEdge(
-          layer: before,
-          blockStartIndex: blockStart,
-          edge: edge,
-          delta: cumulativeDelta,
-        ) ??
-        before;
+    final after = _edgeDraggedLayer(
+      before: before,
+      blockStart: blockStart,
+      edge: edge,
+      delta: cumulativeDelta,
+    );
     final current = _layerById(before.id);
     if (current == null || current == after) {
       return;
@@ -1614,6 +1745,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// Returns `null` when the rename was applied (or was not possible). When the
   /// new [name] collides with another frame, returns that frame's id without
   /// mutating so the caller can offer to link instead (see [linkSelectedFrame]).
+  /// SE rows are exempt from the collision rule — the same dialogue can
+  /// legitimately repeat on a sheet, so duplicates just apply.
   FrameId? renameSelectedFrame(String name) {
     final layer = activeLayer;
     final frame = selectedFrame;
@@ -1621,22 +1754,50 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
 
-    final conflictingFrameId = _timelineController.conflictingFrameIdForRename(
-      layer: layer,
-      frameId: frame.id,
-      name: name,
-    );
-    if (conflictingFrameId != null) {
-      return conflictingFrameId;
+    final allowDuplicateName = layer.kind == LayerKind.se;
+    if (!allowDuplicateName) {
+      final conflictingFrameId = _timelineController
+          .conflictingFrameIdForRename(
+            layer: layer,
+            frameId: frame.id,
+            name: name,
+          );
+      if (conflictingFrameId != null) {
+        return conflictingFrameId;
+      }
     }
 
     _timelineController.renameFrameForLayer(
       layerId: layer.id,
       frameId: frame.id,
       name: name,
+      allowDuplicateName: allowDuplicateName,
     );
     notifyListeners();
     return null;
+  }
+
+  /// Creates an SE entry at the current cell carrying [name] (the sheet's
+  /// name/dialogue text) in ONE undo step. Sheet semantics: the entry holds
+  /// until the next entry or the cut's end, whichever comes first.
+  void createSeEntryAtCurrentFrame({required String name}) {
+    final layer = activeLayer;
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        !canCreateDrawingAtCurrentFrame) {
+      return;
+    }
+
+    final remaining =
+        activeCut.duration - _timelineController.currentFrameIndex;
+    _frameSequence += 1;
+    _timelineController.createDrawingFrameForLayer(
+      layerId: layer.id,
+      frameId: FrameId(_nextFrameId(layer.id)),
+      length: remaining < 1 ? 1 : remaining,
+      name: name,
+    );
+    notifyListeners();
   }
 
   void linkSelectedFrame(FrameId targetFrameId) {
@@ -1679,7 +1840,29 @@ class EditorSessionManager extends ChangeNotifier {
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
   }
 
+  /// Camera rows summarize their property lanes Blender-dopesheet style:
+  /// the union of lane keys per frame, ■ when every keyed lane holds there
+  /// and ◆ otherwise. The glyph rides the frame-name channel — the cell
+  /// renders it marker-styled (no paper block).
   String? frameNameForLayer(Layer layer, int frameIndex) {
+    if (layer.kind == LayerKind.camera) {
+      final track = activeCut.camera.track;
+      final interpolations = [
+        track.anchorPoint.keyAt(frameIndex)?.interpolation,
+        track.position.keyAt(frameIndex)?.interpolation,
+        track.scale.keyAt(frameIndex)?.interpolation,
+        track.rotation.keyAt(frameIndex)?.interpolation,
+        track.opacity.keyAt(frameIndex)?.interpolation,
+      ].whereType<PropertyKeyInterpolation>().toList();
+      if (interpolations.isEmpty) {
+        return null;
+      }
+      return interpolations.every(
+            (interpolation) => interpolation == PropertyKeyInterpolation.hold,
+          )
+          ? '■'
+          : '◆';
+    }
     return _timelineController
         .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
         ?.name;

@@ -1,0 +1,317 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
+import 'package:quick_animaker_v2/src/ui/home_page.dart';
+
+const _cutId = CutId('inst-cut');
+const _camLayerId = LayerId('inst-cam');
+const _celLayerId = LayerId('inst-cel');
+
+Project _project({Map<int, InstructionEvent>? instructions}) {
+  return Project(
+    id: const ProjectId('inst-project'),
+    name: 'Instruction Project',
+    createdAt: DateTime.utc(2026, 7, 8),
+    tracks: [
+      Track(
+        id: const TrackId('inst-track'),
+        name: 'Video',
+        cuts: [
+          Cut(
+            id: _cutId,
+            name: 'Instruction Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: [
+              Layer(
+                id: _celLayerId,
+                name: 'A',
+                frames: const [],
+                timeline: const {},
+              ),
+              Layer(
+                id: _camLayerId,
+                name: 'CAM 1',
+                kind: LayerKind.instruction,
+                frames: const [],
+                timeline: const {},
+                instructions:
+                    instructions ??
+                    {
+                      2: const InstructionEvent(
+                        instructionId: 'pan',
+                        length: 6,
+                        valueA: 'A',
+                        valueB: 'B',
+                      ),
+                    },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Future<void> _pumpHome(
+  WidgetTester tester,
+  Project project, {
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: HomePage(
+        initialProject: project,
+        onRepositoryCreated: onRepositoryCreated,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+// No ensureVisible here: cell-level ensureVisible over-scrolls the custom
+// frame viewport and virtualizes earlier cells out of the window. The
+// instruction row sits at the top of the display order, always on screen.
+Future<void> _doubleTapCell(WidgetTester tester, Finder cell) async {
+  await tester.tap(cell);
+  await tester.pump(const Duration(milliseconds: 60));
+  await tester.tap(cell);
+  await tester.pumpAndSettle();
+}
+
+Layer _camLayer(ProjectRepository repository) {
+  return repository
+      .requireProject()
+      .tracks
+      .single
+      .cuts
+      .single
+      .layers
+      .firstWhere((layer) => layer.id == _camLayerId);
+}
+
+void main() {
+  testWidgets('instruction row shows the [icon+name] chip, A/B values and '
+      'span overlay', (tester) async {
+    await _pumpHome(tester, _project());
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-instruction-inst-cam-2')),
+      findsOneWidget,
+    );
+    expect(find.text('PAN'), findsOneWidget);
+    expect(find.text('A'), findsWidgets);
+    expect(find.text('B'), findsOneWidget);
+    // No X cells on instruction rows.
+    final rowArea = find.byKey(
+      const ValueKey<String>('timeline-frame-row-area-inst-cam'),
+    );
+    expect(
+      find.descendant(of: rowArea, matching: find.text('X')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('XSheet instruction column shows the same overlay', (
+    tester,
+  ) async {
+    await _pumpHome(tester, _project());
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-instruction-inst-cam-2')),
+      findsOneWidget,
+    );
+    expect(find.text('PAN'), findsOneWidget);
+  });
+
+  testWidgets('double-tap on an empty instruction cell adds an event to the '
+      'cut end in one undo', (tester) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(instructions: const {}),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
+    );
+    expect(find.text('Add Instruction'), findsOneWidget);
+
+    // Pick PAN from the vocabulary (near the menu top — far entries sit
+    // outside the dropdown's visible window) and give it endpoint values.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-option-pan')).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instruction-value-a-field')),
+      '0%',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instruction-value-b-field')),
+      '100%',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final event = _camLayer(repository).instructions[4]!;
+    expect(event.instructionId, 'pan');
+    expect(event.length, 8, reason: 'holds to the cut end (12 - 4)');
+    expect(event.valueA, '0%');
+    expect(event.valueB, '100%');
+    expect(find.text('PAN'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
+    expect(_camLayer(repository).instructions, isEmpty);
+  });
+
+  testWidgets('double-tap on an existing event edits it; Delete removes', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    // Edit the B value on the covering cell (not the start).
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-5')),
+    );
+    expect(find.text('Edit Instruction'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instruction-value-b-field')),
+      'B2',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    var event = _camLayer(repository).instructions[2]!;
+    expect(event.valueB, 'B2');
+    expect(event.length, 6, reason: 'length stays grip-owned');
+
+    // Delete via the same dialog.
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-2')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-event-delete-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(_camLayer(repository).instructions, isEmpty);
+  });
+
+  testWidgets('end grip resizes an instruction span with one undo', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    final endGrip = find.byKey(
+      const ValueKey<String>('timeline-block-edge-grip-end-inst-cam-0'),
+    );
+    expect(endGrip, findsOneWidget);
+
+    // Lengthen by 2 frames (48px cells; >18px slop first).
+    final gesture = await tester.startGesture(tester.getCenter(endGrip));
+    await gesture.moveBy(const Offset(19, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(77, 0));
+    await tester.pumpAndSettle();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_camLayer(repository).instructions[2]!.length, 8);
+
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
+    expect(_camLayer(repository).instructions[2]!.length, 6);
+  });
+
+  testWidgets('the vocabulary editor adds a custom instruction', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(instructions: const {}),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-edit-set-button')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-add-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instruction-def-name-field')),
+      'ブレ',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-icon-shake')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-save-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-set-save-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final defs = repository.requireProject().cameraInstructions.defs;
+    final custom = defs.firstWhere((def) => def.name == 'ブレ');
+    expect(custom.iconKey, 'shake');
+    expect(defs.length, CameraInstructionSet.standard.defs.length + 1);
+
+    // Close the still-open event picker.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-event-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+}

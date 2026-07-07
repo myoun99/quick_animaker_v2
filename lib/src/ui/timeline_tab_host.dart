@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
+import 'dialogs/instruction_event_dialog.dart';
+import 'dialogs/instruction_set_editor_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'editor_session_manager.dart';
@@ -18,6 +21,7 @@ import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
 
@@ -37,6 +41,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
+    this.collapsedSections = const {},
+    this.onToggleSection,
   });
 
   final EditorSessionManager session;
@@ -51,6 +57,10 @@ class TimelineTabHost extends StatefulWidget {
   /// tab switches).
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
+
+  /// SE/camera section fold state (host-owned, survives tab switches).
+  final Set<TimelineSection> collapsedSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -183,6 +193,111 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
+  /// Double-tap cell editor, dispatched by row kind: SE rows edit their
+  /// name/dialogue, instruction rows their FI/FO/PAN … event.
+  Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
+    final layer = _session.activeLayer;
+    if (layer == null || layer.id != layerId) {
+      return;
+    }
+    switch (layer.kind) {
+      case LayerKind.se:
+        await _editSeLabel();
+      case LayerKind.instruction:
+        await _editInstructionEvent(layerId, frameIndex);
+      case LayerKind.animation ||
+          LayerKind.storyboard ||
+          LayerKind.art ||
+          LayerKind.camera:
+        return;
+    }
+  }
+
+  /// SE cells: covered cells rename the covering entry, empty cells create
+  /// an entry holding to the next one / cut end, carrying the entered text
+  /// (one undo).
+  Future<void> _editSeLabel() async {
+    final creating = _session.selectedFrame == null;
+    if (creating && !_session.canCreateDrawingAtCurrentFrame) {
+      return;
+    }
+
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => RenameFrameDialog(
+        initialName: creating ? '' : _session.selectedFrameName ?? '',
+        title: 'SE Label',
+        fieldLabel: 'Name / dialogue',
+      ),
+    );
+    if (!mounted || nextName == null) {
+      return;
+    }
+
+    if (creating) {
+      _session.createSeEntryAtCurrentFrame(name: nextName);
+    } else {
+      // SE renames never hit the link-conflict flow (duplicates allowed).
+      _session.renameSelectedFrame(nextName);
+    }
+  }
+
+  /// Instruction cells: covered cells edit/delete the covering event, empty
+  /// cells add one holding to the next event / cut end (one undo each). The
+  /// vocabulary editor is reachable from inside the picker.
+  Future<void> _editInstructionEvent(LayerId layerId, int frameIndex) async {
+    final covering = _session.instructionSpanAt(layerId, frameIndex);
+
+    final result = await showDialog<InstructionEventDialogResult>(
+      context: context,
+      builder: (context) => InstructionEventDialog(
+        instructionSet: _session.cameraInstructionSet,
+        initialInstructionId: covering?.value.instructionId,
+        initialValueA: covering?.value.valueA,
+        initialValueB: covering?.value.valueB,
+        editing: covering != null,
+        onEditInstructionSet: () => _editInstructionSet(context),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+
+    if (result.delete) {
+      _session.removeInstructionEventAt(layerId, frameIndex);
+      return;
+    }
+    final instructionId = result.instructionId;
+    if (instructionId == null) {
+      return;
+    }
+    _session.upsertInstructionEventAt(
+      layerId,
+      frameIndex,
+      InstructionEvent(
+        instructionId: instructionId,
+        length: 1,
+        valueA: result.valueA,
+        valueB: result.valueB,
+      ),
+    );
+  }
+
+  /// Opens the vocabulary editor and commits the edited set immediately
+  /// (its own undo step), so it sticks even when the event dialog is then
+  /// cancelled. The already-open picker keeps its old list until reopened.
+  Future<void> _editInstructionSet(BuildContext dialogContext) async {
+    final edited = await showDialog<CameraInstructionSet>(
+      context: dialogContext,
+      builder: (context) =>
+          InstructionSetEditorDialog(initialSet: _session.cameraInstructionSet),
+    );
+    if (!mounted || edited == null) {
+      return;
+    }
+    _session.updateCameraInstructionSet(edited);
+  }
+
   Future<void> _renameSelectedFrame() async {
     if (_session.selectedFrame == null ||
         !_session.canRenameFrameAtCurrentFrame) {
@@ -246,6 +361,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session.selectFrameIndex(frameIndex);
             }
           },
+          onActivateCell: _activateCellEditor,
+          instructionDefById: (instructionId) =>
+              _session.cameraInstructionSet.defById(instructionId),
           onAddLayer: _session.addLayer,
           onToggleLayerVisibility: _session.toggleLayerVisibility,
           onLayerOpacityChanged: (layerId, opacity) {
@@ -275,6 +393,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           projectFps: _session.projectFps,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
+          collapsedSections: widget.collapsedSections,
+          onToggleSection: widget.onToggleSection,
           lanesForLayer: _lanesForLayer,
           laneEdit: _laneEdit,
           timelineActionToolbar: Row(

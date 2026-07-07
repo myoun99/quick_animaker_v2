@@ -45,3 +45,19 @@ bool timelineSectionStartsAt(List<Layer> displayLayers, int index) {
   return timelineSectionForLayerKind(displayLayers[index].kind) !=
       timelineSectionForLayerKind(displayLayers[index - 1].kind);
 }
+
+/// The gutter label — the paper timesheet's column-group headings laid on
+/// their side (액션 / SE / 카메라 as the sheet prints them).
+String timelineSectionLabel(TimelineSection section) {
+  return switch (section) {
+    TimelineSection.drawing => 'ACTION',
+    TimelineSection.se => 'SE',
+    TimelineSection.camera => 'CAMERA',
+  };
+}
+
+/// SE and camera sections fold away; the drawing section is the work
+/// surface and always stays open.
+bool timelineSectionCollapsible(TimelineSection section) {
+  return section != TimelineSection.drawing;
+}

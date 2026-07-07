@@ -252,7 +252,13 @@ String _selectedLayerName(WidgetTester tester) {
     const ValueKey<String>('timeline-selected-layer'),
   );
   final texts = find.descendant(of: selected, matching: find.byType(Text));
-  return tester.widget<Text>(texts.first).data!;
+  // Skip the section gutter label (ACTION/SE/CAMERA) that leads a
+  // section's first row; the layer name is the next text.
+  const gutterLabels = {'ACTION', 'SE', 'CAMERA'};
+  return tester
+      .widgetList<Text>(texts)
+      .map((text) => text.data)
+      .firstWhere((data) => data != null && !gutterLabels.contains(data))!;
 }
 
 List<String> _visibleTimelineLayerNames(WidgetTester tester) {

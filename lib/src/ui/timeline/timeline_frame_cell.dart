@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_se_row_visual.dart';
 
 class TimelineFrameCell extends StatelessWidget {
   const TimelineFrameCell({
@@ -23,6 +25,7 @@ class TimelineFrameCell extends StatelessWidget {
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onActivateCell,
     this.axis = Axis.horizontal,
     this.width,
     this.height,
@@ -48,6 +51,11 @@ class TimelineFrameCell extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
+  /// Double-tap hook opening the cell's editor (SE label dialog; the
+  /// instruction picker joins later). Null keeps plain taps snappy — the
+  /// double-tap recognizer would delay single-tap selection otherwise.
+  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
   /// The frame axis direction: horizontal in the layer timeline, vertical
   /// in the X-sheet. Controls which edges of an exposure block round.
   final Axis axis;
@@ -68,15 +76,26 @@ class TimelineFrameCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // SE rows follow the paper sheet's SE-column rule: no paper block fill
+    // (the row-level overlay draws the label + duration line instead), so
+    // covered cells keep the empty-cell background/border styling. Camera
+    // rows do the same — their "coverage" is the lane-key union summary,
+    // drawn as accent ◆/■ markers instead of paper cells.
+    final cameraSummaryCell = layer.kind == LayerKind.camera;
+    final seSheetCell = layerKindUsesSeSheetCells(layer.kind);
+    final effectiveExposureState =
+        (seSheetCell || cameraSummaryCell) && exposureState.isCovered
+        ? TimelineCellExposureState.uncovered
+        : exposureState;
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: exposureState,
+      exposureState: effectiveExposureState,
       active: active,
       selected: selected,
     );
     final normalStyleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: exposureState,
+      exposureState: effectiveExposureState,
       active: active,
       selected: false,
     );
@@ -99,12 +118,20 @@ class TimelineFrameCell extends StatelessWidget {
     final borderWidth = selected && !selectedExposureRangeSegment ? 3.0 : 1.0;
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
+    final onActivateCell = this.onActivateCell;
     return InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
       onTap: () {
         onSelectLayer(layer.id);
         onSelectFrame(frameIndex);
       },
+      onDoubleTap: onActivateCell == null
+          ? null
+          : () {
+              onSelectLayer(layer.id);
+              onSelectFrame(frameIndex);
+              onActivateCell(layer.id, frameIndex);
+            },
       child: Container(
         width: width ?? _metrics.frameCellWidth,
         height: height ?? _metrics.layerRowHeight,
@@ -113,7 +140,9 @@ class TimelineFrameCell extends StatelessWidget {
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: borderWidth,
-          exposureBlockSegment: exposureBlockSegment,
+          exposureBlockSegment: seSheetCell || cameraSummaryCell
+              ? TimelineExposureBlockVisualSegment.none
+              : exposureBlockSegment,
           axis: axis,
         ),
         child: Center(
@@ -132,11 +161,18 @@ class TimelineFrameCell extends StatelessWidget {
                       outsidePlaybackRange: outsidePlaybackRange,
                     ),
               semanticsLabel: _semanticsLabelForCell(
+                layer: layer,
                 exposureState: exposureState,
                 frameName: frameName,
               ),
               style: TextStyle(
-                color: timelineCellUsesDrawingInk(exposureState)
+                // Camera key-summary markers read like the lane key
+                // diamonds: accent, dimmed outside the playback range.
+                color: cameraSummaryCell && exposureState.isCovered
+                    ? AppColors.accent.withValues(
+                        alpha: outsidePlaybackRange ? 0.55 : 1,
+                      )
+                    : timelineCellUsesDrawingInk(effectiveExposureState)
                     ? (outsidePlaybackRange
                           ? timelineDrawingInkColor.withValues(alpha: 0.55)
                           : timelineDrawingInkColor)
@@ -208,16 +244,23 @@ String _markerForCell({
 }) {
   return switch (exposureState) {
     // The timesheet "X": the FIRST cell of each empty run inside the
-    // playback range (paper-sheet style). Camera rows mirror keyframes and
-    // instruction rows carry instruction events, not cel exposure — no X.
+    // playback range (paper-sheet style). Camera rows mirror keyframes,
+    // instruction rows carry instruction events and SE columns stay blank
+    // between entries on paper — no X on any of those.
     TimelineCellExposureState.uncovered =>
       !layerKindHoldsDrawings(layer.kind) ||
+              layerKindUsesSeSheetCells(layer.kind) ||
               outsidePlaybackRange ||
               !emptyRunStart
           ? ''
           : 'X',
+    // SE entries draw their label through the row-level span overlay.
     TimelineCellExposureState.drawingStart =>
-      frameName == null || frameName.isEmpty ? '○' : frameName,
+      layerKindUsesSeSheetCells(layer.kind)
+          ? ''
+          : frameName == null || frameName.isEmpty
+          ? '○'
+          : frameName,
     TimelineCellExposureState.held => '',
     TimelineCellExposureState.markHeld ||
     TimelineCellExposureState.markUncovered => '●',
@@ -225,13 +268,16 @@ String _markerForCell({
 }
 
 String? _semanticsLabelForCell({
+  required Layer layer,
   required TimelineCellExposureState exposureState,
   String? frameName,
 }) {
   return switch (exposureState) {
     TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>
-      frameName == null || frameName.isEmpty
+      layer.kind == LayerKind.camera
+          ? 'camera keyframe'
+          : frameName == null || frameName.isEmpty
           ? 'drawing start'
           : 'drawing start $frameName',
     TimelineCellExposureState.held => 'held exposure',

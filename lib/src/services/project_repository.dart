@@ -1,3 +1,4 @@
+import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
@@ -366,6 +367,36 @@ class ProjectRepository {
       }
       return next;
     });
+  }
+
+  void updateLayerInstructions({
+    required CutId cutId,
+    required LayerId layerId,
+    required Map<int, InstructionEvent> instructions,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(instructions: instructions),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
+    updateProject(
+      (project) => project.copyWith(cameraInstructions: instructionSet),
+    );
   }
 
   void updateLayerKind({
