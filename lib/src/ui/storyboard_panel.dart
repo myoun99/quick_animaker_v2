@@ -19,7 +19,10 @@ import 'timeline/timeline_cell_style.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
-    show defaultEndlessRunwayFrames, endlessTrailingFrames;
+    show
+        defaultEndlessRunwayFrames,
+        endlessTrailingFrames,
+        timelineSecondsLabel;
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
@@ -63,6 +66,9 @@ class StoryboardPanel extends StatefulWidget {
     required this.onCutSelected,
     this.onCutReordered,
     this.cutTrim,
+    this.pixelsPerFrame = 8,
+    this.showSeconds = false,
+    this.projectFps = 24,
     this.playheadGlobalFrame,
     this.onSeekGlobalFrame,
     this.thumbnailFor,
@@ -75,10 +81,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onMoveActiveCutRight,
     this.onDeleteActiveCut,
   });
-
-  /// Frame-axis zoom steps (pixels per frame); index 1 is the classic 8px.
-  static const List<double> _zoomSteps = [4, 8, 16, 24, 32];
-  static const int _defaultZoomIndex = 1;
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
   /// width would make neighbours overlap when zoomed out. The tiny floor
@@ -103,6 +105,15 @@ class StoryboardPanel extends StatefulWidget {
   /// cuts ripple), the START grip rolls the boundary with the previous cut.
   /// Null hides the grips.
   final StoryboardCutTrimCallbacks? cutTrim;
+
+  /// Frame-axis zoom, owned by the host (the panel header's shared zoom
+  /// slider drives it).
+  final double pixelsPerFrame;
+
+  /// Conte-sheet time display for the cut totals: frames (`48f`) or
+  /// seconds+frames (`2+00`), toggled by the panel header's shared button.
+  final bool showSeconds;
+  final int projectFps;
 
   /// Track-global frame the playhead line sits on (playback position while
   /// playing, the active cut's playhead otherwise). Null hides the line.
@@ -147,7 +158,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   final ScrollController _verticalController = ScrollController();
   final ScrollController _horizontalController = ScrollController();
 
-  int _zoomIndex = StoryboardPanel._defaultZoomIndex;
   int _endlessTrailingFrames = 0;
   double _horizontalScrollOffset = 0;
 
@@ -155,6 +165,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   void initState() {
     super.initState();
     _horizontalController.addListener(_handleHorizontalScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant StoryboardPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the frame at the viewport's left edge anchored through zoom.
+    if (oldWidget.pixelsPerFrame != widget.pixelsPerFrame &&
+        _horizontalController.hasClients) {
+      final factor = widget.pixelsPerFrame / oldWidget.pixelsPerFrame;
+      _horizontalController.jumpTo(
+        (_horizontalController.position.pixels * factor).clamp(
+          0.0,
+          double.maxFinite,
+        ),
+      );
+    }
   }
 
   void _handleHorizontalScroll() {
@@ -181,25 +207,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   TimelineScale get _scale => TimelineScale(
-    pixelsPerFrame: StoryboardPanel._zoomSteps[_zoomIndex],
+    pixelsPerFrame: widget.pixelsPerFrame,
     minBlockWidth: StoryboardPanel._minBlockWidth,
   );
-
-  bool get _canZoomIn => _zoomIndex < StoryboardPanel._zoomSteps.length - 1;
-  bool get _canZoomOut => _zoomIndex > 0;
-
-  void _applyZoom(int nextIndex) {
-    final previousPixels = StoryboardPanel._zoomSteps[_zoomIndex];
-    setState(() => _zoomIndex = nextIndex);
-    // Keep the frame at the viewport's left edge anchored through the zoom.
-    if (_horizontalController.hasClients) {
-      final factor = StoryboardPanel._zoomSteps[nextIndex] / previousPixels;
-      final position = _horizontalController.position;
-      _horizontalController.jumpTo(
-        (position.pixels * factor).clamp(0.0, double.maxFinite),
-      );
-    }
-  }
 
   @override
   void dispose() {
@@ -269,11 +279,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _StoryboardCutActionsToolbar(
-              panel: widget,
-              onZoomIn: _canZoomIn ? () => _applyZoom(_zoomIndex + 1) : null,
-              onZoomOut: _canZoomOut ? () => _applyZoom(_zoomIndex - 1) : null,
-            ),
+            if (widget._hasCutActions)
+              _StoryboardCutActionsToolbar(panel: widget),
             Expanded(
               child: PanelScrollbar(
                 controller: _verticalController,
@@ -328,6 +335,26 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 ),
                                 child: Stack(
                                   children: [
+                                    // Frame grid lines under the blocks:
+                                    // the runway reads as endless frame
+                                    // cells, like the timeline's grid
+                                    // (painted — costs nothing per frame).
+                                    Positioned.fill(
+                                      top: StoryboardPanel._rulerHeight,
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          key: const ValueKey<String>(
+                                            'storyboard-frame-lines',
+                                          ),
+                                          painter: _StoryboardFrameLinesPainter(
+                                            pixelsPerFrame:
+                                                scale.pixelsPerFrame,
+                                            color: colorScheme.outlineVariant
+                                                .withValues(alpha: 0.35),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                     Column(
                                       key: const ValueKey<String>(
                                         'storyboard-timeline-scroll-content',
@@ -366,6 +393,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             cutTrim: widget.cutTrim,
                                             thumbnailFor: widget.thumbnailFor,
                                             timelineScale: scale,
+                                            showSeconds: widget.showSeconds,
+                                            projectFps: widget.projectFps,
                                           ),
                                       ],
                                     ),
@@ -425,49 +454,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 /// The compact cut-management toolbar at the top of the storyboard: the
 /// storyboard owns the cut lifecycle, so new/rename/note/canvas/duplicate/
 /// move/delete live here (icon-only with tooltips, acting on the active
-/// cut). The frame-zoom cluster sits at the right edge.
+/// cut). Zoom lives in the panel header's shared slider.
 class _StoryboardCutActionsToolbar extends StatelessWidget {
-  const _StoryboardCutActionsToolbar({
-    required this.panel,
-    required this.onZoomIn,
-    required this.onZoomOut,
-  });
+  const _StoryboardCutActionsToolbar({required this.panel});
 
   final StoryboardPanel panel;
-  final VoidCallback? onZoomIn;
-  final VoidCallback? onZoomOut;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 32,
-      child: Row(
-        children: [
-          Expanded(
-            child: panel._hasCutActions
-                ? _cutActionsScroller()
-                : const SizedBox.shrink(),
-          ),
-          _CutActionButton(
-            key: const ValueKey<String>('storyboard-zoom-out-button'),
-            tooltip: 'Zoom Out',
-            icon: Icons.zoom_out,
-            onPressed: onZoomOut,
-          ),
-          _CutActionButton(
-            key: const ValueKey<String>('storyboard-zoom-in-button'),
-            tooltip: 'Zoom In',
-            icon: Icons.zoom_in,
-            onPressed: onZoomIn,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _cutActionsScroller() {
-    return Align(
-      alignment: Alignment.centerLeft,
       child: SingleChildScrollView(
         key: const ValueKey<String>('storyboard-cut-actions'),
         scrollDirection: Axis.horizontal,
@@ -696,6 +692,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.cutTrim,
     required this.thumbnailFor,
     required this.timelineScale,
+    required this.showSeconds,
+    required this.projectFps,
   });
 
   final Track track;
@@ -706,6 +704,14 @@ class _StoryboardTrackRow extends StatelessWidget {
   final StoryboardCutTrimCallbacks? cutTrim;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
+  final bool showSeconds;
+  final int projectFps;
+
+  String _totalLabelFor(StoryboardTimelineLayoutEntry entry) {
+    return showSeconds
+        ? timelineSecondsLabel(entry.endFrame, projectFps)
+        : '${entry.endFrame}f';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -741,6 +747,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                   canReorder:
                       onCutReordered != null && layoutEntries.length > 1,
                   onCutReordered: onCutReordered,
+                  totalLabel: _totalLabelFor(entry),
                   thumbnail: thumbnailFor?.call(entry.cut),
                   showThumbnail: thumbnailFor != null,
                 ),
@@ -805,6 +812,44 @@ class _StoryboardTrackRow extends StatelessWidget {
               (width, nextWidth) => width > nextWidth ? width : nextWidth,
             ) +
         trailingPadding;
+  }
+}
+
+/// Vertical frame-boundary lines behind the cut blocks (the timeline grid's
+/// cell borders, storyboard-flavored): every frame when cells are wide,
+/// thinning to the shared label cadence when zoomed out.
+class _StoryboardFrameLinesPainter extends CustomPainter {
+  const _StoryboardFrameLinesPainter({
+    required this.pixelsPerFrame,
+    required this.color,
+  });
+
+  final double pixelsPerFrame;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (pixelsPerFrame <= 0) {
+      return;
+    }
+    final lineEveryFrames = pixelsPerFrame >= 16
+        ? 1
+        : TimelineGridMetrics(
+            frameCellWidth: pixelsPerFrame,
+          ).frameLabelEveryFrames;
+    final step = pixelsPerFrame * lineEveryFrames;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    for (var x = 0.0; x <= size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StoryboardFrameLinesPainter oldDelegate) {
+    return oldDelegate.pixelsPerFrame != pixelsPerFrame ||
+        oldDelegate.color != color;
   }
 }
 
@@ -967,6 +1012,7 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
     required this.onSelected,
     required this.canReorder,
     required this.onCutReordered,
+    required this.totalLabel,
     required this.thumbnail,
     required this.showThumbnail,
   });
@@ -977,6 +1023,7 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
   final ValueChanged<CutId> onSelected;
   final bool canReorder;
   final CutReorderedCallback? onCutReordered;
+  final String totalLabel;
   final ui.Image? thumbnail;
   final bool showThumbnail;
 
@@ -987,6 +1034,7 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
       width: width,
       isActive: isActive,
       onSelected: onSelected,
+      totalLabel: totalLabel,
       thumbnail: thumbnail,
       showThumbnail: showThumbnail,
     );
@@ -1027,6 +1075,7 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
                   width: width,
                   isActive: isActive,
                   onSelected: (_) {},
+                  totalLabel: totalLabel,
                   thumbnail: thumbnail,
                   showThumbnail: showThumbnail,
                 ),
@@ -1057,20 +1106,36 @@ class _StoryboardCutBlock extends StatelessWidget {
     required this.width,
     required this.isActive,
     required this.onSelected,
+    required this.totalLabel,
     this.thumbnail,
     this.showThumbnail = false,
   });
-
-  static const double _thumbnailWidth = 44;
 
   final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
   final ValueChanged<CutId> onSelected;
 
+  /// Cumulative time at this cut's end (conte-sheet TIME column), rendered
+  /// bottom-right; frames or seconds per the shared display toggle.
+  final String totalLabel;
+
   /// Painted, never disposed here: the thumbnail store owns the image.
   final ui.Image? thumbnail;
   final bool showThumbnail;
+
+  /// A translucent strip behind the overlay texts keeps them readable over
+  /// the picture.
+  Widget _scrim(BuildContext context, Widget child) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1085,155 +1150,110 @@ class _StoryboardCutBlock extends StatelessWidget {
       minHeight: 0,
       padding: const EdgeInsets.all(4),
       onTap: isActive ? null : () => onSelected(cut.id),
+      // Conte-sheet cell turned sideways: the camera-view picture fills the
+      // block center, texts stack on top of it.
       child: Stack(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Zoomed-out blocks are too narrow for the fixed-width thumb;
-              // the flexible texts just ellipsize.
-              if (showThumbnail &&
-                  width >= _StoryboardCutBlock._thumbnailWidth + 28) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: SizedBox(
-                    width: _StoryboardCutBlock._thumbnailWidth,
-                    child: thumbnail == null
-                        ? ColoredBox(
-                            key: ValueKey<String>(
-                              'storyboard-cut-thumb-empty-${cut.id.value}',
-                            ),
-                            color: colorScheme.surfaceContainerHighest,
-                          )
-                        : RawImage(
-                            key: ValueKey<String>(
-                              'storyboard-cut-thumb-${cut.id.value}',
-                            ),
-                            image: thumbnail,
-                            fit: BoxFit.cover,
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.max,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.only(right: isActive ? 48 : 0),
-                      child: Text(
-                        cut.name,
+          if (showThumbnail)
+            Positioned.fill(
+              child: thumbnail == null
+                  ? ColoredBox(
+                      key: ValueKey<String>(
+                        'storyboard-cut-thumb-empty-${cut.id.value}',
+                      ),
+                      color: colorScheme.surfaceContainerHighest,
+                    )
+                  : Center(
+                      child: RawImage(
                         key: ValueKey<String>(
-                          'storyboard-cut-title-${cut.id.value}',
+                          'storyboard-cut-thumb-${cut.id.value}',
+                        ),
+                        image: thumbnail,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+            ),
+          Positioned(
+            left: 0,
+            top: 0,
+            right: 0,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: _scrim(
+                context,
+                Text(
+                  cut.name,
+                  key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: math.max(0, width - 8) * 0.6,
+              ),
+              child: storyboardLayer == null
+                  ? _scrim(
+                      context,
+                      Text(
+                        'No Storyboard Layer',
+                        key: ValueKey<String>(
+                          'storyboard-layer-empty-${cut.id.value}',
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         softWrap: false,
-                        style: Theme.of(context).textTheme.labelSmall,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      key: ValueKey<String>(
+                        'storyboard-layer-strip-${cut.id.value}',
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        storyboardLayer.name,
+                        key: ValueKey<String>(
+                          'storyboard-layer-name-${cut.id.value}',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onPrimaryContainer,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 1),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            '${layoutEntry.duration}f',
-                            key: ValueKey<String>(
-                              'storyboard-cut-duration-${cut.id.value}',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '${layoutEntry.startFrame}f - ${layoutEntry.endFrame}f',
-                            key: ValueKey<String>(
-                              'storyboard-cut-frame-range-${cut.id.value}',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 1),
-                    Expanded(
-                      child: storyboardLayer == null
-                          ? ClipRect(
-                              child: Align(
-                                alignment: Alignment.topLeft,
-                                child: Text(
-                                  'No Storyboard Layer',
-                                  key: ValueKey<String>(
-                                    'storyboard-layer-empty-${cut.id.value}',
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ),
-                            )
-                          : Container(
-                              key: ValueKey<String>(
-                                'storyboard-layer-strip-${cut.id.value}',
-                              ),
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              alignment: Alignment.centerLeft,
-                              child: ClipRect(
-                                child: Text(
-                                  storyboardLayer.name,
-                                  key: ValueKey<String>(
-                                    'storyboard-layer-name-${cut.id.value}',
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: colorScheme.onPrimaryContainer,
-                                      ),
-                                ),
-                              ),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
-          if (isActive)
+          // The conte sheet's TIME column: cumulative time at the cut's end.
+          if (width >= 48)
             Positioned(
-              top: 0,
               right: 0,
-              child: Text(
-                'ACTIVE',
-                key: ValueKey<String>(
-                  'storyboard-cut-active-indicator-${cut.id.value}',
-                ),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
+              bottom: 0,
+              child: _scrim(
+                context,
+                Text(
+                  totalLabel,
+                  key: ValueKey<String>('storyboard-cut-total-${cut.id.value}'),
+                  maxLines: 1,
+                  softWrap: false,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),

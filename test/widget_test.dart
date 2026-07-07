@@ -127,11 +127,9 @@ Future<void> _expectCutsNamed(
 
 Future<void> _expectActiveCutName(WidgetTester tester, String name) async {
   await _withStoryboardPanel(tester, (panel) async {
+    // The block highlight carries the active state (no ACTIVE badge);
+    // the panel's activeCutId is the oracle for WHICH cut that is.
     final activeId = panel.activeCutId.value;
-    expect(
-      find.byKey(ValueKey<String>('storyboard-cut-active-indicator-$activeId')),
-      findsOneWidget,
-    );
     expect(
       tester
           .widget<Text>(
@@ -549,44 +547,25 @@ void main() {
       findsOneWidget,
     );
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-in-button'),
-    );
+    Future<void> zoomTo(double pixelsPerFrame) async {
+      tester
+          .widget<Slider>(
+            find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+          )
+          .onChanged!(pixelsPerFrame);
+      await tester.pumpAndSettle();
+    }
+
+    await zoomTo(72);
     expect(tester.getSize(header0).width, 72);
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
+    await zoomTo(24);
     expect(tester.getSize(header0).width, 24);
     // Narrow cells move their labels to the every-Nth overlay: no in-cell
     // texts anywhere in the header cells.
     expect(
       find.descendant(of: header0, matching: find.byType(Text)),
       findsNothing,
-    );
-
-    // Fully zoomed out disables the button.
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
-    expect(
-      tester
-          .widget<IconButton>(
-            find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
-          )
-          .onPressed,
-      isNull,
     );
   });
 
@@ -602,11 +581,40 @@ void main() {
     final row0 = find.byKey(const ValueKey<String>('xsheet-frame-row-0'));
     expect(tester.getSize(row0).height, 36);
 
+    // The X-sheet row height tracks the slider proportionally (36 at 48).
+    tester
+        .widget<Slider>(
+          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+        )
+        .onChanged!(72);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(row0).height, 54);
+  });
+
+  testWidgets('the time display toggle switches the counter to seconds', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const QuickAnimakerApp());
+
+    String counterText() => tester
+        .widget<Text>(
+          find.byKey(const ValueKey<String>('timeline-current-frame-counter')),
+        )
+        .data!;
+    expect(counterText(), '1');
+
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('timeline-zoom-in-button'),
+      const ValueKey<String>('timeline-time-display-toggle-button'),
     );
-    expect(tester.getSize(row0).height, 54);
+    // Frame 1 at 24fps in conte notation.
+    expect(counterText(), '0+01');
+
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-time-display-toggle-button'),
+    );
+    expect(counterText(), '1');
   });
 
   testWidgets('xsheet frame axis extends endlessly while scrolling', (
@@ -1536,18 +1544,6 @@ Line 8''';
       find.byKey(const ValueKey<String>('storyboard-panel')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsNothing,
-    );
     await _expectActiveCutName(tester, 'Cut 1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
@@ -1558,18 +1554,6 @@ Line 8''';
 
     await _expectActiveCutName(tester, 'New Cut');
     expect(await _activeCutId(tester), const CutId('cut-1'));
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsNothing,
-    );
 
     await _showTimelinePanel(tester);
 
@@ -1590,28 +1574,12 @@ Line 8''';
     await _createSecondCut(tester);
     await _showStoryboardPanel(tester);
 
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsOneWidget,
-    );
+    expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
 
     await _expectActiveCutName(tester, 'Cut 1');
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-default-cut-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-active-indicator-cut-1'),
-      ),
-      findsNothing,
-    );
+    expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
   testWidgets('new frame after switching to Cut 2 stays scoped to Cut 2', (

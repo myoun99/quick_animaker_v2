@@ -95,6 +95,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 
   @override
+  void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the frame at the viewport's left edge anchored through zoom.
+    final oldCell = oldWidget.metrics.frameCellWidth;
+    final newCell = widget.metrics.frameCellWidth;
+    if (oldCell != newCell && _horizontalScrollController.hasClients) {
+      _horizontalScrollController.jumpTo(
+        (_horizontalScrollController.offset * newCell / oldCell).clamp(
+          0.0,
+          double.maxFinite,
+        ),
+      );
+    }
+  }
+
+  @override
   void dispose() {
     _horizontalScrollController
       ..removeListener(_handleHorizontalScroll)

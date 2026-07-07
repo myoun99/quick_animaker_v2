@@ -75,7 +75,7 @@ void main() {
       );
     });
 
-    testWidgets('renders current cut title, duration, and frame range', (
+    testWidgets('renders current cut title and cumulative end time', (
       tester,
     ) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
@@ -85,16 +85,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Cut A'), findsOneWidget);
+      // Conte-sheet TIME column bottom-right; the old duration/frame-range
+      // row is gone.
       expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
+        find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
         findsOneWidget,
       );
       expect(find.text('24f'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-frame-range-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('0f - 24f'), findsOneWidget);
     });
 
     testWidgets('renders current storyboard layer strip when present', (
@@ -113,22 +110,22 @@ void main() {
       expect(find.text('Storyboard'), findsOneWidget);
     });
 
-    testWidgets('renders current active cut indicator when active', (
-      tester,
-    ) async {
+    testWidgets('marks the active cut without an ACTIVE label', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _projectWithStoryboardLayer(),
         activeCutId: const CutId('cut-a'),
       );
 
+      // The block's active highlight carries the state; the old text badge
+      // is gone.
+      expect(find.text('ACTIVE'), findsNothing);
       expect(
-        find.byKey(
-          const ValueKey<String>('storyboard-cut-active-indicator-cut-a'),
-        ),
-        findsOneWidget,
+        tester
+            .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+            .activeCutId,
+        const CutId('cut-a'),
       );
-      expect(find.text('ACTIVE'), findsOneWidget);
     });
 
     testWidgets('preserves current inactive cut selection callback', (

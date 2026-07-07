@@ -123,6 +123,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   }
 
   @override
+  void didUpdateWidget(covariant XSheetTimelineGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the frame at the viewport's top edge anchored through zoom.
+    final oldCell = oldWidget.metrics.frameCellWidth;
+    final newCell = widget.metrics.frameCellWidth;
+    if (oldCell != newCell && _frameScrollController.hasClients) {
+      _frameScrollController.jumpTo(
+        (_frameScrollController.offset * newCell / oldCell).clamp(
+          0.0,
+          double.maxFinite,
+        ),
+      );
+    }
+  }
+
+  @override
   void dispose() {
     _frameScrollController
       ..removeListener(_handleFrameScroll)

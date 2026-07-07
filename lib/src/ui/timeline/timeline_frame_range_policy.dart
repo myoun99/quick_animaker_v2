@@ -46,6 +46,15 @@ double timelineCutEndBoundaryX({
   return playbackFrameCount * metrics.frameCellWidth;
 }
 
+/// Conte-sheet time notation for a frame COUNT: whole seconds plus leftover
+/// frames — 54 frames at 24fps reads `2+06` (秒+コマ).
+String timelineSecondsLabel(int frames, int fps) {
+  final safeFps = math.max(1, fps);
+  final seconds = frames ~/ safeFps;
+  final leftover = frames % safeFps;
+  return '$seconds+${leftover.toString().padLeft(2, '0')}';
+}
+
 /// Frames of runway kept ahead of the scrolled position on the endless
 /// frame axis.
 const int defaultEndlessRunwayFrames = 120;

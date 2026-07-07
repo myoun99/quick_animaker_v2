@@ -7,6 +7,7 @@ import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
 import 'timeline_orientation.dart';
 import 'xsheet_timeline_grid.dart';
@@ -35,6 +36,11 @@ class TimelinePanel extends StatefulWidget {
     this.showStoryboard = false,
     this.onShowStoryboardChanged,
     this.storyboardPanel,
+    this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
+    this.onPixelsPerFrameChanged,
+    this.showSeconds = false,
+    this.onShowSecondsChanged,
+    this.projectFps = 24,
   });
 
   final List<Layer> layers;
@@ -74,23 +80,31 @@ class TimelinePanel extends StatefulWidget {
 
   bool get _storyboardVisible => showStoryboard && storyboardPanel != null;
 
-  /// Frame-axis zoom factors applied to each orientation's default cell
-  /// extent (index 2 = classic geometry).
-  static const List<double> _zoomFactors = [0.5, 0.75, 1.0, 1.5, 2.0];
-  static const int _defaultZoomIndex = 2;
+  /// Frame-axis zoom, DaVinci/AE-style continuous slider value in pixels
+  /// per frame; the shared range covers the storyboard's overview zooms
+  /// and the timeline's classic cell width alike. The X-sheet's frame row
+  /// height scales proportionally so its classic geometry sits at the
+  /// same default.
+  static const double minPixelsPerFrame = 4;
+  static const double maxPixelsPerFrame = 96;
+  static const double defaultPixelsPerFrame = 48;
+
+  /// The ACTIVE view's zoom (the host routes it to the timeline or the
+  /// storyboard value depending on the shown mode).
+  final double pixelsPerFrame;
+  final ValueChanged<double>? onPixelsPerFrameChanged;
+
+  /// Frames↔seconds display toggle, shared by the timeline counter and the
+  /// storyboard cut totals (conte-sheet `s+ff` notation).
+  final bool showSeconds;
+  final ValueChanged<bool>? onShowSecondsChanged;
+  final int projectFps;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
 }
 
 class _TimelinePanelState extends State<TimelinePanel> {
-  int _zoomIndex = TimelinePanel._defaultZoomIndex;
-
-  bool get _canZoomIn => _zoomIndex < TimelinePanel._zoomFactors.length - 1;
-  bool get _canZoomOut => _zoomIndex > 0;
-
-  double get _zoomFactor => TimelinePanel._zoomFactors[_zoomIndex];
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -101,14 +115,16 @@ class _TimelinePanelState extends State<TimelinePanel> {
     final showToolbar =
         widget.timelineActionToolbar != null && !widget._storyboardVisible;
 
-    // The zoom factor scales each orientation's frame-axis cell extent
-    // (cell width horizontally, frame row height in the X-sheet).
+    // The slider value is the horizontal cell width; the X-sheet's frame
+    // row height scales proportionally (36 at the classic 48).
     final horizontalMetrics = TimelineGridMetrics.defaults.copyWith(
-      frameCellWidth: TimelineGridMetrics.defaults.frameCellWidth * _zoomFactor,
+      frameCellWidth: widget.pixelsPerFrame,
     );
     final xsheetMetrics = XSheetTimelineGrid.defaultMetrics.copyWith(
       frameCellWidth:
-          XSheetTimelineGrid.defaultMetrics.frameCellWidth * _zoomFactor,
+          widget.pixelsPerFrame *
+          (XSheetTimelineGrid.defaultMetrics.frameCellWidth /
+              TimelineGridMetrics.defaults.frameCellWidth),
     );
 
     return Material(
@@ -130,7 +146,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     const SizedBox(width: 10),
                   ],
                   Text(
-                    '${widget.currentFrameIndex + 1}',
+                    widget.showSeconds
+                        ? timelineSecondsLabel(
+                            widget.currentFrameIndex + 1,
+                            widget.projectFps,
+                          )
+                        : '${widget.currentFrameIndex + 1}',
                     key: const ValueKey<String>(
                       'timeline-current-frame-counter',
                     ),
@@ -142,23 +163,49 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     ),
                   ),
                   const Spacer(),
+                  IconButton(
+                    key: const ValueKey<String>(
+                      'timeline-time-display-toggle-button',
+                    ),
+                    tooltip: widget.showSeconds
+                        ? 'Show Frames'
+                        : 'Show Seconds',
+                    onPressed: widget.onShowSecondsChanged == null
+                        ? null
+                        : () =>
+                              widget.onShowSecondsChanged!(!widget.showSeconds),
+                    icon: Icon(
+                      widget.showSeconds ? Icons.timer : Icons.timer_outlined,
+                      size: 18,
+                    ),
+                  ),
+                  // The frame-axis zoom slider is shared by every mode
+                  // (timeline, X-sheet AND storyboard).
+                  Icon(
+                    Icons.zoom_out,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  SizedBox(
+                    width: 140,
+                    child: Slider(
+                      key: const ValueKey<String>('timeline-zoom-slider'),
+                      min: TimelinePanel.minPixelsPerFrame,
+                      max: TimelinePanel.maxPixelsPerFrame,
+                      value: widget.pixelsPerFrame.clamp(
+                        TimelinePanel.minPixelsPerFrame,
+                        TimelinePanel.maxPixelsPerFrame,
+                      ),
+                      onChanged: widget.onPixelsPerFrameChanged,
+                    ),
+                  ),
+                  Icon(
+                    Icons.zoom_in,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
                   if (!widget._storyboardVisible) ...[
-                    IconButton(
-                      key: const ValueKey<String>('timeline-zoom-out-button'),
-                      tooltip: 'Zoom Out',
-                      onPressed: _canZoomOut
-                          ? () => setState(() => _zoomIndex -= 1)
-                          : null,
-                      icon: const Icon(Icons.zoom_out),
-                    ),
-                    IconButton(
-                      key: const ValueKey<String>('timeline-zoom-in-button'),
-                      tooltip: 'Zoom In',
-                      onPressed: _canZoomIn
-                          ? () => setState(() => _zoomIndex += 1)
-                          : null,
-                      icon: const Icon(Icons.zoom_in),
-                    ),
                     IconButton(
                       key: const ValueKey<String>(
                         'timeline-toolbar-add-layer-button',

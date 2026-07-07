@@ -120,13 +120,17 @@ class TimelineFrameCell extends StatelessWidget {
           child: Semantics(
             key: selected ? selectedSemanticsKey : null,
             child: Text(
-              _markerForCell(
-                layer: layer,
-                exposureState: exposureState,
-                emptyRunStart: emptyRunStart,
-                frameName: frameName,
-                outsidePlaybackRange: outsidePlaybackRange,
-              ),
+              // Zoomed-out cells are too narrow for glyphs; the block
+              // colors alone carry the overview (Premiere-style).
+              (width ?? _metrics.frameCellWidth) < 14
+                  ? ''
+                  : _markerForCell(
+                      layer: layer,
+                      exposureState: exposureState,
+                      emptyRunStart: emptyRunStart,
+                      frameName: frameName,
+                      outsidePlaybackRange: outsidePlaybackRange,
+                    ),
               semanticsLabel: _semanticsLabelForCell(
                 exposureState: exposureState,
                 frameName: frameName,
@@ -145,8 +149,7 @@ class TimelineFrameCell extends StatelessWidget {
                     ? colorScheme.onPrimaryContainer
                     : colorScheme.onSurface,
                 fontWeight:
-                    !isEmptyX &&
-                        exposureState != TimelineCellExposureState.held
+                    !isEmptyX && exposureState != TimelineCellExposureState.held
                     ? FontWeight.bold
                     : null,
               ),

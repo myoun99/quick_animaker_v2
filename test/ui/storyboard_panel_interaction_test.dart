@@ -445,19 +445,22 @@ void main() {
       );
     });
 
-    testWidgets('zoom buttons rescale blocks, ruler and playhead', (
+    testWidgets('pixelsPerFrame rescales blocks, ruler and playhead', (
       tester,
     ) async {
-      await _pumpStoryboardPanel(
-        tester,
-        _singleTrackProject([
-          _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
-        ]),
-        activeCutId: const CutId('cut-a'),
-        onCutSelected: (_) {},
-        playheadGlobalFrame: 24,
-      );
+      Future<void> pumpAt(double pixelsPerFrame) {
+        return _pumpStoryboardPanel(
+          tester,
+          _singleTrackProject([
+            _cut('cut-a', name: 'Cut A'),
+            _cut('cut-b', name: 'Cut B'),
+          ]),
+          activeCutId: const CutId('cut-a'),
+          onCutSelected: (_) {},
+          playheadGlobalFrame: 24,
+          pixelsPerFrame: pixelsPerFrame,
+        );
+      }
 
       final blockA = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-a'),
@@ -465,32 +468,82 @@ void main() {
       final playhead = find.byKey(
         const ValueKey<String>('storyboard-playhead'),
       );
+
+      await pumpAt(8);
       expect(tester.getSize(blockA).width, 24 * 8);
       expect(tester.widget<Positioned>(playhead).left, 24 * 8);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-in-button')),
-      );
-      await tester.pumpAndSettle();
-
+      await pumpAt(16);
       expect(tester.getSize(blockA).width, 24 * 16);
       expect(tester.widget<Positioned>(playhead).left, 24 * 16);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
-      );
-      await tester.pumpAndSettle();
-
+      // Fully zoomed out blocks stay frame-linear (no min-width overlap).
+      await pumpAt(4);
       expect(tester.getSize(blockA).width, 24 * 4);
+      final rightOfA = tester.getTopRight(blockA).dx;
+      final leftOfB = tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
+          )
+          .dx;
+      expect(rightOfA, lessThanOrEqualTo(leftOfB));
+      expect(tester.takeException(), isNull);
     });
 
-    testWidgets('zoom-out keeps blocks frame-linear (no overlap)', (
+    testWidgets('thumbnails fill the block background, centered', (
       tester,
     ) async {
+      final image = await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 4, 2), Paint());
+        final picture = recorder.endRecording();
+        try {
+          return picture.toImage(4, 2);
+        } finally {
+          picture.dispose();
+        }
+      });
+      addTearDown(() => image!.dispose());
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
+      );
+
+      final thumb = find.byKey(
+        const ValueKey<String>('storyboard-cut-thumb-cut-a'),
+      );
+      expect(thumb, findsOneWidget);
+      // Centered inside the block (not a left strip).
+      final blockCenter = tester
+          .getCenter(
+            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
+          )
+          .dx;
+      expect(
+        tester.getCenter(thumb).dx,
+        moreOrLessEquals(blockCenter, epsilon: 1),
+      );
+      // Pending cuts show the placeholder tile.
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-b')),
+        findsOneWidget,
+      );
+      // The old duration/range row and ACTIVE badge are gone.
+      expect(find.text('ACTIVE'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('cut totals switch between frames and seconds', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
@@ -500,71 +553,34 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
       );
-
-      // Two zoom-outs: 24-frame cuts at 2px/frame are 48px wide — far
-      // below the old 96px minimum that made neighbours overlap.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('storyboard-cut-total-cut-b')),
+            )
+            .data,
+        '48f',
       );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
-      );
-      await tester.pumpAndSettle();
 
-      final rightOfA = tester
-          .getTopRight(
-            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-          )
-          .dx;
-      final leftOfB = tester
-          .getTopLeft(
-            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-          )
-          .dx;
-      expect(rightOfA, lessThanOrEqualTo(leftOfB));
-
-      // Fully zoomed out: the out button disables.
-      final zoomOut = tester.widget<IconButton>(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey<String>('storyboard-zoom-out-button'),
-          ),
-          matching: find.byType(IconButton),
-        ),
-      );
-      expect(zoomOut.onPressed, isNull);
-    });
-
-    testWidgets('narrow blocks drop the thumbnail slot', (tester) async {
-      // 12-frame cuts: 96px at the default 8px zoom (thumb fits), 48px
-      // after one zoom-out (thumb dropped).
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
-          _cut('cut-a', name: 'Cut A', duration: 12),
-          _cut('cut-b', name: 'Cut B', duration: 12),
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (_) => null,
+        showSeconds: true,
+        projectFps: 24,
       );
-
       expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
-        findsOneWidget,
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('storyboard-cut-total-cut-b')),
+            )
+            .data,
+        '2+00',
       );
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
-        findsNothing,
-      );
-      expect(tester.takeException(), isNull);
     });
 
     testWidgets('frame axis extends endlessly while scrolling right', (
@@ -690,6 +706,9 @@ Future<void> _pumpStoryboardPanel(
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
   ui.Image? Function(Cut cut)? thumbnailFor,
+  double pixelsPerFrame = 8,
+  bool showSeconds = false,
+  int projectFps = 24,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -703,6 +722,9 @@ Future<void> _pumpStoryboardPanel(
           playheadGlobalFrame: playheadGlobalFrame,
           onSeekGlobalFrame: onSeekGlobalFrame,
           thumbnailFor: thumbnailFor,
+          pixelsPerFrame: pixelsPerFrame,
+          showSeconds: showSeconds,
+          projectFps: projectFps,
         ),
       ),
     ),
@@ -724,7 +746,12 @@ Project _project(List<Track> tracks) {
   );
 }
 
-Cut _cut(String id, {required String name, List<Layer>? layers, int duration = 24}) {
+Cut _cut(
+  String id, {
+  required String name,
+  List<Layer>? layers,
+  int duration = 24,
+}) {
   return Cut(
     id: CutId(id),
     name: name,

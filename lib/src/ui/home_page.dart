@@ -48,6 +48,14 @@ class _HomePageState extends State<HomePage> {
   TimelineOrientation _timelineOrientation = TimelineOrientation.horizontal;
   bool _showStoryboard = false;
 
+  // One shared zoom slider drives whichever view is shown; the values are
+  // kept per view so each keeps a sensible default scale.
+  double _timelinePixelsPerFrame = TimelinePanel.defaultPixelsPerFrame;
+  double _storyboardPixelsPerFrame = 8;
+
+  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
+  bool _showSecondsDisplay = false;
+
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
   @override
@@ -72,18 +80,20 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// Thumbnails render the cut's first frame at raw-canvas view, scaled to
-  /// a small output — always current (a fresh renderer replays surfaces
-  /// straight from the brush store).
+  /// Thumbnails render the cut's first frame THROUGH THE CAMERA (what the
+  /// shot actually frames — conte-sheet style), scaled to a small output;
+  /// always current (a fresh renderer replays surfaces straight from the
+  /// brush store).
   Future<ui.Image?> _renderStoryboardThumbnail(Cut cut) {
-    const thumbnailWidth = 96;
+    const thumbnailWidth = 128;
+    final cameraSize = _session.cameraFrameSize;
     final height = math.max(
       1,
-      (thumbnailWidth * cut.canvasSize.height / cut.canvasSize.width).round(),
+      (thumbnailWidth * cameraSize.height / cameraSize.width).round(),
     );
     return ExportFrameRenderer(session: _session).renderComposite(
       ExportFrameTask(cut: cut, frameIndex: 0),
-      ExportSizeMode.canvas,
+      ExportSizeMode.camera,
       outputSize: CanvasSize(width: thumbnailWidth, height: height),
     );
   }
@@ -377,6 +387,23 @@ class _HomePageState extends State<HomePage> {
                 onShowStoryboardChanged: (show) {
                   setState(() => _showStoryboard = show);
                 },
+                pixelsPerFrame: _showStoryboard
+                    ? _storyboardPixelsPerFrame
+                    : _timelinePixelsPerFrame,
+                onPixelsPerFrameChanged: (value) {
+                  setState(() {
+                    if (_showStoryboard) {
+                      _storyboardPixelsPerFrame = value;
+                    } else {
+                      _timelinePixelsPerFrame = value;
+                    }
+                  });
+                },
+                showSeconds: _showSecondsDisplay,
+                onShowSecondsChanged: (show) {
+                  setState(() => _showSecondsDisplay = show);
+                },
+                projectFps: _session.projectFps,
                 // The storyboard context plays every cut of the track; the
                 // timeline context plays the active cut from the playhead.
                 // Composing the transports into the existing slots keeps
@@ -396,6 +423,9 @@ class _HomePageState extends State<HomePage> {
                         activeCutId: _session.activeCutId,
                         onCutSelected: _session.selectCut,
                         onCutReordered: _session.reorderCut,
+                        pixelsPerFrame: _storyboardPixelsPerFrame,
+                        showSeconds: _showSecondsDisplay,
+                        projectFps: _session.projectFps,
                         // Edge-grip trims preview live and commit ONE undo
                         // on release, like the timeline's comma drags.
                         cutTrim: StoryboardCutTrimCallbacks(
