@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
@@ -65,6 +66,31 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Whether the overlay currently has stroke content to draw.
   bool get hasStrokeContent => _tileImages.isNotEmpty;
+
+  Map<TileCoord, BitmapTile?>? _settleHoldTiles;
+
+  /// PRE-stroke committed tiles pinned for display while the stroke settles
+  /// (a null value = that coordinate was empty before the stroke).
+  ///
+  /// While non-null, the painter draws these beneath the overlay INSTEAD of
+  /// the committed surface's tiles at the same coordinates. Without the
+  /// pin, post-commit tile decodes land one by one and each freshly decoded
+  /// tile (already containing the stroke) gets the still-visible overlay
+  /// blended on top — the stroke flashed at double density in tile-shaped
+  /// patches until the last decode dropped the overlay. Pinning keeps every
+  /// settling frame pixel-identical to the live stroke, and [reset] clears
+  /// the pin and the overlay in one notification: an atomic swap to the
+  /// committed pixels.
+  Map<TileCoord, BitmapTile?>? get settleHoldTiles => _settleHoldTiles;
+
+  /// Pins [tiles] (keyed by committed-grid coordinate) until [reset].
+  /// Holding the immutable pre-stroke [BitmapTile] objects keeps their
+  /// decoded images alive in the tile image cache — no image cloning or
+  /// disposal bookkeeping is needed here.
+  void holdPreStrokeTiles(Map<TileCoord, BitmapTile?> tiles) {
+    _settleHoldTiles = Map<TileCoord, BitmapTile?>.unmodifiable(tiles);
+    notifyListeners();
+  }
 
   /// Snapshots the overlay tiles that [region] touches from the live
   /// stroke [source] and re-decodes them.
@@ -169,10 +195,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     return (_decodesSettled ??= Completer<void>()).future;
   }
 
-  /// Clears the overlay and disposes its tile images.
+  /// Clears the overlay (stroke tiles AND the settle pin) and disposes its
+  /// tile images; the single notification makes the handoff to the
+  /// committed tiles atomic.
   void reset() {
     _generation += 1;
     _clearTiles();
+    _settleHoldTiles = null;
     dabs.clear();
     notifyListeners();
   }
@@ -181,6 +210,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   void dispose() {
     _generation += 1;
     _clearTiles();
+    _settleHoldTiles = null;
     super.dispose();
   }
 

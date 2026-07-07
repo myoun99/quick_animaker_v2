@@ -90,8 +90,34 @@ class BitmapSurfacePainter extends CustomPainter {
     final tileImagePaint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
+    // While a stroke settles, coordinates it touched draw their pinned
+    // PRE-stroke tile (or nothing if the coordinate was empty) instead of
+    // the committed tile: post-commit decodes land one by one, and drawing
+    // them under the still-visible overlay flashed the stroke at double
+    // density in tile-shaped patches. The pin and the overlay clear in one
+    // notification, so the swap to committed pixels is atomic.
+    final settleHold = overlayModel?.settleHoldTiles;
     for (final tile in surface.tiles.values) {
       tileImageCache.ensureDecoded(tile, staleScope: staleScope);
+      if (settleHold != null && settleHold.containsKey(tile.coord)) {
+        final preTile = settleHold[tile.coord];
+        if (preTile != null) {
+          final preImage = tileImageCache.imageFor(preTile);
+          if (preImage != null) {
+            canvas.drawImage(
+              preImage,
+              Offset(
+                (preTile.coord.x * preTile.size).toDouble(),
+                (preTile.coord.y * preTile.size).toDouble(),
+              ),
+              tileImagePaint,
+            );
+          } else {
+            _paintTilePixels(canvas, preTile);
+          }
+        }
+        continue;
+      }
       // While this tile version's decode is pending, show the latest decoded
       // image at the same coordinate (slightly stale content) instead of a
       // per-pixel redraw: scanning up to 65k pixels per changed tile froze

@@ -252,22 +252,33 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-        await tester.pump();
 
+        // Pointer-up is processed synchronously: the stroke committed and
+        // the overlay entered settling — still visible, with the PRE-stroke
+        // tiles pinned for the touched coordinates so progressive
+        // post-commit decodes never double-blend with the overlay (fresh
+        // canvas: every touched coordinate was empty).
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
         expect(results, hasLength(1));
-        // The overlay settles (stays visible) until the committed tiles
-        // decode or the settling window elapses, so the stroke never flashes
-        // away during the handoff to the materialized bitmap.
         expect(canvasView.overlayModel!.dabs, isNotEmpty);
+        final hold = canvasView.overlayModel!.settleHoldTiles;
+        expect(hold, isNotNull);
+        expect(hold, isNotEmpty);
+        expect(hold!.values.every((tile) => tile == null), isTrue);
 
+        // This fixture's commit callback does not materialize tiles into
+        // the surface, so the settling gate (all committed tiles decoded)
+        // passes on its first post-frame check and the pin + overlay
+        // release together — one atomic swap.
+        await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
         expect(canvasView.overlayModel!.dabs, isEmpty);
+        expect(canvasView.overlayModel!.settleHoldTiles, isNull);
       },
     );
 
@@ -918,8 +929,10 @@ void main() {
 
 void _settlingTileGroup() {
   group('settlingTilesForBounds', () {
-    BitmapTile tile(int x, int y) =>
-        BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2);
+    BitmapTile tile(int x, int y) => BitmapTile.blank(
+      coord: TileCoord(x: x, y: y),
+      size: 2,
+    );
 
     test('narrows the gate to the tiles the stroke touched', () {
       final surface = BitmapSurface(
@@ -940,12 +953,55 @@ void _settlingTileGroup() {
           bottomExclusive: 3,
         ),
       );
-      expect(touched.map((tile) => tile.coord), [
-        TileCoord(x: 0, y: 0),
-      ], reason: 'the far tile must not gate the overlay handoff');
+      expect(
+        touched.map((tile) => tile.coord),
+        [TileCoord(x: 0, y: 0)],
+        reason: 'the far tile must not gate the overlay handoff',
+      );
 
       final all = settlingTilesForBounds(surface: surface, bounds: null);
       expect(all, hasLength(2), reason: 'unknown bounds fall back to all');
+    });
+  });
+
+  group('preStrokeHoldTiles', () {
+    test('covers every touched coordinate, empty ones as explicit nulls', () {
+      final existing = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        tileSize: 2,
+        tiles: {existing.coord: existing},
+      );
+
+      final hold = preStrokeHoldTiles(
+        surface: surface,
+        bounds: DirtyRegion(
+          left: 0,
+          top: 0,
+          rightExclusive: 4,
+          bottomExclusive: 4,
+        ),
+      );
+
+      expect(hold, hasLength(4));
+      expect(hold[TileCoord(x: 0, y: 0)], same(existing));
+      expect(hold.containsKey(TileCoord(x: 1, y: 0)), isTrue);
+      expect(hold[TileCoord(x: 1, y: 0)], isNull);
+      expect(hold[TileCoord(x: 0, y: 1)], isNull);
+      expect(hold[TileCoord(x: 1, y: 1)], isNull);
+    });
+
+    test('unknown bounds pin every existing tile', () {
+      final existing = BitmapTile.blank(coord: TileCoord(x: 1, y: 1), size: 2);
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        tileSize: 2,
+        tiles: {existing.coord: existing},
+      );
+
+      final hold = preStrokeHoldTiles(surface: surface, bounds: null);
+
+      expect(hold, {existing.coord: same(existing)});
     });
   });
 }
