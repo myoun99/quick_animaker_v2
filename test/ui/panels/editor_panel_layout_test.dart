@@ -105,31 +105,43 @@ void main() {
       expect(model.tabsIn('bottom'), ['brushes', 'timeline', 'storyboard']);
     });
 
-    test('moving the LAST tab of a group is refused', () {
+    test('moving the LAST tab of a group empties it', () {
       final model = EditorPanelLayoutModel(
         groups: {
           'left': ['camera'],
           'bottom': ['timeline', 'storyboard'],
         },
       );
-      var notified = 0;
-      model.addListener(() => notified += 1);
 
-      expect(model.canMoveTab(tabId: 'camera', toGroupId: 'bottom'), isFalse);
+      expect(model.canMoveTab(tabId: 'camera', toGroupId: 'bottom'), isTrue);
       model.moveTab(tabId: 'camera', toGroupId: 'bottom', toIndex: 0);
 
-      expect(model.tabsIn('left'), ['camera']);
-      expect(model.tabsIn('bottom'), ['timeline', 'storyboard']);
-      expect(notified, 0);
+      expect(model.tabsIn('left'), isEmpty);
+      expect(model.activeTabIn('left'), isNull);
+      expect(model.tabsIn('bottom'), ['camera', 'timeline', 'storyboard']);
+      expect(model.activeTabIn('bottom'), 'camera');
     });
 
-    test('canMoveTab allows same-group reorders even for a lone tab', () {
+    test('a tab can dock into an initially empty group', () {
       final model = EditorPanelLayoutModel(
         groups: {
-          'left': ['camera'],
+          'left': ['camera', 'brushes'],
+          'right': <String>[],
         },
       );
-      expect(model.canMoveTab(tabId: 'camera', toGroupId: 'left'), isTrue);
+      expect(model.activeTabIn('right'), isNull);
+
+      model.moveTab(tabId: 'camera', toGroupId: 'right', toIndex: 0);
+
+      expect(model.tabsIn('right'), ['camera']);
+      expect(model.activeTabIn('right'), 'camera');
+      expect(model.activeTabIn('left'), 'brushes');
+    });
+
+    test('unknown tabs or groups cannot move', () {
+      final model = _model();
+      expect(model.canMoveTab(tabId: 'nope', toGroupId: 'left'), isFalse);
+      expect(model.canMoveTab(tabId: 'tools', toGroupId: 'nope'), isFalse);
     });
 
     test('out-of-range target indices clamp', () {

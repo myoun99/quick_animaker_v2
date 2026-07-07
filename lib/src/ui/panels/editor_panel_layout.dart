@@ -4,9 +4,8 @@ import 'package:flutter/foundation.dart';
 /// is active per group. This is pure layout state — the panel definitions
 /// (label/icon/content) stay with the workspace that owns the panels.
 ///
-/// Invariant: every group always keeps at least one tab, so no dock ever
-/// collapses into an untargetable empty region ([canMoveTab] enforces it;
-/// [moveTab] refuses violating moves defensively).
+/// Groups may be empty ([activeTabIn] is null then); the dock UI renders an
+/// empty group as a collapsed drop rail so tabs can still be dragged back.
 class EditorPanelLayoutModel extends ChangeNotifier {
   EditorPanelLayoutModel({
     required Map<String, List<String>> groups,
@@ -30,7 +29,7 @@ class EditorPanelLayoutModel extends ChangeNotifier {
   List<String> tabsIn(String groupId) =>
       List.unmodifiable(_groups[groupId] ?? const <String>[]);
 
-  /// The active tab of a group; null only for unknown group ids.
+  /// The active tab of a group; null for empty groups and unknown ids.
   String? activeTabIn(String groupId) => _activeTabs[groupId];
 
   /// The group currently holding a tab; null for unknown tab ids.
@@ -55,18 +54,10 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Whether a tab may be dropped into [toGroupId]: same-group reorders are
-  /// always fine; a cross-group move is refused when it would empty the
-  /// source group.
+  /// Whether a tab may be dropped into [toGroupId]: any known tab may move
+  /// to any known group (panels dock anywhere; an emptied group collapses).
   bool canMoveTab({required String tabId, required String toGroupId}) {
-    final fromGroupId = groupOf(tabId);
-    if (fromGroupId == null || !_groups.containsKey(toGroupId)) {
-      return false;
-    }
-    if (fromGroupId == toGroupId) {
-      return true;
-    }
-    return _groups[fromGroupId]!.length > 1;
+    return groupOf(tabId) != null && _groups.containsKey(toGroupId);
   }
 
   /// Moves a tab to [toIndex] in [toGroupId] (insertion index counted in the
@@ -102,7 +93,11 @@ class EditorPanelLayoutModel extends ChangeNotifier {
 
     source.removeAt(oldIndex);
     if (_activeTabs[fromGroupId] == tabId) {
-      _activeTabs[fromGroupId] = source[oldIndex.clamp(0, source.length - 1)];
+      if (source.isEmpty) {
+        _activeTabs.remove(fromGroupId);
+      } else {
+        _activeTabs[fromGroupId] = source[oldIndex.clamp(0, source.length - 1)];
+      }
     }
     final target = _groups[toGroupId]!;
     target.insert(toIndex.clamp(0, target.length), tabId);

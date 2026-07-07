@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../panels/editor_panel_frame.dart';
 import 'brush_tool_state.dart';
 
-/// Left-dock tool switcher: brush ⇄ eraser. Both tools share the brush
-/// options (size, hardness, tip) — the eraser only flips the dabs into
-/// destination-out.
+/// The Photoshop/Clip-Studio style tool bar: a slim vertical strip pinned
+/// to the workspace's left edge (NOT a dockable tab) switching brush ⇄
+/// eraser. Both tools share the brush options (size, hardness, tip) — the
+/// eraser only flips the dabs into destination-out.
 class ToolsPanel extends StatelessWidget {
   const ToolsPanel({
     super.key,
@@ -16,13 +16,21 @@ class ToolsPanel extends StatelessWidget {
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
 
+  static const double width = 44;
+
   @override
   Widget build(BuildContext context) {
-    return EditorPanelFrame(
-      title: 'Tools',
-      child: Row(
-        key: const ValueKey<String>('tools-panel'),
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey<String>('tools-panel'),
+      width: ToolsPanel.width,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: Column(
         children: [
+          const SizedBox(height: 6),
           _ToolButton(
             keyValue: 'tool-brush-button',
             tooltip: 'Brush Tool',
@@ -30,7 +38,7 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.brush,
             onPressed: () => onToolChanged(CanvasTool.brush),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-eraser-button',
             tooltip: 'Eraser Tool',

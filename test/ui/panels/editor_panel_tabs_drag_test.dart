@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_layout.dart';
@@ -19,6 +20,19 @@ class _Harness extends StatelessWidget {
   };
 
   Widget _group(String groupId) {
+    // Empty groups collapse in the real dock layout; a bare drop target
+    // stands in for the workspace's drop rail here.
+    if (model.tabsIn(groupId).isEmpty) {
+      return DragTarget<EditorPanelTabDragData>(
+        onAcceptWithDetails: (details) => model.moveTab(
+          tabId: details.data.tabId,
+          toGroupId: groupId,
+          toIndex: 0,
+        ),
+        builder: (context, _, _) =>
+            SizedBox.expand(key: ValueKey<String>('empty-group-$groupId')),
+      );
+    }
     return EditorPanelTabs(
       groupId: groupId,
       tabs: [
@@ -69,10 +83,11 @@ EditorPanelLayoutModel _twoGroups() => EditorPanelLayoutModel(
 
 Finder _tab(String id) => find.byKey(ValueKey<String>('panel-tab-$id'));
 
-/// Drags a tab to [target] with a plain pointer drag (mouse semantics).
+/// Long-presses a tab to lift it, then drags it to [target].
 Future<void> _dragTab(WidgetTester tester, String id, Offset target) async {
   final gesture = await tester.startGesture(tester.getCenter(_tab(id)));
-  await tester.pump(const Duration(milliseconds: 20));
+  // LongPressDraggable lifts after the long-press timeout.
+  await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
   // Two hops so DragTarget onMove sees the final hover position.
   await gesture.moveTo(target + const Offset(0, -10));
   await tester.pump();
@@ -143,7 +158,9 @@ void main() {
     expect(model.tabsIn('two'), ['x', 'b', 'y']);
   });
 
-  testWidgets('a group\'s last tab refuses to leave', (tester) async {
+  testWidgets('a group\'s last tab can leave, emptying the group', (
+    tester,
+  ) async {
     final model = EditorPanelLayoutModel(
       groups: {
         'one': ['a', 'b', 'c'],
@@ -154,8 +171,29 @@ void main() {
 
     await _dragTab(tester, 'x', _tabHalf(tester, 'b', right: false));
 
-    expect(model.tabsIn('one'), ['a', 'b', 'c']);
+    expect(model.tabsIn('one'), ['a', 'x', 'b', 'c']);
+    expect(model.tabsIn('two'), isEmpty);
+    expect(model.activeTabIn('two'), isNull);
+  });
+
+  testWidgets('a tab can drop into an emptied group\'s drop target', (
+    tester,
+  ) async {
+    final model = EditorPanelLayoutModel(
+      groups: {
+        'one': ['a', 'b', 'c'],
+        'two': ['x'],
+      },
+    );
+    await tester.pumpWidget(_Harness(model: model));
+    await _dragTab(tester, 'x', _tabHalf(tester, 'b', right: false));
+    expect(model.tabsIn('two'), isEmpty);
+
+    final emptyGroup = find.byKey(const ValueKey<String>('empty-group-two'));
+    await _dragTab(tester, 'x', tester.getCenter(emptyGroup));
+
     expect(model.tabsIn('two'), ['x']);
+    expect(model.activeTabIn('two'), 'x');
   });
 
   testWidgets('plain taps still switch tabs on a draggable strip', (

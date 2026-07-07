@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
@@ -31,8 +32,10 @@ import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline_tab_host.dart';
 
 /// The editor workspace: the left panel dock, the canvas and the bottom
-/// panel region — every dockable panel lives in one of the two tab groups
-/// of an [EditorPanelLayoutModel], so tabs can move between docks.
+/// panel region behind a PS/CSP-style vertical tool bar — every dockable
+/// panel lives in one of the tab groups of an [EditorPanelLayoutModel], so
+/// tabs can long-press-drag between docks. An emptied dock collapses; while
+/// a tab is in flight it reappears as a slim drop rail.
 ///
 /// This widget is the COMMON OWNER of all dockable-panel view state (brush
 /// tool, preset library, camera view, timeline view state): a panel keeps
@@ -59,19 +62,20 @@ class EditorWorkspace extends StatefulWidget {
   static const double bottomPanelHeight = 350;
 
   static const String leftGroupId = 'left';
+  static const String rightGroupId = 'right';
   static const String bottomGroupId = 'bottom';
 
-  static const String toolsTabId = 'tools';
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
   static const String cameraTabId = 'camera';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
 
-  /// Frame-axis panels need the full-width bottom region — their label
-  /// rails and toolbars don't fit the 260px side dock (revisit when docks
-  /// become resizable).
-  static const Set<String> _bottomOnlyTabIds = {timelineTabId, storyboardTabId};
+  /// The size frame-axis panels lay out at when docked somewhere smaller
+  /// (their label rails and toolbars assume a wide region); the tab shell
+  /// hosts them inside scrollers then.
+  static const double _frameAxisMinContentWidth = 640;
+  static const double _frameAxisMinContentHeight = 280;
 
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
@@ -81,11 +85,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final EditorPanelLayoutModel _layout = EditorPanelLayoutModel(
     groups: {
       EditorWorkspace.leftGroupId: [
-        EditorWorkspace.toolsTabId,
         EditorWorkspace.brushesTabId,
         EditorWorkspace.brushSettingsTabId,
         EditorWorkspace.cameraTabId,
       ],
+      EditorWorkspace.rightGroupId: <String>[],
       EditorWorkspace.bottomGroupId: [
         EditorWorkspace.timelineTabId,
         EditorWorkspace.storyboardTabId,
@@ -96,6 +100,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       EditorWorkspace.bottomGroupId: EditorWorkspace.timelineTabId,
     },
   );
+
+  /// True while a panel tab is in flight — empty docks reveal their drop
+  /// rails only then.
+  final ValueNotifier<bool> _tabDragActive = ValueNotifier(false);
 
   final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
     BrushToolState.defaults,
@@ -147,6 +155,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
+    _tabDragActive.dispose();
     _layout.dispose();
     super.dispose();
   }
@@ -233,21 +242,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   EditorPanelTab _tabFor(String tabId) {
     switch (tabId) {
-      case EditorWorkspace.toolsTabId:
-        return EditorPanelTab(
-          id: tabId,
-          label: 'Tools',
-          icon: Icons.handyman_outlined,
-          builder: (context) => ValueListenableBuilder<BrushToolState>(
-            valueListenable: _brushTool,
-            builder: (context, toolState, _) => ToolsPanel(
-              tool: toolState.tool,
-              onToolChanged: (tool) {
-                _brushTool.value = _brushTool.value.copyWith(tool: tool);
-              },
-            ),
-          ),
-        );
       case EditorWorkspace.brushesTabId:
         return EditorPanelTab(
           id: tabId,
@@ -322,6 +316,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The legacy mode-toggle keys stay on the tab buttons so every
           // existing flow (and test helper) keeps working.
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
+          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _timelineOrientation,
@@ -351,6 +347,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Storyboard',
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
+          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _storyboardPixelsPerFrame,
@@ -376,6 +374,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
+  void _moveTab(String toGroupId, EditorPanelTabDragData data, int toIndex) {
+    _mutatingLayout(() {
+      _layout.moveTab(
+        tabId: data.tabId,
+        toGroupId: toGroupId,
+        toIndex: toIndex,
+      );
+    });
+  }
+
   Widget _buildTabGroup(String groupId, {bool compact = false}) {
     return EditorPanelTabs(
       groupId: groupId,
@@ -383,19 +391,44 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       tabs: [for (final id in _layout.tabsIn(groupId)) _tabFor(id)],
       activeTabId: _layout.activeTabIn(groupId)!,
       onTabSelected: (tabId) => _selectTab(groupId, tabId),
-      // Drag-docking: reorder within a strip or move a tab to the other
-      // dock; the layout model refuses moves that would empty a group.
+      // Drag-docking: long-press a tab to reorder within a strip or move
+      // it to any other dock (an emptied dock collapses).
       canAcceptTab: (data) =>
-          (groupId == EditorWorkspace.bottomGroupId ||
-              !EditorWorkspace._bottomOnlyTabIds.contains(data.tabId)) &&
           _layout.canMoveTab(tabId: data.tabId, toGroupId: groupId),
-      onTabMoved: (data, insertIndex) => _mutatingLayout(() {
-        _layout.moveTab(
-          tabId: data.tabId,
-          toGroupId: groupId,
-          toIndex: insertIndex,
-        );
-      }),
+      onTabMoved: (data, insertIndex) => _moveTab(groupId, data, insertIndex),
+      onDragActiveChanged: (active) => _tabDragActive.value = active,
+    );
+  }
+
+  /// A side dock: full tab dock when populated, collapsed otherwise (a slim
+  /// drop rail appears while a tab is being dragged).
+  Widget _buildSideDock(String groupId, EditorPanelDockSide side) {
+    if (_layout.tabsIn(groupId).isEmpty) {
+      return _EmptyDockDropRail(
+        groupId: groupId,
+        axis: Axis.vertical,
+        dragActive: _tabDragActive,
+        onDropped: (data) => _moveTab(groupId, data, 0),
+      );
+    }
+    return EditorPanelDock.filled(
+      side: side,
+      child: _buildTabGroup(groupId, compact: true),
+    );
+  }
+
+  Widget _buildBottomDock() {
+    if (_layout.tabsIn(EditorWorkspace.bottomGroupId).isEmpty) {
+      return _EmptyDockDropRail(
+        groupId: EditorWorkspace.bottomGroupId,
+        axis: Axis.horizontal,
+        dragActive: _tabDragActive,
+        onDropped: (data) => _moveTab(EditorWorkspace.bottomGroupId, data, 0),
+      );
+    }
+    return SizedBox(
+      height: EditorWorkspace.bottomPanelHeight,
+      child: _buildTabGroup(EditorWorkspace.bottomGroupId),
     );
   }
 
@@ -409,14 +442,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             Expanded(
               child: Row(
                 children: [
-                  // CSP-like layout: the tool/brush/camera palettes dock on
-                  // the left of the canvas as tabs.
-                  EditorPanelDock.filled(
-                    side: EditorPanelDockSide.left,
-                    child: _buildTabGroup(
-                      EditorWorkspace.leftGroupId,
-                      compact: true,
+                  // PS/CSP-style: the tool switcher is a pinned vertical
+                  // bar, not a dockable tab.
+                  ValueListenableBuilder<BrushToolState>(
+                    valueListenable: _brushTool,
+                    builder: (context, toolState, _) => ToolsPanel(
+                      tool: toolState.tool,
+                      onToolChanged: (tool) {
+                        _brushTool.value = _brushTool.value.copyWith(
+                          tool: tool,
+                        );
+                      },
                     ),
+                  ),
+                  // CSP-like layout: palettes dock beside the canvas as
+                  // compact tabs.
+                  _buildSideDock(
+                    EditorWorkspace.leftGroupId,
+                    EditorPanelDockSide.left,
                   ),
                   Expanded(
                     child: EditorCanvasArea(
@@ -426,14 +469,76 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       cameraDimOpacity: _cameraDimOpacity,
                     ),
                   ),
+                  _buildSideDock(
+                    EditorWorkspace.rightGroupId,
+                    EditorPanelDockSide.right,
+                  ),
                 ],
               ),
             ),
-            SizedBox(
-              height: EditorWorkspace.bottomPanelHeight,
-              child: _buildTabGroup(EditorWorkspace.bottomGroupId),
-            ),
+            _buildBottomDock(),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// A collapsed (empty) dock: invisible until a panel tab is in flight, then
+/// a slim rail appears; dropping a tab there re-populates the dock.
+class _EmptyDockDropRail extends StatelessWidget {
+  const _EmptyDockDropRail({
+    required this.groupId,
+    required this.axis,
+    required this.dragActive,
+    required this.onDropped,
+  });
+
+  final String groupId;
+  final Axis axis;
+  final ValueListenable<bool> dragActive;
+  final ValueChanged<EditorPanelTabDragData> onDropped;
+
+  static const double thickness = 26;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<bool>(
+      valueListenable: dragActive,
+      builder: (context, active, _) {
+        if (!active) {
+          return const SizedBox.shrink();
+        }
+        return DragTarget<EditorPanelTabDragData>(
+          onAcceptWithDetails: (details) => onDropped(details.data),
+          builder: (context, candidateData, rejectedData) {
+            final hovered = candidateData.isNotEmpty;
+            return Container(
+              key: ValueKey<String>('editor-dock-drop-rail-$groupId'),
+              width: axis == Axis.vertical ? thickness : null,
+              height: axis == Axis.horizontal ? thickness : null,
+              decoration: BoxDecoration(
+                color: hovered
+                    ? colorScheme.primary.withValues(alpha: 0.2)
+                    : colorScheme.surfaceContainerLow,
+                border: Border.all(
+                  color: hovered
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.add,
+                  size: 14,
+                  color: hovered
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+              ),
+            );
+          },
         );
       },
     );

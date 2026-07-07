@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// One tab in an [EditorPanelTabs] group.
@@ -8,6 +10,8 @@ class EditorPanelTab {
     required this.icon,
     required this.builder,
     this.buttonKey,
+    this.minContentWidth,
+    this.minContentHeight,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -23,6 +27,13 @@ class EditorPanelTab {
   /// Key for the tab strip button. Groups replacing older toggle buttons
   /// keep the legacy keys here so existing flows and tests keep working.
   final Key? buttonKey;
+
+  /// Smallest size this panel lays out at. When the tab is docked somewhere
+  /// smaller (frame-axis panels in a side dock), the shell hosts it at this
+  /// size inside scrollers instead of letting its fixed rails and toolbars
+  /// overflow.
+  final double? minContentWidth;
+  final double? minContentHeight;
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -41,8 +52,9 @@ class EditorPanelTabDragData {
 /// persist per-view state across switches). Rule of thumb: the strip only
 /// switches — tools/buttons belong to each panel's own toolbar below it.
 ///
-/// When [groupId] and [onTabMoved] are given, tabs become draggable: within
-/// the strip to reorder, and onto another group's strip to re-dock. Drop
+/// When [groupId] and [onTabMoved] are given, tabs become draggable (LONG
+/// PRESS starts the drag — a plain tap still just switches): within the
+/// strip to reorder, and onto another group's strip to re-dock. Drop
 /// position follows the pointer (left/right half of a hovered tab inserts
 /// before/after it; the empty strip tail appends).
 class EditorPanelTabs extends StatelessWidget {
@@ -55,6 +67,7 @@ class EditorPanelTabs extends StatelessWidget {
     this.groupId,
     this.onTabMoved,
     this.canAcceptTab,
+    this.onDragActiveChanged,
   }) : assert(tabs.length > 0),
        assert(
          onTabMoved == null || groupId != null,
@@ -79,6 +92,10 @@ class EditorPanelTabs extends StatelessWidget {
 
   /// Whether a hovering tab may drop into this group (defaults to yes).
   final bool Function(EditorPanelTabDragData data)? canAcceptTab;
+
+  /// Fires when a drag leaves this strip's tabs (true) and when it ends
+  /// (false) — lets the dock layout reveal drop rails for empty docks.
+  final ValueChanged<bool>? onDragActiveChanged;
 
   static const double stripHeight = 30;
 
@@ -117,8 +134,46 @@ class EditorPanelTabs extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(child: Builder(builder: active.builder)),
+        Expanded(child: _buildActiveContent(active)),
       ],
+    );
+  }
+
+  /// The active tab's content; panels with a minimum content size larger
+  /// than the dock render at that size inside scrollers.
+  Widget _buildActiveContent(EditorPanelTab active) {
+    if (active.minContentWidth == null && active.minContentHeight == null) {
+      return Builder(builder: active.builder);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.max(
+          active.minContentWidth ?? 0,
+          constraints.maxWidth,
+        );
+        final height = math.max(
+          active.minContentHeight ?? 0,
+          constraints.maxHeight,
+        );
+        if (width <= constraints.maxWidth && height <= constraints.maxHeight) {
+          return Builder(builder: active.builder);
+        }
+        Widget content = SizedBox(
+          width: width,
+          height: height,
+          child: Builder(builder: active.builder),
+        );
+        if (height > constraints.maxHeight) {
+          content = SingleChildScrollView(child: content);
+        }
+        if (width > constraints.maxWidth) {
+          content = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: content,
+          );
+        }
+        return content;
+      },
     );
   }
 
@@ -141,7 +196,9 @@ class EditorPanelTabs extends StatelessWidget {
       // Left half inserts before this tab, right half after it.
       onDropped: (dropped, after) =>
           onTabMoved!(dropped, after ? index + 1 : index),
-      child: Draggable<EditorPanelTabDragData>(
+      // Long press to lift a tab: an immediate drag would swallow plain
+      // taps' neighbours on touch and fight the tooltips.
+      child: LongPressDraggable<EditorPanelTabDragData>(
         data: data,
         maxSimultaneousDrags: 1,
         // The avatar origin IS the pointer, so drop regions can split
@@ -152,6 +209,9 @@ class EditorPanelTabs extends StatelessWidget {
           child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: button),
+        onDragStarted: () => onDragActiveChanged?.call(true),
+        // onDragEnd covers completion AND cancellation.
+        onDragEnd: (_) => onDragActiveChanged?.call(false),
         child: button,
       ),
     );
@@ -316,6 +376,9 @@ class _PanelTabButton extends StatelessWidget {
 
     return Tooltip(
       message: label,
+      // Manual trigger: hover tooltips still work, but no long-press
+      // recognizer competes with the tab's LongPressDraggable lift.
+      triggerMode: TooltipTriggerMode.manual,
       child: InkWell(
         onTap: onPressed,
         child: Container(
