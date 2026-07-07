@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../models/brush_preset.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
@@ -192,6 +193,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
 
+  /// Layers whose AE-style property-lane twirl-down is open (view state —
+  /// survives tab switches, session-only).
+  final ValueNotifier<Set<LayerId>> _expandedLaneLayerIds = ValueNotifier(
+    const <LayerId>{},
+  );
+
+  void _toggleLayerLanes(LayerId layerId) {
+    final next = Set<LayerId>.of(_expandedLaneLayerIds.value);
+    if (!next.remove(layerId)) {
+      next.add(layerId);
+    }
+    _expandedLaneLayerIds.value = next;
+  }
+
   /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
   /// viewport (zoom/pan) — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
@@ -322,6 +337,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
+    _expandedLaneLayerIds.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
     _draggingTab.dispose();
@@ -533,6 +549,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timelineOrientation,
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
+              _expandedLaneLayerIds,
             ]),
             builder: (context, _) => TimelineTabHost(
               session: widget.session,
@@ -548,6 +565,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onShowSecondsChanged: (show) {
                 _showSecondsDisplay.value = show;
               },
+              expandedLaneLayerIds: _expandedLaneLayerIds.value,
+              onToggleLayerLanes: _toggleLayerLanes,
             ),
           ),
         );

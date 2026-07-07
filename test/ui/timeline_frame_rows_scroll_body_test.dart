@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
@@ -213,6 +214,11 @@ Widget _body({
       body: Material(
         child: TimelineFrameRowsScrollBody(
           layers: layers,
+          rows: buildTimelineDisplayRows(
+            layers: layers,
+            expandedLayerIds: const {},
+            lanesForLayer: (_) => const [],
+          ),
           activeLayerId: activeLayerId,
           currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,

@@ -19,6 +19,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.sectionStart = false,
+    this.hasLanes = false,
+    this.lanesExpanded = false,
+    this.onToggleLanes,
   });
 
   final Layer layer;
@@ -33,6 +36,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Whether this row opens a new timesheet section (drawing/SE/camera);
   /// draws a heavier divider along the rail row's top edge.
   final bool sectionStart;
+
+  /// AE-style property-lane twirl-down: layers with lanes get a chevron
+  /// leading the row; rows without lanes keep an empty slot so labels stay
+  /// column-aligned.
+  final bool hasLanes;
+  final bool lanesExpanded;
+  final ValueChanged<LayerId>? onToggleLanes;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +72,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
+              if (hasLanes && onToggleLanes != null)
+                InkWell(
+                  key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
+                  onTap: () => onToggleLanes!(layer.id),
+                  child: SizedBox(
+                    width: 16,
+                    height: 24,
+                    child: Icon(
+                      lanesExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                      size: 16,
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: 16),
               // Timesheet + mark chips lead the label; ineligible rows keep
               // empty slots so kind icons and names stay column-aligned.
               if (layerKindEligibleForTimesheetToggle(layer.kind))
