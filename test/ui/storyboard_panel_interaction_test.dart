@@ -374,8 +374,9 @@ void main() {
         const ValueKey<String>('storyboard-playhead'),
       );
       expect(playhead, findsOneWidget);
-      // 30 frames × 8px, minus the 1px centering of the 2px line.
-      expect(tester.widget<Positioned>(playhead).left, 30 * 8 - 1);
+      // Timeline-style frame-wide tint: sits ON the frame, one cell wide.
+      expect(tester.widget<Positioned>(playhead).left, 30 * 8);
+      expect(tester.widget<Positioned>(playhead).width, 8);
     });
 
     testWidgets('no playhead line without a frame', (tester) async {
@@ -463,7 +464,7 @@ void main() {
         const ValueKey<String>('storyboard-playhead'),
       );
       expect(tester.getSize(blockA).width, 24 * 8);
-      expect(tester.widget<Positioned>(playhead).left, 24 * 8 - 1);
+      expect(tester.widget<Positioned>(playhead).left, 24 * 8);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-zoom-in-button')),
@@ -471,7 +472,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.getSize(blockA).width, 24 * 16);
-      expect(tester.widget<Positioned>(playhead).left, 24 * 16 - 1);
+      expect(tester.widget<Positioned>(playhead).left, 24 * 16);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
@@ -534,11 +535,13 @@ void main() {
     });
 
     testWidgets('narrow blocks drop the thumbnail slot', (tester) async {
+      // 12-frame cuts: 96px at the default 8px zoom (thumb fits), 48px
+      // after one zoom-out (thumb dropped).
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
-          _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
+          _cut('cut-a', name: 'Cut A', duration: 12),
+          _cut('cut-b', name: 'Cut B', duration: 12),
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
@@ -550,10 +553,6 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
-      );
-      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-zoom-out-button')),
       );
@@ -668,11 +667,11 @@ Project _project(List<Track> tracks) {
   );
 }
 
-Cut _cut(String id, {required String name, List<Layer>? layers}) {
+Cut _cut(String id, {required String name, List<Layer>? layers, int duration = 24}) {
   return Cut(
     id: CutId(id),
     name: name,
-    duration: 24,
+    duration: duration,
     canvasSize: const CanvasSize(width: 1280, height: 720),
     layers: layers ?? [_animationLayer('animation-$id')],
   );

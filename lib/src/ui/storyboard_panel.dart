@@ -15,6 +15,8 @@ import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show defaultEndlessRunwayFrames, endlessTrailingFrames;
+import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
 
@@ -47,9 +49,9 @@ class StoryboardPanel extends StatefulWidget {
     this.onDeleteActiveCut,
   });
 
-  /// Frame-axis zoom steps (pixels per frame); index 2 is the classic 8px.
-  static const List<double> _zoomSteps = [2, 4, 8, 16, 32];
-  static const int _defaultZoomIndex = 2;
+  /// Frame-axis zoom steps (pixels per frame); index 1 is the classic 8px.
+  static const List<double> _zoomSteps = [4, 8, 16, 24, 32];
+  static const int _defaultZoomIndex = 1;
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
   /// width would make neighbours overlap when zoomed out. The tiny floor
@@ -59,7 +61,7 @@ class StoryboardPanel extends StatefulWidget {
   static const double _trackLabelWidth = 56;
   static const double _trackLaneHeight = 64;
   static const double _trackRowBottomPadding = 4;
-  static const double _rulerHeight = 22;
+  static const double _rulerHeight = 24;
   static const double _timelineTrailingPadding = 12;
 
   final Project project;
@@ -115,6 +117,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   int _zoomIndex = StoryboardPanel._defaultZoomIndex;
   int _endlessTrailingFrames = 0;
+  double _horizontalScrollOffset = 0;
 
   @override
   void initState() {
@@ -126,17 +129,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     if (!_horizontalController.hasClients) {
       return;
     }
+    final offset = _horizontalController.offset;
     final next = endlessTrailingFrames(
       baseFrameCount: _totalFrames(
         buildStoryboardTimelineLayout(widget.project),
       ),
       currentTrailingFrames: _endlessTrailingFrames,
-      scrollOffset: _horizontalController.offset,
+      scrollOffset: offset,
       viewportExtent: _horizontalController.position.viewportDimension,
       frameCellExtent: _scale.pixelsPerFrame,
     );
-    if (next != _endlessTrailingFrames) {
-      setState(() => _endlessTrailingFrames = next);
+    if (next != _endlessTrailingFrames || offset != _horizontalScrollOffset) {
+      setState(() {
+        _endlessTrailingFrames = next;
+        // The shared frame ruler windows itself to the viewport.
+        _horizontalScrollOffset = offset;
+      });
     }
   }
 
@@ -270,74 +278,103 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         ),
                       ),
                       Expanded(
-                        child: PanelScrollbar(
-                          controller: _horizontalController,
-                          child: SingleChildScrollView(
-                            key: const ValueKey<String>(
-                              'storyboard-timeline-horizontal-viewport',
-                            ),
-                            controller: _horizontalController,
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.only(
-                              bottom: panelScrollbarGutter,
-                            ),
-                            child: Stack(
-                              children: [
-                                Column(
-                                  key: const ValueKey<String>(
-                                    'storyboard-timeline-scroll-content',
-                                  ),
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final viewportWidth = constraints.hasBoundedWidth
+                                ? constraints.maxWidth
+                                : contentWidth;
+                            return PanelScrollbar(
+                              controller: _horizontalController,
+                              child: SingleChildScrollView(
+                                key: const ValueKey<String>(
+                                  'storyboard-timeline-horizontal-viewport',
+                                ),
+                                controller: _horizontalController,
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.only(
+                                  bottom: panelScrollbarGutter,
+                                ),
+                                child: Stack(
                                   children: [
-                                    _StoryboardRuler(
-                                      width: contentWidth,
-                                      totalFrames: renderedFrames,
-                                      seekableFrames: totalFrames,
-                                      timelineScale: scale,
-                                      onSeekGlobalFrame:
-                                          widget.onSeekGlobalFrame,
+                                    Column(
+                                      key: const ValueKey<String>(
+                                        'storyboard-timeline-scroll-content',
+                                      ),
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _StoryboardRuler(
+                                          width: contentWidth,
+                                          renderedFrames: renderedFrames,
+                                          seekableFrames: totalFrames,
+                                          playheadFrame: playheadFrame,
+                                          scrollOffset: _horizontalScrollOffset,
+                                          viewportWidth: viewportWidth,
+                                          timelineScale: scale,
+                                          onSeekGlobalFrame:
+                                              widget.onSeekGlobalFrame,
+                                        ),
+                                        for (
+                                          var index = 0;
+                                          index < widget.project.tracks.length;
+                                          index++
+                                        )
+                                          _StoryboardTrackRow(
+                                            track: widget.project.tracks[index],
+                                            layoutEntries: layoutEntries
+                                                .where(
+                                                  (entry) =>
+                                                      entry.trackIndex == index,
+                                                )
+                                                .toList(growable: false),
+                                            activeCutId: widget.activeCutId,
+                                            onCutSelected: widget.onCutSelected,
+                                            onCutReordered:
+                                                widget.onCutReordered,
+                                            thumbnailFor: widget.thumbnailFor,
+                                            timelineScale: scale,
+                                          ),
+                                      ],
                                     ),
-                                    for (
-                                      var index = 0;
-                                      index < widget.project.tracks.length;
-                                      index++
-                                    )
-                                      _StoryboardTrackRow(
-                                        track: widget.project.tracks[index],
-                                        layoutEntries: layoutEntries
-                                            .where(
-                                              (entry) =>
-                                                  entry.trackIndex == index,
-                                            )
-                                            .toList(growable: false),
-                                        activeCutId: widget.activeCutId,
-                                        onCutSelected: widget.onCutSelected,
-                                        onCutReordered: widget.onCutReordered,
-                                        thumbnailFor: widget.thumbnailFor,
-                                        timelineScale: scale,
+                                    if (playheadFrame != null)
+                                      // Frame-wide accent tint, same as the
+                                      // timeline playhead; the solid left edge
+                                      // keeps it visible over colorful blocks.
+                                      Positioned(
+                                        key: const ValueKey<String>(
+                                          'storyboard-playhead',
+                                        ),
+                                        left: scale.leftForFrame(playheadFrame),
+                                        top: 0,
+                                        bottom: 0,
+                                        width: scale.pixelsPerFrame,
+                                        child: IgnorePointer(
+                                          child: Stack(
+                                            children: [
+                                              Positioned.fill(
+                                                child: ColoredBox(
+                                                  color: timelinePlayheadColor
+                                                      .withValues(alpha: 0.18),
+                                                ),
+                                              ),
+                                              const Positioned(
+                                                left: 0,
+                                                top: 0,
+                                                bottom: 0,
+                                                width: 2,
+                                                child: ColoredBox(
+                                                  color: timelinePlayheadColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                   ],
                                 ),
-                                if (playheadFrame != null)
-                                  Positioned(
-                                    key: const ValueKey<String>(
-                                      'storyboard-playhead',
-                                    ),
-                                    left: scale.leftForFrame(playheadFrame) - 1,
-                                    top: 0,
-                                    bottom: 0,
-                                    child: const IgnorePointer(
-                                      child: SizedBox(
-                                        width: 2,
-                                        child: ColoredBox(
-                                          color: timelinePlayheadColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -487,133 +524,100 @@ class _CutActionButton extends StatelessWidget {
 /// The Premiere-style frame ruler across the top of the track area: frame
 /// ticks and 1-based labels on the shared [TimelineScale], scrolling with
 /// the blocks. Tapping or dragging seeks via [onSeekGlobalFrame].
+/// The storyboard's frame ruler IS the timeline's ([TimelineFrameRuler] with
+/// the cell extent carrying the storyboard zoom): identical header cells,
+/// adaptive labels, runway dimming and the cut-end boundary line. The row is
+/// windowed to the scrolled viewport because the storyboard's scroll content
+/// is not otherwise virtualized.
 class _StoryboardRuler extends StatelessWidget {
   const _StoryboardRuler({
     required this.width,
-    required this.totalFrames,
+    required this.renderedFrames,
     required this.seekableFrames,
+    required this.playheadFrame,
+    required this.scrollOffset,
+    required this.viewportWidth,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
   });
 
+  static const int _overscanCells = 4;
+
   final double width;
 
-  /// Painted tick range — includes the endless-axis runway past the cuts.
-  final int totalFrames;
+  /// Rendered range — includes the endless-axis runway past the cuts.
+  final int renderedFrames;
 
   /// Seeks clamp here (the cuts' actual end); the runway is display-only.
   final int seekableFrames;
 
+  final int? playheadFrame;
+  final double scrollOffset;
+  final double viewportWidth;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
 
-  void _seekAt(double dx) {
+  void _seekFrame(int frame) {
     final onSeek = onSeekGlobalFrame;
     if (onSeek == null || seekableFrames <= 0) {
       return;
     }
-    final frame = (dx / timelineScale.pixelsPerFrame).floor().clamp(
-      0,
-      seekableFrames - 1,
-    );
-    onSeek(frame);
+    onSeek(frame.clamp(0, seekableFrames - 1));
+  }
+
+  void _seekAt(double dx) {
+    _seekFrame((dx / timelineScale.pixelsPerFrame).floor());
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cellWidth = timelineScale.pixelsPerFrame;
+    final startIndex = math.max(
+      0,
+      (scrollOffset / cellWidth).floor() - _overscanCells,
+    );
+    final endIndexExclusive = math.min(
+      renderedFrames,
+      ((scrollOffset + viewportWidth) / cellWidth).ceil() + _overscanCells,
+    );
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: cellWidth,
+      layerRowHeight: StoryboardPanel._rulerHeight,
+      layerControlsWidth: 0,
+      verticalScrollbarWidth: 0,
+    );
+
     return GestureDetector(
       key: const ValueKey<String>('storyboard-ruler'),
-      behavior: HitTestBehavior.opaque,
+      behavior: HitTestBehavior.translucent,
       // .down reports the true pointer-down position, so a scrub seeks the
-      // pressed frame first instead of the post-slop position (same fix as
-      // the camera overlay handles).
+      // pressed frame first instead of the post-slop position. Plain taps
+      // are the header cells' own InkWells.
       dragStartBehavior: DragStartBehavior.down,
-      onTapDown: (details) => _seekAt(details.localPosition.dx),
       // Scrubbing claims horizontal drags on the ruler strip only; the
       // track rows below still pan the panel.
       onHorizontalDragStart: (details) => _seekAt(details.localPosition.dx),
       onHorizontalDragUpdate: (details) => _seekAt(details.localPosition.dx),
-      child: CustomPaint(
-        size: Size(width, StoryboardPanel._rulerHeight),
-        painter: _StoryboardRulerPainter(
-          totalFrames: totalFrames,
-          pixelsPerFrame: timelineScale.pixelsPerFrame,
-          tickColor: colorScheme.onSurfaceVariant,
-          labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontSize: 10,
+      child: SizedBox(
+        width: width,
+        height: StoryboardPanel._rulerHeight,
+        child: TimelineFrameRuler(
+          key: const ValueKey<String>('storyboard-frame-ruler'),
+          frameStartIndex: startIndex,
+          frameEndIndexExclusive: math.max(startIndex, endIndexExclusive),
+          currentFrameIndex: playheadFrame ?? -1,
+          playbackFrameCount: seekableFrames,
+          leadingFrameSpacerWidth: startIndex * cellWidth,
+          trailingFrameSpacerWidth: math.max(
+            0,
+            (renderedFrames - math.max(startIndex, endIndexExclusive)) *
+                cellWidth,
           ),
+          metrics: metrics,
+          onSelectFrame: _seekFrame,
         ),
       ),
     );
-  }
-}
-
-class _StoryboardRulerPainter extends CustomPainter {
-  const _StoryboardRulerPainter({
-    required this.totalFrames,
-    required this.pixelsPerFrame,
-    required this.tickColor,
-    required this.labelStyle,
-  });
-
-  final int totalFrames;
-  final double pixelsPerFrame;
-  final Color tickColor;
-  final TextStyle? labelStyle;
-
-  /// Smallest multiple of 12 frames whose label spacing stays readable
-  /// (≥72px) at the current zoom.
-  int get _labelEveryFrames {
-    var every = 12;
-    while (every * pixelsPerFrame < 72) {
-      every += 12;
-    }
-    return every;
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final tickPaint = Paint()
-      ..color = tickColor.withValues(alpha: 0.6)
-      ..strokeWidth = 1;
-
-    canvas.drawLine(
-      Offset(0, size.height - 1),
-      Offset(size.width, size.height - 1),
-      tickPaint,
-    );
-
-    final labelEveryFrames = _labelEveryFrames;
-    final minorTickEveryFrames = labelEveryFrames ~/ 3;
-    for (var frame = 0; frame <= totalFrames; frame += minorTickEveryFrames) {
-      final x = frame * pixelsPerFrame;
-      if (x > size.width) {
-        break;
-      }
-      final isLabeled = frame % labelEveryFrames == 0;
-      canvas.drawLine(
-        Offset(x, size.height - (isLabeled ? 10 : 5)),
-        Offset(x, size.height - 1),
-        tickPaint,
-      );
-      if (isLabeled) {
-        final painter = TextPainter(
-          text: TextSpan(text: '${frame + 1}', style: labelStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        painter.paint(canvas, Offset(x + 2, 0));
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_StoryboardRulerPainter oldDelegate) {
-    return oldDelegate.totalFrames != totalFrames ||
-        oldDelegate.pixelsPerFrame != pixelsPerFrame ||
-        oldDelegate.tickColor != tickColor ||
-        oldDelegate.labelStyle != labelStyle;
   }
 }
 
