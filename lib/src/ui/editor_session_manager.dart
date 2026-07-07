@@ -39,6 +39,8 @@ import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'playback/audio_playback_sync.dart';
+import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
@@ -77,6 +79,7 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    audioPlaybackSync.attach();
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -172,6 +175,16 @@ class EditorSessionManager extends ChangeNotifier {
     resolveFps: () => projectFps,
     onStopped: _onPlaybackStopped,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
+  );
+
+  /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
+  /// come from the waveform peaks store.
+  late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
+    controller: playback,
+    resolveFps: () => projectFps,
+    durationSecondsFor: (filePath) =>
+        audioPeaksStore.peaksFor(filePath)?.durationSeconds,
+    playerFactory: AudioplayersClipPlayer.new,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
@@ -340,6 +353,7 @@ class EditorSessionManager extends ChangeNotifier {
   @override
   void dispose() {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
+    audioPlaybackSync.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
     cutFrameCompositeCache.dispose();

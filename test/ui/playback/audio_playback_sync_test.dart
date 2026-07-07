@@ -1,0 +1,201 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/ui/playback/audio_playback_sync.dart';
+import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
+
+class _FakeClipPlayer implements AudioClipPlayer {
+  _FakeClipPlayer(this.log);
+
+  final List<String> log;
+  String? _path;
+
+  @override
+  Future<void> play(String filePath, {required Duration position}) async {
+    _path = filePath;
+    log.add('play $filePath @${position.inMilliseconds}ms');
+  }
+
+  @override
+  Future<void> pause() async => log.add('pause $_path');
+
+  @override
+  Future<void> resume() async => log.add('resume $_path');
+
+  @override
+  Future<void> stop() async => log.add('stop $_path');
+
+  @override
+  Future<void> dispose() async {}
+}
+
+Layer _seLayer(String id, List<AudioClip> clips) => Layer(
+  id: LayerId(id),
+  name: 'S1',
+  kind: LayerKind.se,
+  frames: const [],
+  timeline: const {},
+  audioClips: clips,
+);
+
+// fps 10: cut-a (10 frames) carries a.wav (1.0 s = full cut) and b.wav
+// (unknown length → clamped to the cut end); cut-b (20 frames, global
+// 10..30) carries c.wav at local 3 (global 13..18).
+final Project _project = Project(
+  id: const ProjectId('sync-project'),
+  name: 'Sync',
+  createdAt: DateTime.utc(2026, 7, 8),
+  tracks: [
+    Track(
+      id: const TrackId('track'),
+      name: 'Video',
+      cuts: [
+        Cut(
+          id: const CutId('cut-a'),
+          name: 'A',
+          duration: 10,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            _seLayer('se-a', const [
+              AudioClip(filePath: 'a.wav', startFrame: 0),
+              AudioClip(filePath: 'b.wav', startFrame: 6),
+            ]),
+          ],
+        ),
+        Cut(
+          id: const CutId('cut-b'),
+          name: 'B',
+          duration: 20,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            _seLayer('se-b', const [
+              AudioClip(filePath: 'c.wav', startFrame: 3),
+            ]),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+
+const _durations = {'a.wav': 1.0, 'c.wav': 0.5};
+
+void main() {
+  late CanvasPlaybackController controller;
+  late List<String> log;
+
+  setUp(() {
+    log = [];
+    controller = CanvasPlaybackController(
+      resolveProject: () => _project,
+      resolveActiveCutId: () => const CutId('cut-a'),
+      resolveActiveTrackId: () => const TrackId('track'),
+      resolveFps: () => 10,
+    );
+    final sync = AudioPlaybackSync(
+      controller: controller,
+      resolveFps: () => 10,
+      durationSecondsFor: (path) => _durations[path],
+      playerFactory: () => _FakeClipPlayer(log),
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(controller.dispose);
+  });
+
+  test('play starts overlapping clips; ticking starts and ends later ones', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    expect(log, ['play a.wav @0ms']);
+
+    log.clear();
+    controller.seekToGlobalFrame(3); // small forward step = dropped frames
+    expect(log, isEmpty);
+
+    controller.seekToGlobalFrame(6); // crosses b.wav's start
+    expect(log, ['play b.wav @0ms']);
+  });
+
+  test('play mid-timeline starts clips at the matching position', () {
+    controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 5);
+    expect(log, ['play a.wav @500ms']);
+  });
+
+  test('a forward jump past the threshold restarts at the new position', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    log.clear();
+
+    controller.seekToGlobalFrame(8); // 8 frames > fps/2 → resync
+    expect(log, ['stop a.wav', 'play a.wav @800ms', 'play b.wav @200ms']);
+  });
+
+  test('a backward jump (loop wrap) stops everything and re-evaluates', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    controller.seekToGlobalFrame(6);
+    log.clear();
+
+    controller.seekToGlobalFrame(0);
+    expect(log, ['stop a.wav', 'stop b.wav', 'play a.wav @0ms']);
+  });
+
+  test('pause/resume forward to live players; a paused seek restarts', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    log.clear();
+
+    controller.pause();
+    expect(log, ['pause a.wav']);
+
+    log.clear();
+    controller.resume();
+    expect(log, ['resume a.wav']);
+
+    // Positions go stale on a paused seek — stop now, restart on resume.
+    controller.pause();
+    log.clear();
+    controller.seekToGlobalFrame(6);
+    expect(log, ['stop a.wav']);
+
+    log.clear();
+    controller.resume();
+    expect(log, ['play a.wav @600ms', 'play b.wav @0ms']);
+  });
+
+  test('stopping playback stops every live clip', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    controller.seekToGlobalFrame(6);
+    log.clear();
+
+    controller.stop();
+    expect(log, ['stop a.wav', 'stop b.wav']);
+  });
+
+  test('all-cuts playback lays clips globally and clamps at cut ends', () {
+    // Frame 12 = cut-b local 2: nothing overlaps yet.
+    controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 12);
+    expect(log, isEmpty);
+
+    controller.seekToGlobalFrame(13); // c.wav's global start
+    expect(log, ['play c.wav @0ms']);
+
+    log.clear();
+    controller.seekToGlobalFrame(18); // c.wav ends (0.5 s = 5 frames)
+    expect(log, ['stop c.wav']);
+  });
+
+  test('an unknown-length clip stops at its cut boundary', () {
+    // b.wav has no extracted peaks → its end clamps to cut-a's end (10).
+    controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 7);
+    expect(log, ['play a.wav @700ms', 'play b.wav @100ms']);
+
+    log.clear();
+    controller.seekToGlobalFrame(10); // cut-a → cut-b boundary
+    expect(log, ['stop a.wav', 'stop b.wav']);
+  });
+}
