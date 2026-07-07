@@ -102,6 +102,7 @@ void main() {
       const full = InstructionEvent(
         instructionId: 'pan',
         length: 24,
+        text: 'メモリPAN',
         valueA: 'A',
         valueB: 'B',
       );
@@ -109,6 +110,21 @@ void main() {
       expect(InstructionEvent.fromJson(bare.toJson()), bare);
       expect(InstructionEvent.fromJson(full.toJson()), full);
       expect(bare.toJson().containsKey('valueA'), isFalse);
+      expect(bare.toJson().containsKey('text'), isFalse);
+    });
+
+    test('displayLabel: free text wins, vocabulary name falls back', () {
+      const def = CameraInstructionDef(id: 'pan', name: 'PAN', iconKey: 'pan');
+      const withText = InstructionEvent(
+        instructionId: 'pan',
+        length: 4,
+        text: 'メモリPAN',
+      );
+      const bare = InstructionEvent(instructionId: 'pan', length: 4);
+
+      expect(withText.displayLabel(def), 'メモリPAN');
+      expect(bare.displayLabel(def), 'PAN');
+      expect(bare.displayLabel(null), 'pan');
     });
 
     test('coverage validation rejects overlap and bad spans', () {

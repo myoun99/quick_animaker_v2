@@ -9,12 +9,17 @@ import '../timeline/instruction_icon_palette.dart';
 class InstructionEventDialogResult {
   const InstructionEventDialogResult({
     this.instructionId,
+    this.text,
     this.valueA,
     this.valueB,
     this.delete = false,
   });
 
   final String? instructionId;
+
+  /// Free per-event text (independent of the mark); empty → vocabulary
+  /// name fallback.
+  final String? text;
   final String? valueA;
   final String? valueB;
   final bool delete;
@@ -27,6 +32,7 @@ class InstructionEventDialog extends StatefulWidget {
     super.key,
     required this.instructionSet,
     this.initialInstructionId,
+    this.initialText,
     this.initialValueA,
     this.initialValueB,
     this.editing = false,
@@ -35,6 +41,7 @@ class InstructionEventDialog extends StatefulWidget {
 
   final CameraInstructionSet instructionSet;
   final String? initialInstructionId;
+  final String? initialText;
   final String? initialValueA;
   final String? initialValueB;
 
@@ -55,6 +62,9 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
       (widget.instructionSet.defs.isEmpty
           ? null
           : widget.instructionSet.defs.first.id);
+  late final TextEditingController _textController = TextEditingController(
+    text: widget.initialText ?? '',
+  );
   late final TextEditingController _valueAController = TextEditingController(
     text: widget.initialValueA ?? '',
   );
@@ -64,6 +74,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
 
   @override
   void dispose() {
+    _textController.dispose();
     _valueAController.dispose();
     _valueBController.dispose();
     super.dispose();
@@ -74,11 +85,13 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
     if (instructionId == null) {
       return;
     }
+    final text = _textController.text.trim();
     final valueA = _valueAController.text.trim();
     final valueB = _valueBController.text.trim();
     Navigator.of(context).pop(
       InstructionEventDialogResult(
         instructionId: instructionId,
+        text: text.isEmpty ? null : text,
         valueA: valueA.isEmpty ? null : valueA,
         valueB: valueB.isEmpty ? null : valueB,
       ),
@@ -114,6 +127,14 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                   ),
               ],
               onChanged: (value) => setState(() => _instructionId = value),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const ValueKey<String>('instruction-text-field'),
+              controller: _textController,
+              decoration: const InputDecoration(
+                labelText: 'Text (blank = instruction name)',
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
