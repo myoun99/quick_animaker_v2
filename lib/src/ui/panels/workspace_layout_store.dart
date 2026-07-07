@@ -136,12 +136,19 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
     }
   }
 
-  // Panels added since the layout was saved return to their default dock.
+  // Panels the user CLOSED stay closed; anything else missing from the
+  // save (panels added by an app update) returns to its default dock.
+  final hiddenJson = payload['hiddenTabs'];
+  final hiddenTabs = <String>{
+    if (hiddenJson is List)
+      for (final tab in hiddenJson)
+        if (tab is String) tab,
+  };
   for (final entry in defaults.entries) {
     for (final section in entry.value) {
       final missing = [
         for (final tab in section.tabs)
-          if (seen.add(tab)) tab,
+          if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
       ];
       if (missing.isNotEmpty) {
         docks[entry.key]!.add(DockSection(tabs: missing));

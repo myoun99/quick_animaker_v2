@@ -24,6 +24,7 @@ class EditorDockHost extends StatelessWidget {
     required this.onTabMovedToNewSection,
     required this.onTabDragChanged,
     this.onToggleLock,
+    this.onCloseTab,
     this.compact = false,
   });
 
@@ -46,6 +47,7 @@ class EditorDockHost extends StatelessWidget {
   onTabMovedToNewSection;
   final ValueChanged<EditorPanelTabDragData?> onTabDragChanged;
   final ValueChanged<String>? onToggleLock;
+  final ValueChanged<String>? onCloseTab;
   final bool compact;
 
   @override
@@ -88,6 +90,7 @@ class EditorDockHost extends StatelessWidget {
                         onTabMovedToSection(data, i, insertIndex),
                     onTabDragChanged: onTabDragChanged,
                     onToggleLock: onToggleLock,
+                    onCloseTab: onCloseTab,
                   ),
                 ),
               ),

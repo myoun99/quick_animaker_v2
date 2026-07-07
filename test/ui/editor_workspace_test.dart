@@ -6,8 +6,11 @@ import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
 import 'package:quick_animaker_v2/src/ui/camera/camera_panel.dart';
 import 'package:quick_animaker_v2/src/ui/editor_canvas_area.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
+import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -16,11 +19,21 @@ const _brushSettingsTabKey = ValueKey<String>('panel-tab-brush-settings');
 const _cameraTabKey = ValueKey<String>('panel-tab-camera');
 const _timelineTabKey = ValueKey<String>('timeline-mode-timeline-button');
 const _storyboardTabKey = ValueKey<String>('timeline-mode-storyboard-button');
+const _timesheetTabKey = ValueKey<String>('panel-tab-timesheet');
 const _rightDropRailKey = ValueKey<String>('editor-dock-drop-rail-right');
 const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 
 Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
+  await tester.pumpAndSettle();
+  // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
+  // every glyph 12px wide — the three palette tabs need ~480px, far past
+  // the default 260px dock. Widen the dock so every tab (and its drop
+  // target) is hittable.
+  await tester.drag(
+    find.byKey(const ValueKey<String>('dock-resize-left')),
+    const Offset(320, 0),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -363,6 +376,54 @@ void main() {
     });
   });
 
+  group('EditorWorkspace panel close + Panels menu', () {
+    testWidgets('the X on a tab closes the panel; the menu reopens it', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panel-close-brushes')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_brushesTabKey), findsNothing);
+      expect(find.byType(BrushPresetPanel), findsNothing);
+      // The neighbouring tab takes over the section.
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+
+      // Reopen from the AppBar's Panels menu.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panels-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panels-menu-item-brushes')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_brushesTabKey), findsOneWidget);
+    });
+
+    testWidgets('locked tabs show no close button', (tester) async {
+      await _pumpHome(tester);
+
+      // The canvas ships locked: no X.
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        findsNothing,
+      );
+      // Unlocking reveals it.
+      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('EditorWorkspace bottom tabs', () {
     testWidgets('keeps the legacy timeline/storyboard toggle keys working', (
       tester,
@@ -380,6 +441,126 @@ void main() {
       await tester.tap(find.byKey(_timelineTabKey));
       await tester.pumpAndSettle();
       expect(find.byType(TimelinePanel), findsOneWidget);
+    });
+  });
+
+  group('EditorWorkspace timesheet tab', () {
+    Future<void> openTimesheet(WidgetTester tester) async {
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(_timesheetTabKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('renders the sheet document instead of the timeline grid', (
+      tester,
+    ) async {
+      await openTimesheet(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('timesheet-document-paint')),
+        findsOneWidget,
+      );
+      expect(find.byType(TimelinePanel), findsNothing);
+      // Canvas-style navigation shell: the sheet host carries its own
+      // viewport toolbar and panbars next to the canvas tab's.
+      expect(
+        find.descendant(
+          of: find.byType(TimesheetTabHost),
+          matching: find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('page mode toggle flips paged and continuous views', (
+      tester,
+    ) async {
+      await openTimesheet(tester);
+
+      // Paged by default — the toggle offers the continuous view.
+      expect(find.byTooltip('Continuous View'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-page-mode-toggle-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Page View'), findsOneWidget);
+    });
+
+    testWidgets('sheet info dialog edits the project timesheet info', (
+      tester,
+    ) async {
+      late ProjectRepository repository;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(onRepositoryCreated: (repo) => repository = repo),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_timesheetTabKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-info-button')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-title-field')),
+        'YOASOBI',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-episode-field')),
+        'MV',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-artist-field')),
+        'MYOUN',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-info-save-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        repository.requireProject().timesheetInfo,
+        const TimesheetInfo(title: 'YOASOBI', episode: 'MV', artist: 'MYOUN'),
+      );
+    });
+
+    testWidgets('sheet viewport zoom survives tab switches', (tester) async {
+      await openTimesheet(tester);
+
+      Finder inHost(Key key) => find.descendant(
+        of: find.byType(TimesheetTabHost),
+        matching: find.byKey(key),
+      );
+
+      await tester.tap(
+        inHost(const ValueKey<String>('canvas-viewport-zoom-in')),
+      );
+      await tester.pumpAndSettle();
+      final zoomLabel = tester
+          .widget<Text>(
+            inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
+          )
+          .data;
+      expect(zoomLabel, isNot('100%'));
+
+      await tester.tap(find.byKey(_timelineTabKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_timesheetTabKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
+            )
+            .data,
+        zoomLabel,
+      );
     });
   });
 }

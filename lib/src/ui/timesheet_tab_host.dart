@@ -5,6 +5,7 @@ import '../models/canvas_viewport.dart';
 import '../models/timesheet_document.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
+import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
 
@@ -43,6 +44,19 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
+  Future<void> _editSheetInfo() async {
+    final session = widget.session;
+    final nextInfo = await showDialog(
+      context: context,
+      builder: (context) =>
+          TimesheetInfoDialog(initialInfo: session.timesheetInfo),
+    );
+    if (!mounted || nextInfo == null) {
+      return;
+    }
+    session.updateTimesheetInfo(nextInfo);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
@@ -55,6 +69,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           cut: session.activeCut,
           projectName: session.repository.requireProject().name,
           fps: session.projectFps,
+          info: session.timesheetInfo,
         );
         final layout = TimesheetDocumentLayout(
           document: document,
@@ -89,6 +104,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                   ),
                   const Spacer(),
                   IconButton(
+                    key: const ValueKey<String>('timesheet-info-button'),
+                    tooltip: 'Sheet Info',
+                    onPressed: _editSheetInfo,
+                    icon: const Icon(Icons.edit_note, size: 18),
+                  ),
+                  IconButton(
                     key: const ValueKey<String>(
                       'timesheet-page-mode-toggle-button',
                     ),
@@ -119,7 +140,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 viewport: widget.viewport,
                 onViewportChanged: widget.onViewportChanged,
                 selectionLabels: CanvasEditorSelectionLabels(
-                  projectLabel: document.projectName,
+                  projectLabel: document.title,
                   cutLabel: document.cutName,
                   layerLabel: 'Timesheet',
                   frameLabel: '${playheadFrame + 1}',

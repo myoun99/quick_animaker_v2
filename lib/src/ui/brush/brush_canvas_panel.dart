@@ -363,9 +363,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         final maxHeight = constraints.hasBoundedHeight
             ? constraints.maxHeight.clamp(0.0, double.infinity).toDouble()
             : statusStripHeight + _CanvasViewportBottomBar.height;
-        // The selection labels live in a slim STATUS strip at the panel's
-        // bottom (the canvas tab already names the panel — a full-height
-        // title bar up top would just repeat chrome).
+        // The selection labels live in a slim STATUS strip right under the
+        // panel frame (the canvas tab already names the panel — a
+        // full-height title bar would just repeat chrome).
         final statusHeight = statusStripHeight.clamp(0.0, maxHeight).toDouble();
         final remainingHeight = (maxHeight - statusHeight)
             .clamp(0.0, double.infinity)
@@ -389,6 +389,32 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              SizedBox(
+                height: statusHeight,
+                child: ClipRect(
+                  child: Container(
+                    key: const ValueKey<String>(
+                      'canvas-editor-panel-status-strip',
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      border: Border(
+                        bottom: BorderSide(color: colorScheme.outlineVariant),
+                      ),
+                    ),
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               SizedBox(
                 height: contentHeight,
                 child: Row(
@@ -443,32 +469,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         ),
                       );
                     },
-                  ),
-                ),
-              ),
-              SizedBox(
-                height: statusHeight,
-                child: ClipRect(
-                  child: Container(
-                    key: const ValueKey<String>(
-                      'canvas-editor-panel-status-strip',
-                    ),
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      border: Border(
-                        top: BorderSide(color: colorScheme.outlineVariant),
-                      ),
-                    ),
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -771,13 +771,12 @@ class _CanvasViewportPanbarState extends State<_CanvasViewportPanbar> {
         .clamp(0.0, metrics.thumbTravel)
         .toDouble();
 
-    widget.onViewportChanged(
-      clampCanvasViewportPan(
-        viewport: metrics.panToThumb(nextThumbStart),
-        editorViewportSize: widget.editorViewportSize,
-        canvasSize: widget.canvasSize,
-      ),
-    );
+    // panToThumb only moves THIS panbar's axis and already lands inside
+    // the scrollable range. Never clamp the other axis here: the canvas
+    // pans freely (a zoomed-in paper may sit at a positive pan), and a
+    // both-axes clamp used to snap the paper left-aligned the moment the
+    // vertical bar was touched.
+    widget.onViewportChanged(metrics.panToThumb(nextThumbStart));
   }
 
   void _dragEnd() {
@@ -785,27 +784,6 @@ class _CanvasViewportPanbarState extends State<_CanvasViewportPanbar> {
     _dragStartPointerAxisPosition = null;
     widget.onViewportChangeEnd?.call();
   }
-}
-
-CanvasViewport clampCanvasViewportPan({
-  required CanvasViewport viewport,
-  required Size editorViewportSize,
-  required CanvasSize canvasSize,
-}) {
-  final horizontalMaxScroll =
-      (canvasSize.width * viewport.zoom - editorViewportSize.width).clamp(
-        0.0,
-        double.infinity,
-      );
-  final verticalMaxScroll =
-      (canvasSize.height * viewport.zoom - editorViewportSize.height).clamp(
-        0.0,
-        double.infinity,
-      );
-  return viewport.copyWith(
-    panX: viewport.panX.clamp(-horizontalMaxScroll, 0.0).toDouble(),
-    panY: viewport.panY.clamp(-verticalMaxScroll, 0.0).toDouble(),
-  );
 }
 
 class _CanvasViewportPanbarPainter extends CustomPainter {

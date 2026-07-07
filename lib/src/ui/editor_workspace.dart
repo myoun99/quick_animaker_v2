@@ -26,12 +26,15 @@ import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
+import 'panels/workspace_panels_menu.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_tab_host.dart';
+import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline_tab_host.dart';
+import 'timesheet_tab_host.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
 /// bottom dock, plus the slim edge docks that home the PS/CSP-style tool
@@ -55,6 +58,7 @@ class EditorWorkspace extends StatefulWidget {
     this.presetFileService,
     this.brushFilePicker,
     this.layoutStore,
+    this.panelsMenu,
   });
 
   final EditorSessionManager session;
@@ -69,6 +73,10 @@ class EditorWorkspace extends StatefulWidget {
 
   /// Injectable brush-file picker; defaults to the platform file dialog.
   final BrushFilePicker? brushFilePicker;
+
+  /// The AppBar's Panels menu bridge: lists every panel with visibility
+  /// and reopens closed (X-ed) ones.
+  final WorkspacePanelsMenuController? panelsMenu;
 
   static const double bottomPanelHeight = 350;
   static const double sideDockWidth = 260;
@@ -90,6 +98,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String cameraTabId = 'camera';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
+  static const String timesheetTabId = 'timesheet';
 
   /// The size frame-axis panels lay out at when docked somewhere smaller
   /// (their label rails and toolbars assume a wide region); the tab shell
@@ -125,7 +134,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ],
     EditorWorkspace.bottomGroupId: [
       DockSection(
-        tabs: [EditorWorkspace.timelineTabId, EditorWorkspace.storyboardTabId],
+        tabs: [
+          EditorWorkspace.timelineTabId,
+          EditorWorkspace.storyboardTabId,
+          EditorWorkspace.timesheetTabId,
+        ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
     ],
@@ -179,6 +192,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
 
+  /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
+  /// viewport (zoom/pan) — owned here so they survive tab switches.
+  final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
+  final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
+
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
   @override
@@ -200,6 +218,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             : WorkspaceLayoutStore());
     unawaited(_restoreLayout());
     _layout.addListener(_scheduleLayoutSave);
+    widget.panelsMenu?.attach(
+      entriesProvider: _panelMenuEntries,
+      toggler: _togglePanelVisibility,
+      relay: _layout,
+    );
+  }
+
+  /// Every known panel in default-dock order, with its live visibility.
+  List<WorkspacePanelEntry> _panelMenuEntries() => [
+    for (final sections in _defaultDocks().values)
+      for (final section in sections)
+        for (final tabId in section.tabs)
+          (
+            tabId: tabId,
+            label: _tabFor(tabId).label,
+            visible: _layout.locateTab(tabId) != null,
+          ),
+  ];
+
+  String _defaultDockOf(String tabId) {
+    for (final entry in _defaultDocks().entries) {
+      for (final section in entry.value) {
+        if (section.tabs.contains(tabId)) {
+          return entry.key;
+        }
+      }
+    }
+    return EditorWorkspace.leftGroupId;
+  }
+
+  void _closeTab(String tabId) {
+    _mutatingLayout(() => _layout.removeTab(tabId));
+  }
+
+  void _togglePanelVisibility(String tabId) {
+    if (_layout.locateTab(tabId) != null) {
+      _closeTab(tabId);
+    } else {
+      _mutatingLayout(() {
+        _layout.addTab(tabId, toDockId: _defaultDockOf(tabId));
+      });
+    }
   }
 
   Future<void> _restoreLayout() async {
@@ -238,6 +298,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             .save({
               'layout': _layout.toJson(),
               'lockedTabs': _lockedTabIds.toList(),
+              // Closed panels stay closed across restarts (restore only
+              // returns tabs missing WITHOUT this marker to their docks —
+              // i.e. panels added by an update).
+              'hiddenTabs': [
+                for (final entry in _panelMenuEntries())
+                  if (!entry.visible) entry.tabId,
+              ],
             })
             .catchError((Object _) {}),
       );
@@ -255,7 +322,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
+    _timesheetContinuous.dispose();
+    _timesheetViewport.dispose();
     _draggingTab.dispose();
+    widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);
     _layout.dispose();
@@ -510,6 +580,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ),
           ),
         );
+      case EditorWorkspace.timesheetTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Timesheet',
+          icon: Icons.table_chart_outlined,
+          locked: locked,
+          builder: (context) => ListenableBuilder(
+            listenable: Listenable.merge([
+              _timesheetContinuous,
+              _timesheetViewport,
+            ]),
+            builder: (context, _) => TimesheetTabHost(
+              session: widget.session,
+              continuous: _timesheetContinuous.value,
+              onContinuousChanged: (continuous) {
+                _timesheetContinuous.value = continuous;
+              },
+              viewport: _timesheetViewport.value,
+              onViewportChanged: (viewport) {
+                _timesheetViewport.value = viewport;
+              },
+            ),
+          ),
+        );
       default:
         throw ArgumentError.value(tabId, 'tabId', 'Unknown panel tab');
     }
@@ -556,6 +650,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       }),
       onTabDragChanged: (data) => _draggingTab.value = data,
       onToggleLock: _toggleTabLock,
+      onCloseTab: _closeTab,
     );
   }
 
@@ -600,17 +695,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// A side dock: full tab dock when populated, collapsed otherwise (a
   /// glowing drop rail appears while an eligible tab is in flight).
-  Widget _buildSideDock(String dockId, EditorPanelDockSide side) {
+  /// [width] is the extent AFTER the workspace clamped both side docks to
+  /// what the window can actually spare.
+  Widget _buildSideDock(
+    String dockId,
+    EditorPanelDockSide side, {
+    required double width,
+  }) {
     if (_layout.sectionsIn(dockId).isEmpty) {
       return _emptyDockZone(dockId, Axis.vertical);
     }
     return EditorPanelDock.filled(
       side: side,
-      width: _layout.dockExtent(
-        dockId,
-        fallback: EditorWorkspace.sideDockWidth,
-      ),
-      child: _buildDockHost(dockId, compact: true),
+      width: width,
+      // Panel names stay visible in every dock (the strip scrolls when
+      // they overflow); only the slim edge docks go icon-only.
+      child: _buildDockHost(dockId),
     );
   }
 
@@ -667,38 +767,74 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               child: Column(
                 children: [
                   Expanded(
-                    child: Row(
-                      children: [
-                        _buildSideDock(
-                          EditorWorkspace.leftGroupId,
-                          EditorPanelDockSide.left,
-                        ),
-                        if (hasLeftDock)
-                          DockEdgeSplitter(
-                            key: const ValueKey<String>('dock-resize-left'),
-                            axis: Axis.vertical,
-                            onDragDelta: (delta) => _layout.resizeDock(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // The side docks keep their saved extents but may
+                        // never squeeze the canvas out: scale both down
+                        // proportionally when the window can't fit them.
+                        const minCenterWidth = 120.0;
+                        var leftWidth = hasLeftDock
+                            ? _layout.dockExtent(
+                                EditorWorkspace.leftGroupId,
+                                fallback: EditorWorkspace.sideDockWidth,
+                              )
+                            : 0.0;
+                        var rightWidth = hasRightDock
+                            ? _layout.dockExtent(
+                                EditorWorkspace.rightGroupId,
+                                fallback: EditorWorkspace.sideDockWidth,
+                              )
+                            : 0.0;
+                        final splitters =
+                            (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
+                            (hasRightDock ? DockEdgeSplitter.thickness : 0);
+                        final room =
+                            (constraints.maxWidth - splitters - minCenterWidth)
+                                .clamp(0.0, double.infinity);
+                        final wanted = leftWidth + rightWidth;
+                        if (wanted > room && wanted > 0) {
+                          final scale = room / wanted;
+                          leftWidth *= scale;
+                          rightWidth *= scale;
+                        }
+                        return Row(
+                          children: [
+                            _buildSideDock(
                               EditorWorkspace.leftGroupId,
-                              delta,
-                              fallback: EditorWorkspace.sideDockWidth,
+                              EditorPanelDockSide.left,
+                              width: leftWidth,
                             ),
-                          ),
-                        Expanded(child: _buildCenterDock()),
-                        if (hasRightDock)
-                          DockEdgeSplitter(
-                            key: const ValueKey<String>('dock-resize-right'),
-                            axis: Axis.vertical,
-                            onDragDelta: (delta) => _layout.resizeDock(
+                            if (hasLeftDock)
+                              DockEdgeSplitter(
+                                key: const ValueKey<String>('dock-resize-left'),
+                                axis: Axis.vertical,
+                                onDragDelta: (delta) => _layout.resizeDock(
+                                  EditorWorkspace.leftGroupId,
+                                  delta,
+                                  fallback: EditorWorkspace.sideDockWidth,
+                                ),
+                              ),
+                            Expanded(child: _buildCenterDock()),
+                            if (hasRightDock)
+                              DockEdgeSplitter(
+                                key: const ValueKey<String>(
+                                  'dock-resize-right',
+                                ),
+                                axis: Axis.vertical,
+                                onDragDelta: (delta) => _layout.resizeDock(
+                                  EditorWorkspace.rightGroupId,
+                                  -delta,
+                                  fallback: EditorWorkspace.sideDockWidth,
+                                ),
+                              ),
+                            _buildSideDock(
                               EditorWorkspace.rightGroupId,
-                              -delta,
-                              fallback: EditorWorkspace.sideDockWidth,
+                              EditorPanelDockSide.right,
+                              width: rightWidth,
                             ),
-                          ),
-                        _buildSideDock(
-                          EditorWorkspace.rightGroupId,
-                          EditorPanelDockSide.right,
-                        ),
-                      ],
+                          ],
+                        );
+                      },
                     ),
                   ),
                   if (hasBottomDock)

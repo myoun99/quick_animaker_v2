@@ -2,9 +2,23 @@ import 'cut.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_kind.dart';
+import 'timesheet_info.dart';
 
 /// What a timesheet column represents on the paper form.
-enum TimesheetColumnKind { cel, se, camera }
+enum TimesheetColumnKind {
+  /// Handwriting space on the form's left block (timing charts, notes);
+  /// always blank in the document — ink annotations live above it.
+  action,
+
+  /// A cel exposure column (the CELL block's A, B, C... slots).
+  cel,
+
+  /// A dialogue/SE column (the S1/S2 slots between the rail and CELL).
+  se,
+
+  /// A camera-instruction column.
+  camera,
+}
 
 /// One cell of a timesheet column (one frame row).
 enum TimesheetCellKind {
@@ -43,22 +57,30 @@ class TimesheetCell {
   final String? label;
 }
 
-/// One sheet column: a header label plus one cell per document row. Columns
-/// without a backing layer (reserved SE/camera slots) hold blank cells —
+/// One sheet column: the form slot label ('A'..'H', 'S1', '1'...) plus one
+/// cell per document row. Slots without a backing layer hold blank cells —
 /// the paper form always shows them.
 class TimesheetColumn {
   const TimesheetColumn({
     required this.kind,
     required this.label,
     required this.cells,
+    this.layerName,
   });
 
   final TimesheetColumnKind kind;
+
+  /// The printed form slot label.
   final String label;
+
+  /// The backing layer's name (cel/SE slots only); null for empty slots.
+  final String? layerName;
+
   final List<TimesheetCell> cells;
 }
 
-/// One paper page: [frameCount] rows starting at [startFrame].
+/// One paper page: [frameCount] rows starting at [startFrame], laid out in
+/// two side-by-side halves of [TimesheetDocument.halfFrameCount] rows.
 class TimesheetPage {
   const TimesheetPage({
     required this.index,
@@ -75,9 +97,15 @@ class TimesheetPage {
 /// draws and what the sheet exporters (XDTS, auto-sheet, ...) read. Built
 /// from the cut's unified timeline model; carries no widget or session
 /// references, so a snapshot can cross windows/isolates later.
+///
+/// The column set follows the Japanese paper form: an ACTION handwriting
+/// block, the frame rail, S1/S2 dialogue-SE slots, the CELL block and the
+/// camera columns — fixed slots that stay blank when unbacked.
 class TimesheetDocument {
   TimesheetDocument._({
-    required this.projectName,
+    required this.title,
+    required this.episode,
+    required this.artist,
     required this.cutName,
     required this.fps,
     required this.playbackFrameCount,
@@ -86,18 +114,14 @@ class TimesheetDocument {
     required this.pages,
   });
 
-  /// Builds the document for [cut].
-  ///
-  /// Columns follow the Japanese paper form: the onTimesheet cel layers in
-  /// model order, then a FIXED number of SE slots ([seColumnCount], grown
-  /// when more SE layers exist) filled from the onTimesheet SE layers, then
-  /// [cameraColumnCount] camera-instruction slots with the cut's camera
-  /// keyframes in the first. Unbacked slots stay blank like paper.
   factory TimesheetDocument.fromCut({
     required Cut cut,
     required String projectName,
     required int fps,
+    TimesheetInfo info = TimesheetInfo.empty,
     int pageSeconds = 6,
+    int actionColumnCount = 8,
+    int celColumnCount = 8,
     int seColumnCount = 2,
     int cameraColumnCount = 2,
   }) {
@@ -130,23 +154,21 @@ class TimesheetDocument {
         if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
     ];
 
+    String slotLetter(int slot) => String.fromCharCode(0x41 + slot); // A..
+
     final columns = <TimesheetColumn>[
-      for (final layer in celLayers)
+      // The ACTION handwriting block mirrors the CELL slots.
+      for (var slot = 0; slot < actionColumnCount; slot += 1)
         TimesheetColumn(
-          kind: TimesheetColumnKind.cel,
-          label: layer.name,
-          cells: _layerCells(
-            layer: layer,
-            rowCount: rowCount,
-            playbackFrameCount: playbackFrameCount,
-          ),
+          kind: TimesheetColumnKind.action,
+          label: slotLetter(slot),
+          cells: _blankCells(rowCount),
         ),
-      // The paper form always shows the SE slots; extra SE layers grow the
-      // section rather than dropping data.
       for (var slot = 0; slot < _slotCount(seColumnCount, seLayers); slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.se,
-          label: slot < seLayers.length ? seLayers[slot].name : 'SE',
+          label: 'S${slot + 1}',
+          layerName: slot < seLayers.length ? seLayers[slot].name : null,
           cells: slot < seLayers.length
               ? _layerCells(
                   layer: seLayers[slot],
@@ -155,22 +177,33 @@ class TimesheetDocument {
                 )
               : _blankCells(rowCount),
         ),
-      for (var slot = 0; slot < cameraColumnCount; slot += 1)
+      for (var slot = 0; slot < _slotCount(celColumnCount, celLayers); slot += 1)
         TimesheetColumn(
-          kind: TimesheetColumnKind.camera,
-          label: 'CAMERA',
-          cells: slot == 0
-              ? _cameraCells(
-                  cut: cut,
+          kind: TimesheetColumnKind.cel,
+          label: slotLetter(slot),
+          layerName: slot < celLayers.length ? celLayers[slot].name : null,
+          cells: slot < celLayers.length
+              ? _layerCells(
+                  layer: celLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
                 )
               : _blankCells(rowCount),
         ),
+      for (var slot = 0; slot < cameraColumnCount; slot += 1)
+        TimesheetColumn(
+          kind: TimesheetColumnKind.camera,
+          label: '${slot + 1}',
+          cells: slot == 0
+              ? _cameraCells(cut: cut, rowCount: rowCount)
+              : _blankCells(rowCount),
+        ),
     ];
 
     return TimesheetDocument._(
-      projectName: projectName,
+      title: info.title.isEmpty ? projectName : info.title,
+      episode: info.episode,
+      artist: info.artist,
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -187,7 +220,12 @@ class TimesheetDocument {
     );
   }
 
-  final String projectName;
+  /// Sheet-header text: production title (project name unless overridden),
+  /// episode label and artist name from [TimesheetInfo].
+  final String title;
+  final String episode;
+  final String artist;
+
   final String cutName;
   final int fps;
 
@@ -199,6 +237,10 @@ class TimesheetDocument {
 
   final List<TimesheetColumn> columns;
   final List<TimesheetPage> pages;
+
+  /// Rows per page HALF: the paper page splits into two side-by-side
+  /// columns of this many rows (the second half takes any odd remainder).
+  int get halfFrameCount => pageFrameCount ~/ 2;
 
   /// Total document rows (pages × pageFrameCount).
   int get rowCount => pages.length * pageFrameCount;
@@ -228,8 +270,7 @@ class TimesheetDocument {
 
     final labelsByFrameId = <FrameId, String>{
       for (var index = 0; index < layer.frames.length; index += 1)
-        layer.frames[index].id:
-            layer.frames[index].name ?? '${index + 1}',
+        layer.frames[index].id: layer.frames[index].name ?? '${index + 1}',
     };
 
     // Drawing coverage + marks straight from the timeline entries.
@@ -282,7 +323,6 @@ class TimesheetDocument {
   static List<TimesheetCell> _cameraCells({
     required Cut cut,
     required int rowCount,
-    required int playbackFrameCount,
   }) {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
     final keyframeRows = [

@@ -13,6 +13,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/project.dart';
+import '../../models/timesheet_info.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
 import '../brush_frame_store.dart';
@@ -36,6 +37,7 @@ import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
 import 'update_layer_timesheet_command.dart';
+import 'update_timesheet_info_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
 class CutCommandCoordinator {
@@ -292,6 +294,16 @@ class CutCommandCoordinator {
     );
 
     return plan.layer.id;
+  }
+
+  /// Project-level sheet-header text; one undo step, no-op when unchanged.
+  void setTimesheetInfo(TimesheetInfo info) {
+    if (repository.requireProject().timesheetInfo == info) {
+      return;
+    }
+    historyManager.execute(
+      UpdateTimesheetInfoCommand(repository: repository, info: info),
+    );
   }
 
   void setLayerTimesheet({
