@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/brush_stroke_commit_data.dart';
@@ -37,6 +38,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.interactiveContentOpacity = 1.0,
     this.contentOverride,
     this.fitFocusRect,
+    this.contentStrokeActive,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -81,6 +83,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// canvas (e.g. the camera frame's bounds while the camera layer is
   /// active). Null keeps Fit on the canvas itself.
   final Rect? fitFocusRect;
+
+  /// Raised by contentOverride content that hosts its OWN brush input (the
+  /// timesheet ink layer): while true, the panel's gesture layer holds
+  /// navigation exactly as it does for the panel's own strokes.
+  final ValueListenable<bool>? contentStrokeActive;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -156,16 +163,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final canvasView = _buildViewportContent(context);
                   final overlayBuilder = widget.viewportOverlayBuilder;
                   final underlayBuilder = widget.viewportUnderlayBuilder;
+                  final contentStrokeActive = widget.contentStrokeActive;
 
-                  return SizedBox.expand(
-                    key: const ValueKey<String>('brush-canvas-editor-viewport'),
-                    // Pan/zoom input lives on the panel — not the interactive
-                    // canvas — so navigation keeps working when the viewport
-                    // shows the blank paper or playback instead of a frame.
-                    child: CanvasViewportGestureLayer(
+                  Widget gestureLayer(bool contentStrokeIsActive) {
+                    return CanvasViewportGestureLayer(
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
-                      strokeActive: _strokeActive,
+                      strokeActive: _strokeActive || contentStrokeIsActive,
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
@@ -188,7 +192,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                 ],
                               ),
                       ),
-                    ),
+                    );
+                  }
+
+                  return SizedBox.expand(
+                    key: const ValueKey<String>('brush-canvas-editor-viewport'),
+                    // Pan/zoom input lives on the panel — not the interactive
+                    // canvas — so navigation keeps working when the viewport
+                    // shows the blank paper or playback instead of a frame.
+                    child: contentStrokeActive == null
+                        ? gestureLayer(false)
+                        : ValueListenableBuilder<bool>(
+                            valueListenable: contentStrokeActive,
+                            builder: (context, active, _) =>
+                                gestureLayer(active),
+                          ),
                   );
                 },
               ),

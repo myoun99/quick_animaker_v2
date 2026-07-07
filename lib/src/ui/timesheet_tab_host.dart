@@ -5,15 +5,20 @@ import '../models/canvas_viewport.dart';
 import '../models/timesheet_document.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
+import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
+import 'timesheet/timesheet_ink_controller.dart';
+import 'timesheet/timesheet_ink_layer.dart';
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
 /// so navigation feels exactly like the drawing canvas — wheel zoom,
-/// middle-drag/two-finger pan, panbars, Fit. Read-only in S1; ink
-/// annotation with the current brush arrives on top of this host.
+/// middle-drag/two-finger pan, panbars, Fit. With an [inkController] and
+/// [brushToolState] the sheet takes freehand ink memos with the current
+/// brush/eraser (S2): frame-anchored strip ink over the column grid,
+/// paper-anchored page ink everywhere else.
 class TimesheetTabHost extends StatefulWidget {
   const TimesheetTabHost({
     super.key,
@@ -22,6 +27,8 @@ class TimesheetTabHost extends StatefulWidget {
     required this.onContinuousChanged,
     this.viewport,
     this.onViewportChanged,
+    this.inkController,
+    this.brushToolState,
   });
 
   final EditorSessionManager session;
@@ -34,15 +41,32 @@ class TimesheetTabHost extends StatefulWidget {
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
+  /// Sheet ink stores, owned above the tab group so annotations survive
+  /// tab switches. Null renders the sheet read-only.
+  final TimesheetInkController? inkController;
+
+  /// The editor's current brush/eraser; required for ink input.
+  final BrushToolState? brushToolState;
+
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
 }
 
 class _TimesheetTabHostState extends State<TimesheetTabHost> {
-  /// Commit sink required by the panel API; the sheet host never commits
-  /// strokes in S1 (contentOverride only), so it stays untouched.
+  /// Commit sink required by the panel API; sheet ink invalidations stay
+  /// local (synthetic ink keys never reach the playback caches).
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
+
+  /// Raised while an ink stroke is in progress so the panel gesture layer
+  /// holds navigation.
+  final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _inkStrokeActive.dispose();
+    super.dispose();
+  }
 
   Future<void> _editSheetInfo() async {
     final session = widget.session;
@@ -61,10 +85,23 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   Widget build(BuildContext context) {
     final session = widget.session;
     final colorScheme = Theme.of(context).colorScheme;
+    final inkController = widget.inkController;
+    final brushToolState = widget.brushToolState;
 
-    return ValueListenableBuilder<int?>(
-      valueListenable: session.playback.globalFrameIndexListenable,
-      builder: (context, playbackGlobalFrame, _) {
+    // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
+    // data and hand the windows fresh ink session surfaces; ink commits
+    // notify through the controller.
+    final listenable = Listenable.merge([
+      session,
+      session.playback.globalFrameIndexListenable,
+      ?inkController,
+    ]);
+
+    return ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) {
+        final playbackGlobalFrame =
+            session.playback.globalFrameIndexListenable.value;
         final document = TimesheetDocument.fromCut(
           cut: session.activeCut,
           projectName: session.repository.requireProject().name,
@@ -75,16 +112,19 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           document: document,
           continuous: widget.continuous,
         );
+        final pagedLayout = widget.continuous
+            ? TimesheetDocumentLayout(document: document)
+            : layout;
+        inkController?.syncGeometry(pagedLayout);
         final documentSize = layout.documentSize;
         final playheadFrame = playbackGlobalFrame == null
             ? session.currentFrameIndex
             : session.playback.position?.localFrameIndex ??
                   session.currentFrameIndex;
-        final playheadPage =
-            (playheadFrame ~/ document.pageFrameCount).clamp(
-              0,
-              document.pages.length - 1,
-            );
+        final playheadPage = (playheadFrame ~/ document.pageFrameCount).clamp(
+          0,
+          document.pages.length - 1,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,15 +187,39 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 ),
                 // Fit frames the page the playhead is on.
                 fitFocusRect: layout.pageRect(playheadPage),
-                contentOverride: (context, viewport) => CustomPaint(
-                  key: const ValueKey<String>('timesheet-document-paint'),
-                  painter: TimesheetDocumentPainter(
-                    document: document,
-                    layout: layout,
-                    viewport: viewport,
-                    playheadFrame: playheadFrame,
-                  ),
-                  child: const SizedBox.expand(),
+                contentStrokeActive: inkController == null
+                    ? null
+                    : _inkStrokeActive,
+                contentOverride: (context, viewport) => Stack(
+                  children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        key: const ValueKey<String>('timesheet-document-paint'),
+                        painter: TimesheetDocumentPainter(
+                          document: document,
+                          layout: layout,
+                          viewport: viewport,
+                          playheadFrame: playheadFrame,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    if (inkController != null && brushToolState != null)
+                      Positioned.fill(
+                        child: TimesheetInkLayer(
+                          key: const ValueKey<String>('timesheet-ink-layer'),
+                          controller: inkController,
+                          layout: layout,
+                          pagedLayout: pagedLayout,
+                          cutId: session.activeCut.id,
+                          brushToolState: brushToolState,
+                          historyManager: session.historyManager,
+                          viewport: viewport,
+                          strokeActive: _inkStrokeActive,
+                          cacheInvalidationSink: _cacheInvalidationSink,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

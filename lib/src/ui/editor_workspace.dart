@@ -35,6 +35,7 @@ import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline_tab_host.dart';
+import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
@@ -212,6 +213,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
 
+  /// Sheet ink stores (S2 annotations) — owned here so freehand memos
+  /// survive tab switches; separate from the session's cel stroke store.
+  final TimesheetInkController _timesheetInk = TimesheetInkController();
+
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
   @override
@@ -340,6 +345,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
+    _timesheetInk.dispose();
     _draggingTab.dispose();
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
@@ -609,6 +615,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             listenable: Listenable.merge([
               _timesheetContinuous,
               _timesheetViewport,
+              _brushTool,
             ]),
             builder: (context, _) => TimesheetTabHost(
               session: widget.session,
@@ -620,6 +627,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onViewportChanged: (viewport) {
                 _timesheetViewport.value = viewport;
               },
+              inkController: _timesheetInk,
+              brushToolState: _brushTool.value,
             ),
           ),
         );
