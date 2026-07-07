@@ -104,7 +104,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
-      padding: const EdgeInsets.all(16),
+      // Zero: panels sit flush against the dock and the timeline (the
+      // shell draws its own chrome).
+      padding: EdgeInsets.zero,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final fallbackSize = Size(
@@ -181,10 +183,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                   Positioned.fill(child: canvasView),
                                   if (overlayBuilder != null)
                                     Positioned.fill(
-                                      child: overlayBuilder(
-                                        context,
-                                        _viewport,
-                                      ),
+                                      child: overlayBuilder(context, _viewport),
                                     ),
                                 ],
                               ),

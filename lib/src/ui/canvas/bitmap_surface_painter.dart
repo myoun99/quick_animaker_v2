@@ -84,10 +84,7 @@ class BitmapSurfacePainter extends CustomPainter {
         overlayModel!.erase &&
         overlayModel!.hasStrokeContent;
     if (eraseOverlayLayer) {
-      canvas.saveLayer(
-        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
-        Paint(),
-      );
+      canvas.saveLayer(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight), Paint());
     }
 
     final tileImagePaint = Paint()
@@ -139,10 +136,7 @@ class BitmapSurfacePainter extends CustomPainter {
       for (final entry in overlay.tileImages.entries) {
         canvas.drawImage(
           entry.value,
-          Offset(
-            entry.key.x * overlayTileSize,
-            entry.key.y * overlayTileSize,
-          ),
+          Offset(entry.key.x * overlayTileSize, entry.key.y * overlayTileSize),
           overlayPaint,
         );
       }

@@ -599,6 +599,12 @@ class EditorSessionManager extends ChangeNotifier {
     if (cut == null) {
       return false;
     }
+    return isPlaybackFrameCachedForCut(cut, frameIndex);
+  }
+
+  /// [isPlaybackFrameCached] for an arbitrary cut — the storyboard's green
+  /// bar spans every cut of the track.
+  bool isPlaybackFrameCachedForCut(Cut cut, int frameIndex) {
     return cutFrameCompositeCache.validCompositeOrNull(
           cut: cut,
           frameIndex: frameIndex,

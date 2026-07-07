@@ -90,7 +90,9 @@ Future<SutImportResult> _decode(
     for (final row in database.select('SELECT * FROM MaterialFile')) {
       final data = row['FileData'];
       final catalogPath = row['CatalogPath'] ?? row['OriginalPath'];
-      if (data is Uint8List && catalogPath is String && catalogPath.isNotEmpty) {
+      if (data is Uint8List &&
+          catalogPath is String &&
+          catalogPath.isNotEmpty) {
         materials.add((path: _stripLayerSuffix(catalogPath), data: data));
       }
     }
@@ -169,9 +171,7 @@ Future<SutImportResult> _decode(
   }
 
   if (presets.isEmpty) {
-    throw const SutDecodeException(
-      'The file contained no importable brushes.',
-    );
+    throw const SutDecodeException('The file contained no importable brushes.');
   }
   return SutImportResult(presets: presets, warnings: warnings);
 }
@@ -280,8 +280,10 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
 }) async {
   if (patternArray is! Uint8List || materials.isEmpty) {
     if (patternArray != null) {
-      warnings.add('Brush "$brushName": $describe is not embedded; '
-          'imported without it.');
+      warnings.add(
+        'Brush "$brushName": $describe is not embedded; '
+        'imported without it.',
+      );
     }
     return null;
   }
@@ -299,22 +301,28 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
     }
   }
   if (tipMaterial == null) {
-    warnings.add('Brush "$brushName": $describe reference not found; '
-        'imported without it.');
+    warnings.add(
+      'Brush "$brushName": $describe reference not found; '
+      'imported without it.',
+    );
     return null;
   }
 
   final png = _largestPng(tipMaterial.data);
   if (png == null) {
-    warnings.add('Brush "$brushName": $describe material holds no readable '
-        'image; imported without it.');
+    warnings.add(
+      'Brush "$brushName": $describe material holds no readable '
+      'image; imported without it.',
+    );
     return null;
   }
   try {
     return await _maskFromPngBytes(png, maskId: maskId);
   } catch (error) {
-    warnings.add('Brush "$brushName": $describe image could not be decoded '
-        '($error); imported without it.');
+    warnings.add(
+      'Brush "$brushName": $describe image could not be decoded '
+      '($error); imported without it.',
+    );
     return null;
   }
 }

@@ -71,6 +71,7 @@ class StoryboardPanel extends StatefulWidget {
     this.projectFps = 24,
     this.playheadGlobalFrame,
     this.onSeekGlobalFrame,
+    this.isFrameCached,
     this.thumbnailFor,
     this.onNewCut,
     this.onRenameActiveCut,
@@ -122,6 +123,10 @@ class StoryboardPanel extends StatefulWidget {
   /// Tapping or scrubbing the ruler reports the track-global frame under
   /// the pointer. Null makes the ruler display-only.
   final ValueChanged<int>? onSeekGlobalFrame;
+
+  /// Cached-range resolver in track-global frames for the ruler's green
+  /// strip (same look as the timeline header's).
+  final bool Function(int globalFrame)? isFrameCached;
 
   /// Build-time resolver for the cut blocks' first-frame thumbnails (the
   /// store behind it kicks async renders and re-notifies). The image stays
@@ -365,13 +370,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         _StoryboardRuler(
                                           width: contentWidth,
                                           renderedFrames: renderedFrames,
-                                          seekableFrames: totalFrames,
+                                          contentFrames: totalFrames,
                                           playheadFrame: playheadFrame,
                                           scrollOffset: _horizontalScrollOffset,
                                           viewportWidth: viewportWidth,
                                           timelineScale: scale,
                                           onSeekGlobalFrame:
                                               widget.onSeekGlobalFrame,
+                                          isFrameCached: widget.isFrameCached,
                                         ),
                                         for (
                                           var index = 0;
@@ -562,36 +568,39 @@ class _StoryboardRuler extends StatelessWidget {
   const _StoryboardRuler({
     required this.width,
     required this.renderedFrames,
-    required this.seekableFrames,
+    required this.contentFrames,
     required this.playheadFrame,
     required this.scrollOffset,
     required this.viewportWidth,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
+    required this.isFrameCached,
   });
 
   static const int _overscanCells = 4;
 
   final double width;
 
-  /// Rendered range — includes the endless-axis runway past the cuts.
+  /// Rendered range — includes the endless-axis runway past the cuts;
+  /// seeks may land anywhere in it (over-end selection like the timeline).
   final int renderedFrames;
 
-  /// Seeks clamp here (the cuts' actual end); the runway is display-only.
-  final int seekableFrames;
+  /// The cuts' actual end (runway dimming + the cut-end boundary line).
+  final int contentFrames;
 
   final int? playheadFrame;
   final double scrollOffset;
   final double viewportWidth;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
+  final bool Function(int globalFrame)? isFrameCached;
 
   void _seekFrame(int frame) {
     final onSeek = onSeekGlobalFrame;
-    if (onSeek == null || seekableFrames <= 0) {
+    if (onSeek == null || contentFrames <= 0 || renderedFrames <= 0) {
       return;
     }
-    onSeek(frame.clamp(0, seekableFrames - 1));
+    onSeek(frame.clamp(0, renderedFrames - 1));
   }
 
   void _seekAt(double dx) {
@@ -635,7 +644,7 @@ class _StoryboardRuler extends StatelessWidget {
           frameStartIndex: startIndex,
           frameEndIndexExclusive: math.max(startIndex, endIndexExclusive),
           currentFrameIndex: playheadFrame ?? -1,
-          playbackFrameCount: seekableFrames,
+          playbackFrameCount: contentFrames,
           leadingFrameSpacerWidth: startIndex * cellWidth,
           trailingFrameSpacerWidth: math.max(
             0,
@@ -644,6 +653,7 @@ class _StoryboardRuler extends StatelessWidget {
           ),
           metrics: metrics,
           onSelectFrame: _seekFrame,
+          isFrameCached: isFrameCached,
         ),
       ),
     );

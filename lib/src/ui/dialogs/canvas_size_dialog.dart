@@ -230,9 +230,7 @@ class _AnchorGrid extends StatelessWidget {
               children: [
                 for (final anchor in row)
                   InkWell(
-                    key: ValueKey<String>(
-                      'canvas-size-anchor-${anchor.name}',
-                    ),
+                    key: ValueKey<String>('canvas-size-anchor-${anchor.name}'),
                     onTap: () => onSelected(anchor),
                     child: SizedBox(
                       width: 26,

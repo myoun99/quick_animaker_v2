@@ -226,9 +226,7 @@ class BrushDab {
       dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
       textureMask: json['textureMask'] == null
           ? null
-          : BrushTipMask.fromJson(
-              json['textureMask'] as Map<String, dynamic>,
-            ),
+          : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
       erase: json['erase'] as bool? ?? false,

@@ -64,9 +64,8 @@ class BrushStrokeDynamics {
           angle = dab.angleDegrees + directionDegrees;
         }
         if (settings.angleJitter > 0.0) {
-          angle += (_random.nextDouble() * 2.0 - 1.0) *
-              settings.angleJitter *
-              180.0;
+          angle +=
+              (_random.nextDouble() * 2.0 - 1.0) * settings.angleJitter * 180.0;
         }
 
         var size = dab.size;

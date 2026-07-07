@@ -76,8 +76,7 @@ class CutFrameCompositeSignature {
           listEquals(other.layers, layers);
 
   @override
-  int get hashCode =>
-      Object.hash(canvasSize, quality, Object.hashAll(layers));
+  int get hashCode => Object.hash(canvasSize, quality, Object.hashAll(layers));
 
   @override
   String toString() =>

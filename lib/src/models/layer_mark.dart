@@ -25,10 +25,6 @@ enum LayerMark {
       }
     }
 
-    throw ArgumentError.value(
-      json,
-      'mark',
-      'Unknown layer mark.',
-    );
+    throw ArgumentError.value(json, 'mark', 'Unknown layer mark.');
   }
 }

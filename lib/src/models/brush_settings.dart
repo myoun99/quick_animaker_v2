@@ -226,8 +226,7 @@ class BrushSettings {
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
-      minimumSizeRatio:
-          (json['minimumSizeRatio'] as num?)?.toDouble() ?? 0.0,
+      minimumSizeRatio: (json['minimumSizeRatio'] as num?)?.toDouble() ?? 0.0,
       sizeJitter: (json['sizeJitter'] as num?)?.toDouble() ?? 0.0,
       opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
@@ -241,9 +240,7 @@ class BrushSettings {
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
       textureMask: json['textureMask'] == null
           ? null
-          : BrushTipMask.fromJson(
-              json['textureMask'] as Map<String, dynamic>,
-            ),
+          : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
     );

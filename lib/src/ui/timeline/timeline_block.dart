@@ -41,7 +41,11 @@ class TimelineBlock extends StatelessWidget {
             backgroundColor: isActive
                 ? colorScheme.primaryContainer
                 : colorScheme.surfaceContainerHighest,
-            borderColor: isActive ? colorScheme.primary : colorScheme.outline,
+            // Blocks sit on dark track lanes: a brighter inactive edge
+            // keeps cut boundaries readable.
+            borderColor: isActive
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
             borderWidth: isActive ? 2 : 1,
             borderRadius: borderRadius,
           ),

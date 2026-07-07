@@ -350,31 +350,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           child: Column(
             children: [
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                    ),
-                    // Playback swaps only the viewport CONTENT (via the panel's
-                    // contentOverride), so the panel shell — zoom buttons,
-                    // panbars — keeps working while playing. Listen to
-                    // enter/leave ONLY: subscribing this subtree to every
-                    // playback tick rebuilt the whole panel at fps and
-                    // caused real frame drops.
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: session.playback.isActiveListenable,
-                      builder: (context, _, _) {
-                        return _buildInteractiveCanvas(
-                          session,
-                          isCameraLayerActive: isCameraLayerActive,
-                          showCameraOverlay: showCameraOverlay,
-                        );
-                      },
-                    ),
-                  ),
+                // Panels sit flush against each other: no outer padding or
+                // extra border around the canvas panel (its shell draws its
+                // own chrome).
+                //
+                // Playback swaps only the viewport CONTENT (via the panel's
+                // contentOverride), so the panel shell — zoom buttons,
+                // panbars — keeps working while playing. Listen to
+                // enter/leave ONLY: subscribing this subtree to every
+                // playback tick rebuilt the whole panel at fps and caused
+                // real frame drops.
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: session.playback.isActiveListenable,
+                  builder: (context, _, _) {
+                    return _buildInteractiveCanvas(
+                      session,
+                      isCameraLayerActive: isCameraLayerActive,
+                      showCameraOverlay: showCameraOverlay,
+                    );
+                  },
                 ),
               ),
             ],

@@ -346,8 +346,7 @@ void _mergeLegacyMarks(
       );
     }
     final existing = timeline[index];
-    if (existing != null &&
-        existing.type == TimelineExposureType.drawing) {
+    if (existing != null && existing.type == TimelineExposureType.drawing) {
       // Legacy marks could overlay a drawing start; the unified model keeps
       // the drawing.
       continue;

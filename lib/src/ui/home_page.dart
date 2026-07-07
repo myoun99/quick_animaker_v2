@@ -123,6 +123,8 @@ class _HomePageState extends State<HomePage> {
   /// Where the storyboard playhead sits: the playback position while
   /// playback is active (an activeCut-scope playlist is rebased to frame 0,
   /// so map through the cut's track slot), the editing playhead otherwise.
+  /// An over-end playhead on the track's LAST cut stays unclamped — it
+  /// lives in the endless runway, exactly like the timeline shows it.
   int? _storyboardPlayheadFrame() {
     final layout = _activeTrackLayout();
     final playbackPosition = _session.playback.isActive
@@ -133,11 +135,29 @@ class _HomePageState extends State<HomePage> {
         playbackPosition?.localFrameIndex ?? _session.currentFrameIndex;
     for (final entry in layout) {
       if (entry.cutId == cutId) {
+        final isLastCut = identical(entry, layout.last);
         final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
-        return entry.startFrame + localFrame.clamp(0, maxLocal);
+        return entry.startFrame +
+            (isLastCut && playbackPosition == null
+                ? math.max(0, localFrame)
+                : localFrame.clamp(0, maxLocal));
       }
     }
     return null;
+  }
+
+  /// Whether the track-global [globalFrame]'s playback composite is warmed
+  /// — the storyboard ruler's green bar.
+  bool _isStoryboardFrameCached(int globalFrame) {
+    for (final entry in _activeTrackLayout()) {
+      if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
+        return _session.isPlaybackFrameCachedForCut(
+          entry.cut,
+          globalFrame - entry.startFrame,
+        );
+      }
+    }
+    return false;
   }
 
   void _seekStoryboardGlobalFrame(int globalFrame) {
@@ -171,6 +191,32 @@ class _HomePageState extends State<HomePage> {
         _session.selectFrameIndex(globalFrame - entry.startFrame);
         return;
       }
+    }
+    // Beyond the last cut: over-end selection on the last cut, exactly
+    // like clicking past the cut end in the timeline.
+    final last = layout.last;
+    if (globalFrame >= last.endFrame) {
+      if (last.cutId != _session.activeCutId) {
+        _session.selectCut(last.cutId);
+      }
+      _session.selectFrameIndex(globalFrame - last.startFrame);
+    }
+  }
+
+  /// Switching into the storyboard clamps an over-end playhead back onto
+  /// the cut (except on the track's last cut, whose runway can show it) so
+  /// the frame counter and the playhead line agree.
+  void _clampPlayheadForStoryboard() {
+    if (_session.playback.isActive) {
+      return;
+    }
+    final layout = _activeTrackLayout();
+    if (layout.isEmpty || layout.last.cutId == _session.activeCutId) {
+      return;
+    }
+    final duration = _session.activeCut.duration;
+    if (duration > 0 && _session.currentFrameIndex >= duration) {
+      _session.selectFrameIndex(duration - 1);
     }
   }
 
@@ -385,6 +431,9 @@ class _HomePageState extends State<HomePage> {
                 },
                 showStoryboard: _showStoryboard,
                 onShowStoryboardChanged: (show) {
+                  if (show) {
+                    _clampPlayheadForStoryboard();
+                  }
                   setState(() => _showStoryboard = show);
                 },
                 pixelsPerFrame: _showStoryboard
@@ -416,11 +465,19 @@ class _HomePageState extends State<HomePage> {
                       scope: PlaybackScope.allCuts,
                       quality: _session.playbackQuality,
                       onQualityChanged: _session.setPlaybackQuality,
+                      // Play from the storyboard playhead, like the
+                      // timeline's transport does.
+                      playbackStartFrame: () => _storyboardPlayheadFrame() ?? 0,
                     ),
                     Expanded(
                       child: StoryboardPanel(
                         project: _session.repository.requireProject(),
-                        activeCutId: _session.activeCutId,
+                        // While playing, the highlight follows the PLAYING
+                        // cut (onStopped syncs the real active cut).
+                        activeCutId: _session.playback.isActive
+                            ? _session.playback.position?.cutId ??
+                                  _session.activeCutId
+                            : _session.activeCutId,
                         onCutSelected: _session.selectCut,
                         onCutReordered: _session.reorderCut,
                         pixelsPerFrame: _storyboardPixelsPerFrame,
@@ -439,6 +496,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         playheadGlobalFrame: _storyboardPlayheadFrame(),
                         onSeekGlobalFrame: _seekStoryboardGlobalFrame,
+                        isFrameCached: _isStoryboardFrameCached,
                         thumbnailFor: _storyboardThumbnails.thumbnailFor,
                         onNewCut: _session.createCut,
                         onRenameActiveCut: _renameActiveCut,

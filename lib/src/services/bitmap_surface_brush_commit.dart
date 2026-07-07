@@ -214,8 +214,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
               offsetV: 0.0,
             );
             coverage *=
-                (1.0 - dab.textureDensity) +
-                dab.textureDensity * textureSample;
+                (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
             if (coverage <= 0.0) {
               continue;
             }
@@ -436,8 +435,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
             outAByte = (outAlpha * 255.0).round().clamp(0, 255);
           }
         } else {
-          final outAlpha =
-              sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+          final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
           if (outAlpha == 0.0) {
             outRByte = 0;
             outGByte = 0;

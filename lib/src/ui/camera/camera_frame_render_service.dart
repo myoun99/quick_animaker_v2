@@ -132,10 +132,7 @@ class CameraFrameRenderService {
 
     final picture = recorder.endRecording();
     try {
-      return await picture.toImage(
-        resolvedOutput.width,
-        resolvedOutput.height,
-      );
+      return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {
       picture.dispose();
       for (final image in layerImages) {

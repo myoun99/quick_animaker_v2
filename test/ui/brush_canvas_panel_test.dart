@@ -508,7 +508,9 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 640,
+            // Narrow enough that the zoomed canvas overflows the viewport
+            // (the panel no longer insets itself 16px on each side).
+            width: 560,
             height: 360,
             child: BrushCanvasPanel(
               coordinator: coordinator,
@@ -557,7 +559,9 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 640,
+            // Narrow enough that the zoomed canvas overflows the viewport
+            // (the panel no longer insets itself 16px on each side).
+            width: 560,
             height: 360,
             child: BrushCanvasPanel(
               coordinator: coordinator,

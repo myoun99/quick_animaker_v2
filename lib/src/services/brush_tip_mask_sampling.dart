@@ -34,11 +34,9 @@ double sampleBrushTipMaskCoverage({
     return alpha[y * size + x] / 255.0;
   }
 
-  final top =
-      texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
+  final top = texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
   final bottom =
-      texel(x0, y0 + 1) * (1.0 - fractionX) +
-      texel(x0 + 1, y0 + 1) * fractionX;
+      texel(x0, y0 + 1) * (1.0 - fractionX) + texel(x0 + 1, y0 + 1) * fractionX;
   return (top * (1.0 - fractionY) + bottom * fractionY).clamp(0.0, 1.0);
 }
 
@@ -76,10 +74,8 @@ double sampleBrushTipMaskTiledCoverage({
     return alpha[wrappedY * size + wrappedX] / 255.0;
   }
 
-  final top =
-      texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
+  final top = texel(x0, y0) * (1.0 - fractionX) + texel(x0 + 1, y0) * fractionX;
   final bottom =
-      texel(x0, y0 + 1) * (1.0 - fractionX) +
-      texel(x0 + 1, y0 + 1) * fractionX;
+      texel(x0, y0 + 1) * (1.0 - fractionX) + texel(x0 + 1, y0 + 1) * fractionX;
   return (top * (1.0 - fractionY) + bottom * fractionY).clamp(0.0, 1.0);
 }
