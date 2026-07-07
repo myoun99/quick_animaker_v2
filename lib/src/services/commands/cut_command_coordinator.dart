@@ -27,6 +27,7 @@ import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
+import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
 import 'resize_cut_canvas_command.dart';
 import 'update_cut_camera_command.dart';
@@ -109,6 +110,22 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Commits an already-applied storyboard trim drag as one undoable step
+  /// (the drag preview left the repository holding [after]; execute is
+  /// idempotent).
+  void commitCutDurationDrag({
+    required Map<CutId, int> before,
+    required Map<CutId, int> after,
+  }) {
+    historyManager.execute(
+      UpdateCutDurationsCommand(
+        repository: repository,
+        before: before,
+        after: after,
+      ),
+    );
+  }
+
   void updateCutNote({required CutId cutId, required String note}) {
     final cut = _requireCut(cutId);
     if (cut.metadata.note == note) {
@@ -148,7 +165,10 @@ class CutCommandCoordinator {
     );
   }
 
-  void removeCutCameraKeyframe({required CutId cutId, required int frameIndex}) {
+  void removeCutCameraKeyframe({
+    required CutId cutId,
+    required int frameIndex,
+  }) {
     final cut = _requireCut(cutId);
     if (cut.camera.keyframeAt(frameIndex) == null) {
       return;
@@ -281,9 +301,7 @@ class CutCommandCoordinator {
   }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (layer.kind == LayerKind.camera) {
-      throw StateError(
-        'The camera layer is always recorded on the timesheet.',
-      );
+      throw StateError('The camera layer is always recorded on the timesheet.');
     }
     if (layer.onTimesheet == onTimesheet) {
       return;

@@ -7,12 +7,17 @@ import 'package:flutter/material.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/project.dart';
+import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_block.dart';
+import 'timeline/timeline_cell_style.dart'
+    show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
+import 'timeline/timeline_exposure_comma_drag_policy.dart'
+    show commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
     show defaultEndlessRunwayFrames, endlessTrailingFrames;
 import 'timeline/timeline_frame_ruler.dart';
@@ -29,6 +34,27 @@ typedef CutReorderedCallback =
       required int targetCutIndex,
     });
 
+/// The trim-drag hooks the cut edge grips need, mirroring the timeline's
+/// comma-drag callbacks: wired to the session's
+/// begin/update/end/cancelCutEdgeDrag (live preview, ONE undo per drag).
+class StoryboardCutTrimCallbacks {
+  const StoryboardCutTrimCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  /// Returns whether the drag may start (the first cut has no start grip
+  /// partner, deleted cuts refuse).
+  final bool Function(CutId cutId, TimelineBlockEdge edge) onBegin;
+
+  /// Reports the cumulative whole-frame delta since drag start.
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -36,6 +62,7 @@ class StoryboardPanel extends StatefulWidget {
     required this.activeCutId,
     required this.onCutSelected,
     this.onCutReordered,
+    this.cutTrim,
     this.playheadGlobalFrame,
     this.onSeekGlobalFrame,
     this.thumbnailFor,
@@ -71,6 +98,11 @@ class StoryboardPanel extends StatefulWidget {
   /// Dragging a cut block onto another block of the same track reorders the
   /// cuts (same semantics as the top-bar chips). Null disables dragging.
   final CutReorderedCallback? onCutReordered;
+
+  /// Edge-grip trim hooks: the END grip changes a cut's duration (later
+  /// cuts ripple), the START grip rolls the boundary with the previous cut.
+  /// Null hides the grips.
+  final StoryboardCutTrimCallbacks? cutTrim;
 
   /// Track-global frame the playhead line sits on (playback position while
   /// playing, the active cut's playhead otherwise). Null hides the line.
@@ -331,6 +363,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             onCutSelected: widget.onCutSelected,
                                             onCutReordered:
                                                 widget.onCutReordered,
+                                            cutTrim: widget.cutTrim,
                                             thumbnailFor: widget.thumbnailFor,
                                             timelineScale: scale,
                                           ),
@@ -660,6 +693,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.activeCutId,
     required this.onCutSelected,
     required this.onCutReordered,
+    required this.cutTrim,
     required this.thumbnailFor,
     required this.timelineScale,
   });
@@ -669,6 +703,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
   final CutReorderedCallback? onCutReordered;
+  final StoryboardCutTrimCallbacks? cutTrim;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
 
@@ -710,6 +745,40 @@ class _StoryboardTrackRow extends StatelessWidget {
                   showThumbnail: thumbnailFor != null,
                 ),
               ),
+            // Trim grips paint over the block edges (their 12px strips win
+            // pointer contests there; block taps/reorder keep the middle).
+            if (cutTrim != null)
+              for (final entry in layoutEntries) ...[
+                if (entry.cutIndex > 0)
+                  _StoryboardCutEdgeGrip(
+                    cutId: entry.cutId,
+                    cutOrdinal: entry.cutIndex,
+                    edge: TimelineBlockEdge.start,
+                    blockStartOffset: timelineScale.leftForFrame(
+                      entry.startFrame,
+                    ),
+                    blockEndOffset:
+                        timelineScale.leftForFrame(entry.startFrame) +
+                        timelineScale.widthForDuration(entry.duration),
+                    frameCellExtent: timelineScale.pixelsPerFrame,
+                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                    callbacks: cutTrim!,
+                  ),
+                _StoryboardCutEdgeGrip(
+                  cutId: entry.cutId,
+                  cutOrdinal: entry.cutIndex,
+                  edge: TimelineBlockEdge.end,
+                  blockStartOffset: timelineScale.leftForFrame(
+                    entry.startFrame,
+                  ),
+                  blockEndOffset:
+                      timelineScale.leftForFrame(entry.startFrame) +
+                      timelineScale.widthForDuration(entry.duration),
+                  frameCellExtent: timelineScale.pixelsPerFrame,
+                  crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                  callbacks: cutTrim!,
+                ),
+              ],
           ],
         ),
       ),
@@ -736,6 +805,154 @@ class _StoryboardTrackRow extends StatelessWidget {
               (width, nextWidth) => width > nextWidth ? width : nextWidth,
             ) +
         trailingPadding;
+  }
+}
+
+/// One cut trim grip: an inset vertical bar just inside a cut block's start
+/// or end edge, mirroring the timeline's [TimelineBlockEdgeGrip] visuals and
+/// gesture state machine (cumulative whole-frame deltas via the shared
+/// comma-drag policy; the session recomputes the preview from its drag-start
+/// snapshot).
+///
+/// The Positioned key derives from the cut ORDINAL, never its start frame —
+/// a roll drag moves the start every step, and a key change there would
+/// rebuild the gesture subtree mid-drag and kill it (same constraint as the
+/// timeline grips).
+class _StoryboardCutEdgeGrip extends StatefulWidget {
+  const _StoryboardCutEdgeGrip({
+    required this.cutId,
+    required this.cutOrdinal,
+    required this.edge,
+    required this.blockStartOffset,
+    required this.blockEndOffset,
+    required this.frameCellExtent,
+    required this.crossAxisExtent,
+    required this.callbacks,
+  });
+
+  final CutId cutId;
+  final int cutOrdinal;
+  final TimelineBlockEdge edge;
+  final double blockStartOffset;
+  final double blockEndOffset;
+  final double frameCellExtent;
+  final double crossAxisExtent;
+  final StoryboardCutTrimCallbacks callbacks;
+
+  static const double hitExtent = 12;
+  static const double _barThickness = 3.5;
+  static const double _barInset = 2.5;
+
+  @override
+  State<_StoryboardCutEdgeGrip> createState() => _StoryboardCutEdgeGripState();
+}
+
+class _StoryboardCutEdgeGripState extends State<_StoryboardCutEdgeGrip> {
+  double _accumulatedDelta = 0;
+  int _lastReportedFrames = 0;
+  bool _dragging = false;
+
+  void _startDrag() {
+    if (!widget.callbacks.onBegin(widget.cutId, widget.edge)) {
+      return;
+    }
+    setState(() {
+      _dragging = true;
+      _accumulatedDelta = 0;
+      _lastReportedFrames = 0;
+    });
+  }
+
+  void _updateDrag(double delta) {
+    if (!_dragging) {
+      return;
+    }
+    _accumulatedDelta += delta;
+    final frames = commaDragFrameDelta(
+      accumulatedDelta: _accumulatedDelta,
+      frameCellExtent: widget.frameCellExtent,
+    );
+    if (frames == _lastReportedFrames) {
+      return;
+    }
+    _lastReportedFrames = frames;
+    widget.callbacks.onUpdate(frames);
+  }
+
+  void _endDrag() {
+    if (!_dragging) {
+      return;
+    }
+    setState(() => _dragging = false);
+    widget.callbacks.onEnd();
+  }
+
+  void _cancelDrag() {
+    if (!_dragging) {
+      return;
+    }
+    setState(() => _dragging = false);
+    widget.callbacks.onCancel();
+  }
+
+  @override
+  void dispose() {
+    // A grip can unmount mid-drag; commit rather than leak an open session
+    // (same policy as the timeline grips).
+    if (_dragging) {
+      widget.callbacks.onEnd();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isStartEdge = widget.edge == TimelineBlockEdge.start;
+    final hitStart = isStartEdge
+        ? widget.blockStartOffset
+        : widget.blockEndOffset - _StoryboardCutEdgeGrip.hitExtent;
+    final barColor = _dragging
+        ? timelineSelectedFrameBorderColor
+        : timelineDrawingInkColor.withValues(alpha: 0.38);
+
+    return Positioned(
+      key: ValueKey<String>(
+        'storyboard-cut-edge-grip-${widget.edge.name}-${widget.cutOrdinal}',
+      ),
+      left: hitStart,
+      top: 0,
+      width: _StoryboardCutEdgeGrip.hitExtent,
+      height: widget.crossAxisExtent,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (_) => _startDrag(),
+          onHorizontalDragUpdate: (details) => _updateDrag(details.delta.dx),
+          onHorizontalDragEnd: (_) => _endDrag(),
+          onHorizontalDragCancel: _cancelDrag,
+          child: Align(
+            alignment: isStartEdge
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: isStartEdge ? _StoryboardCutEdgeGrip._barInset : 0,
+                right: isStartEdge ? 0 : _StoryboardCutEdgeGrip._barInset,
+              ),
+              child: Container(
+                width: _StoryboardCutEdgeGrip._barThickness,
+                height: widget.crossAxisExtent * 0.55,
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

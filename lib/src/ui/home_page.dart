@@ -396,6 +396,17 @@ class _HomePageState extends State<HomePage> {
                         activeCutId: _session.activeCutId,
                         onCutSelected: _session.selectCut,
                         onCutReordered: _session.reorderCut,
+                        // Edge-grip trims preview live and commit ONE undo
+                        // on release, like the timeline's comma drags.
+                        cutTrim: StoryboardCutTrimCallbacks(
+                          onBegin: (cutId, edge) => _session.beginCutEdgeDrag(
+                            cutId: cutId,
+                            edge: edge,
+                          ),
+                          onUpdate: _session.updateCutEdgeDrag,
+                          onEnd: _session.endCutEdgeDrag,
+                          onCancel: _session.cancelCutEdgeDrag,
+                        ),
                         playheadGlobalFrame: _storyboardPlayheadFrame(),
                         onSeekGlobalFrame: _seekStoryboardGlobalFrame,
                         thumbnailFor: _storyboardThumbnails.thumbnailFor,

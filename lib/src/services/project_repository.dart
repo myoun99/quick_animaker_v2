@@ -181,6 +181,20 @@ class ProjectRepository {
     });
   }
 
+  void updateCutDuration({required CutId cutId, required int duration}) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(duration: duration),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
   void updateCutCamera({required CutId cutId, required CutCamera camera}) {
     updateProject((project) {
       final next = updateCutAnywhere(

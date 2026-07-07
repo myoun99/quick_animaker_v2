@@ -13,6 +13,8 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 
@@ -594,6 +596,59 @@ void main() {
       expect(tester.getSize(ruler).width, greaterThan(initialWidth));
     });
 
+    testWidgets('cut edge grips report trim drags', (tester) async {
+      final began = <(CutId, TimelineBlockEdge)>[];
+      final updates = <int>[];
+      var ended = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutTrim: StoryboardCutTrimCallbacks(
+          onBegin: (cutId, edge) {
+            began.add((cutId, edge));
+            return true;
+          },
+          onUpdate: updates.add,
+          onEnd: () => ended += 1,
+          onCancel: () {},
+        ),
+      );
+
+      // The first cut has no roll partner: no start grip; the second does.
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-0')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-1')),
+        findsOneWidget,
+      );
+
+      final endGrip = find.byKey(
+        const ValueKey<String>('storyboard-cut-edge-grip-end-0'),
+      );
+      expect(endGrip, findsOneWidget);
+
+      final gesture = await tester.startGesture(tester.getCenter(endGrip));
+      await gesture.moveBy(const Offset(19, 0));
+      await tester.pump();
+      await gesture.moveBy(const Offset(16, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(began, [(const CutId('cut-a'), TimelineBlockEdge.end)]);
+      expect(updates, isNotEmpty);
+      expect(updates.last, greaterThanOrEqualTo(2));
+      expect(ended, 1);
+    });
+
     testWidgets('tap-to-select still works when dragging is enabled', (
       tester,
     ) async {
@@ -631,6 +686,7 @@ Future<void> _pumpStoryboardPanel(
   required CutId activeCutId,
   required ValueChanged<CutId> onCutSelected,
   CutReorderedCallback? onCutReordered,
+  StoryboardCutTrimCallbacks? cutTrim,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
   ui.Image? Function(Cut cut)? thumbnailFor,
@@ -643,6 +699,7 @@ Future<void> _pumpStoryboardPanel(
           activeCutId: activeCutId,
           onCutSelected: onCutSelected,
           onCutReordered: onCutReordered,
+          cutTrim: cutTrim,
           playheadGlobalFrame: playheadGlobalFrame,
           onSeekGlobalFrame: onSeekGlobalFrame,
           thumbnailFor: thumbnailFor,

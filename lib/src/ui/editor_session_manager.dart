@@ -1288,6 +1288,147 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Storyboard cut-trim edge drags --------------------------------------
+
+  Map<CutId, int>? _cutTrimBeforeDurations;
+  CutId? _cutTrimCutId;
+  CutId? _cutTrimPreviousCutId;
+  TimelineBlockEdge? _cutTrimEdge;
+
+  /// Starts a storyboard trim drag on [cutId]'s [edge]. The first cut's
+  /// start is fixed at frame 0, so a start-edge drag needs a previous cut
+  /// in the same track (its roll partner).
+  bool beginCutEdgeDrag({
+    required CutId cutId,
+    required TimelineBlockEdge edge,
+  }) {
+    final layout = buildStoryboardTimelineLayout(_repository.requireProject());
+    StoryboardTimelineLayoutEntry? entry;
+    for (final candidate in layout) {
+      if (candidate.cutId == cutId) {
+        entry = candidate;
+        break;
+      }
+    }
+    if (entry == null) {
+      return false;
+    }
+    StoryboardTimelineLayoutEntry? previous;
+    if (edge == TimelineBlockEdge.start) {
+      for (final candidate in layout) {
+        if (candidate.trackId == entry.trackId &&
+            candidate.cutIndex == entry.cutIndex - 1) {
+          previous = candidate;
+          break;
+        }
+      }
+      if (previous == null) {
+        return false;
+      }
+    }
+
+    _cutTrimBeforeDurations = {
+      entry.cutId: entry.cut.duration,
+      if (previous != null) previous.cutId: previous.cut.duration,
+    };
+    _cutTrimCutId = cutId;
+    _cutTrimPreviousCutId = previous?.cutId;
+    _cutTrimEdge = edge;
+    return true;
+  }
+
+  /// Applies the trim drag's cumulative frame delta as a live preview: the
+  /// END edge changes this cut's own duration (later cuts ripple through
+  /// the cumulative layout), the START edge rolls the boundary with the
+  /// previous cut. Both cuts stay at least one frame long.
+  void updateCutEdgeDrag(int cumulativeDelta) {
+    final before = _cutTrimBeforeDurations;
+    final cutId = _cutTrimCutId;
+    final edge = _cutTrimEdge;
+    if (before == null || cutId == null || edge == null) {
+      return;
+    }
+
+    final Map<CutId, int> target;
+    if (edge == TimelineBlockEdge.end) {
+      target = {cutId: math.max(1, before[cutId]! + cumulativeDelta)};
+    } else {
+      final previousCutId = _cutTrimPreviousCutId!;
+      final delta = cumulativeDelta.clamp(
+        1 - before[previousCutId]!,
+        before[cutId]! - 1,
+      );
+      target = {
+        previousCutId: before[previousCutId]! + delta,
+        cutId: before[cutId]! - delta,
+      };
+    }
+
+    var changed = false;
+    for (final entry in target.entries) {
+      if (cutById(entry.key)?.duration != entry.value) {
+        _repository.updateCutDuration(cutId: entry.key, duration: entry.value);
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Commits the trim drag as a single undo step (no-op when nothing
+  /// changed).
+  void endCutEdgeDrag() {
+    final before = _cutTrimBeforeDurations;
+    _cutTrimBeforeDurations = null;
+    _cutTrimCutId = null;
+    _cutTrimPreviousCutId = null;
+    _cutTrimEdge = null;
+    if (before == null) {
+      return;
+    }
+
+    final after = {
+      for (final id in before.keys) id: cutById(id)?.duration ?? before[id]!,
+    };
+    var changed = false;
+    for (final id in before.keys) {
+      if (after[id] != before[id]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    _cutCommandCoordinator.commitCutDurationDrag(before: before, after: after);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Reverts an in-flight trim preview without touching history.
+  void cancelCutEdgeDrag() {
+    final before = _cutTrimBeforeDurations;
+    _cutTrimBeforeDurations = null;
+    _cutTrimCutId = null;
+    _cutTrimPreviousCutId = null;
+    _cutTrimEdge = null;
+    if (before == null) {
+      return;
+    }
+
+    var changed = false;
+    for (final entry in before.entries) {
+      if (cutById(entry.key)?.duration != entry.value) {
+        _repository.updateCutDuration(cutId: entry.key, duration: entry.value);
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   /// Reverts an in-flight drag preview without touching history.
   void cancelExposureEdgeDrag() {
     final before = _edgeDragBefore;
@@ -1538,11 +1679,11 @@ class EditorSessionManager extends ChangeNotifier {
             ? 'Held + ●: Paste / Copy / Rename / Mark'
             : 'Held + ●: Copy / Rename / Mark';
       case TimelineCellExposureState.uncovered:
-        return canPaste
-            ? 'X: Paste / New Frame / Mark'
-            : 'X: New Frame / Mark';
+        return canPaste ? 'X: Paste / New Frame / Mark' : 'X: New Frame / Mark';
       case TimelineCellExposureState.markUncovered:
-        return canPaste ? 'X + ●: Paste / New Frame / Mark' : 'X + ●: New Frame / Mark';
+        return canPaste
+            ? 'X + ●: Paste / New Frame / Mark'
+            : 'X + ●: New Frame / Mark';
     }
   }
 
