@@ -8,25 +8,53 @@ import '../models/dirty_region.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_tip_mask_sampling.dart';
 
-/// Rasterizes the in-progress stroke incrementally into a canvas-sized
-/// straight-alpha RGBA buffer.
+/// Read access to the in-progress stroke's straight-alpha pixels — what
+/// the live overlay snapshots its tile images from.
+abstract interface class ActiveStrokePixelSource {
+  int get canvasWidth;
+  int get canvasHeight;
+
+  /// Copies [count] straight-alpha RGBA pixels starting at canvas (x, y)
+  /// into [target] at [targetOffset]. Unpainted pixels read as transparent
+  /// zeros.
+  void copyRow(int x, int y, int count, Uint8List target, int targetOffset);
+}
+
+/// Rasterizes the in-progress stroke incrementally into SPARSE
+/// straight-alpha RGBA tiles allocated on demand.
+///
+/// Storage is tile-sparse so the cost of a stroke scales with the region
+/// it actually paints, never with the canvas: the old canvas-sized buffer
+/// made big logical surfaces (the timesheet ink planes at high resolution)
+/// pay tens/hundreds of MB per stroke.
 ///
 /// This runs the exact blend math of the commit rasterizer
 /// (`materializeBrushDabSequenceOnBitmapSurface`) — same coverage sampling of
 /// pixel centers against the true fractional dab center, same floating-point
 /// grouping, same rounding — so the pixels painted while drawing are
 /// byte-identical to the committed result. The live display and the commit
-/// fast-path both consume this buffer, which is what unifies the on-screen
+/// fast-path both consume these pixels, which is what unifies the on-screen
 /// stroke with the committed artwork. Equivalence with the commit rasterizer
 /// is locked by `active_stroke_overlay_parity_test.dart` (byte-exact).
-class BrushLiveStrokeRasterizer {
-  BrushLiveStrokeRasterizer({required this.canvasSize})
-    : pixels = Uint8List(canvasSize.width * canvasSize.height * 4);
+class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
+  BrushLiveStrokeRasterizer({required this.canvasSize});
+
+  /// Edge length of a sparse stroke tile in canvas pixels.
+  static const int tileSize = 128;
 
   final CanvasSize canvasSize;
 
-  /// Straight-alpha RGBA bytes of the stroke blended over transparency.
-  final Uint8List pixels;
+  @override
+  int get canvasWidth => canvasSize.width;
+
+  @override
+  int get canvasHeight => canvasSize.height;
+
+  /// Straight-alpha RGBA tile buffers keyed by `tileY * tilesPerRow +
+  /// tileX`, allocated (zeroed) the first time a dab touches the tile.
+  final Map<int, Uint8List> _tiles = <int, Uint8List>{};
+
+  late final int _tilesPerRow = (canvasSize.width + tileSize - 1) ~/ tileSize;
 
   DirtyRegion? _strokeBounds;
   int _blendedDabCount = 0;
@@ -38,30 +66,79 @@ class BrushLiveStrokeRasterizer {
   /// Number of dabs blended so far.
   int get blendedDabCount => _blendedDabCount;
 
-  /// Zeroes the previously painted region so the buffer can host the next
-  /// stroke without reallocating.
+  /// Number of allocated stroke tiles (test/debug oracle for sparseness).
+  int get allocatedTileCount => _tiles.length;
+
+  /// Drops the stroke's tiles so the rasterizer can host the next stroke.
   void clear() {
-    final bounds = _strokeBounds;
-    if (bounds != null) {
-      final width = canvasSize.width;
-      final top = math.max(0, bounds.top);
-      final bottomExclusive = math.min(
-        bounds.bottomExclusive,
-        canvasSize.height,
-      );
-      final left = math.max(0, bounds.left);
-      final rightExclusive = math.min(bounds.rightExclusive, width);
-      for (var y = top; y < bottomExclusive; y += 1) {
-        final rowStart = (y * width + left) * 4;
-        pixels.fillRange(rowStart, rowStart + (rightExclusive - left) * 4, 0);
-      }
-    }
+    _tiles.clear();
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
 
-  /// Blends `dabs[from..]` into [pixels] and returns the union of the newly
-  /// touched region (clamped to the canvas), or `null` if nothing changed.
+  Uint8List _tileBuffer(int tileX, int tileY) {
+    return _tiles.putIfAbsent(
+      tileY * _tilesPerRow + tileX,
+      () => Uint8List(tileSize * tileSize * 4),
+    );
+  }
+
+  @override
+  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
+    var remaining = count;
+    var sourceX = x;
+    var writeOffset = targetOffset;
+    final tileY = y ~/ tileSize;
+    final localRowOffset = (y - tileY * tileSize) * tileSize;
+    while (remaining > 0) {
+      final tileX = sourceX ~/ tileSize;
+      final tileLeft = tileX * tileSize;
+      final spanCount = math.min(remaining, tileLeft + tileSize - sourceX);
+      final buffer = _tiles[tileY * _tilesPerRow + tileX];
+      if (buffer == null) {
+        target.fillRange(writeOffset, writeOffset + spanCount * 4, 0);
+      } else {
+        final sourceOffset = (localRowOffset + (sourceX - tileLeft)) * 4;
+        target.setRange(
+          writeOffset,
+          writeOffset + spanCount * 4,
+          buffer,
+          sourceOffset,
+        );
+      }
+      remaining -= spanCount;
+      sourceX += spanCount;
+      writeOffset += spanCount * 4;
+    }
+  }
+
+  /// Materializes the stroke's pixels within [strokeBounds] as one
+  /// row-major straight-alpha buffer (stride = bounds width) — the pen-up
+  /// commit fast path's input. Allocation scales with the STROKE, not the
+  /// canvas.
+  Uint8List? strokePixelsWithinBounds() {
+    final bounds = _strokeBounds;
+    if (bounds == null) {
+      return null;
+    }
+    final boundsWidth = bounds.rightExclusive - bounds.left;
+    final boundsHeight = bounds.bottomExclusive - bounds.top;
+    final buffer = Uint8List(boundsWidth * boundsHeight * 4);
+    for (var row = 0; row < boundsHeight; row += 1) {
+      copyRow(
+        bounds.left,
+        bounds.top + row,
+        boundsWidth,
+        buffer,
+        row * boundsWidth * 4,
+      );
+    }
+    return buffer;
+  }
+
+  /// Blends `dabs[from..]` into the stroke tiles and returns the union of
+  /// the newly touched region (clamped to the canvas), or `null` if nothing
+  /// changed.
   DirtyRegion? blendFrom(List<BrushDab> dabs, {int? from}) {
     final start = from ?? _blendedDabCount;
     DirtyRegion? touched;
@@ -213,164 +290,178 @@ class BrushLiveStrokeRasterizer {
             offset: 0.0,
           );
 
+    final tileXStart = left ~/ tileSize;
+    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+
     for (var y = top; y < bottomExclusive; y += 1) {
       final dy = y + 0.5 - centerY;
       final dySquared = dy * dy;
-      final rowOffset = y * width;
       final vIndex = y - top;
       if (tipVLattice != null && tipVLattice.inRange[vIndex] == 0) {
         // Same effect as the scalar |tipV| > radius per-pixel cull.
         continue;
       }
+      final tileY = y ~/ tileSize;
+      final localRowOffset = (y - tileY * tileSize) * tileSize;
 
-      for (var x = left; x < rightExclusive; x += 1) {
-        double coverage;
-        if (tipMask != null) {
-          if (unrotatedTip) {
-            final uIndex = x - left;
-            if (tipULattice!.inRange[uIndex] == 0) {
+      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+        final buffer = _tileBuffer(tileX, tileY);
+        final tileLeft = tileX * tileSize;
+        final spanLeft = math.max(left, tileLeft);
+        final spanRightExclusive = math.min(
+          rightExclusive,
+          tileLeft + tileSize,
+        );
+
+        for (var x = spanLeft; x < spanRightExclusive; x += 1) {
+          double coverage;
+          if (tipMask != null) {
+            if (unrotatedTip) {
+              final uIndex = x - left;
+              if (tipULattice!.inRange[uIndex] == 0) {
+                continue;
+              }
+              coverage = sampleBrushTipMaskCoverageLattice(
+                mask: tipMask,
+                uAxis: tipULattice,
+                uIndex: uIndex,
+                vAxis: tipVLattice!,
+                vIndex: vIndex,
+              );
+            } else {
+              final dx = x + 0.5 - centerX;
+              final tipU = dx * tipCos - dy * tipSin;
+              final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+              if (tipU.abs() > radius || tipV.abs() > radius) {
+                continue;
+              }
+              coverage = sampleBrushTipMaskCoverage(
+                mask: tipMask,
+                tipU: tipU,
+                tipV: tipV,
+                radius: radius,
+              );
+            }
+            if (coverage <= 0.0) {
               continue;
             }
-            coverage = sampleBrushTipMaskCoverageLattice(
-              mask: tipMask,
-              uAxis: tipULattice,
-              uIndex: uIndex,
-              vAxis: tipVLattice!,
+          } else if (isRound) {
+            final dx = x + 0.5 - centerX;
+            double distance;
+            if (isEllipse) {
+              final tipU = dx * tipCos - dy * tipSin;
+              final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+              distance = math.sqrt(tipU * tipU + tipV * tipV);
+            } else {
+              final dxSquared = dx * dx;
+              if (dxSquared + dySquared > radiusSqSkip) {
+                continue;
+              }
+              distance = math.sqrt(dxSquared + dySquared);
+            }
+            if (distance > radius) {
+              continue;
+            }
+            if (distance <= hardRadius || edgeSpan <= 0.0) {
+              coverage = 1.0;
+            } else {
+              coverage = (1.0 - ((distance - hardRadius) / edgeSpan)).clamp(
+                0.0,
+                1.0,
+              );
+            }
+            if (coverage <= 0.0) {
+              continue;
+            }
+          } else {
+            if (isRotatedRect) {
+              final dx = x + 0.5 - centerX;
+              final tipU = dx * tipCos - dy * tipSin;
+              final tipV = dx * tipSin + dy * tipCos;
+              if (tipU.abs() > radius || tipV.abs() > minorRadius) {
+                continue;
+              }
+            }
+            coverage = 1.0;
+          }
+
+          // Dual-brush texture: a second tiled mask multiplies the coverage
+          // (must match the commit rasterizer and oracle exactly).
+          if (dualMask != null) {
+            coverage *= sampleBrushTipMaskTiledCoverageLattice(
+              mask: dualMask,
+              uAxis: dualULattice!,
+              uIndex: x - left,
+              vAxis: dualVLattice!,
               vIndex: vIndex,
             );
-          } else {
-            final dx = x + 0.5 - centerX;
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-            if (tipU.abs() > radius || tipV.abs() > radius) {
+            if (coverage <= 0.0) {
               continue;
             }
-            coverage = sampleBrushTipMaskCoverage(
-              mask: tipMask,
-              tipU: tipU,
-              tipV: tipV,
-              radius: radius,
+          }
+
+          // Paper texture: canvas-anchored tiled mask, blended in by density
+          // (must match the commit rasterizer and oracle exactly).
+          if (textureMask != null) {
+            final textureSample = sampleBrushTipMaskTiledCoverageLattice(
+              mask: textureMask,
+              uAxis: textureULattice!,
+              uIndex: x - left,
+              vAxis: textureVLattice!,
+              vIndex: vIndex,
             );
-          }
-          if (coverage <= 0.0) {
-            continue;
-          }
-        } else if (isRound) {
-          final dx = x + 0.5 - centerX;
-          double distance;
-          if (isEllipse) {
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-            distance = math.sqrt(tipU * tipU + tipV * tipV);
-          } else {
-            final dxSquared = dx * dx;
-            if (dxSquared + dySquared > radiusSqSkip) {
-              continue;
-            }
-            distance = math.sqrt(dxSquared + dySquared);
-          }
-          if (distance > radius) {
-            continue;
-          }
-          if (distance <= hardRadius || edgeSpan <= 0.0) {
-            coverage = 1.0;
-          } else {
-            coverage = (1.0 - ((distance - hardRadius) / edgeSpan)).clamp(
-              0.0,
-              1.0,
-            );
-          }
-          if (coverage <= 0.0) {
-            continue;
-          }
-        } else {
-          if (isRotatedRect) {
-            final dx = x + 0.5 - centerX;
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = dx * tipSin + dy * tipCos;
-            if (tipU.abs() > radius || tipV.abs() > minorRadius) {
+            coverage *= textureOneMinusDensity + textureDensity * textureSample;
+            if (coverage <= 0.0) {
               continue;
             }
           }
-          coverage = 1.0;
-        }
 
-        // Dual-brush texture: a second tiled mask multiplies the coverage
-        // (must match the commit rasterizer and oracle exactly).
-        if (dualMask != null) {
-          coverage *= sampleBrushTipMaskTiledCoverageLattice(
-            mask: dualMask,
-            uAxis: dualULattice!,
-            uIndex: x - left,
-            vAxis: dualVLattice!,
-            vIndex: vIndex,
-          );
-          if (coverage <= 0.0) {
+          // Same grouping as the commit rasterizer:
+          // effectiveOpacity = dab.opacity * coverage,
+          // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
+          final effectiveOpacity = dabOpacity * coverage;
+          if (effectiveOpacity == 0.0) {
             continue;
           }
-        }
+          final sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
 
-        // Paper texture: canvas-anchored tiled mask, blended in by density
-        // (must match the commit rasterizer and oracle exactly).
-        if (textureMask != null) {
-          final textureSample = sampleBrushTipMaskTiledCoverageLattice(
-            mask: textureMask,
-            uAxis: textureULattice!,
-            uIndex: x - left,
-            vAxis: textureVLattice!,
-            vIndex: vIndex,
-          );
-          coverage *= textureOneMinusDensity + textureDensity * textureSample;
-          if (coverage <= 0.0) {
+          final offset = (localRowOffset + (x - tileLeft)) * 4;
+          final destR = buffer[offset];
+          final destG = buffer[offset + 1];
+          final destB = buffer[offset + 2];
+          final destA = buffer[offset + 3];
+
+          final destinationAlpha = destA / 255.0;
+          final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+          if (outAlpha == 0.0) {
+            buffer[offset] = 0;
+            buffer[offset + 1] = 0;
+            buffer[offset + 2] = 0;
+            buffer[offset + 3] = 0;
             continue;
           }
+
+          final inverseSourceAlpha = 1.0 - sourceAlpha;
+          buffer[offset] =
+              ((sourceR * sourceAlpha +
+                          destR * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          buffer[offset + 1] =
+              ((sourceG * sourceAlpha +
+                          destG * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          buffer[offset + 2] =
+              ((sourceB * sourceAlpha +
+                          destB * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          buffer[offset + 3] = (outAlpha * 255.0).round().clamp(0, 255);
         }
-
-        // Same grouping as the commit rasterizer:
-        // effectiveOpacity = dab.opacity * coverage,
-        // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
-        final effectiveOpacity = dabOpacity * coverage;
-        if (effectiveOpacity == 0.0) {
-          continue;
-        }
-        final sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
-
-        final offset = (rowOffset + x) * 4;
-        final destR = pixels[offset];
-        final destG = pixels[offset + 1];
-        final destB = pixels[offset + 2];
-        final destA = pixels[offset + 3];
-
-        final destinationAlpha = destA / 255.0;
-        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
-        if (outAlpha == 0.0) {
-          pixels[offset] = 0;
-          pixels[offset + 1] = 0;
-          pixels[offset + 2] = 0;
-          pixels[offset + 3] = 0;
-          continue;
-        }
-
-        final inverseSourceAlpha = 1.0 - sourceAlpha;
-        pixels[offset] =
-            ((sourceR * sourceAlpha +
-                        destR * destinationAlpha * inverseSourceAlpha) /
-                    outAlpha)
-                .round()
-                .clamp(0, 255);
-        pixels[offset + 1] =
-            ((sourceG * sourceAlpha +
-                        destG * destinationAlpha * inverseSourceAlpha) /
-                    outAlpha)
-                .round()
-                .clamp(0, 255);
-        pixels[offset + 2] =
-            ((sourceB * sourceAlpha +
-                        destB * destinationAlpha * inverseSourceAlpha) /
-                    outAlpha)
-                .round()
-                .clamp(0, 255);
-        pixels[offset + 3] = (outAlpha * 255.0).round().clamp(0, 255);
       }
     }
 

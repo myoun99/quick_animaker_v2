@@ -434,6 +434,10 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 /// Composites a pre-rasterized straight-alpha stroke buffer onto [surface]
 /// within [bounds].
 ///
+/// [strokePixels] is BOUNDS-LOCAL: row-major with stride = the bounds
+/// width, exactly what `BrushLiveStrokeRasterizer.strokePixelsWithinBounds`
+/// materializes — its size scales with the stroke, never the canvas.
+///
 /// This is the pen-up fast path: the interactive view rasterizes the stroke
 /// incrementally while the pointer moves (`BrushLiveStrokeRasterizer`, same
 /// per-dab math as [materializeBrushDabSequenceOnBitmapSurface]), so commit
@@ -450,6 +454,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   final canvasWidth = surface.canvasSize.width;
   final canvasHeight = surface.canvasSize.height;
   final tileSize = surface.tileSize;
+  final strokeStride = bounds.rightExclusive - bounds.left;
 
   final top = math.max(0, bounds.top);
   final bottomExclusive = math.min(bounds.bottomExclusive, canvasHeight);
@@ -481,7 +486,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = y ~/ tileSize;
     final localRowOffset = (y - tileY * tileSize) * tileSize;
-    final strokeRowOffset = y * canvasWidth;
+    final strokeRowOffset = (y - bounds.top) * strokeStride;
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
       final coord = TileCoord(x: tileX, y: tileY);
@@ -491,7 +496,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
 
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {
-        final strokeOffset = (strokeRowOffset + x) * 4;
+        final strokeOffset = (strokeRowOffset + (x - bounds.left)) * 4;
         final strokeA = strokePixels[strokeOffset + 3];
         if (strokeA == 0) {
           continue;

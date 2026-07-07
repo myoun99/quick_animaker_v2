@@ -88,10 +88,19 @@ const int _canvasWidth = 40;
 const int _canvasHeight = 40;
 const _canvasSize = CanvasSize(width: _canvasWidth, height: _canvasHeight);
 
+/// Canvas-wide straight-alpha bytes of the sparse live rasterizer.
+Uint8List _rasterizerBytes(BrushLiveStrokeRasterizer rasterizer) {
+  final bytes = Uint8List(_canvasWidth * _canvasHeight * 4);
+  for (var y = 0; y < _canvasHeight; y += 1) {
+    rasterizer.copyRow(0, y, _canvasWidth, bytes, y * _canvasWidth * 4);
+  }
+  return bytes;
+}
+
 Uint8List _liveBufferFor(List<BrushDab> dabs) {
   final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
   rasterizer.blendFrom(dabs, from: 0);
-  return rasterizer.pixels;
+  return _rasterizerBytes(rasterizer);
 }
 
 /// Canvas-wide straight-alpha bytes of the materialized surface.
@@ -317,7 +326,7 @@ void main() {
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
         surface: base,
-        strokePixels: rasterizer.pixels,
+        strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
       );
       final reference = materializeBrushDabSequenceOnBitmapSurface(
@@ -389,7 +398,7 @@ void main() {
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
         surface: base,
-        strokePixels: rasterizer.pixels,
+        strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
         erase: true,
       );
@@ -433,7 +442,7 @@ void main() {
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
         surface: base,
-        strokePixels: rasterizer.pixels,
+        strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
         erase: true,
       );
@@ -470,7 +479,7 @@ void main() {
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
         surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
-        strokePixels: rasterizer.pixels,
+        strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
       );
 
@@ -514,12 +523,7 @@ void main() {
       BrushLiveStrokeRasterizer rasterizer,
       DirtyRegion region,
     ) {
-      model.updateRegion(
-        pixels: rasterizer.pixels,
-        canvasWidth: _canvasWidth,
-        canvasHeight: _canvasHeight,
-        region: region,
-      );
+      model.updateRegion(source: rasterizer, region: region);
     }
 
     test('decoded overlay tiles equal the premultiplied buffer', () async {
@@ -540,7 +544,7 @@ void main() {
 
       _expectExact(
         await paintedCanvasBytes(model),
-        _premultipliedCanvasBytes(rasterizer.pixels),
+        _premultipliedCanvasBytes(_rasterizerBytes(rasterizer)),
         'decoded overlay',
       );
     });
@@ -570,7 +574,7 @@ void main() {
 
         _expectExact(
           await paintedCanvasBytes(model),
-          _premultipliedCanvasBytes(rasterizer.pixels),
+          _premultipliedCanvasBytes(_rasterizerBytes(rasterizer)),
           'coalesced decode',
         );
       },
