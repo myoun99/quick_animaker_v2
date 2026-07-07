@@ -10,6 +10,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/storyboard_frame_metadata.dart';
+import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/stroke.dart';
 import '../models/track.dart';
@@ -44,6 +45,10 @@ class ProjectRepository {
 
   void updateProject(Project Function(Project project) update) {
     _currentProject = update(requireProject());
+  }
+
+  void updateTimesheetInfo(TimesheetInfo info) {
+    updateProject((project) => project.copyWith(timesheetInfo: info));
   }
 
   void addTrack(Track track) {

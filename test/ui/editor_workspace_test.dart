@@ -6,6 +6,8 @@ import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
 import 'package:quick_animaker_v2/src/ui/camera/camera_panel.dart';
 import 'package:quick_animaker_v2/src/ui/editor_canvas_area.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
@@ -427,6 +429,47 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Page View'), findsOneWidget);
+    });
+
+    testWidgets('sheet info dialog edits the project timesheet info', (
+      tester,
+    ) async {
+      late ProjectRepository repository;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(onRepositoryCreated: (repo) => repository = repo),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_timesheetTabKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-info-button')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-title-field')),
+        'YOASOBI',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-episode-field')),
+        'MV',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('timesheet-info-artist-field')),
+        'MYOUN',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-info-save-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        repository.requireProject().timesheetInfo,
+        const TimesheetInfo(title: 'YOASOBI', episode: 'MV', artist: 'MYOUN'),
+      );
     });
 
     testWidgets('sheet viewport zoom survives tab switches', (tester) async {

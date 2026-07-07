@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 
 Layer _layer(
   String id, {
@@ -49,12 +50,20 @@ TimesheetDocument _document(
   Cut cut, {
   int fps = 24,
   int pageSeconds = 6,
+  TimesheetInfo info = TimesheetInfo.empty,
 }) {
   return TimesheetDocument.fromCut(
     cut: cut,
     projectName: 'Project',
     fps: fps,
     pageSeconds: pageSeconds,
+    info: info,
+  );
+}
+
+TimesheetColumn _firstCelColumn(TimesheetDocument document) {
+  return document.columns.firstWhere(
+    (column) => column.kind == TimesheetColumnKind.cel,
   );
 }
 
@@ -81,46 +90,77 @@ void main() {
       expect(_document(_cut(duration: 60)).durationLabel, '2+12');
       expect(_document(_cut(duration: 48)).durationLabel, '2+0');
     });
+
+    test('a page splits into two 72-row halves', () {
+      expect(_document(_cut()).halfFrameCount, 72);
+    });
+
+    test('header reads TimesheetInfo, title falling back to the project', () {
+      final plain = _document(_cut());
+      expect(plain.title, 'Project');
+      expect(plain.episode, '');
+      expect(plain.artist, '');
+
+      final overridden = _document(
+        _cut(),
+        info: const TimesheetInfo(
+          title: 'YOASOBI',
+          episode: 'MV',
+          artist: 'MYOUN',
+        ),
+      );
+      expect(overridden.title, 'YOASOBI');
+      expect(overridden.episode, 'MV');
+      expect(overridden.artist, 'MYOUN');
+    });
   });
 
   group('TimesheetDocument columns', () {
     test(
-      'cel columns are the onTimesheet animation layers; SE and camera '
-      'slots always exist',
+      'the paper form always shows fixed ACTION/S/CELL/CAM slots; the '
+      'onTimesheet animation layers fill the CELL slots in order',
       () {
         final document = _document(
           _cut(
             layers: [
-              _layer('A'),
+              _layer('Line'),
               _layer('hidden', onTimesheet: false),
               _layer('board', kind: LayerKind.storyboard),
-              _layer('B'),
+              _layer('Color'),
             ],
           ),
         );
 
+        final celColumns = document.columns
+            .where((column) => column.kind == TimesheetColumnKind.cel)
+            .toList();
+        expect(celColumns, hasLength(8), reason: 'fixed CELL slots A..H');
+        expect(celColumns[0].label, 'A');
+        expect(celColumns[0].layerName, 'Line');
+        expect(celColumns[1].layerName, 'Color');
+        expect(celColumns[2].layerName, isNull);
         expect(
           document.columns
-              .where((column) => column.kind == TimesheetColumnKind.cel)
-              .map((column) => column.label),
-          ['A', 'B'],
+              .where((column) => column.kind == TimesheetColumnKind.action)
+              .length,
+          8,
         );
         expect(
           document.columns
               .where((column) => column.kind == TimesheetColumnKind.se)
-              .length,
-          2,
+              .map((column) => column.label),
+          ['S1', 'S2'],
         );
         expect(
           document.columns
               .where((column) => column.kind == TimesheetColumnKind.camera)
-              .length,
-          2,
+              .map((column) => column.label),
+          ['1', '2'],
         );
       },
     );
 
-    test('SE layers fill the fixed slots and extra ones grow the section', () {
+    test('SE layers fill the S slots and extra ones grow the section', () {
       final twoSe = _document(
         _cut(layers: [_layer('se1', kind: LayerKind.se)]),
       );
@@ -128,8 +168,8 @@ void main() {
           .where((column) => column.kind == TimesheetColumnKind.se)
           .toList();
       expect(seColumns, hasLength(2));
-      expect(seColumns[0].label, 'se1');
-      expect(seColumns[1].label, 'SE');
+      expect(seColumns[0].layerName, 'se1');
+      expect(seColumns[1].layerName, isNull);
 
       final threeSe = _document(
         _cut(
@@ -173,7 +213,7 @@ void main() {
         ),
       );
 
-      final cells = document.columns.first.cells;
+      final cells = _firstCelColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.drawing);
       expect(cells[0].label, 'A1');
       expect(cells[1].kind, TimesheetCellKind.held);
@@ -202,7 +242,7 @@ void main() {
         ),
       );
 
-      final cells = document.columns.first.cells;
+      final cells = _firstCelColumn(document).cells;
       expect(cells[1].kind, TimesheetCellKind.emptyRunStart);
       expect(cells[2].kind, TimesheetCellKind.empty);
       expect(cells[3].kind, TimesheetCellKind.mark);
@@ -216,7 +256,7 @@ void main() {
     test('rows beyond the playback range stay paper-blank', () {
       final document = _document(_cut(layers: [_layer('A')], duration: 10));
 
-      final cells = document.columns.first.cells;
+      final cells = _firstCelColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.emptyRunStart);
       expect(cells[10].kind, TimesheetCellKind.empty);
       expect(cells[143].kind, TimesheetCellKind.empty);

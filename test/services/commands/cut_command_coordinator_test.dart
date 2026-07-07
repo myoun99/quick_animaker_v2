@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/clipboard/layer_copy_payload.dart';
@@ -822,6 +823,37 @@ void main() {
         throwsStateError,
       );
       expect(fixture.historyManager.undoCount, 0);
+    });
+
+    test('setTimesheetInfo updates through history and dedupes', () {
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      const info = TimesheetInfo(
+        title: 'YOASOBI',
+        episode: 'MV',
+        artist: 'MYOUN',
+      );
+
+      fixture.coordinator.setTimesheetInfo(info);
+
+      expect(fixture.project.timesheetInfo, info);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.coordinator.setTimesheetInfo(info);
+      expect(fixture.historyManager.undoCount, 1, reason: 'no-op dedupe');
+
+      fixture.historyManager.undo();
+      expect(fixture.project.timesheetInfo, TimesheetInfo.empty);
+
+      fixture.historyManager.redo();
+      expect(fixture.project.timesheetInfo, info);
     });
 
     test('setLayerMark sets the mark through history and dedupes', () {

@@ -20,6 +20,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
+import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/timeline_coverage.dart';
 import '../models/track_id.dart';
@@ -952,6 +953,17 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       onTimesheet: !layer.onTimesheet,
     );
+    notifyListeners();
+  }
+
+  /// Project-level sheet-header text (title/episode/artist) the timesheet
+  /// document reads.
+  TimesheetInfo get timesheetInfo =>
+      _repository.requireProject().timesheetInfo;
+
+  /// One undo step; no-op when unchanged.
+  void updateTimesheetInfo(TimesheetInfo info) {
+    _cutCommandCoordinator.setTimesheetInfo(info);
     notifyListeners();
   }
 
