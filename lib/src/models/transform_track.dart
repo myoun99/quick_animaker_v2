@@ -1,108 +1,241 @@
 import 'dart:collection';
 
-import '../core/collection_equality.dart';
 import 'camera_pose.dart';
 import 'canvas_point.dart';
+import 'property_track.dart';
 
 /// The shared transform pose shape: a point in canvas coordinates plus
 /// uniform scale and rotation. The camera has used this shape since C0
-/// (center/zoom/rotation); layer transforms keyframe the same shape, so the
-/// dedicated name arrives with the property-lanes work as a mechanical
-/// rename.
+/// (center/zoom/rotation); layer transforms resolve to the same shape, so
+/// the dedicated name arrives with the property-lanes rename.
 typedef TransformPose = CameraPose;
 
-/// A keyframed transform: [TransformPose]s on non-negative integer frame
-/// keys, shared by the cut camera and (with the property-lanes work) layer
-/// transforms.
+/// The AE-unified transform property set, in After Effects order. Display
+/// conventions live at the UI/clipboard layer (Scale shown as zoom·100 %,
+/// Rotation shown with AE's clockwise-positive sign, Opacity as ·100 %).
+enum TransformPropertyId { anchorPoint, position, scale, rotation, opacity }
+
+/// A keyframed transform in the After Effects model: every property is its
+/// own independently keyed [PropertyTrack] (Position can carry three keys
+/// while Scale carries none), with linear or HOLD interpolation per key.
 ///
-/// Resolution semantics (see [resolveAt]): exact keyframes win; frames
-/// before the first keyframe hold the first pose and frames after the last
-/// hold the last; frames between two keyframes interpolate linearly
-/// component-wise. An empty track means "no transform work" — consumers
-/// supply their own default pose.
+/// The original pose-keyed API ([keyframes]/[keyframeAt]/[withKeyframe]/
+/// [withoutKeyframe]) survives as a FACADE: a pose key means synchronized
+/// keys on position+scale+rotation at that frame, and the keyframes view
+/// yields resolved poses at the union of keyed frames. The camera keeps
+/// speaking pose while the property lanes speak per-property.
+///
+/// An empty track means "no transform work" — consumers supply their own
+/// default pose (the camera's canvas-centered pose, a layer's identity).
 class TransformTrack {
   TransformTrack({Map<int, TransformPose>? keyframes})
-    : keyframes = _immutableKeyframes(keyframes ?? const {});
+    : anchorPoint = PropertyTrack.empty(),
+      position = PropertyTrack(
+        keys: _poseComponentKeys(keyframes, (pose) => pose.center),
+      ),
+      scale = PropertyTrack(
+        keys: _poseComponentKeys(keyframes, (pose) => pose.zoom),
+      ),
+      rotation = PropertyTrack(
+        keys: _poseComponentKeys(keyframes, (pose) => pose.rotationDegrees),
+      ),
+      opacity = PropertyTrack.empty();
+
+  const TransformTrack.properties({
+    required this.anchorPoint,
+    required this.position,
+    required this.scale,
+    required this.rotation,
+    required this.opacity,
+  });
 
   factory TransformTrack.empty() => TransformTrack();
 
-  final SplayTreeMap<int, TransformPose> keyframes;
+  final PropertyTrack<CanvasPoint> anchorPoint;
+  final PropertyTrack<CanvasPoint> position;
+  final PropertyTrack<double> scale;
+  final PropertyTrack<double> rotation;
+  final PropertyTrack<double> opacity;
 
-  bool get isEmpty => keyframes.isEmpty;
-  bool get isNotEmpty => keyframes.isNotEmpty;
+  TransformTrack copyWith({
+    PropertyTrack<CanvasPoint>? anchorPoint,
+    PropertyTrack<CanvasPoint>? position,
+    PropertyTrack<double>? scale,
+    PropertyTrack<double>? rotation,
+    PropertyTrack<double>? opacity,
+  }) {
+    return TransformTrack.properties(
+      anchorPoint: anchorPoint ?? this.anchorPoint,
+      position: position ?? this.position,
+      scale: scale ?? this.scale,
+      rotation: rotation ?? this.rotation,
+      opacity: opacity ?? this.opacity,
+    );
+  }
 
-  TransformPose? keyframeAt(int frameIndex) => keyframes[frameIndex];
+  bool get isEmpty =>
+      anchorPoint.isEmpty &&
+      position.isEmpty &&
+      scale.isEmpty &&
+      rotation.isEmpty &&
+      opacity.isEmpty;
+  bool get isNotEmpty => !isEmpty;
 
+  /// The union of every property's keyed frames.
+  Set<int> get keyedFrames => SplayTreeSet<int>()
+    ..addAll(anchorPoint.keys.keys)
+    ..addAll(position.keys.keys)
+    ..addAll(scale.keys.keys)
+    ..addAll(rotation.keys.keys)
+    ..addAll(opacity.keys.keys);
+
+  /// POSE FACADE: resolved poses at the union of keyed frames. While keys
+  /// stay pose-synchronized (the camera panel writes whole poses) this is
+  /// exactly the old pose-keyed view.
+  SplayTreeMap<int, TransformPose> get keyframes {
+    final result = SplayTreeMap<int, TransformPose>();
+    for (final frame in keyedFrames) {
+      result[frame] = resolveAt(frameIndex: frame, orElse: _defaultFacadePose);
+    }
+    return result;
+  }
+
+  /// POSE FACADE: the resolved pose at [frameIndex] when ANY property keys
+  /// there, null otherwise.
+  TransformPose? keyframeAt(int frameIndex) {
+    final keyed =
+        anchorPoint.keyAt(frameIndex) != null ||
+        position.keyAt(frameIndex) != null ||
+        scale.keyAt(frameIndex) != null ||
+        rotation.keyAt(frameIndex) != null ||
+        opacity.keyAt(frameIndex) != null;
+    if (!keyed) {
+      return null;
+    }
+    return resolveAt(frameIndex: frameIndex, orElse: _defaultFacadePose);
+  }
+
+  /// POSE FACADE: keys position+scale+rotation together at [frameIndex].
   TransformTrack withKeyframe(int frameIndex, TransformPose pose) {
-    return TransformTrack(keyframes: {...keyframes, frameIndex: pose});
+    return copyWith(
+      position: position.withKey(frameIndex, pose.center),
+      scale: scale.withKey(frameIndex, pose.zoom),
+      rotation: rotation.withKey(frameIndex, pose.rotationDegrees),
+    );
   }
 
+  /// POSE FACADE: removes every property's key at [frameIndex].
   TransformTrack withoutKeyframe(int frameIndex) {
-    final next = Map<int, TransformPose>.of(keyframes)..remove(frameIndex);
-    return TransformTrack(keyframes: next);
+    return TransformTrack.properties(
+      anchorPoint: anchorPoint.withoutKey(frameIndex),
+      position: position.withoutKey(frameIndex),
+      scale: scale.withoutKey(frameIndex),
+      rotation: rotation.withoutKey(frameIndex),
+      opacity: opacity.withoutKey(frameIndex),
+    );
   }
 
-  /// Resolves the pose at [frameIndex]; [orElse] supplies the empty-track
-  /// default (e.g. the camera's canvas-centered pose, a layer's identity).
+  /// Resolves the pose at [frameIndex] property by property; [orElse]
+  /// supplies the empty-track defaults (e.g. the camera's canvas-centered
+  /// pose, a layer's identity).
   TransformPose resolveAt({
     required int frameIndex,
     required TransformPose Function() orElse,
   }) {
-    if (isEmpty) {
-      return orElse();
-    }
+    TransformPose? defaultPose;
+    TransformPose fallback() => defaultPose ??= orElse();
 
-    final exact = keyframes[frameIndex];
-    if (exact != null) {
-      return exact;
-    }
-
-    final previousIndex = keyframes.lastKeyBefore(frameIndex);
-    final nextIndex = keyframes.firstKeyAfter(frameIndex);
-    if (previousIndex == null) {
-      return keyframes[nextIndex!]!;
-    }
-    if (nextIndex == null) {
-      return keyframes[previousIndex]!;
-    }
-
-    return lerpTransformPose(
-      keyframes[previousIndex]!,
-      keyframes[nextIndex]!,
-      (frameIndex - previousIndex) / (nextIndex - previousIndex),
+    return TransformPose(
+      center: position.resolveAt(
+        frameIndex: frameIndex,
+        orElse: () => fallback().center,
+        lerp: lerpCanvasPoint,
+      ),
+      zoom: scale.resolveAt(
+        frameIndex: frameIndex,
+        orElse: () => fallback().zoom,
+        lerp: lerpDouble,
+      ),
+      rotationDegrees: rotation.resolveAt(
+        frameIndex: frameIndex,
+        orElse: () => fallback().rotationDegrees,
+        lerp: lerpDouble,
+      ),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'keyframes': keyframes.entries
-        .map((entry) => {'index': entry.key, 'pose': entry.value.toJson()})
-        .toList(),
+    if (anchorPoint.isNotEmpty)
+      'anchorPoint': anchorPoint.toJson((value) => value.toJson()),
+    if (position.isNotEmpty)
+      'position': position.toJson((value) => value.toJson()),
+    if (scale.isNotEmpty) 'scale': scale.toJson((value) => value),
+    if (rotation.isNotEmpty) 'rotation': rotation.toJson((value) => value),
+    if (opacity.isNotEmpty) 'opacity': opacity.toJson((value) => value),
   };
 
   factory TransformTrack.fromJson(Map<String, dynamic> json) {
-    final keyframes = <int, TransformPose>{};
-    for (final item in json['keyframes'] as List? ?? const []) {
-      final entry = item as Map<String, dynamic>;
-      final index = entry['index'] as int;
-      if (keyframes.containsKey(index)) {
-        throw FormatException('Duplicate transform keyframe index: $index');
+    // Legacy pose-keyed tracks ({'keyframes': [{index, pose}]}) migrate to
+    // synchronized per-property keys on load.
+    if (json.containsKey('keyframes')) {
+      final keyframes = <int, TransformPose>{};
+      for (final item in json['keyframes'] as List? ?? const []) {
+        final entry = item as Map<String, dynamic>;
+        final index = entry['index'] as int;
+        if (keyframes.containsKey(index)) {
+          throw FormatException('Duplicate transform keyframe index: $index');
+        }
+        keyframes[index] = TransformPose.fromJson(
+          entry['pose'] as Map<String, dynamic>,
+        );
       }
-      keyframes[index] = TransformPose.fromJson(
-        entry['pose'] as Map<String, dynamic>,
-      );
+      return TransformTrack(keyframes: keyframes);
     }
-    return TransformTrack(keyframes: keyframes);
+
+    return TransformTrack.properties(
+      anchorPoint: PropertyTrack.fromJson(
+        json['anchorPoint'] as List?,
+        (value) => CanvasPoint.fromJson(value as Map<String, dynamic>),
+      ),
+      position: PropertyTrack.fromJson(
+        json['position'] as List?,
+        (value) => CanvasPoint.fromJson(value as Map<String, dynamic>),
+      ),
+      scale: PropertyTrack.fromJson(
+        json['scale'] as List?,
+        (value) => (value as num).toDouble(),
+      ),
+      rotation: PropertyTrack.fromJson(
+        json['rotation'] as List?,
+        (value) => (value as num).toDouble(),
+      ),
+      opacity: PropertyTrack.fromJson(
+        json['opacity'] as List?,
+        (value) => (value as num).toDouble(),
+      ),
+    );
   }
+
+  /// The facade default when a pose view is requested while some property
+  /// has no keys at all: identity-ish components (centered pose is a
+  /// CONSUMER default — the facade only needs stable placeholders for the
+  /// unkeyed components, and pose-synchronized writers never hit them).
+  static TransformPose _defaultFacadePose() =>
+      TransformPose(center: CanvasPoint(x: 0, y: 0));
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TransformTrack && mapEquals(other.keyframes, keyframes);
+      other is TransformTrack &&
+          other.anchorPoint == anchorPoint &&
+          other.position == position &&
+          other.scale == scale &&
+          other.rotation == rotation &&
+          other.opacity == opacity;
 
   @override
-  int get hashCode => Object.hashAll(
-    keyframes.entries.map((entry) => Object.hash(entry.key, entry.value)),
-  );
+  int get hashCode =>
+      Object.hash(anchorPoint, position, scale, rotation, opacity);
 
   @override
   String toString() => 'TransformTrack(keyframes: $keyframes)';
@@ -112,30 +245,26 @@ class TransformTrack {
 /// wrap-around), so keyframing 0 → 360 produces a full turn.
 TransformPose lerpTransformPose(TransformPose a, TransformPose b, double t) {
   return TransformPose(
-    center: CanvasPoint(
-      x: _lerp(a.center.x, b.center.x, t),
-      y: _lerp(a.center.y, b.center.y, t),
-    ),
-    zoom: _lerp(a.zoom, b.zoom, t),
-    rotationDegrees: _lerp(a.rotationDegrees, b.rotationDegrees, t),
+    center: lerpCanvasPoint(a.center, b.center, t),
+    zoom: lerpDouble(a.zoom, b.zoom, t),
+    rotationDegrees: lerpDouble(a.rotationDegrees, b.rotationDegrees, t),
   );
 }
 
-double _lerp(double a, double b, double t) => a + (b - a) * t;
+CanvasPoint lerpCanvasPoint(CanvasPoint a, CanvasPoint b, double t) =>
+    CanvasPoint(x: lerpDouble(a.x, b.x, t), y: lerpDouble(a.y, b.y, t));
 
-SplayTreeMap<int, TransformPose> _immutableKeyframes(
-  Map<int, TransformPose> keyframes,
+double lerpDouble(double a, double b, double t) => a + (b - a) * t;
+
+Map<int, PropertyKey<T>> _poseComponentKeys<T>(
+  Map<int, TransformPose>? keyframes,
+  T Function(TransformPose pose) component,
 ) {
-  final result = SplayTreeMap<int, TransformPose>();
-  for (final entry in keyframes.entries) {
-    if (entry.key < 0) {
-      throw ArgumentError.value(
-        entry.key,
-        'keyframes',
-        'Transform keyframe indexes must be non-negative.',
-      );
-    }
-    result[entry.key] = entry.value;
+  if (keyframes == null) {
+    return const {};
   }
-  return result;
+  return {
+    for (final entry in keyframes.entries)
+      entry.key: PropertyKey(component(entry.value)),
+  };
 }

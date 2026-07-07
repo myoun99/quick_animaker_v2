@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_document.dart';
+import '../theme/app_theme.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
 /// whose body splits into two side-by-side halves of
 /// [TimesheetDocument.halfFrameCount] rows; each half reads
-/// ACTION block | frame rail | S1·S2 | CELL block | CAM.
+/// ACTION block (animation layers) | frame rail | S1·S2 | CELL block | CAM.
 ///
-/// The continuous mode renders ONE half-structure strip with every row in
-/// sequence (global frame numbers); the paged mode is paper-faithful with
-/// page-local numbers. Ink annotations (S2) anchor per page, and the halves
-/// are a fixed function of the page, so both modes keep ink stable.
+/// The continuous mode keeps the SAME paper width and header band as the
+/// paged form (the paper size never changes with the view toggle — user
+/// rule) and swaps only the body below: ONE half-structure strip with every
+/// row in sequence (global frame numbers) growing downward, in page half
+/// 0's exact geometry so ink coordinates stay stable across the toggle.
 class TimesheetDocumentLayout {
   const TimesheetDocumentLayout({
     required this.document,
@@ -23,7 +25,7 @@ class TimesheetDocumentLayout {
   final bool continuous;
 
   static const double rowHeight = 18;
-  static const double actionColumnWidth = 18;
+  static const double actionColumnWidth = 24;
   static const double seColumnWidth = 20;
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
@@ -31,6 +33,13 @@ class TimesheetDocumentLayout {
   static const double groupRowHeight = 16;
   static const double letterRowHeight = 16;
   static const double headerBandHeight = 64;
+
+  /// The Direction handwriting space under the header band (real-sheet
+  /// reference ~140px), with a framed memo box at its top right. Printed on
+  /// every page; page ink (S2) anchors on it.
+  static const double memoBandHeight = 140;
+  static const double memoBoxWidthFraction = 0.28;
+  static const double memoBoxHeight = 56;
   static const double headerGap = 10;
   static const double pagePadding = 16;
   static const double halfGap = 24;
@@ -87,9 +96,9 @@ class TimesheetDocumentLayout {
     return width;
   }
 
-  double get paperWidth => continuous
-      ? pagePadding * 2 + halfWidth
-      : pagePadding * 2 + halfWidth * 2 + halfGap;
+  /// One fixed paper width in BOTH modes — the view toggle never resizes
+  /// the paper (or the header band that spans it).
+  double get paperWidth => pagePadding * 2 + halfWidth * 2 + halfGap;
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
@@ -105,10 +114,15 @@ class TimesheetDocumentLayout {
   double get paperHeight => continuous
       ? pagePadding * 2 +
             headerBandHeight +
+            memoBandHeight +
             headerGap +
             columnsHeaderHeight +
             document.rowCount * rowHeight
-      : pagePadding * 2 + headerBandHeight + headerGap + _pagedBodyHeight;
+      : pagePadding * 2 +
+            headerBandHeight +
+            memoBandHeight +
+            headerGap +
+            _pagedBodyHeight;
 
   double get paperLeft => documentMargin;
 
@@ -142,8 +156,20 @@ class TimesheetDocumentLayout {
       pageTop(pageIndex) +
       pagePadding +
       headerBandHeight +
+      memoBandHeight +
       headerGap +
       columnsHeaderHeight;
+
+  /// The memo band rect of a page — directly under the header band.
+  Rect memoBandRect(int pageIndex) {
+    final page = pageRect(pageIndex);
+    return Rect.fromLTWH(
+      page.left + pagePadding,
+      page.top + pagePadding + headerBandHeight,
+      page.width - pagePadding * 2,
+      memoBandHeight,
+    );
+  }
 
   /// Where a global frame lands: page, half and row within the half. The
   /// continuous strip is a single half per "page block".
@@ -167,6 +193,19 @@ class TimesheetDocumentLayout {
     return halfRowsTop(position.page) + position.row * rowHeight;
   }
 
+  /// The data-driven cut-end line (the paper's horizontal strikethrough,
+  /// S2-0): the bottom edge of the LAST playback frame row, spanning its
+  /// half — not ink, same concept as the timeline's cut-end boundary.
+  ({int page, int half, double y}) get cutEndLine {
+    final lastFrame = document.playbackFrameCount - 1;
+    final position = positionOfFrame(lastFrame);
+    return (
+      page: position.page,
+      half: position.half,
+      y: frameRowTop(lastFrame) + rowHeight,
+    );
+  }
+
   /// Logical size of the whole document.
   Size get documentSize {
     final pageCount = document.pages.length;
@@ -179,9 +218,10 @@ class TimesheetDocumentLayout {
   }
 }
 
-/// Paints the sheet document — the paper form (header band, group/letter
-/// rows, second-heavy grid), cel numbers, holds, ○ marks, X cells, camera
-/// keys and the playhead row — under the panel viewport transform (the same
+/// Paints the sheet document — the paper form (header band, Direction memo
+/// band, group/letter rows, second-heavy grid), cel numbers, holds, ○
+/// marks, X cells, camera keys, the data-driven cut-end strikethrough and
+/// the playhead row — under the panel viewport transform (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
 class TimesheetDocumentPainter extends CustomPainter {
   const TimesheetDocumentPainter({
@@ -222,6 +262,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     if (layout.continuous) {
       _paintPaper(canvas, 0);
       _paintHeaderBand(canvas, 0, drawTexts: drawTexts);
+      _paintMemoBand(canvas, 0);
       _paintHalf(
         canvas,
         pageIndex: 0,
@@ -234,6 +275,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       for (final page in document.pages) {
         _paintPaper(canvas, page.index);
         _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
+        _paintMemoBand(canvas, page.index);
         for (var half = 0; half < 2; half += 1) {
           final rowCount = layout.halfRowCount(half);
           if (rowCount <= 0) {
@@ -244,14 +286,14 @@ class TimesheetDocumentPainter extends CustomPainter {
             pageIndex: page.index,
             half: half,
             startFrame:
-                page.startFrame +
-                (half == 0 ? 0 : document.halfFrameCount),
+                page.startFrame + (half == 0 ? 0 : document.halfFrameCount),
             rowCount: rowCount,
             drawTexts: drawTexts,
           );
         }
       }
     }
+    _paintCutEndLine(canvas);
     _paintPlayhead(canvas);
 
     canvas.restore();
@@ -332,6 +374,51 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
+  /// The Direction memo band under the header: open handwriting space with
+  /// a framed memo box at its top right — printed on every page.
+  void _paintMemoBand(Canvas canvas, int pageIndex) {
+    final band = layout.memoBandRect(pageIndex);
+    canvas.drawRect(
+      band,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..color = _gridBold,
+    );
+    final boxWidth = band.width * TimesheetDocumentLayout.memoBoxWidthFraction;
+    canvas.drawRect(
+      Rect.fromLTWH(
+        band.right - boxWidth,
+        band.top,
+        boxWidth,
+        TimesheetDocumentLayout.memoBoxHeight,
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = _gridMedium,
+    );
+  }
+
+  /// The cut-end strikethrough at the bottom edge of the last playback
+  /// frame row — DATA rendering (S2-0), the same visual language as the
+  /// timeline's cut-end boundary, never ink.
+  void _paintCutEndLine(Canvas canvas) {
+    if (document.playbackFrameCount < 1 ||
+        document.playbackFrameCount > document.rowCount) {
+      return;
+    }
+    final line = layout.cutEndLine;
+    final left = layout.halfLeft(line.page, line.half);
+    canvas.drawLine(
+      Offset(left, line.y),
+      Offset(left + layout.halfWidth, line.y),
+      Paint()
+        ..color = AppColors.danger
+        ..strokeWidth = 2.4,
+    );
+  }
+
   void _paintHalf(
     Canvas canvas, {
     required int pageIndex,
@@ -361,21 +448,22 @@ class TimesheetDocumentPainter extends CustomPainter {
     if (drawTexts) {
       _paintGroupTitles(canvas, left, columnsTop);
       for (var column = 0; column < document.columns.length; column += 1) {
+        // Unbacked slots print nothing — no placeholder letters.
+        if (document.columns[column].label.isEmpty) {
+          continue;
+        }
         final columnLeft = left + layout.columnLeftInHalf(column);
+        final columnWidth = TimesheetDocumentLayout.columnWidthFor(
+          document.columns[column].kind,
+        );
         _text(
           canvas,
           document.columns[column].label,
-          Offset(
-            columnLeft +
-                TimesheetDocumentLayout.columnWidthFor(
-                      document.columns[column].kind,
-                    ) /
-                    2,
-            lettersTop + 2,
-          ),
+          Offset(columnLeft + columnWidth / 2, lettersTop + 2),
           fontSize: 9,
           color: _ink,
           centeredAtX: true,
+          maxWidth: columnWidth - 2,
         );
       }
     }
@@ -423,7 +511,11 @@ class TimesheetDocumentPainter extends CustomPainter {
 
     // Vertical lines: half edges, rail edges, column separators (bold at
     // section changes).
-    canvas.drawLine(Offset(left, columnsTop), Offset(left, rowsBottom), boldPaint);
+    canvas.drawLine(
+      Offset(left, columnsTop),
+      Offset(left, rowsBottom),
+      boldPaint,
+    );
     canvas.drawLine(
       Offset(right, columnsTop),
       Offset(right, rowsBottom),
@@ -475,12 +567,9 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
 
-    // Cells.
+    // Cells (ACTION columns carry the animation layers' exposures).
     for (var column = 0; column < document.columns.length; column += 1) {
       final spec = document.columns[column];
-      if (spec.kind == TimesheetColumnKind.action) {
-        continue;
-      }
       final centerX =
           left +
           layout.columnLeftInHalf(column) +
