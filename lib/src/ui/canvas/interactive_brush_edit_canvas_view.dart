@@ -3,10 +3,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
+import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
+import '../../models/dirty_region.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
@@ -21,6 +25,33 @@ import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
+
+/// The committed-surface tiles inside [bounds] (every stored tile when the
+/// bounds are unknown): the set whose decodes gate the settling overlay
+/// handoff, so a just-committed stroke never trades its overlay for stale
+/// pre-stroke tile images.
+@visibleForTesting
+List<BitmapTile> settlingTilesForBounds({
+  required BitmapSurface surface,
+  required DirtyRegion? bounds,
+}) {
+  if (bounds == null) {
+    return surface.tiles.values.toList();
+  }
+  final tileSize = surface.tileSize;
+  final minX = bounds.left ~/ tileSize;
+  final maxX = (bounds.rightExclusive - 1) ~/ tileSize;
+  final minY = bounds.top ~/ tileSize;
+  final maxY = (bounds.bottomExclusive - 1) ~/ tileSize;
+  return [
+    for (final tile in surface.tiles.values)
+      if (tile.coord.x >= minX &&
+          tile.coord.x <= maxX &&
+          tile.coord.y >= minY &&
+          tile.coord.y <= maxY)
+        tile,
+  ];
+}
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   InteractiveBrushEditCanvasView({
@@ -105,11 +136,26 @@ class _InteractiveBrushEditCanvasViewState
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
+  /// Dabs collected since the last rasterized batch. Pointer samples arrive
+  /// far above the display rate (1000Hz mice, 240Hz pens); rasterizing per
+  /// EVENT multiplied the blend work for zero visible benefit, so moves only
+  /// queue dabs and one frame callback blends the batch. Dab generation,
+  /// order and blend math are unchanged — the batch is byte-identical to
+  /// per-event blending, and pen-up flushes synchronously before commit.
+  final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
+  bool _overlayFlushScheduled = false;
+
   // After pointer-up the overlay stays visible ("settling") until the
   // committed tiles finish decoding, so the stroke never flashes away while
   // the display switches to the materialized bitmap.
   bool _settling = false;
   Timer? _settlingFallbackTimer;
+
+  /// Canvas region the settling stroke touched: only ITS tiles gate the
+  /// overlay handoff (checking the whole surface stalled the drop on
+  /// unrelated tiles, and the old flat 300ms give-up then revealed stale
+  /// pre-stroke tiles — the "part of the stroke blinks" bug).
+  DirtyRegion? _settlingBounds;
 
   @override
   void initState() {
@@ -232,7 +278,7 @@ class _InteractiveBrushEditCanvasViewState
       directionDegrees: null,
     );
     _collectedDabs.addAll(emitted);
-    _appendOverlayDabs(emitted);
+    _queueOverlayDabs(emitted);
     _nextSequence += emitted.length;
   }
 
@@ -315,13 +361,44 @@ class _InteractiveBrushEditCanvasViewState
         ) ??
         baseDabs;
 
-    // No setState: pointer moves rasterize the new dabs and repaint the
-    // overlay layer directly, skipping the widget rebuild entirely (this
-    // runs at pointer-sample frequency).
+    // No setState: pointer moves only QUEUE the new dabs (this runs at
+    // pointer-sample frequency); the per-frame flush rasterizes the batch
+    // and repaints the overlay layer directly, skipping widget rebuilds.
     _collectedDabs.addAll(emitted);
-    _appendOverlayDabs(emitted);
+    _queueOverlayDabs(emitted);
     _nextSequence += emitted.length;
     _breakCurrentVisibleSegment = false;
+  }
+
+  void _queueOverlayDabs(List<BrushDab> newDabs) {
+    if (newDabs.isEmpty) {
+      return;
+    }
+    _pendingOverlayDabs.addAll(newDabs);
+    if (_overlayFlushScheduled) {
+      return;
+    }
+    _overlayFlushScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _overlayFlushScheduled = false;
+      if (mounted) {
+        _flushPendingOverlayDabs();
+      } else {
+        _pendingOverlayDabs.clear();
+      }
+    });
+    // Pointer samples can arrive while no frame is scheduled (nothing else
+    // animating); make sure the flush frame actually happens.
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
+
+  void _flushPendingOverlayDabs() {
+    if (_pendingOverlayDabs.isEmpty) {
+      return;
+    }
+    final batch = List<BrushDab>.of(_pendingOverlayDabs);
+    _pendingOverlayDabs.clear();
+    _appendOverlayDabs(batch);
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -332,7 +409,13 @@ class _InteractiveBrushEditCanvasViewState
 
     final hadDabs = _collectedDabs.isNotEmpty;
     if (hadDabs) {
+      // The commit reads the rasterizer's pixels/bounds — blend any dabs
+      // still waiting on the per-frame flush first.
+      _flushPendingOverlayDabs();
       final rasterizer = _liveRasterizer;
+      // The settling check below watches exactly the tiles this stroke
+      // touched; unrelated tiles must not gate the overlay handoff.
+      _settlingBounds = rasterizer?.strokeBounds;
       widget.onSourceStrokeCommitted(
         BrushStrokeCommitData(
           sourceDabs: _collectedDabs,
@@ -477,40 +560,82 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
     _collectedDabs.clear();
+    _pendingOverlayDabs.clear();
   }
 
   /// Clears the visible overlay (live or settling) and its tile images.
   void _resetOverlay() {
     _settling = false;
+    _settlingBounds = null;
     _settlingFallbackTimer?.cancel();
     _settlingFallbackTimer = null;
     _overlayModel.reset();
   }
 
+  /// How long the settling safety cap keeps waiting for tile decodes
+  /// before force-dropping the overlay. Purely a stuck-state escape hatch:
+  /// dropping EARLY is what used to blink parts of big strokes back to
+  /// their pre-stroke tiles (the old 300ms flat timeout fired before slow
+  /// decodes finished), so the deadline is generous and the periodic
+  /// re-check below re-requests decodes instead of giving up.
+  static const Duration _settlingDeadline = Duration(seconds: 2);
+  static const Duration _settlingRecheckInterval = Duration(milliseconds: 50);
+
   void _beginSettling() {
     _settling = true;
-    // Fallback so a missed decode notification can never leave a stale
-    // overlay stuck on screen.
     _settlingFallbackTimer?.cancel();
-    _settlingFallbackTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted && _settling) {
-        _resetOverlay();
+    var waited = Duration.zero;
+    _settlingFallbackTimer = Timer.periodic(_settlingRecheckInterval, (timer) {
+      if (!mounted || !_settling) {
+        timer.cancel();
+        return;
       }
+      waited += _settlingRecheckInterval;
+      if (waited >= _settlingDeadline) {
+        timer.cancel();
+        _resetOverlay();
+        return;
+      }
+      // Belt and braces against a missed decode notification: re-request
+      // the stroke tiles' decodes and re-run the handoff check.
+      _requestSettlingDecodes();
+      _onTileImagesChanged();
     });
     // Check after the parent rebuild delivers the post-commit session state;
     // checking synchronously would consult the pre-commit surface and clear
     // the overlay immediately, reintroducing the flash.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestSettlingDecodes();
       _onTileImagesChanged();
     });
+  }
+
+  /// The committed-surface tiles the settling stroke touched (all tiles
+  /// when the bounds are unknown).
+  List<BitmapTile> _settlingTiles() {
+    return settlingTilesForBounds(
+      surface: widget.sessionState.canvasState.currentSurface,
+      bounds: _settlingBounds,
+    );
+  }
+
+  void _requestSettlingDecodes() {
+    if (!_settling || !mounted) {
+      return;
+    }
+    for (final tile in _settlingTiles()) {
+      BitmapTileImageCache.instance.ensureDecoded(
+        tile,
+        staleScope: (widget.layerId, widget.frameId),
+      );
+    }
   }
 
   void _onTileImagesChanged() {
     if (!_settling || !mounted) {
       return;
     }
-    final tiles = widget.sessionState.canvasState.currentSurface.tiles.values;
-    if (BitmapTileImageCache.instance.allDecoded(tiles)) {
+    if (BitmapTileImageCache.instance.allDecoded(_settlingTiles())) {
       _resetOverlay();
     }
   }

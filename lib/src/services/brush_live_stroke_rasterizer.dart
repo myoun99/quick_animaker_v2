@@ -136,27 +136,122 @@ class BrushLiveStrokeRasterizer {
     if (rightExclusive <= left || bottomExclusive <= top) {
       return null;
     }
+    final columnCount = rightExclusive - left;
+    final rowCount = bottomExclusive - top;
+
+    // Per-dab hoists and axis lattices (see brush_tip_mask_sampling.dart):
+    // unrotated tips and the never-rotating tiled masks sample through
+    // per-axis precomputes with the scalar samplers' exact arithmetic, so
+    // the resulting bytes are unchanged — the parity suites pin this.
+    final dualMask = dab.dualMask;
+    final textureMask = dab.textureMask;
+    final textureDensity = dab.textureDensity;
+    final textureOneMinusDensity = 1.0 - textureDensity;
+    final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
+    // Conservative squared-distance cull for plain round tips: only pixels
+    // PROVABLY outside the radius skip the sqrt; anything within the float
+    // margin still runs the exact scalar test.
+    final radiusSqSkip = radius * radius * (1.0 + 1e-12);
+
+    final tipULattice = unrotatedTip
+        ? BrushTipMaskAxisLattice.compute(
+            mask: tipMask,
+            radius: radius,
+            start: left,
+            count: columnCount,
+            center: centerX,
+          )
+        : null;
+    final tipVLattice = unrotatedTip
+        ? BrushTipMaskAxisLattice.compute(
+            mask: tipMask,
+            radius: radius,
+            start: top,
+            count: rowCount,
+            center: centerY,
+            inverseRoundness: inverseRoundness,
+          )
+        : null;
+    final dualULattice = dualMask == null
+        ? null
+        : TiledMaskAxisLattice.compute(
+            mask: dualMask,
+            start: left,
+            count: columnCount,
+            originOffset: -centerX,
+            period: dab.size * dab.dualMaskScale,
+            offset: dab.dualOffsetU,
+          );
+    final dualVLattice = dualMask == null
+        ? null
+        : TiledMaskAxisLattice.compute(
+            mask: dualMask,
+            start: top,
+            count: rowCount,
+            originOffset: -centerY,
+            period: dab.size * dab.dualMaskScale,
+            offset: dab.dualOffsetV,
+          );
+    final textureULattice = textureMask == null
+        ? null
+        : TiledMaskAxisLattice.compute(
+            mask: textureMask,
+            start: left,
+            count: columnCount,
+            originOffset: 0.0,
+            period: textureMask.size * dab.textureScale,
+            offset: 0.0,
+          );
+    final textureVLattice = textureMask == null
+        ? null
+        : TiledMaskAxisLattice.compute(
+            mask: textureMask,
+            start: top,
+            count: rowCount,
+            originOffset: 0.0,
+            period: textureMask.size * dab.textureScale,
+            offset: 0.0,
+          );
 
     for (var y = top; y < bottomExclusive; y += 1) {
       final dy = y + 0.5 - centerY;
       final dySquared = dy * dy;
       final rowOffset = y * width;
+      final vIndex = y - top;
+      if (tipVLattice != null && tipVLattice.inRange[vIndex] == 0) {
+        // Same effect as the scalar |tipV| > radius per-pixel cull.
+        continue;
+      }
 
       for (var x = left; x < rightExclusive; x += 1) {
         double coverage;
         if (tipMask != null) {
-          final dx = x + 0.5 - centerX;
-          final tipU = dx * tipCos - dy * tipSin;
-          final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-          if (tipU.abs() > radius || tipV.abs() > radius) {
-            continue;
+          if (unrotatedTip) {
+            final uIndex = x - left;
+            if (tipULattice!.inRange[uIndex] == 0) {
+              continue;
+            }
+            coverage = sampleBrushTipMaskCoverageLattice(
+              mask: tipMask,
+              uAxis: tipULattice,
+              uIndex: uIndex,
+              vAxis: tipVLattice!,
+              vIndex: vIndex,
+            );
+          } else {
+            final dx = x + 0.5 - centerX;
+            final tipU = dx * tipCos - dy * tipSin;
+            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
+            if (tipU.abs() > radius || tipV.abs() > radius) {
+              continue;
+            }
+            coverage = sampleBrushTipMaskCoverage(
+              mask: tipMask,
+              tipU: tipU,
+              tipV: tipV,
+              radius: radius,
+            );
           }
-          coverage = sampleBrushTipMaskCoverage(
-            mask: tipMask,
-            tipU: tipU,
-            tipV: tipV,
-            radius: radius,
-          );
           if (coverage <= 0.0) {
             continue;
           }
@@ -168,7 +263,11 @@ class BrushLiveStrokeRasterizer {
             final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
             distance = math.sqrt(tipU * tipU + tipV * tipV);
           } else {
-            distance = math.sqrt(dx * dx + dySquared);
+            final dxSquared = dx * dx;
+            if (dxSquared + dySquared > radiusSqSkip) {
+              continue;
+            }
+            distance = math.sqrt(dxSquared + dySquared);
           }
           if (distance > radius) {
             continue;
@@ -198,15 +297,13 @@ class BrushLiveStrokeRasterizer {
 
         // Dual-brush texture: a second tiled mask multiplies the coverage
         // (must match the commit rasterizer and oracle exactly).
-        final dualMask = dab.dualMask;
         if (dualMask != null) {
-          coverage *= sampleBrushTipMaskTiledCoverage(
+          coverage *= sampleBrushTipMaskTiledCoverageLattice(
             mask: dualMask,
-            dx: x + 0.5 - centerX,
-            dy: dy,
-            period: dab.size * dab.dualMaskScale,
-            offsetU: dab.dualOffsetU,
-            offsetV: dab.dualOffsetV,
+            uAxis: dualULattice!,
+            uIndex: x - left,
+            vAxis: dualVLattice!,
+            vIndex: vIndex,
           );
           if (coverage <= 0.0) {
             continue;
@@ -215,18 +312,15 @@ class BrushLiveStrokeRasterizer {
 
         // Paper texture: canvas-anchored tiled mask, blended in by density
         // (must match the commit rasterizer and oracle exactly).
-        final textureMask = dab.textureMask;
         if (textureMask != null) {
-          final textureSample = sampleBrushTipMaskTiledCoverage(
+          final textureSample = sampleBrushTipMaskTiledCoverageLattice(
             mask: textureMask,
-            dx: x + 0.5,
-            dy: y + 0.5,
-            period: textureMask.size * dab.textureScale,
-            offsetU: 0.0,
-            offsetV: 0.0,
+            uAxis: textureULattice!,
+            uIndex: x - left,
+            vAxis: textureVLattice!,
+            vIndex: vIndex,
           );
-          coverage *=
-              (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+          coverage *= textureOneMinusDensity + textureDensity * textureSample;
           if (coverage <= 0.0) {
             continue;
           }

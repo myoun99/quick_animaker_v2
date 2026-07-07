@@ -42,6 +42,19 @@ class BrushTipMask {
   /// Row-major alpha bytes (0 = transparent, 255 = full coverage).
   final Uint8List alpha;
 
+  /// [alpha] pre-divided by 255.0 — exactly the `alpha[i] / 255.0` every
+  /// sampler computes per texel read, cached once so the rasterizer hot
+  /// loops skip the per-pixel conversion. Derived render data only.
+  late final Float64List alphaNormalized = _normalizeAlpha();
+
+  Float64List _normalizeAlpha() {
+    final normalized = Float64List(alpha.length);
+    for (var index = 0; index < alpha.length; index += 1) {
+      normalized[index] = alpha[index] / 255.0;
+    }
+    return normalized;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'size': size,
