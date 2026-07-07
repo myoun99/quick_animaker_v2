@@ -6,6 +6,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -41,6 +42,9 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.projectFps = 24,
+    this.onRemoveAudioClip,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -74,6 +78,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM row chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// Waveform peaks for SE rows' audio clips + the removal hook.
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final int projectFps;
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -693,6 +702,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onActivateCell,
                                                   instructionDefById:
                                                       widget.instructionDefById,
+                                                  audioPeaksFor:
+                                                      widget.audioPeaksFor,
+                                                  projectFps: widget.projectFps,
+                                                  onRemoveAudioClip:
+                                                      widget.onRemoveAudioClip,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

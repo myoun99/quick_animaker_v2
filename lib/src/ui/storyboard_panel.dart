@@ -12,6 +12,8 @@ import '../models/project.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../services/audio/audio_peaks_extractor.dart';
+import 'audio/waveform_painter.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
@@ -76,6 +78,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSeekGlobalFrame,
     this.isFrameCached,
     this.thumbnailFor,
+    this.audioPeaksFor,
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
@@ -136,6 +139,9 @@ class StoryboardPanel extends StatefulWidget {
   /// OWNED BY THE RESOLVER — blocks paint it without disposing. Null hides
   /// the thumbnail strip.
   final ui.Image? Function(Cut cut)? thumbnailFor;
+
+  /// Waveform peaks per audio file for the SE rows (null hides waveforms).
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   // Cut management actions (the storyboard owns cut lifecycle; these were
   // the temporary top-toolbar controls). All act on the active cut.
@@ -443,6 +449,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   .toList(growable: false),
                                               width: contentWidth,
                                               timelineScale: scale,
+                                              projectFps: widget.projectFps,
+                                              audioPeaksFor:
+                                                  widget.audioPeaksFor,
                                             ),
                                         ],
                                       ],
@@ -780,6 +789,8 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.layoutEntries,
     required this.width,
     required this.timelineScale,
+    required this.projectFps,
+    this.audioPeaksFor,
   });
 
   final int trackIndex;
@@ -787,11 +798,63 @@ class _StoryboardSeRow extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
   final TimelineScale timelineScale;
+  final int projectFps;
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final spans = <Widget>[];
+    // Waveforms first (painted UNDER the SE label spans): each clip mapped
+    // to track-global frames and clamped at its cut's end.
+    final audioPeaksFor = this.audioPeaksFor;
+    if (audioPeaksFor != null) {
+      for (final entry in layoutEntries) {
+        final layer = _seLayerAt(entry.cut, slot);
+        if (layer == null) {
+          continue;
+        }
+        for (var index = 0; index < layer.audioClips.length; index += 1) {
+          final clip = layer.audioClips[index];
+          if (clip.startFrame >= entry.duration) {
+            continue;
+          }
+          final peaks = audioPeaksFor(clip.filePath);
+          if (peaks == null) {
+            continue;
+          }
+          final endExclusive = math.min(
+            clip.startFrame + peaks.durationFrames(projectFps),
+            entry.duration,
+          );
+          spans.add(
+            Positioned(
+              left: timelineScale.leftForFrame(
+                entry.startFrame + clip.startFrame,
+              ),
+              top: 0,
+              bottom: 0,
+              width:
+                  (endExclusive - clip.startFrame) *
+                  timelineScale.pixelsPerFrame,
+              child: IgnorePointer(
+                key: ValueKey<String>(
+                  'storyboard-audio-clip-${entry.cut.id.value}-$index',
+                ),
+                child: CustomPaint(
+                  painter: WaveformPainter(
+                    peaks: peaks,
+                    fps: projectFps,
+                    pixelsPerFrame: timelineScale.pixelsPerFrame,
+                    color: colorScheme.tertiary.withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+      }
+    }
     for (final entry in layoutEntries) {
       final layer = _seLayerAt(entry.cut, slot);
       if (layer == null) {

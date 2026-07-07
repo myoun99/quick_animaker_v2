@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
@@ -28,6 +29,8 @@ class TimelinePanel extends StatefulWidget {
     required this.onSelectFrame,
     this.onActivateCell,
     this.instructionDefById,
+    this.audioPeaksFor,
+    this.onRemoveAudioClip,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -68,6 +71,11 @@ class TimelinePanel extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM row chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// Waveform peaks for SE rows' audio clips + the removal hook (both
+  /// orientations; frames↔seconds via [projectFps]).
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -248,6 +256,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSelectFrame: widget.onSelectFrame,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
+                    audioPeaksFor: widget.audioPeaksFor,
+                    projectFps: widget.projectFps,
+                    onRemoveAudioClip: widget.onRemoveAudioClip,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -274,6 +285,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSelectFrame: widget.onSelectFrame,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
+                    audioPeaksFor: widget.audioPeaksFor,
+                    projectFps: widget.projectFps,
+                    onRemoveAudioClip: widget.onRemoveAudioClip,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,

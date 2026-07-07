@@ -1,0 +1,176 @@
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
+import 'package:quick_animaker_v2/src/ui/audio/audio_peaks_store.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
+
+/// One second of audio at half amplitude → 24 frames at 24 fps.
+final _peaks = AudioPeaks(
+  bucketsPerSecond: 80,
+  peaks: Float32List.fromList(List.filled(80, 0.5)),
+);
+
+Layer _seLayer() => Layer(
+  id: const LayerId('wave-se'),
+  name: 'S1',
+  kind: LayerKind.se,
+  frames: const [],
+  timeline: const {},
+  audioClips: const [AudioClip(filePath: 'voice.wav', startFrame: 2)],
+);
+
+void main() {
+  testWidgets('timeline SE row paints the clip waveform and the context '
+      'menu removes it', (tester) async {
+    final removed = <(LayerId, int)>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelinePanel(
+            layers: [_seLayer()],
+            activeLayerId: null,
+            currentFrameIndex: 0,
+            playbackFrameCount: 48,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            orientation: TimelineOrientation.horizontal,
+            onOrientationChanged: (_) {},
+            projectFps: 24,
+            audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
+            onRemoveAudioClip: (layerId, clipIndex) =>
+                removed.add((layerId, clipIndex)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final strip = find.byKey(
+      const ValueKey<String>('timeline-audio-clip-wave-se-0'),
+    );
+    expect(strip, findsOneWidget);
+    // 24 frames at the default 48 px/frame.
+    expect(tester.getSize(strip).width, moreOrLessEquals(24 * 48));
+
+    // The strip is wider than the viewport — long-press a visible spot
+    // near its left edge instead of the (offscreen) center.
+    await tester.longPressAt(tester.getTopLeft(strip) + const Offset(30, 10));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('audio-clip-menu-remove')),
+    );
+    await tester.pumpAndSettle();
+    expect(removed, [(const LayerId('wave-se'), 0)]);
+  });
+
+  testWidgets('the storyboard SE row paints the waveform clamped at the cut '
+      'end', (tester) async {
+    final project = Project(
+      id: const ProjectId('wave-project'),
+      name: 'Wave',
+      createdAt: DateTime.utc(2026, 7, 8),
+      tracks: [
+        Track(
+          id: const TrackId('wave-track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('wave-cut'),
+              name: 'Wave Cut',
+              // Shorter than the 24-frame clip → clamps at 12 - 2 = 10.
+              duration: 12,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [_seLayer()],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: project,
+            activeCutId: const CutId('wave-cut'),
+            onCutSelected: (_) {},
+            pixelsPerFrame: 8,
+            projectFps: 24,
+            audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final strip = find.byKey(
+      const ValueKey<String>('storyboard-audio-clip-wave-cut-0'),
+    );
+    expect(strip, findsOneWidget);
+    expect(tester.getSize(strip).width, moreOrLessEquals(10 * 8));
+  });
+
+  test(
+    'the peaks store extracts once per path and remembers failures',
+    () async {
+      var calls = 0;
+      final store = AudioPeaksStore(
+        extractor: _StubExtractor(() async {
+          calls += 1;
+          return calls == 1 ? _peaks : null;
+        }),
+      );
+      addTearDown(store.dispose);
+
+      expect(store.peaksFor('a.wav'), isNull);
+      await Future<void>.delayed(Duration.zero);
+      expect(store.peaksFor('a.wav'), same(_peaks));
+      expect(calls, 1);
+
+      // A failing path is remembered — no retry loop.
+      expect(store.peaksFor('b.wav'), isNull);
+      await Future<void>.delayed(Duration.zero);
+      expect(store.peaksFor('b.wav'), isNull);
+      expect(store.peaksFor('b.wav'), isNull);
+      expect(calls, 2);
+
+      // Invalidate forgets the failure.
+      store.invalidate('b.wav');
+      store.peaksFor('b.wav');
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, 3);
+    },
+  );
+}
+
+class _StubExtractor extends AudioPeaksExtractor {
+  const _StubExtractor(this._extract);
+
+  final Future<AudioPeaks?> Function() _extract;
+
+  @override
+  Future<AudioPeaks?> extract(String filePath) => _extract();
+}
