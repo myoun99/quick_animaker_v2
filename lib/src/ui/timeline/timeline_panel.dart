@@ -12,6 +12,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
 import 'timeline_orientation.dart';
+import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
 class TimelinePanel extends StatefulWidget {
@@ -46,6 +47,8 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.collapsedSections = const {},
+    this.onToggleSection,
   });
 
   final List<Layer> layers;
@@ -109,6 +112,11 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// SE/camera sections folded to stub rows (columns in the X-sheet), and
+  /// the gutter/header toggle. Shared by both orientations.
+  final Set<TimelineSection> collapsedSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -252,6 +260,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
+                    collapsedSections: widget.collapsedSections,
+                    onToggleSection: widget.onToggleSection,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -272,6 +282,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     commaDrag: widget.commaDrag,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,
+                    collapsedSections: widget.collapsedSections,
+                    onToggleSection: widget.onToggleSection,
                   ),
           ),
         ],

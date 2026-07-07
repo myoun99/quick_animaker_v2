@@ -6,6 +6,91 @@ import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_section_policy.dart';
+
+/// The rail's leading gutter cell: empty spacer on most rows, the rotated
+/// section label (+ fold chevron on collapsible sections) on each section's
+/// first visible row — the paper sheet's column-group headings on their
+/// side.
+class TimelineSectionGutterSlot extends StatelessWidget {
+  const TimelineSectionGutterSlot({
+    super.key,
+    required this.metrics,
+    required this.section,
+    this.onToggleSection,
+    this.collapsed = false,
+  });
+
+  final TimelineGridMetrics metrics;
+  final TimelineSection? section;
+  final VoidCallback? onToggleSection;
+
+  /// Whether this slot sits on a collapsed-section stub row (flips the
+  /// chevron).
+  final bool collapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    final section = this.section;
+    if (metrics.sectionLabelGutterWidth <= 0) {
+      return const SizedBox.shrink();
+    }
+    if (section == null) {
+      return SizedBox(width: metrics.sectionLabelGutterWidth);
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final collapsible =
+        timelineSectionCollapsible(section) && onToggleSection != null;
+    final content = Column(
+      children: [
+        if (collapsible)
+          Icon(
+            collapsed ? Icons.chevron_right : Icons.expand_more,
+            size: 12,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        Expanded(
+          child: Center(
+            child: RotatedBox(
+              quarterTurns: 1,
+              child: Text(
+                timelineSectionLabel(section),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return SizedBox(
+      width: metrics.sectionLabelGutterWidth,
+      child: collapsible
+          ? InkWell(
+              key: ValueKey<String>(
+                'timeline-section-collapse-${section.name}',
+              ),
+              onTap: onToggleSection,
+              child: Semantics(
+                label:
+                    '${collapsed ? 'Expand' : 'Collapse'} '
+                    '${timelineSectionLabel(section)} section',
+                button: true,
+                child: content,
+              ),
+            )
+          : ExcludeSemantics(child: content),
+    );
+  }
+}
 
 class TimelineLayerControlsRow extends StatelessWidget {
   const TimelineLayerControlsRow({
@@ -19,6 +104,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.sectionStart = false,
+    this.sectionStartOf,
+    this.onToggleSection,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -36,6 +123,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Whether this row opens a new timesheet section (drawing/SE/camera);
   /// draws a heavier divider along the rail row's top edge.
   final bool sectionStart;
+
+  /// The section this row is the FIRST VISIBLE row of, if any: the gutter
+  /// slot prints its rotated label there (with the fold chevron on
+  /// collapsible sections). Unlike [sectionStart] this is also set on the
+  /// very first row.
+  final TimelineSection? sectionStartOf;
+
+  /// Folds [sectionStartOf] away (collapsible sections only).
+  final VoidCallback? onToggleSection;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay
@@ -72,6 +168,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
+              TimelineSectionGutterSlot(
+                metrics: metrics,
+                section: sectionStartOf,
+                onToggleSection: onToggleSection,
+              ),
               if (hasLanes && onToggleLanes != null)
                 InkWell(
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),

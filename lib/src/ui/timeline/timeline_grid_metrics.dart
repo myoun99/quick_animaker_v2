@@ -7,15 +7,17 @@ class TimelineGridMetrics {
 
   const TimelineGridMetrics({
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
-    this.layerControlsWidth = 264,
+    this.layerControlsWidth = 288,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,
     this.verticalScrollbarWidth = 14,
+    this.sectionLabelGutterWidth = 24,
   }) : assert(minimumVisibleFrameCells >= 0),
        assert(layerControlsWidth >= 0),
        assert(frameCellWidth > 0),
        assert(layerRowHeight > 0),
-       assert(verticalScrollbarWidth >= 0);
+       assert(verticalScrollbarWidth >= 0),
+       assert(sectionLabelGutterWidth >= 0);
 
   /// Default metrics matching the current [LayerTimelineGrid] behavior.
   static const TimelineGridMetrics defaults = TimelineGridMetrics();
@@ -28,6 +30,7 @@ class TimelineGridMetrics {
       frameCellWidth: frameCellWidth ?? this.frameCellWidth,
       layerRowHeight: layerRowHeight,
       verticalScrollbarWidth: verticalScrollbarWidth,
+      sectionLabelGutterWidth: sectionLabelGutterWidth,
     );
   }
 
@@ -63,6 +66,11 @@ class TimelineGridMetrics {
   /// and frame grid area.
   final double verticalScrollbarWidth;
 
+  /// The section-label gutter leading the layer rail (the timesheet's
+  /// ACTION/SE/CAMERA group headings laid on their side); included in
+  /// [layerControlsWidth].
+  final double sectionLabelGutterWidth;
+
   @override
   bool operator ==(Object other) {
     return other is TimelineGridMetrics &&
@@ -70,7 +78,8 @@ class TimelineGridMetrics {
         other.layerControlsWidth == layerControlsWidth &&
         other.frameCellWidth == frameCellWidth &&
         other.layerRowHeight == layerRowHeight &&
-        other.verticalScrollbarWidth == verticalScrollbarWidth;
+        other.verticalScrollbarWidth == verticalScrollbarWidth &&
+        other.sectionLabelGutterWidth == sectionLabelGutterWidth;
   }
 
   @override
@@ -80,6 +89,7 @@ class TimelineGridMetrics {
     frameCellWidth,
     layerRowHeight,
     verticalScrollbarWidth,
+    sectionLabelGutterWidth,
   );
 
   @override

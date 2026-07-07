@@ -18,9 +18,11 @@ import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
+import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
+import 'timeline_section_stub_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_playhead.dart';
@@ -61,6 +63,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.commaDrag,
     this.isFrameCached,
     this.metrics = defaultMetrics,
+    this.collapsedSections = const {},
+    this.onToggleSection,
   });
 
   final List<Layer> layers;
@@ -101,12 +105,20 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// as the frame ROW height here.
   final TimelineGridMetrics metrics;
 
+  /// Sections folded to one stub COLUMN here (the section axis runs
+  /// horizontally in the X-sheet) and the header-chevron toggle.
+  final Set<TimelineSection> collapsedSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
+
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
+  /// No section gutter here — the X-sheet's section axis is horizontal and
+  /// section controls live on the column headers.
   static const TimelineGridMetrics defaultMetrics = TimelineGridMetrics(
     frameCellWidth: 36,
     layerRowHeight: 164,
     layerControlsWidth: 72,
+    sectionLabelGutterWidth: 0,
   );
 
   static const double _headerHeight = 92;
@@ -300,6 +312,32 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         _lastEffectiveFrameScrollOffset = effectiveFrameScrollOffset;
         _synchronizeFrameScrollController(effectiveFrameScrollOffset);
 
+        // Collapsed sections fold to one stub COLUMN (full column width —
+        // every extent formula stays untouched); shared row policy with the
+        // horizontal grid.
+        final entries = buildTimelineDisplayRows(
+          layers: widget.layers,
+          expandedLayerIds: const {},
+          lanesForLayer: (_) => const [],
+          collapsedSections: widget.collapsedSections,
+        );
+        // Section labels/chevrons sit on each section's first visible
+        // column header.
+        final sectionStartsByEntry = <int, TimelineSection>{};
+        TimelineSection? previousSection;
+        for (var index = 0; index < entries.length; index += 1) {
+          final entry = entries[index];
+          final section = entry.isSectionStub
+              ? entry.stubSection!
+              : timelineSectionForLayerKind(entry.layer.kind);
+          if (section != previousSection) {
+            if (!entry.isSectionStub) {
+              sectionStartsByEntry[index] = section;
+            }
+            previousSection = section;
+          }
+        }
+
         // The shared virtualization plan with the frame axis fed through the
         // "horizontal" inputs (the axes are swapped in this grid).
         final plan = calculateTimelineVirtualizationPlan(
@@ -310,12 +348,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           frameCellWidth: _metrics.frameCellWidth,
           layerRowHeight: _metrics.layerRowHeight,
           frameCount: _renderedFrameCount,
-          layerCount: widget.layers.length,
+          layerCount: entries.length,
         );
         final frameRange = plan.frameRange;
         final totalFrameContentHeight = plan.totalFrameContentWidth;
-        final columnsContentWidth =
-            widget.layers.length * _metrics.layerRowHeight;
+        final columnsContentWidth = entries.length * _metrics.layerRowHeight;
         final cutEndBoundaryOffset = timelineCutEndBoundaryX(
           playbackFrameCount: widget.frameCount,
           metrics: _metrics,
@@ -462,29 +499,63 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     children: [
                                       for (
                                         var index = 0;
-                                        index < widget.layers.length;
+                                        index < entries.length;
                                         index += 1
                                       )
-                                        _LayerHeader(
-                                          layer: widget.layers[index],
-                                          active:
-                                              widget.layers[index].id ==
-                                              widget.activeLayerId,
-                                          metrics: _metrics,
-                                          sectionStart: timelineSectionStartsAt(
-                                            widget.layers,
-                                            index,
-                                          ),
-                                          onSelectLayer: widget.onSelectLayer,
-                                          onToggleLayerVisibility:
-                                              widget.onToggleLayerVisibility,
-                                          onLayerOpacityChanged:
-                                              widget.onLayerOpacityChanged,
-                                          onToggleLayerTimesheet:
-                                              widget.onToggleLayerTimesheet,
-                                          onLayerMarkSelected:
-                                              widget.onLayerMarkSelected,
-                                        ),
+                                        entries[index].isSectionStub
+                                            ? _XSheetSectionStubHeader(
+                                                section:
+                                                    entries[index].stubSection!,
+                                                metrics: _metrics,
+                                                sectionStart:
+                                                    timelineSectionStartsAt(
+                                                      widget.layers,
+                                                      entries[index].layerIndex,
+                                                    ),
+                                                onToggleSection:
+                                                    widget.onToggleSection ==
+                                                        null
+                                                    ? null
+                                                    : () =>
+                                                          widget
+                                                              .onToggleSection!(
+                                                            entries[index]
+                                                                .stubSection!,
+                                                          ),
+                                              )
+                                            : _LayerHeader(
+                                                layer: entries[index].layer,
+                                                active:
+                                                    entries[index].layer.id ==
+                                                    widget.activeLayerId,
+                                                metrics: _metrics,
+                                                sectionStart:
+                                                    timelineSectionStartsAt(
+                                                      widget.layers,
+                                                      entries[index].layerIndex,
+                                                    ),
+                                                sectionStartOf:
+                                                    sectionStartsByEntry[index],
+                                                onToggleSection:
+                                                    widget.onToggleSection ==
+                                                            null ||
+                                                        sectionStartsByEntry[index] ==
+                                                            null
+                                                    ? null
+                                                    : () => widget.onToggleSection!(
+                                                        sectionStartsByEntry[index]!,
+                                                      ),
+                                                onSelectLayer:
+                                                    widget.onSelectLayer,
+                                                onToggleLayerVisibility: widget
+                                                    .onToggleLayerVisibility,
+                                                onLayerOpacityChanged: widget
+                                                    .onLayerOpacityChanged,
+                                                onToggleLayerTimesheet: widget
+                                                    .onToggleLayerTimesheet,
+                                                onLayerMarkSelected:
+                                                    widget.onLayerMarkSelected,
+                                              ),
                                     ],
                                   ),
                                   Expanded(
@@ -503,49 +574,66 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               children: [
                                                 for (
                                                   var index = 0;
-                                                  index < widget.layers.length;
+                                                  index < entries.length;
                                                   index += 1
                                                 )
-                                                  _XSheetFrameCellsColumn(
-                                                    onActivateCell:
-                                                        widget.onActivateCell,
-                                                    instructionDefById: widget
-                                                        .instructionDefById,
-                                                    layer: widget.layers[index],
-                                                    active:
-                                                        widget
-                                                            .layers[index]
-                                                            .id ==
-                                                        widget.activeLayerId,
-                                                    sectionStart:
-                                                        timelineSectionStartsAt(
-                                                          widget.layers,
-                                                          index,
+                                                  entries[index].isSectionStub
+                                                      ? TimelineSectionStubCellsRow(
+                                                          section:
+                                                              entries[index]
+                                                                  .stubSection!,
+                                                          mainAxisExtent:
+                                                              totalFrameContentHeight,
+                                                          metrics: _metrics,
+                                                          axis: Axis.vertical,
+                                                          keyPrefix: 'xsheet',
+                                                        )
+                                                      : _XSheetFrameCellsColumn(
+                                                          onActivateCell: widget
+                                                              .onActivateCell,
+                                                          instructionDefById: widget
+                                                              .instructionDefById,
+                                                          layer: entries[index]
+                                                              .layer,
+                                                          active:
+                                                              entries[index]
+                                                                  .layer
+                                                                  .id ==
+                                                              widget
+                                                                  .activeLayerId,
+                                                          sectionStart:
+                                                              timelineSectionStartsAt(
+                                                                widget.layers,
+                                                                entries[index]
+                                                                    .layerIndex,
+                                                              ),
+                                                          currentFrameIndex: widget
+                                                              .currentFrameIndex,
+                                                          playbackFrameCount:
+                                                              widget.frameCount,
+                                                          frameStartIndex:
+                                                              frameRange
+                                                                  .startIndex,
+                                                          frameEndIndexExclusive:
+                                                              frameRange
+                                                                  .endIndexExclusive,
+                                                          leadingFrameSpacerHeight:
+                                                              plan.leadingFrameSpacerWidth,
+                                                          trailingFrameSpacerHeight:
+                                                              plan.trailingFrameSpacerWidth,
+                                                          metrics: _metrics,
+                                                          exposureStateForLayer:
+                                                              widget
+                                                                  .exposureStateForLayer,
+                                                          frameNameForLayer: widget
+                                                              .frameNameForLayer,
+                                                          onSelectLayer: widget
+                                                              .onSelectLayer,
+                                                          onSelectFrame: widget
+                                                              .onSelectFrame,
+                                                          commaDrag:
+                                                              widget.commaDrag,
                                                         ),
-                                                    currentFrameIndex: widget
-                                                        .currentFrameIndex,
-                                                    playbackFrameCount:
-                                                        widget.frameCount,
-                                                    frameStartIndex:
-                                                        frameRange.startIndex,
-                                                    frameEndIndexExclusive:
-                                                        frameRange
-                                                            .endIndexExclusive,
-                                                    leadingFrameSpacerHeight: plan
-                                                        .leadingFrameSpacerWidth,
-                                                    trailingFrameSpacerHeight: plan
-                                                        .trailingFrameSpacerWidth,
-                                                    metrics: _metrics,
-                                                    exposureStateForLayer: widget
-                                                        .exposureStateForLayer,
-                                                    frameNameForLayer: widget
-                                                        .frameNameForLayer,
-                                                    onSelectLayer:
-                                                        widget.onSelectLayer,
-                                                    onSelectFrame:
-                                                        widget.onSelectFrame,
-                                                    commaDrag: widget.commaDrag,
-                                                  ),
                                               ],
                                             ),
                                             TimelinePlayhead(
@@ -559,7 +647,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               leadingFrameSpacerWidth:
                                                   plan.leadingFrameSpacerWidth,
                                               metrics: _metrics,
-                                              layerCount: widget.layers.length,
+                                              layerCount: entries.length,
                                             ),
                                             TimelineBodyCutEndBoundary(
                                               axis: Axis.vertical,
@@ -977,6 +1065,79 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   }
 }
 
+/// A collapsed section's header cell: the group label + unfold chevron in
+/// one full-width column head (the section axis runs horizontally here).
+class _XSheetSectionStubHeader extends StatelessWidget {
+  const _XSheetSectionStubHeader({
+    required this.section,
+    required this.metrics,
+    required this.onToggleSection,
+    this.sectionStart = false,
+  });
+
+  final TimelineSection section;
+  final TimelineGridMetrics metrics;
+  final VoidCallback? onToggleSection;
+  final bool sectionStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final header = InkWell(
+      key: ValueKey<String>('xsheet-section-stub-header-${section.name}'),
+      onTap: onToggleSection,
+      child: Container(
+        width: metrics.layerRowHeight,
+        height: XSheetTimelineGrid._headerHeight,
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Semantics(
+          label: 'Expand ${timelineSectionLabel(section)} section',
+          button: true,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.unfold_more,
+                size: 14,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                timelineSectionLabel(section),
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!sectionStart) {
+      return header;
+    }
+    return Stack(
+      children: [
+        header,
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: 2,
+          child: IgnorePointer(child: Container(color: colorScheme.outline)),
+        ),
+      ],
+    );
+  }
+}
+
 class _LayerHeader extends StatelessWidget {
   const _LayerHeader({
     required this.layer,
@@ -988,6 +1149,8 @@ class _LayerHeader extends StatelessWidget {
     required this.onLayerMarkSelected,
     required this.metrics,
     this.sectionStart = false,
+    this.sectionStartOf,
+    this.onToggleSection,
   });
 
   final TimelineGridMetrics metrics;
@@ -1003,6 +1166,11 @@ class _LayerHeader extends StatelessWidget {
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the header's left edge.
   final bool sectionStart;
+
+  /// The section this column is the FIRST VISIBLE column of — collapsible
+  /// sections show the fold chevron here (the transposed gutter label).
+  final TimelineSection? sectionStartOf;
+  final VoidCallback? onToggleSection;
 
   @override
   Widget build(BuildContext context) {
@@ -1033,6 +1201,28 @@ class _LayerHeader extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  // The transposed section gutter: collapsible sections get
+                  // a fold chevron on their first visible column.
+                  if (sectionStartOf != null &&
+                      timelineSectionCollapsible(sectionStartOf!) &&
+                      onToggleSection != null)
+                    InkWell(
+                      key: ValueKey<String>(
+                        'xsheet-section-collapse-${sectionStartOf!.name}',
+                      ),
+                      onTap: onToggleSection,
+                      child: Semantics(
+                        label:
+                            'Collapse '
+                            '${timelineSectionLabel(sectionStartOf!)} section',
+                        button: true,
+                        child: const SizedBox(
+                          width: 16,
+                          height: 20,
+                          child: Icon(Icons.expand_more, size: 14),
+                        ),
+                      ),
+                    ),
                   // Timesheet + mark chips lead the name; ineligible layers
                   // keep empty slots so names align across columns.
                   if (layerKindEligibleForTimesheetToggle(layer.kind))

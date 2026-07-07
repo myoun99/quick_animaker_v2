@@ -280,7 +280,7 @@ void main() {
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(264));
+    expect(leftSpacerRect.width, moreOrLessEquals(288));
     expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
     expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
     expect(verticalSlotRect.width, moreOrLessEquals(14));

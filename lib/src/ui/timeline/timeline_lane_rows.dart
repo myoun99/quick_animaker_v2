@@ -94,7 +94,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       key: ValueKey<String>('timeline-lane-label-${layer.id}-${lane.laneId}'),
       width: widget.metrics.layerControlsWidth,
       height: widget.metrics.layerRowHeight,
-      padding: const EdgeInsets.only(left: 24, right: 8),
+      // Indent past the section gutter so lane labels stay aligned under
+      // their layer's controls.
+      padding: EdgeInsets.only(
+        left: 24 + widget.metrics.sectionLabelGutterWidth,
+        right: 8,
+      ),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),

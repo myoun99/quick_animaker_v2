@@ -7,7 +7,7 @@ void main() {
       const metrics = TimelineGridMetrics.defaults;
 
       expect(metrics.minimumVisibleFrameCells, 24);
-      expect(metrics.layerControlsWidth, 264);
+      expect(metrics.layerControlsWidth, 288);
       expect(metrics.frameCellWidth, 48);
       expect(metrics.layerRowHeight, 52);
       expect(metrics.verticalScrollbarWidth, 14);

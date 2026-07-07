@@ -30,6 +30,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
+import 'timeline/timeline_section_policy.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
@@ -208,6 +209,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.value = next;
   }
 
+  /// SE/camera timeline sections folded to stub rows (view state — survives
+  /// tab switches, session-only).
+  final ValueNotifier<Set<TimelineSection>> _collapsedTimelineSections =
+      ValueNotifier(const <TimelineSection>{});
+
+  void _toggleTimelineSection(TimelineSection section) {
+    final next = Set<TimelineSection>.of(_collapsedTimelineSections.value);
+    if (!next.remove(section)) {
+      next.add(section);
+    }
+    _collapsedTimelineSections.value = next;
+  }
+
   /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
   /// viewport (zoom/pan) — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
@@ -343,6 +357,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
+    _collapsedTimelineSections.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
     _timesheetInk.dispose();
@@ -556,6 +571,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
               _expandedLaneLayerIds,
+              _collapsedTimelineSections,
             ]),
             builder: (context, _) => TimelineTabHost(
               session: widget.session,
@@ -573,6 +589,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
+              collapsedSections: _collapsedTimelineSections.value,
+              onToggleSection: _toggleTimelineSection,
             ),
           ),
         );

@@ -21,6 +21,7 @@ import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
 
@@ -40,6 +41,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
+    this.collapsedSections = const {},
+    this.onToggleSection,
   });
 
   final EditorSessionManager session;
@@ -54,6 +57,10 @@ class TimelineTabHost extends StatefulWidget {
   /// tab switches).
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
+
+  /// SE/camera section fold state (host-owned, survives tab switches).
+  final Set<TimelineSection> collapsedSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -386,6 +393,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           projectFps: _session.projectFps,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
+          collapsedSections: widget.collapsedSections,
+          onToggleSection: widget.onToggleSection,
           lanesForLayer: _lanesForLayer,
           laneEdit: _laneEdit,
           timelineActionToolbar: Row(
