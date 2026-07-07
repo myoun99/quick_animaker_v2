@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 
 TransformPose _pose(double x, {double zoom = 1.0, double rotation = 0.0}) {
@@ -91,6 +92,115 @@ void main() {
         }),
         throwsFormatException,
       );
+    });
+
+    test('legacy pose-keyed json migrates to synchronized property keys', () {
+      final legacy = {
+        'keyframes': [
+          {'index': 2, 'pose': _pose(10, zoom: 2, rotation: 45).toJson()},
+        ],
+      };
+
+      final track = TransformTrack.fromJson(legacy);
+
+      expect(track.position.keyAt(2)!.value, CanvasPoint(x: 10, y: 20));
+      expect(track.scale.keyAt(2)!.value, 2);
+      expect(track.rotation.keyAt(2)!.value, 45);
+      expect(track.anchorPoint.isEmpty, isTrue);
+      expect(track.opacity.isEmpty, isTrue);
+    });
+  });
+
+  group('TransformTrack per-property (AE model)', () {
+    test('properties key independently of each other', () {
+      final track = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 0, y: 0))
+            .withKey(10, CanvasPoint(x: 100, y: 0)),
+        rotation: PropertyTrack<double>().withKey(4, 90),
+      );
+
+      expect(track.scale.isEmpty, isTrue);
+      expect(track.keyedFrames, {0, 4, 10});
+
+      final mid = track.resolveAt(
+        frameIndex: 5,
+        orElse: () => _pose(0, zoom: 3),
+      );
+      // Position interpolates between ITS keys; scale falls back to the
+      // default; rotation holds its single key.
+      expect(mid.center.x, 50);
+      expect(mid.zoom, 3);
+      expect(mid.rotationDegrees, 90);
+    });
+
+    test('the pose facade sees the union of keyed frames', () {
+      final track = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          2,
+          CanvasPoint(x: 5, y: 5),
+        ),
+        scale: PropertyTrack<double>().withKey(8, 2),
+      );
+
+      expect(track.keyframes.keys, [2, 8]);
+      expect(track.keyframeAt(2), isNotNull);
+      expect(track.keyframeAt(5), isNull);
+      expect(track.keyframeAt(8), isNotNull);
+    });
+
+    test('a hold key on one property freezes only that property', () {
+      final track = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(
+              0,
+              CanvasPoint(x: 0, y: 0),
+              interpolation: PropertyKeyInterpolation.hold,
+            )
+            .withKey(10, CanvasPoint(x: 100, y: 0)),
+        scale: PropertyTrack<double>().withKey(0, 1).withKey(10, 3),
+      );
+
+      final mid = track.resolveAt(frameIndex: 5, orElse: () => _pose(0));
+
+      expect(mid.center.x, 0, reason: 'position holds');
+      expect(mid.zoom, 2, reason: 'scale still lerps');
+    });
+
+    test('per-property json round-trips', () {
+      final track = TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 1, y: 2),
+        ),
+        position: PropertyTrack<CanvasPoint>().withKey(
+          3,
+          CanvasPoint(x: 4, y: 5),
+          interpolation: PropertyKeyInterpolation.hold,
+        ),
+        opacity: PropertyTrack<double>().withKey(6, 0.5),
+      );
+
+      final restored = TransformTrack.fromJson(track.toJson());
+
+      expect(restored, track);
+      expect(
+        restored.position.keyAt(3)!.interpolation,
+        PropertyKeyInterpolation.hold,
+      );
+    });
+
+    test('pose-facade writes stay synchronized (camera compatibility)', () {
+      final track = TransformTrack.empty()
+          .withKeyframe(4, _pose(10, zoom: 2, rotation: 30))
+          .withKeyframe(9, _pose(20));
+
+      expect(track.position.keys.keys, [4, 9]);
+      expect(track.scale.keys.keys, [4, 9]);
+      expect(track.rotation.keys.keys, [4, 9]);
+      // Round-tripping through the pose view is lossless while writes are
+      // pose-synchronized (the cut-duplicate path relies on this).
+      expect(TransformTrack(keyframes: Map.of(track.keyframes)), track);
     });
   });
 }

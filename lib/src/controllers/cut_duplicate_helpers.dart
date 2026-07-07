@@ -31,7 +31,9 @@ Cut duplicateCutAsIndependentCopy({
     duration: source.duration,
     canvasSize: source.canvasSize,
     metadata: source.metadata,
-    camera: CutCamera(keyframes: source.camera.keyframes),
+    // Share the immutable track directly: a pose-view round-trip would
+    // resynchronize (and thus lose) independently keyed properties.
+    camera: CutCamera.fromTrack(source.camera.track),
   );
 }
 
