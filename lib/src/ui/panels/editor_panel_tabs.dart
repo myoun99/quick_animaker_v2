@@ -430,7 +430,7 @@ class _PanelTabButton extends StatelessWidget {
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
 
-    // Every tab shows [X] [lock] [name] all the time — selection only
+    // Every tab shows [name] [lock] [X] all the time — selection only
     // changes colors, never the button's shape.
     return Tooltip(
       message: label,
@@ -455,14 +455,18 @@ class _PanelTabButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (onClose != null)
-                _TabGlyphButton(
-                  glyphKey: closeKey,
-                  tooltip: 'Close $label',
-                  icon: Icons.close,
-                  color: colorScheme.onSurfaceVariant,
-                  onTap: onClose!,
+              if (compact)
+                Icon(icon, size: 14, color: foreground)
+              else
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
                 ),
+              const SizedBox(width: 4),
               if (onToggleLock != null)
                 _TabGlyphButton(
                   glyphKey: lockKey,
@@ -479,17 +483,13 @@ class _PanelTabButton extends StatelessWidget {
                   padding: const EdgeInsets.all(2),
                   child: Icon(Icons.lock, size: 11, color: colorScheme.primary),
                 ),
-              const SizedBox(width: 4),
-              if (compact)
-                Icon(icon, size: 14, color: foreground)
-              else
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: foreground,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  ),
+              if (onClose != null)
+                _TabGlyphButton(
+                  glyphKey: closeKey,
+                  tooltip: 'Close $label',
+                  icon: Icons.close,
+                  color: colorScheme.onSurfaceVariant,
+                  onTap: onClose!,
                 ),
             ],
           ),
