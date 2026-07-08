@@ -158,6 +158,27 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           0,
           document.pages.length - 1,
         );
+        // Playback follows the sheet (③): page view turns to the playhead's
+        // page like flipping paper; continuous view scrolls the playhead
+        // row into view without touching the zoom. Idle keeps the viewport
+        // fully user-owned.
+        final autoFrame = playbackGlobalFrame == null
+            ? null
+            : widget.continuous
+            ? CanvasAutoFrameRequest(
+                token: ('timesheet-reveal', session.activeCut.id, playheadFrame),
+                rect: Rect.fromLTWH(
+                  layout.paperLeft,
+                  layout.frameRowTop(playheadFrame),
+                  layout.paperWidth,
+                  TimesheetDocumentLayout.rowHeight,
+                ),
+                panOnly: true,
+              )
+            : CanvasAutoFrameRequest(
+                token: ('timesheet-page', session.activeCut.id, playheadPage),
+                rect: layout.pageRect(playheadPage),
+              );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -232,6 +253,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 ),
                 // Fit frames the page the playhead is on.
                 fitFocusRect: layout.pageRect(playheadPage),
+                autoFrame: autoFrame,
                 contentStrokeActive:
                     inkController == null || !widget.inkEnabled
                     ? null

@@ -250,23 +250,29 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
     );
-    expect(find.text('SE Label'), findsOneWidget);
+    expect(find.text('New SE'), findsOneWidget);
 
     await tester.enterText(
-      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
       '와아!',
     );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('se-name-field')),
+      '앨리스',
+    );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
 
     final layer = _seLayer(repository);
     final entry = layer.timeline[4]!;
     expect(layer.frames.single.name, '와아!');
+    expect(layer.frames.single.seName, '앨리스');
     // Sheet semantics: holds to the cut end (duration 12, start 4).
     expect(entry.length, 8);
     expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-4'), '와아!');
+    expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
 
     // ONE undo removes the entire labeled entry.
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
@@ -310,13 +316,13 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-se-voice-6')),
     );
-    expect(find.text('SE Label'), findsOneWidget);
+    expect(find.text('Edit SE'), findsOneWidget);
     await tester.enterText(
-      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
       'Hello!',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
 

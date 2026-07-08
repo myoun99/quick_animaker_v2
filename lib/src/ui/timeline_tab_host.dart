@@ -5,18 +5,21 @@ import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/instruction_event_dialog.dart';
 import 'dialogs/instruction_set_editor_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
+import 'dialogs/se_instance_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
+import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
@@ -42,7 +45,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
-    this.collapsedSections = const {},
+    this.hiddenSections = const {},
     this.onToggleSection,
     this.audioFilePicker,
   });
@@ -60,8 +63,9 @@ class TimelineTabHost extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
-  /// SE/camera section fold state (host-owned, survives tab switches).
-  final Set<TimelineSection> collapsedSections;
+  /// SE/camera section visibility (host-owned, survives tab switches):
+  /// hidden sections render no rows; the toolbar buttons toggle them.
+  final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
   /// Injectable for tests; defaults to the platform open-file dialog.
@@ -198,8 +202,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
-  /// Double-tap cell editor, dispatched by row kind: SE rows edit their
-  /// name/dialogue, instruction rows their FI/FO/PAN … event.
+  /// THE unified instance-edit entrance (double-tap on any cell, and the
+  /// toolbar's Edit Instance button), dispatched by row kind: drawing
+  /// kinds edit the frame name, SE its name/dialogue, instruction its
+  /// event, camera its keys at the frame.
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
     final layer = _session.activeLayer;
     if (layer == null || layer.id != layerId) {
@@ -210,40 +216,121 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         await _editSeLabel();
       case LayerKind.instruction:
         await _editInstructionEvent(layerId, frameIndex);
-      case LayerKind.animation ||
-          LayerKind.storyboard ||
-          LayerKind.art ||
-          LayerKind.camera:
-        return;
+      case LayerKind.camera:
+        await _editCameraKeys(frameIndex);
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+        await _renameSelectedFrame();
     }
   }
 
-  /// SE cells: covered cells rename the covering entry, empty cells create
-  /// an entry holding to the next one / cut end, carrying the entered text
-  /// (one undo).
+  /// Toolbar 'Edit Instance': the same entrance at the playhead.
+  Future<void> _editActiveInstance() async {
+    final layer = _session.activeLayer;
+    if (layer == null) {
+      return;
+    }
+    await _activateCellEditor(layer.id, _session.currentFrameIndex);
+  }
+
+  /// Toolbar 'Add' — kind-dispatched creation: drawing kinds create a
+  /// frame, camera keys the current pose, SE/instruction open their
+  /// dialog first (dialog-first, one undo on commit).
+  Future<void> _createActiveInstance() async {
+    final layer = _session.activeLayer;
+    if (layer == null) {
+      return;
+    }
+    switch (layer.kind) {
+      case LayerKind.camera:
+        _session.setCameraKeyframeAtCurrentFrame(
+          _session.cameraPoseAtCurrentFrame,
+        );
+      case LayerKind.se:
+        await _editSeLabel();
+      case LayerKind.instruction:
+        await _editInstructionEvent(layer.id, _session.currentFrameIndex);
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+        _session.createDrawingAtCurrentFrame();
+    }
+  }
+
+  /// Camera cells: per-lane key/value/interpolation dialog at the frame;
+  /// the edited states fold into ONE track commit (one undo).
+  Future<void> _editCameraKeys(int frameIndex) async {
+    if (frameIndex < 0) {
+      return;
+    }
+    final cut = _session.activeCut;
+    final before = cameraKeyLaneStatesAt(
+      cut.camera.track,
+      frameIndex: frameIndex,
+      resolvedPose: resolveCameraPoseAt(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
+    );
+
+    final after = await showDialog<List<CameraKeyLaneState>>(
+      context: context,
+      builder: (context) =>
+          CameraKeyDialog(frameIndex: frameIndex, lanes: before),
+    );
+    if (!mounted || after == null) {
+      return;
+    }
+
+    final next = transformTrackWithKeyDialogApplied(
+      _session.activeCut.camera.track,
+      frameIndex: frameIndex,
+      before: before,
+      after: after,
+    );
+    if (next != null) {
+      _session.updateActiveCutCameraTrack(
+        next,
+        description: 'Edit camera keys at frame ${frameIndex + 1}',
+      );
+    }
+  }
+
+  /// The preview inside the instance dialogs follows the visible
+  /// orientation (Axis policy in miniature).
+  Axis get _previewAxis => widget.orientation == TimelineOrientation.horizontal
+      ? Axis.horizontal
+      : Axis.vertical;
+
+  /// SE cells: covered cells edit the covering entry's name/dialogue,
+  /// empty cells create an entry holding to the next one / cut end,
+  /// carrying the entered texts (one undo each way).
   Future<void> _editSeLabel() async {
     final creating = _session.selectedFrame == null;
     if (creating && !_session.canCreateDrawingAtCurrentFrame) {
       return;
     }
 
-    final nextName = await showDialog<String>(
+    final result = await showDialog<SeInstanceDialogResult>(
       context: context,
-      builder: (context) => RenameFrameDialog(
-        initialName: creating ? '' : _session.selectedFrameName ?? '',
-        title: 'SE Label',
-        fieldLabel: 'Name / dialogue',
+      builder: (context) => SeInstanceDialog(
+        creating: creating,
+        initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
+        initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
+        previewAxis: _previewAxis,
       ),
     );
-    if (!mounted || nextName == null) {
+    if (!mounted || result == null) {
       return;
     }
 
+    final seName = result.seName.isEmpty ? null : result.seName;
     if (creating) {
-      _session.createSeEntryAtCurrentFrame(name: nextName);
+      _session.createSeEntryAtCurrentFrame(
+        name: result.dialogue,
+        seName: seName,
+      );
     } else {
-      // SE renames never hit the link-conflict flow (duplicates allowed).
-      _session.renameSelectedFrame(nextName);
+      // SE edits never hit the link-conflict flow (duplicates allowed).
+      _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
     }
   }
 
@@ -261,8 +348,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialText: covering?.value.text,
         initialValueA: covering?.value.valueA,
         initialValueB: covering?.value.valueB,
+        initialMemo: covering?.value.memo,
         editing: covering != null,
         onEditInstructionSet: () => _editInstructionSet(context),
+        previewAxis: _previewAxis,
       ),
     );
     if (!mounted || result == null) {
@@ -286,6 +375,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         text: result.text,
         valueA: result.valueA,
         valueB: result.valueB,
+        memo: result.memo,
       ),
     );
   }
@@ -427,8 +517,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           projectFps: _session.projectFps,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
-          collapsedSections: widget.collapsedSections,
-          onToggleSection: widget.onToggleSection,
+          hiddenSections: widget.hiddenSections,
           lanesForLayer: _lanesForLayer,
           laneEdit: _laneEdit,
           timelineActionToolbar: Row(
@@ -445,8 +534,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   onRenameLayer: _renameActiveLayer,
                   onDeleteLayer: _deleteActiveLayer,
-                  onRenameFrame: _renameSelectedFrame,
+                  onEditInstance: _editActiveInstance,
+                  onCreateInstance: _createActiveInstance,
                   onImportAudio: _importAudio,
+                  hiddenSections: widget.hiddenSections,
+                  onToggleSection: widget.onToggleSection,
                 ),
               ),
             ],

@@ -21,12 +21,6 @@ import 'timeline_frame_coordinate_policy.dart';
 /// span overlay instead.
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
-/// Which layer kinds open the cell editor dialog on double tap: SE rows
-/// edit their name/dialogue, instruction rows their FI/FO/PAN … events.
-bool layerKindOpensCellEditorOnDoubleTap(LayerKind kind) {
-  return kind == LayerKind.se || kind == LayerKind.instruction;
-}
-
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
 List<Widget> timelineRowSeLabelOverlays({
@@ -389,6 +383,9 @@ class _SeNameBox extends StatelessWidget {
     );
     final box = Semantics(
       label: 'SE name $name',
+      // Own node even where an ancestor would merge labels (the dialog
+      // preview) — tests and screen readers address the box directly.
+      container: true,
       child: Container(
         color: AppColors.accent.withValues(alpha: 0.6),
         alignment: Alignment.center,

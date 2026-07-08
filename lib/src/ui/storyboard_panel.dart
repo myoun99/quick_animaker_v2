@@ -482,9 +482,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   ],
                                 ),
                                 if (playheadFrame != null)
-                                  // Frame-wide accent tint, same as the
-                                  // timeline playhead; the solid left edge
-                                  // keeps it visible over colorful blocks.
+                                  // Frame-wide accent tint only — no solid
+                                  // edge line over the blocks (user
+                                  // direction); the ruler carries its own
+                                  // current-frame highlight.
                                   Positioned(
                                     key: const ValueKey<String>(
                                       'storyboard-playhead',
@@ -494,24 +495,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     bottom: 0,
                                     width: scale.pixelsPerFrame,
                                     child: IgnorePointer(
-                                      child: Stack(
-                                        children: [
-                                          Positioned.fill(
-                                            child: ColoredBox(
-                                              color: timelinePlayheadColor
-                                                  .withValues(alpha: 0.18),
-                                            ),
-                                          ),
-                                          const Positioned(
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 2,
-                                            child: ColoredBox(
-                                              color: timelinePlayheadColor,
-                                            ),
-                                          ),
-                                        ],
+                                      child: ColoredBox(
+                                        color: timelinePlayheadColor
+                                            .withValues(alpha: 0.18),
                                       ),
                                     ),
                                   ),

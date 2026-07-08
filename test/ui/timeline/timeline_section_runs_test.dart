@@ -16,7 +16,7 @@ Layer _layer(String id, LayerKind kind) => Layer(
 );
 
 void main() {
-  const metrics = TimelineGridMetrics(); // 52 rows, 22 collapsed strips
+  const metrics = TimelineGridMetrics();
 
   group('timelineSectionRuns', () {
     test('groups consecutive rows by section; lanes join their layer', () {
@@ -47,26 +47,22 @@ void main() {
           section: TimelineSection.drawing,
           startRowIndex: 0,
           rowCount: 1,
-          collapsed: false,
         ),
         const TimelineSectionRun(
           section: TimelineSection.se,
           startRowIndex: 1,
           rowCount: 2,
-          collapsed: false,
         ),
         // Camera layer row + its expanded lane row.
         const TimelineSectionRun(
           section: TimelineSection.camera,
           startRowIndex: 3,
           rowCount: 2,
-          collapsed: false,
         ),
       ]);
     });
 
-    test('a collapsed section is a one-stub collapsed run with the slim '
-        'extent', () {
+    test('a hidden section contributes no rows and no run at all', () {
       final rows = buildTimelineDisplayRows(
         layers: [
           _layer('cel-a', LayerKind.animation),
@@ -75,26 +71,23 @@ void main() {
         ],
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
-        collapsedSections: const {TimelineSection.se},
+        hiddenSections: const {TimelineSection.se},
       );
 
       final runs = timelineSectionRuns(rows);
 
-      expect(runs, hasLength(3));
-      expect(runs[1].section, TimelineSection.se);
-      expect(runs[1].collapsed, isTrue);
-      expect(runs[1].rowCount, 1);
-      expect(
-        timelineSectionRunExtent(runs[1], rows, metrics),
-        metrics.collapsedSectionExtent,
-      );
-      expect(
-        timelineSectionRunExtent(runs[2], rows, metrics),
-        metrics.layerRowHeight,
-      );
+      expect(rows, hasLength(2));
+      expect(runs.map((run) => run.section), [
+        TimelineSection.drawing,
+        TimelineSection.camera,
+      ]);
       expect(
         timelineDisplayRowsExtent(rows, metrics),
-        metrics.layerRowHeight * 2 + metrics.collapsedSectionExtent,
+        metrics.layerRowHeight * 2,
+      );
+      expect(
+        timelineSectionRunExtent(runs[1], rows, metrics),
+        metrics.layerRowHeight,
       );
     });
   });

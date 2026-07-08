@@ -4,8 +4,7 @@ import 'timeline_section_policy.dart';
 
 /// A consecutive run of display rows belonging to one timesheet section —
 /// the geometry the section BRACKET wraps (the paper sheet's ACTION heading
-/// enclosing its cel columns, laid along the layer axis). A collapsed
-/// section is a run of its single slim stub row.
+/// enclosing its cel columns, laid along the layer axis).
 ///
 /// Shared by both orientations (Axis rule): the horizontal timeline draws
 /// runs as gutter segments beside the rail rows, the X-sheet as header
@@ -15,7 +14,6 @@ class TimelineSectionRun {
     required this.section,
     required this.startRowIndex,
     required this.rowCount,
-    required this.collapsed,
   });
 
   final TimelineSection section;
@@ -23,27 +21,23 @@ class TimelineSectionRun {
   /// First display-row index of the run.
   final int startRowIndex;
 
-  /// Number of consecutive display rows (layer + lane rows; 1 stub row
-  /// when [collapsed]).
+  /// Number of consecutive display rows (layer + lane rows).
   final int rowCount;
-
-  final bool collapsed;
 
   @override
   bool operator ==(Object other) =>
       other is TimelineSectionRun &&
       other.section == section &&
       other.startRowIndex == startRowIndex &&
-      other.rowCount == rowCount &&
-      other.collapsed == collapsed;
+      other.rowCount == rowCount;
 
   @override
-  int get hashCode => Object.hash(section, startRowIndex, rowCount, collapsed);
+  int get hashCode => Object.hash(section, startRowIndex, rowCount);
 
   @override
   String toString() =>
       'TimelineSectionRun(section: $section, startRowIndex: $startRowIndex, '
-      'rowCount: $rowCount, collapsed: $collapsed)';
+      'rowCount: $rowCount)';
 }
 
 /// Groups [rows] into consecutive section runs (lane rows belong to their
@@ -51,14 +45,9 @@ class TimelineSectionRun {
 List<TimelineSectionRun> timelineSectionRuns(List<TimelineDisplayRow> rows) {
   final runs = <TimelineSectionRun>[];
   for (var index = 0; index < rows.length; index += 1) {
-    final row = rows[index];
-    final section = row.isSectionStub
-        ? row.stubSection!
-        : timelineSectionForLayerKind(row.layer.kind);
-    final collapsed = row.isSectionStub;
+    final section = timelineSectionForLayerKind(rows[index].layer.kind);
     if (runs.isNotEmpty &&
         runs.last.section == section &&
-        runs.last.collapsed == collapsed &&
         runs.last.startRowIndex + runs.last.rowCount == index) {
       final last = runs.removeLast();
       runs.add(
@@ -66,32 +55,23 @@ List<TimelineSectionRun> timelineSectionRuns(List<TimelineDisplayRow> rows) {
           section: last.section,
           startRowIndex: last.startRowIndex,
           rowCount: last.rowCount + 1,
-          collapsed: last.collapsed,
         ),
       );
     } else {
       runs.add(
-        TimelineSectionRun(
-          section: section,
-          startRowIndex: index,
-          rowCount: 1,
-          collapsed: collapsed,
-        ),
+        TimelineSectionRun(section: section, startRowIndex: index, rowCount: 1),
       );
     }
   }
   return List.unmodifiable(runs);
 }
 
-/// Layer-axis extent of one display row: full row height for layer/lane
-/// rows, the slim strip for a collapsed section's stub row.
+/// Layer-axis extent of one display row.
 double timelineDisplayRowExtent(
   TimelineDisplayRow row,
   TimelineGridMetrics metrics,
 ) {
-  return row.isSectionStub
-      ? metrics.collapsedSectionExtent
-      : metrics.layerRowHeight;
+  return metrics.layerRowHeight;
 }
 
 /// Total layer-axis extent of [rows].
