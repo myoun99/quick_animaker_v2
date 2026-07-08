@@ -16,6 +16,24 @@ import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import 'canvas_viewport_pan_metrics.dart';
 
+/// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
+/// whenever [token] changes between widget updates the panel reframes the
+/// viewport around [rect] (canvas space) — Fit-style when [panOnly] is
+/// false (the timesheet's page turn), or a minimal zoom-preserving pan
+/// that just brings [rect] into view when true (continuous-view scroll
+/// following the playhead row).
+class CanvasAutoFrameRequest {
+  const CanvasAutoFrameRequest({
+    required this.token,
+    required this.rect,
+    this.panOnly = false,
+  });
+
+  final Object token;
+  final Rect rect;
+  final bool panOnly;
+}
+
 /// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
@@ -38,6 +56,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.interactiveContentOpacity = 1.0,
     this.contentOverride,
     this.fitFocusRect,
+    this.autoFrame,
     this.contentStrokeActive,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -84,6 +103,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// active). Null keeps Fit on the canvas itself.
   final Rect? fitFocusRect;
 
+  /// Playback-follow reframing: when the request's token changes between
+  /// updates the panel reframes onto its rect (see
+  /// [CanvasAutoFrameRequest]). Null never reframes — the user owns the
+  /// viewport.
+  final CanvasAutoFrameRequest? autoFrame;
+
   /// Raised by contentOverride content that hosts its OWN brush input (the
   /// timesheet ink layer): while true, the panel's gesture layer holds
   /// navigation exactly as it does for the panel's own strokes.
@@ -101,6 +126,72 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// True while a brush stroke is in progress; the viewport gesture layer
   /// ignores wheel zooms and new pans so they cannot disturb the stroke.
   bool _strokeActive = false;
+
+  CanvasAutoFrameRequest? _pendingAutoFrame;
+
+  @override
+  void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final request = widget.autoFrame;
+    if (request == null || request.token == oldWidget.autoFrame?.token) {
+      return;
+    }
+    // didUpdateWidget runs during the build phase — reframing notifies the
+    // viewport's parent owner, so it must wait for the frame to end.
+    final alreadyScheduled = _pendingAutoFrame != null;
+    _pendingAutoFrame = request;
+    if (alreadyScheduled) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = _pendingAutoFrame;
+      _pendingAutoFrame = null;
+      if (mounted && pending != null) {
+        _autoFrame(pending);
+      }
+    });
+  }
+
+  void _autoFrame(CanvasAutoFrameRequest request) {
+    final viewportSize = _resolvedEditorViewportSize();
+    final next = request.panOnly
+        ? _viewportRevealing(request.rect, viewportSize)
+        : CanvasViewport.fitToCanvasRect(
+            left: request.rect.left,
+            top: request.rect.top,
+            width: request.rect.width,
+            height: request.rect.height,
+            viewportWidth: viewportSize.width,
+            viewportHeight: viewportSize.height,
+          );
+    if (next == _viewport) {
+      return;
+    }
+    _setViewport(next);
+  }
+
+  /// The minimal zoom-preserving pan that brings [rect] (canvas space)
+  /// into the viewport with a small margin; when the rect cannot fully
+  /// fit, its top-left edge wins.
+  CanvasViewport _viewportRevealing(Rect rect, Size viewportSize) {
+    const margin = 24.0;
+    final zoom = _viewport.zoom;
+    var panX = _viewport.panX;
+    var panY = _viewport.panY;
+    if (rect.bottom * zoom + panY > viewportSize.height - margin) {
+      panY = viewportSize.height - margin - rect.bottom * zoom;
+    }
+    if (rect.top * zoom + panY < margin) {
+      panY = margin - rect.top * zoom;
+    }
+    if (rect.right * zoom + panX > viewportSize.width - margin) {
+      panX = viewportSize.width - margin - rect.right * zoom;
+    }
+    if (rect.left * zoom + panX < margin) {
+      panX = margin - rect.left * zoom;
+    }
+    return _viewport.copyWith(panX: panX, panY: panY);
+  }
 
   @override
   Widget build(BuildContext context) {
