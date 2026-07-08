@@ -295,6 +295,54 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           children: [
             if (widget._hasCutActions)
               _StoryboardCutActionsToolbar(panel: widget),
+            // PINNED RULER: the frame ruler sits ABOVE the vertical scroll
+            // area (the timeline's sticky-header pattern) so it stays put
+            // while tracks and SE rows scroll under it; it follows the
+            // horizontal scroll by translation.
+            Padding(
+              padding: const EdgeInsets.only(right: panelScrollbarGutter),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(width: StoryboardPanel._trackLabelWidth),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final viewportWidth = constraints.hasBoundedWidth
+                            ? constraints.maxWidth
+                            : contentWidth;
+                        return SizedBox(
+                          height: StoryboardPanel._rulerHeight,
+                          child: ClipRect(
+                            child: OverflowBox(
+                              alignment: Alignment.topLeft,
+                              minWidth: contentWidth,
+                              maxWidth: contentWidth,
+                              minHeight: StoryboardPanel._rulerHeight,
+                              maxHeight: StoryboardPanel._rulerHeight,
+                              child: Transform.translate(
+                                offset: Offset(-_horizontalScrollOffset, 0),
+                                child: _StoryboardRuler(
+                                  width: contentWidth,
+                                  renderedFrames: renderedFrames,
+                                  contentFrames: totalFrames,
+                                  playheadFrame: playheadFrame,
+                                  scrollOffset: _horizontalScrollOffset,
+                                  viewportWidth: viewportWidth,
+                                  timelineScale: scale,
+                                  onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                                  isFrameCached: widget.isFrameCached,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: PanelScrollbar(
                 controller: _verticalController,
@@ -313,11 +361,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Keeps the labels aligned with the track rows
-                            // below the ruler strip.
-                            const SizedBox(
-                              height: StoryboardPanel._rulerHeight,
-                            ),
                             for (
                               var index = 0;
                               index < widget.project.tracks.length;
@@ -344,157 +387,137 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         ),
                       ),
                       Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final viewportWidth = constraints.hasBoundedWidth
-                                ? constraints.maxWidth
-                                : contentWidth;
-                            return PanelScrollbar(
-                              controller: _horizontalController,
-                              child: SingleChildScrollView(
-                                key: const ValueKey<String>(
-                                  'storyboard-timeline-horizontal-viewport',
-                                ),
-                                controller: _horizontalController,
-                                scrollDirection: Axis.horizontal,
-                                padding: const EdgeInsets.only(
-                                  bottom: panelScrollbarGutter,
-                                ),
-                                child: Stack(
-                                  children: [
-                                    // Frame grid lines under the blocks:
-                                    // the runway reads as endless frame
-                                    // cells, like the timeline's grid
-                                    // (painted — costs nothing per frame).
-                                    Positioned.fill(
-                                      top: StoryboardPanel._rulerHeight,
-                                      child: IgnorePointer(
-                                        child: CustomPaint(
-                                          key: const ValueKey<String>(
-                                            'storyboard-frame-lines',
-                                          ),
-                                          painter: _StoryboardFrameLinesPainter(
-                                            pixelsPerFrame:
-                                                scale.pixelsPerFrame,
-                                            color: colorScheme.outlineVariant
-                                                .withValues(alpha: 0.35),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Column(
+                        child: PanelScrollbar(
+                          controller: _horizontalController,
+                          child: SingleChildScrollView(
+                            key: const ValueKey<String>(
+                              'storyboard-timeline-horizontal-viewport',
+                            ),
+                            controller: _horizontalController,
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(
+                              bottom: panelScrollbarGutter,
+                            ),
+                            child: Stack(
+                              children: [
+                                // Frame grid lines under the blocks:
+                                // the runway reads as endless frame
+                                // cells, like the timeline's grid
+                                // (painted — costs nothing per frame).
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: CustomPaint(
                                       key: const ValueKey<String>(
-                                        'storyboard-timeline-scroll-content',
+                                        'storyboard-frame-lines',
                                       ),
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _StoryboardRuler(
-                                          width: contentWidth,
-                                          renderedFrames: renderedFrames,
-                                          contentFrames: totalFrames,
-                                          playheadFrame: playheadFrame,
-                                          scrollOffset: _horizontalScrollOffset,
-                                          viewportWidth: viewportWidth,
-                                          timelineScale: scale,
-                                          onSeekGlobalFrame:
-                                              widget.onSeekGlobalFrame,
-                                          isFrameCached: widget.isFrameCached,
-                                        ),
-                                        for (
-                                          var index = 0;
-                                          index < widget.project.tracks.length;
-                                          index++
-                                        ) ...[
-                                          _StoryboardTrackRow(
-                                            track: widget.project.tracks[index],
-                                            layoutEntries: layoutEntries
-                                                .where(
-                                                  (entry) =>
-                                                      entry.trackIndex == index,
-                                                )
-                                                .toList(growable: false),
-                                            activeCutId: widget.activeCutId,
-                                            onCutSelected: widget.onCutSelected,
-                                            onCutReordered:
-                                                widget.onCutReordered,
-                                            cutTrim: widget.cutTrim,
-                                            thumbnailFor: widget.thumbnailFor,
-                                            timelineScale: scale,
-                                            showSeconds: widget.showSeconds,
-                                            projectFps: widget.projectFps,
-                                          ),
-                                          // Synced SE rows: the same per-cut
-                                          // SE data the timeline edits,
-                                          // mapped to track-global frames
-                                          // (read-only; the audio waveform
-                                          // slots in here later).
-                                          for (
-                                            var slot = 0;
-                                            slot <
-                                                _seSlotCount(
-                                                  widget.project.tracks[index],
-                                                );
-                                            slot++
-                                          )
-                                            _StoryboardSeRow(
-                                              trackIndex: index,
-                                              slot: slot,
-                                              layoutEntries: layoutEntries
-                                                  .where(
-                                                    (entry) =>
-                                                        entry.trackIndex ==
-                                                        index,
-                                                  )
-                                                  .toList(growable: false),
-                                              width: contentWidth,
-                                              timelineScale: scale,
-                                              projectFps: widget.projectFps,
-                                              audioPeaksFor:
-                                                  widget.audioPeaksFor,
-                                            ),
-                                        ],
-                                      ],
+                                      painter: _StoryboardFrameLinesPainter(
+                                        pixelsPerFrame: scale.pixelsPerFrame,
+                                        color: colorScheme.outlineVariant
+                                            .withValues(alpha: 0.35),
+                                      ),
                                     ),
-                                    if (playheadFrame != null)
-                                      // Frame-wide accent tint, same as the
-                                      // timeline playhead; the solid left edge
-                                      // keeps it visible over colorful blocks.
-                                      Positioned(
-                                        key: const ValueKey<String>(
-                                          'storyboard-playhead',
-                                        ),
-                                        left: scale.leftForFrame(playheadFrame),
-                                        top: 0,
-                                        bottom: 0,
-                                        width: scale.pixelsPerFrame,
-                                        child: IgnorePointer(
-                                          child: Stack(
-                                            children: [
-                                              Positioned.fill(
-                                                child: ColoredBox(
-                                                  color: timelinePlayheadColor
-                                                      .withValues(alpha: 0.18),
-                                                ),
-                                              ),
-                                              const Positioned(
-                                                left: 0,
-                                                top: 0,
-                                                bottom: 0,
-                                                width: 2,
-                                                child: ColoredBox(
-                                                  color: timelinePlayheadColor,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                  ),
+                                ),
+                                Column(
+                                  key: const ValueKey<String>(
+                                    'storyboard-timeline-scroll-content',
+                                  ),
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Width driver: the scroll content spans
+                                    // the full frame runway even when every
+                                    // row is narrower (the pinned ruler used
+                                    // to do this from inside the content).
+                                    SizedBox(width: contentWidth),
+                                    for (
+                                      var index = 0;
+                                      index < widget.project.tracks.length;
+                                      index++
+                                    ) ...[
+                                      _StoryboardTrackRow(
+                                        track: widget.project.tracks[index],
+                                        layoutEntries: layoutEntries
+                                            .where(
+                                              (entry) =>
+                                                  entry.trackIndex == index,
+                                            )
+                                            .toList(growable: false),
+                                        activeCutId: widget.activeCutId,
+                                        onCutSelected: widget.onCutSelected,
+                                        onCutReordered: widget.onCutReordered,
+                                        cutTrim: widget.cutTrim,
+                                        thumbnailFor: widget.thumbnailFor,
+                                        timelineScale: scale,
+                                        showSeconds: widget.showSeconds,
+                                        projectFps: widget.projectFps,
                                       ),
+                                      // Synced SE rows: the same per-cut
+                                      // SE data the timeline edits,
+                                      // mapped to track-global frames
+                                      // (read-only; the audio waveform
+                                      // slots in here later).
+                                      for (
+                                        var slot = 0;
+                                        slot <
+                                            _seSlotCount(
+                                              widget.project.tracks[index],
+                                            );
+                                        slot++
+                                      )
+                                        _StoryboardSeRow(
+                                          trackIndex: index,
+                                          slot: slot,
+                                          layoutEntries: layoutEntries
+                                              .where(
+                                                (entry) =>
+                                                    entry.trackIndex == index,
+                                              )
+                                              .toList(growable: false),
+                                          width: contentWidth,
+                                          timelineScale: scale,
+                                          projectFps: widget.projectFps,
+                                          audioPeaksFor: widget.audioPeaksFor,
+                                        ),
+                                    ],
                                   ],
                                 ),
-                              ),
-                            );
-                          },
+                                if (playheadFrame != null)
+                                  // Frame-wide accent tint, same as the
+                                  // timeline playhead; the solid left edge
+                                  // keeps it visible over colorful blocks.
+                                  Positioned(
+                                    key: const ValueKey<String>(
+                                      'storyboard-playhead',
+                                    ),
+                                    left: scale.leftForFrame(playheadFrame),
+                                    top: 0,
+                                    bottom: 0,
+                                    width: scale.pixelsPerFrame,
+                                    child: IgnorePointer(
+                                      child: Stack(
+                                        children: [
+                                          Positioned.fill(
+                                            child: ColoredBox(
+                                              color: timelinePlayheadColor
+                                                  .withValues(alpha: 0.18),
+                                            ),
+                                          ),
+                                          const Positioned(
+                                            left: 0,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: 2,
+                                            child: ColoredBox(
+                                              color: timelinePlayheadColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
