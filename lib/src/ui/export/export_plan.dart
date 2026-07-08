@@ -7,6 +7,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/track.dart';
+import 'video_export_service.dart' show ExportAudioClip;
 
 /// Which frames the export window covers: the active cut, every cut of the
 /// active cut's track in storyboard order, or a subrange of the active cut.
@@ -164,6 +165,58 @@ List<ExportFrameTask> buildExportFramePlan({
     }
   }
   return plan;
+}
+
+/// Lays every SE layer's audio clips onto the exported video's timeline.
+///
+/// [plan] lists the exported frames in output order (contiguous per cut),
+/// exactly what [VideoExportService] encodes — so a clip's offset is just
+/// its position within its cut's block. Clips starting before the exported
+/// range seek into the source instead of delaying; clips starting at or
+/// past their cut's exported end are silent and dropped. Durations cap at
+/// the cut's exported block, matching canvas playback (SE audio never
+/// bleeds into the next cut); shorter sources simply end early.
+List<ExportAudioClip> buildExportAudioPlan({
+  required List<ExportFrameTask> plan,
+  required int fps,
+}) {
+  final clips = <ExportAudioClip>[];
+  final safeFps = math.max(1, fps);
+  var blockStart = 0;
+  while (blockStart < plan.length) {
+    final cut = plan[blockStart].cut;
+    var blockEnd = blockStart;
+    while (blockEnd < plan.length && plan[blockEnd].cut.id == cut.id) {
+      blockEnd += 1;
+    }
+    final firstFrameIndex = plan[blockStart].frameIndex;
+    for (final layer in cut.layers) {
+      if (layer.kind != LayerKind.se) {
+        continue;
+      }
+      for (final clip in layer.audioClips) {
+        // The clip's start on the export timeline, in frames (negative =
+        // it began before the exported range).
+        final offsetFrames = blockStart + (clip.startFrame - firstFrameIndex);
+        if (offsetFrames >= blockEnd) {
+          continue;
+        }
+        // Where the audible part begins on the export timeline; anything
+        // before it is seeked over in the source.
+        final audibleStart = math.max(blockStart, offsetFrames);
+        clips.add(
+          ExportAudioClip(
+            filePath: clip.filePath,
+            seekSeconds: (audibleStart - offsetFrames) / safeFps,
+            delaySeconds: audibleStart / safeFps,
+            durationSeconds: (blockEnd - audibleStart) / safeFps,
+          ),
+        );
+      }
+    }
+    blockStart = blockEnd;
+  }
+  return clips;
 }
 
 /// Instance-only plan: each unique authored frame (cel) of every visible

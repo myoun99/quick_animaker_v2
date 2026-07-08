@@ -39,6 +39,72 @@ void main() {
     expect(summary, (written: 0, processed: 3));
   });
 
+  group('buildFfmpegArguments', () {
+    test('without audio the command is the original video-only shape', () {
+      final args = VideoExportService.buildFfmpegArguments(
+        fps: 24,
+        outputFilePath: 'out.mp4',
+      );
+
+      expect(args, containsAllInOrder(['-f', 'image2pipe', '-i', '-']));
+      expect(args, contains('-vf'));
+      expect(args, isNot(contains('-filter_complex')));
+      expect(args, isNot(contains('-shortest')));
+      expect(args.last, 'out.mp4');
+    });
+
+    test('one clip: seek/trim at the input, delay in the graph, aac out', () {
+      final args = VideoExportService.buildFfmpegArguments(
+        fps: 24,
+        outputFilePath: 'out.mp4',
+        audioClips: const [
+          ExportAudioClip(
+            filePath: 'voice.wav',
+            seekSeconds: 0.5,
+            delaySeconds: 1.25,
+            durationSeconds: 2,
+          ),
+        ],
+      );
+
+      expect(
+        args,
+        containsAllInOrder(['-ss', '0.500', '-t', '2.000', '-i', 'voice.wav']),
+      );
+      final filter = args[args.indexOf('-filter_complex') + 1];
+      // The pad filter moves into the graph (-vf cannot coexist with it).
+      expect(args, isNot(contains('-vf')));
+      expect(filter, contains('[0:v]pad='));
+      expect(filter, contains('[1:a]adelay=1250:all=1[a0]'));
+      expect(filter, isNot(contains('amix')));
+      expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[a0]']));
+      expect(args, containsAllInOrder(['-c:a', 'aac', '-shortest']));
+    });
+
+    test('multiple clips mix without renormalizing volumes', () {
+      final args = VideoExportService.buildFfmpegArguments(
+        fps: 24,
+        outputFilePath: 'out.mp4',
+        audioClips: const [
+          ExportAudioClip(filePath: 'a.wav', durationSeconds: 1),
+          ExportAudioClip(
+            filePath: 'b.wav',
+            delaySeconds: 0.25,
+            durationSeconds: 0.75,
+          ),
+        ],
+      );
+
+      // No seek for clips starting inside the range.
+      expect(args, isNot(contains('-ss')));
+      final filter = args[args.indexOf('-filter_complex') + 1];
+      expect(filter, contains('[1:a]adelay=0:all=1[a0]'));
+      expect(filter, contains('[2:a]adelay=250:all=1[a1]'));
+      expect(filter, contains('[a0][a1]amix=inputs=2:normalize=0[aout]'));
+      expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[aout]']));
+    });
+  });
+
   test('missing ffmpeg surfaces an install hint', () async {
     final service = VideoExportService(
       processStarter: (executable, arguments) =>
