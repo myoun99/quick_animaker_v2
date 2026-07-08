@@ -86,6 +86,7 @@ class ExportDialogState extends State<ExportDialog> {
   ExportFormat _format = ExportFormat.pngSequence;
   bool _instanceOnly = false;
   bool _celTransparent = true;
+  bool _celTimesheetOnly = false;
   bool _celIncludeProject = false;
   bool _celIncludeCut = false;
   bool _celIncludeLayer = true;
@@ -158,6 +159,7 @@ class ExportDialogState extends State<ExportDialog> {
     activeCutId: widget.session.activeCut.id,
     range: _range,
     naming: _celNaming,
+    onTimesheetOnly: _celTimesheetOnly,
   );
 
   /// The canvas sizes the current range covers; one entry means every
@@ -687,6 +689,29 @@ class ExportDialogState extends State<ExportDialog> {
                         _celTransparent
                             ? 'Transparent background'
                             : 'Opaque background (white paper)',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Switch(
+                      key: const ValueKey<String>(
+                        'export-cel-timesheet-only-toggle',
+                      ),
+                      value: _celTimesheetOnly,
+                      onChanged: _isExporting
+                          ? null
+                          : (value) =>
+                                setState(() => _celTimesheetOnly = value),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _celTimesheetOnly
+                            ? 'Timesheet layers only'
+                            : 'All visible drawing layers',
                         style: theme.textTheme.bodySmall,
                       ),
                     ),

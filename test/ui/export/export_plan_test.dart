@@ -174,6 +174,43 @@ void main() {
       expect(plan.map((task) => task.fileName), ['A1.png', 'A2.png']);
     });
 
+    test('onTimesheetOnly keeps only layers marked for the sheet', () {
+      final tracks = [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            cut(
+              'a',
+              layers: [
+                layer('on-sheet', name: 'A', frames: [frame('f1')]),
+                layer(
+                  'off-sheet',
+                  name: 'B',
+                  frames: [frame('f2')],
+                ).copyWith(onTimesheet: false),
+              ],
+            ),
+          ],
+        ),
+      ];
+
+      final all = buildExportCelPlan(
+        project: project(tracks),
+        activeCutId: const CutId('a'),
+        range: ExportRange.activeCut,
+      );
+      expect(all.map((task) => task.layer.name), ['A', 'B']);
+
+      final sheetOnly = buildExportCelPlan(
+        project: project(tracks),
+        activeCutId: const CutId('a'),
+        range: ExportRange.activeCut,
+        onTimesheetOnly: true,
+      );
+      expect(sheetOnly.map((task) => task.layer.name), ['A']);
+    });
+
     test('frame range covers the whole active cut for cels', () {
       final plan = buildExportCelPlan(
         project: project([
