@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../text/dialogue_fit_layout.dart';
 import '../theme/app_theme.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
@@ -442,7 +443,12 @@ class TimesheetDocumentPainter extends CustomPainter {
         ..strokeWidth = 1.0
         ..color = _gridMedium,
     );
-    if (drawTexts && document.memoText.isNotEmpty) {
+    if (!drawTexts) {
+      return;
+    }
+    final textMaxWidth = band.width - boxWidth - 20;
+    var y = band.top + 6;
+    if (document.memoText.isNotEmpty) {
       final painter = TextPainter(
         text: TextSpan(
           text: document.memoText,
@@ -451,8 +457,28 @@ class TimesheetDocumentPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         maxLines: 8,
         ellipsis: '…',
-      )..layout(maxWidth: band.width - boxWidth - 20);
-      painter.paint(canvas, Offset(band.left + 8, band.top + 6));
+      )..layout(maxWidth: textMaxWidth);
+      painter.paint(canvas, Offset(band.left + 8, y));
+      y += painter.height + 4;
+    }
+    // The camera-instruction shorthand lines ('C⋈D O.L(カットO.L)' …) stack
+    // under the cut note; whatever exceeds the band stays unprinted (the
+    // band is fixed paper space).
+    for (final line in document.memoInstructionLines) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: line,
+          style: const TextStyle(color: _ink, fontSize: 10),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: textMaxWidth);
+      if (y + painter.height > band.bottom - 4) {
+        break;
+      }
+      painter.paint(canvas, Offset(band.left + 8, y));
+      y += painter.height + 2;
     }
   }
 
@@ -643,12 +669,14 @@ class TimesheetDocumentPainter extends CustomPainter {
                   1,
                   rowCount - row,
                 );
-                _verticalText(
+                // SE dialogue FITS its block: glyphs distribute evenly over
+                // the covered rows (same centers as the timeline overlay).
+                _fitVerticalText(
                   canvas,
                   cell.label ?? '',
                   topCenter: Offset(centerX - 3, cellTop + 2),
                   fontSize: 9,
-                  maxHeight: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
+                  extent: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
                 );
               } else {
                 _text(
@@ -871,6 +899,41 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
       painter.paint(canvas, Offset(topCenter.dx - painter.width / 2, y));
       y += painter.height - 2;
+    }
+  }
+
+  /// SE dialogue distributed evenly over the covered rows — the sheet's
+  /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
+  /// so screen and print place glyphs identically. Never truncates: the
+  /// dialogue owns its whole block, exactly like the paper column.
+  void _fitVerticalText(
+    Canvas canvas,
+    String text, {
+    required Offset topCenter,
+    required double fontSize,
+    required double extent,
+    Color color = _ink,
+  }) {
+    final glyphs = text.characters.toList(growable: false);
+    final centers = dialogueGlyphCenters(
+      glyphCount: glyphs.length,
+      mainExtent: extent,
+    );
+    for (var index = 0; index < glyphs.length; index += 1) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: glyphs[index],
+          style: TextStyle(color: color, fontSize: fontSize),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(
+          topCenter.dx - painter.width / 2,
+          topCenter.dy + centers[index] - painter.height / 2,
+        ),
+      );
     }
   }
 

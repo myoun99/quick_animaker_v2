@@ -142,6 +142,7 @@ class TimesheetDocument {
     required this.scene,
     required this.artist,
     required this.memoText,
+    required this.memoInstructionLines,
     required this.visibleHeaderFields,
     required this.cutName,
     required this.fps,
@@ -280,6 +281,14 @@ class TimesheetDocument {
       scene: info.scene,
       artist: info.artist,
       memoText: cut.metadata.note,
+      memoInstructionLines: List.unmodifiable([
+        for (final layer in instructionLayers)
+          for (final entry in layer.instructions.entries)
+            timesheetMemoInstructionLine(
+              entry.value,
+              instructionDefById?.call(entry.value.instructionId),
+            ),
+      ]),
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       cutName: cut.name,
       fps: fps,
@@ -307,6 +316,11 @@ class TimesheetDocument {
   /// The cut's Direction memo (the cut note) printed in the memo band —
   /// per-cut data, editable in place on the sheet.
   final String memoText;
+
+  /// One shorthand line per instruction event, printed into the memo band
+  /// under the cut note — the sheet notation the user writes by hand
+  /// ('A⋈ O.L', 'C⋈D O.L(カットO.L)'), in layer order then start frame.
+  final List<String> memoInstructionLines;
 
   /// The header boxes the form prints, in printing order (the user hides
   /// boxes per project via [TimesheetInfo.hiddenFields]).
@@ -471,4 +485,24 @@ class TimesheetDocument {
     }
     return cells;
   }
+}
+
+/// One memo-band line for an instruction event — the sheet shorthand the
+/// user writes by hand: `<A><mark><B> <name>(<memo>)`, e.g. 'A⋈ O.L' or
+/// 'C⋈D O.L(カットO.L)'. The mark glyph mirrors the def's markType (⋈ =
+/// the O.L bowtie, → = the bar arrows); blank parts simply drop out.
+String timesheetMemoInstructionLine(
+  InstructionEvent event,
+  CameraInstructionDef? def,
+) {
+  final markGlyph =
+      (def?.markType ?? CameraInstructionMarkType.bar) ==
+          CameraInstructionMarkType.ol
+      ? '⋈'
+      : '→';
+  final endpoints = '${event.valueA ?? ''}$markGlyph${event.valueB ?? ''}';
+  final memo = event.memo;
+  final label =
+      '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : '($memo)'}';
+  return label.isEmpty ? endpoints : '$endpoints $label';
 }
