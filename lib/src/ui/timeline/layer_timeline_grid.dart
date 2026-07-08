@@ -27,7 +27,7 @@ import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
-import 'timeline_section_stub_rows.dart';
+import 'timeline_section_bracket_rail.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
@@ -58,8 +58,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
-    this.collapsedSections = const {},
-    this.onToggleSection,
+    this.hiddenSections = const {},
   });
 
   final List<Layer> layers;
@@ -111,8 +110,8 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Sections folded to one stub row (SE/camera; drawing never folds) and
   /// the gutter-label toggle.
-  final Set<TimelineSection> collapsedSections;
-  final ValueChanged<TimelineSection>? onToggleSection;
+  /// Sections hidden from the grid entirely (toolbar visibility toggles).
+  final Set<TimelineSection> hiddenSections;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -301,11 +300,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layers: widget.layers,
       expandedLayerIds: widget.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
-      collapsedSections: widget.collapsedSections,
+      hiddenSections: widget.hiddenSections,
     );
-    int sectionLayerCount(TimelineSection section) => widget.layers
-        .where((layer) => timelineSectionForLayerKind(layer.kind) == section)
-        .length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -497,8 +493,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             TimelineSectionBracketRail(
                                               rows: rows,
                                               metrics: _metrics,
-                                              onToggleSection:
-                                                  widget.onToggleSection,
                                             ),
                                             Column(
                                               crossAxisAlignment:
@@ -509,27 +503,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   rowIndex < rows.length;
                                                   rowIndex += 1
                                                 )
-                                                  rows[rowIndex].isSectionStub
-                                                      ? TimelineSectionStubRailRow(
-                                                          section:
-                                                              rows[rowIndex]
-                                                                  .stubSection!,
-                                                          layerCount:
-                                                              sectionLayerCount(
-                                                                rows[rowIndex]
-                                                                    .stubSection!,
-                                                              ),
-                                                          metrics: _metrics,
-                                                          onToggleSection:
-                                                              widget.onToggleSection ==
-                                                                  null
-                                                              ? null
-                                                              : () => widget.onToggleSection!(
-                                                                  rows[rowIndex]
-                                                                      .stubSection!,
-                                                                ),
-                                                        )
-                                                      : rows[rowIndex].isLane
+                                                  rows[rowIndex].isLane
                                                       ? TimelineLaneControlsRow(
                                                           layer: rows[rowIndex]
                                                               .layer,

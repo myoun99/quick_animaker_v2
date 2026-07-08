@@ -46,24 +46,15 @@ class PropertyLaneRow {
 /// shared policy (Axis rule: never fork per orientation).
 class TimelineDisplayRow {
   const TimelineDisplayRow.layer(this.layer, {required this.layerIndex})
-    : lane = null,
-      stubSection = null;
+    : lane = null;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
-  }) : stubSection = null;
+  });
 
-  /// A collapsed section folded to one row; [layer] anchors it (the
-  /// section's first layer) for stable keys and divider positions.
-  const TimelineDisplayRow.sectionStub(
-    this.layer,
-    TimelineSection this.stubSection, {
-    required this.layerIndex,
-  }) : lane = null;
-
-  /// The owning layer (lane and stub rows carry their layer too).
+  /// The owning layer (lane rows carry their layer too).
   final Layer layer;
 
   /// The layer's index in the DISPLAY layer list — section dividers keep
@@ -72,11 +63,7 @@ class TimelineDisplayRow {
 
   final PropertyLaneRow? lane;
 
-  /// Non-null on collapsed-section stub rows.
-  final TimelineSection? stubSection;
-
   bool get isLane => lane != null;
-  bool get isSectionStub => stubSection != null;
 }
 
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
@@ -126,31 +113,22 @@ class PropertyLaneEditCallbacks {
 }
 
 /// Builds the grid's display rows: every layer row, plus the property lane
-/// rows of layers whose twirl-down is expanded. A section listed in
-/// [collapsedSections] folds to ONE stub row (anchored at its first layer),
-/// hiding its layer and lane rows — both orientations consume the same
-/// policy (Axis rule).
+/// rows of layers whose twirl-down is expanded. Sections listed in
+/// [hiddenSections] contribute NO rows at all (the toolbar's SE/CAMERA
+/// visibility toggles — the layers themselves are untouched); both
+/// orientations consume the same policy (Axis rule).
 List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<Layer> layers,
   required Set<LayerId> expandedLayerIds,
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
-  Set<TimelineSection> collapsedSections = const {},
+  Set<TimelineSection> hiddenSections = const {},
 }) {
   final rows = <TimelineDisplayRow>[];
-  TimelineSection? stubbedSection;
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
-    final section = timelineSectionForLayerKind(layer.kind);
-    if (collapsedSections.contains(section)) {
-      if (stubbedSection != section) {
-        rows.add(
-          TimelineDisplayRow.sectionStub(layer, section, layerIndex: index),
-        );
-        stubbedSection = section;
-      }
+    if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
       continue;
     }
-    stubbedSection = null;
     rows.add(TimelineDisplayRow.layer(layer, layerIndex: index));
     if (!expandedLayerIds.contains(layer.id)) {
       continue;

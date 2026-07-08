@@ -26,7 +26,6 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
-import 'timeline_section_stub_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_playhead.dart';
@@ -75,8 +74,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
-    this.collapsedSections = const {},
-    this.onToggleSection,
+    this.hiddenSections = const {},
   });
 
   final List<Layer> layers;
@@ -130,10 +128,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
 
-  /// Sections folded to one stub COLUMN here (the section axis runs
-  /// horizontally in the X-sheet) and the header-chevron toggle.
-  final Set<TimelineSection> collapsedSections;
-  final ValueChanged<TimelineSection>? onToggleSection;
+  /// Sections hidden from the grid entirely (toolbar visibility toggles;
+  /// the section axis runs horizontally here, so hiding drops columns).
+  final Set<TimelineSection> hiddenSections;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -345,21 +342,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         _lastEffectiveFrameScrollOffset = effectiveFrameScrollOffset;
         _synchronizeFrameScrollController(effectiveFrameScrollOffset);
 
-        // Collapsed sections fold to one slim stub COLUMN; the section
-        // band above the headers carries each section's bracket (shared
-        // row/run policy with the horizontal grid).
+        // Hidden sections contribute no columns; the section band above
+        // the headers carries each section's bracket (shared row/run
+        // policy with the horizontal grid).
         final entries = buildTimelineDisplayRows(
           layers: widget.layers,
           expandedLayerIds: widget.expandedLaneLayerIds,
           lanesForLayer: _lanesFor,
-          collapsedSections: widget.collapsedSections,
+          hiddenSections: widget.hiddenSections,
         );
         final sectionRuns = timelineSectionRuns(entries);
-        int sectionLayerCount(TimelineSection section) => widget.layers
-            .where(
-              (layer) => timelineSectionForLayerKind(layer.kind) == section,
-            )
-            .length;
 
         // The shared virtualization plan with the frame axis fed through the
         // "horizontal" inputs (the axes are swapped in this grid).
@@ -536,15 +528,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             entries,
                                             _metrics,
                                           ),
-                                          onToggleSection:
-                                              widget.onToggleSection == null ||
-                                                  !timelineSectionCollapsible(
-                                                    run.section,
-                                                  )
-                                              ? null
-                                              : () => widget.onToggleSection!(
-                                                  run.section,
-                                                ),
                                         ),
                                     ],
                                   ),
@@ -555,26 +538,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                         index < entries.length;
                                         index += 1
                                       )
-                                        entries[index].isSectionStub
-                                            ? _XSheetSectionStubHeader(
-                                                section:
-                                                    entries[index].stubSection!,
-                                                layerCount: sectionLayerCount(
-                                                  entries[index].stubSection!,
-                                                ),
-                                                metrics: _metrics,
-                                                onToggleSection:
-                                                    widget.onToggleSection ==
-                                                        null
-                                                    ? null
-                                                    : () =>
-                                                          widget
-                                                              .onToggleSection!(
-                                                            entries[index]
-                                                                .stubSection!,
-                                                          ),
-                                              )
-                                            : entries[index].isLane
+                                        entries[index].isLane
                                             ? TimelineLaneControlsRow(
                                                 axis: Axis.vertical,
                                                 keyPrefix: 'xsheet',
@@ -643,18 +607,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   index < entries.length;
                                                   index += 1
                                                 )
-                                                  entries[index].isSectionStub
-                                                      ? TimelineSectionStubCellsRow(
-                                                          section:
-                                                              entries[index]
-                                                                  .stubSection!,
-                                                          mainAxisExtent:
-                                                              totalFrameContentHeight,
-                                                          metrics: _metrics,
-                                                          axis: Axis.vertical,
-                                                          keyPrefix: 'xsheet',
-                                                        )
-                                                      : entries[index].isLane
+                                                  entries[index].isLane
                                                       ? TimelineLaneFrameRow(
                                                           axis: Axis.vertical,
                                                           keyPrefix: 'xsheet',
@@ -1182,129 +1135,36 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
 }
 
 /// One cell of the section band above the layer headers: the paper sheet's
-/// group heading wrapping its columns. Collapsible sections carry the fold
-/// chevron; a collapsed section's cell shrinks to the slim reopen strip.
+/// group heading wrapping its columns. Display-only — section visibility
+/// lives on the toolbar toggles. The band label is horizontal already (the
+/// band runs along the layer axis here).
 class _XSheetSectionBandCell extends StatelessWidget {
-  const _XSheetSectionBandCell({
-    required this.run,
-    required this.extent,
-    required this.onToggleSection,
-  });
+  const _XSheetSectionBandCell({required this.run, required this.extent});
 
   final TimelineSectionRun run;
   final double extent;
-  final VoidCallback? onToggleSection;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final collapsible = onToggleSection != null;
-
-    final cell = Container(
-      width: extent,
-      height: XSheetTimelineGrid._sectionBandHeight,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border.all(color: colorScheme.outline, width: 1),
-      ),
-      child: run.collapsed
-          ? Center(
-              child: Icon(
-                Icons.chevron_right,
-                size: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (collapsible)
-                  Icon(
-                    Icons.expand_more,
-                    size: 12,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                if (collapsible) const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    timelineSectionLabel(run.section),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 9,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-    );
-
-    if (!collapsible) {
-      return ExcludeSemantics(child: cell);
-    }
-    return InkWell(
-      key: ValueKey<String>('xsheet-section-collapse-${run.section.name}'),
-      onTap: onToggleSection,
-      child: Semantics(
-        label:
-            '${run.collapsed ? 'Expand' : 'Collapse'} '
-            '${timelineSectionLabel(run.section)} section',
-        button: true,
-        child: cell,
-      ),
-    );
-  }
-}
-
-/// A collapsed section's header cell: a slim vertical reopen strip (the
-/// section is folded flat — no layer columns, no frame cells).
-class _XSheetSectionStubHeader extends StatelessWidget {
-  const _XSheetSectionStubHeader({
-    required this.section,
-    required this.layerCount,
-    required this.metrics,
-    required this.onToggleSection,
-  });
-
-  final TimelineSection section;
-  final int layerCount;
-  final TimelineGridMetrics metrics;
-  final VoidCallback? onToggleSection;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return InkWell(
-      key: ValueKey<String>('xsheet-section-stub-header-${section.name}'),
-      onTap: onToggleSection,
+    return ExcludeSemantics(
       child: Container(
-        width: metrics.collapsedSectionExtent,
-        height: XSheetTimelineGrid._headerHeight,
+        width: extent,
+        height: XSheetTimelineGrid._sectionBandHeight,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
-          border: Border.all(color: colorScheme.outlineVariant),
+          border: Border.all(color: colorScheme.outline, width: 1),
         ),
-        child: Semantics(
-          label: 'Expand ${timelineSectionLabel(section)} section',
-          button: true,
-          child: Center(
-            // Reads from the right, like the timeline's bracket labels.
-            child: RotatedBox(
-              quarterTurns: 3,
-              child: Text(
-                '${timelineSectionLabel(section)} · $layerCount',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 1.1,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+        child: Center(
+          child: Text(
+            timelineSectionLabel(run.section),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ),

@@ -45,7 +45,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
-    this.collapsedSections = const {},
+    this.hiddenSections = const {},
     this.onToggleSection,
     this.audioFilePicker,
   });
@@ -63,8 +63,9 @@ class TimelineTabHost extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
-  /// SE/camera section fold state (host-owned, survives tab switches).
-  final Set<TimelineSection> collapsedSections;
+  /// SE/camera section visibility (host-owned, survives tab switches):
+  /// hidden sections render no rows; the toolbar buttons toggle them.
+  final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
   /// Injectable for tests; defaults to the platform open-file dialog.
@@ -516,8 +517,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           projectFps: _session.projectFps,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
-          collapsedSections: widget.collapsedSections,
-          onToggleSection: widget.onToggleSection,
+          hiddenSections: widget.hiddenSections,
           lanesForLayer: _lanesForLayer,
           laneEdit: _laneEdit,
           timelineActionToolbar: Row(
@@ -537,6 +537,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   onEditInstance: _editActiveInstance,
                   onCreateInstance: _createActiveInstance,
                   onImportAudio: _importAudio,
+                  hiddenSections: widget.hiddenSections,
+                  onToggleSection: widget.onToggleSection,
                 ),
               ),
             ],
