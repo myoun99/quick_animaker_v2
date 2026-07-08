@@ -23,6 +23,7 @@ import 'bitmap_surface_brush_commit.dart';
 import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
+import 'brush_materialization_history_budget.dart';
 import 'cache_invalidation_executor.dart';
 
 class BrushFrameEditingCoordinator {
@@ -156,7 +157,23 @@ class BrushFrameEditingCoordinator {
           prerasterizedStrokePixels: prerasterizedStrokePixels,
           prerasterizedStrokeBounds: prerasterizedStrokeBounds,
         );
-    sessionStore.update(_activeFrameKey, result.sessionState);
+    // Bitmap undo snapshots are byte-budgeted: the deepest entries drop
+    // first (their undos fall back to the command replay), so a run of
+    // huge strokes can never pin gigabytes of touched tiles.
+    final budgetedHistory = trimMaterializationHistoryToByteBudget(
+      result.sessionState.materializationHistoryState,
+      maxBytes: historyPolicy.materializationByteBudget,
+    );
+    final committedState =
+        identical(
+          budgetedHistory,
+          result.sessionState.materializationHistoryState,
+        )
+        ? result.sessionState
+        : result.sessionState.copyWith(
+            materializationHistoryState: budgetedHistory,
+          );
+    sessionStore.update(_activeFrameKey, committedState);
     final affectedEntry = result.affectedEntry;
     if (affectedEntry == null) {
       return null;
@@ -183,7 +200,7 @@ class BrushFrameEditingCoordinator {
     // Keep the display cache fresh across the commit (donation replaces the
     // dirty-then-replay cycle); derived ui.Image caches still re-upload via
     // the invalidation sink below.
-    _donateSessionSurfaceToDisplayCache(_activeFrameKey, result.sessionState);
+    _donateSessionSurfaceToDisplayCache(_activeFrameKey, committedState);
     _invalidateBrushFrame(
       cacheInvalidationSink,
       _activeFrameKey,
