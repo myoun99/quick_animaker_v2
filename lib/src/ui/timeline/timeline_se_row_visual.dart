@@ -5,26 +5,24 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
+import '../theme/app_theme.dart';
+import 'dialogue_fit_text.dart';
+import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 
-/// SE rows read like the paper sheet's SE column instead of cel blocks:
-/// the entry's name/dialogue at its start, a duration line running to the
-/// end of the covered run and a closing tick — no paper fill and no X
-/// cells. One overlay per drawing block, shared by both orientations
-/// (Axis policy), so long dialogue flows across held cells like on paper.
+/// SE rows reuse the drawing rows' white paper frame blocks (the cells
+/// themselves paint the paper); this overlay adds the sheet's SE writing on
+/// top: the speaker name in an accent box at the block start (only when
+/// set) and the dialogue glyphs distributed evenly across the block, with
+/// the audio waveform sandwiched between paper and text.
 
-/// Whether rows of [kind] use the sheet-style SE rendering (label overlay +
-/// duration line in place of paper blocks).
+/// Whether rows of [kind] use the sheet-style SE rendering: cell glyphs and
+/// X marks stay suppressed — the entry's writing comes from the row-level
+/// span overlay instead.
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
-/// Which layer kinds open the cell editor dialog on double tap: SE rows
-/// edit their name/dialogue, instruction rows their FI/FO/PAN … events.
-bool layerKindOpensCellEditorOnDoubleTap(LayerKind kind) {
-  return kind == LayerKind.se || kind == LayerKind.instruction;
-}
-
-/// The label + duration-line overlays for every SE block intersecting the
-/// visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
+/// The name-box + fitted-dialogue overlays for every SE block intersecting
+/// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
 List<Widget> timelineRowSeLabelOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -33,9 +31,6 @@ List<Widget> timelineRowSeLabelOverlays({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
-  required String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  required Color textColor,
-  required Color lineColor,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
@@ -59,7 +54,15 @@ List<Widget> timelineRowSeLabelOverlays({
       leadingFrameSpacerWidth: leadingFrameSpacerWidth,
     );
     final mainExtent = blockEndOffset - blockStartOffset;
-    final label = frameNameForLayer?.call(layer, block.startIndex) ?? '';
+    String? dialogue;
+    String? seName;
+    for (final frame in layer.frames) {
+      if (frame.id == block.frameId) {
+        dialogue = frame.name;
+        seName = frame.seName;
+        break;
+      }
+    }
 
     final content = IgnorePointer(
       key: ValueKey<String>(
@@ -67,9 +70,8 @@ List<Widget> timelineRowSeLabelOverlays({
       ),
       child: SeSpanVisual(
         axis: axis,
-        label: label,
-        textColor: textColor,
-        lineColor: lineColor,
+        dialogue: dialogue ?? '',
+        seName: seName,
       ),
     );
 
@@ -93,13 +95,16 @@ List<Widget> timelineRowSeLabelOverlays({
   return overlays;
 }
 
-/// The sheet's SE-entry visual — label, duration line, closing tick —
-/// shared by the timeline rows and the storyboard's synced SE track.
-/// Waveform strips for an SE row's audio clips, painted BELOW the label
-/// spans (list them earlier in the Stack). Clip length comes from the
-/// extracted peaks; clips whose peaks are still extracting (or failed)
-/// draw nothing until the store notifies. Right-click/long-press opens the
-/// removal menu.
+/// Waveform strips for an SE row's audio clips, painted ABOVE the paper
+/// cells and BELOW the writing overlays (list them between the two in the
+/// Stack). Clip length comes from the extracted peaks; clips whose peaks
+/// are still extracting (or failed) draw nothing until the store notifies.
+///
+/// With [clipToBlocks] the waveform only shows INSIDE the row's drawing
+/// blocks (one clipped window per clip × block intersection, envelope
+/// buckets staying globally aligned); portions outside any block draw
+/// nothing — a block without audio shows the fitted dialogue alone.
+/// Right-click/long-press opens the removal menu.
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -111,6 +116,7 @@ List<Widget> timelineRowAudioOverlays({
   required AudioPeaks? Function(String filePath) audioPeaksFor,
   void Function(int clipIndex)? onRemoveClip,
   required Color color,
+  List<TimelineDrawingBlock>? clipToBlocks,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
@@ -120,16 +126,9 @@ List<Widget> timelineRowAudioOverlays({
     if (peaks == null) {
       continue;
     }
-    final startOffset = frameVisibleX(
-      frameIndex: clip.startFrame,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final mainExtent = peaks.durationFrames(fps) * frameCellExtent;
+    final clipEndExclusive = clip.startFrame + peaks.durationFrames(fps);
 
     final strip = _AudioClipStrip(
-      key: ValueKey<String>('$keyPrefix-audio-clip-${layer.id}-$index'),
       peaks: peaks,
       fps: fps,
       pixelsPerFrame: frameCellExtent,
@@ -138,29 +137,121 @@ List<Widget> timelineRowAudioOverlays({
       onRemove: onRemoveClip == null ? null : () => onRemoveClip(index),
     );
 
-    overlays.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: startOffset,
-        top: 0,
-        width: mainExtent,
-        height: crossAxisExtent,
-        child: strip,
-      ),
-      Axis.vertical => Positioned(
-        top: startOffset,
-        left: 0,
-        height: mainExtent,
-        width: crossAxisExtent,
-        child: strip,
-      ),
-    });
+    if (clipToBlocks == null) {
+      final startOffset = frameVisibleX(
+        frameIndex: clip.startFrame,
+        frameStartIndex: frameStartIndex,
+        frameCellWidth: frameCellExtent,
+        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+      );
+      final mainExtent = (clipEndExclusive - clip.startFrame) * frameCellExtent;
+      overlays.add(
+        _positionedAudioWindow(
+          key: ValueKey<String>('$keyPrefix-audio-clip-${layer.id}-$index'),
+          axis: axis,
+          startOffset: startOffset,
+          mainExtent: mainExtent,
+          crossAxisExtent: crossAxisExtent,
+          leadingShift: 0,
+          strip: strip,
+        ),
+      );
+      continue;
+    }
+
+    for (final block in clipToBlocks) {
+      final windowStart = clip.startFrame > block.startIndex
+          ? clip.startFrame
+          : block.startIndex;
+      final windowEndExclusive = clipEndExclusive < block.endIndexExclusive
+          ? clipEndExclusive
+          : block.endIndexExclusive;
+      if (windowEndExclusive <= windowStart) {
+        continue;
+      }
+      final startOffset = frameVisibleX(
+        frameIndex: windowStart,
+        frameStartIndex: frameStartIndex,
+        frameCellWidth: frameCellExtent,
+        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+      );
+      overlays.add(
+        _positionedAudioWindow(
+          key: ValueKey<String>(
+            '$keyPrefix-audio-clip-${layer.id}-$index-b${block.startIndex}',
+          ),
+          axis: axis,
+          startOffset: startOffset,
+          mainExtent: (windowEndExclusive - windowStart) * frameCellExtent,
+          crossAxisExtent: crossAxisExtent,
+          leadingShift: (windowStart - clip.startFrame) * frameCellExtent,
+          strip: strip,
+        ),
+      );
+    }
   }
   return overlays;
 }
 
+/// One positioned waveform window: the full-length strip shifted back by
+/// [leadingShift] inside a ClipRect, so a mid-clip window still shows the
+/// globally aligned envelope.
+Widget _positionedAudioWindow({
+  required Key key,
+  required Axis axis,
+  required double startOffset,
+  required double mainExtent,
+  required double crossAxisExtent,
+  required double leadingShift,
+  required Widget strip,
+}) {
+  final windowed = leadingShift == 0 && axis == Axis.horizontal
+      ? strip
+      : ClipRect(
+          child: OverflowBox(
+            alignment: axis == Axis.horizontal
+                ? Alignment.centerLeft
+                : Alignment.topCenter,
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: Transform.translate(
+              offset: axis == Axis.horizontal
+                  ? Offset(-leadingShift, 0)
+                  : Offset(0, -leadingShift),
+              child: SizedBox(
+                width: axis == Axis.horizontal
+                    ? mainExtent + leadingShift
+                    : crossAxisExtent,
+                height: axis == Axis.horizontal
+                    ? crossAxisExtent
+                    : mainExtent + leadingShift,
+                child: strip,
+              ),
+            ),
+          ),
+        );
+  return switch (axis) {
+    Axis.horizontal => Positioned(
+      key: key,
+      left: startOffset,
+      top: 0,
+      width: mainExtent,
+      height: crossAxisExtent,
+      child: windowed,
+    ),
+    Axis.vertical => Positioned(
+      key: key,
+      top: startOffset,
+      left: 0,
+      height: mainExtent,
+      width: crossAxisExtent,
+      child: windowed,
+    ),
+  };
+}
+
 class _AudioClipStrip extends StatelessWidget {
   const _AudioClipStrip({
-    super.key,
     required this.peaks,
     required this.fps,
     required this.pixelsPerFrame,
@@ -224,67 +315,157 @@ class _AudioClipStrip extends StatelessWidget {
   }
 }
 
+/// Main-axis extent of the SE name box (the accent strip at a block's
+/// start, horizontal orientation).
+const double seNameBoxExtent = 16;
+
+/// The sheet's SE-entry writing — speaker name box (accent background,
+/// only when the entry carries a name) + dialogue fitted across the span —
+/// shared by the timeline rows, the X-sheet columns and the storyboard's
+/// synced SE track. Paper comes from the cells underneath (or from
+/// [SePaperSpan] where there are none); text is always ink on paper.
 class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
     required this.axis,
-    required this.label,
-    required this.textColor,
-    required this.lineColor,
+    required this.dialogue,
+    this.seName,
   });
 
   final Axis axis;
-  final String label;
-  final Color textColor;
-  final Color lineColor;
+  final String dialogue;
+  final String? seName;
 
   @override
   Widget build(BuildContext context) {
-    final line = Expanded(
-      child: Center(
-        child: Container(
-          width: axis == Axis.horizontal ? null : 1.6,
-          height: axis == Axis.horizontal ? 1.6 : null,
-          color: lineColor,
-        ),
-      ),
-    );
-    final endTick = Container(
-      width: axis == Axis.horizontal ? 2 : 9,
-      height: axis == Axis.horizontal ? 9 : 2,
-      margin: axis == Axis.horizontal
-          ? const EdgeInsets.only(right: 3)
-          : const EdgeInsets.only(bottom: 3),
-      color: lineColor,
-    );
-
+    final seName = this.seName ?? '';
     return Flex(
       direction: axis,
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (label.isNotEmpty)
-          Flexible(
-            child: Padding(
-              padding: axis == Axis.horizontal
-                  ? const EdgeInsets.symmetric(horizontal: 5)
-                  : const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
-              child: ExcludeSemantics(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+        if (seName.isNotEmpty) _SeNameBox(axis: axis, name: seName),
+        Expanded(
+          child: DialogueFitText(
+            text: dialogue,
+            axis: axis,
+            color: timelineDrawingInkColor,
           ),
-        line,
-        endTick,
+        ),
       ],
     );
+  }
+}
+
+class _SeNameBox extends StatelessWidget {
+  const _SeNameBox({required this.axis, required this.name});
+
+  final Axis axis;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    // Upright glyph stack (paper-style vertical writing), never rotated.
+    final glyphStack = Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (final glyph in name.characters)
+          Text(
+            glyph,
+            style: const TextStyle(
+              color: timelineDrawingInkColor,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              height: 1.05,
+            ),
+          ),
+      ],
+    );
+    final box = Semantics(
+      label: 'SE name $name',
+      // Own node even where an ancestor would merge labels (the dialog
+      // preview) — tests and screen readers address the box directly.
+      container: true,
+      child: Container(
+        color: AppColors.accent.withValues(alpha: 0.6),
+        alignment: Alignment.center,
+        child: ClipRect(child: ExcludeSemantics(child: glyphStack)),
+      ),
+    );
+    return axis == Axis.horizontal
+        ? SizedBox(width: seNameBoxExtent, child: box)
+        : ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 72),
+            child: box,
+          );
+  }
+}
+
+/// The paper frame block for hosts without paper cells underneath (the
+/// storyboard's SE track): near-white fill, hairline outline, rounded ends
+/// and a cell divider every [frameCellExtent] — visually the drawing rows'
+/// block, painted as one span.
+class SePaperSpan extends StatelessWidget {
+  const SePaperSpan({
+    super.key,
+    required this.axis,
+    required this.frameCellExtent,
+  });
+
+  final Axis axis;
+  final double frameCellExtent;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _SePaperPainter(axis: axis, frameCellExtent: frameCellExtent),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _SePaperPainter extends CustomPainter {
+  _SePaperPainter({required this.axis, required this.frameCellExtent});
+
+  final Axis axis;
+  final double frameCellExtent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(4),
+    );
+    canvas.drawRRect(rrect, Paint()..color = timelineDrawingHeldColor);
+
+    canvas.save();
+    canvas.clipRRect(rrect);
+    final dividerPaint = Paint()
+      ..color = timelineDrawingInkColor.withValues(alpha: 0.15)
+      ..strokeWidth = 1;
+    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    if (frameCellExtent > 0) {
+      for (var x = frameCellExtent; x < mainExtent - 0.5; x += frameCellExtent) {
+        final (from, to) = axis == Axis.horizontal
+            ? (Offset(x, 0), Offset(x, size.height))
+            : (Offset(0, x), Offset(size.width, x));
+        canvas.drawLine(from, to, dividerPaint);
+      }
+    }
+    canvas.restore();
+
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = timelineDrawingStartBorderColor,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SePaperPainter oldDelegate) {
+    return axis != oldDelegate.axis ||
+        frameCellExtent != oldDelegate.frameCellExtent;
   }
 }

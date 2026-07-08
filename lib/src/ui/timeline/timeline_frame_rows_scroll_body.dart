@@ -11,7 +11,7 @@ import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_section_policy.dart';
-import 'timeline_section_stub_rows.dart';
+
 
 class TimelineFrameRowsScrollBody extends StatelessWidget {
   const TimelineFrameRowsScrollBody({
@@ -76,13 +76,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final row in rows)
-            row.isSectionStub
-                ? TimelineSectionStubCellsRow(
-                    section: row.stubSection!,
-                    mainAxisExtent: totalFrameContentWidth,
-                    metrics: metrics,
-                  )
-                : row.isLane
+            row.isLane
                 ? TimelineLaneFrameRow(
                     layer: row.layer,
                     lane: row.lane!,

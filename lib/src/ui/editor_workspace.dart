@@ -212,23 +212,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.value = next;
   }
 
-  /// SE/camera timeline sections folded to stub rows (view state — survives
-  /// tab switches, session-only).
-  final ValueNotifier<Set<TimelineSection>> _collapsedTimelineSections =
+  /// SE/camera timeline sections hidden from the grids (view state —
+  /// survives tab switches, session-only; toggled from the timeline
+  /// toolbar, the retired fold/collapse UI's replacement).
+  final ValueNotifier<Set<TimelineSection>> _hiddenTimelineSections =
       ValueNotifier(const <TimelineSection>{});
 
   void _toggleTimelineSection(TimelineSection section) {
-    final next = Set<TimelineSection>.of(_collapsedTimelineSections.value);
+    final next = Set<TimelineSection>.of(_hiddenTimelineSections.value);
     if (!next.remove(section)) {
       next.add(section);
     }
-    _collapsedTimelineSections.value = next;
+    _hiddenTimelineSections.value = next;
   }
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
-  /// viewport (zoom/pan) — owned here so they survive tab switches.
+  /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
+  /// viewport (zoom/pan) and the sheet-ink allow toggle — owned here so
+  /// they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
+  final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
 
   /// Sheet ink stores (S2 annotations) — owned here so freehand memos
   /// survive tab switches; separate from the session's cel stroke store.
@@ -360,9 +363,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
-    _collapsedTimelineSections.dispose();
+    _hiddenTimelineSections.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
+    _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
     _draggingTab.dispose();
     widget.panelsMenu?.detach();
@@ -589,7 +593,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
               _expandedLaneLayerIds,
-              _collapsedTimelineSections,
+              _hiddenTimelineSections,
             ]),
             builder: (context, _) => TimelineTabHost(
               session: widget.session,
@@ -607,7 +611,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
-              collapsedSections: _collapsedTimelineSections.value,
+              hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
             ),
           ),
@@ -651,6 +655,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             listenable: Listenable.merge([
               _timesheetContinuous,
               _timesheetViewport,
+              _timesheetInkEnabled,
               _brushTool,
             ]),
             builder: (context, _) => TimesheetTabHost(
@@ -665,6 +670,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               inkController: _timesheetInk,
               brushToolState: _brushTool.value,
+              inkEnabled: _timesheetInkEnabled.value,
+              onInkEnabledChanged: (enabled) {
+                _timesheetInkEnabled.value = enabled;
+              },
             ),
           ),
         );

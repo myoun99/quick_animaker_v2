@@ -138,7 +138,11 @@ void main() {
       find.byKey(const ValueKey<String>('xsheet-instruction-inst-cam-2')),
       findsOneWidget,
     );
-    expect(find.text('PAN'), findsOneWidget);
+    // Vertical writing stacks the name per glyph — assert via semantics.
+    expect(
+      find.bySemanticsLabel('instruction PAN from A to B'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('double-tap on an empty instruction cell adds an event to the '
@@ -175,7 +179,7 @@ void main() {
       '100%',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
 
@@ -221,7 +225,7 @@ void main() {
       '早いPAN',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
 
@@ -250,7 +254,7 @@ void main() {
       'B2',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-event-ok-button')),
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
 
@@ -264,7 +268,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-inst-cam-2')),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-event-delete-button')),
+      find.byKey(const ValueKey<String>('instance-edit-delete-button')),
     );
     await tester.pumpAndSettle();
     expect(_camLayer(repository).instructions, isEmpty);
@@ -354,7 +358,7 @@ void main() {
 
     // Close the still-open event picker.
     await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-event-cancel-button')),
+      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
     );
     await tester.pumpAndSettle();
   });

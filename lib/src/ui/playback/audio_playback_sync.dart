@@ -9,8 +9,18 @@ import 'canvas_playback_controller.dart';
 /// `audioplayers` player; tests inject fakes (plugins are unavailable under
 /// FLUTTER_TEST). Calls are fire-and-forget from the sync's point of view —
 /// audio must never block the frame ticker.
+///
+/// The contract splits loading from starting: [prepare] does the heavy
+/// source opening once, [startAt] just seeks and resumes. The sync prepares
+/// every scheduled clip at playback activation so boundary ticks stay
+/// cheap — playback must NEVER stall at a cut boundary.
 abstract class AudioClipPlayer {
-  Future<void> play(String filePath, {required Duration position});
+  /// Loads [filePath]; called once per player at playback activation.
+  Future<void> prepare(String filePath);
+
+  /// Seeks the prepared source to [position] and plays.
+  Future<void> startAt(Duration position);
+
   Future<void> pause();
   Future<void> resume();
   Future<void> stop();
@@ -26,17 +36,22 @@ typedef AudioClipPlayerFactory = AudioClipPlayer Function();
 /// construction. This class therefore only mirrors the controller's
 /// lifecycle:
 ///
-/// - play / activation → start every clip overlapping the start frame at
-///   position `(frame - clipStart) / fps`;
+/// - activation → build the schedule, create ONE player per scheduled clip
+///   and prepare (load) them all up front; then start every clip
+///   overlapping the start frame at position `(frame - clipStart) / fps`;
 /// - forward ticking → start clips whose start frame was crossed, stop
 ///   clips past their end (clip length, clamped at the cut boundary — an SE
-///   clip belongs to its cut, it never bleeds into the next one);
-/// - pause / resume / stop → forwarded to every live player;
+///   clip belongs to its cut, it never bleeds into the next one). Starting
+///   and stopping only seeks/resumes/stops prepared players; no media
+///   pipeline is opened or torn down on a tick, so cut boundaries never
+///   stall the frame ticker;
+/// - pause / resume / stop → forwarded to every playing player;
 /// - backward jumps (loop wrap, seeks) and forward jumps larger than
 ///   [resyncThresholdFrames] → stop everything and restart what overlaps.
 ///   Smaller forward jumps are indistinguishable from dropped frames, where
 ///   the audio kept real time on the native thread and restarting it would
-///   glitch — those keep playing untouched.
+///   glitch — those keep playing untouched;
+/// - deactivation → stop and dispose every player.
 ///
 /// Clip lengths come from the waveform peaks ([durationSecondsFor]); clips
 /// whose peaks are not extracted yet fall back to the cut end (a shorter
@@ -55,7 +70,8 @@ class AudioPlaybackSync {
   final AudioClipPlayerFactory playerFactory;
 
   List<_ScheduledClip> _schedule = const [];
-  final Map<int, AudioClipPlayer> _livePlayers = {};
+  List<AudioClipPlayer> _players = const [];
+  final Set<int> _playing = {};
   bool _wasActive = false;
   bool _wasPlaying = false;
   int? _lastFrame;
@@ -80,7 +96,7 @@ class AudioPlaybackSync {
       controller.globalFrameIndexListenable.removeListener(_onFrameTick);
       _attached = false;
     }
-    _stopAll();
+    _teardown();
   }
 
   void _onControllerChanged() {
@@ -88,28 +104,30 @@ class AudioPlaybackSync {
     final playing = controller.isPlaying;
     if (active && !_wasActive) {
       _schedule = _buildSchedule(controller.playlist);
+      _players = [for (final _ in _schedule) playerFactory()];
+      for (var index = 0; index < _schedule.length; index += 1) {
+        unawaited(_players[index].prepare(_schedule[index].filePath));
+      }
       _lastFrame = controller.globalFrameIndexListenable.value;
       if (playing) {
         _resyncAt(_lastFrame ?? 0);
       }
     } else if (!active && _wasActive) {
-      _stopAll();
-      _schedule = const [];
-      _lastFrame = null;
+      _teardown();
     } else if (active) {
       if (playing && !_wasPlaying) {
         // Resume — unless a paused seek already stopped the stale players,
         // in which case restart whatever overlaps the current frame.
-        if (_livePlayers.isEmpty) {
+        if (_playing.isEmpty) {
           _resyncAt(_lastFrame ?? 0);
         } else {
-          for (final player in _livePlayers.values) {
-            unawaited(player.resume());
+          for (final index in _playing) {
+            unawaited(_players[index].resume());
           }
         }
       } else if (!playing && _wasPlaying) {
-        for (final player in _livePlayers.values) {
-          unawaited(player.pause());
+        for (final index in _playing) {
+          unawaited(_players[index].pause());
         }
       }
     }
@@ -166,17 +184,14 @@ class AudioPlaybackSync {
   }
 
   void _startClip(int index, int frame) {
-    if (_livePlayers.containsKey(index)) {
+    if (!_playing.add(index)) {
       return;
     }
     final clip = _schedule[index];
-    final player = playerFactory();
-    _livePlayers[index] = player;
     final fps = math.max(1, resolveFps());
     unawaited(
-      player.play(
-        clip.filePath,
-        position: Duration(
+      _players[index].startAt(
+        Duration(
           microseconds:
               (frame - clip.startFrame) * Duration.microsecondsPerSecond ~/ fps,
         ),
@@ -185,18 +200,26 @@ class AudioPlaybackSync {
   }
 
   void _stopClip(int index) {
-    final player = _livePlayers.remove(index);
-    if (player == null) {
+    if (!_playing.remove(index)) {
       return;
     }
-    unawaited(player.stop().then((_) => player.dispose()));
+    unawaited(_players[index].stop());
   }
 
   void _stopAll() {
-    for (final player in _livePlayers.values) {
-      unawaited(player.stop().then((_) => player.dispose()));
+    for (final index in _playing.toList()) {
+      _stopClip(index);
     }
-    _livePlayers.clear();
+  }
+
+  void _teardown() {
+    _stopAll();
+    for (final player in _players) {
+      unawaited(player.dispose());
+    }
+    _players = const [];
+    _schedule = const [];
+    _lastFrame = null;
   }
 
   List<_ScheduledClip> _buildSchedule(

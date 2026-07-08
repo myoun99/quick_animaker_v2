@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_document.dart';
+import '../../models/timesheet_info.dart';
+import '../text/dialogue_fit_layout.dart';
 import '../theme/app_theme.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
@@ -149,15 +151,68 @@ class TimesheetDocumentLayout {
       headerGap +
       columnsHeaderHeight;
 
-  /// The memo band rect of a page — directly under the header band.
-  Rect memoBandRect(int pageIndex) {
+  /// Width fractions of the header boxes when all print; hiding boxes
+  /// renormalizes the rest over the band.
+  static const Map<TimesheetHeaderField, double> _headerFieldFractions = {
+    TimesheetHeaderField.title: 0.26,
+    TimesheetHeaderField.episode: 0.08,
+    TimesheetHeaderField.scene: 0.10,
+    TimesheetHeaderField.cut: 0.10,
+    TimesheetHeaderField.time: 0.12,
+    TimesheetHeaderField.name: 0.20,
+    TimesheetHeaderField.sheet: 0.14,
+  };
+
+  /// The header band rect of a page — its LEFT edge sits on the grid's
+  /// left bold line (the paper form's header table left-aligns with the
+  /// ACTION block; the number gutter stays outside both — user fix), its
+  /// right edge on half 1's right bold line.
+  Rect headerBandRect(int pageIndex) {
     final page = pageRect(pageIndex);
+    final left = page.left + pagePadding + frameNumberGutterWidth;
     return Rect.fromLTWH(
-      page.left + pagePadding,
-      page.top + pagePadding + headerBandHeight,
-      page.width - pagePadding * 2,
-      memoBandHeight,
+      left,
+      page.top + pagePadding,
+      page.right - pagePadding - left,
+      headerBandHeight,
     );
+  }
+
+  /// The visible header boxes of a page, in printing order — shared by the
+  /// painter and the tap-to-edit layer.
+  List<({TimesheetHeaderField field, Rect rect})> headerFieldBoxes(
+    int pageIndex,
+  ) {
+    final fields = document.visibleHeaderFields;
+    if (fields.isEmpty) {
+      return const [];
+    }
+    final band = headerBandRect(pageIndex);
+    var total = 0.0;
+    for (final field in fields) {
+      total += _headerFieldFractions[field]!;
+    }
+    final boxes = <({TimesheetHeaderField field, Rect rect})>[];
+    var x = band.left;
+    for (var index = 0; index < fields.length; index += 1) {
+      // The last box closes exactly on the band edge (no rounding drift).
+      final right = index == fields.length - 1
+          ? band.right
+          : x + band.width * (_headerFieldFractions[fields[index]]! / total);
+      boxes.add((
+        field: fields[index],
+        rect: Rect.fromLTRB(x, band.top, right, band.bottom),
+      ));
+      x = right;
+    }
+    return boxes;
+  }
+
+  /// The memo band rect of a page — directly under the header band, same
+  /// grid-aligned edges.
+  Rect memoBandRect(int pageIndex) {
+    final band = headerBandRect(pageIndex);
+    return Rect.fromLTWH(band.left, band.bottom, band.width, memoBandHeight);
   }
 
   /// Where a global frame lands: page, half and row within the half. The
@@ -251,7 +306,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     if (layout.continuous) {
       _paintPaper(canvas, 0);
       _paintHeaderBand(canvas, 0, drawTexts: drawTexts);
-      _paintMemoBand(canvas, 0);
+      _paintMemoBand(canvas, 0, drawTexts: drawTexts);
       _paintHalf(
         canvas,
         pageIndex: 0,
@@ -264,7 +319,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       for (final page in document.pages) {
         _paintPaper(canvas, page.index);
         _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
-        _paintMemoBand(canvas, page.index);
+        _paintMemoBand(canvas, page.index, drawTexts: drawTexts);
         for (var half = 0; half < 2; half += 1) {
           final rowCount = layout.halfRowCount(half);
           if (rowCount <= 0) {
@@ -301,71 +356,72 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// The header band: labeled boxes like the paper form —
-  /// タイトル/話数 | CUT | TIME | NAME | SHEET.
+  /// TITLE | # | SCENE | CUT | TIME | NAME | SHEET, minus hidden boxes.
   void _paintHeaderBand(
     Canvas canvas,
     int pageIndex, {
     required bool drawTexts,
   }) {
-    final pageRect = layout.pageRect(pageIndex);
-    final band = Rect.fromLTWH(
-      pageRect.left + TimesheetDocumentLayout.pagePadding,
-      pageRect.top + TimesheetDocumentLayout.pagePadding,
-      pageRect.width - TimesheetDocumentLayout.pagePadding * 2,
-      TimesheetDocumentLayout.headerBandHeight,
-    );
-
+    final band = layout.headerBandRect(pageIndex);
     final boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.1
       ..color = _gridBold;
     canvas.drawRect(band, boxPaint);
 
-    // Field boxes, widths as fractions of the band.
-    final fractions = [0.36, 0.14, 0.14, 0.2, 0.16];
-    final labels = ['TITLE / 話数', 'CUT', 'TIME', 'NAME', 'SHEET'];
-    final sheetLabel = layout.continuous
-        ? '1/1'
-        : '${pageIndex + 1}/${document.pages.length}';
-    final values = [
-      document.episode.isEmpty
-          ? document.title
-          : '${document.title}  ${document.episode}',
-      document.cutName,
-      document.durationLabel,
-      document.artist,
-      sheetLabel,
-    ];
-
-    var x = band.left;
-    for (var box = 0; box < fractions.length; box += 1) {
-      final width = band.width * fractions[box];
-      final rect = Rect.fromLTWH(x, band.top, width, band.height);
-      canvas.drawRect(rect, boxPaint);
-      if (drawTexts) {
-        _text(
-          canvas,
-          labels[box],
-          Offset(rect.left + 6, rect.top + 4),
-          fontSize: 8,
-          color: _gridMedium,
-        );
-        _text(
-          canvas,
-          values[box],
-          Offset(rect.left + 8, rect.top + 26),
-          fontSize: 14,
-          bold: true,
-          maxWidth: width - 16,
-        );
+    for (final box in layout.headerFieldBoxes(pageIndex)) {
+      canvas.drawRect(box.rect, boxPaint);
+      if (!drawTexts) {
+        continue;
       }
-      x += width;
+      _text(
+        canvas,
+        headerFieldLabel(box.field),
+        Offset(box.rect.left + 6, box.rect.top + 4),
+        fontSize: 8,
+        color: _gridMedium,
+      );
+      _text(
+        canvas,
+        _headerFieldValue(box.field, pageIndex),
+        Offset(box.rect.left + 8, box.rect.top + 26),
+        fontSize: 14,
+        bold: true,
+        maxWidth: box.rect.width - 16,
+      );
     }
   }
 
+  /// The printed box label — '#' is the paper form's episode (話数) box.
+  static String headerFieldLabel(TimesheetHeaderField field) {
+    return switch (field) {
+      TimesheetHeaderField.title => 'TITLE',
+      TimesheetHeaderField.episode => '#',
+      TimesheetHeaderField.scene => 'SCENE',
+      TimesheetHeaderField.cut => 'CUT',
+      TimesheetHeaderField.time => 'TIME',
+      TimesheetHeaderField.name => 'NAME',
+      TimesheetHeaderField.sheet => 'SHEET',
+    };
+  }
+
+  String _headerFieldValue(TimesheetHeaderField field, int pageIndex) {
+    return switch (field) {
+      TimesheetHeaderField.title => document.title,
+      TimesheetHeaderField.episode => document.episode,
+      TimesheetHeaderField.scene => document.scene,
+      TimesheetHeaderField.cut => document.cutName,
+      TimesheetHeaderField.time => document.durationLabel,
+      TimesheetHeaderField.name => document.artist,
+      TimesheetHeaderField.sheet =>
+        layout.continuous ? '1/1' : '${pageIndex + 1}/${document.pages.length}',
+    };
+  }
+
   /// The Direction memo band under the header: open handwriting space with
-  /// a framed memo box at its top right — printed on every page.
-  void _paintMemoBand(Canvas canvas, int pageIndex) {
+  /// a framed memo box at its top right — printed on every page. The cut's
+  /// Direction memo (cut note) types into its top left.
+  void _paintMemoBand(Canvas canvas, int pageIndex, {required bool drawTexts}) {
     final band = layout.memoBandRect(pageIndex);
     canvas.drawRect(
       band,
@@ -387,6 +443,43 @@ class TimesheetDocumentPainter extends CustomPainter {
         ..strokeWidth = 1.0
         ..color = _gridMedium,
     );
+    if (!drawTexts) {
+      return;
+    }
+    final textMaxWidth = band.width - boxWidth - 20;
+    var y = band.top + 6;
+    if (document.memoText.isNotEmpty) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: document.memoText,
+          style: const TextStyle(color: _ink, fontSize: 11),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 8,
+        ellipsis: '…',
+      )..layout(maxWidth: textMaxWidth);
+      painter.paint(canvas, Offset(band.left + 8, y));
+      y += painter.height + 4;
+    }
+    // The camera-instruction shorthand lines ('C⋈D O.L(カットO.L)' …) stack
+    // under the cut note; whatever exceeds the band stays unprinted (the
+    // band is fixed paper space).
+    for (final line in document.memoInstructionLines) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: line,
+          style: const TextStyle(color: _ink, fontSize: 10),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: textMaxWidth);
+      if (y + painter.height > band.bottom - 4) {
+        break;
+      }
+      painter.paint(canvas, Offset(band.left + 8, y));
+      y += painter.height + 2;
+    }
   }
 
   /// The cut-end strikethrough at the bottom edge of the last playback
@@ -468,7 +561,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
 
     // Row lines: light per frame, medium every 6 frames, bold on second
-    // boundaries with the second index in the number gutter.
+    // boundaries.
     final numbersRight = left - 4;
     for (var row = 0; row <= rowCount; row += 1) {
       final frame = startFrame + row;
@@ -482,20 +575,6 @@ class TimesheetDocumentPainter extends CustomPainter {
         paint = lightPaint;
       }
       canvas.drawLine(Offset(left, y), Offset(right, y), paint);
-
-      if (drawTexts && row < rowCount && frame % document.fps == 0) {
-        // Second index printed just under each second boundary.
-        final second = frame ~/ document.fps + 1;
-        _text(
-          canvas,
-          '$second',
-          Offset(numbersRight, y + 2),
-          fontSize: 8,
-          bold: true,
-          color: _gridBold,
-          rightAlignedAtX: true,
-        );
-      }
     }
 
     // Vertical lines: half edges + column separators (bold at section
@@ -522,23 +601,35 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
 
     // Gutter frame numbers on even frames, bare on the paper left of the
-    // half — page-local on paper, global in the continuous strip.
+    // half — page-local on paper, global in the continuous strip. On each
+    // second's LAST frame row (24, 48, …) the second index prints BOLD in
+    // place of the frame number — the paper convention (A-1 form).
     if (drawTexts) {
       for (var row = 0; row < rowCount; row += 1) {
         final frame = startFrame + row;
         final printed = layout.continuous
             ? frame + 1
             : frame % document.pageFrameCount + 1;
+        final rowTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
+        if (printed % document.fps == 0) {
+          _text(
+            canvas,
+            '${printed ~/ document.fps}',
+            Offset(numbersRight, rowTop + 3),
+            fontSize: 10,
+            bold: true,
+            color: _gridBold,
+            rightAlignedAtX: true,
+          );
+          continue;
+        }
         if (printed.isOdd) {
           continue;
         }
         _text(
           canvas,
           '$printed',
-          Offset(
-            numbersRight,
-            rowsTop + row * TimesheetDocumentLayout.rowHeight + 4,
-          ),
+          Offset(numbersRight, rowTop + 4),
           fontSize: 8,
           color: _gridMedium,
           rightAlignedAtX: true,
@@ -578,12 +669,14 @@ class TimesheetDocumentPainter extends CustomPainter {
                   1,
                   rowCount - row,
                 );
-                _verticalText(
+                // SE dialogue FITS its block: glyphs distribute evenly over
+                // the covered rows (same centers as the timeline overlay).
+                _fitVerticalText(
                   canvas,
                   cell.label ?? '',
                   topCenter: Offset(centerX - 3, cellTop + 2),
                   fontSize: 9,
-                  maxHeight: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
+                  extent: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
                 );
               } else {
                 _text(
@@ -806,6 +899,41 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
       painter.paint(canvas, Offset(topCenter.dx - painter.width / 2, y));
       y += painter.height - 2;
+    }
+  }
+
+  /// SE dialogue distributed evenly over the covered rows — the sheet's
+  /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
+  /// so screen and print place glyphs identically. Never truncates: the
+  /// dialogue owns its whole block, exactly like the paper column.
+  void _fitVerticalText(
+    Canvas canvas,
+    String text, {
+    required Offset topCenter,
+    required double fontSize,
+    required double extent,
+    Color color = _ink,
+  }) {
+    final glyphs = text.characters.toList(growable: false);
+    final centers = dialogueGlyphCenters(
+      glyphCount: glyphs.length,
+      mainExtent: extent,
+    );
+    for (var index = 0; index < glyphs.length; index += 1) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: glyphs[index],
+          style: TextStyle(color: color, fontSize: fontSize),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(
+          topCenter.dx - painter.width / 2,
+          topCenter.dy + centers[index] - painter.height / 2,
+        ),
+      );
     }
   }
 

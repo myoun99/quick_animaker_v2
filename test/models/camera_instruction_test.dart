@@ -31,6 +31,40 @@ void main() {
       expect(plain.toJson().containsKey('color'), isFalse);
     });
 
+    test('markType defaults to bar and only non-bar serializes', () {
+      const plain = CameraInstructionDef(id: 'pan', name: 'PAN', iconKey: 'pan');
+      const bowtie = CameraInstructionDef(
+        id: 'ol',
+        name: 'O.L',
+        iconKey: 'overlap',
+        markType: CameraInstructionMarkType.ol,
+      );
+
+      expect(plain.markType, CameraInstructionMarkType.bar);
+      expect(plain.toJson().containsKey('markType'), isFalse);
+      expect(bowtie.toJson()['markType'], 'ol');
+      expect(CameraInstructionDef.fromJson(plain.toJson()), plain);
+      expect(CameraInstructionDef.fromJson(bowtie.toJson()), bowtie);
+      expect(plain, isNot(bowtie.copyWith(name: 'PAN')));
+    });
+
+    test('unknown or absent markType json decodes to bar', () {
+      final unknown = CameraInstructionDef.fromJson({
+        'id': 'x',
+        'name': 'X',
+        'iconKey': 'pan',
+        'markType': 'mystery',
+      });
+      expect(unknown.markType, CameraInstructionMarkType.bar);
+
+      final absent = CameraInstructionDef.fromJson({
+        'id': 'y',
+        'name': 'Y',
+        'iconKey': 'pan',
+      });
+      expect(absent.markType, CameraInstructionMarkType.bar);
+    });
+
     test('copyWith keeps the id and can clear the color', () {
       const def = CameraInstructionDef(
         id: 'fi',
@@ -46,6 +80,10 @@ void main() {
 
       final cleared = def.copyWith(colorValue: () => null);
       expect(cleared.colorValue, isNull);
+
+      final marked = def.copyWith(markType: CameraInstructionMarkType.ol);
+      expect(marked.markType, CameraInstructionMarkType.ol);
+      expect(marked.copyWith(name: 'X').markType, CameraInstructionMarkType.ol);
     });
   });
 
@@ -77,6 +115,17 @@ void main() {
       );
       expect(CameraInstructionSet.standard.defById('ol')!.name, 'O.L');
       expect(CameraInstructionSet.standard.defById('missing'), isNull);
+
+      // Only O.L seeds the bowtie mark; every other term stays a bar.
+      for (final def in CameraInstructionSet.standard.defs) {
+        expect(
+          def.markType,
+          def.id == 'ol'
+              ? CameraInstructionMarkType.ol
+              : CameraInstructionMarkType.bar,
+          reason: def.id,
+        );
+      }
     });
 
     test('round-trips through json', () {
@@ -111,6 +160,28 @@ void main() {
       expect(InstructionEvent.fromJson(full.toJson()), full);
       expect(bare.toJson().containsKey('valueA'), isFalse);
       expect(bare.toJson().containsKey('text'), isFalse);
+    });
+
+    test('memo round-trips, stays optional and clears via copyWith', () {
+      const withMemo = InstructionEvent(
+        instructionId: 'ol',
+        length: 6,
+        valueA: 'C',
+        valueB: 'D',
+        memo: 'カットO.L',
+      );
+
+      expect(withMemo.toJson()['memo'], 'カットO.L');
+      expect(InstructionEvent.fromJson(withMemo.toJson()), withMemo);
+
+      const bare = InstructionEvent(instructionId: 'ol', length: 6);
+      expect(bare.toJson().containsKey('memo'), isFalse);
+
+      final kept = withMemo.copyWith(length: 8);
+      expect(kept.memo, 'カットO.L');
+      final cleared = withMemo.copyWith(memo: () => null);
+      expect(cleared.memo, isNull);
+      expect(cleared, isNot(withMemo));
     });
 
     test('displayLabel: free text wins, vocabulary name falls back', () {

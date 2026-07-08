@@ -10,6 +10,7 @@ class Frame {
     required this.duration,
     required List<Stroke> strokes,
     this.name,
+    this.seName,
     this.storyboardMetadata = const StoryboardFrameMetadata.empty(),
   }) : strokes = List.unmodifiable(strokes);
 
@@ -17,6 +18,12 @@ class Frame {
   final int duration;
   final List<Stroke> strokes;
   final String? name;
+
+  /// SE rows only: the speaker/effect name shown in the accent box at the
+  /// block start. [name] stays the dialogue there (it predates this field,
+  /// so legacy SE labels keep reading as dialogue).
+  final String? seName;
+
   final StoryboardFrameMetadata storyboardMetadata;
 
   Frame copyWith({
@@ -24,6 +31,7 @@ class Frame {
     int? duration,
     List<Stroke>? strokes,
     Object? name = copyWithSentinel,
+    Object? seName = copyWithSentinel,
     StoryboardFrameMetadata? storyboardMetadata,
   }) {
     return Frame(
@@ -31,6 +39,9 @@ class Frame {
       duration: duration ?? this.duration,
       strokes: strokes ?? this.strokes,
       name: identical(name, copyWithSentinel) ? this.name : name as String?,
+      seName: identical(seName, copyWithSentinel)
+          ? this.seName
+          : seName as String?,
       storyboardMetadata: storyboardMetadata ?? this.storyboardMetadata,
     );
   }
@@ -40,6 +51,7 @@ class Frame {
     'duration': duration,
     'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
     if (name != null) 'name': name,
+    if (seName != null) 'seName': seName,
     'storyboardMetadata': storyboardMetadata.toJson(),
   };
 
@@ -51,6 +63,7 @@ class Frame {
           .map((stroke) => Stroke.fromJson(stroke as Map<String, dynamic>))
           .toList(),
       name: json['name'] as String?,
+      seName: json['seName'] as String?,
       storyboardMetadata: json['storyboardMetadata'] == null
           ? const StoryboardFrameMetadata.empty()
           : StoryboardFrameMetadata.fromJson(
@@ -66,6 +79,7 @@ class Frame {
           other.id == id &&
           other.duration == duration &&
           other.name == name &&
+          other.seName == seName &&
           other.storyboardMetadata == storyboardMetadata &&
           listEquals(other.strokes, strokes);
 
@@ -74,11 +88,12 @@ class Frame {
     id,
     duration,
     name,
+    seName,
     storyboardMetadata,
     Object.hashAll(strokes),
   );
 
   @override
   String toString() =>
-      'Frame(id: $id, duration: $duration, name: $name, strokes: $strokes, storyboardMetadata: $storyboardMetadata)';
+      'Frame(id: $id, duration: $duration, name: $name, seName: $seName, strokes: $strokes, storyboardMetadata: $storyboardMetadata)';
 }

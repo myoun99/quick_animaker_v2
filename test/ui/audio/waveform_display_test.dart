@@ -6,11 +6,14 @@ import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
@@ -26,12 +29,19 @@ final _peaks = AudioPeaks(
   peaks: Float32List.fromList(List.filled(80, 0.5)),
 );
 
+/// SE layer with a 12-frame entry and a clip at frame 2: timeline
+/// waveforms only paint inside drawing blocks, so the visible window is
+/// the [2, 12) intersection.
 Layer _seLayer() => Layer(
   id: const LayerId('wave-se'),
   name: 'S1',
   kind: LayerKind.se,
-  frames: const [],
-  timeline: const {},
+  frames: [
+    Frame(id: const FrameId('wave-f'), duration: 12, strokes: const []),
+  ],
+  timeline: {
+    0: const TimelineExposure.drawing(FrameId('wave-f'), length: 12),
+  },
   audioClips: const [AudioClip(filePath: 'voice.wav', startFrame: 2)],
 );
 
@@ -69,11 +79,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final strip = find.byKey(
-      const ValueKey<String>('timeline-audio-clip-wave-se-0'),
+      const ValueKey<String>('timeline-audio-clip-wave-se-0-b0'),
     );
     expect(strip, findsOneWidget);
-    // 24 frames at the default 48 px/frame.
-    expect(tester.getSize(strip).width, moreOrLessEquals(24 * 48));
+    // Clipped to the block: [2, 12) of the 24-frame clip at 48 px/frame.
+    expect(tester.getSize(strip).width, moreOrLessEquals(10 * 48));
 
     // The strip is wider than the viewport — long-press a visible spot
     // near its left edge instead of the (offscreen) center.
@@ -172,5 +182,10 @@ class _StubExtractor extends AudioPeaksExtractor {
   final Future<AudioPeaks?> Function() _extract;
 
   @override
-  Future<AudioPeaks?> extract(String filePath) => _extract();
+  Future<AudioPeaksExtraction> extract(String filePath) async {
+    final peaks = await _extract();
+    return peaks == null
+        ? const AudioPeaksExtraction.failure('stub failure')
+        : AudioPeaksExtraction.success(peaks);
+  }
 }
