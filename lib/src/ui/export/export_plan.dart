@@ -229,6 +229,7 @@ List<ExportCelTask> buildExportCelPlan({
   required CutId activeCutId,
   required ExportRange range,
   ExportCelNaming naming = const ExportCelNaming(),
+  bool onTimesheetOnly = false,
 }) {
   final cuts = resolveExportCuts(
     project: project,
@@ -241,6 +242,11 @@ List<ExportCelTask> buildExportCelPlan({
   for (final cut in cuts) {
     for (final layer in cut.layers) {
       if (layer.kind == LayerKind.camera || !layer.isVisible) {
+        continue;
+      }
+      // Cel-export scope: the timesheet toggle on layer labels marks which
+      // layers belong to the sheet output.
+      if (onTimesheetOnly && !layer.onTimesheet) {
         continue;
       }
       for (var index = 0; index < layer.frames.length; index += 1) {
