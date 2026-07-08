@@ -138,7 +138,11 @@ void main() {
       find.byKey(const ValueKey<String>('xsheet-instruction-inst-cam-2')),
       findsOneWidget,
     );
-    expect(find.text('PAN'), findsOneWidget);
+    // Vertical writing stacks the name per glyph — assert via semantics.
+    expect(
+      find.bySemanticsLabel('instruction PAN from A to B'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('double-tap on an empty instruction cell adds an event to the '

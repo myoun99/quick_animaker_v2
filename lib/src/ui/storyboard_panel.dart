@@ -31,7 +31,7 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
-import 'timeline/timeline_se_row_visual.dart' show SeSpanVisual;
+import 'timeline/timeline_se_row_visual.dart' show SePaperSpan, SeSpanVisual;
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
 /// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
@@ -812,10 +812,43 @@ class _StoryboardSeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final spans = <Widget>[];
-    // Waveforms first (painted UNDER the SE label spans): each clip mapped
-    // to track-global frames and clamped at its cut's end.
+    // Paper blocks first — the storyboard SE row has no cells underneath,
+    // so each entry paints its own paper span (SePaperSpan); waveforms go
+    // above the paper, the writing on top.
+    for (final entry in layoutEntries) {
+      final layer = _seLayerAt(entry.cut, slot);
+      if (layer == null) {
+        continue;
+      }
+      for (final block in drawingBlocks(layer.timeline)) {
+        if (block.startIndex >= entry.duration) {
+          continue;
+        }
+        final endExclusive = math.min(block.endIndexExclusive, entry.duration);
+        spans.add(
+          Positioned(
+            left: timelineScale.leftForFrame(entry.startFrame + block.startIndex),
+            top: 0,
+            bottom: 0,
+            width:
+                (endExclusive - block.startIndex) *
+                timelineScale.pixelsPerFrame,
+            child: IgnorePointer(
+              key: ValueKey<String>(
+                'storyboard-se-paper-${entry.cut.id.value}-${block.startIndex}',
+              ),
+              child: SePaperSpan(
+                axis: Axis.horizontal,
+                frameCellExtent: timelineScale.pixelsPerFrame,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    // Waveforms above the paper (painted UNDER the SE writing): each clip
+    // mapped to track-global frames and clamped at its cut's end.
     final audioPeaksFor = this.audioPeaksFor;
     if (audioPeaksFor != null) {
       for (final entry in layoutEntries) {
@@ -855,7 +888,8 @@ class _StoryboardSeRow extends StatelessWidget {
                     peaks: peaks,
                     fps: projectFps,
                     pixelsPerFrame: timelineScale.pixelsPerFrame,
-                    color: colorScheme.tertiary.withValues(alpha: 0.4),
+                    // Ink on the paper spans, like the timeline SE rows.
+                    color: timelineDrawingInkColor.withValues(alpha: 0.22),
                   ),
                 ),
               ),
@@ -875,10 +909,12 @@ class _StoryboardSeRow extends StatelessWidget {
         }
         final endExclusive = math.min(block.endIndexExclusive, entry.duration);
         final globalStart = entry.startFrame + block.startIndex;
-        String? label;
+        String? dialogue;
+        String? seName;
         for (final frame in layer.frames) {
           if (frame.id == block.frameId) {
-            label = frame.name;
+            dialogue = frame.name;
+            seName = frame.seName;
             break;
           }
         }
@@ -896,9 +932,8 @@ class _StoryboardSeRow extends StatelessWidget {
               ),
               child: SeSpanVisual(
                 axis: Axis.horizontal,
-                label: label ?? '',
-                textColor: colorScheme.onSurface,
-                lineColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                dialogue: dialogue ?? '',
+                seName: seName,
               ),
             ),
           ),

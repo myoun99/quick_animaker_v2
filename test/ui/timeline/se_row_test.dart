@@ -15,6 +15,8 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 
 const _cutId = CutId('se-cut');
 const _seLayerId = LayerId('se-voice');
@@ -109,6 +111,27 @@ Future<void> _doubleTapCell(WidgetTester tester, Finder cell) async {
   await tester.pumpAndSettle();
 }
 
+/// The dialogue text carried by an SE span overlay — painted glyphs, so
+/// find.text cannot see it; read the widget field instead.
+String _seDialogueAt(WidgetTester tester, String overlayKey) {
+  final fit = tester.widget<DialogueFitText>(
+    find.descendant(
+      of: find.byKey(ValueKey<String>(overlayKey)),
+      matching: find.byType(DialogueFitText),
+    ),
+  );
+  return fit.text;
+}
+
+List<String> _allSeDialogues(WidgetTester tester) {
+  return [
+    for (final widget in tester.widgetList<DialogueFitText>(
+      find.byType(DialogueFitText),
+    ))
+      widget.text,
+  ];
+}
+
 Layer _seLayer(ProjectRepository repository) {
   return repository
       .requireProject()
@@ -122,17 +145,37 @@ Layer _seLayer(ProjectRepository repository) {
 
 void main() {
   testWidgets(
-    'SE row shows the entry label over a span, no paper glyphs or X',
+    'SE row paints paper blocks with the fitted dialogue overlay, no cell '
+    'glyphs or X',
     (tester) async {
       await _pumpHome(tester, _project());
       await _ensureRowVisible(tester, _seLayerId);
 
-      // The label rides the block-span overlay, not the start cell's glyph.
+      // The dialogue rides the block-span overlay as painted fitted glyphs.
       expect(
         find.byKey(const ValueKey<String>('timeline-se-label-se-voice-1')),
         findsOneWidget,
       );
-      expect(find.text('Hello!'), findsOneWidget);
+      expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-1'), 'Hello!');
+      // No Text glyph duplicates the dialogue on the start cell.
+      expect(find.text('Hello!'), findsNothing);
+
+      // Covered SE cells paint the same white paper as drawing blocks.
+      final startCell = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('timeline-cell-se-voice-1')),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+        (startCell.decoration! as BoxDecoration).color,
+        timelineDrawingHeldColor,
+      );
+
+      // No name box without a seName.
+      expect(find.bySemanticsLabel(RegExp('^SE name')), findsNothing);
 
       // No X anywhere on the SE row; the empty cel row still gets its X.
       final seRowArea = find.byKey(
@@ -153,6 +196,31 @@ void main() {
     },
   );
 
+  testWidgets('an entry with a seName shows the accent name box at the '
+      'block start', (tester) async {
+    await _pumpHome(
+      tester,
+      _project(
+        frames: [
+          Frame(
+            id: const FrameId('se-f1'),
+            duration: 3,
+            name: '그건 아니라고 생각해',
+            seName: '앨리스',
+            strokes: const [],
+          ),
+        ],
+      ),
+    );
+    await _ensureRowVisible(tester, _seLayerId);
+
+    expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
+    expect(
+      _seDialogueAt(tester, 'timeline-se-label-se-voice-1'),
+      '그건 아니라고 생각해',
+    );
+  });
+
   testWidgets('XSheet SE column shows the same label overlay', (tester) async {
     await _pumpHome(tester, _project());
 
@@ -165,7 +233,7 @@ void main() {
       find.byKey(const ValueKey<String>('xsheet-se-label-se-voice-1')),
       findsOneWidget,
     );
-    expect(find.text('Hello!'), findsOneWidget);
+    expect(_seDialogueAt(tester, 'xsheet-se-label-se-voice-1'), 'Hello!');
   });
 
   testWidgets('double-tap on an empty SE cell creates a labeled entry to the '
@@ -198,7 +266,7 @@ void main() {
     expect(layer.frames.single.name, '와아!');
     // Sheet semantics: holds to the cut end (duration 12, start 4).
     expect(entry.length, 8);
-    expect(find.text('와아!'), findsOneWidget);
+    expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-4'), '와아!');
 
     // ONE undo removes the entire labeled entry.
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
@@ -254,6 +322,9 @@ void main() {
 
     final layer = _seLayer(repository);
     expect(layer.frames.map((frame) => frame.name), ['Hello!', 'Hello!']);
-    expect(find.text('Hello!'), findsNWidgets(2));
+    expect(
+      _allSeDialogues(tester).where((text) => text == 'Hello!').length,
+      2,
+    );
   });
 }
