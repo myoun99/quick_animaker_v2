@@ -29,6 +29,7 @@ import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_playhead.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_section_runs.dart';
 import 'timeline_selected_exposure_outline.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
@@ -131,6 +132,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   );
 
   static const double _headerHeight = 92;
+
+  /// The section band above the layer headers: the paper sheet's
+  /// ACTION/SE/CAM group headings, each wrapping its columns.
+  static const double _sectionBandHeight = 20;
+  static const double _totalHeaderHeight = _headerHeight + _sectionBandHeight;
 
   @override
   State<XSheetTimelineGrid> createState() => _XSheetTimelineGridState();
@@ -309,7 +315,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       builder: (context, constraints) {
         final bodyViewportHeight = constraints.hasBoundedHeight
             ? (constraints.maxHeight -
-                      XSheetTimelineGrid._headerHeight -
+                      XSheetTimelineGrid._totalHeaderHeight -
                       bottomScrollbarRailHeight)
                   .clamp(0.0, double.infinity)
                   .toDouble()
@@ -321,31 +327,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         _lastEffectiveFrameScrollOffset = effectiveFrameScrollOffset;
         _synchronizeFrameScrollController(effectiveFrameScrollOffset);
 
-        // Collapsed sections fold to one stub COLUMN (full column width —
-        // every extent formula stays untouched); shared row policy with the
-        // horizontal grid.
+        // Collapsed sections fold to one slim stub COLUMN; the section
+        // band above the headers carries each section's bracket (shared
+        // row/run policy with the horizontal grid).
         final entries = buildTimelineDisplayRows(
           layers: widget.layers,
           expandedLayerIds: const {},
           lanesForLayer: (_) => const [],
           collapsedSections: widget.collapsedSections,
         );
-        // Section labels/chevrons sit on each section's first visible
-        // column header.
-        final sectionStartsByEntry = <int, TimelineSection>{};
-        TimelineSection? previousSection;
-        for (var index = 0; index < entries.length; index += 1) {
-          final entry = entries[index];
-          final section = entry.isSectionStub
-              ? entry.stubSection!
-              : timelineSectionForLayerKind(entry.layer.kind);
-          if (section != previousSection) {
-            if (!entry.isSectionStub) {
-              sectionStartsByEntry[index] = section;
-            }
-            previousSection = section;
-          }
-        }
+        final sectionRuns = timelineSectionRuns(entries);
+        int sectionLayerCount(TimelineSection section) => widget.layers
+            .where(
+              (layer) => timelineSectionForLayerKind(layer.kind) == section,
+            )
+            .length;
 
         // The shared virtualization plan with the frame axis fed through the
         // "horizontal" inputs (the axes are swapped in this grid).
@@ -361,7 +357,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         );
         final frameRange = plan.frameRange;
         final totalFrameContentHeight = plan.totalFrameContentWidth;
-        final columnsContentWidth = entries.length * _metrics.layerRowHeight;
+        // Columns are no longer uniformly wide: collapsed sections fold to
+        // a slim strip.
+        final columnsContentWidth = timelineDisplayRowsExtent(
+          entries,
+          _metrics,
+        );
         final cutEndBoundaryOffset = timelineCutEndBoundaryX(
           playbackFrameCount: widget.frameCount,
           metrics: _metrics,
@@ -379,7 +380,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                       children: [
                         _HeaderCell(
                           width: _metrics.layerControlsWidth,
-                          height: XSheetTimelineGrid._headerHeight,
+                          height: XSheetTimelineGrid._totalHeaderHeight,
                           child: const Text('Frame'),
                         ),
                         Expanded(
@@ -467,7 +468,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                       children: [
                         TimelineVerticalScrollbarSlot(
                           width: _metrics.verticalScrollbarWidth,
-                          height: XSheetTimelineGrid._headerHeight,
+                          height: XSheetTimelineGrid._totalHeaderHeight,
                         ),
                         Expanded(
                           child: TimelineVerticalScrollbarRail(
@@ -504,6 +505,31 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               width: columnsContentWidth,
                               child: Column(
                                 children: [
+                                  // The paper sheet's group headings: one
+                                  // bracket cell per section run, wrapping
+                                  // its columns.
+                                  Row(
+                                    children: [
+                                      for (final run in sectionRuns)
+                                        _XSheetSectionBandCell(
+                                          run: run,
+                                          extent: timelineSectionRunExtent(
+                                            run,
+                                            entries,
+                                            _metrics,
+                                          ),
+                                          onToggleSection:
+                                              widget.onToggleSection == null ||
+                                                  !timelineSectionCollapsible(
+                                                    run.section,
+                                                  )
+                                              ? null
+                                              : () => widget.onToggleSection!(
+                                                  run.section,
+                                                ),
+                                        ),
+                                    ],
+                                  ),
                                   Row(
                                     children: [
                                       for (
@@ -515,12 +541,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             ? _XSheetSectionStubHeader(
                                                 section:
                                                     entries[index].stubSection!,
+                                                layerCount: sectionLayerCount(
+                                                  entries[index].stubSection!,
+                                                ),
                                                 metrics: _metrics,
-                                                sectionStart:
-                                                    timelineSectionStartsAt(
-                                                      widget.layers,
-                                                      entries[index].layerIndex,
-                                                    ),
                                                 onToggleSection:
                                                     widget.onToggleSection ==
                                                         null
@@ -543,17 +567,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       widget.layers,
                                                       entries[index].layerIndex,
                                                     ),
-                                                sectionStartOf:
-                                                    sectionStartsByEntry[index],
-                                                onToggleSection:
-                                                    widget.onToggleSection ==
-                                                            null ||
-                                                        sectionStartsByEntry[index] ==
-                                                            null
-                                                    ? null
-                                                    : () => widget.onToggleSection!(
-                                                        sectionStartsByEntry[index]!,
-                                                      ),
                                                 onSelectLayer:
                                                     widget.onSelectLayer,
                                                 onToggleLayerVisibility: widget
@@ -1105,29 +1118,107 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   }
 }
 
-/// A collapsed section's header cell: the group label + unfold chevron in
-/// one full-width column head (the section axis runs horizontally here).
-class _XSheetSectionStubHeader extends StatelessWidget {
-  const _XSheetSectionStubHeader({
-    required this.section,
-    required this.metrics,
+/// One cell of the section band above the layer headers: the paper sheet's
+/// group heading wrapping its columns. Collapsible sections carry the fold
+/// chevron; a collapsed section's cell shrinks to the slim reopen strip.
+class _XSheetSectionBandCell extends StatelessWidget {
+  const _XSheetSectionBandCell({
+    required this.run,
+    required this.extent,
     required this.onToggleSection,
-    this.sectionStart = false,
   });
 
-  final TimelineSection section;
-  final TimelineGridMetrics metrics;
+  final TimelineSectionRun run;
+  final double extent;
   final VoidCallback? onToggleSection;
-  final bool sectionStart;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final header = InkWell(
+    final collapsible = onToggleSection != null;
+
+    final cell = Container(
+      width: extent,
+      height: XSheetTimelineGrid._sectionBandHeight,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border.all(color: colorScheme.outline, width: 1),
+      ),
+      child: run.collapsed
+          ? Center(
+              child: Icon(
+                Icons.chevron_right,
+                size: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (collapsible)
+                  Icon(
+                    Icons.expand_more,
+                    size: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                if (collapsible) const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    timelineSectionLabel(run.section),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    if (!collapsible) {
+      return ExcludeSemantics(child: cell);
+    }
+    return InkWell(
+      key: ValueKey<String>('xsheet-section-collapse-${run.section.name}'),
+      onTap: onToggleSection,
+      child: Semantics(
+        label:
+            '${run.collapsed ? 'Expand' : 'Collapse'} '
+            '${timelineSectionLabel(run.section)} section',
+        button: true,
+        child: cell,
+      ),
+    );
+  }
+}
+
+/// A collapsed section's header cell: a slim vertical reopen strip (the
+/// section is folded flat — no layer columns, no frame cells).
+class _XSheetSectionStubHeader extends StatelessWidget {
+  const _XSheetSectionStubHeader({
+    required this.section,
+    required this.layerCount,
+    required this.metrics,
+    required this.onToggleSection,
+  });
+
+  final TimelineSection section;
+  final int layerCount;
+  final TimelineGridMetrics metrics;
+  final VoidCallback? onToggleSection;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
       key: ValueKey<String>('xsheet-section-stub-header-${section.name}'),
       onTap: onToggleSection,
       child: Container(
-        width: metrics.layerRowHeight,
+        width: metrics.collapsedSectionExtent,
         height: XSheetTimelineGrid._headerHeight,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
@@ -1136,44 +1227,25 @@ class _XSheetSectionStubHeader extends StatelessWidget {
         child: Semantics(
           label: 'Expand ${timelineSectionLabel(section)} section',
           button: true,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.unfold_more,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                timelineSectionLabel(section),
+          child: Center(
+            // Reads from the right, like the timeline's bracket labels.
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Text(
+                '${timelineSectionLabel(section)} · $layerCount',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 1.2,
+                  fontSize: 9,
+                  letterSpacing: 1.1,
                   fontWeight: FontWeight.bold,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
-    );
-
-    if (!sectionStart) {
-      return header;
-    }
-    return Stack(
-      children: [
-        header,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 2,
-          child: IgnorePointer(child: Container(color: colorScheme.outline)),
-        ),
-      ],
     );
   }
 }
@@ -1189,8 +1261,6 @@ class _LayerHeader extends StatelessWidget {
     required this.onLayerMarkSelected,
     required this.metrics,
     this.sectionStart = false,
-    this.sectionStartOf,
-    this.onToggleSection,
   });
 
   final TimelineGridMetrics metrics;
@@ -1206,11 +1276,6 @@ class _LayerHeader extends StatelessWidget {
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the header's left edge.
   final bool sectionStart;
-
-  /// The section this column is the FIRST VISIBLE column of — collapsible
-  /// sections show the fold chevron here (the transposed gutter label).
-  final TimelineSection? sectionStartOf;
-  final VoidCallback? onToggleSection;
 
   @override
   Widget build(BuildContext context) {
@@ -1241,28 +1306,6 @@ class _LayerHeader extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  // The transposed section gutter: collapsible sections get
-                  // a fold chevron on their first visible column.
-                  if (sectionStartOf != null &&
-                      timelineSectionCollapsible(sectionStartOf!) &&
-                      onToggleSection != null)
-                    InkWell(
-                      key: ValueKey<String>(
-                        'xsheet-section-collapse-${sectionStartOf!.name}',
-                      ),
-                      onTap: onToggleSection,
-                      child: Semantics(
-                        label:
-                            'Collapse '
-                            '${timelineSectionLabel(sectionStartOf!)} section',
-                        button: true,
-                        child: const SizedBox(
-                          width: 16,
-                          height: 20,
-                          child: Icon(Icons.expand_more, size: 14),
-                        ),
-                      ),
-                    ),
                   // Timesheet + mark chips lead the name; ineligible layers
                   // keep empty slots so names align across columns.
                   if (layerKindEligibleForTimesheetToggle(layer.kind))

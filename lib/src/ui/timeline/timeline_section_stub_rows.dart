@@ -1,13 +1,145 @@
 import 'package:flutter/material.dart';
 
+import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_layer_controls_row.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_section_runs.dart';
 
-/// A collapsed section folded to one row: the rail shows the gutter label
-/// with the fold chevron plus a quiet summary, the frame area an empty
-/// muted strip. Uniform [TimelineGridMetrics.layerRowHeight] keeps every
-/// virtualization/playhead calculation untouched.
+/// The section-bracket gutter beside the timeline rail: one enclosing
+/// bracket cell per section run — the paper timesheet's ACTION/SE/CAMERA
+/// group heading wrapping its columns, laid along the layer axis. Labels
+/// read bottom-to-top (tilt your head to the RIGHT, like the sheet turned
+/// on its side); collapsible sections carry the fold chevron, and a
+/// collapsed section's segment shrinks to the slim reopen strip.
+class TimelineSectionBracketRail extends StatelessWidget {
+  const TimelineSectionBracketRail({
+    super.key,
+    required this.rows,
+    required this.metrics,
+    this.onToggleSection,
+  });
+
+  final List<TimelineDisplayRow> rows;
+  final TimelineGridMetrics metrics;
+  final ValueChanged<TimelineSection>? onToggleSection;
+
+  @override
+  Widget build(BuildContext context) {
+    if (metrics.sectionLabelGutterWidth <= 0) {
+      return const SizedBox.shrink();
+    }
+    final runs = timelineSectionRuns(rows);
+    return SizedBox(
+      width: metrics.sectionLabelGutterWidth,
+      child: Column(
+        children: [
+          for (final run in runs)
+            _BracketSegment(
+              run: run,
+              extent: timelineSectionRunExtent(run, rows, metrics),
+              metrics: metrics,
+              onToggleSection:
+                  onToggleSection == null ||
+                      !timelineSectionCollapsible(run.section)
+                  ? null
+                  : () => onToggleSection!(run.section),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BracketSegment extends StatelessWidget {
+  const _BracketSegment({
+    required this.run,
+    required this.extent,
+    required this.metrics,
+    required this.onToggleSection,
+  });
+
+  final TimelineSectionRun run;
+  final double extent;
+  final TimelineGridMetrics metrics;
+  final VoidCallback? onToggleSection;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final collapsible = onToggleSection != null;
+
+    final content = run.collapsed
+        ? Center(
+            child: Icon(
+              Icons.chevron_right,
+              size: 14,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          )
+        : Column(
+            children: [
+              if (collapsible)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.expand_more,
+                    size: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              Expanded(
+                child: Center(
+                  // quarterTurns 3: the label runs bottom-to-top so it reads
+                  // from the RIGHT side of the strip — the sheet's heading
+                  // once the paper is laid time-axis-horizontal.
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: Text(
+                      timelineSectionLabel(run.section),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+
+    final box = Container(
+      width: metrics.sectionLabelGutterWidth,
+      height: extent,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border.all(color: colorScheme.outline, width: 1),
+      ),
+      child: content,
+    );
+
+    if (!collapsible) {
+      return ExcludeSemantics(child: box);
+    }
+    return InkWell(
+      key: ValueKey<String>('timeline-section-collapse-${run.section.name}'),
+      onTap: onToggleSection,
+      child: Semantics(
+        label:
+            '${run.collapsed ? 'Expand' : 'Collapse'} '
+            '${timelineSectionLabel(run.section)} section',
+        button: true,
+        child: box,
+      ),
+    );
+  }
+}
+
+/// A collapsed section on the rail: a slim reopen strip (no layer rows, no
+/// frame cells — the section is folded flat).
 class TimelineSectionStubRailRow extends StatelessWidget {
   const TimelineSectionStubRailRow({
     super.key,
@@ -15,7 +147,6 @@ class TimelineSectionStubRailRow extends StatelessWidget {
     required this.layerCount,
     required this.metrics,
     required this.onToggleSection,
-    this.sectionStart = false,
   });
 
   final TimelineSection section;
@@ -23,19 +154,16 @@ class TimelineSectionStubRailRow extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final VoidCallback? onToggleSection;
 
-  /// Mirrors the layer rows' heavier top divider on section boundaries.
-  final bool sectionStart;
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    final row = InkWell(
+    return InkWell(
       key: ValueKey<String>('timeline-section-stub-rail-${section.name}'),
       onTap: onToggleSection,
       child: Container(
-        width: metrics.layerControlsWidth,
-        height: metrics.layerRowHeight,
+        width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
+        height: metrics.collapsedSectionExtent,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
@@ -43,16 +171,9 @@ class TimelineSectionStubRailRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            TimelineSectionGutterSlot(
-              metrics: metrics,
-              section: section,
-              onToggleSection: onToggleSection,
-              collapsed: true,
-            ),
-            const SizedBox(width: 6),
             Icon(
-              Icons.unfold_more,
-              size: 14,
+              Icons.chevron_right,
+              size: 12,
               color: colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 6),
@@ -61,7 +182,9 @@ class TimelineSectionStubRailRow extends StatelessWidget {
                 '${timelineSectionLabel(section)} · $layerCount',
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 10,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.bold,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -70,27 +193,11 @@ class TimelineSectionStubRailRow extends StatelessWidget {
         ),
       ),
     );
-
-    if (!sectionStart) {
-      return row;
-    }
-    return Stack(
-      children: [
-        row,
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          child: IgnorePointer(child: Container(color: colorScheme.outline)),
-        ),
-      ],
-    );
   }
 }
 
-/// The collapsed section's strip in the frame-cells area (display only —
-/// expanding happens on the rail).
+/// A collapsed section's slot in the frame-cells area: a slim empty band —
+/// no cells, no fill (expanding happens on the rail strip or the bracket).
 class TimelineSectionStubCellsRow extends StatelessWidget {
   const TimelineSectionStubCellsRow({
     super.key,
@@ -112,12 +219,14 @@ class TimelineSectionStubCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return SizedBox(
       key: ValueKey<String>('$keyPrefix-section-stub-row-${section.name}'),
-      width: axis == Axis.horizontal ? mainAxisExtent : metrics.layerRowHeight,
-      height: axis == Axis.horizontal ? metrics.layerRowHeight : mainAxisExtent,
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+      width: axis == Axis.horizontal
+          ? mainAxisExtent
+          : metrics.collapsedSectionExtent,
+      height: axis == Axis.horizontal
+          ? metrics.collapsedSectionExtent
+          : mainAxisExtent,
     );
   }
 }

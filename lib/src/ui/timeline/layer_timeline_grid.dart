@@ -26,6 +26,7 @@ import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_section_runs.dart';
 import 'timeline_section_stub_rows.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 
@@ -302,25 +303,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       lanesForLayer: _lanesFor,
       collapsedSections: widget.collapsedSections,
     );
-    // The gutter prints each section's label on its FIRST visible row
-    // (stub rows carry their own label).
-    final sectionStartsByRow = <int, TimelineSection>{};
-    TimelineSection? previousSection;
-    for (var index = 0; index < rows.length; index += 1) {
-      final row = rows[index];
-      if (row.isLane) {
-        continue;
-      }
-      final section = row.isSectionStub
-          ? row.stubSection!
-          : timelineSectionForLayerKind(row.layer.kind);
-      if (section != previousSection) {
-        if (!row.isSectionStub) {
-          sectionStartsByRow[index] = section;
-        }
-        previousSection = section;
-      }
-    }
     int sectionLayerCount(TimelineSection section) => widget.layers
         .where((layer) => timelineSectionForLayerKind(layer.kind) == section)
         .length;
@@ -346,8 +328,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                               .clamp(0.0, double.infinity)
                               .toDouble()
                         : viewportHeight;
-                    final verticalContentHeight =
-                        _metrics.layerRowHeight * math.max(rows.length, 1);
+                    // Rows are no longer uniformly tall: collapsed sections
+                    // fold to a slim strip.
+                    final verticalContentHeight = math.max(
+                      timelineDisplayRowsExtent(rows, _metrics),
+                      _metrics.layerRowHeight,
+                    );
 
                     return Column(
                       children: [
@@ -501,121 +487,131 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         key: const ValueKey<String>(
                                           'timeline-layer-rows-scroll-body',
                                         ),
-                                        child: Column(
+                                        child: Row(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            for (
-                                              var rowIndex = 0;
-                                              rowIndex < rows.length;
-                                              rowIndex += 1
-                                            )
-                                              rows[rowIndex].isSectionStub
-                                                  ? TimelineSectionStubRailRow(
-                                                      section: rows[rowIndex]
-                                                          .stubSection!,
-                                                      layerCount:
-                                                          sectionLayerCount(
-                                                            rows[rowIndex]
-                                                                .stubSection!,
-                                                          ),
-                                                      metrics: _metrics,
-                                                      sectionStart:
-                                                          timelineSectionStartsAt(
-                                                            widget.layers,
-                                                            rows[rowIndex]
-                                                                .layerIndex,
-                                                          ),
-                                                      onToggleSection:
-                                                          widget.onToggleSection ==
-                                                              null
-                                                          ? null
-                                                          : () => widget.onToggleSection!(
+                                            // Timesheet-style bracket: one
+                                            // enclosing gutter cell per
+                                            // section, wrapping its rows.
+                                            TimelineSectionBracketRail(
+                                              rows: rows,
+                                              metrics: _metrics,
+                                              onToggleSection:
+                                                  widget.onToggleSection,
+                                            ),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                for (
+                                                  var rowIndex = 0;
+                                                  rowIndex < rows.length;
+                                                  rowIndex += 1
+                                                )
+                                                  rows[rowIndex].isSectionStub
+                                                      ? TimelineSectionStubRailRow(
+                                                          section:
                                                               rows[rowIndex]
                                                                   .stubSection!,
-                                                            ),
-                                                    )
-                                                  : rows[rowIndex].isLane
-                                                  ? TimelineLaneControlsRow(
-                                                      layer:
-                                                          rows[rowIndex].layer,
-                                                      lane:
-                                                          rows[rowIndex].lane!,
-                                                      metrics: _metrics,
-                                                      currentFrameIndex: widget
-                                                          .currentFrameIndex,
-                                                      onSelectFrame:
-                                                          widget.onSelectFrame,
-                                                      laneEdit: widget.laneEdit,
-                                                    )
-                                                  : TimelineLayerControlsRow(
-                                                      layer:
-                                                          rows[rowIndex].layer,
-                                                      active:
-                                                          rows[rowIndex]
-                                                              .layer
-                                                              .id ==
-                                                          widget.activeLayerId,
-                                                      sectionStart:
-                                                          timelineSectionStartsAt(
-                                                            widget.layers,
-                                                            rows[rowIndex]
-                                                                .layerIndex,
-                                                          ),
-                                                      sectionStartOf:
-                                                          sectionStartsByRow[rowIndex],
-                                                      onToggleSection:
-                                                          widget.onToggleSection ==
-                                                                  null ||
-                                                              sectionStartsByRow[rowIndex] ==
+                                                          layerCount:
+                                                              sectionLayerCount(
+                                                                rows[rowIndex]
+                                                                    .stubSection!,
+                                                              ),
+                                                          metrics: _metrics,
+                                                          onToggleSection:
+                                                              widget.onToggleSection ==
                                                                   null
-                                                          ? null
-                                                          : () => widget.onToggleSection!(
-                                                              sectionStartsByRow[rowIndex]!,
-                                                            ),
-                                                      metrics: _metrics,
-                                                      onSelectLayer:
-                                                          widget.onSelectLayer,
-                                                      onToggleLayerVisibility:
-                                                          widget
-                                                              .onToggleLayerVisibility,
-                                                      onLayerOpacityChanged: widget
-                                                          .onLayerOpacityChanged,
-                                                      onToggleLayerTimesheet: widget
-                                                          .onToggleLayerTimesheet,
-                                                      onLayerMarkSelected: widget
-                                                          .onLayerMarkSelected,
-                                                      hasLanes: _lanesFor(
-                                                        rows[rowIndex].layer,
-                                                      ).isNotEmpty,
-                                                      lanesExpanded: widget
-                                                          .expandedLaneLayerIds
-                                                          .contains(
+                                                              ? null
+                                                              : () => widget.onToggleSection!(
+                                                                  rows[rowIndex]
+                                                                      .stubSection!,
+                                                                ),
+                                                        )
+                                                      : rows[rowIndex].isLane
+                                                      ? TimelineLaneControlsRow(
+                                                          layer: rows[rowIndex]
+                                                              .layer,
+                                                          lane: rows[rowIndex]
+                                                              .lane!,
+                                                          metrics: _metrics,
+                                                          currentFrameIndex: widget
+                                                              .currentFrameIndex,
+                                                          onSelectFrame: widget
+                                                              .onSelectFrame,
+                                                          laneEdit:
+                                                              widget.laneEdit,
+                                                        )
+                                                      : TimelineLayerControlsRow(
+                                                          layer: rows[rowIndex]
+                                                              .layer,
+                                                          active:
+                                                              rows[rowIndex]
+                                                                  .layer
+                                                                  .id ==
+                                                              widget
+                                                                  .activeLayerId,
+                                                          sectionStart:
+                                                              timelineSectionStartsAt(
+                                                                widget.layers,
+                                                                rows[rowIndex]
+                                                                    .layerIndex,
+                                                              ),
+                                                          metrics: _metrics,
+                                                          onSelectLayer: widget
+                                                              .onSelectLayer,
+                                                          onToggleLayerVisibility:
+                                                              widget
+                                                                  .onToggleLayerVisibility,
+                                                          onLayerOpacityChanged:
+                                                              widget
+                                                                  .onLayerOpacityChanged,
+                                                          onToggleLayerTimesheet:
+                                                              widget
+                                                                  .onToggleLayerTimesheet,
+                                                          onLayerMarkSelected:
+                                                              widget
+                                                                  .onLayerMarkSelected,
+                                                          hasLanes: _lanesFor(
                                                             rows[rowIndex]
-                                                                .layer
-                                                                .id,
+                                                                .layer,
+                                                          ).isNotEmpty,
+                                                          lanesExpanded: widget
+                                                              .expandedLaneLayerIds
+                                                              .contains(
+                                                                rows[rowIndex]
+                                                                    .layer
+                                                                    .id,
+                                                              ),
+                                                          onToggleLanes: widget
+                                                              .onToggleLayerLanes,
+                                                        ),
+                                                if (widget.layers.isEmpty)
+                                                  SizedBox(
+                                                    width:
+                                                        _metrics
+                                                            .layerControlsWidth -
+                                                        _metrics
+                                                            .sectionLabelGutterWidth,
+                                                    height:
+                                                        _metrics.layerRowHeight,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                            8,
                                                           ),
-                                                      onToggleLanes: widget
-                                                          .onToggleLayerLanes,
-                                                    ),
-                                            if (widget.layers.isEmpty)
-                                              SizedBox(
-                                                width:
-                                                    _metrics.layerControlsWidth,
-                                                height: _metrics.layerRowHeight,
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    8,
-                                                  ),
-                                                  child: Text(
-                                                    'No layers',
-                                                    style: TextStyle(
-                                                      color: colorScheme
-                                                          .onSurfaceVariant,
+                                                      child: Text(
+                                                        'No layers',
+                                                        style: TextStyle(
+                                                          color: colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ),
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -736,6 +732,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       .leadingFrameSpacerWidth,
                                                   metrics: _metrics,
                                                   layerCount: rows.length,
+                                                  crossAxisExtent:
+                                                      verticalContentHeight,
                                                 ),
                                               ),
                                             );
