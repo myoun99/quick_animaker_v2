@@ -139,7 +139,10 @@ class TimesheetDocument {
   TimesheetDocument._({
     required this.title,
     required this.episode,
+    required this.scene,
     required this.artist,
+    required this.memoText,
+    required this.visibleHeaderFields,
     required this.cutName,
     required this.fps,
     required this.playbackFrameCount,
@@ -274,7 +277,10 @@ class TimesheetDocument {
     return TimesheetDocument._(
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
+      scene: info.scene,
       artist: info.artist,
+      memoText: cut.metadata.note,
+      visibleHeaderFields: List.unmodifiable(info.visibleFields),
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -292,10 +298,19 @@ class TimesheetDocument {
   }
 
   /// Sheet-header text: production title (project name unless overridden),
-  /// episode label and artist name from [TimesheetInfo].
+  /// episode label, scene label and artist name from [TimesheetInfo].
   final String title;
   final String episode;
+  final String scene;
   final String artist;
+
+  /// The cut's Direction memo (the cut note) printed in the memo band —
+  /// per-cut data, editable in place on the sheet.
+  final String memoText;
+
+  /// The header boxes the form prints, in printing order (the user hides
+  /// boxes per project via [TimesheetInfo.hiddenFields]).
+  final List<TimesheetHeaderField> visibleHeaderFields;
 
   final String cutName;
   final int fps;

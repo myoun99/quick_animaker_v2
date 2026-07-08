@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/cut_camera.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -453,6 +454,49 @@ void main() {
         TimesheetCellKind.empty,
         reason: 'the second camera slot stays blank',
       );
+    });
+  });
+
+  group('TimesheetDocument header fields', () {
+    test('scene passes through from info; the memo text is the cut note', () {
+      final document = TimesheetDocument.fromCut(
+        cut: Cut(
+          id: const CutId('cut-1'),
+          name: 'Cut 1',
+          layers: const [],
+          duration: 48,
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+          metadata: const CutMetadata(note: 'カットO.L'),
+        ),
+        projectName: 'Project',
+        fps: 24,
+        info: const TimesheetInfo(scene: 'S12'),
+      );
+
+      expect(document.scene, 'S12');
+      expect(document.memoText, 'カットO.L');
+    });
+
+    test('visibleHeaderFields keeps printing order minus hidden boxes', () {
+      final all = _document(_cut());
+      expect(all.visibleHeaderFields, TimesheetHeaderField.values);
+
+      final trimmed = _document(
+        _cut(),
+        info: const TimesheetInfo(
+          hiddenFields: {
+            TimesheetHeaderField.scene,
+            TimesheetHeaderField.sheet,
+          },
+        ),
+      );
+      expect(trimmed.visibleHeaderFields, const [
+        TimesheetHeaderField.title,
+        TimesheetHeaderField.episode,
+        TimesheetHeaderField.cut,
+        TimesheetHeaderField.time,
+        TimesheetHeaderField.name,
+      ]);
     });
   });
 }

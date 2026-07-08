@@ -225,10 +225,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _collapsedTimelineSections.value = next;
   }
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, and the sheet
-  /// viewport (zoom/pan) — owned here so they survive tab switches.
+  /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
+  /// viewport (zoom/pan) and the sheet-ink allow toggle — owned here so
+  /// they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
+  final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
 
   /// Sheet ink stores (S2 annotations) — owned here so freehand memos
   /// survive tab switches; separate from the session's cel stroke store.
@@ -363,6 +365,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _collapsedTimelineSections.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
+    _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
     _draggingTab.dispose();
     widget.panelsMenu?.detach();
@@ -651,6 +654,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             listenable: Listenable.merge([
               _timesheetContinuous,
               _timesheetViewport,
+              _timesheetInkEnabled,
               _brushTool,
             ]),
             builder: (context, _) => TimesheetTabHost(
@@ -665,6 +669,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               inkController: _timesheetInk,
               brushToolState: _brushTool.value,
+              inkEnabled: _timesheetInkEnabled.value,
+              onInkEnabledChanged: (enabled) {
+                _timesheetInkEnabled.value = enabled;
+              },
             ),
           ),
         );
