@@ -6,8 +6,9 @@ import '../../models/playback_quality.dart';
 import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
-import '../camera/camera_frame_render_service.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/deferred_image_disposal.dart';
+import '../canvas/tiled_surface_compose.dart';
 import 'playback_cache_budget.dart';
 
 class _LayerFrameImageEntry {
@@ -82,7 +83,14 @@ class LayerFrameImageCache {
       renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
     ).prepareFramePreview(key).previewSurface;
 
-    var image = await bitmapSurfaceToImage(preview);
+    // Per-tile GPU compose: the editing canvas keeps the on-screen frame's
+    // tiles decoded in the shared cache, so the post-stroke rebuild draws
+    // existing tile images instead of assembling + uploading the whole
+    // canvas — cost follows the CHANGED tiles, not the canvas size.
+    var image = await composeTiledSurfaceImage(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+    );
     if (quality != PlaybackQuality.full) {
       final scaled = scaledCanvasSize(canvasSize, quality);
       final downscaled = await _downscale(image, scaled);

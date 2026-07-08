@@ -72,26 +72,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     _inFlight[tile] = _inFlightMarker;
 
-    // Tile bytes are stored with straight (unpremultiplied) alpha, but the
-    // engine interprets raw rgba8888 uploads as premultiplied. Premultiply on
-    // the defensive copy using Skia's own mul-div-255 rounding so the result
-    // matches what Skia produces when rasterizing straight-alpha colors.
-    final pixels = tile.pixels;
-    for (var offset = 0; offset < pixels.length; offset += 4) {
-      final alpha = pixels[offset + 3];
-      if (alpha == 255) {
-        continue;
-      }
-      if (alpha == 0) {
-        pixels[offset] = 0;
-        pixels[offset + 1] = 0;
-        pixels[offset + 2] = 0;
-        continue;
-      }
-      pixels[offset] = _mul255Round(pixels[offset], alpha);
-      pixels[offset + 1] = _mul255Round(pixels[offset + 1], alpha);
-      pixels[offset + 2] = _mul255Round(pixels[offset + 2], alpha);
-    }
+    final pixels = premultipliedTilePixels(tile);
 
     ui.decodeImageFromPixels(
       pixels,
@@ -118,6 +99,34 @@ class BitmapTileImageCache extends ChangeNotifier {
       }
     }
     return true;
+  }
+
+  /// [tile]'s pixel bytes premultiplied for a raw rgba8888 upload.
+  ///
+  /// Tile bytes are stored with straight (unpremultiplied) alpha, but the
+  /// engine interprets raw rgba8888 uploads as premultiplied. Premultiplies
+  /// on the defensive copy using Skia's own mul-div-255 rounding so the
+  /// result matches what Skia produces when rasterizing straight-alpha
+  /// colors. Shared with the tiled surface compose path so every tile
+  /// upload in the app rounds identically.
+  static Uint8List premultipliedTilePixels(BitmapTile tile) {
+    final pixels = tile.pixels;
+    for (var offset = 0; offset < pixels.length; offset += 4) {
+      final alpha = pixels[offset + 3];
+      if (alpha == 255) {
+        continue;
+      }
+      if (alpha == 0) {
+        pixels[offset] = 0;
+        pixels[offset + 1] = 0;
+        pixels[offset + 2] = 0;
+        continue;
+      }
+      pixels[offset] = _mul255Round(pixels[offset], alpha);
+      pixels[offset + 1] = _mul255Round(pixels[offset + 1], alpha);
+      pixels[offset + 2] = _mul255Round(pixels[offset + 2], alpha);
+    }
+    return pixels;
   }
 
   /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
