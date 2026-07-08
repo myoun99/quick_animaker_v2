@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/timesheet_document.dart';
+import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
+import 'timesheet/timesheet_header_edit_layer.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 
@@ -29,6 +31,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
+    this.inkEnabled = true,
+    this.onInkEnabledChanged,
   });
 
   final EditorSessionManager session;
@@ -48,6 +52,12 @@ class TimesheetTabHost extends StatefulWidget {
   /// The editor's current brush/eraser; required for ink input.
   final BrushToolState? brushToolState;
 
+  /// The sheet-ink allow toggle (owned above the tab group): blocked ink
+  /// protects the sheet from stray pen marks AND turns taps into
+  /// header/memo text editing (the edit layer sits under the ink windows).
+  final bool inkEnabled;
+  final ValueChanged<bool>? onInkEnabledChanged;
+
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
 }
@@ -63,9 +73,31 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
 
   @override
+  void didUpdateWidget(covariant TimesheetTabHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Blocking ink unmounts the windows mid-stroke; clear the hold so the
+    // gesture layer never stays pinned on a stroke that can't finish.
+    if (!widget.inkEnabled && oldWidget.inkEnabled) {
+      _inkStrokeActive.value = false;
+    }
+  }
+
+  @override
   void dispose() {
     _inkStrokeActive.dispose();
     super.dispose();
+  }
+
+  void _commitHeaderField(TimesheetHeaderField field, String text) {
+    final info = widget.session.timesheetInfo;
+    final next = switch (field) {
+      TimesheetHeaderField.title => info.copyWith(title: text),
+      TimesheetHeaderField.episode => info.copyWith(episode: text),
+      TimesheetHeaderField.scene => info.copyWith(scene: text),
+      TimesheetHeaderField.name => info.copyWith(artist: text),
+      _ => info,
+    };
+    widget.session.updateTimesheetInfo(next);
   }
 
   Future<void> _editSheetInfo() async {
@@ -144,6 +176,18 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     ),
                   ),
                   const Spacer(),
+                  if (widget.onInkEnabledChanged != null)
+                    IconButton(
+                      key: const ValueKey<String>('timesheet-ink-toggle-button'),
+                      tooltip: widget.inkEnabled
+                          ? 'Block Sheet Ink'
+                          : 'Allow Sheet Ink',
+                      onPressed: () =>
+                          widget.onInkEnabledChanged!(!widget.inkEnabled),
+                      isSelected: widget.inkEnabled,
+                      icon: const Icon(Icons.edit_off, size: 18),
+                      selectedIcon: const Icon(Icons.draw, size: 18),
+                    ),
                   IconButton(
                     key: const ValueKey<String>('timesheet-info-button'),
                     tooltip: 'Sheet Info',
@@ -188,7 +232,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 ),
                 // Fit frames the page the playhead is on.
                 fitFocusRect: layout.pageRect(playheadPage),
-                contentStrokeActive: inkController == null
+                contentStrokeActive:
+                    inkController == null || !widget.inkEnabled
                     ? null
                     : _inkStrokeActive,
                 contentOverride: (context, viewport) => Stack(
@@ -205,7 +250,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         child: const SizedBox.expand(),
                       ),
                     ),
-                    if (inkController != null && brushToolState != null)
+                    // Under the ink windows: reachable exactly when ink is
+                    // blocked (the toggle doubles as the edit-mode switch).
+                    Positioned.fill(
+                      child: TimesheetHeaderEditLayer(
+                        key: const ValueKey<String>(
+                          'timesheet-header-edit-layer',
+                        ),
+                        layout: layout,
+                        viewport: viewport,
+                        onHeaderFieldCommitted: _commitHeaderField,
+                        onMemoCommitted: session.updateActiveCutNote,
+                      ),
+                    ),
+                    if (inkController != null &&
+                        brushToolState != null &&
+                        widget.inkEnabled)
                       Positioned.fill(
                         child: TimesheetInkLayer(
                           key: const ValueKey<String>('timesheet-ink-layer'),
