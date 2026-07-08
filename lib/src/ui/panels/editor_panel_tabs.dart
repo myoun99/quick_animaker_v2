@@ -149,11 +149,14 @@ class EditorPanelTabs extends StatelessWidget {
                   ),
                 ),
               // Tabs keep their natural width (name always visible) and
-              // the strip scrolls when they overflow the dock.
+              // the strip scrolls when they overflow the dock. Buttons
+              // STRETCH the strip's full height so the selected tab meets
+              // the content edge-to-edge (no strip-colored gap under it).
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (var index = 0; index < tabs.length; index += 1)
                       _buildTabButton(index),
@@ -163,7 +166,14 @@ class EditorPanelTabs extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(child: _buildActiveContent(active)),
+        // The content area shares the selected tab's background so the tab
+        // reads as part of the panel, not a floating chip above it.
+        Expanded(
+          child: ColoredBox(
+            color: colorScheme.surface,
+            child: _buildActiveContent(active),
+          ),
+        ),
       ],
     );
   }
@@ -308,6 +318,10 @@ class _TabDropRegionState extends State<_TabDropRegion> {
       builder: (context, candidateData, rejectedData) {
         final hoverAfter = candidateData.isEmpty ? null : _hoverAfter;
         return Stack(
+          // Passes the strip's tight height through so the tab button can
+          // stretch to it (loose fit would re-center the button and bring
+          // the gap under the tab back).
+          fit: StackFit.passthrough,
           children: [
             widget.child,
             if (hoverAfter != null)
@@ -442,9 +456,9 @@ class _PanelTabButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: selected
-                ? colorScheme.surfaceContainerHighest
-                : Colors.transparent,
+            // The selected tab wears the PANEL BODY color so it flows
+            // seamlessly into the content below it.
+            color: selected ? colorScheme.surface : Colors.transparent,
             border: Border(
               top: BorderSide(
                 width: 2,

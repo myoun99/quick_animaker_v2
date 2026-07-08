@@ -8,7 +8,38 @@ import 'package:quick_animaker_v2/src/ui/panels/editor_panel_dock.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_frame.dart';
 
 void main() {
-  testWidgets('EditorPanelFrame renders header and body at small sizes', (
+  testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SizedBox(
+          width: 120,
+          height: 80,
+          child: EditorPanelFrame(
+            title: 'Test Panel',
+            trailing: Icon(Icons.tune, size: 16),
+            child: Text('Body'),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-header')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-body')),
+      findsOneWidget,
+    );
+    // The tab names the panel — the frame renders no title of its own.
+    expect(find.text('Test Panel'), findsNothing);
+    expect(find.text('Body'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EditorPanelFrame without trailing controls skips the toolbar', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -23,13 +54,12 @@ void main() {
 
     expect(
       find.byKey(const ValueKey<String>('editor-panel-header')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('editor-panel-body')),
       findsOneWidget,
     );
-    expect(find.text('Test Panel'), findsOneWidget);
     expect(find.text('Body'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -57,8 +87,14 @@ void main() {
       find.byKey(const ValueKey<String>('editor-panel-dock-right')),
       findsOneWidget,
     );
-    expect(find.text('Brushes'), findsOneWidget);
-    expect(find.text('Brush Settings'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-frame-Brushes')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-frame-Brush Settings')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('BrushSettingsPanel updates size opacity color and spacing', (

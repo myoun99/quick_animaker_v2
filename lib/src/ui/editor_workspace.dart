@@ -178,6 +178,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
     BrushToolState.defaults,
   );
+
+  /// The color wheel's spare (background) slot; the foreground IS the
+  /// brush color. Held here so it survives tab switches.
+  final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
   late final BrushPresetLibrary _presetLibrary;
 
   /// Camera view mode: overlay shown with the outside dimmed.
@@ -353,6 +357,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _brushTool.dispose();
+    _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
     _timelineOrientation.dispose();
@@ -534,10 +539,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           locked: locked,
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _brushTool,
-            builder: (context, toolState, _) => ColorWheelPanel(
-              color: toolState.color,
-              onColorChanged: (color) =>
-                  _brushTool.value = toolState.copyWith(color: color),
+            builder: (context, toolState, _) => ValueListenableBuilder<int>(
+              valueListenable: _colorWheelBackground,
+              builder: (context, background, _) => ColorWheelPanel(
+                color: toolState.color,
+                backgroundColor: background,
+                onColorChanged: (color) =>
+                    _brushTool.value = toolState.copyWith(color: color),
+                onBackgroundColorChanged: (color) =>
+                    _colorWheelBackground.value = color,
+              ),
             ),
           ),
         );

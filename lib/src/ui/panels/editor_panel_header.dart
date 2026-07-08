@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+/// Slim toolbar strip atop a panel body hosting the panel's controls.
+/// The TAB names the panel — this bar never repeats the title.
 class EditorPanelHeader extends StatelessWidget {
-  const EditorPanelHeader({super.key, required this.title, this.trailing});
+  const EditorPanelHeader({super.key, required this.trailing});
 
-  final String title;
-  final Widget? trailing;
+  final Widget trailing;
 
   static const double height = 32;
 
@@ -19,19 +20,7 @@ class EditorPanelHeader extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              key: ValueKey<String>('editor-panel-header-title-$title'),
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ),
-          ?trailing,
-        ],
-      ),
+      child: Row(children: [const Spacer(), trailing]),
     );
   }
 }

@@ -87,7 +87,11 @@ void main() {
   ) async {
     await _pumpPanel(tester, presets: [_calligraphy(), _marker(), _sampled()]);
 
-    expect(find.text('Brushes'), findsOneWidget);
+    // The hosting tab names the panel; the frame itself renders no title.
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-frame-Brushes')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(
         const ValueKey<String>('brush-preset-chip-preset-calligraphy'),
@@ -229,7 +233,10 @@ void main() {
   ) async {
     await _pumpPanel(tester, presets: const []);
 
-    expect(find.text('Brushes'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('editor-panel-frame-Brushes')),
+      findsOneWidget,
+    );
     expect(find.byType(BrushStrokePreview), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('brush-preset-save-button')),
