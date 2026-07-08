@@ -331,6 +331,11 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-icon-shake')),
     );
+    // Chip tint: pick the red preset (colors are display-only sugar; the
+    // default swatch clears back to the row text color).
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-color-ffe57373')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-def-save-button')),
@@ -344,6 +349,7 @@ void main() {
     final defs = repository.requireProject().cameraInstructions.defs;
     final custom = defs.firstWhere((def) => def.name == 'ブレ');
     expect(custom.iconKey, 'shake');
+    expect(custom.colorValue, 0xFFE57373);
     expect(defs.length, CameraInstructionSet.standard.defs.length + 1);
 
     // Close the still-open event picker.

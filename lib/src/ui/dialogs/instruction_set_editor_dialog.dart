@@ -77,7 +77,13 @@ class _InstructionSetEditorDialogState
                   return ListTile(
                     key: ValueKey<String>('instruction-def-row-${def.id}'),
                     dense: true,
-                    leading: Icon(instructionIconFor(def.iconKey), size: 20),
+                    leading: Icon(
+                      instructionIconFor(def.iconKey),
+                      size: 20,
+                      color: def.colorValue == null
+                          ? null
+                          : Color(def.colorValue!),
+                    ),
                     title: Text(def.name),
                     onTap: () => _editDef(index),
                     trailing: Row(
@@ -147,11 +153,25 @@ class _InstructionDefDialog extends StatefulWidget {
   State<_InstructionDefDialog> createState() => _InstructionDefDialogState();
 }
 
+/// Preset chip tints (readable on the dark theme); null = the default
+/// row text color.
+const List<int> instructionColorPalette = [
+  0xFFE57373, // red
+  0xFFFFB74D, // orange
+  0xFFFFF176, // yellow
+  0xFF81C784, // green
+  0xFF4DB6AC, // teal
+  0xFF64B5F6, // blue
+  0xFFBA68C8, // purple
+  0xFFF06292, // pink
+];
+
 class _InstructionDefDialogState extends State<_InstructionDefDialog> {
   late final TextEditingController _nameController = TextEditingController(
     text: widget.def.name,
   );
   late String _iconKey = widget.def.iconKey;
+  late int? _colorValue = widget.def.colorValue;
 
   @override
   void dispose() {
@@ -209,6 +229,65 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                   ),
               ],
             ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Color',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                // Default = no tint: the chip uses the row text color.
+                InkWell(
+                  key: const ValueKey<String>('instruction-color-default'),
+                  onTap: () => setState(() => _colorValue = null),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _colorValue == null
+                            ? colorScheme.secondary
+                            : colorScheme.outlineVariant,
+                        width: _colorValue == null ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.format_color_reset_outlined,
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                for (final color in instructionColorPalette)
+                  InkWell(
+                    key: ValueKey<String>(
+                      'instruction-color-${color.toRadixString(16)}',
+                    ),
+                    onTap: () => setState(() => _colorValue = color),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Color(color),
+                        border: Border.all(
+                          color: _colorValue == color
+                              ? colorScheme.secondary
+                              : colorScheme.outlineVariant,
+                          width: _colorValue == color ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -224,6 +303,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
             widget.def.copyWith(
               name: _nameController.text.trim(),
               iconKey: _iconKey,
+              colorValue: () => _colorValue,
             ),
           ),
           child: const Text('Save'),
