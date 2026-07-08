@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
 
 Cut _cut({
   required String id,
@@ -121,8 +122,23 @@ void main() {
     );
     expect(spanOne, findsOneWidget);
     expect(spanTwo, findsOneWidget);
-    expect(find.text('One!'), findsOneWidget);
-    expect(find.text('Two!'), findsOneWidget);
+    // Dialogue is painted (fitted glyphs) — read the widget fields.
+    String dialogueOf(Finder span) => tester
+        .widget<DialogueFitText>(
+          find.descendant(of: span, matching: find.byType(DialogueFitText)),
+        )
+        .text;
+    expect(dialogueOf(spanOne), 'One!');
+    expect(dialogueOf(spanTwo), 'Two!');
+    // Each span sits on its own paper block.
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-se-paper-cut-1-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-se-paper-cut-2-2')),
+      findsOneWidget,
+    );
 
     // Global placement: cut-2 starts at frame 8, its entry at local 2 →
     // global 10; the 99-frame entry clamps at the cut's 6 frames → 4 wide.
