@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import 'timeline_section_policy.dart';
@@ -12,6 +14,7 @@ class PropertyLaneRow {
     required this.keyedFrames,
     this.holdOutFrames = const {},
     this.valueLabel,
+    this.scrubValue,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -29,6 +32,13 @@ class PropertyLaneRow {
   /// The property's display value at a frame (AE's blue value column —
   /// already unit-formatted); null hides the value.
   final String Function(int frameIndex)? valueLabel;
+
+  /// AE-style value scrubbing: maps the drag's total delta onto
+  /// [currentLabel] and returns the scrubbed value in the SAME text form
+  /// the value editor parses (the release commits it through onSetValue).
+  /// Generic like [valueLabel] — each lane provider decides which drag axis
+  /// drives which component. Null (or a null return) disables scrubbing.
+  final String? Function(String currentLabel, Offset dragDelta)? scrubValue;
 }
 
 /// One display row of the timeline grids: a layer row or one of its

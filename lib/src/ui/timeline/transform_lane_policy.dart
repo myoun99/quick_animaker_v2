@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'property_lane_model.dart';
@@ -25,6 +27,8 @@ List<PropertyLaneRow> transformPropertyLanes(
       valueLabel: poseAt == null
           ? null
           : (frame) => formatTransformLaneValue('position', poseAt(frame)),
+      scrubValue: (label, delta) =>
+          scrubTransformLaneValue('position', label, delta),
     ),
     _lane(
       'scale',
@@ -33,6 +37,8 @@ List<PropertyLaneRow> transformPropertyLanes(
       valueLabel: poseAt == null
           ? null
           : (frame) => formatTransformLaneValue('scale', poseAt(frame)),
+      scrubValue: (label, delta) =>
+          scrubTransformLaneValue('scale', label, delta),
     ),
     _lane(
       'rotation',
@@ -41,6 +47,8 @@ List<PropertyLaneRow> transformPropertyLanes(
       valueLabel: poseAt == null
           ? null
           : (frame) => formatTransformLaneValue('rotation', poseAt(frame)),
+      scrubValue: (label, delta) =>
+          scrubTransformLaneValue('rotation', label, delta),
     ),
     if (includeAnchorAndOpacity) _lane('opacity', 'Opacity', track.opacity),
   ];
@@ -56,6 +64,45 @@ String formatTransformLaneValue(String laneId, TransformPose pose) {
   };
 }
 
+/// AE-style value scrubbing for a transform lane: horizontal drag drives
+/// the (first) component, vertical drag drives Position's y. The result is
+/// the SAME text form the value editor parses — the release commits it
+/// through the normal onSetValue path (one undo). Null = not scrubbable.
+String? scrubTransformLaneValue(
+  String laneId,
+  String currentLabel,
+  Offset dragDelta,
+) {
+  double? parse(String raw) =>
+      double.tryParse(raw.replaceAll('%', '').replaceAll('°', '').trim());
+  switch (laneId) {
+    case 'position':
+      final parts = currentLabel.split(',');
+      if (parts.length != 2) {
+        return null;
+      }
+      final x = parse(parts[0]);
+      final y = parse(parts[1]);
+      if (x == null || y == null) {
+        return null;
+      }
+      return '${_number(x + dragDelta.dx)}, ${_number(y + dragDelta.dy)}';
+    case 'scale':
+      final percent = parse(currentLabel);
+      if (percent == null) {
+        return null;
+      }
+      return '${_number(percent + dragDelta.dx * 0.5)}%';
+    case 'rotation':
+      final degrees = parse(currentLabel);
+      if (degrees == null) {
+        return null;
+      }
+      return '${_number(degrees + dragDelta.dx * 0.5)}°';
+  }
+  return null;
+}
+
 String _number(double value) {
   final rounded = double.parse(value.toStringAsFixed(1));
   return rounded == rounded.roundToDouble()
@@ -68,6 +115,7 @@ PropertyLaneRow _lane<T>(
   String label,
   PropertyTrack<T> track, {
   String Function(int frameIndex)? valueLabel,
+  String? Function(String currentLabel, Offset dragDelta)? scrubValue,
 }) {
   return PropertyLaneRow(
     laneId: id,
@@ -79,5 +127,6 @@ PropertyLaneRow _lane<T>(
           entry.key,
     },
     valueLabel: valueLabel,
+    scrubValue: scrubValue,
   );
 }
