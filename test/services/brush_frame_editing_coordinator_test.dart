@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
@@ -97,32 +98,59 @@ void main() {
   });
 
   test(
-    'commit marks active BrushFrameKey dirty and emits brush invalidation',
+    'commit emits brush invalidation and leaves a FRESH display cache '
+    '(the session surface is donated — no consumer replays the frame)',
     () {
       final c = coordinator();
       final sink = _RecordingSink();
 
       c.commitSourceStroke(sourceDabs: [_dab(0)], cacheInvalidationSink: sink);
 
-      final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
-      expect(frame.inactivePreviewDirty, isTrue);
-      expect(frame.cacheDirtyTiles.isNotEmpty, isTrue);
+      // Derived ui.Image caches still re-upload via the sink…
       expect(sink.brushFrames, hasLength(1));
       expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
       expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
       expect(sink.brushFrames.single.wholeFrame, isFalse);
+      // …but the display cache is already valid at the new revision: the
+      // commit donated the session surface, so nothing replays commands.
+      final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+      expect(frame.inactivePreviewDirty, isFalse);
+      expect(frame.cacheDirtyTiles.isEmpty, isTrue);
+      final cache = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
+      expect(cache.isValid, isTrue);
+      expect(cache.sourceRevision, frame.sourceRevision);
+      expect(
+        identical(
+          cache.previewSurface,
+          c.activeSessionState.canvasState.currentSurface,
+        ),
+        isTrue,
+        reason: 'donation shares the immutable surface, no copy',
+      );
     },
   );
 
-  test('undo and redo emit BrushFrameKey dirty invalidations', () {
+  test('undo and redo emit invalidations and keep the display cache fresh', () {
     final c = coordinator();
     c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final sink = _RecordingSink();
 
     final undone = c.undo(cacheInvalidationSink: sink);
-    final redone = c.redo(cacheInvalidationSink: sink);
 
     expect(undone!.payloadRef.targetKey, c.activeFrameKey);
+    final afterUndo = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
+    expect(afterUndo.isValid, isTrue);
+    expect(
+      identical(
+        afterUndo.previewSurface,
+        c.activeSessionState.canvasState.currentSurface,
+      ),
+      isTrue,
+      reason: 'undo donates the reverted session surface',
+    );
+
+    final redone = c.redo(cacheInvalidationSink: sink);
+
     expect(redone!.payloadRef.targetKey, c.activeFrameKey);
     expect(sink.brushFrames, hasLength(2));
     expect(sink.brushFrames.map((event) => event.frameKey), [
@@ -130,10 +158,39 @@ void main() {
       c.activeFrameKey,
     ]);
     expect(sink.brushFrames.every((event) => event.hasDirtyTiles), isTrue);
+    final afterRedo = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
+    expect(afterRedo.isValid, isTrue);
     expect(
-      c.frameStore.getOrCreateFrame(c.activeFrameKey).inactivePreviewDirty,
+      identical(
+        afterRedo.previewSurface,
+        c.activeSessionState.canvasState.currentSurface,
+      ),
       isTrue,
     );
+  });
+
+  test('the donated display cache is byte-identical to a command replay', () {
+    final c = coordinator();
+    c.commitSourceStroke(sourceDabs: [_dab(0), _dab(1).copyWith(sequence: 1)]);
+    c.commitSourceStroke(sourceDabs: [_dab(2)]);
+
+    final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    final donated = c.frameStore
+        .displayCacheOrNull(c.activeFrameKey)!
+        .previewSurface;
+    final replayed = const BrushFrameDisplayCacheRenderer(
+      canvasSize: canvasSize,
+      tileSize: 4,
+    ).rebuildPreview(frame);
+
+    expect(donated.tiles.keys.toSet(), replayed.tiles.keys.toSet());
+    for (final coord in replayed.tiles.keys) {
+      expect(
+        donated.tileAt(coord)!.pixels,
+        replayed.tileAt(coord)!.pixels,
+        reason: 'tile $coord must match the reference replay byte-for-byte',
+      );
+    }
   });
 
   test('userUndoLimit trim moves old paint command to deferredBake', () {

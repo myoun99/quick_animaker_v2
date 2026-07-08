@@ -97,9 +97,32 @@ class BrushFrameEditingCoordinator {
         sequence: BrushDabSequence(command.sourceDabs),
       ).surface;
     }
-    return sessionStore.update(
+    final rebuilt = sessionStore.update(
       key,
       blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+    );
+    // The replay just produced the frame's exact pixels — donate them so no
+    // display consumer replays the same commands again.
+    _donateSessionSurfaceToDisplayCache(key, rebuilt);
+    return rebuilt;
+  }
+
+  /// Donates the session's post-edit surface to the store's display cache.
+  ///
+  /// The commit fast path already produced the exact post-stroke pixels
+  /// (byte-identical to a command replay — the three-route parity suites pin
+  /// live == commit == reference), and [BitmapSurface] is an immutable tile
+  /// map, so sharing it is a free snapshot. Downstream consumers (playback
+  /// layer images, storyboard thumbnails, camera preview) then skip the
+  /// full-frame command replay whose cost grows with every stroke on the
+  /// frame — the post-stroke UI freeze.
+  void _donateSessionSurfaceToDisplayCache(
+    BrushFrameKey key,
+    BrushEditSessionState sessionState,
+  ) {
+    frameStore.storeRebuiltDisplayCache(
+      key: key,
+      previewSurface: sessionState.canvasState.currentSurface,
     );
   }
 
@@ -157,6 +180,10 @@ class BrushFrameEditingCoordinator {
       command,
       dirtyTiles: affectedEntry.dirtyTiles,
     );
+    // Keep the display cache fresh across the commit (donation replaces the
+    // dirty-then-replay cycle); derived ui.Image caches still re-upload via
+    // the invalidation sink below.
+    _donateSessionSurfaceToDisplayCache(_activeFrameKey, result.sessionState);
     _invalidateBrushFrame(
       cacheInvalidationSink,
       _activeFrameKey,
@@ -190,6 +217,7 @@ class BrushFrameEditingCoordinator {
         entry.payloadRef.paintCommandId,
         dirtyTiles: result.affectedEntry?.dirtyTiles,
       );
+      _donateSessionSurfaceToDisplayCache(key, result.sessionState);
       _invalidateBrushFrame(
         cacheInvalidationSink,
         key,
@@ -233,6 +261,7 @@ class BrushFrameEditingCoordinator {
         entry.payloadRef.paintCommandId,
         dirtyTiles: result.affectedEntry?.dirtyTiles,
       );
+      _donateSessionSurfaceToDisplayCache(key, result.sessionState);
       _invalidateBrushFrame(
         cacheInvalidationSink,
         key,

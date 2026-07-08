@@ -66,28 +66,53 @@ void main() {
     expect(drawing.inactivePreviewDirty, isFalse);
   });
 
-  test('commit undo redo dirty display cache', () {
+  test('commit undo redo keep the display cache FRESH (donation replaces '
+      'the dirty-then-replay cycle)', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
     final command = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)])!;
     service.prepareFramePreview(key);
     expect(c.frameStore.hasValidDisplayCache(key), isTrue);
 
+    // Every edit donates the session surface, so consumers never find a
+    // dirty cache to replay after commit…
     c.commitSourceStroke(sourceDabs: [_dab(8, 8, 1)]);
-    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isTrue);
-    expect(c.frameStore.getOrCreateFrame(key).inactivePreviewDirty, isTrue);
+    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
+    expect(c.frameStore.getOrCreateFrame(key).inactivePreviewDirty, isFalse);
+    expect(
+      c.frameStore.validPreviewSurfaceOrNull(key),
+      BrushFrameDisplayCacheRenderer(
+        canvasSize: canvasSize,
+        tileSize: 4,
+      ).rebuildPreview(c.frameStore.getOrCreateFrame(key)),
+      reason: 'the donated surface equals a reference replay',
+    );
 
-    service.prepareFramePreview(key);
+    // …after undo…
     c.undo();
-    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isTrue);
+    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
     expect(c.frameStore.getOrCreateFrame(key).hiddenCommandIds, isNotEmpty);
+    expect(
+      c.frameStore.validPreviewSurfaceOrNull(key),
+      BrushFrameDisplayCacheRenderer(
+        canvasSize: canvasSize,
+        tileSize: 4,
+      ).rebuildPreview(c.frameStore.getOrCreateFrame(key)),
+    );
 
-    service.prepareFramePreview(key);
+    // …and after redo.
     c.redo();
-    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isTrue);
+    expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
     expect(c.frameStore.getOrCreateFrame(key).hiddenCommandIds, isEmpty);
     final restoredFrame = c.frameStore.getOrCreateFrame(key);
     expect(restoredFrame.commandById(command.id), command);
+    expect(
+      c.frameStore.validPreviewSurfaceOrNull(key),
+      BrushFrameDisplayCacheRenderer(
+        canvasSize: canvasSize,
+        tileSize: 4,
+      ).rebuildPreview(restoredFrame),
+    );
   });
 
   test('valid preview is reused', () {

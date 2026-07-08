@@ -39,11 +39,23 @@ class ExportFrameRenderer {
       _surfacesCutId = cut.id;
     }
     return _surfaces.putIfAbsent((layer.id, frame.id), () {
-      final drawing = session.brushFrameStore.frameOrNull(
-        session.brushFrameKeyForCut(cut, layer.id, frame.id),
-      );
+      final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
+      final drawing = session.brushFrameStore.frameOrNull(frameKey);
       if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
         return null;
+      }
+      // The store's display cache usually holds the exact pixels already —
+      // the editing coordinator donates the session surface on every
+      // commit/undo/redo — so reuse it READ-ONLY instead of replaying the
+      // frame's whole command list (the storyboard thumbnail re-render after
+      // each stroke was a main part of the post-stroke UI freeze). Replay
+      // stays the cold fallback; nothing is stored back, so batch exports
+      // don't grow the shared cache.
+      final cached = session.brushFrameStore.displayCacheOrNull(frameKey);
+      if (cached != null &&
+          cached.isValid &&
+          cached.previewSurface.canvasSize == cut.canvasSize) {
+        return cached.previewSurface;
       }
       return BrushFrameDisplayCacheRenderer(
         canvasSize: cut.canvasSize,
