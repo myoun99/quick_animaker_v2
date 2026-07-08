@@ -34,6 +34,7 @@ import 'timeline_section_runs.dart';
 import 'timeline_selected_exposure_outline.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
+import 'timeline_zoom_anchor_policy.dart';
 
 /// The vertical X-sheet: the SAME grid logic as the horizontal
 /// [LayerTimelineGrid], transposed.
@@ -178,14 +179,19 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   void didUpdateWidget(covariant XSheetTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the frame at the viewport's top edge anchored through zoom.
+    // Zoom-around-playhead (transposed): the playhead ROW stays put on
+    // screen through zoom when visible; otherwise the top-edge frame
+    // anchors. Same policy as the horizontal timeline (Axis rule).
     final oldCell = oldWidget.metrics.frameCellWidth;
     final newCell = widget.metrics.frameCellWidth;
     if (oldCell != newCell && _frameScrollController.hasClients) {
       _frameScrollController.jumpTo(
-        (_frameScrollController.offset * newCell / oldCell).clamp(
-          0.0,
-          double.maxFinite,
+        zoomAnchoredScrollOffset(
+          oldOffset: _frameScrollController.offset,
+          oldPixelsPerFrame: oldCell,
+          newPixelsPerFrame: newCell,
+          viewportExtent: _frameScrollController.position.viewportDimension,
+          anchorFrame: widget.currentFrameIndex,
         ),
       );
     }

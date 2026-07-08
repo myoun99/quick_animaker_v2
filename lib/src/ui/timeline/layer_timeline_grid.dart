@@ -22,6 +22,7 @@ import 'property_lane_model.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
+import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_playhead.dart';
@@ -141,14 +142,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the frame at the viewport's left edge anchored through zoom.
+    // Zoom-around-playhead: the playhead stays put on screen through zoom
+    // when visible; otherwise the leading-edge frame anchors.
     final oldCell = oldWidget.metrics.frameCellWidth;
     final newCell = widget.metrics.frameCellWidth;
     if (oldCell != newCell && _horizontalScrollController.hasClients) {
       _horizontalScrollController.jumpTo(
-        (_horizontalScrollController.offset * newCell / oldCell).clamp(
-          0.0,
-          double.maxFinite,
+        zoomAnchoredScrollOffset(
+          oldOffset: _horizontalScrollController.offset,
+          oldPixelsPerFrame: oldCell,
+          newPixelsPerFrame: newCell,
+          viewportExtent:
+              _horizontalScrollController.position.viewportDimension,
+          anchorFrame: widget.currentFrameIndex,
         ),
       );
     }
