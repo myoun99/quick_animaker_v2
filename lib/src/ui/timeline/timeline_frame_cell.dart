@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -117,17 +118,20 @@ class TimelineFrameCell extends StatelessWidget {
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     final onActivateCell = this.onActivateCell;
-    return InkWell(
+    void select() {
+      onSelectLayer(layer.id);
+      onSelectFrame(frameIndex);
+    }
+
+    final cell = InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
-      onTap: () {
-        onSelectLayer(layer.id);
-        onSelectFrame(frameIndex);
-      },
+      // Semantics/keyboard activation path; pointer selection happens on
+      // the raw down below.
+      onTap: select,
       onDoubleTap: onActivateCell == null
           ? null
           : () {
-              onSelectLayer(layer.id);
-              onSelectFrame(frameIndex);
+              select();
               onActivateCell(layer.id, frameIndex);
             },
       child: Container(
@@ -191,6 +195,20 @@ class TimelineFrameCell extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    return Listener(
+      // Selection must not wait out the double-tap window: with
+      // onDoubleTap registered, InkWell's onTap only fires once the
+      // gesture arena resolves (~300ms after a quick tap). The raw
+      // pointer down bypasses the arena, keeping single-tap selection
+      // instant on every layer kind.
+      onPointerDown: (event) {
+        if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
+          select();
+        }
+      },
+      child: cell,
     );
   }
 }
