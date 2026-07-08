@@ -15,6 +15,7 @@ import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
+import 'color/color_wheel_panel.dart';
 import 'brush/tools_panel.dart';
 import 'camera/camera_panel.dart';
 import 'editor_canvas_area.dart';
@@ -98,6 +99,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String canvasTabId = 'canvas';
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
+  static const String colorWheelTabId = 'color-wheel';
   static const String cameraTabId = 'camera';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
@@ -126,6 +128,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         tabs: [
           EditorWorkspace.brushesTabId,
           EditorWorkspace.brushSettingsTabId,
+          EditorWorkspace.colorWheelTabId,
           EditorWorkspace.cameraTabId,
         ],
         activeTabId: EditorWorkspace.brushesTabId,
@@ -520,6 +523,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             builder: (context, toolState, _) => BrushSettingsPanel(
               state: toolState,
               onChanged: (state) => _brushTool.value = state,
+            ),
+          ),
+        );
+      case EditorWorkspace.colorWheelTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Color',
+          icon: Icons.palette_outlined,
+          locked: locked,
+          builder: (context) => ValueListenableBuilder<BrushToolState>(
+            valueListenable: _brushTool,
+            builder: (context, toolState, _) => ColorWheelPanel(
+              color: toolState.color,
+              onColorChanged: (color) =>
+                  _brushTool.value = toolState.copyWith(color: color),
             ),
           ),
         );
