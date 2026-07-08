@@ -172,5 +172,10 @@ class _StubExtractor extends AudioPeaksExtractor {
   final Future<AudioPeaks?> Function() _extract;
 
   @override
-  Future<AudioPeaks?> extract(String filePath) => _extract();
+  Future<AudioPeaksExtraction> extract(String filePath) async {
+    final peaks = await _extract();
+    return peaks == null
+        ? const AudioPeaksExtraction.failure('stub failure')
+        : AudioPeaksExtraction.success(peaks);
+  }
 }
