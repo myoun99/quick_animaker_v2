@@ -147,6 +147,28 @@ void frameNameJsonTests() {
     expect(decoded, frame);
   });
 
+  test('frame JSON includes seName only when present and round trips it', () {
+    final frame = Frame(
+      id: const FrameId('se-frame'),
+      duration: 2,
+      strokes: const [],
+      name: '그건 아니라고 생각해',
+      seName: '앨리스',
+    );
+
+    final json = frame.toJson();
+    expect(json['seName'], '앨리스');
+    expect(Frame.fromJson(json), frame);
+
+    final bare = Frame(
+      id: const FrameId('bare-frame'),
+      duration: 1,
+      strokes: const [],
+    );
+    expect(bare.toJson().containsKey('seName'), isFalse);
+    expect(Frame.fromJson(bare.toJson()).seName, isNull);
+  });
+
   test('old frame JSON without name loads with null name', () {
     final frame = Frame.fromJson({
       'id': const FrameId('old-frame').toJson(),

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -76,15 +77,13 @@ class TimelineFrameCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // SE rows follow the paper sheet's SE-column rule: no paper block fill
-    // (the row-level overlay draws the label + duration line instead), so
-    // covered cells keep the empty-cell background/border styling. Camera
-    // rows do the same — their "coverage" is the lane-key union summary,
-    // drawn as accent ◆/■ markers instead of paper cells.
+    // SE and instruction rows paint the same white paper blocks as drawing
+    // rows (the row overlays add writing/marks on top). Camera rows are the
+    // exception — their "coverage" is the lane-key union summary, drawn as
+    // accent ◆/■ markers on empty-cell styling instead of paper.
     final cameraSummaryCell = layer.kind == LayerKind.camera;
-    final seSheetCell = layerKindUsesSeSheetCells(layer.kind);
     final effectiveExposureState =
-        (seSheetCell || cameraSummaryCell) && exposureState.isCovered
+        cameraSummaryCell && exposureState.isCovered
         ? TimelineCellExposureState.uncovered
         : exposureState;
     final styleColors = timelineCellStyleColors(
@@ -119,17 +118,20 @@ class TimelineFrameCell extends StatelessWidget {
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     final onActivateCell = this.onActivateCell;
-    return InkWell(
+    void select() {
+      onSelectLayer(layer.id);
+      onSelectFrame(frameIndex);
+    }
+
+    final cell = InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
-      onTap: () {
-        onSelectLayer(layer.id);
-        onSelectFrame(frameIndex);
-      },
+      // Semantics/keyboard activation path; pointer selection happens on
+      // the raw down below.
+      onTap: select,
       onDoubleTap: onActivateCell == null
           ? null
           : () {
-              onSelectLayer(layer.id);
-              onSelectFrame(frameIndex);
+              select();
               onActivateCell(layer.id, frameIndex);
             },
       child: Container(
@@ -140,7 +142,7 @@ class TimelineFrameCell extends StatelessWidget {
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: borderWidth,
-          exposureBlockSegment: seSheetCell || cameraSummaryCell
+          exposureBlockSegment: cameraSummaryCell
               ? TimelineExposureBlockVisualSegment.none
               : exposureBlockSegment,
           axis: axis,
@@ -193,6 +195,20 @@ class TimelineFrameCell extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    return Listener(
+      // Selection must not wait out the double-tap window: with
+      // onDoubleTap registered, InkWell's onTap only fires once the
+      // gesture arena resolves (~300ms after a quick tap). The raw
+      // pointer down bypasses the arena, keeping single-tap selection
+      // instant on every layer kind.
+      onPointerDown: (event) {
+        if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
+          select();
+        }
+      },
+      child: cell,
     );
   }
 }
@@ -254,9 +270,11 @@ String _markerForCell({
               !emptyRunStart
           ? ''
           : 'X',
-    // SE entries draw their label through the row-level span overlay.
+    // SE entries and instruction events draw their writing through the
+    // row-level span overlays; the cells stay glyph-free paper.
     TimelineCellExposureState.drawingStart =>
-      layerKindUsesSeSheetCells(layer.kind)
+      layerKindUsesSeSheetCells(layer.kind) ||
+              layer.kind == LayerKind.instruction
           ? ''
           : frameName == null || frameName.isEmpty
           ? '○'
@@ -272,6 +290,10 @@ String? _semanticsLabelForCell({
   required TimelineCellExposureState exposureState,
   String? frameName,
 }) {
+  // Instruction spans carry their own semantics on the row overlay.
+  if (layer.kind == LayerKind.instruction) {
+    return null;
+  }
   return switch (exposureState) {
     TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>

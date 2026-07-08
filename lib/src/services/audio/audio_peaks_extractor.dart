@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'ffmpeg_locator.dart';
 
 /// Injectable process launcher so tests can stand in for the real ffmpeg
 /// (mirrors VideoProcessStarter).
@@ -28,45 +31,106 @@ class AudioPeaks {
   }
 }
 
-/// Decodes an audio file to mono PCM through the external `ffmpeg` (same
-/// PATH contract as the video export) and folds it into [AudioPeaks].
-/// Returns null when ffmpeg is missing, the file cannot be decoded or the
-/// stream is empty — waveform display simply stays absent.
+/// The outcome of one extraction attempt: [peaks] on success, otherwise a
+/// human-readable [error] (spawn failure per candidate, ffmpeg's stderr
+/// tail, empty stream) so the store can log WHY a waveform is missing
+/// instead of silently staying blank.
+class AudioPeaksExtraction {
+  const AudioPeaksExtraction.success(AudioPeaks this.peaks) : error = null;
+  const AudioPeaksExtraction.failure(String this.error) : peaks = null;
+
+  final AudioPeaks? peaks;
+  final String? error;
+}
+
+/// Decodes an audio file to mono PCM through the external `ffmpeg` and folds
+/// it into [AudioPeaks]. The executable resolves through
+/// [ffmpegExecutableCandidates] (PATH first, then well-known install
+/// locations a GUI app's inherited PATH tends to miss); the first candidate
+/// that spawns is remembered for the rest of the app run.
 class AudioPeaksExtractor {
   const AudioPeaksExtractor({
-    this.executable = 'ffmpeg',
+    this.executable,
     this.processStarter = _startProcess,
     this.sampleRate = 8000,
     this.bucketsPerSecond = 80,
+    this.executableCandidates,
   });
 
-  final String executable;
+  /// Explicit ffmpeg path; null resolves through
+  /// [ffmpegExecutableCandidates].
+  final String? executable;
   final AudioProcessStarter processStarter;
   final int sampleRate;
   final int bucketsPerSecond;
 
-  Future<AudioPeaks?> extract(String filePath) async {
-    final Process process;
-    try {
-      process = await processStarter(executable, [
-        '-v',
-        'error',
-        '-i',
-        filePath,
-        '-ac',
-        '1',
-        '-ar',
-        '$sampleRate',
-        '-f',
-        's16le',
-        '-',
-      ]);
-    } on ProcessException {
-      return null;
-    }
+  /// Test seam for the candidate list; null uses the real locator.
+  final List<String> Function()? executableCandidates;
 
-    // Drain stderr so the process never blocks on a full pipe.
-    final stderrDone = process.stderr.drain<void>();
+  /// The candidate that spawned successfully last time — tried first so the
+  /// probe list is walked at most once per app run.
+  static String? _workingExecutable;
+
+  /// Test-only: forgets the remembered working candidate.
+  static void debugResetWorkingExecutable() => _workingExecutable = null;
+
+  Future<AudioPeaksExtraction> extract(String filePath) async {
+    final explicit = executable;
+    final candidates = <String>{
+      if (explicit != null)
+        explicit
+      else ...[
+        ?_workingExecutable,
+        ...(executableCandidates ?? ffmpegExecutableCandidates)(),
+      ],
+    };
+
+    final spawnFailures = <String>[];
+    for (final candidate in candidates) {
+      final Process process;
+      try {
+        process = await processStarter(candidate, [
+          '-v',
+          'error',
+          '-i',
+          filePath,
+          '-ac',
+          '1',
+          '-ar',
+          '$sampleRate',
+          '-f',
+          's16le',
+          '-',
+        ]);
+      } on ProcessException catch (error) {
+        spawnFailures.add('$candidate (${error.message})');
+        continue;
+      }
+      if (explicit == null) {
+        _workingExecutable = candidate;
+      }
+      return _foldProcess(process, filePath);
+    }
+    return AudioPeaksExtraction.failure(
+      'could not start ffmpeg — tried ${spawnFailures.join('; ')}. '
+      'Install ffmpeg or make it reachable on PATH.',
+    );
+  }
+
+  Future<AudioPeaksExtraction> _foldProcess(
+    Process process,
+    String filePath,
+  ) async {
+    // Keep the tail of stderr for diagnostics while still draining the pipe
+    // so the process never blocks on it.
+    final stderrTail = StringBuffer();
+    final stderrDone = process.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .forEach((chunk) {
+          if (stderrTail.length < 2048) {
+            stderrTail.write(chunk);
+          }
+        });
 
     final samplesPerBucket = sampleRate ~/ bucketsPerSecond;
     final peaks = <double>[];
@@ -109,12 +173,22 @@ class AudioPeaksExtractor {
 
     final exitCode = await process.exitCode;
     await stderrDone;
-    if (exitCode != 0 || peaks.isEmpty) {
-      return null;
+    final detail = stderrTail.isEmpty ? '' : ': ${stderrTail.toString().trim()}';
+    if (exitCode != 0) {
+      return AudioPeaksExtraction.failure(
+        'ffmpeg exited $exitCode for $filePath$detail',
+      );
     }
-    return AudioPeaks(
-      bucketsPerSecond: bucketsPerSecond,
-      peaks: Float32List.fromList(peaks),
+    if (peaks.isEmpty) {
+      return AudioPeaksExtraction.failure(
+        'ffmpeg decoded no audio samples from $filePath$detail',
+      );
+    }
+    return AudioPeaksExtraction.success(
+      AudioPeaks(
+        bucketsPerSecond: bucketsPerSecond,
+        peaks: Float32List.fromList(peaks),
+      ),
     );
   }
 }

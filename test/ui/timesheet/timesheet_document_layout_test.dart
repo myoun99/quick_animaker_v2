@@ -3,9 +3,13 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
 
-TimesheetDocument _document({int duration = 150}) {
+TimesheetDocument _document({
+  int duration = 150,
+  TimesheetInfo info = TimesheetInfo.empty,
+}) {
   return TimesheetDocument.fromCut(
     cut: Cut(
       id: const CutId('cut-1'),
@@ -16,6 +20,7 @@ TimesheetDocument _document({int duration = 150}) {
     ),
     projectName: 'Project',
     fps: 24,
+    info: info,
   );
 }
 
@@ -82,6 +87,82 @@ void main() {
             TimesheetDocumentLayout.headerGap +
             layout.columnsHeaderHeight,
       );
+    });
+  });
+
+  group('TimesheetDocumentLayout header alignment', () {
+    test('header and memo bands share the grid\'s vertical edges (user fix: '
+        'the paper form left-aligns the header table with the ACTION block, '
+        'the number gutter stays outside both)', () {
+      final layout = TimesheetDocumentLayout(document: _document());
+
+      final header = layout.headerBandRect(0);
+      final memo = layout.memoBandRect(0);
+      expect(header.left, layout.halfLeft(0, 0));
+      expect(memo.left, layout.halfLeft(0, 0));
+      expect(header.right, layout.halfLeft(0, 1) + layout.halfWidth);
+      expect(memo.right, header.right);
+
+      final pageTwo = layout.headerBandRect(1);
+      expect(pageTwo.left, layout.halfLeft(1, 0));
+    });
+
+    test('continuous mode keeps the same left alignment on the fixed paper',
+        () {
+      final layout = TimesheetDocumentLayout(
+        document: _document(),
+        continuous: true,
+      );
+
+      expect(layout.headerBandRect(0).left, layout.halfLeft(0, 0));
+      expect(layout.memoBandRect(0).left, layout.halfLeft(0, 0));
+    });
+  });
+
+  group('TimesheetDocumentLayout header field boxes', () {
+    test('all boxes print by default, tiling the band exactly in order', () {
+      final layout = TimesheetDocumentLayout(document: _document());
+
+      final band = layout.headerBandRect(0);
+      final boxes = layout.headerFieldBoxes(0);
+      expect(
+        boxes.map((box) => box.field).toList(),
+        TimesheetHeaderField.values,
+      );
+      expect(boxes.first.rect.left, band.left);
+      expect(boxes.last.rect.right, band.right);
+      for (var index = 1; index < boxes.length; index += 1) {
+        expect(
+          boxes[index].rect.left,
+          boxes[index - 1].rect.right,
+          reason: 'boxes tile without gaps',
+        );
+      }
+    });
+
+    test('hidden boxes drop out and the rest renormalize over the band', () {
+      final layout = TimesheetDocumentLayout(
+        document: _document(
+          info: const TimesheetInfo(
+            hiddenFields: {
+              TimesheetHeaderField.scene,
+              TimesheetHeaderField.episode,
+              TimesheetHeaderField.sheet,
+            },
+          ),
+        ),
+      );
+
+      final band = layout.headerBandRect(0);
+      final boxes = layout.headerFieldBoxes(0);
+      expect(boxes.map((box) => box.field).toList(), const [
+        TimesheetHeaderField.title,
+        TimesheetHeaderField.cut,
+        TimesheetHeaderField.time,
+        TimesheetHeaderField.name,
+      ]);
+      expect(boxes.first.rect.left, band.left);
+      expect(boxes.last.rect.right, band.right);
     });
   });
 
