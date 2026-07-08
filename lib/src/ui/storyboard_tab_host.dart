@@ -209,6 +209,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       ? _session.moveActiveCutRight
                       : null,
                   onDeleteActiveCut: _session.deleteActiveCut,
+                  onToggleActiveCutThumbnail:
+                      _session.toggleActiveCutThumbnailFrame,
+                  isThumbnailPinnedHere:
+                      _session.isActiveCutThumbnailPinnedHere,
                 ),
               ),
             ],

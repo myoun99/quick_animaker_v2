@@ -37,6 +37,7 @@ import 'resize_cut_canvas_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
@@ -142,6 +143,23 @@ class CutCommandCoordinator {
 
     historyManager.execute(
       UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    );
+  }
+
+  /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
+  /// first frame); one undo step.
+  void updateCutThumbnailFrame({required CutId cutId, required int? frameIndex}) {
+    final cut = _requireCut(cutId);
+    if (cut.metadata.thumbnailFrameIndex == frameIndex) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutThumbnailFrameCommand(
+        repository: repository,
+        cutId: cutId,
+        frameIndex: frameIndex,
+      ),
     );
   }
 
