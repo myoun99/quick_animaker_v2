@@ -20,10 +20,14 @@ class _FakeClipPlayer implements AudioClipPlayer {
   String? _path;
 
   @override
-  Future<void> play(String filePath, {required Duration position}) async {
+  Future<void> prepare(String filePath) async {
     _path = filePath;
-    log.add('play $filePath @${position.inMilliseconds}ms');
+    log.add('prepare $filePath');
   }
+
+  @override
+  Future<void> startAt(Duration position) async =>
+      log.add('start $_path @${position.inMilliseconds}ms');
 
   @override
   Future<void> pause() async => log.add('pause $_path');
@@ -35,7 +39,7 @@ class _FakeClipPlayer implements AudioClipPlayer {
   Future<void> stop() async => log.add('stop $_path');
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async => log.add('dispose $_path');
 }
 
 Layer _seLayer(String id, List<AudioClip> clips) => Layer(
@@ -111,21 +115,22 @@ void main() {
     addTearDown(controller.dispose);
   });
 
-  test('play starts overlapping clips; ticking starts and ends later ones', () {
+  test('play prepares every scheduled clip once and starts the overlapping '
+      'ones', () {
     controller.play(scope: PlaybackScope.activeCut);
-    expect(log, ['play a.wav @0ms']);
+    expect(log, ['prepare a.wav', 'prepare b.wav', 'start a.wav @0ms']);
 
     log.clear();
     controller.seekToGlobalFrame(3); // small forward step = dropped frames
     expect(log, isEmpty);
 
     controller.seekToGlobalFrame(6); // crosses b.wav's start
-    expect(log, ['play b.wav @0ms']);
+    expect(log, ['start b.wav @0ms']);
   });
 
   test('play mid-timeline starts clips at the matching position', () {
     controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 5);
-    expect(log, ['play a.wav @500ms']);
+    expect(log, ['prepare a.wav', 'prepare b.wav', 'start a.wav @500ms']);
   });
 
   test('a forward jump past the threshold restarts at the new position', () {
@@ -133,7 +138,7 @@ void main() {
     log.clear();
 
     controller.seekToGlobalFrame(8); // 8 frames > fps/2 → resync
-    expect(log, ['stop a.wav', 'play a.wav @800ms', 'play b.wav @200ms']);
+    expect(log, ['stop a.wav', 'start a.wav @800ms', 'start b.wav @200ms']);
   });
 
   test('a backward jump (loop wrap) stops everything and re-evaluates', () {
@@ -142,10 +147,10 @@ void main() {
     log.clear();
 
     controller.seekToGlobalFrame(0);
-    expect(log, ['stop a.wav', 'stop b.wav', 'play a.wav @0ms']);
+    expect(log, ['stop a.wav', 'stop b.wav', 'start a.wav @0ms']);
   });
 
-  test('pause/resume forward to live players; a paused seek restarts', () {
+  test('pause/resume forward to playing clips; a paused seek restarts', () {
     controller.play(scope: PlaybackScope.activeCut);
     log.clear();
 
@@ -164,25 +169,26 @@ void main() {
 
     log.clear();
     controller.resume();
-    expect(log, ['play a.wav @600ms', 'play b.wav @0ms']);
+    expect(log, ['start a.wav @600ms', 'start b.wav @0ms']);
   });
 
-  test('stopping playback stops every live clip', () {
+  test('stopping playback stops and disposes every player', () {
     controller.play(scope: PlaybackScope.activeCut);
     controller.seekToGlobalFrame(6);
     log.clear();
 
     controller.stop();
-    expect(log, ['stop a.wav', 'stop b.wav']);
+    expect(log, ['stop a.wav', 'stop b.wav', 'dispose a.wav', 'dispose b.wav']);
   });
 
   test('all-cuts playback lays clips globally and clamps at cut ends', () {
-    // Frame 12 = cut-b local 2: nothing overlaps yet.
+    // Frame 12 = cut-b local 2: everything is prepared, nothing plays yet.
     controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 12);
-    expect(log, isEmpty);
+    expect(log, ['prepare a.wav', 'prepare b.wav', 'prepare c.wav']);
 
+    log.clear();
     controller.seekToGlobalFrame(13); // c.wav's global start
-    expect(log, ['play c.wav @0ms']);
+    expect(log, ['start c.wav @0ms']);
 
     log.clear();
     controller.seekToGlobalFrame(18); // c.wav ends (0.5 s = 5 frames)
@@ -192,10 +198,38 @@ void main() {
   test('an unknown-length clip stops at its cut boundary', () {
     // b.wav has no extracted peaks → its end clamps to cut-a's end (10).
     controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 7);
-    expect(log, ['play a.wav @700ms', 'play b.wav @100ms']);
+    expect(log, [
+      'prepare a.wav',
+      'prepare b.wav',
+      'prepare c.wav',
+      'start a.wav @700ms',
+      'start b.wav @100ms',
+    ]);
 
     log.clear();
     controller.seekToGlobalFrame(10); // cut-a → cut-b boundary
     expect(log, ['stop a.wav', 'stop b.wav']);
+  });
+
+  test('a cut boundary tick never opens or tears down a media pipeline', () {
+    // Playback must never stall at a cut boundary: crossing one only
+    // seeks/starts/stops PREPARED players — no prepare, no dispose.
+    controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 9);
+    log.clear();
+
+    controller.seekToGlobalFrame(13); // crosses the boundary, starts c.wav
+    expect(log, ['stop a.wav', 'stop b.wav', 'start c.wav @0ms']);
+    expect(log.where((line) => line.startsWith('prepare')), isEmpty);
+    expect(log.where((line) => line.startsWith('dispose')), isEmpty);
+  });
+
+  test('a loop wrap restarts clips on the same prepared players', () {
+    controller.play(scope: PlaybackScope.activeCut);
+    controller.seekToGlobalFrame(6);
+    log.clear();
+
+    controller.seekToGlobalFrame(0); // loop wrap
+    expect(log, ['stop a.wav', 'stop b.wav', 'start a.wav @0ms']);
+    expect(log.where((line) => line.startsWith('prepare')), isEmpty);
   });
 }

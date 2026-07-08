@@ -1143,6 +1143,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
+    // Re-importing a path restarts its waveform extraction from scratch
+    // (fresh attempt budget — the file may have changed on disk).
+    audioPeaksStore.invalidate(filePath);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: _editingSession.activeCutId,
       layerId: layer.id,
