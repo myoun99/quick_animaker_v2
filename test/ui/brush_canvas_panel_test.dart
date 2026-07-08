@@ -421,18 +421,29 @@ void main() {
       pointer: 1,
     );
     await gesture.moveTo(canvasGlobalOffset(tester, const Offset(7, 1)));
-    await gesture.up();
 
+    // Mid-stroke the live pointer path never generates a preview cache.
     expect(
       coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
       isNull,
     );
 
+    await gesture.up();
     await tester.pump();
 
+    // Pen-up DONATES the committed session surface as the display cache —
+    // nothing is generated (the immutable surface is shared), and no later
+    // consumer replays the stroke.
+    final cache = coordinator.frameStore.displayCacheOrNull(
+      coordinator.activeFrameKey,
+    )!;
+    expect(cache.isValid, isTrue);
     expect(
-      coordinator.frameStore.displayCacheOrNull(coordinator.activeFrameKey),
-      isNull,
+      identical(
+        cache.previewSurface,
+        coordinator.activeSessionState.canvasState.currentSurface,
+      ),
+      isTrue,
     );
 
     // The committed stroke is materialized into the session surface and

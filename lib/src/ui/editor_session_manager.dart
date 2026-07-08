@@ -643,22 +643,29 @@ class EditorSessionManager extends ChangeNotifier {
         null;
   }
 
-  /// The drawable artwork of one layer frame in the active cut, replayed
-  /// from the brush store's paint commands; `null` when nothing is drawn.
-  /// This is the production [LayerFrameSurfaceResolver] for camera
-  /// preview/export compositing.
+  /// The drawable artwork of one layer frame in the active cut; `null` when
+  /// nothing is drawn. This is the production [LayerFrameSurfaceResolver]
+  /// for camera preview/export compositing. The store's display cache is
+  /// consumed READ-ONLY when valid (the editing coordinator donates the
+  /// session surface on every commit/undo/redo); replaying the frame's
+  /// paint commands is the cold fallback.
   BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
-    final drawing = brushFrameStore.frameOrNull(
-      BrushFrameKey(
-        projectId: _repository.requireProject().id,
-        trackId: activeCutTrackId,
-        cutId: _editingSession.activeCutId,
-        layerId: layer.id,
-        frameId: frame.id,
-      ),
+    final frameKey = BrushFrameKey(
+      projectId: _repository.requireProject().id,
+      trackId: activeCutTrackId,
+      cutId: _editingSession.activeCutId,
+      layerId: layer.id,
+      frameId: frame.id,
     );
+    final drawing = brushFrameStore.frameOrNull(frameKey);
     if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
       return null;
+    }
+    final cached = brushFrameStore.displayCacheOrNull(frameKey);
+    if (cached != null &&
+        cached.isValid &&
+        cached.previewSurface.canvasSize == activeCut.canvasSize) {
+      return cached.previewSurface;
     }
     return BrushFrameDisplayCacheRenderer(
       canvasSize: activeCut.canvasSize,

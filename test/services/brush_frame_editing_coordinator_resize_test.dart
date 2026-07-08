@@ -94,18 +94,27 @@ void main() {
       expect(identical(c.activeSessionState, before), isTrue);
     });
 
-    test('drops display caches so previews rebuild at the new size', () {
+    test('no display cache survives a resize at the OLD size', () {
       final c = coordinator();
+      final frameA = c.activeFrameKey;
       c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
-      c.frameStore.storeRebuiltDisplayCache(
-        key: c.activeFrameKey,
-        previewSurface: c.activeSessionState.canvasState.currentSurface,
-      );
-      expect(c.frameStore.hasValidDisplayCache(c.activeFrameKey), isTrue);
+      c.selectFrame(key('frame-b'));
+      c.commitSourceStroke(sourceDabs: [_dab(x: 2, y: 2)]);
+      expect(c.frameStore.hasValidDisplayCache(frameA), isTrue);
 
       c.resizeCanvas(const CanvasSize(width: 12, height: 12));
 
-      expect(c.frameStore.hasValidDisplayCache(c.activeFrameKey), isFalse);
+      // The active frame's session rebuild immediately donates a fresh
+      // preview at the NEW size…
+      final active = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
+      expect(active.isValid, isTrue);
+      expect(
+        active.previewSurface.canvasSize,
+        const CanvasSize(width: 12, height: 12),
+      );
+      // …while inactive frames' old-size caches are simply dropped (they
+      // rebuild lazily on selection).
+      expect(c.frameStore.displayCacheOrNull(frameA), isNull);
     });
 
     test('undo after resize hides the stroke on the rebuilt surface', () {
