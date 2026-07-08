@@ -11,6 +11,8 @@ import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/tiled_surface_compose.dart';
 
 /// File name for one exported frame: `frame_0001.png` (1-based).
 String cameraSequenceFileName(int frameIndex, {int digits = 4}) {
@@ -137,7 +139,16 @@ class CameraFrameRenderService {
     final resolvedOutput = outputSize ?? cameraFrameSize;
     final layerImages = <ui.Image>[];
     for (final layer in layers) {
-      layerImages.add(await bitmapSurfaceToImage(layer.surface));
+      // Per-tile GPU compose (already-decoded tiles draw without any new
+      // upload — the storyboard thumbnail after a stroke reuses the editing
+      // canvas's tiles); the camera transform then samples the composed
+      // full-res image exactly as before.
+      layerImages.add(
+        await composeTiledSurfaceImage(
+          layer.surface,
+          reuse: BitmapTileImageCache.instance,
+        ),
+      );
     }
 
     final recorder = ui.PictureRecorder();
