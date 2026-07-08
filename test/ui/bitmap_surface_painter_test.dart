@@ -9,7 +9,9 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 void main() {
   group('BitmapSurfacePainter', () {
@@ -104,6 +106,87 @@ void main() {
       );
 
       expect(_rgbaAt(pixels, width: 1, x: 0, y: 0), [237, 237, 237, 255]);
+    });
+  });
+
+  group('settle hold', () {
+    final coord = TileCoord(x: 0, y: 0);
+    final green = RgbaColor(r: 0, g: 255, b: 0, a: 255);
+    final red = RgbaColor(r: 255, g: 0, b: 0, a: 255);
+    final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
+
+    // The committed tile already contains the stroke (red); the pinned
+    // pre-stroke tile does not (green). Painting the committed tile during
+    // settling is what double-blended it with the overlay.
+    BitmapSurface surface() {
+      final newTile = _tile(
+        coord: coord,
+        size: 2,
+        colors: {const _Point(0, 0): red},
+      );
+      final sideTile = _tile(
+        coord: TileCoord(x: 1, y: 0),
+        size: 2,
+        colors: {const _Point(0, 1): blue},
+      );
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: 4, height: 2),
+        tileSize: 2,
+        tiles: {newTile.coord: newTile, sideTile.coord: sideTile},
+      );
+    }
+
+    Future<Uint8List> paint(ActiveStrokeOverlayModel overlay) {
+      return _paintPixels(
+        BitmapSurfacePainter(
+          surface: surface(),
+          overlayModel: overlay,
+          showTransparentBackground: false,
+          tileImageCache: BitmapTileImageCache(),
+        ),
+        width: 4,
+        height: 2,
+      );
+    }
+
+    test('a pinned coordinate draws its PRE-stroke tile, not the committed '
+        'one; unpinned coordinates are untouched', () async {
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      overlay.holdPreStrokeTiles({
+        coord: _tile(
+          coord: coord,
+          size: 2,
+          colors: {const _Point(0, 0): green},
+        ),
+      });
+
+      final pixels = await paint(overlay);
+
+      expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 255, 0, 255]);
+      expect(_rgbaAt(pixels, width: 4, x: 2, y: 1), [0, 0, 255, 255]);
+    });
+
+    test('a coordinate that was empty pre-stroke draws nothing while '
+        'pinned', () async {
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      overlay.holdPreStrokeTiles({coord: null});
+
+      final pixels = await paint(overlay);
+
+      expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
+    });
+
+    test('reset releases the pin and the committed tile shows', () async {
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      overlay.holdPreStrokeTiles({coord: null});
+      overlay.reset();
+
+      final pixels = await paint(overlay);
+
+      expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [255, 0, 0, 255]);
     });
   });
 }

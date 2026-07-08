@@ -12,6 +12,7 @@ import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
 import '../../models/dirty_region.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
@@ -51,6 +52,32 @@ List<BitmapTile> settlingTilesForBounds({
           tile.coord.y <= maxY)
         tile,
   ];
+}
+
+/// The PRE-stroke tile (null = the coordinate was empty) for every
+/// committed-grid coordinate that [bounds] touches; captured at pen-up
+/// while the session surface is still pre-commit, and pinned on the
+/// overlay model so settling frames stay pixel-identical to the live
+/// stroke (see [ActiveStrokeOverlayModel.settleHoldTiles]).
+@visibleForTesting
+Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
+  required BitmapSurface surface,
+  required DirtyRegion? bounds,
+}) {
+  if (bounds == null) {
+    return {for (final tile in surface.tiles.values) tile.coord: tile};
+  }
+  final tileSize = surface.tileSize;
+  final minX = bounds.left ~/ tileSize;
+  final maxX = (bounds.rightExclusive - 1) ~/ tileSize;
+  final minY = bounds.top ~/ tileSize;
+  final maxY = (bounds.bottomExclusive - 1) ~/ tileSize;
+  final tiles = surface.tiles;
+  return {
+    for (var y = minY; y <= maxY; y += 1)
+      for (var x = minX; x <= maxX; x += 1)
+        TileCoord(x: x, y: y): tiles[TileCoord(x: x, y: y)],
+  };
 }
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
@@ -416,6 +443,16 @@ class _InteractiveBrushEditCanvasViewState
       // The settling check below watches exactly the tiles this stroke
       // touched; unrelated tiles must not gate the overlay handoff.
       _settlingBounds = rasterizer?.strokeBounds;
+      // Pin the PRE-stroke tiles (the surface is still pre-commit here) so
+      // the painter never mixes freshly decoded post-commit tiles with the
+      // still-visible overlay — that mix flashed the stroke at double
+      // density in tile-shaped patches during settling.
+      _overlayModel.holdPreStrokeTiles(
+        preStrokeHoldTiles(
+          surface: widget.sessionState.canvasState.currentSurface,
+          bounds: _settlingBounds,
+        ),
+      );
       widget.onSourceStrokeCommitted(
         BrushStrokeCommitData(
           sourceDabs: _collectedDabs,
