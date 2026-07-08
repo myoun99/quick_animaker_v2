@@ -669,4 +669,215 @@ void main() {
       );
     });
   });
+
+  group('camera property lanes in the X-sheet', () {
+    const laneToggleKey = ValueKey<String>('xsheet-lane-toggle-lane-cam-layer');
+
+    Finder laneLabel(String laneId) => find.byKey(
+      ValueKey<String>('xsheet-lane-label-lane-cam-layer-$laneId'),
+    );
+    Finder laneKey(String laneId, int frame) => find.byKey(
+      ValueKey<String>('xsheet-lane-key-lane-cam-layer-$laneId-$frame'),
+    );
+
+    // Lane COLUMNS extend the sheet rightward and the default 36px frame
+    // rows put late frames below the bottom dock's fold — a wide surface,
+    // near keys (frames 0/4) AND a taller bottom dock (splitter drag, like
+    // a user would) keep every gesture target on screen.
+    Future<void> pumpXSheet(WidgetTester tester, Project project) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await _pump(tester, project);
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('timeline-orientation-toggle-button'),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> expand(WidgetTester tester) async {
+      await tester.tap(find.byKey(laneToggleKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('twirl-down opens the transform lanes as COLUMNS with key '
+        'markers', (tester) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
+      );
+
+      // Collapsed by default: chevron on the camera column header, no lane
+      // columns.
+      expect(find.byKey(laneToggleKey), findsOneWidget);
+      expect(laneLabel('position'), findsNothing);
+
+      await expand(tester);
+
+      expect(laneLabel('position'), findsOneWidget);
+      expect(laneLabel('scale'), findsOneWidget);
+      expect(laneLabel('rotation'), findsOneWidget);
+      for (final laneId in ['position', 'scale', 'rotation']) {
+        expect(laneKey(laneId, 0), findsOneWidget);
+        expect(laneKey(laneId, 4), findsOneWidget);
+      }
+
+      await expand(tester);
+      expect(laneLabel('position'), findsNothing);
+    });
+
+    testWidgets('the navigator diamond toggles a key at the playhead on '
+        'ONE lane', (tester) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'xsheet-lane-key-toggle-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(laneKey('position', 0), findsNothing);
+      expect(laneKey('scale', 0), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'xsheet-lane-key-toggle-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(laneKey('position', 0), findsOneWidget);
+    });
+
+    testWidgets('markers drag VERTICALLY to move keys (frame-snapped)', (
+      tester,
+    ) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      // X-sheet zoom default = 36px per frame row: +96px down = +2 frames
+      // (the drag recognizer's slop eats ~20px of the gesture).
+      await tester.drag(laneKey('position', 4), const Offset(0, 96));
+      await tester.pumpAndSettle();
+
+      expect(laneKey('position', 4), findsNothing);
+      expect(laneKey('position', 6), findsOneWidget);
+      // Other lanes keep their key at 4.
+      expect(laneKey('scale', 4), findsOneWidget);
+    });
+
+    testWidgets('the long-press menu deletes a key', (tester) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.longPress(laneKey('rotation', 4));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('lane-key-menu-delete')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(laneKey('rotation', 4), findsNothing);
+      expect(laneKey('position', 4), findsOneWidget);
+    });
+
+    testWidgets('the header value cell shows AE units, types and scrubs', (
+      tester,
+    ) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      final valueText = find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+        ),
+        matching: find.byType(Text),
+      );
+      expect(tester.widget<Text>(valueText).data, '150%');
+
+      // Typing keys the value at the playhead (Enter commits).
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(
+          const ValueKey<String>(
+            'xsheet-lane-value-field-lane-cam-layer-scale',
+          ),
+        ),
+        '200%',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(valueText).data, '200%');
+
+      // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
+      // drag-axis mapping is the LANE's, identical in both orientations.
+      await tester.drag(
+        find.byKey(
+          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+        ),
+        const Offset(40, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(valueText).data, '220%');
+      expect(laneKey('scale', 0), findsOneWidget);
+    });
+
+    testWidgets('prev/next navigator jumps the playhead between keys', (
+      tester,
+    ) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'xsheet-lane-next-key-lane-cam-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const ValueKey<String>('timeline-current-frame-counter'),
+              ),
+            )
+            .data,
+        '5',
+      );
+    });
+  });
 }

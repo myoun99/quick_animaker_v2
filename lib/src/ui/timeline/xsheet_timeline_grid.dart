@@ -21,6 +21,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_rows.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 import 'timeline_section_stub_rows.dart';
@@ -68,6 +69,10 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.commaDrag,
     this.isFrameCached,
     this.metrics = defaultMetrics,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
+    this.lanesForLayer,
+    this.laneEdit,
     this.collapsedSections = const {},
     this.onToggleSection,
   });
@@ -114,6 +119,14 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
   final TimelineGridMetrics metrics;
+
+  /// AE-style property lanes, transposed: an expanded layer's lanes appear
+  /// as COLUMNS beside it (the layer axis runs horizontally here). Same
+  /// generic provider + edit hooks as the horizontal timeline.
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
+  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+  final PropertyLaneEditCallbacks? laneEdit;
 
   /// Sections folded to one stub COLUMN here (the section axis runs
   /// horizontally in the X-sheet) and the header-chevron toggle.
@@ -306,6 +319,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _lastRailScrubbedFrameIndex = null;
   }
 
+  List<PropertyLaneRow> _lanesFor(Layer layer) =>
+      widget.lanesForLayer?.call(layer) ?? const [];
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -332,8 +348,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         // row/run policy with the horizontal grid).
         final entries = buildTimelineDisplayRows(
           layers: widget.layers,
-          expandedLayerIds: const {},
-          lanesForLayer: (_) => const [],
+          expandedLayerIds: widget.expandedLaneLayerIds,
+          lanesForLayer: _lanesFor,
           collapsedSections: widget.collapsedSections,
         );
         final sectionRuns = timelineSectionRuns(entries);
@@ -556,6 +572,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                 .stubSection!,
                                                           ),
                                               )
+                                            : entries[index].isLane
+                                            ? TimelineLaneControlsRow(
+                                                axis: Axis.vertical,
+                                                keyPrefix: 'xsheet',
+                                                layer: entries[index].layer,
+                                                lane: entries[index].lane!,
+                                                metrics: _metrics,
+                                                width: _metrics.layerRowHeight,
+                                                height: XSheetTimelineGrid
+                                                    ._headerHeight,
+                                                currentFrameIndex:
+                                                    widget.currentFrameIndex,
+                                                onSelectFrame:
+                                                    widget.onSelectFrame,
+                                                laneEdit: widget.laneEdit,
+                                              )
                                             : _LayerHeader(
                                                 layer: entries[index].layer,
                                                 active:
@@ -577,6 +609,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onToggleLayerTimesheet,
                                                 onLayerMarkSelected:
                                                     widget.onLayerMarkSelected,
+                                                hasLanes: _lanesFor(
+                                                  entries[index].layer,
+                                                ).isNotEmpty,
+                                                lanesExpanded: widget
+                                                    .expandedLaneLayerIds
+                                                    .contains(
+                                                      entries[index].layer.id,
+                                                    ),
+                                                onToggleLanes: widget
+                                                    .onToggleLayerLanes,
                                               ),
                                     ],
                                   ),
@@ -609,6 +651,28 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           metrics: _metrics,
                                                           axis: Axis.vertical,
                                                           keyPrefix: 'xsheet',
+                                                        )
+                                                      : entries[index].isLane
+                                                      ? TimelineLaneFrameRow(
+                                                          axis: Axis.vertical,
+                                                          keyPrefix: 'xsheet',
+                                                          layer: entries[index]
+                                                              .layer,
+                                                          lane: entries[index]
+                                                              .lane!,
+                                                          frameStartIndex:
+                                                              frameRange
+                                                                  .startIndex,
+                                                          frameEndIndexExclusive:
+                                                              frameRange
+                                                                  .endIndexExclusive,
+                                                          leadingFrameSpacerWidth:
+                                                              plan.leadingFrameSpacerWidth,
+                                                          trailingFrameSpacerWidth:
+                                                              plan.trailingFrameSpacerWidth,
+                                                          metrics: _metrics,
+                                                          laneEdit:
+                                                              widget.laneEdit,
                                                         )
                                                       : _XSheetFrameCellsColumn(
                                                           onActivateCell: widget
@@ -1261,6 +1325,9 @@ class _LayerHeader extends StatelessWidget {
     required this.onLayerMarkSelected,
     required this.metrics,
     this.sectionStart = false,
+    this.hasLanes = false,
+    this.lanesExpanded = false,
+    this.onToggleLanes,
   });
 
   final TimelineGridMetrics metrics;
@@ -1277,9 +1344,18 @@ class _LayerHeader extends StatelessWidget {
   /// divider along the header's left edge.
   final bool sectionStart;
 
+  /// AE-style property-lane twirl-down: layers with lanes lead their name
+  /// row with a chevron (lane COLUMNS open beside the layer's). Headers
+  /// without lanes skip the slot — names center per column here, so no
+  /// cross-column alignment to preserve.
+  final bool hasLanes;
+  final bool lanesExpanded;
+  final ValueChanged<LayerId>? onToggleLanes;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final showLaneToggle = hasLanes && onToggleLanes != null;
 
     final header = InkWell(
       key: ValueKey<String>('xsheet-layer-header-${layer.id}'),
@@ -1306,6 +1382,21 @@ class _LayerHeader extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  if (showLaneToggle)
+                    InkWell(
+                      key: ValueKey<String>('xsheet-lane-toggle-${layer.id}'),
+                      onTap: () => onToggleLanes!(layer.id),
+                      child: SizedBox(
+                        width: 16,
+                        height: 24,
+                        child: Icon(
+                          lanesExpanded
+                              ? Icons.arrow_drop_down
+                              : Icons.arrow_right,
+                          size: 16,
+                        ),
+                      ),
+                    ),
                   // Timesheet + mark chips lead the name; ineligible layers
                   // keep empty slots so names align across columns.
                   if (layerKindEligibleForTimesheetToggle(layer.kind))
@@ -1342,8 +1433,12 @@ class _LayerHeader extends StatelessWidget {
                     ),
                   ),
                   // Balance the leading chips so the name stays centered.
-                  const SizedBox(
-                    width: layerTimesheetSlotWidth + layerMarkSlotWidth + 4,
+                  SizedBox(
+                    width:
+                        layerTimesheetSlotWidth +
+                        layerMarkSlotWidth +
+                        4 +
+                        (showLaneToggle ? 16 : 0),
                   ),
                 ],
               ),
