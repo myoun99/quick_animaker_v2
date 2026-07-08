@@ -695,6 +695,67 @@ void main() {
     });
   });
 
+  group('StoryboardPanel zoom-around-playhead', () {
+    testWidgets('zooming keeps a visible playhead at the same screen spot', (
+      tester,
+    ) async {
+      Future<void> pumpAtZoom(double pixelsPerFrame) {
+        return _pumpStoryboardPanel(
+          tester,
+          _singleTrackProject([
+            _cut('cut-a', name: 'Cut A', duration: 60),
+            _cut('cut-b', name: 'Cut B', duration: 60),
+          ]),
+          activeCutId: const CutId('cut-a'),
+          onCutSelected: (_) {},
+          playheadGlobalFrame: 30,
+          pixelsPerFrame: pixelsPerFrame,
+        );
+      }
+
+      await pumpAtZoom(8);
+      final playhead = find.byKey(
+        const ValueKey<String>('storyboard-playhead'),
+      );
+      final centerBefore = tester.getRect(playhead).center.dx;
+
+      await pumpAtZoom(16);
+      await tester.pumpAndSettle();
+
+      expect(tester.getRect(playhead).center.dx, centerBefore);
+    });
+
+    testWidgets('zooming with the playhead off screen keeps the leading '
+        'edge anchored', (tester) async {
+      Future<void> pumpAtZoom(double pixelsPerFrame) {
+        return _pumpStoryboardPanel(
+          tester,
+          _singleTrackProject([
+            _cut('cut-a', name: 'Cut A', duration: 60),
+            _cut('cut-b', name: 'Cut B', duration: 60),
+          ]),
+          activeCutId: const CutId('cut-a'),
+          onCutSelected: (_) {},
+          // Far beyond the viewport at either zoom.
+          playheadGlobalFrame: 118,
+          pixelsPerFrame: pixelsPerFrame,
+        );
+      }
+
+      await pumpAtZoom(8);
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final blockBefore = tester.getTopLeft(blockA).dx;
+
+      await pumpAtZoom(16);
+      await tester.pumpAndSettle();
+
+      // Offset 0 scales to 0: the track start stays at the same edge.
+      expect(tester.getTopLeft(blockA).dx, blockBefore);
+    });
+  });
+
   group('StoryboardPanel pinned ruler', () {
     testWidgets('the ruler stays put while tracks scroll vertically', (
       tester,

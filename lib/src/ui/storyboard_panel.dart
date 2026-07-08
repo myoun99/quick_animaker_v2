@@ -32,6 +32,7 @@ import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_se_row_visual.dart' show SePaperSpan, SeSpanVisual;
+import 'timeline/timeline_zoom_anchor_policy.dart';
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
 /// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
@@ -184,14 +185,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void didUpdateWidget(covariant StoryboardPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the frame at the viewport's left edge anchored through zoom.
+    // Zoom-around-playhead: the playhead stays put on screen through zoom
+    // when visible; otherwise (or with no playhead) the leading-edge frame
+    // anchors. Shared policy with the timeline grids.
     if (oldWidget.pixelsPerFrame != widget.pixelsPerFrame &&
         _horizontalController.hasClients) {
-      final factor = widget.pixelsPerFrame / oldWidget.pixelsPerFrame;
       _horizontalController.jumpTo(
-        (_horizontalController.position.pixels * factor).clamp(
-          0.0,
-          double.maxFinite,
+        zoomAnchoredScrollOffset(
+          oldOffset: _horizontalController.position.pixels,
+          oldPixelsPerFrame: oldWidget.pixelsPerFrame,
+          newPixelsPerFrame: widget.pixelsPerFrame,
+          viewportExtent: _horizontalController.position.viewportDimension,
+          anchorFrame: widget.playheadGlobalFrame,
         ),
       );
     }
