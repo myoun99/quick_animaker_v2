@@ -1836,6 +1836,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   String? get selectedFrameName => selectedFrame?.name;
 
+  /// SE rows: the selected entry's speaker/effect name (the accent box).
+  String? get selectedFrameSeName => selectedFrame?.seName;
+
   /// Applies a rename to the currently selected frame.
   ///
   /// Returns `null` when the rename was applied (or was not possible). When the
@@ -1874,9 +1877,10 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
-  /// name/dialogue text) in ONE undo step. Sheet semantics: the entry holds
-  /// until the next entry or the cut's end, whichever comes first.
-  void createSeEntryAtCurrentFrame({required String name}) {
+  /// dialogue text) and the optional [seName] (speaker/effect, the accent
+  /// box) in ONE undo step. Sheet semantics: the entry holds until the
+  /// next entry or the cut's end, whichever comes first.
+  void createSeEntryAtCurrentFrame({required String name, String? seName}) {
     final layer = activeLayer;
     if (layer == null ||
         layer.kind != LayerKind.se ||
@@ -1892,6 +1896,31 @@ class EditorSessionManager extends ChangeNotifier {
       frameId: FrameId(_nextFrameId(layer.id)),
       length: remaining < 1 ? 1 : remaining,
       name: name,
+      seName: seName,
+    );
+    notifyListeners();
+  }
+
+  /// SE rows: updates the selected entry's dialogue (Frame.name) and
+  /// speaker name in ONE undo step. Duplicates are allowed — the same
+  /// dialogue can legitimately repeat on a sheet.
+  void updateSelectedSeEntry({required String dialogue, String? seName}) {
+    final layer = activeLayer;
+    final frame = selectedFrame;
+    if (layer == null ||
+        frame == null ||
+        layer.kind != LayerKind.se ||
+        !canRenameFrameAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.renameFrameForLayer(
+      layerId: layer.id,
+      frameId: frame.id,
+      name: dialogue,
+      allowDuplicateName: true,
+      seName: seName,
+      updateSeName: true,
     );
     notifyListeners();
   }

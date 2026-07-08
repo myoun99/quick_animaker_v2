@@ -189,6 +189,7 @@ class TimelineController {
     required FrameId frameId,
     int length = 1,
     String? name,
+    String? seName,
   }) {
     if (length < 1) {
       throw ArgumentError.value(
@@ -229,6 +230,7 @@ class TimelineController {
           duration: clampedLength,
           strokes: const [],
           name: _normalizeFrameName(name),
+          seName: _normalizeFrameName(seName),
         ),
       ],
       timeline: nextTimeline,
@@ -432,6 +434,8 @@ class TimelineController {
     required FrameId frameId,
     required String? name,
     bool allowDuplicateName = false,
+    String? seName,
+    bool updateSeName = false,
   }) {
     final before = _requireLayer(layerId);
     _requireFrameInLayer(layer: before, frameId: frameId);
@@ -447,10 +451,18 @@ class TimelineController {
     }
 
     final normalizedName = _normalizeFrameName(name);
+    final normalizedSeName = _normalizeFrameName(seName);
     final nextFrames = before.frames
         .map(
           (frame) => frame.id == frameId
-              ? frame.copyWith(name: normalizedName)
+              ? (updateSeName
+                    // Name + SE speaker name land in the same edit — the SE
+                    // dialog commits both as ONE undo step.
+                    ? frame.copyWith(
+                        name: normalizedName,
+                        seName: normalizedSeName,
+                      )
+                    : frame.copyWith(name: normalizedName))
               : frame,
         )
         .toList(growable: false);

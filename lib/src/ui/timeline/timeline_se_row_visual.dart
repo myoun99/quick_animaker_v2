@@ -389,6 +389,9 @@ class _SeNameBox extends StatelessWidget {
     );
     final box = Semantics(
       label: 'SE name $name',
+      // Own node even where an ancestor would merge labels (the dialog
+      // preview) — tests and screen readers address the box directly.
+      container: true,
       child: Container(
         color: AppColors.accent.withValues(alpha: 0.6),
         alignment: Alignment.center,
