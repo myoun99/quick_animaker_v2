@@ -694,6 +694,78 @@ void main() {
       expect(selectedCutIds, [const CutId('cut-b')]);
     });
   });
+
+  group('StoryboardPanel pinned ruler', () {
+    testWidgets('the ruler stays put while tracks scroll vertically', (
+      tester,
+    ) async {
+      // Enough tracks that the panel scrolls vertically.
+      await _pumpStoryboardPanel(
+        tester,
+        _project([
+          for (var index = 0; index < 10; index += 1)
+            Track(
+              id: TrackId('track-$index'),
+              name: 'V${index + 1}',
+              cuts: [_cut('cut-$index', name: 'Cut $index')],
+            ),
+        ]),
+        activeCutId: const CutId('cut-0'),
+        onCutSelected: (_) {},
+      );
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final firstRow = find.byKey(
+        const ValueKey<String>('storyboard-track-row-track-0'),
+      );
+      final rulerTopLeft = tester.getTopLeft(ruler);
+      final firstRowTop = tester.getTopLeft(firstRow).dy;
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
+        const Offset(0, -200),
+      );
+      await tester.pumpAndSettle();
+
+      // Tracks scrolled under the ruler; the ruler did not move.
+      expect(tester.getTopLeft(firstRow).dy, lessThan(firstRowTop));
+      expect(tester.getTopLeft(ruler), rulerTopLeft);
+    });
+
+    testWidgets('the pinned ruler follows horizontal scrolling with the '
+        'blocks', (tester) async {
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+      );
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final block = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final rulerX = tester.getTopLeft(ruler).dx;
+      final blockX = tester.getTopLeft(block).dx;
+
+      await tester.drag(
+        find.byKey(
+          const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+        ),
+        const Offset(-160, 0),
+      );
+      await tester.pumpAndSettle();
+
+      final rulerShift = rulerX - tester.getTopLeft(ruler).dx;
+      final blockShift = blockX - tester.getTopLeft(block).dx;
+      expect(rulerShift, greaterThan(0));
+      // Frame labels stay aligned with the blocks under them.
+      expect(rulerShift, blockShift);
+    });
+  });
 }
 
 Future<void> _pumpStoryboardPanel(
