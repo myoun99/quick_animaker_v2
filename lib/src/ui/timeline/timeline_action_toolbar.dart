@@ -2,6 +2,7 @@
 
 import '../../models/layer_kind.dart';
 import '../editor_session_manager.dart';
+import 'timeline_section_policy.dart';
 
 /// The layer/frame/cell action toolbar shown above the timeline grid.
 ///
@@ -21,6 +22,8 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onEditInstance,
     required this.onCreateInstance,
     this.onImportAudio,
+    this.hiddenSections = const {},
+    this.onToggleSection,
   });
 
   final EditorSessionManager session;
@@ -38,6 +41,11 @@ class TimelineActionToolbar extends StatelessWidget {
   /// Opens the audio file picker for the active SE layer (host-provided —
   /// it needs the platform dialog); null hides nothing, just disables.
   final VoidCallback? onImportAudio;
+
+  /// Sections hidden from the grids; the section toggle buttons read and
+  /// flip this (collapse is gone — hide/show replaced it).
+  final Set<TimelineSection> hiddenSections;
+  final ValueChanged<TimelineSection>? onToggleSection;
 
   /// Whether the Add button applies to the active layer's cell: drawing
   /// kinds keep their old any-cell gate, SE needs an EMPTY cell (covered
@@ -94,6 +102,34 @@ class TimelineActionToolbar extends StatelessWidget {
     required List<Widget> children,
   }) {
     return Row(key: key, mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  /// Section show/hide toggle (replaces the retired collapse chevrons):
+  /// accent-tinted while the section is hidden.
+  Widget _sectionToggleButton(
+    BuildContext context, {
+    required TimelineSection section,
+    required String buttonKey,
+    required String label,
+    required IconData icon,
+  }) {
+    assert(timelineSectionHideable(section));
+    final hidden = hiddenSections.contains(section);
+    final onToggleSection = this.onToggleSection;
+    return IconButton(
+      key: ValueKey<String>(buttonKey),
+      tooltip: hidden ? 'Show $label' : 'Hide $label',
+      onPressed: onToggleSection == null
+          ? null
+          : () => onToggleSection(section),
+      icon: Icon(icon),
+      isSelected: hidden,
+      selectedIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      iconSize: 18,
+      padding: const EdgeInsets.all(5),
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      visualDensity: VisualDensity.compact,
+    );
   }
 
   Widget _groupDivider(BuildContext context) {
@@ -157,6 +193,20 @@ class TimelineActionToolbar extends StatelessWidget {
                     tooltip: 'Add Instruction Layer',
                     icon: Icons.theaters_outlined,
                     onPressed: session.addInstructionLayer,
+                  ),
+                  _sectionToggleButton(
+                    context,
+                    section: TimelineSection.se,
+                    buttonKey: 'toggle-se-section-button',
+                    label: 'SE Rows',
+                    icon: Icons.music_off_outlined,
+                  ),
+                  _sectionToggleButton(
+                    context,
+                    section: TimelineSection.camera,
+                    buttonKey: 'toggle-camera-section-button',
+                    label: 'Camera Rows',
+                    icon: Icons.videocam_off_outlined,
                   ),
                   _iconButton(
                     key: const ValueKey<String>('import-audio-button'),

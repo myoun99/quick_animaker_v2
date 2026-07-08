@@ -56,8 +56,9 @@ String timelineSectionLabel(TimelineSection section) {
   };
 }
 
-/// SE and camera sections fold away; the drawing section is the work
-/// surface and always stays open.
-bool timelineSectionCollapsible(TimelineSection section) {
+/// SE and camera sections can be hidden from the grids (the toolbar's
+/// visibility toggles); the drawing section is the work surface and always
+/// stays visible.
+bool timelineSectionHideable(TimelineSection section) {
   return section != TimelineSection.drawing;
 }

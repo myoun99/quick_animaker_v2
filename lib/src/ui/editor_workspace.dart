@@ -212,17 +212,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.value = next;
   }
 
-  /// SE/camera timeline sections folded to stub rows (view state — survives
-  /// tab switches, session-only).
-  final ValueNotifier<Set<TimelineSection>> _collapsedTimelineSections =
+  /// SE/camera timeline sections hidden from the grids (view state —
+  /// survives tab switches, session-only; toggled from the timeline
+  /// toolbar, the retired fold/collapse UI's replacement).
+  final ValueNotifier<Set<TimelineSection>> _hiddenTimelineSections =
       ValueNotifier(const <TimelineSection>{});
 
   void _toggleTimelineSection(TimelineSection section) {
-    final next = Set<TimelineSection>.of(_collapsedTimelineSections.value);
+    final next = Set<TimelineSection>.of(_hiddenTimelineSections.value);
     if (!next.remove(section)) {
       next.add(section);
     }
-    _collapsedTimelineSections.value = next;
+    _hiddenTimelineSections.value = next;
   }
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
@@ -362,7 +363,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
-    _collapsedTimelineSections.dispose();
+    _hiddenTimelineSections.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
@@ -592,7 +593,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
               _expandedLaneLayerIds,
-              _collapsedTimelineSections,
+              _hiddenTimelineSections,
             ]),
             builder: (context, _) => TimelineTabHost(
               session: widget.session,
@@ -610,7 +611,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
-              collapsedSections: _collapsedTimelineSections.value,
+              hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
             ),
           ),

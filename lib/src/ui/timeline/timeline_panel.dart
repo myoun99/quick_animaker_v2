@@ -50,8 +50,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
-    this.collapsedSections = const {},
-    this.onToggleSection,
+    this.hiddenSections = const {},
   });
 
   final List<Layer> layers;
@@ -123,8 +122,7 @@ class TimelinePanel extends StatefulWidget {
 
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
-  final Set<TimelineSection> collapsedSections;
-  final ValueChanged<TimelineSection>? onToggleSection;
+  final Set<TimelineSection> hiddenSections;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -271,8 +269,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
-                    collapsedSections: widget.collapsedSections,
-                    onToggleSection: widget.onToggleSection,
+                    hiddenSections: widget.hiddenSections,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -300,8 +297,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
-                    collapsedSections: widget.collapsedSections,
-                    onToggleSection: widget.onToggleSection,
+                    hiddenSections: widget.hiddenSections,
                   ),
           ),
         ],
