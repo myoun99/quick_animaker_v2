@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
@@ -15,25 +17,72 @@ String cameraSequenceFileName(int frameIndex, {int digits = 4}) {
   return 'frame_${(frameIndex + 1).toString().padLeft(digits, '0')}.png';
 }
 
+/// Surfaces with at least this many pixels assemble their upload buffer in
+/// a background isolate; smaller ones stay synchronous (the spawn/copy
+/// overhead would dominate, and fake-async widget tests never pump real
+/// isolates — production canvases are far above, test fixtures far below).
+const int _uploadOffloadPixelThreshold = 512 * 512;
+
+/// Test override for the isolate cutoff; null = [_uploadOffloadPixelThreshold].
+@visibleForTesting
+int? debugUploadOffloadPixelThreshold;
+
 /// Converts a tiled [BitmapSurface] into one [ui.Image].
 ///
 /// Tile bytes are straight (unpremultiplied) alpha but raw rgba8888 uploads
 /// are interpreted as premultiplied, so the copy premultiplies with the same
-/// mul-div-255 rounding the tile image cache uses.
-Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) {
+/// mul-div-255 rounding the tile image cache uses. On canvas-sized surfaces
+/// that per-pixel pass is the largest post-stroke chunk left on the UI
+/// thread (debug builds especially), so it runs in a background isolate.
+Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) async {
   final width = surface.canvasSize.width;
   final height = surface.canvasSize.height;
-  final buffer = Uint8List(width * height * 4);
+  // Sendable snapshot: tile pixel buffers are copies already (the tile
+  // getter clones), so the isolate borrows plain records.
+  final tiles = [
+    for (final tile in surface.tiles.values)
+      (
+        originX: tile.coord.x * tile.size,
+        originY: tile.coord.y * tile.size,
+        size: tile.size,
+        pixels: tile.pixels,
+      ),
+  ];
+  final threshold =
+      debugUploadOffloadPixelThreshold ?? _uploadOffloadPixelThreshold;
+  final buffer = width * height >= threshold
+      ? await Isolate.run(
+          () => _assemblePremultipliedRgba(tiles, width, height),
+        )
+      : _assemblePremultipliedRgba(tiles, width, height);
 
-  for (final tile in surface.tiles.values) {
+  final completer = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    buffer,
+    width,
+    height,
+    ui.PixelFormat.rgba8888,
+    completer.complete,
+  );
+  return completer.future;
+}
+
+/// The full-canvas premultiplied upload buffer, assembled from straight-
+/// alpha tile snapshots. Pure bytes → bytes so it runs identically on the
+/// UI thread and in the offload isolate.
+Uint8List _assemblePremultipliedRgba(
+  List<({int originX, int originY, int size, Uint8List pixels})> tiles,
+  int width,
+  int height,
+) {
+  final buffer = Uint8List(width * height * 4);
+  for (final tile in tiles) {
     final pixels = tile.pixels;
-    final originX = tile.coord.x * tile.size;
-    final originY = tile.coord.y * tile.size;
-    final copyWidth = math.min(tile.size, width - originX);
-    final copyHeight = math.min(tile.size, height - originY);
+    final copyWidth = math.min(tile.size, width - tile.originX);
+    final copyHeight = math.min(tile.size, height - tile.originY);
     for (var localY = 0; localY < copyHeight; localY += 1) {
       var source = localY * tile.size * 4;
-      var target = ((originY + localY) * width + originX) * 4;
+      var target = ((tile.originY + localY) * width + tile.originX) * 4;
       for (var localX = 0; localX < copyWidth; localX += 1) {
         final alpha = pixels[source + 3];
         if (alpha == 255) {
@@ -51,16 +100,7 @@ Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) {
       }
     }
   }
-
-  final completer = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    buffer,
-    width,
-    height,
-    ui.PixelFormat.rgba8888,
-    completer.complete,
-  );
-  return completer.future;
+  return buffer;
 }
 
 /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
