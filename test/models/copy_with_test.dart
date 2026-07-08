@@ -146,4 +146,34 @@ void frameNameCopyWithTests() {
     expect(namedFrame, isNot(unnamedFrame));
     expect(namedFrame, unnamedFrame.copyWith(name: 'A1'));
   });
+
+  test('frame copyWith sets and clears seName independently of name', () {
+    final frame = Frame(
+      id: const FrameId('se-frame'),
+      duration: 1,
+      strokes: const [],
+      name: '그건 아니라고 생각해',
+    );
+
+    final named = frame.copyWith(seName: '앨리스');
+    final cleared = named.copyWith(seName: null);
+
+    expect(frame.seName, isNull);
+    expect(named.seName, '앨리스');
+    expect(named.name, '그건 아니라고 생각해');
+    expect(cleared.seName, isNull);
+    expect(cleared.name, '그건 아니라고 생각해');
+  });
+
+  test('frame equality includes nullable seName', () {
+    final bare = Frame(
+      id: const FrameId('frame'),
+      duration: 1,
+      strokes: const [],
+    );
+    final named = bare.copyWith(seName: '앨리스');
+
+    expect(named, isNot(bare));
+    expect(named, bare.copyWith(seName: '앨리스'));
+  });
 }
