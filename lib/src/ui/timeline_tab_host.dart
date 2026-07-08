@@ -11,6 +11,7 @@ import 'dialogs/instruction_event_dialog.dart';
 import 'dialogs/instruction_set_editor_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
+import 'dialogs/se_instance_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
@@ -218,32 +219,43 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
   }
 
-  /// SE cells: covered cells rename the covering entry, empty cells create
-  /// an entry holding to the next one / cut end, carrying the entered text
-  /// (one undo).
+  /// The preview inside the instance dialogs follows the visible
+  /// orientation (Axis policy in miniature).
+  Axis get _previewAxis => widget.orientation == TimelineOrientation.horizontal
+      ? Axis.horizontal
+      : Axis.vertical;
+
+  /// SE cells: covered cells edit the covering entry's name/dialogue,
+  /// empty cells create an entry holding to the next one / cut end,
+  /// carrying the entered texts (one undo each way).
   Future<void> _editSeLabel() async {
     final creating = _session.selectedFrame == null;
     if (creating && !_session.canCreateDrawingAtCurrentFrame) {
       return;
     }
 
-    final nextName = await showDialog<String>(
+    final result = await showDialog<SeInstanceDialogResult>(
       context: context,
-      builder: (context) => RenameFrameDialog(
-        initialName: creating ? '' : _session.selectedFrameName ?? '',
-        title: 'SE Label',
-        fieldLabel: 'Name / dialogue',
+      builder: (context) => SeInstanceDialog(
+        creating: creating,
+        initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
+        initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
+        previewAxis: _previewAxis,
       ),
     );
-    if (!mounted || nextName == null) {
+    if (!mounted || result == null) {
       return;
     }
 
+    final seName = result.seName.isEmpty ? null : result.seName;
     if (creating) {
-      _session.createSeEntryAtCurrentFrame(name: nextName);
+      _session.createSeEntryAtCurrentFrame(
+        name: result.dialogue,
+        seName: seName,
+      );
     } else {
-      // SE renames never hit the link-conflict flow (duplicates allowed).
-      _session.renameSelectedFrame(nextName);
+      // SE edits never hit the link-conflict flow (duplicates allowed).
+      _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
     }
   }
 
@@ -261,8 +273,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialText: covering?.value.text,
         initialValueA: covering?.value.valueA,
         initialValueB: covering?.value.valueB,
+        initialMemo: covering?.value.memo,
         editing: covering != null,
         onEditInstructionSet: () => _editInstructionSet(context),
+        previewAxis: _previewAxis,
       ),
     );
     if (!mounted || result == null) {
@@ -286,6 +300,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         text: result.text,
         valueA: result.valueA,
         valueB: result.valueB,
+        memo: result.memo,
       ),
     );
   }
