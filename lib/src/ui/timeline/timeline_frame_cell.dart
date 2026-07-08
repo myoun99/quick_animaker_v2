@@ -76,15 +76,13 @@ class TimelineFrameCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // SE rows follow the paper sheet's SE-column rule: no paper block fill
-    // (the row-level overlay draws the label + duration line instead), so
-    // covered cells keep the empty-cell background/border styling. Camera
-    // rows do the same — their "coverage" is the lane-key union summary,
-    // drawn as accent ◆/■ markers instead of paper cells.
+    // SE and instruction rows paint the same white paper blocks as drawing
+    // rows (the row overlays add writing/marks on top). Camera rows are the
+    // exception — their "coverage" is the lane-key union summary, drawn as
+    // accent ◆/■ markers on empty-cell styling instead of paper.
     final cameraSummaryCell = layer.kind == LayerKind.camera;
-    final seSheetCell = layerKindUsesSeSheetCells(layer.kind);
     final effectiveExposureState =
-        (seSheetCell || cameraSummaryCell) && exposureState.isCovered
+        cameraSummaryCell && exposureState.isCovered
         ? TimelineCellExposureState.uncovered
         : exposureState;
     final styleColors = timelineCellStyleColors(
@@ -140,7 +138,7 @@ class TimelineFrameCell extends StatelessWidget {
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: borderWidth,
-          exposureBlockSegment: seSheetCell || cameraSummaryCell
+          exposureBlockSegment: cameraSummaryCell
               ? TimelineExposureBlockVisualSegment.none
               : exposureBlockSegment,
           axis: axis,
@@ -254,9 +252,11 @@ String _markerForCell({
               !emptyRunStart
           ? ''
           : 'X',
-    // SE entries draw their label through the row-level span overlay.
+    // SE entries and instruction events draw their writing through the
+    // row-level span overlays; the cells stay glyph-free paper.
     TimelineCellExposureState.drawingStart =>
-      layerKindUsesSeSheetCells(layer.kind)
+      layerKindUsesSeSheetCells(layer.kind) ||
+              layer.kind == LayerKind.instruction
           ? ''
           : frameName == null || frameName.isEmpty
           ? '○'
@@ -272,6 +272,10 @@ String? _semanticsLabelForCell({
   required TimelineCellExposureState exposureState,
   String? frameName,
 }) {
+  // Instruction spans carry their own semantics on the row overlay.
+  if (layer.kind == LayerKind.instruction) {
+    return null;
+  }
   return switch (exposureState) {
     TimelineCellExposureState.uncovered => null,
     TimelineCellExposureState.drawingStart =>

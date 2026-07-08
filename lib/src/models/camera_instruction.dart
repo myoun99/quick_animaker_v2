@@ -13,12 +13,40 @@ import '../core/collection_equality.dart';
 /// An [InstructionEvent] is one span on an instruction row: it starts at its
 /// map key on the layer, holds for [length] frames and can carry the sheet's
 /// A → B endpoint values as free text (e.g. a PAN's start/end positions).
+///
+/// How a def's spans render on rows and sheets: [bar] is the paper sheet's
+/// arrow line (A |←|←|← B), [ol] the translucent bowtie the sheets draw for
+/// O.L / cross-dissolve spans. Lives on the def (not the event) so a term
+/// always looks the same and external formats (TDTS) can map it per term.
+enum CameraInstructionMarkType {
+  bar('bar'),
+  ol('ol');
+
+  const CameraInstructionMarkType(this.jsonValue);
+
+  final String jsonValue;
+
+  String toJson() => jsonValue;
+
+  /// Unknown or absent values decode to [bar] so files stay open-able
+  /// across versions.
+  static CameraInstructionMarkType fromJson(Object? json) {
+    for (final value in values) {
+      if (value.jsonValue == json) {
+        return value;
+      }
+    }
+    return bar;
+  }
+}
+
 class CameraInstructionDef {
   const CameraInstructionDef({
     required this.id,
     required this.name,
     required this.iconKey,
     this.colorValue,
+    this.markType = CameraInstructionMarkType.bar,
   });
 
   /// Stable id events reference; never renamed (the [name] is the label).
@@ -34,16 +62,22 @@ class CameraInstructionDef {
   /// Optional accent (ARGB), null = theme default.
   final int? colorValue;
 
+  /// How this term's spans render; [CameraInstructionMarkType.bar] unless
+  /// the def opts into the O.L bowtie.
+  final CameraInstructionMarkType markType;
+
   CameraInstructionDef copyWith({
     String? name,
     String? iconKey,
     int? Function()? colorValue,
+    CameraInstructionMarkType? markType,
   }) {
     return CameraInstructionDef(
       id: id,
       name: name ?? this.name,
       iconKey: iconKey ?? this.iconKey,
       colorValue: colorValue == null ? this.colorValue : colorValue(),
+      markType: markType ?? this.markType,
     );
   }
 
@@ -52,6 +86,8 @@ class CameraInstructionDef {
     'name': name,
     'iconKey': iconKey,
     if (colorValue != null) 'color': colorValue,
+    if (markType != CameraInstructionMarkType.bar)
+      'markType': markType.toJson(),
   };
 
   factory CameraInstructionDef.fromJson(Map<String, dynamic> json) {
@@ -60,6 +96,7 @@ class CameraInstructionDef {
       name: json['name'] as String,
       iconKey: json['iconKey'] as String,
       colorValue: json['color'] as int?,
+      markType: CameraInstructionMarkType.fromJson(json['markType']),
     );
   }
 
@@ -70,15 +107,16 @@ class CameraInstructionDef {
           other.id == id &&
           other.name == name &&
           other.iconKey == iconKey &&
-          other.colorValue == colorValue;
+          other.colorValue == colorValue &&
+          other.markType == markType;
 
   @override
-  int get hashCode => Object.hash(id, name, iconKey, colorValue);
+  int get hashCode => Object.hash(id, name, iconKey, colorValue, markType);
 
   @override
   String toString() =>
       'CameraInstructionDef(id: $id, name: $name, iconKey: $iconKey, '
-      'color: $colorValue)';
+      'color: $colorValue, markType: $markType)';
 }
 
 /// The project-level instruction vocabulary, in display order.
@@ -132,7 +170,12 @@ class CameraInstructionSet {
       CameraInstructionDef(id: 'fo', name: 'FO', iconKey: 'fade-out'),
       CameraInstructionDef(id: 'wi', name: 'WI', iconKey: 'white-in'),
       CameraInstructionDef(id: 'wo', name: 'WO', iconKey: 'white-out'),
-      CameraInstructionDef(id: 'ol', name: 'O.L', iconKey: 'overlap'),
+      CameraInstructionDef(
+        id: 'ol',
+        name: 'O.L',
+        iconKey: 'overlap',
+        markType: CameraInstructionMarkType.ol,
+      ),
       CameraInstructionDef(id: 'wipe', name: 'WIPE', iconKey: 'wipe'),
       // Filter effects.
       CameraInstructionDef(id: 'si', name: 'S.I', iconKey: 'super-impose'),
@@ -175,6 +218,7 @@ class InstructionEvent {
     this.text,
     this.valueA,
     this.valueB,
+    this.memo,
   });
 
   /// References a [CameraInstructionDef.id]; a dangling reference (its def
@@ -193,6 +237,10 @@ class InstructionEvent {
   final String? valueA;
   final String? valueB;
 
+  /// Free memo printed into the timesheet's memo band alongside the event's
+  /// endpoints and label; never drawn on the row itself.
+  final String? memo;
+
   /// What displays/prints for this event given its vocabulary [def].
   String displayLabel(CameraInstructionDef? def) {
     final text = this.text;
@@ -208,6 +256,7 @@ class InstructionEvent {
     String? Function()? text,
     String? Function()? valueA,
     String? Function()? valueB,
+    String? Function()? memo,
   }) {
     return InstructionEvent(
       instructionId: instructionId ?? this.instructionId,
@@ -215,6 +264,7 @@ class InstructionEvent {
       text: text == null ? this.text : text(),
       valueA: valueA == null ? this.valueA : valueA(),
       valueB: valueB == null ? this.valueB : valueB(),
+      memo: memo == null ? this.memo : memo(),
     );
   }
 
@@ -224,6 +274,7 @@ class InstructionEvent {
     if (text != null) 'text': text,
     if (valueA != null) 'valueA': valueA,
     if (valueB != null) 'valueB': valueB,
+    if (memo != null) 'memo': memo,
   };
 
   factory InstructionEvent.fromJson(Map<String, dynamic> json) {
@@ -233,6 +284,7 @@ class InstructionEvent {
       text: json['text'] as String?,
       valueA: json['valueA'] as String?,
       valueB: json['valueB'] as String?,
+      memo: json['memo'] as String?,
     );
   }
 
@@ -244,15 +296,17 @@ class InstructionEvent {
           other.length == length &&
           other.text == text &&
           other.valueA == valueA &&
-          other.valueB == valueB;
+          other.valueB == valueB &&
+          other.memo == memo;
 
   @override
-  int get hashCode => Object.hash(instructionId, length, text, valueA, valueB);
+  int get hashCode =>
+      Object.hash(instructionId, length, text, valueA, valueB, memo);
 
   @override
   String toString() =>
       'InstructionEvent(instructionId: $instructionId, length: $length, '
-      'text: $text, valueA: $valueA, valueB: $valueB)';
+      'text: $text, valueA: $valueA, valueB: $valueB, memo: $memo)';
 }
 
 /// Validates an instruction map: non-negative starts, positive lengths and

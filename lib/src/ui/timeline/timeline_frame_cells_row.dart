@@ -85,12 +85,18 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Instruction rows have no timeline entries — adapt their events onto
+    // the shared exposure states so the cells paint the same paper blocks.
+    TimelineCellExposureState stateAt(int frameIndex) =>
+        layer.kind == LayerKind.instruction
+        ? instructionCellExposureState(layer, frameIndex)
+        : exposureStateForLayer(layer, frameIndex);
     final selectedExposureDisplayRange = resolveSelectedExposureDisplayRange(
       active: active,
       currentFrameIndex: currentFrameIndex,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      exposureStateAt: (frameIndex) => exposureStateForLayer(layer, frameIndex),
+      exposureStateAt: stateAt,
     );
     final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
     final commaDrag = this.commaDrag;
@@ -120,7 +126,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 active: active,
                 selected: active && frameIndex == currentFrameIndex,
                 outsidePlaybackRange: frameIndex >= playbackFrameCount,
-                exposureState: exposureStateForLayer(layer, frameIndex),
+                exposureState: stateAt(frameIndex),
                 selectedExposureRangeSegment:
                     frameIndex >= selectedExposureRange.startFrameIndex &&
                     frameIndex < selectedExposureRange.endFrameIndexExclusive,
@@ -128,15 +134,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
                     calculateTimelineExposureBlockVisualSegment(
                       previous: frameIndex == 0
                           ? null
-                          : exposureStateForLayer(layer, frameIndex - 1),
-                      current: exposureStateForLayer(layer, frameIndex),
-                      next: exposureStateForLayer(layer, frameIndex + 1),
+                          : stateAt(frameIndex - 1),
+                      current: stateAt(frameIndex),
+                      next: stateAt(frameIndex + 1),
                     ),
                 emptyRunStart: timelineEmptyRunStartsAt(
-                  current: exposureStateForLayer(layer, frameIndex),
-                  previous: frameIndex == 0
-                      ? null
-                      : exposureStateForLayer(layer, frameIndex - 1),
+                  current: stateAt(frameIndex),
+                  previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
                 ),
                 frameName: frameNameForLayer?.call(layer, frameIndex),
                 onSelectLayer: onSelectLayer,
@@ -179,7 +183,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               ),
             ),
           ),
-        // SE audio clips paint UNDER the label spans.
+        // SE audio clips paint over the paper cells, under the writing —
+        // clipped to the row's drawing blocks (no block, no waveform).
         if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
           ...timelineRowAudioOverlays(
             layer: layer,
@@ -193,12 +198,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
             onRemoveClip: onRemoveAudioClip == null
                 ? null
                 : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
-            color: Theme.of(
-              context,
-            ).colorScheme.tertiary.withValues(alpha: 0.4),
+            color: timelineDrawingInkColor.withValues(alpha: 0.22),
+            clipToBlocks: drawingBlocks(layer.timeline),
           ),
-        // SE rows: paper-sheet label + duration line spanning each entry
-        // (the cells themselves stay unfilled).
+        // SE rows: the sheet's writing on the paper blocks — name box at
+        // the block start plus the dialogue fitted across the span.
         if (layerKindUsesSeSheetCells(layer.kind))
           ...timelineRowSeLabelOverlays(
             layer: layer,
@@ -208,14 +212,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
-            frameNameForLayer: frameNameForLayer,
-            textColor: Theme.of(context).colorScheme.onSurface,
-            lineColor: Theme.of(
-              context,
-            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           ),
-        // Instruction rows: the sheet's CAM column — [icon + name] chip,
-        // A → B endpoint values and a span line per event.
+        // Instruction rows: the sheet's CAM column — bar arrows or the O.L
+        // bowtie on the paper block, A → B endpoint values and the name
+        // snapped to the anchor cell.
         if (layer.kind == LayerKind.instruction && instructionDefById != null)
           ...timelineRowInstructionOverlays(
             layer: layer,
@@ -226,10 +226,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
             defById: instructionDefById!,
-            textColor: Theme.of(context).colorScheme.onSurface,
-            lineColor: Theme.of(
-              context,
-            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           ),
         if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
           ...timelineRowBlockEdgeGrips(
