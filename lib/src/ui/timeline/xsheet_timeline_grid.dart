@@ -20,6 +20,7 @@ import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
+import 'timeline_cell_editor_policy.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';

@@ -5,6 +5,7 @@ import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/instruction_event_dialog.dart';
@@ -18,6 +19,7 @@ import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
+import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
@@ -199,8 +201,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
-  /// Double-tap cell editor, dispatched by row kind: SE rows edit their
-  /// name/dialogue, instruction rows their FI/FO/PAN … event.
+  /// THE unified instance-edit entrance (double-tap on any cell, and the
+  /// toolbar's Edit Instance button), dispatched by row kind: drawing
+  /// kinds edit the frame name, SE its name/dialogue, instruction its
+  /// event, camera its keys at the frame.
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
     final layer = _session.activeLayer;
     if (layer == null || layer.id != layerId) {
@@ -211,11 +215,81 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         await _editSeLabel();
       case LayerKind.instruction:
         await _editInstructionEvent(layerId, frameIndex);
-      case LayerKind.animation ||
-          LayerKind.storyboard ||
-          LayerKind.art ||
-          LayerKind.camera:
-        return;
+      case LayerKind.camera:
+        await _editCameraKeys(frameIndex);
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+        await _renameSelectedFrame();
+    }
+  }
+
+  /// Toolbar 'Edit Instance': the same entrance at the playhead.
+  Future<void> _editActiveInstance() async {
+    final layer = _session.activeLayer;
+    if (layer == null) {
+      return;
+    }
+    await _activateCellEditor(layer.id, _session.currentFrameIndex);
+  }
+
+  /// Toolbar 'Add' — kind-dispatched creation: drawing kinds create a
+  /// frame, camera keys the current pose, SE/instruction open their
+  /// dialog first (dialog-first, one undo on commit).
+  Future<void> _createActiveInstance() async {
+    final layer = _session.activeLayer;
+    if (layer == null) {
+      return;
+    }
+    switch (layer.kind) {
+      case LayerKind.camera:
+        _session.setCameraKeyframeAtCurrentFrame(
+          _session.cameraPoseAtCurrentFrame,
+        );
+      case LayerKind.se:
+        await _editSeLabel();
+      case LayerKind.instruction:
+        await _editInstructionEvent(layer.id, _session.currentFrameIndex);
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+        _session.createDrawingAtCurrentFrame();
+    }
+  }
+
+  /// Camera cells: per-lane key/value/interpolation dialog at the frame;
+  /// the edited states fold into ONE track commit (one undo).
+  Future<void> _editCameraKeys(int frameIndex) async {
+    if (frameIndex < 0) {
+      return;
+    }
+    final cut = _session.activeCut;
+    final before = cameraKeyLaneStatesAt(
+      cut.camera.track,
+      frameIndex: frameIndex,
+      resolvedPose: resolveCameraPoseAt(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
+    );
+
+    final after = await showDialog<List<CameraKeyLaneState>>(
+      context: context,
+      builder: (context) =>
+          CameraKeyDialog(frameIndex: frameIndex, lanes: before),
+    );
+    if (!mounted || after == null) {
+      return;
+    }
+
+    final next = transformTrackWithKeyDialogApplied(
+      _session.activeCut.camera.track,
+      frameIndex: frameIndex,
+      before: before,
+      after: after,
+    );
+    if (next != null) {
+      _session.updateActiveCutCameraTrack(
+        next,
+        description: 'Edit camera keys at frame ${frameIndex + 1}',
+      );
     }
   }
 
@@ -460,7 +534,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   onRenameLayer: _renameActiveLayer,
                   onDeleteLayer: _deleteActiveLayer,
-                  onRenameFrame: _renameSelectedFrame,
+                  onEditInstance: _editActiveInstance,
+                  onCreateInstance: _createActiveInstance,
                   onImportAudio: _importAudio,
                 ),
               ),

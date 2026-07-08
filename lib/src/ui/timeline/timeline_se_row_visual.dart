@@ -21,12 +21,6 @@ import 'timeline_frame_coordinate_policy.dart';
 /// span overlay instead.
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
-/// Which layer kinds open the cell editor dialog on double tap: SE rows
-/// edit their name/dialogue, instruction rows their FI/FO/PAN … events.
-bool layerKindOpensCellEditorOnDoubleTap(LayerKind kind) {
-  return kind == LayerKind.se || kind == LayerKind.instruction;
-}
-
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
 List<Widget> timelineRowSeLabelOverlays({

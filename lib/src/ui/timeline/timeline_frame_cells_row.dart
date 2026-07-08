@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import 'selected_exposure_display_range_policy.dart';
+import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';

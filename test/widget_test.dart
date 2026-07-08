@@ -409,12 +409,12 @@ Future<void> _tapRedoButton(WidgetTester tester) async {
 }
 
 void _expectTimelineActionTooltips() {
-  expect(find.byTooltip('New Frame'), findsOneWidget);
+  expect(find.byTooltip('Add'), findsOneWidget);
   expect(find.byTooltip('Blank / X'), findsOneWidget);
   expect(find.byTooltip('Mark ●'), findsOneWidget);
   expect(find.byTooltip('Copy Frame'), findsOneWidget);
   expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
-  expect(find.byTooltip('Rename Frame'), findsOneWidget);
+  expect(find.byTooltip('Edit Instance'), findsOneWidget);
   expect(find.byTooltip('Delete Cell'), findsOneWidget);
   expect(find.byTooltip('Decrease Exposure'), findsOneWidget);
   expect(find.byTooltip('Increase Exposure'), findsOneWidget);
@@ -469,7 +469,7 @@ void main() {
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
     );
-    expect(find.byTooltip('New Frame'), findsOneWidget);
+    expect(find.byTooltip('Add'), findsOneWidget);
     await _expectCutName(tester, 'default-cut-1', 'Cut 1');
     await _expectActiveCutName(tester, 'Cut 1');
     expect(find.text('New Drawing'), findsNothing);
