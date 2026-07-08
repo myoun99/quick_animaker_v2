@@ -80,6 +80,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
     audioPlaybackSync.attach();
+    playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -192,6 +193,28 @@ class EditorSessionManager extends ChangeNotifier {
       selectCut(lastPosition.cutId);
     }
     selectFrameIndex(_clampedFrameIndex(lastPosition.localFrameIndex));
+  }
+
+  /// Premiere-style follow: while playback crosses cut boundaries the
+  /// ACTIVE cut tracks the playing cut (the timesheet and timeline hosts
+  /// show the playing cut's data live) and stays there when playback
+  /// stops. Playback-only selection state — no command runs, the undo
+  /// stack never sees it. Warming is skipped too: the playlist was warmed
+  /// at play start and a boundary tick must stay cheap.
+  void _followPlaybackCut() {
+    if (playback.globalFrameIndexListenable.value == null) {
+      return;
+    }
+    final position = playback.position;
+    if (position == null || position.cutId == _editingSession.activeCutId) {
+      return;
+    }
+    _editingSession.setActiveCutId(position.cutId);
+    _copiedFrame = null;
+    _rebuildActiveCutControllers(
+      preferredFrameIndex: position.localFrameIndex,
+    );
+    notifyListeners();
   }
 
   void _onPlaybackPlaylistWarmRequested(
@@ -353,6 +376,7 @@ class EditorSessionManager extends ChangeNotifier {
   @override
   void dispose() {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
+    playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     audioPlaybackSync.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
@@ -1143,6 +1167,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
+    // Re-importing a path restarts its waveform extraction from scratch
+    // (fresh attempt budget — the file may have changed on disk).
+    audioPeaksStore.invalidate(filePath);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: _editingSession.activeCutId,
       layerId: layer.id,
