@@ -1,27 +1,49 @@
 class CutMetadata {
-  const CutMetadata({this.note = ''});
+  const CutMetadata({this.note = '', this.thumbnailFrameIndex});
 
-  const CutMetadata.empty() : note = '';
+  const CutMetadata.empty() : note = '', thumbnailFrameIndex = null;
 
   final String note;
 
-  CutMetadata copyWith({String? note}) {
-    return CutMetadata(note: note ?? this.note);
+  /// The cut-local frame the storyboard block's thumbnail shows; null means
+  /// the first frame. Clamped to the playback range at render time, so a
+  /// later trim never breaks it.
+  final int? thumbnailFrameIndex;
+
+  /// [thumbnailFrameIndex] passes as a closure so callers can CLEAR the pin
+  /// (`() => null`) — the plain-nullable convention cannot express that.
+  CutMetadata copyWith({String? note, int? Function()? thumbnailFrameIndex}) {
+    return CutMetadata(
+      note: note ?? this.note,
+      thumbnailFrameIndex: thumbnailFrameIndex == null
+          ? this.thumbnailFrameIndex
+          : thumbnailFrameIndex(),
+    );
   }
 
-  Map<String, dynamic> toJson() => {'note': note};
+  Map<String, dynamic> toJson() => {
+    'note': note,
+    if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
+  };
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
-    return CutMetadata(note: json['note'] as String? ?? '');
+    return CutMetadata(
+      note: json['note'] as String? ?? '',
+      thumbnailFrameIndex: json['thumbnailFrame'] as int?,
+    );
   }
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is CutMetadata && other.note == note;
+      identical(this, other) ||
+      other is CutMetadata &&
+          other.note == note &&
+          other.thumbnailFrameIndex == thumbnailFrameIndex;
 
   @override
-  int get hashCode => note.hashCode;
+  int get hashCode => Object.hash(note, thumbnailFrameIndex);
 
   @override
-  String toString() => 'CutMetadata(note: $note)';
+  String toString() =>
+      'CutMetadata(note: $note, thumbnailFrameIndex: $thumbnailFrameIndex)';
 }

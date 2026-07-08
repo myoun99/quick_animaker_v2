@@ -95,7 +95,10 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       ..write('#')
       ..write(_editGenerations[cut.id] ?? 0)
       ..write('#')
-      ..write(cut.duration);
+      ..write(cut.duration)
+      // Re-render when the pinned thumbnail frame changes.
+      ..write('#')
+      ..write(cut.metadata.thumbnailFrameIndex ?? -1);
     for (final layer in cut.layers) {
       buffer
         ..write('|')

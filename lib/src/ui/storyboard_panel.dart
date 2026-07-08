@@ -88,6 +88,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onMoveActiveCutLeft,
     this.onMoveActiveCutRight,
     this.onDeleteActiveCut,
+    this.onToggleActiveCutThumbnail,
+    this.isThumbnailPinnedHere = false,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -155,6 +157,12 @@ class StoryboardPanel extends StatefulWidget {
   final VoidCallback? onMoveActiveCutRight;
   final VoidCallback? onDeleteActiveCut;
 
+  /// Pins the active cut's block thumbnail to the playhead frame (pressing
+  /// on the pinned frame releases it back to the first frame);
+  /// [isThumbnailPinnedHere] drives the button's active accent.
+  final VoidCallback? onToggleActiveCutThumbnail;
+  final bool isThumbnailPinnedHere;
+
   bool get _hasCutActions =>
       onNewCut != null ||
       onRenameActiveCut != null ||
@@ -163,7 +171,8 @@ class StoryboardPanel extends StatefulWidget {
       onDuplicateActiveCut != null ||
       onMoveActiveCutLeft != null ||
       onMoveActiveCutRight != null ||
-      onDeleteActiveCut != null;
+      onDeleteActiveCut != null ||
+      onToggleActiveCutThumbnail != null;
 
   @override
   State<StoryboardPanel> createState() => _StoryboardPanelState();
@@ -584,6 +593,18 @@ class _StoryboardCutActionsToolbar extends StatelessWidget {
               tooltip: 'Duplicate Cut',
               icon: Icons.content_copy,
               onPressed: panel.onDuplicateActiveCut,
+            ),
+            // Conte-sheet picture choice: pin the block thumbnail to the
+            // playhead frame; pressing on the pinned frame releases it.
+            _CutActionButton(
+              key: const ValueKey<String>('set-cut-thumbnail-button'),
+              tooltip: panel.isThumbnailPinnedHere
+                  ? 'Unpin Thumbnail Frame'
+                  : 'Pin Thumbnail Frame',
+              icon: panel.isThumbnailPinnedHere
+                  ? Icons.image
+                  : Icons.image_outlined,
+              onPressed: panel.onToggleActiveCutThumbnail,
             ),
             _CutActionButton(
               key: const ValueKey<String>('move-cut-left-button'),

@@ -372,10 +372,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     super.dispose();
   }
 
-  /// Thumbnails render the cut's first frame THROUGH THE CAMERA (what the
-  /// shot actually frames — conte-sheet style), scaled to a small output;
-  /// always current (a fresh renderer replays surfaces straight from the
-  /// brush store).
+  /// Thumbnails render the cut's thumbnail frame THROUGH THE CAMERA (what
+  /// the shot actually frames — conte-sheet style), scaled to a small
+  /// output; always current (a fresh renderer replays surfaces straight
+  /// from the brush store).
   Future<ui.Image?> _renderStoryboardThumbnail(Cut cut) {
     const thumbnailWidth = 128;
     final cameraSize = widget.session.cameraFrameSize;
@@ -383,8 +383,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       1,
       (thumbnailWidth * cameraSize.height / cameraSize.width).round(),
     );
+    // The pinned frame when set (clamped so a later trim never breaks it),
+    // the first frame otherwise.
+    final frameIndex = (cut.metadata.thumbnailFrameIndex ?? 0)
+        .clamp(0, math.max(0, cut.duration - 1))
+        .toInt();
     return ExportFrameRenderer(session: widget.session).renderComposite(
-      ExportFrameTask(cut: cut, frameIndex: 0),
+      ExportFrameTask(cut: cut, frameIndex: frameIndex),
       ExportSizeMode.camera,
       outputSize: CanvasSize(width: thumbnailWidth, height: height),
     );

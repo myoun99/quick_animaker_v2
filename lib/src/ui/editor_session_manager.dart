@@ -513,6 +513,27 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the active cut's storyboard thumbnail is pinned to the
+  /// playhead frame (drives the toolbar toggle's state).
+  bool get isActiveCutThumbnailPinnedHere =>
+      activeCutOrNull?.metadata.thumbnailFrameIndex ==
+          _timelineController.currentFrameIndex &&
+      activeCutOrNull?.metadata.thumbnailFrameIndex != null;
+
+  /// Pins the active cut's storyboard thumbnail to the playhead frame, or
+  /// releases the pin back to the first frame when pressed on the pinned
+  /// frame itself (toggle; one undo step either way).
+  void toggleActiveCutThumbnailFrame() {
+    final frame = _timelineController.currentFrameIndex;
+    final pinned = activeCutOrNull?.metadata.thumbnailFrameIndex;
+    _cutCommandCoordinator.updateCutThumbnailFrame(
+      cutId: _editingSession.activeCutId,
+      frameIndex: pinned == frame ? null : frame,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   Cut? get activeCutOrNull {
     final project = _repository.requireProject();
     for (final track in project.tracks) {
