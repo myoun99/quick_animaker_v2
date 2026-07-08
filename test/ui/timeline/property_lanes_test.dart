@@ -583,6 +583,62 @@ void main() {
       expect(_laneKey('scale', 0), findsOneWidget);
     });
 
+    test('scrubTransformLaneValue maps drag axes onto components in the '
+        'editor text form', () {
+      expect(
+        scrubTransformLaneValue('position', '12, -3', const Offset(10, 5)),
+        '22, 2',
+      );
+      expect(
+        scrubTransformLaneValue('scale', '150%', const Offset(40, 0)),
+        '170%',
+      );
+      expect(
+        scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
+        '-5°',
+      );
+      expect(scrubTransformLaneValue('opacity', '100', Offset.zero), isNull);
+      expect(
+        scrubTransformLaneValue('scale', 'garbage', const Offset(1, 0)),
+        isNull,
+      );
+    });
+
+    testWidgets('dragging the value scrubs it and commits ONE key on '
+        'release', (tester) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      // +40px horizontally = +20% at the scale lane's 0.5%/px rate.
+      await tester.drag(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+        ),
+        const Offset(40, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'timeline-lane-value-lane-cam-layer-scale',
+                  ),
+                ),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '170%',
+      );
+      expect(_laneKey('scale', 0), findsOneWidget);
+    });
+
     testWidgets('prev/next navigator jumps the playhead between keys', (
       tester,
     ) async {

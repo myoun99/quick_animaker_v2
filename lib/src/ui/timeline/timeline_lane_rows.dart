@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -67,6 +68,57 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   void _startValueEdit(String currentValue) {
     _valueController.text = currentValue;
     setState(() => _editingValue = true);
+  }
+
+  // AE-style value scrubbing: the drag's TOTAL delta (positions against
+  // the pointer-down origin — slop never eats into the value) maps the
+  // label captured at the start; a live preview repaints only this row and
+  // the release commits ONCE through the normal onSetValue path — one undo.
+  String? _scrubBaseLabel;
+  Offset? _scrubOrigin;
+  String? _scrubPreview;
+
+  void _startScrub(Offset globalPosition, String currentLabel) {
+    _scrubBaseLabel = currentLabel;
+    _scrubOrigin = globalPosition;
+  }
+
+  void _updateScrub(Offset globalPosition) {
+    final base = _scrubBaseLabel;
+    final origin = _scrubOrigin;
+    final scrub = lane.scrubValue;
+    if (base == null || origin == null || scrub == null) {
+      return;
+    }
+    final preview = scrub(base, globalPosition - origin);
+    if (preview != null) {
+      setState(() => _scrubPreview = preview);
+    }
+  }
+
+  void _endScrub() {
+    final preview = _scrubPreview;
+    setState(() {
+      _scrubPreview = null;
+      _scrubBaseLabel = null;
+      _scrubOrigin = null;
+    });
+    if (preview != null) {
+      widget.laneEdit?.onSetValue?.call(
+        layer,
+        lane,
+        widget.currentFrameIndex,
+        preview,
+      );
+    }
+  }
+
+  void _cancelScrub() {
+    setState(() {
+      _scrubPreview = null;
+      _scrubBaseLabel = null;
+      _scrubOrigin = null;
+    });
   }
 
   void _commitValueEdit() {
@@ -191,19 +243,48 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                     )
                   : Align(
                       alignment: Alignment.centerRight,
-                      child: InkWell(
-                        key: ValueKey<String>(
-                          'timeline-lane-value-${layer.id}-${lane.laneId}',
-                        ),
-                        onTap: laneEdit?.onSetValue == null
+                      // Tap types a value; a drag SCRUBS it (AE-style —
+                      // horizontal for the first component, vertical for
+                      // Position's y) and commits once on release.
+                      child: GestureDetector(
+                        // .down: positions measure from the pointer-down
+                        // origin, so the recognizer's slop never eats into
+                        // the scrubbed value.
+                        dragStartBehavior: DragStartBehavior.down,
+                        onPanStart: laneEdit?.onSetValue == null
                             ? null
-                            : () => _startValueEdit(valueLabel),
-                        child: Text(
-                          valueLabel,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.primary,
+                            : (details) => _startScrub(
+                                details.globalPosition,
+                                valueLabel,
+                              ),
+                        onPanUpdate: laneEdit?.onSetValue == null
+                            ? null
+                            : (details) => _updateScrub(details.globalPosition),
+                        onPanEnd: laneEdit?.onSetValue == null
+                            ? null
+                            : (_) => _endScrub(),
+                        onPanCancel: laneEdit?.onSetValue == null
+                            ? null
+                            : _cancelScrub,
+                        child: MouseRegion(
+                          cursor: laneEdit?.onSetValue == null
+                              ? MouseCursor.defer
+                              : SystemMouseCursors.resizeLeftRight,
+                          child: InkWell(
+                            key: ValueKey<String>(
+                              'timeline-lane-value-${layer.id}-${lane.laneId}',
+                            ),
+                            onTap: laneEdit?.onSetValue == null
+                                ? null
+                                : () => _startValueEdit(valueLabel),
+                            child: Text(
+                              _scrubPreview ?? valueLabel,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.primary,
+                              ),
+                            ),
                           ),
                         ),
                       ),
