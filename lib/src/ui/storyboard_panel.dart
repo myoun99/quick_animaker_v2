@@ -98,7 +98,8 @@ class StoryboardPanel extends StatefulWidget {
   /// only keeps zero-length cuts visible.
   static const double _minBlockWidth = 8;
 
-  static const double _trackLabelWidth = 56;
+  // Wide enough for the timeline-style rows (icon + names) the rail mirrors.
+  static const double _trackLabelWidth = 140;
   static const double _trackLaneHeight = 64;
   static const double _trackRowBottomPadding = 4;
   static const double _rulerHeight = 24;
@@ -511,8 +512,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     width: scale.pixelsPerFrame,
                                     child: IgnorePointer(
                                       child: ColoredBox(
-                                        color: timelinePlayheadColor
-                                            .withValues(alpha: 0.18),
+                                        color: timelinePlayheadColor.withValues(
+                                          alpha: 0.18,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -783,6 +785,8 @@ Layer? _seLayerAt(Cut cut, int slot) {
   return null;
 }
 
+/// SE slot rows in the rail: the same bordered-row language as the track
+/// row above them, compact like the timeline's SE rows.
 class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({required this.track, required this.slot});
 
@@ -791,23 +795,36 @@ class _StoryboardSeLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
-      child: SizedBox(
+      child: Container(
         key: ValueKey<String>(
           'storyboard-se-label-${track.id.value}-${slot + 1}',
         ),
         width: StoryboardPanel._trackLabelWidth,
         height: _seRowHeight,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'S${slot + 1}',
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.music_note_outlined,
+              size: 14,
+              color: colorScheme.onSurfaceVariant,
             ),
-          ),
+            const SizedBox(width: 6),
+            Text(
+              'S${slot + 1}',
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -855,7 +872,9 @@ class _StoryboardSeRow extends StatelessWidget {
         final endExclusive = math.min(block.endIndexExclusive, entry.duration);
         spans.add(
           Positioned(
-            left: timelineScale.leftForFrame(entry.startFrame + block.startIndex),
+            left: timelineScale.leftForFrame(
+              entry.startFrame + block.startIndex,
+            ),
             top: 0,
             bottom: 0,
             width:
@@ -987,6 +1006,11 @@ class _StoryboardSeRow extends StatelessWidget {
   }
 }
 
+/// Rail rows share the timeline label rail's row language — bordered
+/// surface rows, a kind icon leading the name — so the storyboard's left
+/// edge reads near-identically to the timeline's layers/sections rail
+/// (user direction). The track row opens its section like the timeline's
+/// heavier section divider.
 class _StoryboardTrackLabel extends StatelessWidget {
   const _StoryboardTrackLabel({required this.track, required this.trackLabel});
 
@@ -995,25 +1019,75 @@ class _StoryboardTrackLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(
         bottom: StoryboardPanel._trackRowBottomPadding,
       ),
-      child: SizedBox(
-        key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
-        width: StoryboardPanel._trackLabelWidth,
-        height: StoryboardPanel._trackLaneHeight,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            trackLabel,
-            key: ValueKey<String>('storyboard-track-label-${track.id.value}'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+      child: Stack(
+        children: [
+          Container(
+            key: ValueKey<String>(
+              'storyboard-track-label-row-${track.id.value}',
+            ),
+            width: StoryboardPanel._trackLabelWidth,
+            height: StoryboardPanel._trackLaneHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.movie_outlined, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trackLabel,
+                        key: ValueKey<String>(
+                          'storyboard-track-label-${track.id.value}',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (track.name.isNotEmpty)
+                        Text(
+                          track.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          Positioned(
+            top: 0,
+            left: 0,
+            width: StoryboardPanel._trackLabelWidth,
+            height: 2,
+            child: IgnorePointer(
+              child: Container(
+                key: ValueKey<String>(
+                  'storyboard-section-divider-rail-${track.id.value}',
+                ),
+                color: colorScheme.outline,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
