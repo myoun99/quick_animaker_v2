@@ -20,6 +20,7 @@ import '../../models/project.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
+import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../history_manager.dart';
@@ -46,6 +47,7 @@ import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
 import 'update_layer_timesheet_command.dart';
+import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
@@ -472,6 +474,36 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         audioClips: audioClips,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces a layer's transform track; one undo step, no-op when
+  /// unchanged. Camera layers keep their own track on the cut (the camera
+  /// panel/lanes edit that one).
+  void updateLayerTransformTrack({
+    required CutId cutId,
+    required LayerId layerId,
+    required TransformTrack transformTrack,
+    String description = 'Edit layer transform',
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.kind == LayerKind.camera) {
+      throw StateError(
+        'The camera layer transforms through the cut camera track.',
+      );
+    }
+    if (layer.transformTrack == transformTrack) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerTransformCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        transformTrack: transformTrack,
         description: description,
       ),
     );

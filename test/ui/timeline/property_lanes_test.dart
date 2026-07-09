@@ -15,6 +15,7 @@ import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_editing.dart';
@@ -201,15 +202,67 @@ void main() {
       expect(_laneKey('rotation', 4), findsNothing);
     });
 
-    testWidgets('drawing layers have no lane toggle yet', (tester) async {
-      await _pump(tester, _project());
+    testWidgets('drawing layers twirl down the same Transform lanes onto '
+        'their OWN track (L3), keyed and undone through the session', (
+      tester,
+    ) async {
+      late ProjectRepository repository;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            initialProject: _project(),
+            onRepositoryCreated: (repo) => repository = repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
+      Layer drawLayer() => repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .firstWhere((layer) => layer.id == const LayerId('lane-draw-layer'));
+
+      // The drawing layer carries the twirl-down chevron now.
+      final toggle = find.byKey(
+        const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+      );
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
       expect(
         find.byKey(
-          const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+          const ValueKey<String>(
+            'timeline-lane-label-lane-draw-layer-position',
+          ),
         ),
-        findsNothing,
+        findsOneWidget,
       );
+
+      // The navigator diamond keys the layer's own track at the playhead
+      // (freezing the identity pose) — one undo step.
+      expect(drawLayer().transformTrack.isEmpty, isTrue);
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-draw-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(drawLayer().transformTrack.position.keys.keys, {0});
+      expect(
+        drawLayer().transformTrack.position.keys[0]!.value.x,
+        640,
+        reason: 'identity pose = canvas center (1280/2)',
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await tester.pumpAndSettle();
+      expect(drawLayer().transformTrack.isEmpty, isTrue);
     });
   });
 

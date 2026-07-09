@@ -11,8 +11,10 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
 
 void main() {
@@ -193,5 +195,53 @@ void main() {
     );
 
     expect(plan.single.opacity, 0.25);
+  });
+
+  test('layer transforms resolve into the plan; empty tracks stay the '
+      'identity null', () {
+    Layer transformed({TransformTrack? track}) => Layer(
+      id: const LayerId('moved'),
+      name: 'A',
+      frames: [frame('frame-1')],
+      timeline: {
+        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 12),
+      },
+      transformTrack: track,
+    );
+
+    // Empty track = identity: the plan carries null so compositors skip
+    // the transform entirely.
+    final identityPlan = planCutFrameComposite(
+      cut: cut([transformed()]),
+      frameIndex: 0,
+      surfaceResolver: resolver,
+    );
+    expect(identityPlan.single.pose, isNull);
+
+    // A keyed track resolves per frame (interpolating between keys); the
+    // unkeyed components fall back to the identity pose (canvas center).
+    final track = TransformTrack(
+      keyframes: {
+        0: TransformPose(center: CanvasPoint(x: 0, y: 0)),
+        10: TransformPose(center: CanvasPoint(x: 10, y: 20)),
+      },
+    );
+    final poseAt5 = planCutFrameComposite(
+      cut: cut([transformed(track: track)]),
+      frameIndex: 5,
+      surfaceResolver: resolver,
+    ).single.pose;
+    expect(poseAt5, isNotNull);
+    expect(poseAt5!.center.x, 5);
+    expect(poseAt5.center.y, 10);
+    expect(poseAt5.zoom, 1);
+  });
+
+  test('layerIdentityPose centers the canvas at zoom 1, no rotation', () {
+    final pose = layerIdentityPose(canvasSize);
+    expect(pose.center.x, 2);
+    expect(pose.center.y, 2);
+    expect(pose.zoom, 1);
+    expect(pose.rotationDegrees, 0);
   });
 }

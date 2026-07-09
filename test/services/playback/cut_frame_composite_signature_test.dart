@@ -7,8 +7,10 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/playback/cut_frame_composite_signature.dart';
 
 void main() {
@@ -137,5 +139,37 @@ void main() {
 
     expect(drawn, isNot(undrawn));
     expect(undrawn.layers.single.sourceRevision, 0);
+  });
+
+  test('a layer transform joins the signature: edits invalidate, animated '
+      'poses split held frames, identity stays null', () {
+    expect(signature().layers.single.pose, isNull);
+
+    final moved = cut(
+      layers: [
+        drawingLayer().copyWith(
+          transformTrack: TransformTrack(
+            keyframes: {
+              0: TransformPose(center: CanvasPoint(x: 0, y: 0)),
+              5: TransformPose(center: CanvasPoint(x: 10, y: 0)),
+            },
+          ),
+        ),
+      ],
+    );
+
+    // Transform work changes the composite's identity...
+    expect(signature(forCut: moved), isNot(signature()));
+    // ...and an animated pose splits frames a held exposure would share.
+    expect(
+      signature(forCut: moved, frameIndex: 0),
+      isNot(signature(forCut: moved, frameIndex: 3)),
+    );
+    // A HOLD-flat stretch still deduplicates: past the last key the pose
+    // freezes, so signatures match again.
+    expect(
+      signature(forCut: moved, frameIndex: 5),
+      signature(forCut: moved, frameIndex: 5),
+    );
   });
 }

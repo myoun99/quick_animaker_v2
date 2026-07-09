@@ -88,48 +88,72 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// The camera layer's AE Transform lanes and the SE layers' audio lane;
-  /// other layer kinds get lanes with the layer-transform work (L3) and FX
-  /// features later.
+  /// Every kind's twirl-down lanes: the camera's AE Transform lanes (the
+  /// cut camera track), the SAME Transform lanes on every drawing layer
+  /// (L3 — the layer's own track, applied at composite time) and the SE
+  /// layers' audio lane. Instruction rows have no composited content.
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
-    if (layer.kind == LayerKind.se) {
-      return seAudioLanesFor(layer);
+    switch (layer.kind) {
+      case LayerKind.se:
+        return seAudioLanesFor(layer);
+      case LayerKind.camera:
+        final cut = _session.activeCut;
+        return transformPropertyLanes(
+          cut.camera.track,
+          poseAt: (frameIndex) => resolveCameraPoseAt(
+            camera: cut.camera,
+            canvasSize: cut.canvasSize,
+            frameIndex: frameIndex,
+          ),
+        );
+      case LayerKind.animation:
+      case LayerKind.art:
+      case LayerKind.storyboard:
+        return transformPropertyLanes(
+          layer.transformTrack,
+          poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
+        );
+      case LayerKind.instruction:
+        return const [];
     }
-    if (layer.kind != LayerKind.camera) {
-      return const [];
-    }
-    final cut = _session.activeCut;
-    return transformPropertyLanes(
-      cut.camera.track,
-      poseAt: (frameIndex) => resolveCameraPoseAt(
-        camera: cut.camera,
-        canvasSize: cut.canvasSize,
-        frameIndex: frameIndex,
-      ),
-    );
   }
 
-  /// Commits an edited camera track as one undo step; non-camera layers
-  /// join with the layer-transform work.
+  /// The track a layer's transform lanes edit: the camera rides the cut's
+  /// camera track, every other kind its own layer track.
+  TransformTrack _laneTrackOf(Layer layer) => layer.kind == LayerKind.camera
+      ? _session.activeCut.camera.track
+      : layer.transformTrack;
+
+  /// Commits an edited transform track as one undo step, dispatched by
+  /// kind (camera → cut camera, drawing layers → the layer's own track).
   void _commitLaneEdit(Layer layer, TransformTrack? next, String description) {
-    if (layer.kind != LayerKind.camera || next == null) {
+    if (next == null) {
       return;
     }
-    _session.updateActiveCutCameraTrack(next, description: description);
+    if (layer.kind == LayerKind.camera) {
+      _session.updateActiveCutCameraTrack(next, description: description);
+      return;
+    }
+    _session.updateLayerTransformTrack(
+      layer.id,
+      next,
+      description: description,
+    );
   }
 
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
-      final track = _session.activeCut.camera.track;
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyToggled(
-          track,
+          _laneTrackOf(layer),
           laneId: lane.laneId,
           frameIndex: frameIndex,
           // The navigator toggles at the playhead: freeze the property's
           // CURRENT resolved value there (AE behavior).
-          resolvedPose: _session.cameraPoseAtCurrentFrame,
+          resolvedPose: layer.kind == LayerKind.camera
+              ? _session.cameraPoseAtCurrentFrame
+              : _session.layerPoseAtFrame(layer, frameIndex),
         ),
         '${lane.label} keyframe at frame ${frameIndex + 1}',
       );
@@ -138,7 +162,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyMoved(
-          _session.activeCut.camera.track,
+          _laneTrackOf(layer),
           laneId: lane.laneId,
           fromFrame: fromFrame,
           toFrame: toFrame,
@@ -150,7 +174,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyRemoved(
-          _session.activeCut.camera.track,
+          _laneTrackOf(layer),
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -161,7 +185,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _commitLaneEdit(
         layer,
         transformTrackWithLaneHoldToggled(
-          _session.activeCut.camera.track,
+          _laneTrackOf(layer),
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -172,7 +196,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
-          _session.activeCut.camera.track,
+          _laneTrackOf(layer),
           laneId: lane.laneId,
           frameIndex: frameIndex,
           input: input,

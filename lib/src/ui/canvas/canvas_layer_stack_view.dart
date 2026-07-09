@@ -6,17 +6,26 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/playback_quality.dart';
+import '../../models/transform_track.dart';
 import '../playback/layer_frame_image_cache.dart';
+import 'layer_pose_paint.dart';
 
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest {
   const CanvasLayerImageRequest({
     required this.frameKey,
     required this.opacity,
+    this.pose,
   });
 
   final BrushFrameKey frameKey;
   final double opacity;
+
+  /// The layer's transform at the shown frame; null = identity. The stack
+  /// paints it exactly like the composite routes (the ACTIVE layer edits in
+  /// artwork space — its own transform shows in playback/compose, not under
+  /// the pen).
+  final TransformPose? pose;
 }
 
 /// Paints the non-active layers of the editing canvas (below or above the
@@ -142,7 +151,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           images: [
             for (final layer in widget.layers)
               if (_images[layer.frameKey] != null)
-                (image: _images[layer.frameKey]!.clone, opacity: layer.opacity),
+                (
+                  image: _images[layer.frameKey]!.clone,
+                  opacity: layer.opacity,
+                  pose: layer.pose,
+                ),
           ],
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
@@ -162,7 +175,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.paintPaper,
   });
 
-  final List<({ui.Image image, double opacity})> images;
+  final List<({ui.Image image, double opacity, TransformPose? pose})> images;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
@@ -184,6 +197,13 @@ class _LayerStackPainter extends CustomPainter {
       canvas.drawRect(canvasRect, Paint()..color = const Color(0xFFEDEDED));
     }
     for (final layer in images) {
+      // Layer transforms apply at composite time — the stack shows the
+      // same picture playback composes (three-route parity).
+      final layerPose = layer.pose;
+      if (layerPose != null) {
+        canvas.save();
+        applyLayerPoseTransform(canvas, layerPose, canvasSize);
+      }
       canvas.drawImageRect(
         layer.image,
         Rect.fromLTWH(
@@ -197,6 +217,9 @@ class _LayerStackPainter extends CustomPainter {
           ..filterQuality = FilterQuality.low
           ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0)),
       );
+      if (layerPose != null) {
+        canvas.restore();
+      }
     }
     canvas.restore();
   }
@@ -211,7 +234,8 @@ class _LayerStackPainter extends CustomPainter {
     }
     for (var index = 0; index < images.length; index += 1) {
       if (!identical(oldDelegate.images[index].image, images[index].image) ||
-          oldDelegate.images[index].opacity != images[index].opacity) {
+          oldDelegate.images[index].opacity != images[index].opacity ||
+          oldDelegate.images[index].pose != images[index].pose) {
         return true;
       }
     }

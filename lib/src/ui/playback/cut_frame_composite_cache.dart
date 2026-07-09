@@ -9,6 +9,7 @@ import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../canvas/deferred_image_disposal.dart';
+import '../canvas/layer_pose_paint.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_cache_budget.dart';
 
@@ -147,6 +148,18 @@ class CutFrameCompositeCache {
       if (layerImage == null) {
         continue;
       }
+      // Layer transforms apply at composite time; the pose is canvas-space,
+      // adapted to this quality tier's raster scale.
+      final layerPose = layer.pose;
+      if (layerPose != null) {
+        canvas.save();
+        applyLayerPoseTransform(
+          canvas,
+          layerPose,
+          cut.canvasSize,
+          rasterScale: raster.width / cut.canvasSize.width,
+        );
+      }
       canvas.drawImage(
         layerImage,
         ui.Offset.zero,
@@ -154,6 +167,9 @@ class CutFrameCompositeCache {
           ..filterQuality = ui.FilterQuality.low
           ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity),
       );
+      if (layerPose != null) {
+        canvas.restore();
+      }
     }
     final picture = recorder.endRecording();
     try {
