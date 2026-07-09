@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
@@ -10,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show drawingBlocks;
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -127,6 +130,9 @@ void main() {
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
     expect(seLayer().audioClips.single.filePath, r'C:\sound\voice.wav');
+    // The pool learned the imported file (browse/reuse surface).
+    expect(session.mediaAssets.single.path, r'C:\sound\voice.wav');
+    expect(session.mediaAssets.single.name, 'voice.wav');
     // Frame-linked: importing onto the empty cell created an SE instance
     // at the playhead and linked the sound to ITS frame — the block is the
     // sound's window.
@@ -161,5 +167,124 @@ void main() {
       session.layers.firstWhere((layer) => layer.id == _seLayerId).audioClips,
       isEmpty,
     );
+  });
+
+  testWidgets('media pool flows: import-to-browse, link-to-block reuse, '
+      'rename, relink, remove guard', (tester) async {
+    const foot = r'C:\snd\foot.wav';
+    const moved = r'C:\snd\moved\foot.wav';
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('pool-project'),
+        name: 'Pool Project',
+        createdAt: DateTime.utc(2026, 7, 9),
+        tracks: [
+          Track(
+            id: const TrackId('pool-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('pool-cut'),
+                name: 'Pool Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: [
+                      Frame(
+                        id: const FrameId('se-f1'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                      Frame(
+                        id: const FrameId('se-f2'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: {
+                      0: const TimelineExposure.drawing(
+                        FrameId('se-f1'),
+                        length: 4,
+                      ),
+                      6: const TimelineExposure.drawing(
+                        FrameId('se-f2'),
+                        length: 3,
+                      ),
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    await _pumpHost(tester, session);
+
+    Layer seLayer() =>
+        session.layers.firstWhere((layer) => layer.id == _seLayerId);
+
+    // Import to browse: the pool holds the file, nothing is linked yet;
+    // re-adding a known path is a no-op.
+    session.addMediaAssets([foot]);
+    session.addMediaAssets([foot]);
+    expect(session.mediaAssets.single.name, 'foot.wav');
+    expect(seLayer().audioClips, isEmpty);
+    expect(session.isMediaAssetReferenced(foot), isFalse);
+
+    // Drag-to-block linking: the same sound lands on both blocks
+    // (footsteps reuse); re-dropping on a carrying block is a no-op.
+    session.linkMediaAssetToSeBlock(
+      layerId: _seLayerId,
+      blockStartFrame: 0,
+      path: foot,
+    );
+    session.linkMediaAssetToSeBlock(
+      layerId: _seLayerId,
+      blockStartFrame: 0,
+      path: foot,
+    );
+    session.linkMediaAssetToSeBlock(
+      layerId: _seLayerId,
+      blockStartFrame: 6,
+      path: foot,
+    );
+    expect(seLayer().audioClips, hasLength(2));
+    expect(seLayer().audioClips[0].frameId, const FrameId('se-f1'));
+    expect(seLayer().audioClips[1].frameId, const FrameId('se-f2'));
+    expect(session.isMediaAssetReferenced(foot), isTrue);
+
+    // Dropping on empty runway does nothing (no block, no carrier).
+    session.linkMediaAssetToSeBlock(
+      layerId: _seLayerId,
+      blockStartFrame: 4,
+      path: foot,
+    );
+    expect(seLayer().audioClips, hasLength(2));
+
+    // Rename survives a relink; the relink rewrites every clip.
+    session.renameMediaAsset(foot, '발소리');
+    session.relinkMediaAsset(foot, moved);
+    expect(session.mediaAssets.single.path, moved);
+    expect(session.mediaAssets.single.name, '발소리');
+    expect(
+      seLayer().audioClips.map((clip) => clip.filePath),
+      everyElement(moved),
+    );
+
+    // Remove refuses while referenced, succeeds once the clips are gone,
+    // and undoes back into the pool.
+    expect(session.removeMediaAsset(moved), isFalse);
+    session.removeAudioClipAt(_seLayerId, 1);
+    session.removeAudioClipAt(_seLayerId, 0);
+    expect(session.removeMediaAsset(moved), isTrue);
+    expect(session.mediaAssets, isEmpty);
+    session.undo();
+    expect(session.mediaAssets.single.name, '발소리');
+    await tester.pumpAndSettle();
   });
 }

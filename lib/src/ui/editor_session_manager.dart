@@ -24,6 +24,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
+import '../models/media_asset.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/property_track.dart';
@@ -211,9 +212,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _editingSession.setActiveCutId(position.cutId);
     _copiedFrame = null;
-    _rebuildActiveCutControllers(
-      preferredFrameIndex: position.localFrameIndex,
-    );
+    _rebuildActiveCutControllers(preferredFrameIndex: position.localFrameIndex);
     notifyListeners();
   }
 
@@ -1216,6 +1215,9 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     final carrier = activeLayer ?? layer;
+    // The pool learns every imported file (its own undo step, like the
+    // SE-instance creation above) so the browser can offer it for reuse.
+    addMediaAssets([filePath]);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: _editingSession.activeCutId,
       layerId: carrier.id,
@@ -1243,6 +1245,123 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       audioClips: next,
       description: 'Remove audio',
+    );
+    notifyListeners();
+  }
+
+  /// The project's media pool, in pool order (the browser panel's list).
+  List<MediaAsset> get mediaAssets => _repository.requireProject().mediaAssets;
+
+  /// Whether any clip anywhere still references [path] (remove-guard and
+  /// the browser's usage badge).
+  bool isMediaAssetReferenced(String path) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        for (final layer in cut.layers) {
+          for (final clip in layer.audioClips) {
+            if (clip.filePath == path) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Adds [paths] to the pool (skipping known ones) without linking them
+  /// anywhere — import-to-browse, one undo step.
+  void addMediaAssets(List<String> paths) {
+    final pool = mediaAssets;
+    final known = {for (final asset in pool) asset.path};
+    final added = [
+      for (final path in paths)
+        if (known.add(path))
+          MediaAsset(path: path, name: mediaAssetDefaultName(path)),
+    ];
+    if (added.isEmpty) {
+      return;
+    }
+    _cutCommandCoordinator.updateMediaAssets([
+      ...pool,
+      ...added,
+    ], description: 'Import media');
+    notifyListeners();
+  }
+
+  /// Renames the [path] asset's display name; one undo step.
+  void renameMediaAsset(String path, String name) {
+    _cutCommandCoordinator.updateMediaAssets([
+      for (final asset in mediaAssets)
+        asset.path == path ? asset.copyWith(name: name) : asset,
+    ], description: 'Rename media');
+    notifyListeners();
+  }
+
+  /// Removes the [path] asset from the pool; refuses while any clip still
+  /// references it (returns false). One undo step.
+  bool removeMediaAsset(String path) {
+    if (isMediaAssetReferenced(path)) {
+      return false;
+    }
+    final next = mediaAssets.where((asset) => asset.path != path).toList();
+    if (next.length == mediaAssets.length) {
+      return false;
+    }
+    _cutCommandCoordinator.updateMediaAssets(next, description: 'Remove media');
+    notifyListeners();
+    return true;
+  }
+
+  /// Points the [oldPath] asset at [newPath] — the pool entry AND every
+  /// referencing clip, one undo step (Resolve-style relink for moved
+  /// files). Waveforms re-extract from the new file.
+  void relinkMediaAsset(String oldPath, String newPath) {
+    audioPeaksStore.invalidate(newPath);
+    _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
+    notifyListeners();
+  }
+
+  /// Links the pool asset at [path] to the SE block of [layerId] starting
+  /// at [blockStartFrame] (the browser's drag-drop target hook). The block
+  /// carries the sound exactly like an import at that spot; unknown pool
+  /// paths register first (their own undo step, same as import).
+  void linkMediaAssetToSeBlock({
+    required LayerId layerId,
+    required int blockStartFrame,
+    required String path,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.se) {
+      return;
+    }
+    FrameId? frameId;
+    for (final block in drawingBlocks(layer.timeline)) {
+      if (block.startIndex == blockStartFrame) {
+        frameId = block.frameId;
+        break;
+      }
+    }
+    if (frameId == null) {
+      return;
+    }
+    final resolvedFrameId = frameId;
+    // The same frame already carrying this sound is a no-op (a second link
+    // would double the playback).
+    if (layer.audioClips.any(
+      (clip) => clip.filePath == path && clip.frameId == resolvedFrameId,
+    )) {
+      return;
+    }
+    addMediaAssets([path]);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: [
+        ...layer.audioClips,
+        AudioClip(filePath: path, frameId: resolvedFrameId),
+      ],
+      description: 'Link sound',
     );
     notifyListeners();
   }

@@ -15,6 +15,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/media_asset.dart';
 import '../../models/project.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/storyboard_frame_metadata.dart';
@@ -34,6 +35,7 @@ import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
 import 'resize_cut_canvas_command.dart';
+import 'relink_media_asset_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
@@ -44,6 +46,7 @@ import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
 import 'update_layer_timesheet_command.dart';
+import 'update_media_assets_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
@@ -484,6 +487,43 @@ class CutCommandCoordinator {
       UpdateCameraInstructionSetCommand(
         repository: repository,
         instructionSet: instructionSet,
+      ),
+    );
+  }
+
+  /// Replaces the project's media pool (import/rename/remove); one undo
+  /// step, no-op when unchanged. Never touches clip references.
+  void updateMediaAssets(
+    List<MediaAsset> mediaAssets, {
+    String description = 'Edit media pool',
+  }) {
+    if (listEquals(repository.requireProject().mediaAssets, mediaAssets)) {
+      return;
+    }
+    historyManager.execute(
+      UpdateMediaAssetsCommand(
+        repository: repository,
+        mediaAssets: mediaAssets,
+        description: description,
+      ),
+    );
+  }
+
+  /// Points the [oldPath] asset at [newPath], rewriting the pool entry and
+  /// every referencing clip in ONE undo step; no-op when nothing changes
+  /// or the pool does not know [oldPath].
+  void relinkMediaAsset({required String oldPath, required String newPath}) {
+    final project = repository.requireProject();
+    if (oldPath == newPath ||
+        project.mediaAssetByPath(oldPath) == null ||
+        project.mediaAssetByPath(newPath) != null) {
+      return;
+    }
+    historyManager.execute(
+      RelinkMediaAssetCommand(
+        repository: repository,
+        oldPath: oldPath,
+        newPath: newPath,
       ),
     );
   }
