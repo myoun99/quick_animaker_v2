@@ -7,7 +7,9 @@ class TimelineGridMetrics {
 
   const TimelineGridMetrics({
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
-    this.layerControlsWidth = 288,
+    // 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
+    // controls need the width, cramming them under 288 overflowed.
+    this.layerControlsWidth = 312,
     this.frameCellWidth = 48,
     this.layerRowHeight = 52,
     this.verticalScrollbarWidth = 14,

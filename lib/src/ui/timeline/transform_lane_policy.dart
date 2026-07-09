@@ -1,25 +1,53 @@
 import 'dart:ui' show Offset;
 
+import '../../models/canvas_point.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'property_lane_model.dart';
 
-/// The AE Transform-group lanes of a [TransformTrack], in AE order. The
-/// whole group shows when twirled down (like AE) even where a property has
-/// no keys yet; anchor point and opacity join once layer transforms use
-/// them — the camera's group is the pose trio.
+/// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
+/// the twirl-down's structural spine: Transform first, Effects stack below
+/// on the same lane substrate later.
+const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
+  laneId: 'transform-group',
+  label: 'Transform',
+  keyedFrames: {},
+  showsKeyNavigator: false,
+  isGroupHeader: true,
+);
+
+/// The AE Transform-group lanes of a [TransformTrack], in AE order under
+/// the 'Transform' group header — Anchor Point / Position / Scale /
+/// Rotation / Opacity ([includeAnchorAndOpacity] gates the two layer-only
+/// lanes; the camera's group stays the pose trio).
 ///
-/// [poseAt] resolves the pose for the value column (AE display units:
-/// Position in canvas px, Scale as zoom·100 %, Rotation in clockwise
-/// degrees); null hides the values.
+/// [poseAt]/[anchorAt]/[opacityAt] resolve the values for the value column
+/// (AE display units: Position and Anchor Point in canvas px, Scale as
+/// zoom·100 %, Rotation in clockwise degrees, Opacity ·100 %); null hides
+/// the values.
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   bool includeAnchorAndOpacity = false,
   TransformPose Function(int frameIndex)? poseAt,
+  CanvasPoint Function(int frameIndex)? anchorAt,
+  double Function(int frameIndex)? opacityAt,
 }) {
   return [
+    transformGroupHeaderLane,
     if (includeAnchorAndOpacity)
-      _lane('anchor-point', 'Anchor Point', track.anchorPoint),
+      _lane(
+        'anchor-point',
+        'Anchor Point',
+        track.anchorPoint,
+        valueLabel: anchorAt == null
+            ? null
+            : (frame) {
+                final anchor = anchorAt(frame);
+                return '${_number(anchor.x)}, ${_number(anchor.y)}';
+              },
+        scrubValue: (label, delta) =>
+            scrubTransformLaneValue('anchor-point', label, delta),
+      ),
     _lane(
       'position',
       'Position',
@@ -50,7 +78,17 @@ List<PropertyLaneRow> transformPropertyLanes(
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('rotation', label, delta),
     ),
-    if (includeAnchorAndOpacity) _lane('opacity', 'Opacity', track.opacity),
+    if (includeAnchorAndOpacity)
+      _lane(
+        'opacity',
+        'Opacity',
+        track.opacity,
+        valueLabel: opacityAt == null
+            ? null
+            : (frame) => '${_number(opacityAt(frame) * 100)}%',
+        scrubValue: (label, delta) =>
+            scrubTransformLaneValue('opacity', label, delta),
+      ),
   ];
 }
 
@@ -65,9 +103,10 @@ String formatTransformLaneValue(String laneId, TransformPose pose) {
 }
 
 /// AE-style value scrubbing for a transform lane: horizontal drag drives
-/// the (first) component, vertical drag drives Position's y. The result is
-/// the SAME text form the value editor parses — the release commits it
-/// through the normal onSetValue path (one undo). Null = not scrubbable.
+/// the (first) component, vertical drag drives the point lanes' y. The
+/// result is the SAME text form the value editor parses — the release
+/// commits it through the normal onSetValue path (one undo). Null = not
+/// scrubbable.
 String? scrubTransformLaneValue(
   String laneId,
   String currentLabel,
@@ -77,6 +116,7 @@ String? scrubTransformLaneValue(
       double.tryParse(raw.replaceAll('%', '').replaceAll('°', '').trim());
   switch (laneId) {
     case 'position':
+    case 'anchor-point':
       final parts = currentLabel.split(',');
       if (parts.length != 2) {
         return null;
@@ -99,6 +139,13 @@ String? scrubTransformLaneValue(
         return null;
       }
       return '${_number(degrees + dragDelta.dx * 0.5)}°';
+    case 'opacity':
+      final percent = parse(currentLabel);
+      if (percent == null) {
+        return null;
+      }
+      final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
+      return '${_number(scrubbed)}%';
   }
   return null;
 }

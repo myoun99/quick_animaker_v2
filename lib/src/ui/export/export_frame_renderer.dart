@@ -83,10 +83,13 @@ class ExportFrameRenderer {
             ),
           );
     return renderService.renderThroughCamera(
+      // The fx-bypass switches apply here too (AE semantics: the layer fx
+      // switch affects the render) — WYSIWYG with playback.
       layers: planCutFrameComposite(
         cut: cut,
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        fxBypassedLayerIds: session.fxBypassedLayerIds,
       ),
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera

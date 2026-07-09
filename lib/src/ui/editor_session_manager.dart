@@ -11,6 +11,7 @@ import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
+import '../models/canvas_point.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -40,6 +41,7 @@ import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/layer_pose_paint.dart';
 import 'playback/audio_playback_sync.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -113,6 +115,7 @@ class EditorSessionManager extends ChangeNotifier {
         layerImages: layerFrameImageCache,
         frameStore: brushFrameStore,
         frameKeyOf: brushFrameKeyForCut,
+        fxBypassedLayerIdsOf: () => _fxBypassedLayerIds,
       );
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
@@ -630,7 +633,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// The editing canvas's layer stack at the playhead: which non-active
   /// layers composite below/above the interactive layer (bottom → top,
   /// hidden/transparent/undrawn layers skipped) and the active layer's own
-  /// display opacity (0 while hidden).
+  /// display opacity (0 while hidden; includes its animated Opacity). The
+  /// active layer's pose rides separately ([layerCanvasPoseSample]) into
+  /// the interactive view's draw-through wrap.
   ({
     List<CanvasLayerImageRequest> below,
     List<CanvasLayerImageRequest> above,
@@ -649,16 +654,28 @@ class EditorSessionManager extends ChangeNotifier {
     final frameIndex = _timelineController.currentFrameIndex;
     var seenActiveLayer = false;
     for (final layer in cut.layers) {
+      final fxEnabled = isLayerFxEnabled(layer.id);
       if (layer.id == activeLayerId) {
         seenActiveLayer = true;
-        activeLayerOpacity = layer.isVisible
-            ? layer.opacity.clamp(0.0, 1.0).toDouble()
-            : 0.0;
+        activeLayerOpacity = !layer.isVisible
+            ? 0.0
+            : fxEnabled
+            ? resolveLayerEffectiveOpacityAt(
+                layer: layer,
+                frameIndex: frameIndex,
+              )
+            : layer.opacity.clamp(0.0, 1.0).toDouble();
         continue;
       }
       if (layer.kind == LayerKind.camera ||
           !layer.isVisible ||
           layer.opacity <= 0) {
+        continue;
+      }
+      final opacity = fxEnabled
+          ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
+          : layer.opacity.clamp(0.0, 1.0).toDouble();
+      if (opacity <= 0) {
         continue;
       }
       final frame = resolveExposedFrameAt(layer, frameIndex);
@@ -668,16 +685,54 @@ class EditorSessionManager extends ChangeNotifier {
       (seenActiveLayer ? above : below).add(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
-          pose: resolveLayerPoseAt(
-            layer: layer,
-            canvasSize: cut.canvasSize,
-            frameIndex: frameIndex,
-          ),
+          opacity: opacity,
+          pose: fxEnabled
+              ? resolveLayerPoseAt(
+                  layer: layer,
+                  canvasSize: cut.canvasSize,
+                  frameIndex: frameIndex,
+                )
+              : null,
+          anchorPoint: fxEnabled
+              ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
+              : null,
         ),
       );
     }
     return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+  }
+
+  /// The geometric pose sample the interactive canvas shows for [layerId]
+  /// at the playhead — the draw-through wrap input. Null = identity (no
+  /// transform work, fx bypassed, or no such layer), which skips the wrap:
+  /// the ALWAYS-APPLIED rule (the active layer shows its transform too; the
+  /// old edit-in-artwork-space rule is retired, R3 ⑩).
+  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) {
+    final cut = activeCutOrNull;
+    if (cut == null || !isLayerFxEnabled(layerId)) {
+      return null;
+    }
+    for (final layer in cut.layers) {
+      if (layer.id != layerId) {
+        continue;
+      }
+      final pose = resolveLayerPoseAt(
+        layer: layer,
+        canvasSize: cut.canvasSize,
+        frameIndex: _timelineController.currentFrameIndex,
+      );
+      if (pose == null) {
+        return null;
+      }
+      return (
+        pose: pose,
+        anchorPoint: resolveLayerAnchorPointAt(
+          layer: layer,
+          frameIndex: _timelineController.currentFrameIndex,
+        ),
+      );
+    }
+    return null;
   }
 
   /// Whether the playback composite for [frameIndex] is warmed at the
@@ -831,6 +886,42 @@ class EditorSessionManager extends ChangeNotifier {
       frameIndex: frameIndex,
       orElse: () => layerIdentityPose(activeCut.canvasSize),
     );
+  }
+
+  /// The layer's resolved anchor point at [frameIndex] — the anchor-point
+  /// lane's value column and key-freeze source (canvas center while
+  /// unkeyed).
+  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
+    return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
+        CanvasPoint(
+          x: activeCut.canvasSize.width / 2,
+          y: activeCut.canvasSize.height / 2,
+        );
+  }
+
+  /// The layer's animated Opacity sample (0..1; 1 while unkeyed) — the
+  /// opacity lane's value column and key-freeze source.
+  double layerOpacityAtFrame(Layer layer, int frameIndex) {
+    return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
+  }
+
+  // --- Layer FX bypass (session view state, not persisted) -----------------
+
+  /// Layers whose FX (transform + animated opacity) are bypassed on every
+  /// composite route — the layer-label fx switch. The set joins the
+  /// composite signatures, so toggling self-invalidates the caches.
+  final Set<LayerId> _fxBypassedLayerIds = {};
+
+  Set<LayerId> get fxBypassedLayerIds => _fxBypassedLayerIds;
+
+  bool isLayerFxEnabled(LayerId layerId) =>
+      !_fxBypassedLayerIds.contains(layerId);
+
+  void toggleLayerFx(LayerId layerId) {
+    if (!_fxBypassedLayerIds.remove(layerId)) {
+      _fxBypassedLayerIds.add(layerId);
+    }
+    notifyListeners();
   }
 
   void undo() {

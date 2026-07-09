@@ -110,6 +110,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.animation:
       case LayerKind.art:
       case LayerKind.storyboard:
+        return transformPropertyLanes(
+          layer.transformTrack,
+          // The full AE Transform group on drawing layers: Anchor Point /
+          // Position / Scale / Rotation / Opacity (R3 ⑪).
+          includeAnchorAndOpacity: true,
+          poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
+          anchorAt: (frameIndex) =>
+              _session.layerAnchorPointAtFrame(layer, frameIndex),
+          opacityAt: (frameIndex) =>
+              _session.layerOpacityAtFrame(layer, frameIndex),
+        );
       case LayerKind.instruction:
         return _layerTransformLanes(layer);
     }
@@ -147,6 +158,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
+      final isCamera = layer.kind == LayerKind.camera;
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyToggled(
@@ -155,9 +167,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           frameIndex: frameIndex,
           // The navigator toggles at the playhead: freeze the property's
           // CURRENT resolved value there (AE behavior).
-          resolvedPose: layer.kind == LayerKind.camera
+          resolvedPose: isCamera
               ? _session.cameraPoseAtCurrentFrame
               : _session.layerPoseAtFrame(layer, frameIndex),
+          resolvedAnchorPoint: isCamera
+              ? null
+              : _session.layerAnchorPointAtFrame(layer, frameIndex),
+          resolvedOpacity: isCamera
+              ? 1
+              : _session.layerOpacityAtFrame(layer, frameIndex),
         ),
         '${lane.label} keyframe at frame ${frameIndex + 1}',
       );
@@ -624,6 +642,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLayerOpacityChanged: _setLayerOpacity,
             onToggleLayerTimesheet: _session.toggleLayerTimesheet,
             onLayerMarkSelected: _session.setLayerMark,
+            // The AE-style fx switch: bypasses the layer's transform/FX on
+            // every composite route (session view state).
+            layerFxEnabledOf: _session.isLayerFxEnabled,
+            onToggleLayerFx: _session.toggleLayerFx,
             // Comma edge drags preview live from the session's drag-start
             // snapshot and commit as ONE undo entry on release.
             commaDrag: TimelineCommaDragCallbacks(

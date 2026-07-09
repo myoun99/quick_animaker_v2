@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/playback_quality.dart';
@@ -16,16 +17,21 @@ class CanvasLayerImageRequest {
     required this.frameKey,
     required this.opacity,
     this.pose,
+    this.anchorPoint,
   });
 
   final BrushFrameKey frameKey;
+
+  /// EFFECTIVE opacity (static × animated Opacity sample).
   final double opacity;
 
   /// The layer's transform at the shown frame; null = identity. The stack
-  /// paints it exactly like the composite routes (the ACTIVE layer edits in
-  /// artwork space — its own transform shows in playback/compose, not under
-  /// the pen).
+  /// paints it exactly like the composite routes — the ACTIVE layer shows
+  /// its pose too, through the interactive view's draw-through wrap.
   final TransformPose? pose;
+
+  /// The pose's anchor point; null = canvas center.
+  final CanvasPoint? anchorPoint;
 }
 
 /// Paints the non-active layers of the editing canvas (below or above the
@@ -155,6 +161,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
                   image: _images[layer.frameKey]!.clone,
                   opacity: layer.opacity,
                   pose: layer.pose,
+                  anchorPoint: layer.anchorPoint,
                 ),
           ],
           canvasSize: widget.canvasSize,
@@ -175,7 +182,15 @@ class _LayerStackPainter extends CustomPainter {
     required this.paintPaper,
   });
 
-  final List<({ui.Image image, double opacity, TransformPose? pose})> images;
+  final List<
+    ({
+      ui.Image image,
+      double opacity,
+      TransformPose? pose,
+      CanvasPoint? anchorPoint,
+    })
+  >
+  images;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
@@ -202,7 +217,12 @@ class _LayerStackPainter extends CustomPainter {
       final layerPose = layer.pose;
       if (layerPose != null) {
         canvas.save();
-        applyLayerPoseTransform(canvas, layerPose, canvasSize);
+        applyLayerPoseTransform(
+          canvas,
+          layerPose,
+          canvasSize,
+          anchorPoint: layer.anchorPoint,
+        );
       }
       canvas.drawImageRect(
         layer.image,
@@ -235,7 +255,8 @@ class _LayerStackPainter extends CustomPainter {
     for (var index = 0; index < images.length; index += 1) {
       if (!identical(oldDelegate.images[index].image, images[index].image) ||
           oldDelegate.images[index].opacity != images[index].opacity ||
-          oldDelegate.images[index].pose != images[index].pose) {
+          oldDelegate.images[index].pose != images[index].pose ||
+          oldDelegate.images[index].anchorPoint != images[index].anchorPoint) {
         return true;
       }
     }

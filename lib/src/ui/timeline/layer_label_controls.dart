@@ -26,6 +26,64 @@ bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
 /// carry the same control for entrance parity.
 bool layerKindShowsOpacityControl(LayerKind kind) => true;
 
+/// Which layer kinds show the fx switch: kinds whose transform/FX apply at
+/// composite time. Grows with the kinds that gain transform lanes (SE and
+/// instruction join with the all-kind transform work).
+bool layerKindShowsFxToggle(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation || LayerKind.art || LayerKind.storyboard => true,
+    LayerKind.se || LayerKind.instruction || LayerKind.camera => false,
+  };
+}
+
+/// The AE-style layer fx switch: bypasses the layer's FX (transform +
+/// animated opacity) on EVERY composite route while off — session view
+/// state, not persisted.
+class LayerFxToggleButton extends StatelessWidget {
+  const LayerFxToggleButton({
+    super.key,
+    required this.keyPrefix,
+    required this.layerId,
+    required this.fxEnabled,
+    required this.onToggle,
+  });
+
+  final String keyPrefix;
+  final LayerId layerId;
+  final bool fxEnabled;
+  final ValueChanged<LayerId> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    // Tight SizedBox: the M3 IconButton otherwise inflates its layout box
+    // to the 48px minimum tap target and overflows the row (same gotcha as
+    // the timesheet toggle).
+    return SizedBox(
+      width: 26,
+      height: 26,
+      child: IconButton(
+        key: ValueKey<String>('$keyPrefix-layer-fx-$layerId'),
+        tooltip: fxEnabled ? 'Bypass layer FX' : 'Apply layer FX',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+        icon: Text(
+          'fx',
+          style: TextStyle(
+            fontSize: 13,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w700,
+            color: fxEnabled
+                ? AppColors.accent
+                : colorScheme.onSurface.withValues(alpha: 0.35),
+          ),
+        ),
+        onPressed: () => onToggle(layerId),
+      ),
+    );
+  }
+}
+
 /// Chip color of [mark]; null for [LayerMark.none].
 Color? layerMarkColor(LayerMark mark) {
   return switch (mark) {
