@@ -55,9 +55,8 @@ Project _project() {
 
 void main() {
   group('layer fx switch on the layer labels', () {
-    testWidgets('drawing rows carry the fx switch; SE/camera rows do not '
-        '(they join with the all-kind transform work); tapping flips the '
-        'bypass', (tester) async {
+    testWidgets('EVERY row carries the fx switch (R4 unified controls); '
+        'tapping flips the bypass', (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: _project())),
       );
@@ -67,13 +66,15 @@ void main() {
         const ValueKey<String>('timeline-layer-fx-fx-draw'),
       );
       expect(fxButton, findsOneWidget);
+      // SE rows bypass the dialogue transform, the camera row bypasses the
+      // camera work on the render routes — the switch sits on every kind.
       expect(
         find.byKey(const ValueKey<String>('timeline-layer-fx-fx-se')),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.byKey(const ValueKey<String>('timeline-layer-fx-fx-cam')),
-        findsNothing,
+        findsOneWidget,
       );
 
       // Applied by default; a tap bypasses (tooltip mirrors the state).

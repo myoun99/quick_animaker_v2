@@ -118,7 +118,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 mark: layer.mark,
                 onMarkSelected: onLayerMarkSelected,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               Expanded(
                 child: InkWell(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),
@@ -162,19 +162,27 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   fxEnabled: fxEnabled,
                   onToggle: onToggleLayerFx!,
                 ),
-              IconButton(
-                key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
-                tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 32,
-                  height: 32,
+              // Tight 26px slot like the fx switch: SE rows carry fx + eye
+              // + mute and the rail row has no slack for wider buttons.
+              SizedBox(
+                width: 26,
+                height: 32,
+                child: IconButton(
+                  key: ValueKey<String>(
+                    'timeline-layer-visibility-${layer.id}',
+                  ),
+                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 26,
+                    height: 32,
+                  ),
+                  icon: Icon(
+                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                    size: 18,
+                  ),
+                  onPressed: () => onToggleLayerVisibility(layer.id),
                 ),
-                icon: Icon(
-                  layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                  size: 18,
-                ),
-                onPressed: () => onToggleLayerVisibility(layer.id),
               ),
               // SE rows carry the mute speaker beside the eye (sounds
               // silence, waveforms keep displaying). Tight SizedBox: the M3

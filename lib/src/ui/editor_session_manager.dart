@@ -624,11 +624,34 @@ class EditorSessionManager extends ChangeNotifier {
   );
 
   /// Resolved camera pose for any cut (play-all renders other cuts too).
-  CameraPose cameraPoseForCut(Cut cut, int frameIndex) => resolveCameraPoseAt(
-    camera: cut.camera,
-    canvasSize: cut.canvasSize,
-    frameIndex: frameIndex,
-  );
+  /// The camera ROW's fx switch bypasses the camera work on this render
+  /// route (playback, export, storyboard thumbnails all resolve through
+  /// here) — the authoring overlays keep reading the real pose.
+  CameraPose cameraPoseForCut(Cut cut, int frameIndex) {
+    if (_cameraFxBypassedFor(cut)) {
+      return CameraPose(
+        center: CanvasPoint(
+          x: cut.canvasSize.width / 2,
+          y: cut.canvasSize.height / 2,
+        ),
+      );
+    }
+    return resolveCameraPoseAt(
+      camera: cut.camera,
+      canvasSize: cut.canvasSize,
+      frameIndex: frameIndex,
+    );
+  }
+
+  /// Whether [cut]'s camera layer sits in the fx-bypass set.
+  bool _cameraFxBypassedFor(Cut cut) {
+    for (final layer in cut.layers) {
+      if (layer.kind == LayerKind.camera) {
+        return _fxBypassedLayerIds.contains(layer.id);
+      }
+    }
+    return false;
+  }
 
   /// The editing canvas's layer stack at the playhead: which non-active
   /// layers composite below/above the interactive layer (bottom → top,
