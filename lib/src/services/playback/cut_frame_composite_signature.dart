@@ -5,6 +5,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/playback_quality.dart';
+import '../../models/transform_track.dart';
 import '../cut_frame_composite_plan.dart';
 
 /// Resolves the brush store's current source revision for a layer frame
@@ -20,12 +21,19 @@ class CompositeLayerSignature {
     required this.frameId,
     required this.opacity,
     required this.sourceRevision,
+    this.pose,
   });
 
   final LayerId layerId;
   final FrameId frameId;
   final double opacity;
   final int sourceRevision;
+
+  /// The layer's resolved transform at the frame (null = identity): a
+  /// transform edit — or a pose that varies across a held exposure — must
+  /// change the composite's identity, and the compose loop draws with
+  /// exactly this pose (the signature IS the compose input).
+  final TransformPose? pose;
 
   @override
   bool operator ==(Object other) =>
@@ -34,15 +42,17 @@ class CompositeLayerSignature {
           other.layerId == layerId &&
           other.frameId == frameId &&
           other.opacity == opacity &&
-          other.sourceRevision == sourceRevision;
+          other.sourceRevision == sourceRevision &&
+          other.pose == pose;
 
   @override
-  int get hashCode => Object.hash(layerId, frameId, opacity, sourceRevision);
+  int get hashCode =>
+      Object.hash(layerId, frameId, opacity, sourceRevision, pose);
 
   @override
   String toString() =>
       'CompositeLayerSignature(layerId: $layerId, frameId: $frameId, '
-      'opacity: $opacity, sourceRevision: $sourceRevision)';
+      'opacity: $opacity, sourceRevision: $sourceRevision, pose: $pose)';
 }
 
 /// Identity of a composited cut frame's pixels.
@@ -109,6 +119,11 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         frameId: frame.id,
         opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
         sourceRevision: revisionOf(layer.id, frame.id),
+        pose: resolveLayerPoseAt(
+          layer: layer,
+          canvasSize: cut.canvasSize,
+          frameIndex: frameIndex,
+        ),
       ),
     );
   }

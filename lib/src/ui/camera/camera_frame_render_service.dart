@@ -12,6 +12,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/layer_pose_paint.dart';
 import '../canvas/tiled_surface_compose.dart';
 
 /// File name for one exported frame: `frame_0001.png` (1-based).
@@ -172,6 +173,17 @@ class CameraFrameRenderService {
     canvas.translate(-pose.center.x, -pose.center.y);
 
     for (var index = 0; index < layerImages.length; index += 1) {
+      // Layer transforms apply at composite time (never baked); identity
+      // layers skip the save/restore.
+      final layerPose = layers[index].pose;
+      if (layerPose != null) {
+        canvas.save();
+        applyLayerPoseTransform(
+          canvas,
+          layerPose,
+          layers[index].surface.canvasSize,
+        );
+      }
       canvas.drawImage(
         layerImages[index],
         Offset.zero,
@@ -179,6 +191,9 @@ class CameraFrameRenderService {
           ..filterQuality = filterQuality
           ..color = Color.fromRGBO(0, 0, 0, layers[index].opacity),
       );
+      if (layerPose != null) {
+        canvas.restore();
+      }
     }
 
     final picture = recorder.endRecording();

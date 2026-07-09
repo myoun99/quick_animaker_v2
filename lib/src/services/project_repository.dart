@@ -16,6 +16,7 @@ import '../models/storyboard_frame_metadata.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/stroke.dart';
+import '../models/transform_track.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import 'project_tree_editor.dart';
@@ -403,6 +404,30 @@ class ProjectRepository {
 
   void updateMediaAssets(List<MediaAsset> mediaAssets) {
     updateProject((project) => project.copyWith(mediaAssets: mediaAssets));
+  }
+
+  void updateLayerTransformTrack({
+    required CutId cutId,
+    required LayerId layerId,
+    required TransformTrack transformTrack,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final updatedCut = updateLayerInCut(
+          cut,
+          layerId,
+          (layer) => layer.copyWith(transformTrack: transformTrack),
+        );
+        if (updatedCut == null) {
+          throw StateError('Layer not found in cut $cutId: $layerId');
+        }
+        return updatedCut;
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
   }
 
   void updateLayerAudioClips({

@@ -668,6 +668,11 @@ class EditorSessionManager extends ChangeNotifier {
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
+          pose: resolveLayerPoseAt(
+            layer: layer,
+            canvasSize: cut.canvasSize,
+            frameIndex: frameIndex,
+          ),
         ),
       );
     }
@@ -774,6 +779,32 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _refreshAfterCutCommand();
     notifyListeners();
+  }
+
+  /// Replaces [layerId]'s transform track (the AE Transform lanes on every
+  /// drawing layer — applied at composite time, never baked); one undo
+  /// step, no-op when unchanged.
+  void updateLayerTransformTrack(
+    LayerId layerId,
+    TransformTrack track, {
+    String description = 'Edit layer transform',
+  }) {
+    _cutCommandCoordinator.updateLayerTransformTrack(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      transformTrack: track,
+      description: description,
+    );
+    notifyListeners();
+  }
+
+  /// The layer's resolved transform pose at [frameIndex] (identity while
+  /// the track is empty) — the lane value column and key-freeze source.
+  TransformPose layerPoseAtFrame(Layer layer, int frameIndex) {
+    return layer.transformTrack.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => layerIdentityPose(activeCut.canvasSize),
+    );
   }
 
   void undo() {

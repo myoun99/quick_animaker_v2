@@ -92,6 +92,29 @@ void main() {
     });
   });
 
+  testWidgets('a layer transform pose shifts the layer under the identity '
+      'camera (composite-time apply)', (tester) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithRedPixelAt(1, 2),
+            opacity: 1,
+            // The layer's anchor (canvas center 4,4) lands at (6,5):
+            // content translates by (+2, +1).
+            pose: CameraPose(center: CanvasPoint(x: 6, y: 5)),
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      expect(await pixelAt(image, 3, 3), const Color(0xFFFF0000));
+      expect(await pixelAt(image, 1, 2), const Color(0xFFFFFFFF));
+      image.dispose();
+    });
+  });
+
   testWidgets('camera zoom 2 magnifies around the pose center', (tester) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(

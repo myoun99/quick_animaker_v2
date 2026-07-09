@@ -11,6 +11,7 @@ import 'layer_mark.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_exposure_type.dart';
+import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
 /// the frame axis: drawing block starts (frame + explicit hold length) and
@@ -30,10 +31,12 @@ class Layer {
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
+    TransformTrack? transformTrack,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        instructions = immutableInstructionMap(instructions ?? const {}),
-       audioClips = List.unmodifiable(audioClips);
+       audioClips = List.unmodifiable(audioClips),
+       transformTrack = transformTrack ?? TransformTrack.empty();
 
   final LayerId id;
   final String name;
@@ -58,6 +61,12 @@ class Layer {
   /// Organizational color label; see [LayerMark].
   final LayerMark mark;
 
+  /// The layer's keyframed transform (the AE Transform group), applied at
+  /// COMPOSITE time — playback, export, thumbnails and the editing canvas's
+  /// layer stack — never baked into the artwork. Empty = identity (the
+  /// untouched default for every layer).
+  final TransformTrack transformTrack;
+
   Layer copyWith({
     LayerId? id,
     String? name,
@@ -70,6 +79,7 @@ class Layer {
     LayerKind? kind,
     bool? onTimesheet,
     LayerMark? mark,
+    TransformTrack? transformTrack,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -84,6 +94,7 @@ class Layer {
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
+      transformTrack: transformTrack ?? this.transformTrack,
     );
   }
 
@@ -103,6 +114,7 @@ class Layer {
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
+    if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
   };
 
   /// Migrates a legacy free-floating clip ({'file', 'start'}) onto the SE
@@ -162,6 +174,9 @@ class Layer {
       mark: json.containsKey('mark')
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
+      transformTrack: json['transform'] == null
+          ? null
+          : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
     );
   }
 
@@ -179,7 +194,8 @@ class Layer {
           other.opacity == opacity &&
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
-          other.mark == mark;
+          other.mark == mark &&
+          other.transformTrack == transformTrack;
 
   @override
   int get hashCode => Object.hash(
@@ -198,6 +214,7 @@ class Layer {
     kind,
     onTimesheet,
     mark,
+    transformTrack,
   );
 
   @override
