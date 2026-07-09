@@ -15,11 +15,16 @@ import '../core/collection_equality.dart';
 /// A → B endpoint values as free text (e.g. a PAN's start/end positions).
 ///
 /// How a def's spans render on rows and sheets: [bar] is the paper sheet's
-/// arrow line (A |←|←|← B), [ol] the translucent bowtie the sheets draw for
-/// O.L / cross-dissolve spans. Lives on the def (not the event) so a term
-/// always looks the same and external formats (TDTS) can map it per term.
+/// straight duration line (A ⊢───⊣ B — no arrowheads, user-confirmed), [fi]
+/// the fade-in hatched wedge (full width at the span start narrowing to a
+/// point — the screen starts covered and clears), [fo] its mirror and [ol]
+/// the translucent bowtie the sheets draw for O.L / cross-dissolve spans.
+/// Lives on the def (not the event) so a term always looks the same and
+/// external formats (TDTS) can map it per term.
 enum CameraInstructionMarkType {
   bar('bar'),
+  fi('fi'),
+  fo('fo'),
   ol('ol');
 
   const CameraInstructionMarkType(this.jsonValue);
@@ -165,11 +170,32 @@ class CameraInstructionSet {
       CameraInstructionDef(id: 'tb', name: 'T.B', iconKey: 'track-back'),
       CameraInstructionDef(id: 'qtu', name: 'Q T.U', iconKey: 'track-up'),
       CameraInstructionDef(id: 'qtb', name: 'Q T.B', iconKey: 'track-back'),
-      // Transitions.
-      CameraInstructionDef(id: 'fi', name: 'FI', iconKey: 'fade-in'),
-      CameraInstructionDef(id: 'fo', name: 'FO', iconKey: 'fade-out'),
-      CameraInstructionDef(id: 'wi', name: 'WI', iconKey: 'white-in'),
-      CameraInstructionDef(id: 'wo', name: 'WO', iconKey: 'white-out'),
+      // Transitions. Fades seed the sheet's wedge marks: the wedge is wide
+      // where the screen is covered (FI/WI clear it, FO/WO close it).
+      CameraInstructionDef(
+        id: 'fi',
+        name: 'FI',
+        iconKey: 'fade-in',
+        markType: CameraInstructionMarkType.fi,
+      ),
+      CameraInstructionDef(
+        id: 'fo',
+        name: 'FO',
+        iconKey: 'fade-out',
+        markType: CameraInstructionMarkType.fo,
+      ),
+      CameraInstructionDef(
+        id: 'wi',
+        name: 'WI',
+        iconKey: 'white-in',
+        markType: CameraInstructionMarkType.fi,
+      ),
+      CameraInstructionDef(
+        id: 'wo',
+        name: 'WO',
+        iconKey: 'white-out',
+        markType: CameraInstructionMarkType.fo,
+      ),
       CameraInstructionDef(
         id: 'ol',
         name: 'O.L',

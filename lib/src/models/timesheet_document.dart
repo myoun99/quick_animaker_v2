@@ -53,10 +53,10 @@ enum TimesheetCellKind {
   /// name), [TimesheetCell.valueA] the A endpoint.
   instructionStart,
 
-  /// Inside an instruction span (the arrow shaft runs through this row).
+  /// Inside an instruction span (the duration line runs through this row).
   instructionSpan,
 
-  /// The instruction span's last covered row (arrowhead + B endpoint).
+  /// The instruction span's last covered row (line end tick + B endpoint).
   instructionEnd,
 }
 
@@ -65,6 +65,8 @@ class TimesheetCell {
     this.kind, {
     this.label,
     this.spanLength,
+    this.spanOffset,
+    this.markType,
     this.valueA,
     this.valueB,
   });
@@ -77,9 +79,20 @@ class TimesheetCell {
   /// [TimesheetCellKind.instructionStart] cells.
   final String? label;
 
-  /// Rows the span starting HERE covers (drawing/instruction starts only) —
-  /// vertical text and arrow painting need the extent up front.
+  /// Rows the span covers. Drawing spans set it on the start cell only
+  /// (vertical text fitting); instruction spans set it on EVERY covered
+  /// row — the painter re-derives the whole mark per row so spans crossing
+  /// page halves keep painting.
   final int? spanLength;
+
+  /// This row's distance from its instruction span's start row (instruction
+  /// cells only) — with [spanLength] it places the row inside the span's
+  /// mark geometry.
+  final int? spanOffset;
+
+  /// The span's mark shape from its def (instruction cells only); null
+  /// paints as [CameraInstructionMarkType.bar].
+  final CameraInstructionMarkType? markType;
 
   /// The sheet's A → B endpoint values (instruction start cells only; the
   /// painter prints A at the start and B at the end row).
@@ -432,9 +445,11 @@ class TimesheetDocument {
   }
 
   /// An instruction row's CAM column: each event prints its writing (free
-  /// text, vocabulary-name fallback) at the start with the A endpoint, an
-  /// arrow shaft through the covered rows and the arrowhead + B endpoint on
-  /// the last one — the paper sheet's camera-work notation.
+  /// text, vocabulary-name fallback) at the start with the A endpoint, its
+  /// def's mark through the covered rows (straight duration line, FI/FO
+  /// wedge or O.L bowtie) and the B endpoint on the last one — the paper
+  /// sheet's camera-work notation. Every covered row carries the span's
+  /// mark geometry so the painter can re-derive it row by row.
   static List<TimesheetCell> _instructionCells({
     required Layer layer,
     required int rowCount,
@@ -448,10 +463,14 @@ class TimesheetDocument {
       }
       final event = entry.value;
       final endExclusive = (start + event.length).clamp(0, rowCount);
+      final spanLength = endExclusive - start;
+      final markType = defById?.call(event.instructionId)?.markType;
       cells[start] = TimesheetCell(
         TimesheetCellKind.instructionStart,
         label: event.displayLabel(defById?.call(event.instructionId)),
-        spanLength: endExclusive - start,
+        spanLength: spanLength,
+        spanOffset: 0,
+        markType: markType,
         valueA: event.valueA,
         valueB: event.valueB,
       );
@@ -460,6 +479,9 @@ class TimesheetDocument {
           row == endExclusive - 1
               ? TimesheetCellKind.instructionEnd
               : TimesheetCellKind.instructionSpan,
+          spanLength: spanLength,
+          spanOffset: row - start,
+          markType: markType,
           valueB: row == endExclusive - 1 ? event.valueB : null,
         );
       }

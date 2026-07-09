@@ -336,10 +336,19 @@ void main() {
       find.byKey(const ValueKey<String>('instruction-icon-shake')),
     );
     // Chip tint: pick the red preset (colors are display-only sugar; the
-    // default swatch clears back to the row text color).
+    // default swatch clears back to the row text color). The dialog body
+    // scrolls, so bring each section on screen first.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('instruction-color-ffe57373')),
+    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-color-ffe57373')),
     );
+    // Mark: opt the custom term into the FI fade wedge.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('instruction-mark-fi')),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('instruction-mark-fi')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-def-save-button')),
@@ -354,6 +363,7 @@ void main() {
     final custom = defs.firstWhere((def) => def.name == 'ブレ');
     expect(custom.iconKey, 'shake');
     expect(custom.colorValue, 0xFFE57373);
+    expect(custom.markType, CameraInstructionMarkType.fi);
     expect(defs.length, CameraInstructionSet.standard.defs.length + 1);
 
     // Close the still-open event picker.

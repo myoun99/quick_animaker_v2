@@ -12,9 +12,10 @@ import 'timeline_frame_coordinate_policy.dart';
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
 /// [instructionCellExposureState] feeding the shared cell style), this
-/// overlay adds the mark background — the bar arrows (A |←|←|← B) or the
-/// O.L bowtie, per the def's markType — with the A/B endpoint values at the
-/// span's ends and the instruction name snapped to the span's anchor cell.
+/// overlay adds the mark background — the straight duration line
+/// (A ⊢───⊣ B), the FI/FO hatched fade wedges or the O.L bowtie, per the
+/// def's markType — with the instruction name at the span's START (unified
+/// with frame blocks) and the A/B endpoint values at the span's ends.
 /// Shared by both orientations (Axis policy).
 
 /// Paper-cell adapter: instruction events have no timeline entries, so
@@ -41,11 +42,6 @@ TimelineCellExposureState instructionCellExposureState(
       ? TimelineCellExposureState.held
       : TimelineCellExposureState.uncovered;
 }
-
-/// The label anchor cell for an [eventLength]-frame span: odd spans center
-/// exactly, even spans sit one cell left of the middle boundary — so the
-/// writing always lands ON a cell like on paper (user-confirmed rule).
-int instructionLabelAnchorCell(int eventLength) => (eventLength - 1) ~/ 2;
 
 /// The mark/label overlays for every instruction span intersecting the
 /// visible window.
@@ -181,16 +177,20 @@ class _InstructionSpan extends StatelessWidget {
   final CameraInstructionDef? def;
   final double frameCellExtent;
 
-  /// One cell-sized slot at [cellIndex] holding centered [child]; the child
-  /// may overflow the cell (paper writing spills over neighbours freely).
-  Widget _cellSlot({required int cellIndex, required Widget child}) {
+  /// One cell-sized slot at [cellIndex] holding [child] at [alignment]; the
+  /// child may overflow the cell (paper writing spills over neighbours
+  /// freely).
+  Widget _cellSlot({
+    required int cellIndex,
+    required Widget child,
+    AlignmentGeometry alignment = Alignment.center,
+  }) {
     final start = cellIndex * frameCellExtent;
-    final overflowing = Center(
-      child: OverflowBox(
-        maxWidth: double.infinity,
-        maxHeight: double.infinity,
-        child: child,
-      ),
+    final overflowing = OverflowBox(
+      alignment: alignment,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: child,
     );
     return switch (axis) {
       Axis.horizontal => Positioned(
@@ -209,6 +209,11 @@ class _InstructionSpan extends StatelessWidget {
       ),
     };
   }
+
+  /// Endpoint values sit on the line's far side (below it on rows, right of
+  /// it on X-sheet columns) — the sheet writes them beside the shaft.
+  AlignmentGeometry get _valueAlignment =>
+      axis == Axis.horizontal ? Alignment.bottomCenter : Alignment.centerRight;
 
   /// Writing runs along the frame axis: plain text on horizontal rows, an
   /// upright glyph stack (paper-style vertical writing, never rotated) on
@@ -273,17 +278,29 @@ class _InstructionSpan extends StatelessWidget {
           if (valueA != null && valueA.isNotEmpty)
             _cellSlot(
               cellIndex: 0,
+              alignment: _valueAlignment,
               child: ExcludeSemantics(child: _writing(valueA, valueStyle)),
             ),
           if (valueB != null && valueB.isNotEmpty)
             _cellSlot(
               cellIndex: event.length - 1,
+              alignment: _valueAlignment,
               child: ExcludeSemantics(child: _writing(valueB, valueStyle)),
             ),
+          // The name anchors to the span's START and runs along it, on the
+          // line's near side — unified with frame blocks (user direction);
+          // the sheet writes it the same way beside the shaft.
           if (name.isNotEmpty)
-            _cellSlot(
-              cellIndex: instructionLabelAnchorCell(event.length),
-              child: ExcludeSemantics(child: _writing(name, nameStyle)),
+            Positioned.fill(
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 2, top: 1),
+                  child: ExcludeSemantics(child: _writing(name, nameStyle)),
+                ),
+              ),
             ),
         ],
       ),
@@ -292,9 +309,10 @@ class _InstructionSpan extends StatelessWidget {
 }
 
 /// The instruction mark background on the paper block: bar marks draw the
-/// sheet's per-cell backward arrows (A |←|←|← B — head toward the span
-/// start), O.L marks the translucent bowtie (two triangles meeting at the
-/// span's center).
+/// sheet's completely straight duration line with a perpendicular tick at
+/// each end (A ⊢───⊣ B — no arrowheads, user-confirmed), FI/FO the hatched
+/// fade wedges (wide where the screen is covered), O.L the translucent
+/// bowtie (two triangles meeting at the span's center).
 class _InstructionMarkPainter extends CustomPainter {
   _InstructionMarkPainter({
     required this.axis,
@@ -310,53 +328,92 @@ class _InstructionMarkPainter extends CustomPainter {
   final double frameCellExtent;
   final Color color;
 
+  /// Main/cross coordinates → canvas offset for the current [axis].
+  Offset _at(double main, double cross) =>
+      axis == Axis.horizontal ? Offset(main, cross) : Offset(cross, main);
+
   @override
   void paint(Canvas canvas, Size size) {
     switch (markType) {
       case CameraInstructionMarkType.bar:
-        _paintBarArrows(canvas, size);
+        _paintDurationLine(canvas, size);
+      case CameraInstructionMarkType.fi:
+        _paintFadeWedge(canvas, size, wideAtStart: true);
+      case CameraInstructionMarkType.fo:
+        _paintFadeWedge(canvas, size, wideAtStart: false);
       case CameraInstructionMarkType.ol:
         _paintBowtie(canvas, size);
     }
   }
 
-  /// Backward arrows in the interior cells (the first and last cells hold
-  /// the A/B writing); spans of one or two cells carry no arrows.
-  void _paintBarArrows(Canvas canvas, Size size) {
+  /// One completely straight line between the endpoint cells' centers with
+  /// a perpendicular tick at each end; single-cell spans carry writing
+  /// only, like on paper.
+  void _paintDurationLine(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withValues(alpha: 0.45)
+      ..color = color.withValues(alpha: 0.55)
       ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round;
+    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final crossCenter = axis == Axis.horizontal
         ? size.height / 2
         : size.width / 2;
-    final headExtent = (frameCellExtent * 0.18).clamp(2.5, 5.0);
-    final inset = (frameCellExtent * 0.2).clamp(2.0, 8.0);
-
-    for (var cell = 1; cell < eventLength - 1; cell += 1) {
-      final cellStart = cell * frameCellExtent;
-      final tail = cellStart + frameCellExtent - inset;
-      final head = cellStart + inset;
-      if (tail - head < 2) {
-        continue;
-      }
-      final (from, to) = axis == Axis.horizontal
-          ? (Offset(tail, crossCenter), Offset(head, crossCenter))
-          : (Offset(crossCenter, tail), Offset(crossCenter, head));
-      canvas.drawLine(from, to, paint);
-      // Arrowhead chevron at the head (toward the span start).
-      final (wingA, wingB) = axis == Axis.horizontal
-          ? (
-              Offset(head + headExtent, crossCenter - headExtent),
-              Offset(head + headExtent, crossCenter + headExtent),
-            )
-          : (
-              Offset(crossCenter - headExtent, head + headExtent),
-              Offset(crossCenter + headExtent, head + headExtent),
-            );
-      canvas.drawLine(to, wingA, paint);
-      canvas.drawLine(to, wingB, paint);
+    final start = frameCellExtent / 2;
+    final end = mainExtent - frameCellExtent / 2;
+    if (end - start < 2) {
+      return;
     }
+    final tickExtent = (frameCellExtent * 0.14).clamp(2.5, 4.0);
+    canvas.drawLine(_at(start, crossCenter), _at(end, crossCenter), paint);
+    for (final main in [start, end]) {
+      canvas.drawLine(
+        _at(main, crossCenter - tickExtent),
+        _at(main, crossCenter + tickExtent),
+        paint,
+      );
+    }
+  }
+
+  /// The fade wedge: a hatched triangle spanning the whole event, full
+  /// cross width where the screen is covered narrowing to a point where it
+  /// is clear — FI narrows toward the span end, FO mirrors it.
+  void _paintFadeWedge(Canvas canvas, Size size, {required bool wideAtStart}) {
+    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final crossCenter = crossExtent / 2;
+    final wideHalf = crossCenter - 2;
+    if (mainExtent < 6 || wideHalf < 2) {
+      return;
+    }
+    final wideMain = wideAtStart ? 1.0 : mainExtent - 1;
+    final pointMain = wideAtStart ? mainExtent - 1 : 1.0;
+    final wedge = Path()
+      ..addPolygon([
+        _at(wideMain, crossCenter - wideHalf),
+        _at(pointMain, crossCenter),
+        _at(wideMain, crossCenter + wideHalf),
+      ], true);
+    canvas.save();
+    canvas.clipPath(wedge);
+    final hatch = Paint()
+      ..color = color.withValues(alpha: 0.3)
+      ..strokeWidth = 1.0;
+    final bounds = wedge.getBounds();
+    for (var x = bounds.left - bounds.height; x < bounds.right; x += 5.0) {
+      canvas.drawLine(
+        Offset(x, bounds.bottom),
+        Offset(x + bounds.height, bounds.top),
+        hatch,
+      );
+    }
+    canvas.restore();
+    canvas.drawPath(
+      wedge,
+      Paint()
+        ..color = color.withValues(alpha: 0.55)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke,
+    );
   }
 
   void _paintBowtie(Canvas canvas, Size size) {

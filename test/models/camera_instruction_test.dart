@@ -32,7 +32,11 @@ void main() {
     });
 
     test('markType defaults to bar and only non-bar serializes', () {
-      const plain = CameraInstructionDef(id: 'pan', name: 'PAN', iconKey: 'pan');
+      const plain = CameraInstructionDef(
+        id: 'pan',
+        name: 'PAN',
+        iconKey: 'pan',
+      );
       const bowtie = CameraInstructionDef(
         id: 'ol',
         name: 'O.L',
@@ -46,6 +50,16 @@ void main() {
       expect(CameraInstructionDef.fromJson(plain.toJson()), plain);
       expect(CameraInstructionDef.fromJson(bowtie.toJson()), bowtie);
       expect(plain, isNot(bowtie.copyWith(name: 'PAN')));
+
+      // The fade wedges round-trip too.
+      for (final wedge in [
+        CameraInstructionMarkType.fi,
+        CameraInstructionMarkType.fo,
+      ]) {
+        final def = plain.copyWith(markType: wedge);
+        expect(def.toJson()['markType'], wedge.jsonValue);
+        expect(CameraInstructionDef.fromJson(def.toJson()), def);
+      }
     });
 
     test('unknown or absent markType json decodes to bar', () {
@@ -116,15 +130,16 @@ void main() {
       expect(CameraInstructionSet.standard.defById('ol')!.name, 'O.L');
       expect(CameraInstructionSet.standard.defById('missing'), isNull);
 
-      // Only O.L seeds the bowtie mark; every other term stays a bar.
+      // The fades seed the sheet's wedge marks (wide where the screen is
+      // covered), O.L the bowtie; every other term stays the straight
+      // duration line.
       for (final def in CameraInstructionSet.standard.defs) {
-        expect(
-          def.markType,
-          def.id == 'ol'
-              ? CameraInstructionMarkType.ol
-              : CameraInstructionMarkType.bar,
-          reason: def.id,
-        );
+        expect(def.markType, switch (def.id) {
+          'fi' || 'wi' => CameraInstructionMarkType.fi,
+          'fo' || 'wo' => CameraInstructionMarkType.fo,
+          'ol' => CameraInstructionMarkType.ol,
+          _ => CameraInstructionMarkType.bar,
+        }, reason: def.id);
       }
     });
 
