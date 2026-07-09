@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -26,10 +26,8 @@ void main() {
       layer: layer,
       frameIndex: frameIndex,
       active: true,
-      selected: false,
       outsidePlaybackRange: false,
       exposureState: TimelineCellExposureState.uncovered,
-      selectedExposureRangeSegment: false,
       exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
       onSelectLayer: (_) {},
       onSelectFrame: selections.add,
@@ -82,10 +80,8 @@ void main() {
             layer: layer,
             frameIndex: 3,
             active: true,
-            selected: false,
             outsidePlaybackRange: false,
             exposureState: TimelineCellExposureState.uncovered,
-            selectedExposureRangeSegment: false,
             exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},

@@ -97,38 +97,35 @@ void main() {
     expect(_alphaAtActivePixel(c), greaterThan(0));
   });
 
-  test(
-    'commit emits brush invalidation and leaves a FRESH display cache '
-    '(the session surface is donated — no consumer replays the frame)',
-    () {
-      final c = coordinator();
-      final sink = _RecordingSink();
+  test('commit emits brush invalidation and leaves a FRESH display cache '
+      '(the session surface is donated — no consumer replays the frame)', () {
+    final c = coordinator();
+    final sink = _RecordingSink();
 
-      c.commitSourceStroke(sourceDabs: [_dab(0)], cacheInvalidationSink: sink);
+    c.commitSourceStroke(sourceDabs: [_dab(0)], cacheInvalidationSink: sink);
 
-      // Derived ui.Image caches still re-upload via the sink…
-      expect(sink.brushFrames, hasLength(1));
-      expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
-      expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
-      expect(sink.brushFrames.single.wholeFrame, isFalse);
-      // …but the display cache is already valid at the new revision: the
-      // commit donated the session surface, so nothing replays commands.
-      final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
-      expect(frame.inactivePreviewDirty, isFalse);
-      expect(frame.cacheDirtyTiles.isEmpty, isTrue);
-      final cache = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
-      expect(cache.isValid, isTrue);
-      expect(cache.sourceRevision, frame.sourceRevision);
-      expect(
-        identical(
-          cache.previewSurface,
-          c.activeSessionState.canvasState.currentSurface,
-        ),
-        isTrue,
-        reason: 'donation shares the immutable surface, no copy',
-      );
-    },
-  );
+    // Derived ui.Image caches still re-upload via the sink…
+    expect(sink.brushFrames, hasLength(1));
+    expect(sink.brushFrames.single.frameKey, c.activeFrameKey);
+    expect(sink.brushFrames.single.hasDirtyTiles, isTrue);
+    expect(sink.brushFrames.single.wholeFrame, isFalse);
+    // …but the display cache is already valid at the new revision: the
+    // commit donated the session surface, so nothing replays commands.
+    final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
+    expect(frame.inactivePreviewDirty, isFalse);
+    expect(frame.cacheDirtyTiles.isEmpty, isTrue);
+    final cache = c.frameStore.displayCacheOrNull(c.activeFrameKey)!;
+    expect(cache.isValid, isTrue);
+    expect(cache.sourceRevision, frame.sourceRevision);
+    expect(
+      identical(
+        cache.previewSurface,
+        c.activeSessionState.canvasState.currentSurface,
+      ),
+      isTrue,
+      reason: 'donation shares the immutable surface, no copy',
+    );
+  });
 
   test('undo and redo emit invalidations and keep the display cache fresh', () {
     final c = coordinator();

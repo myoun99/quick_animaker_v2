@@ -57,7 +57,11 @@ List<CameraKeyLaneState> cameraKeyLaneStatesAt(
   required int frameIndex,
   required TransformPose resolvedPose,
 }) {
-  const lanes = [('position', 'Position'), ('scale', 'Scale'), ('rotation', 'Rotation')];
+  const lanes = [
+    ('position', 'Position'),
+    ('scale', 'Scale'),
+    ('rotation', 'Rotation'),
+  ];
   return [
     for (final (laneId, label) in lanes)
       () {

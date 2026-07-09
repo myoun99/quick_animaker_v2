@@ -71,7 +71,10 @@ void main() {
     if (tile == null) {
       return 0;
     }
-    return tile.pixels[tile.byteOffsetForPixel(x: x % tileSize, y: y % tileSize) +
+    return tile.pixels[tile.byteOffsetForPixel(
+          x: x % tileSize,
+          y: y % tileSize,
+        ) +
         3];
   }
 
@@ -87,10 +90,7 @@ void main() {
     // Under budget: the exact same state comes back.
     expect(
       identical(
-        trimMaterializationHistoryToByteBudget(
-          state,
-          maxBytes: 3 * tileBytes,
-        ),
+        trimMaterializationHistoryToByteBudget(state, maxBytes: 3 * tileBytes),
         state,
       ),
       isTrue,

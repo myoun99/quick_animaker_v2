@@ -114,10 +114,8 @@ class InstanceEditPreview extends StatelessWidget {
               layer: layer,
               frameIndex: frameIndex,
               active: false,
-              selected: false,
               outsidePlaybackRange: false,
               exposureState: stateAt(frameIndex),
-              selectedExposureRangeSegment: false,
               exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
                 previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
                 current: stateAt(frameIndex),
@@ -130,9 +128,6 @@ class InstanceEditPreview extends StatelessWidget {
               width: axis == Axis.horizontal ? komaExtent : crossExtent,
               height: axis == Axis.horizontal ? crossExtent : komaExtent,
               cellKeyPrefix: 'instance-preview-cell',
-              selectedSemanticsKey: const ValueKey<String>(
-                'instance-preview-selected-cell',
-              ),
             ),
         ];
 

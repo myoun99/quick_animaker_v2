@@ -36,12 +36,8 @@ Layer _seLayer() => Layer(
   id: const LayerId('wave-se'),
   name: 'S1',
   kind: LayerKind.se,
-  frames: [
-    Frame(id: const FrameId('wave-f'), duration: 12, strokes: const []),
-  ],
-  timeline: {
-    0: const TimelineExposure.drawing(FrameId('wave-f'), length: 12),
-  },
+  frames: [Frame(id: const FrameId('wave-f'), duration: 12, strokes: const [])],
+  timeline: {0: const TimelineExposure.drawing(FrameId('wave-f'), length: 12)},
   audioClips: const [
     AudioClip(filePath: 'voice.wav', frameId: FrameId('wave-f')),
   ],
@@ -57,7 +53,7 @@ void main() {
           body: TimelinePanel(
             layers: [_seLayer()],
             activeLayerId: null,
-            currentFrameIndex: 0,
+            frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 48,
             exposureStateForLayer: (_, _) =>
                 TimelineCellExposureState.uncovered,

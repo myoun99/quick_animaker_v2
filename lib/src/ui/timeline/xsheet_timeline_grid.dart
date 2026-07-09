@@ -1,5 +1,6 @@
 ﻿import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -9,7 +10,6 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart';
-import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -17,6 +17,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cell_editor_policy.dart';
@@ -28,11 +29,9 @@ import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
-import 'timeline_playhead.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
-import 'timeline_selected_exposure_outline.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
 import 'timeline_zoom_anchor_policy.dart';
@@ -52,7 +51,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     super.key,
     required this.layers,
     required this.activeLayerId,
-    required this.currentFrameIndex,
+    required this.frameCursor,
+    this.cacheProgress,
     required this.frameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -87,7 +87,15 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
-  final int currentFrameIndex;
+
+  /// The frame cursor (editing playhead / playback position). Only the
+  /// cursor layer, the frame-number rail and the lane headers subscribe —
+  /// ticks never rebuild the grid (playback-performance architecture,
+  /// mirroring the horizontal timeline).
+  final ValueListenable<int> frameCursor;
+
+  /// Repaints the frame rail's cached-range green strip as frames warm.
+  final Listenable? cacheProgress;
 
   /// Playback frame count of the active cut (the visible range extends to
   /// the shared minimum, exactly like the horizontal timeline).
@@ -226,7 +234,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           oldPixelsPerFrame: oldCell,
           newPixelsPerFrame: newCell,
           viewportExtent: _frameScrollController.position.viewportDimension,
-          anchorFrame: widget.currentFrameIndex,
+          anchorFrame: widget.frameCursor.value,
         ),
       );
     }
@@ -480,23 +488,35 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                       height: totalFrameContentHeight,
                                       child: Stack(
                                         children: [
-                                          _XSheetFrameNumberRail(
-                                            frameStartIndex:
-                                                frameRange.startIndex,
-                                            frameEndIndexExclusive:
-                                                frameRange.endIndexExclusive,
-                                            currentFrameIndex:
-                                                widget.currentFrameIndex,
-                                            playbackFrameCount:
-                                                widget.frameCount,
-                                            leadingFrameSpacerHeight:
-                                                plan.leadingFrameSpacerWidth,
-                                            trailingFrameSpacerHeight:
-                                                plan.trailingFrameSpacerWidth,
-                                            metrics: _metrics,
-                                            onSelectFrame:
-                                                _selectClampedFrameFromRail,
-                                            isFrameCached: widget.isFrameCached,
+                                          // The rail subscribes to the
+                                          // cursor + cache progress itself:
+                                          // ticks repaint this subtree only.
+                                          ListenableBuilder(
+                                            listenable: Listenable.merge([
+                                              widget.frameCursor,
+                                              ?widget.cacheProgress,
+                                            ]),
+                                            builder: (context, _) =>
+                                                _XSheetFrameNumberRail(
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  currentFrameIndex:
+                                                      widget.frameCursor.value,
+                                                  playbackFrameCount:
+                                                      widget.frameCount,
+                                                  leadingFrameSpacerHeight: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  trailingFrameSpacerHeight: plan
+                                                      .trailingFrameSpacerWidth,
+                                                  metrics: _metrics,
+                                                  onSelectFrame:
+                                                      _selectClampedFrameFromRail,
+                                                  isFrameCached:
+                                                      widget.isFrameCached,
+                                                ),
                                           ),
                                           TimelineRulerCutEndBoundary(
                                             axis: Axis.vertical,
@@ -581,20 +601,35 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                         index += 1
                                       )
                                         entries[index].isLane
-                                            ? TimelineLaneControlsRow(
-                                                axis: Axis.vertical,
-                                                keyPrefix: 'xsheet',
-                                                layer: entries[index].layer,
-                                                lane: entries[index].lane!,
-                                                metrics: _metrics,
-                                                width: _metrics.layerRowHeight,
-                                                height: XSheetTimelineGrid
-                                                    ._headerHeight,
-                                                currentFrameIndex:
-                                                    widget.currentFrameIndex,
-                                                onSelectFrame:
-                                                    widget.onSelectFrame,
-                                                laneEdit: widget.laneEdit,
+                                            // Lane headers show the value AT
+                                            // the cursor: subscribe here so
+                                            // ticks rebuild only these cells.
+                                            ? ValueListenableBuilder<int>(
+                                                valueListenable:
+                                                    widget.frameCursor,
+                                                builder:
+                                                    (
+                                                      context,
+                                                      cursorFrame,
+                                                      _,
+                                                    ) => TimelineLaneControlsRow(
+                                                      axis: Axis.vertical,
+                                                      keyPrefix: 'xsheet',
+                                                      layer:
+                                                          entries[index].layer,
+                                                      lane:
+                                                          entries[index].lane!,
+                                                      metrics: _metrics,
+                                                      width: _metrics
+                                                          .layerRowHeight,
+                                                      height: XSheetTimelineGrid
+                                                          ._headerHeight,
+                                                      currentFrameIndex:
+                                                          cursorFrame,
+                                                      onSelectFrame:
+                                                          widget.onSelectFrame,
+                                                      laneEdit: widget.laneEdit,
+                                                    ),
                                               )
                                             : _LayerHeader(
                                                 layer: entries[index].layer,
@@ -656,180 +691,205 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
+                                                // RepaintBoundary per column
+                                                // (mirrors the horizontal
+                                                // rows): the cursor layer
+                                                // repaints alone on ticks.
                                                 for (
                                                   var index = 0;
                                                   index < entries.length;
                                                   index += 1
                                                 )
-                                                  entries[index].isLane
-                                                      ? (laneIsSeAudio(
-                                                              entries[index]
-                                                                  .lane!,
-                                                            )
-                                                            ? SeAudioLaneFrameRow(
-                                                                axis: Axis
-                                                                    .vertical,
-                                                                keyPrefix:
-                                                                    'xsheet',
-                                                                layer:
-                                                                    entries[index]
-                                                                        .layer,
-                                                                frameStartIndex:
-                                                                    frameRange
-                                                                        .startIndex,
-                                                                frameEndIndexExclusive:
-                                                                    frameRange
-                                                                        .endIndexExclusive,
-                                                                leadingFrameSpacerWidth:
-                                                                    plan.leadingFrameSpacerWidth,
-                                                                trailingFrameSpacerWidth:
-                                                                    plan.trailingFrameSpacerWidth,
-                                                                metrics:
-                                                                    _metrics,
-                                                                fps: widget
-                                                                    .projectFps,
-                                                                audioPeaksFor:
-                                                                    widget
-                                                                        .audioPeaksFor,
-                                                                onSetClipOffset:
-                                                                    widget.onSetAudioClipOffset ==
-                                                                        null
-                                                                    ? null
-                                                                    : (
-                                                                        clipIndex,
-                                                                        offsetFrames,
-                                                                      ) => widget.onSetAudioClipOffset!(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                        clipIndex,
-                                                                        offsetFrames,
-                                                                      ),
-                                                                onSetClipFades:
-                                                                    widget.onSetAudioClipFades ==
-                                                                        null
-                                                                    ? null
-                                                                    : (
-                                                                        clipIndex,
-                                                                        fadeIn,
-                                                                        fadeOut,
-                                                                      ) => widget.onSetAudioClipFades!(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                        clipIndex,
-                                                                        fadeIn,
-                                                                        fadeOut,
-                                                                      ),
-                                                                onSetClipGain:
-                                                                    widget.onSetAudioClipGain ==
-                                                                        null
-                                                                    ? null
-                                                                    : (
-                                                                        clipIndex,
-                                                                        gain,
-                                                                      ) => widget.onSetAudioClipGain!(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                        clipIndex,
-                                                                        gain,
-                                                                      ),
-                                                              )
-                                                            : TimelineLaneFrameRow(
-                                                                axis: Axis
-                                                                    .vertical,
-                                                                keyPrefix:
-                                                                    'xsheet',
-                                                                layer:
-                                                                    entries[index]
-                                                                        .layer,
-                                                                lane:
-                                                                    entries[index]
-                                                                        .lane!,
-                                                                frameStartIndex:
-                                                                    frameRange
-                                                                        .startIndex,
-                                                                frameEndIndexExclusive:
-                                                                    frameRange
-                                                                        .endIndexExclusive,
-                                                                leadingFrameSpacerWidth:
-                                                                    plan.leadingFrameSpacerWidth,
-                                                                trailingFrameSpacerWidth:
-                                                                    plan.trailingFrameSpacerWidth,
-                                                                metrics:
-                                                                    _metrics,
-                                                                laneEdit: widget
-                                                                    .laneEdit,
-                                                              ))
-                                                      : _XSheetFrameCellsColumn(
-                                                          onActivateCell: widget
-                                                              .onActivateCell,
-                                                          instructionDefById: widget
-                                                              .instructionDefById,
-                                                          audioPeaksFor: widget
-                                                              .audioPeaksFor,
-                                                          projectFps:
-                                                              widget.projectFps,
-                                                          onRemoveAudioClip: widget
-                                                              .onRemoveAudioClip,
-                                                          onDropMediaAsset: widget
-                                                              .onDropMediaAsset,
-                                                          layer: entries[index]
-                                                              .layer,
-                                                          active:
-                                                              entries[index]
-                                                                  .layer
-                                                                  .id ==
-                                                              widget
-                                                                  .activeLayerId,
-                                                          sectionStart:
-                                                              timelineSectionStartsAt(
-                                                                widget.layers,
+                                                  RepaintBoundary(
+                                                    child: entries[index].isLane
+                                                        ? (laneIsSeAudio(
                                                                 entries[index]
-                                                                    .layerIndex,
-                                                              ),
-                                                          currentFrameIndex: widget
-                                                              .currentFrameIndex,
-                                                          playbackFrameCount:
-                                                              widget.frameCount,
-                                                          frameStartIndex:
-                                                              frameRange
-                                                                  .startIndex,
-                                                          frameEndIndexExclusive:
-                                                              frameRange
-                                                                  .endIndexExclusive,
-                                                          leadingFrameSpacerHeight:
-                                                              plan.leadingFrameSpacerWidth,
-                                                          trailingFrameSpacerHeight:
-                                                              plan.trailingFrameSpacerWidth,
-                                                          metrics: _metrics,
-                                                          exposureStateForLayer:
-                                                              widget
-                                                                  .exposureStateForLayer,
-                                                          frameNameForLayer: widget
-                                                              .frameNameForLayer,
-                                                          onSelectLayer: widget
-                                                              .onSelectLayer,
-                                                          onSelectFrame: widget
-                                                              .onSelectFrame,
-                                                          commaDrag:
-                                                              widget.commaDrag,
-                                                        ),
+                                                                    .lane!,
+                                                              )
+                                                              ? SeAudioLaneFrameRow(
+                                                                  axis: Axis
+                                                                      .vertical,
+                                                                  keyPrefix:
+                                                                      'xsheet',
+                                                                  layer:
+                                                                      entries[index]
+                                                                          .layer,
+                                                                  frameStartIndex:
+                                                                      frameRange
+                                                                          .startIndex,
+                                                                  frameEndIndexExclusive:
+                                                                      frameRange
+                                                                          .endIndexExclusive,
+                                                                  leadingFrameSpacerWidth:
+                                                                      plan.leadingFrameSpacerWidth,
+                                                                  trailingFrameSpacerWidth:
+                                                                      plan.trailingFrameSpacerWidth,
+                                                                  metrics:
+                                                                      _metrics,
+                                                                  fps: widget
+                                                                      .projectFps,
+                                                                  audioPeaksFor:
+                                                                      widget
+                                                                          .audioPeaksFor,
+                                                                  onSetClipOffset:
+                                                                      widget.onSetAudioClipOffset ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          clipIndex,
+                                                                          offsetFrames,
+                                                                        ) => widget.onSetAudioClipOffset!(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                          clipIndex,
+                                                                          offsetFrames,
+                                                                        ),
+                                                                  onSetClipFades:
+                                                                      widget.onSetAudioClipFades ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          clipIndex,
+                                                                          fadeIn,
+                                                                          fadeOut,
+                                                                        ) => widget.onSetAudioClipFades!(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                          clipIndex,
+                                                                          fadeIn,
+                                                                          fadeOut,
+                                                                        ),
+                                                                  onSetClipGain:
+                                                                      widget.onSetAudioClipGain ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          clipIndex,
+                                                                          gain,
+                                                                        ) => widget.onSetAudioClipGain!(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                          clipIndex,
+                                                                          gain,
+                                                                        ),
+                                                                )
+                                                              : TimelineLaneFrameRow(
+                                                                  axis: Axis
+                                                                      .vertical,
+                                                                  keyPrefix:
+                                                                      'xsheet',
+                                                                  layer:
+                                                                      entries[index]
+                                                                          .layer,
+                                                                  lane:
+                                                                      entries[index]
+                                                                          .lane!,
+                                                                  frameStartIndex:
+                                                                      frameRange
+                                                                          .startIndex,
+                                                                  frameEndIndexExclusive:
+                                                                      frameRange
+                                                                          .endIndexExclusive,
+                                                                  leadingFrameSpacerWidth:
+                                                                      plan.leadingFrameSpacerWidth,
+                                                                  trailingFrameSpacerWidth:
+                                                                      plan.trailingFrameSpacerWidth,
+                                                                  metrics:
+                                                                      _metrics,
+                                                                  laneEdit: widget
+                                                                      .laneEdit,
+                                                                ))
+                                                        : _XSheetFrameCellsColumn(
+                                                            onActivateCell: widget
+                                                                .onActivateCell,
+                                                            instructionDefById:
+                                                                widget
+                                                                    .instructionDefById,
+                                                            audioPeaksFor: widget
+                                                                .audioPeaksFor,
+                                                            projectFps: widget
+                                                                .projectFps,
+                                                            onRemoveAudioClip:
+                                                                widget
+                                                                    .onRemoveAudioClip,
+                                                            onDropMediaAsset: widget
+                                                                .onDropMediaAsset,
+                                                            layer:
+                                                                entries[index]
+                                                                    .layer,
+                                                            active:
+                                                                entries[index]
+                                                                    .layer
+                                                                    .id ==
+                                                                widget
+                                                                    .activeLayerId,
+                                                            sectionStart:
+                                                                timelineSectionStartsAt(
+                                                                  widget.layers,
+                                                                  entries[index]
+                                                                      .layerIndex,
+                                                                ),
+                                                            playbackFrameCount:
+                                                                widget
+                                                                    .frameCount,
+                                                            frameStartIndex:
+                                                                frameRange
+                                                                    .startIndex,
+                                                            frameEndIndexExclusive:
+                                                                frameRange
+                                                                    .endIndexExclusive,
+                                                            leadingFrameSpacerHeight:
+                                                                plan.leadingFrameSpacerWidth,
+                                                            trailingFrameSpacerHeight:
+                                                                plan.trailingFrameSpacerWidth,
+                                                            metrics: _metrics,
+                                                            exposureStateForLayer:
+                                                                widget
+                                                                    .exposureStateForLayer,
+                                                            frameNameForLayer:
+                                                                widget
+                                                                    .frameNameForLayer,
+                                                            onSelectLayer: widget
+                                                                .onSelectLayer,
+                                                            onSelectFrame: widget
+                                                                .onSelectFrame,
+                                                            commaDrag: widget
+                                                                .commaDrag,
+                                                          ),
+                                                  ),
                                               ],
                                             ),
-                                            TimelinePlayhead(
-                                              axis: Axis.vertical,
-                                              currentFrameIndex:
-                                                  widget.currentFrameIndex,
-                                              frameStartIndex:
-                                                  frameRange.startIndex,
-                                              frameEndIndexExclusive:
-                                                  frameRange.endIndexExclusive,
-                                              leadingFrameSpacerWidth:
-                                                  plan.leadingFrameSpacerWidth,
-                                              metrics: _metrics,
-                                              layerCount: entries.length,
+                                            // The cursor layer carries the
+                                            // playhead + selection visuals;
+                                            // ticks repaint it alone.
+                                            Positioned.fill(
+                                              child: TimelineCursorLayer(
+                                                axis: Axis.vertical,
+                                                selectedSemanticsKey:
+                                                    const ValueKey<String>(
+                                                      'xsheet-selected-cell',
+                                                    ),
+                                                frameCursor: widget.frameCursor,
+                                                rows: entries,
+                                                activeLayerId:
+                                                    widget.activeLayerId,
+                                                frameStartIndex:
+                                                    frameRange.startIndex,
+                                                frameEndIndexExclusive:
+                                                    frameRange
+                                                        .endIndexExclusive,
+                                                leadingFrameSpacerWidth: plan
+                                                    .leadingFrameSpacerWidth,
+                                                metrics: _metrics,
+                                                exposureStateForLayer: widget
+                                                    .exposureStateForLayer,
+                                                crossAxisExtent:
+                                                    entries.length *
+                                                    _metrics.layerRowHeight,
+                                              ),
                                             ),
                                             TimelineBodyCutEndBoundary(
                                               axis: Axis.vertical,
@@ -1039,7 +1099,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   const _XSheetFrameCellsColumn({
     required this.layer,
     required this.active,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -1066,7 +1125,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the column's left edge.
   final bool sectionStart;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -1101,14 +1159,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
         layer.kind == LayerKind.instruction
         ? instructionCellExposureState(layer, frameIndex)
         : exposureStateForLayer(layer, frameIndex);
-    final selectedExposureDisplayRange = resolveSelectedExposureDisplayRange(
-      active: active,
-      currentFrameIndex: currentFrameIndex,
-      frameStartIndex: frameStartIndex,
-      frameEndIndexExclusive: frameEndIndexExclusive,
-      exposureStateAt: stateAt,
-    );
-    final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
     final commaDrag = this.commaDrag;
     return SizedBox(
       width: metrics.layerRowHeight,
@@ -1133,12 +1183,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   layer: layer,
                   frameIndex: frameIndex,
                   active: active,
-                  selected: active && frameIndex == currentFrameIndex,
                   outsidePlaybackRange: frameIndex >= playbackFrameCount,
                   exposureState: stateAt(frameIndex),
-                  selectedExposureRangeSegment:
-                      frameIndex >= selectedExposureRange.startFrameIndex &&
-                      frameIndex < selectedExposureRange.endFrameIndexExclusive,
                   exposureBlockSegment:
                       calculateTimelineExposureBlockVisualSegment(
                         previous: frameIndex == 0
@@ -1162,9 +1208,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   width: metrics.layerRowHeight,
                   height: metrics.frameCellWidth,
                   cellKeyPrefix: 'xsheet-cell',
-                  selectedSemanticsKey: const ValueKey<String>(
-                    'xsheet-selected-cell',
-                  ),
                 ),
               SizedBox(
                 key: ValueKey<String>(
@@ -1174,17 +1217,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                 width: metrics.layerRowHeight,
               ),
             ],
-          ),
-          TimelineSelectedExposureOutline(
-            axis: Axis.vertical,
-            layerId: layer.id,
-            displayRange: selectedExposureDisplayRange,
-            frameStartIndex: frameStartIndex,
-            leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-            frameCellWidth: metrics.frameCellWidth,
-            rowHeight: metrics.layerRowHeight,
-            borderColor: timelineSelectedFrameBorderColor,
-            borderRadius: const BorderRadius.all(Radius.circular(6)),
           ),
           if (sectionStart)
             Positioned(

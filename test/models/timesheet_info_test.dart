@@ -42,9 +42,7 @@ void main() {
     });
 
     test('visibleFields keeps the printing order minus hidden boxes', () {
-      const info = TimesheetInfo(
-        hiddenFields: {TimesheetHeaderField.episode},
-      );
+      const info = TimesheetInfo(hiddenFields: {TimesheetHeaderField.episode});
 
       expect(info.visibleFields, const [
         TimesheetHeaderField.title,

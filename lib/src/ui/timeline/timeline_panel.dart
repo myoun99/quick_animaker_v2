@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
@@ -21,7 +22,8 @@ class TimelinePanel extends StatefulWidget {
     super.key,
     required this.layers,
     required this.activeLayerId,
-    required this.currentFrameIndex,
+    required this.frameCursor,
+    this.cacheProgress,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -62,7 +64,15 @@ class TimelinePanel extends StatefulWidget {
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
-  final int currentFrameIndex;
+
+  /// The frame cursor (editing playhead / playback position). Only the
+  /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
+  /// its grids (the playback-performance architecture, both orientations).
+  final ValueListenable<int> frameCursor;
+
+  /// Repaints the rulers' cached-range green strip as frames warm.
+  final Listenable? cacheProgress;
+
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -199,19 +209,26 @@ class _TimelinePanelState extends State<TimelinePanel> {
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
             child: Row(
               children: [
-                Text(
-                  widget.showSeconds
-                      ? timelineSecondsLabel(
-                          widget.currentFrameIndex + 1,
-                          widget.projectFps,
-                        )
-                      : '${widget.currentFrameIndex + 1}',
-                  key: const ValueKey<String>('timeline-current-frame-counter'),
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
+                // The counter subscribes to the cursor itself: a tick
+                // rebuilds this one Text, nothing else.
+                ValueListenableBuilder<int>(
+                  valueListenable: widget.frameCursor,
+                  builder: (context, cursorFrame, _) => Text(
+                    widget.showSeconds
+                        ? timelineSecondsLabel(
+                            cursorFrame + 1,
+                            widget.projectFps,
+                          )
+                        : '${cursorFrame + 1}',
+                    key: const ValueKey<String>(
+                      'timeline-current-frame-counter',
+                    ),
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.primary,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -285,7 +302,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 ? LayerTimelineGrid(
                     layers: horizontalLayers,
                     activeLayerId: widget.activeLayerId,
-                    currentFrameIndex: widget.currentFrameIndex,
+                    frameCursor: widget.frameCursor,
+                    cacheProgress: widget.cacheProgress,
                     playbackFrameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
@@ -320,7 +338,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
                     activeLayerId: widget.activeLayerId,
-                    currentFrameIndex: widget.currentFrameIndex,
+                    frameCursor: widget.frameCursor,
+                    cacheProgress: widget.cacheProgress,
                     frameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,

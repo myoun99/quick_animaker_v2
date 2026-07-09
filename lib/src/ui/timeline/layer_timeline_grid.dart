@@ -1,5 +1,6 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -10,6 +11,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
@@ -25,7 +27,6 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
-import 'timeline_playhead.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_section_bracket_rail.dart';
@@ -36,7 +37,8 @@ class LayerTimelineGrid extends StatefulWidget {
     super.key,
     required this.layers,
     required this.activeLayerId,
-    required this.currentFrameIndex,
+    required this.frameCursor,
+    this.cacheProgress,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -71,7 +73,17 @@ class LayerTimelineGrid extends StatefulWidget {
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
-  final int currentFrameIndex;
+
+  /// The frame cursor (editing playhead, or the playback position while
+  /// playing). ONLY the cursor layer, the ruler and the lane labels
+  /// subscribe — a tick never rebuilds the grid or its cells (the
+  /// playback-performance architecture).
+  final ValueListenable<int> frameCursor;
+
+  /// Repaints the ruler's cached-range green strip as frames warm; never
+  /// rebuilds anything else.
+  final Listenable? cacheProgress;
+
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -189,7 +201,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           newPixelsPerFrame: newCell,
           viewportExtent:
               _horizontalScrollController.position.viewportDimension,
-          anchorFrame: widget.currentFrameIndex,
+          anchorFrame: widget.frameCursor.value,
         ),
       );
     }
@@ -471,25 +483,39 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   width: plan
                                                       .totalFrameContentWidth,
                                                   height: headerHeight,
-                                                  child: TimelineFrameRuler(
-                                                    frameStartIndex:
-                                                        frameRange.startIndex,
-                                                    frameEndIndexExclusive:
-                                                        frameRange
-                                                            .endIndexExclusive,
-                                                    currentFrameIndex: widget
-                                                        .currentFrameIndex,
-                                                    playbackFrameCount: widget
-                                                        .playbackFrameCount,
-                                                    leadingFrameSpacerWidth: plan
-                                                        .leadingFrameSpacerWidth,
-                                                    trailingFrameSpacerWidth: plan
-                                                        .trailingFrameSpacerWidth,
-                                                    metrics: _metrics,
-                                                    onSelectFrame:
-                                                        _selectClampedFrameFromRuler,
-                                                    isFrameCached:
-                                                        widget.isFrameCached,
+                                                  // The ruler subscribes to
+                                                  // the cursor + cache
+                                                  // progress ITSELF: ticks
+                                                  // and warming frames
+                                                  // repaint this subtree
+                                                  // only.
+                                                  child: ListenableBuilder(
+                                                    listenable:
+                                                        Listenable.merge([
+                                                          widget.frameCursor,
+                                                          ?widget.cacheProgress,
+                                                        ]),
+                                                    builder: (context, _) => TimelineFrameRuler(
+                                                      frameStartIndex:
+                                                          frameRange.startIndex,
+                                                      frameEndIndexExclusive:
+                                                          frameRange
+                                                              .endIndexExclusive,
+                                                      currentFrameIndex: widget
+                                                          .frameCursor
+                                                          .value,
+                                                      playbackFrameCount: widget
+                                                          .playbackFrameCount,
+                                                      leadingFrameSpacerWidth: plan
+                                                          .leadingFrameSpacerWidth,
+                                                      trailingFrameSpacerWidth:
+                                                          plan.trailingFrameSpacerWidth,
+                                                      metrics: _metrics,
+                                                      onSelectFrame:
+                                                          _selectClampedFrameFromRuler,
+                                                      isFrameCached:
+                                                          widget.isFrameCached,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -546,18 +572,39 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   rowIndex += 1
                                                 )
                                                   rows[rowIndex].isLane
-                                                      ? TimelineLaneControlsRow(
-                                                          layer: rows[rowIndex]
-                                                              .layer,
-                                                          lane: rows[rowIndex]
-                                                              .lane!,
-                                                          metrics: _metrics,
-                                                          currentFrameIndex: widget
-                                                              .currentFrameIndex,
-                                                          onSelectFrame: widget
-                                                              .onSelectFrame,
-                                                          laneEdit:
-                                                              widget.laneEdit,
+                                                      // Lane labels show the
+                                                      // value AT the cursor:
+                                                      // subscribe here so a
+                                                      // tick rebuilds only
+                                                      // these small cells.
+                                                      ? ValueListenableBuilder<
+                                                          int
+                                                        >(
+                                                          valueListenable:
+                                                              widget
+                                                                  .frameCursor,
+                                                          builder:
+                                                              (
+                                                                context,
+                                                                cursorFrame,
+                                                                _,
+                                                              ) => TimelineLaneControlsRow(
+                                                                layer:
+                                                                    rows[rowIndex]
+                                                                        .layer,
+                                                                lane:
+                                                                    rows[rowIndex]
+                                                                        .lane!,
+                                                                metrics:
+                                                                    _metrics,
+                                                                currentFrameIndex:
+                                                                    cursorFrame,
+                                                                onSelectFrame:
+                                                                    widget
+                                                                        .onSelectFrame,
+                                                                laneEdit: widget
+                                                                    .laneEdit,
+                                                              ),
                                                         )
                                                       : TimelineLayerControlsRow(
                                                           layer: rows[rowIndex]
@@ -699,8 +746,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   rows: rows,
                                                   activeLayerId:
                                                       widget.activeLayerId,
-                                                  currentFrameIndex:
-                                                      widget.currentFrameIndex,
                                                   playbackFrameCount:
                                                       widget.playbackFrameCount,
                                                   frameStartIndex:
@@ -749,17 +794,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           .playbackFrameCount,
                                                       metrics: _metrics,
                                                     ),
-                                                showPlayhead:
-                                                    widget.currentFrameIndex >=
-                                                        frameRange.startIndex &&
-                                                    widget.currentFrameIndex <
-                                                        frameRange
-                                                            .endIndexExclusive,
+                                                // The cursor layer decides
+                                                // per frame what to show —
+                                                // the slot itself is static
+                                                // so ticks rebuild nothing
+                                                // here.
+                                                showPlayhead: true,
                                                 playheadWidth:
                                                     plan.totalFrameContentWidth,
-                                                playhead: TimelinePlayhead(
-                                                  currentFrameIndex:
-                                                      widget.currentFrameIndex,
+                                                playhead: TimelineCursorLayer(
+                                                  frameCursor:
+                                                      widget.frameCursor,
+                                                  rows: rows,
+                                                  activeLayerId:
+                                                      widget.activeLayerId,
                                                   frameStartIndex:
                                                       frameRange.startIndex,
                                                   frameEndIndexExclusive:
@@ -768,7 +816,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   leadingFrameSpacerWidth: plan
                                                       .leadingFrameSpacerWidth,
                                                   metrics: _metrics,
-                                                  layerCount: rows.length,
+                                                  exposureStateForLayer: widget
+                                                      .exposureStateForLayer,
                                                   crossAxisExtent:
                                                       verticalContentHeight,
                                                 ),

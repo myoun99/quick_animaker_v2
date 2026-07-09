@@ -309,13 +309,28 @@ void _expectCurrentFrame(WidgetTester tester, int frameNumber) {
 }
 
 String? _selectedCellStateLabel(WidgetTester tester) {
-  final texts = tester.widgetList<Text>(
-    find.descendant(
-      of: find.byKey(const ValueKey<String>('timeline-selected-cell')),
-      matching: find.byType(Text),
-    ),
+  // The selection ring lives on the grid cursor layer, positioned exactly
+  // over the selected cell — find the cell sharing its top-left and read
+  // that cell's marker semantics.
+  final ringTopLeft = tester.getTopLeft(
+    find.byKey(const ValueKey<String>('timeline-selected-cell')),
   );
-  return texts.isEmpty ? null : texts.first.semanticsLabel;
+  final cells = find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key as ValueKey<String>).value.startsWith('timeline-cell-'),
+  );
+  for (final element in cells.evaluate()) {
+    final cellFinder = find.byKey(element.widget.key!);
+    if (tester.getTopLeft(cellFinder) != ringTopLeft) {
+      continue;
+    }
+    final texts = tester.widgetList<Text>(
+      find.descendant(of: cellFinder, matching: find.byType(Text)),
+    );
+    return texts.isEmpty ? null : texts.first.semanticsLabel;
+  }
+  return null;
 }
 
 Future<void> _showStoryboardPanel(WidgetTester tester) async {

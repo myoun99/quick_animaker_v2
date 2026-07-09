@@ -12,8 +12,7 @@ void main() {
     final candidates = ffmpegExecutableCandidates(
       environment: const {'LOCALAPPDATA': localAppData},
       operatingSystem: 'windows',
-      fileExists: (path) =>
-          path == links || path == '$build\\bin\\ffmpeg.exe',
+      fileExists: (path) => path == links || path == '$build\\bin\\ffmpeg.exe',
       listDirectory: (directory) => switch (directory) {
         packages => const [gyan, '$packages\\SomeOther.Tool'],
         gyan => const [build],
@@ -21,11 +20,7 @@ void main() {
       },
     );
 
-    expect(candidates, [
-      'ffmpeg',
-      links,
-      '$build\\bin\\ffmpeg.exe',
-    ]);
+    expect(candidates, ['ffmpeg', links, '$build\\bin\\ffmpeg.exe']);
   });
 
   test('windows without any install still offers the PATH name', () {
