@@ -40,6 +40,7 @@ import 'relink_media_asset_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_cut_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
@@ -252,6 +253,28 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         camera: camera,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces the cut's CUT-level transform track in one undo step (the
+  /// V-track's track transforms; cut fades key the opacity lane).
+  void updateCutTransform({
+    required CutId cutId,
+    required TransformTrack transformTrack,
+    String description = 'Edit cut transform',
+  }) {
+    final cut = _requireCut(cutId);
+    if (cut.transformTrack == transformTrack) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutTransformCommand(
+        repository: repository,
+        cutId: cutId,
+        transformTrack: transformTrack,
         description: description,
       ),
     );

@@ -33,6 +33,8 @@ class TimelinePanel extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -87,6 +89,19 @@ class TimelinePanel extends StatefulWidget {
   /// orientations.
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Commits an audio-lane fade-handle drag, both orientations.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog, both orientations.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -272,6 +287,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    onSetAudioClipFades: widget.onSetAudioClipFades,
+                    onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -302,6 +319,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    onSetAudioClipFades: widget.onSetAudioClipFades,
+                    onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,

@@ -154,6 +154,9 @@ List<Widget> timelineRowAudioOverlays({
           axis: axis,
           color: color,
           leadingFrames: span.clip.offsetFrames,
+          gain: span.clip.gain,
+          fadeInFrames: span.clip.fadeInFrames,
+          fadeOutFrames: span.clip.fadeOutFrames,
           onRemove: onRemoveClip == null
               ? null
               : () => onRemoveClip(span.clipIndex),
@@ -303,6 +306,9 @@ class _AudioClipStrip extends StatelessWidget {
     required this.axis,
     required this.color,
     this.leadingFrames = 0,
+    this.gain = 1.0,
+    this.fadeInFrames = 0,
+    this.fadeOutFrames = 0,
     this.onRemove,
   });
 
@@ -312,6 +318,9 @@ class _AudioClipStrip extends StatelessWidget {
   final Axis axis;
   final Color color;
   final int leadingFrames;
+  final double gain;
+  final int fadeInFrames;
+  final int fadeOutFrames;
   final VoidCallback? onRemove;
 
   Future<void> _showRemoveMenu(BuildContext context, Offset position) async {
@@ -345,6 +354,9 @@ class _AudioClipStrip extends StatelessWidget {
         color: color,
         axis: axis,
         leadingFrames: leadingFrames,
+        gain: gain,
+        fadeInFrames: fadeInFrames,
+        fadeOutFrames: fadeOutFrames,
       ),
     );
     if (onRemove == null) {
