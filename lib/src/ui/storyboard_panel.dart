@@ -911,9 +911,13 @@ class _StoryboardSeRow extends StatelessWidget {
           if (peaks == null) {
             continue;
           }
+          // The offset trim shrinks the audible tail (same as the timeline
+          // rows and playback).
           final endExclusive = math.min(
             math.min(
-              span.startFrame + peaks.durationFrames(projectFps),
+              span.startFrame +
+                  peaks.durationFrames(projectFps) -
+                  span.clip.offsetFrames,
               span.endFrameExclusive,
             ),
             entry.duration,
@@ -943,6 +947,7 @@ class _StoryboardSeRow extends StatelessWidget {
                     pixelsPerFrame: timelineScale.pixelsPerFrame,
                     // Ink on the paper spans, like the timeline SE rows.
                     color: timelineDrawingInkColor.withValues(alpha: 0.22),
+                    leadingFrames: span.clip.offsetFrames,
                   ),
                 ),
               ),

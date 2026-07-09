@@ -352,9 +352,7 @@ void main() {
       id: LayerId(id),
       name: 'S1',
       kind: LayerKind.se,
-      frames: [
-        Frame(id: FrameId('$id-frame'), duration: 1, strokes: const []),
-      ],
+      frames: [Frame(id: FrameId('$id-frame'), duration: 1, strokes: const [])],
       timeline: {
         start: TimelineExposure.drawing(FrameId('$id-frame'), length: length),
       },
@@ -435,6 +433,63 @@ void main() {
           durationSeconds: 0.2,
         ),
         // b.wav (frame 6) starts after the exported range ends → silent.
+      ]);
+    });
+
+    test('a clip offset trim adds to the source seek on top of range '
+        'clipping', () {
+      final trimmedCut = cut(
+        'a',
+        duration: 10,
+        layers: [
+          seLayer('se-a1', file: 'a.wav', start: 2, length: 8).copyWith(
+            audioClips: const [
+              AudioClip(
+                filePath: 'a.wav',
+                frameId: FrameId('se-a1-frame'),
+                offsetFrames: 5,
+              ),
+            ],
+          ),
+        ],
+      );
+      final fullPlan = buildExportFramePlan(
+        project: project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [trimmedCut]),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+      );
+
+      expect(buildExportAudioPlan(plan: fullPlan, fps: 10), const [
+        // The block starts at frame 2 with a 5-frame trim: the source is
+        // seeked 0.5 s in, the video delay stays the block's position.
+        ExportAudioClip(
+          filePath: 'a.wav',
+          seekSeconds: 0.5,
+          delaySeconds: 0.2,
+          durationSeconds: 0.8,
+        ),
+      ]);
+
+      // Range clipping compounds with the trim.
+      final rangedPlan = buildExportFramePlan(
+        project: project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [trimmedCut]),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.frameRange,
+        rangeStartFrame: 4,
+        rangeEndFrame: 7,
+      );
+
+      expect(buildExportAudioPlan(plan: rangedPlan, fps: 10), const [
+        // 2 frames of the block precede the range (0.2 s) + the 0.5 s trim.
+        ExportAudioClip(
+          filePath: 'a.wav',
+          seekSeconds: 0.7,
+          durationSeconds: 0.4,
+        ),
       ]);
     });
   });

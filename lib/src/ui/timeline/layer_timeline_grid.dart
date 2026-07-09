@@ -48,6 +48,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.projectFps = 24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.onSetAudioClipOffset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -89,6 +90,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Links a media-browser asset to an SE block (drag-drop).
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Commits an audio-lane slide (the clip's offset trim).
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -691,6 +696,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onRemoveAudioClip,
                                                   onDropMediaAsset:
                                                       widget.onDropMediaAsset,
+                                                  onSetAudioClipOffset: widget
+                                                      .onSetAudioClipOffset,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

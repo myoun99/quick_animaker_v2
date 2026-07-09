@@ -214,7 +214,11 @@ List<ExportAudioClip> buildExportAudioPlan({
         clips.add(
           ExportAudioClip(
             filePath: span.clip.filePath,
-            seekSeconds: (audibleStart - offsetFrames) / safeFps,
+            // The clip's offset trim seeks past the skipped file head on
+            // top of any range clipping.
+            seekSeconds:
+                (audibleStart - offsetFrames + span.clip.offsetFrames) /
+                safeFps,
             delaySeconds: audibleStart / safeFps,
             durationSeconds: (audibleEnd - audibleStart) / safeFps,
           ),

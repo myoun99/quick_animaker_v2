@@ -239,4 +239,80 @@ void main() {
     expect(log, ['stop a.wav', 'stop b.wav', 'start a.wav @0ms']);
     expect(log.where((line) => line.startsWith('prepare')), isEmpty);
   });
+
+  test('an offset trim seeks into the file and shortens the audible '
+      'window', () {
+    // One 10-frame cut: a 1.0 s file (10 frames at fps 10) trimmed by 4 —
+    // playback starts 0.4 s into the file and only 6 frames remain audible.
+    final trimmedLog = <String>[];
+    final project = Project(
+      id: const ProjectId('trim-project'),
+      name: 'Trim',
+      createdAt: DateTime.utc(2026, 7, 9),
+      tracks: [
+        Track(
+          id: const TrackId('trim-track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('trim-cut'),
+              name: 'T',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [
+                _seLayer(
+                  'se-trim',
+                  file: 'a.wav',
+                  start: 0,
+                  length: 10,
+                ).copyWith(
+                  audioClips: const [
+                    AudioClip(
+                      filePath: 'a.wav',
+                      frameId: FrameId('se-trim-frame'),
+                      offsetFrames: 4,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final trimmedController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('trim-cut'),
+      resolveActiveTrackId: () => const TrackId('trim-track'),
+      resolveFps: () => 10,
+    );
+    final sync = AudioPlaybackSync(
+      controller: trimmedController,
+      resolveFps: () => 10,
+      durationSecondsFor: (path) => _durations[path],
+      playerFactory: () => _FakeClipPlayer(trimmedLog),
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(trimmedController.dispose);
+
+    trimmedController.play(scope: PlaybackScope.activeCut);
+    expect(trimmedLog, ['prepare a.wav', 'start a.wav @400ms']);
+
+    // The remaining file is 6 frames (10 - 4): a resync PAST the shortened
+    // end stops the clip and starts nothing.
+    trimmedLog.clear();
+    trimmedController.seekToGlobalFrame(8); // > fps/2 → resync
+    expect(trimmedLog, ['stop a.wav']);
+
+    // A resync inside the window compounds elapsed time with the trim.
+    trimmedLog.clear();
+    trimmedController.seekToGlobalFrame(2);
+    expect(trimmedLog, ['start a.wav @600ms']);
+
+    // Ticking across the shortened end (frame 6) stops the clip.
+    trimmedLog.clear();
+    trimmedController.seekToGlobalFrame(5); // dropped-frames step: silent
+    trimmedController.seekToGlobalFrame(6); // shortened end crossed
+    expect(trimmedLog, ['stop a.wav']);
+  });
 }

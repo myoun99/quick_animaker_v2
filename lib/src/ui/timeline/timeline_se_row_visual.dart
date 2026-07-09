@@ -121,9 +121,11 @@ List<Widget> timelineRowAudioOverlays({
     if (peaks == null) {
       continue;
     }
+    // The offset trim skips into the file, so the audible tail shrinks by
+    // the same amount (a fully skipped-past file falls silent).
     final audibleFrames = math.min(
       span.lengthFrames,
-      peaks.durationFrames(fps),
+      peaks.durationFrames(fps) - span.clip.offsetFrames,
     );
     if (audibleFrames <= 0) {
       continue;
@@ -151,6 +153,7 @@ List<Widget> timelineRowAudioOverlays({
           pixelsPerFrame: frameCellExtent,
           axis: axis,
           color: color,
+          leadingFrames: span.clip.offsetFrames,
           onRemove: onRemoveClip == null
               ? null
               : () => onRemoveClip(span.clipIndex),
@@ -299,6 +302,7 @@ class _AudioClipStrip extends StatelessWidget {
     required this.pixelsPerFrame,
     required this.axis,
     required this.color,
+    this.leadingFrames = 0,
     this.onRemove,
   });
 
@@ -307,6 +311,7 @@ class _AudioClipStrip extends StatelessWidget {
   final double pixelsPerFrame;
   final Axis axis;
   final Color color;
+  final int leadingFrames;
   final VoidCallback? onRemove;
 
   Future<void> _showRemoveMenu(BuildContext context, Offset position) async {
@@ -339,6 +344,7 @@ class _AudioClipStrip extends StatelessWidget {
         pixelsPerFrame: pixelsPerFrame,
         color: color,
         axis: axis,
+        leadingFrames: leadingFrames,
       ),
     );
     if (onRemove == null) {

@@ -22,6 +22,7 @@ import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
+import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
@@ -63,6 +64,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.projectFps = 24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.onSetAudioClipOffset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -107,6 +109,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Links a media-browser asset to an SE block (drag-drop).
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Commits an audio-lane slide (the clip's offset trim).
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -619,27 +625,76 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   index += 1
                                                 )
                                                   entries[index].isLane
-                                                      ? TimelineLaneFrameRow(
-                                                          axis: Axis.vertical,
-                                                          keyPrefix: 'xsheet',
-                                                          layer: entries[index]
-                                                              .layer,
-                                                          lane: entries[index]
-                                                              .lane!,
-                                                          frameStartIndex:
-                                                              frameRange
-                                                                  .startIndex,
-                                                          frameEndIndexExclusive:
-                                                              frameRange
-                                                                  .endIndexExclusive,
-                                                          leadingFrameSpacerWidth:
-                                                              plan.leadingFrameSpacerWidth,
-                                                          trailingFrameSpacerWidth:
-                                                              plan.trailingFrameSpacerWidth,
-                                                          metrics: _metrics,
-                                                          laneEdit:
-                                                              widget.laneEdit,
-                                                        )
+                                                      ? (laneIsSeAudio(
+                                                              entries[index]
+                                                                  .lane!,
+                                                            )
+                                                            ? SeAudioLaneFrameRow(
+                                                                axis: Axis
+                                                                    .vertical,
+                                                                keyPrefix:
+                                                                    'xsheet',
+                                                                layer:
+                                                                    entries[index]
+                                                                        .layer,
+                                                                frameStartIndex:
+                                                                    frameRange
+                                                                        .startIndex,
+                                                                frameEndIndexExclusive:
+                                                                    frameRange
+                                                                        .endIndexExclusive,
+                                                                leadingFrameSpacerWidth:
+                                                                    plan.leadingFrameSpacerWidth,
+                                                                trailingFrameSpacerWidth:
+                                                                    plan.trailingFrameSpacerWidth,
+                                                                metrics:
+                                                                    _metrics,
+                                                                fps: widget
+                                                                    .projectFps,
+                                                                audioPeaksFor:
+                                                                    widget
+                                                                        .audioPeaksFor,
+                                                                onSetClipOffset:
+                                                                    widget.onSetAudioClipOffset ==
+                                                                        null
+                                                                    ? null
+                                                                    : (
+                                                                        clipIndex,
+                                                                        offsetFrames,
+                                                                      ) => widget.onSetAudioClipOffset!(
+                                                                        entries[index]
+                                                                            .layer
+                                                                            .id,
+                                                                        clipIndex,
+                                                                        offsetFrames,
+                                                                      ),
+                                                              )
+                                                            : TimelineLaneFrameRow(
+                                                                axis: Axis
+                                                                    .vertical,
+                                                                keyPrefix:
+                                                                    'xsheet',
+                                                                layer:
+                                                                    entries[index]
+                                                                        .layer,
+                                                                lane:
+                                                                    entries[index]
+                                                                        .lane!,
+                                                                frameStartIndex:
+                                                                    frameRange
+                                                                        .startIndex,
+                                                                frameEndIndexExclusive:
+                                                                    frameRange
+                                                                        .endIndexExclusive,
+                                                                leadingFrameSpacerWidth:
+                                                                    plan.leadingFrameSpacerWidth,
+                                                                trailingFrameSpacerWidth:
+                                                                    plan.trailingFrameSpacerWidth,
+                                                                metrics:
+                                                                    _metrics,
+                                                                laneEdit: widget
+                                                                    .laneEdit,
+                                                              ))
                                                       : _XSheetFrameCellsColumn(
                                                           onActivateCell: widget
                                                               .onActivateCell,

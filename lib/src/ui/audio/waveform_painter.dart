@@ -14,6 +14,7 @@ class WaveformPainter extends CustomPainter {
     required this.pixelsPerFrame,
     required this.color,
     this.axis = Axis.horizontal,
+    this.leadingFrames = 0,
   });
 
   final AudioPeaks peaks;
@@ -21,6 +22,11 @@ class WaveformPainter extends CustomPainter {
   final double pixelsPerFrame;
   final Color color;
   final Axis axis;
+
+  /// Frames skipped into the FILE before main-axis 0 — the clip's
+  /// offsetFrames trim: the envelope starts mid-file, so the painted band
+  /// stays aligned with what actually plays.
+  final int leadingFrames;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -35,6 +41,10 @@ class WaveformPainter extends CustomPainter {
     if (pixelsPerBucket <= 0) {
       return;
     }
+    final leadingPixels = leadingFrames * pixelsPerFrame;
+    final startBucket = leadingPixels <= 0
+        ? 0
+        : (leadingPixels / pixelsPerBucket).floor();
 
     Offset at(double main, double cross) =>
         axis == Axis.horizontal ? Offset(main, cross) : Offset(cross, main);
@@ -42,8 +52,11 @@ class WaveformPainter extends CustomPainter {
     final path = Path();
     final top = <Offset>[];
     final bottom = <Offset>[];
-    for (var bucket = 0; bucket < peaks.peaks.length; bucket += 1) {
-      final main = bucket * pixelsPerBucket;
+    for (var bucket = startBucket; bucket < peaks.peaks.length; bucket += 1) {
+      final main = bucket * pixelsPerBucket - leadingPixels;
+      if (main < 0) {
+        continue;
+      }
       if (main > mainExtent) {
         break;
       }
@@ -72,6 +85,7 @@ class WaveformPainter extends CustomPainter {
         oldDelegate.fps != fps ||
         oldDelegate.pixelsPerFrame != pixelsPerFrame ||
         oldDelegate.color != color ||
-        oldDelegate.axis != axis;
+        oldDelegate.axis != axis ||
+        oldDelegate.leadingFrames != leadingFrames;
   }
 }

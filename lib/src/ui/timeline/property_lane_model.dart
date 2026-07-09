@@ -15,6 +15,7 @@ class PropertyLaneRow {
     this.holdOutFrames = const {},
     this.valueLabel,
     this.scrubValue,
+    this.showsKeyNavigator = true,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -39,6 +40,10 @@ class PropertyLaneRow {
   /// Generic like [valueLabel] — each lane provider decides which drag axis
   /// drives which component. Null (or a null return) disables scrubbing.
   final String? Function(String currentLabel, Offset dragDelta)? scrubValue;
+
+  /// Whether the label cell shows the keyframe navigator (◀ ◆ ▶). Lanes
+  /// without key semantics (the SE audio lane) hide it.
+  final bool showsKeyNavigator;
 }
 
 /// One display row of the timeline grids: a layer row or one of its

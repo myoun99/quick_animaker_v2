@@ -193,8 +193,11 @@ class AudioPlaybackSync {
     unawaited(
       _players[index].startAt(
         Duration(
+          // The clip's offset trim seeks past the skipped head of the file.
           microseconds:
-              (frame - clip.startFrame) * Duration.microsecondsPerSecond ~/ fps,
+              (frame - clip.startFrame + clip.offsetFrames) *
+              Duration.microsecondsPerSecond ~/
+              fps,
         ),
       ),
     );
@@ -239,7 +242,8 @@ class AudioPlaybackSync {
           }
           final startFrame = entry.startFrame + span.startFrame;
           // The BLOCK is the instance: playback never runs past its end
-          // (nor past the cut end, nor past the file's own length).
+          // (nor past the cut end, nor past the file's own length — the
+          // offset trim shortens the remaining file accordingly).
           var endFrameExclusive = math.min(
             entry.endFrame,
             startFrame + span.lengthFrames,
@@ -248,7 +252,7 @@ class AudioPlaybackSync {
           if (seconds != null) {
             endFrameExclusive = math.min(
               endFrameExclusive,
-              startFrame + (seconds * fps).ceil(),
+              startFrame + (seconds * fps).ceil() - span.clip.offsetFrames,
             );
           }
           if (endFrameExclusive <= startFrame) {
@@ -259,6 +263,7 @@ class AudioPlaybackSync {
               filePath: span.clip.filePath,
               startFrame: startFrame,
               endFrameExclusive: endFrameExclusive,
+              offsetFrames: span.clip.offsetFrames,
             ),
           );
         }
@@ -275,9 +280,13 @@ class _ScheduledClip {
     required this.filePath,
     required this.startFrame,
     required this.endFrameExclusive,
+    this.offsetFrames = 0,
   });
 
   final String filePath;
   final int startFrame;
   final int endFrameExclusive;
+
+  /// Frames skipped into the file where the block starts (the clip's trim).
+  final int offsetFrames;
 }

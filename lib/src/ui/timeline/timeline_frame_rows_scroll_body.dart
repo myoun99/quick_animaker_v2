@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
+import 'se_audio_lane.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cells_row.dart';
@@ -36,6 +37,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.projectFps = 24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.onSetAudioClipOffset,
     this.commaDrag,
     this.laneEdit,
   });
@@ -67,6 +69,12 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Commits an audio-lane slide (the clip's offset trim); null makes the
+  /// audio lane display-only.
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
+
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -79,16 +87,35 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
         children: [
           for (final row in rows)
             row.isLane
-                ? TimelineLaneFrameRow(
-                    layer: row.layer,
-                    lane: row.lane!,
-                    frameStartIndex: frameStartIndex,
-                    frameEndIndexExclusive: frameEndIndexExclusive,
-                    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-                    trailingFrameSpacerWidth: trailingFrameSpacerWidth,
-                    metrics: metrics,
-                    laneEdit: laneEdit,
-                  )
+                ? (laneIsSeAudio(row.lane!)
+                      ? SeAudioLaneFrameRow(
+                          layer: row.layer,
+                          frameStartIndex: frameStartIndex,
+                          frameEndIndexExclusive: frameEndIndexExclusive,
+                          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                          trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+                          metrics: metrics,
+                          fps: projectFps,
+                          audioPeaksFor: audioPeaksFor,
+                          onSetClipOffset: onSetAudioClipOffset == null
+                              ? null
+                              : (clipIndex, offsetFrames) =>
+                                    onSetAudioClipOffset!(
+                                      row.layer.id,
+                                      clipIndex,
+                                      offsetFrames,
+                                    ),
+                        )
+                      : TimelineLaneFrameRow(
+                          layer: row.layer,
+                          lane: row.lane!,
+                          frameStartIndex: frameStartIndex,
+                          frameEndIndexExclusive: frameEndIndexExclusive,
+                          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                          trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+                          metrics: metrics,
+                          laneEdit: laneEdit,
+                        ))
                 : TimelineFrameCellsRow(
                     layer: row.layer,
                     active: row.layer.id == activeLayerId,

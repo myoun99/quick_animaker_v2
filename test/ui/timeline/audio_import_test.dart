@@ -406,6 +406,15 @@ void main() {
     expect(seLayer().audioClips.single.frameId, const FrameId('drop-f1'));
     // The drop registered the sound in the pool too.
     expect(session.mediaAssets.single.path, foot);
+
+    // The audio lane's slide edit: one undo step, clamped non-negative.
+    session.setAudioClipOffset(_seLayerId, 0, 6);
+    expect(seLayer().audioClips.single.offsetFrames, 6);
+    session.setAudioClipOffset(_seLayerId, 0, -4); // clamps back to 0
+    expect(seLayer().audioClips.single.offsetFrames, 0);
+    session.undo();
+    expect(seLayer().audioClips.single.offsetFrames, 6);
+    await tester.pumpAndSettle();
   });
 }
 

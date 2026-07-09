@@ -1257,6 +1257,32 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sets the [clipIndex]th clip's offset trim (frames skipped into the
+  /// file where its block starts) — the audio lane's slide edit; one undo
+  /// step, clamped non-negative, no-op when unchanged.
+  void setAudioClipOffset(LayerId layerId, int clipIndex, int offsetFrames) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clamped = offsetFrames < 0 ? 0 : offsetFrames;
+    if (layer.audioClips[clipIndex].offsetFrames == clamped) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
   /// The project's media pool, in pool order (the browser panel's list).
   List<MediaAsset> get mediaAssets => _repository.requireProject().mediaAssets;
 
