@@ -35,6 +35,11 @@ class TimesheetDocumentLayout {
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
 
+  /// The CAM group's FIXED total width — the B4 paper must never widen
+  /// when a cut carries more instruction rows (user rule): extra CAM
+  /// columns split this allotment into narrower cells instead.
+  static const double cameraGroupWidth = cameraColumnWidth * 2;
+
   /// Bare frame numbers print in this space LEFT of each half — no boxed
   /// rail inside the columns (removed by user direction).
   static const double frameNumberGutterWidth = 24;
@@ -54,7 +59,23 @@ class TimesheetDocumentLayout {
   static const double pageGap = 32;
   static const double documentMargin = 24;
 
-  static double columnWidthFor(TimesheetColumnKind kind) {
+  int get _cameraColumnCount {
+    var count = 0;
+    for (final column in document.columns) {
+      if (column.kind == TimesheetColumnKind.camera) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  /// Per-column width. Instance-level because CAM cells share the fixed
+  /// [cameraGroupWidth]: past the base two slots each CAM column narrows so
+  /// the paper width stays put.
+  double columnWidthFor(TimesheetColumnKind kind) {
+    if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
+      return cameraGroupWidth / _cameraColumnCount;
+    }
     return switch (kind) {
       TimesheetColumnKind.action => actionColumnWidth,
       TimesheetColumnKind.se => seColumnWidth,
@@ -536,7 +557,7 @@ class TimesheetDocumentPainter extends CustomPainter {
           continue;
         }
         final columnLeft = left + layout.columnLeftInHalf(column);
-        final columnWidth = TimesheetDocumentLayout.columnWidthFor(
+        final columnWidth = layout.columnWidthFor(
           document.columns[column].kind,
         );
         _text(
@@ -641,10 +662,9 @@ class TimesheetDocumentPainter extends CustomPainter {
     // Cells (ACTION columns carry the animation layers' exposures).
     for (var column = 0; column < document.columns.length; column += 1) {
       final spec = document.columns[column];
-      final centerX =
-          left +
-          layout.columnLeftInHalf(column) +
-          TimesheetDocumentLayout.columnWidthFor(spec.kind) / 2;
+      final columnLeft = left + layout.columnLeftInHalf(column);
+      final columnWidth = layout.columnWidthFor(spec.kind);
+      final centerX = columnLeft + columnWidth / 2;
       for (var row = 0; row < rowCount; row += 1) {
         final frame = startFrame + row;
         if (frame >= spec.cells.length) {
@@ -657,11 +677,9 @@ class TimesheetDocumentPainter extends CustomPainter {
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
-        // SE dialogue runs vertically beside its duration line; instruction
-        // writing runs beside the mark line (paper notation).
+        // SE dialogue runs vertically beside its duration line.
         final seColumn = spec.kind == TimesheetColumnKind.se;
         final holdLineX = seColumn ? centerX + 5 : centerX;
-        final shaftX = centerX + 8;
         switch (cell.kind) {
           case TimesheetCellKind.drawing:
             if (drawTexts) {
@@ -670,15 +688,54 @@ class TimesheetDocumentPainter extends CustomPainter {
                   1,
                   rowCount - row,
                 );
+                final seName = cell.seName ?? '';
+                var dialogueTop = cellTop + 2;
+                var dialogueRows = rowsHere;
+                if (seName.isNotEmpty) {
+                  // Method A (Toei look): the whole start row is the name
+                  // cell — horizontal writing on an accent box closed by an
+                  // underline; the dialogue distributes from the NEXT row.
+                  canvas.drawRect(
+                    Rect.fromLTWH(
+                      columnLeft,
+                      cellTop,
+                      columnWidth,
+                      TimesheetDocumentLayout.rowHeight,
+                    ),
+                    Paint()..color = AppColors.accent.withValues(alpha: 0.3),
+                  );
+                  canvas.drawLine(
+                    Offset(columnLeft, cellBottom),
+                    Offset(columnLeft + columnWidth, cellBottom),
+                    Paint()
+                      ..color = AppColors.accent
+                      ..strokeWidth = 1.4,
+                  );
+                  _text(
+                    canvas,
+                    seName,
+                    Offset(centerX, cellTop + 4),
+                    fontSize: 8,
+                    bold: true,
+                    color: _ink,
+                    centeredAtX: true,
+                    maxWidth: columnWidth - 2,
+                  );
+                  dialogueTop = cellBottom + 2;
+                  dialogueRows = rowsHere - 1;
+                }
                 // SE dialogue FITS its block: glyphs distribute evenly over
                 // the covered rows (same centers as the timeline overlay).
-                _fitVerticalText(
-                  canvas,
-                  cell.label ?? '',
-                  topCenter: Offset(centerX - 3, cellTop + 2),
-                  fontSize: 9,
-                  extent: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
-                );
+                if (dialogueRows > 0 && (cell.label ?? '').isNotEmpty) {
+                  _fitVerticalText(
+                    canvas,
+                    cell.label!,
+                    topCenter: Offset(centerX - 3, dialogueTop),
+                    fontSize: 9,
+                    extent:
+                        dialogueRows * TimesheetDocumentLayout.rowHeight - 4,
+                  );
+                }
               } else {
                 _text(
                   canvas,
@@ -728,111 +785,121 @@ class TimesheetDocumentPainter extends CustomPainter {
               Paint()..color = _ink,
             );
           case TimesheetCellKind.instructionStart:
-            final singleRow = (cell.spanLength ?? 1) <= 1;
-            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
-                CameraInstructionMarkType.bar) {
-              final shaft = Paint()
-                ..color = _ink
-                ..strokeWidth = 1.4;
-              // The completely straight duration line leaves from the row
-              // middle under its start tick (A ⊢ … — no arrowheads);
-              // single-frame instructions close right here.
-              canvas.drawLine(
-                Offset(shaftX, cellCenterY),
-                Offset(shaftX, cellBottom),
-                shaft,
-              );
-              _paintLineTick(canvas, Offset(shaftX, cellCenterY), shaft);
-              if (singleRow) {
-                _paintLineTick(canvas, Offset(shaftX, cellBottom - 1), shaft);
-              }
-            } else {
-              _paintInstructionMarkSlice(
-                canvas,
-                cell: cell,
-                shaftX: shaftX,
-                cellTop: cellTop,
-              );
-            }
-            if (drawTexts) {
-              final rowsHere = (cell.spanLength ?? 1).clamp(1, rowCount - row);
-              _verticalText(
-                canvas,
-                cell.label ?? '',
-                topCenter: Offset(centerX - 6, cellTop + 2),
-                fontSize: 9,
-                maxHeight: rowsHere * TimesheetDocumentLayout.rowHeight - 4,
-              );
-              if (cell.valueA != null && cell.valueA!.isNotEmpty) {
-                _text(
-                  canvas,
-                  cell.valueA!,
-                  Offset(shaftX + 2, cellTop + 1),
-                  fontSize: 7,
-                  color: _ink,
-                );
-              }
-              if (singleRow && cell.valueB != null && cell.valueB!.isNotEmpty) {
-                _text(
-                  canvas,
-                  cell.valueB!,
-                  Offset(shaftX + 2, cellBottom - 9),
-                  fontSize: 7,
-                  color: _ink,
-                );
-              }
-            }
           case TimesheetCellKind.instructionSpan:
-            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
-                CameraInstructionMarkType.bar) {
-              canvas.drawLine(
-                Offset(shaftX, cellTop),
-                Offset(shaftX, cellBottom),
-                Paint()
-                  ..color = _ink
-                  ..strokeWidth = 1.4,
-              );
-            } else {
-              _paintInstructionMarkSlice(
-                canvas,
-                cell: cell,
-                shaftX: shaftX,
-                cellTop: cellTop,
-              );
-            }
           case TimesheetCellKind.instructionEnd:
-            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
-                CameraInstructionMarkType.bar) {
-              final shaft = Paint()
-                ..color = _ink
-                ..strokeWidth = 1.4;
-              canvas.drawLine(
-                Offset(shaftX, cellTop),
-                Offset(shaftX, cellBottom - 1),
-                shaft,
-              );
-              _paintLineTick(canvas, Offset(shaftX, cellBottom - 1), shaft);
-            } else {
-              _paintInstructionMarkSlice(
-                canvas,
-                cell: cell,
-                shaftX: shaftX,
-                cellTop: cellTop,
-              );
-            }
-            if (drawTexts && cell.valueB != null && cell.valueB!.isNotEmpty) {
-              _text(
-                canvas,
-                cell.valueB!,
-                Offset(shaftX + 2, cellBottom - 9),
-                fontSize: 7,
-                color: _ink,
-              );
-            }
+            // One shared per-row renderer — the printed sheet mirrors the
+            // X-sheet column verbatim: the mark owns the whole cell width,
+            // A/B center in their endpoint cells (frame-name style) and
+            // the writing centers on the span's middle row.
+            _paintInstructionRow(
+              canvas,
+              cell: cell,
+              columnLeft: columnLeft,
+              columnWidth: columnWidth,
+              centerX: centerX,
+              cellTop: cellTop,
+              drawTexts: drawTexts,
+            );
           case TimesheetCellKind.empty:
             break;
         }
       }
+    }
+  }
+
+  /// One row of an instruction span, in the X-sheet's exact visual
+  /// language: the bar mark is a straight line between the endpoint rows'
+  /// centers with a tick at each end, FI/FO/O.L marks span the full column
+  /// width; the A/B names center in the start/end cells like frame names
+  /// and the writing centers on the span's middle row (odd spans dead
+  /// center, even spans the row left of the middle boundary).
+  void _paintInstructionRow(
+    Canvas canvas, {
+    required TimesheetCell cell,
+    required double columnLeft,
+    required double columnWidth,
+    required double centerX,
+    required double cellTop,
+    required bool drawTexts,
+  }) {
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    final cellBottom = cellTop + rowHeight;
+    final cellCenterY = cellTop + rowHeight / 2;
+    final spanLength = cell.spanLength ?? 1;
+    final offset = cell.spanOffset ?? 0;
+    final isFirst = offset == 0;
+    final isLast = offset == spanLength - 1;
+
+    if ((cell.markType ?? CameraInstructionMarkType.bar) ==
+        CameraInstructionMarkType.bar) {
+      // Single-row spans carry writing only, exactly like the row overlay.
+      if (spanLength > 1) {
+        final shaft = Paint()
+          ..color = _ink
+          ..strokeWidth = 1.4;
+        canvas.drawLine(
+          Offset(centerX, isFirst ? cellCenterY : cellTop),
+          Offset(centerX, isLast ? cellCenterY : cellBottom),
+          shaft,
+        );
+        if (isFirst || isLast) {
+          _paintLineTick(canvas, Offset(centerX, cellCenterY), shaft);
+        }
+      }
+    } else {
+      _paintInstructionMarkSlice(
+        canvas,
+        cell: cell,
+        centerX: centerX,
+        halfWidth: columnWidth / 2 - 1,
+        cellTop: cellTop,
+      );
+    }
+
+    if (!drawTexts) {
+      return;
+    }
+    if (isFirst && (cell.valueA ?? '').isNotEmpty) {
+      _text(
+        canvas,
+        cell.valueA!,
+        Offset(centerX, cellTop + 3),
+        fontSize: 10,
+        color: _ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
+      );
+    }
+    if (isLast && !isFirst && (cell.valueB ?? '').isNotEmpty) {
+      _text(
+        canvas,
+        cell.valueB!,
+        Offset(centerX, cellTop + 3),
+        fontSize: 10,
+        color: _ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
+      );
+    }
+    if (isFirst && isLast && (cell.valueB ?? '').isNotEmpty) {
+      // Single-row span: B shares the row under A.
+      _text(
+        canvas,
+        cell.valueB!,
+        Offset(centerX, cellBottom - 9),
+        fontSize: 7,
+        color: _ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
+      );
+    }
+    if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
+      _centeredVerticalText(
+        canvas,
+        cell.label!,
+        center: Offset(centerX, cellCenterY),
+        fontSize: 9,
+      );
     }
   }
 
@@ -849,15 +916,18 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// One row's slice of an instruction span's FI/FO wedge or O.L bowtie:
   /// the mark geometry derives span-globally from the cell's
   /// spanOffset/spanLength and clips to this row, so spans crossing page
-  /// halves paint seamlessly (each half paints only its own rows).
+  /// halves paint seamlessly (each half paints only its own rows). The
+  /// mark owns the column's full width ([halfWidth] from the caller),
+  /// exactly like the X-sheet overlay.
   void _paintInstructionMarkSlice(
     Canvas canvas, {
     required TimesheetCell cell,
-    required double shaftX,
+    required double centerX,
+    required double halfWidth,
     required double cellTop,
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
-    const halfWidth = 7.0;
+    final shaftX = centerX;
     final spanTop = cellTop - (cell.spanOffset ?? 0) * rowHeight;
     final spanBottom = spanTop + (cell.spanLength ?? 1) * rowHeight;
     final mid = (spanTop + spanBottom) / 2;
@@ -944,7 +1014,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       final rightX =
           halfLeft +
           layout.columnLeftInHalf(runEnd) +
-          TimesheetDocumentLayout.columnWidthFor(kind);
+          layout.columnWidthFor(kind);
       final title = switch (kind) {
         TimesheetColumnKind.action => 'ACTION',
         TimesheetColumnKind.se => 'S',
@@ -982,43 +1052,37 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
   }
 
-  /// Vertical writing, Japanese-sheet style: upright glyphs stacked top to
-  /// bottom (no rotation), clamped to [maxHeight] with a closing ellipsis.
-  void _verticalText(
+  /// An upright glyph stack centered on [center] (the instruction writing
+  /// on its span's middle row) — spills over neighbouring rows freely,
+  /// like handwriting on the paper form and the X-sheet overlay.
+  void _centeredVerticalText(
     Canvas canvas,
     String text, {
-    required Offset topCenter,
+    required Offset center,
     required double fontSize,
-    required double maxHeight,
     Color color = _ink,
   }) {
-    var y = topCenter.dy;
-    final bottom = topCenter.dy + maxHeight;
     final glyphs = text.characters.toList(growable: false);
-    for (var index = 0; index < glyphs.length; index += 1) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: glyphs[index],
-          style: TextStyle(color: color, fontSize: fontSize),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      final lastThatFits = y + painter.height > bottom - fontSize;
-      if (lastThatFits && index < glyphs.length - 1) {
-        final ellipsis = TextPainter(
+    if (glyphs.isEmpty) {
+      return;
+    }
+    final painters = [
+      for (final glyph in glyphs)
+        TextPainter(
           text: TextSpan(
-            text: '…',
+            text: glyph,
             style: TextStyle(color: color, fontSize: fontSize),
           ),
           textDirection: TextDirection.ltr,
-        )..layout();
-        ellipsis.paint(canvas, Offset(topCenter.dx - ellipsis.width / 2, y));
-        return;
-      }
-      if (y + painter.height > bottom) {
-        return;
-      }
-      painter.paint(canvas, Offset(topCenter.dx - painter.width / 2, y));
+        )..layout(),
+    ];
+    var totalHeight = -2.0 * (painters.length - 1);
+    for (final painter in painters) {
+      totalHeight += painter.height;
+    }
+    var y = center.dy - totalHeight / 2;
+    for (final painter in painters) {
+      painter.paint(canvas, Offset(center.dx - painter.width / 2, y));
       y += painter.height - 2;
     }
   }
