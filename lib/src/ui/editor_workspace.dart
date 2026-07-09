@@ -23,6 +23,7 @@ import 'editor_session_manager.dart';
 import 'export/ae_keyframe_data.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
+import 'media/media_browser_panel.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -101,6 +102,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String brushSettingsTabId = 'brush-settings';
   static const String colorWheelTabId = 'color-wheel';
   static const String cameraTabId = 'camera';
+  static const String mediaTabId = 'media';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
   static const String timesheetTabId = 'timesheet';
@@ -130,6 +132,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           EditorWorkspace.brushSettingsTabId,
           EditorWorkspace.colorWheelTabId,
           EditorWorkspace.cameraTabId,
+          EditorWorkspace.mediaTabId,
         ],
         activeTabId: EditorWorkspace.brushesTabId,
       ),
@@ -589,6 +592,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onRemoveKeyframe:
                   widget.session.removeCameraKeyframeAtCurrentFrame,
               onCopyAeKeyframes: _copyCameraAeKeyframes,
+            ),
+          ),
+        );
+      case EditorWorkspace.mediaTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Media',
+          icon: Icons.library_music_outlined,
+          locked: locked,
+          builder: (context) => ListenableBuilder(
+            listenable: widget.session,
+            builder: (context, _) => MediaBrowserPanel(
+              assets: widget.session.mediaAssets,
+              isAssetReferenced: widget.session.isMediaAssetReferenced,
+              onImportPaths: widget.session.addMediaAssets,
+              onRenameAsset: widget.session.renameMediaAsset,
+              onRelinkAsset: widget.session.relinkMediaAsset,
+              onRemoveAsset: widget.session.removeMediaAsset,
             ),
           ),
         );

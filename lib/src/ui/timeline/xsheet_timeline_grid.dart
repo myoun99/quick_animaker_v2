@@ -62,6 +62,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -102,6 +103,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -645,6 +651,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               widget.projectFps,
                                                           onRemoveAudioClip: widget
                                                               .onRemoveAudioClip,
+                                                          onDropMediaAsset: widget
+                                                              .onDropMediaAsset,
                                                           layer: entries[index]
                                                               .layer,
                                                           active:
@@ -925,6 +933,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -953,6 +962,12 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop); null hides
+  /// the drop targets.
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
+
   final TimelineCommaDragCallbacks? commaDrag;
 
   @override
@@ -1093,6 +1108,20 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
+              keyPrefix: 'xsheet',
+            ),
+          // Media-browser drops land on SE blocks (sound → block frame).
+          if (layerKindUsesSeSheetCells(layer.kind) && onDropMediaAsset != null)
+            ...timelineRowSeAssetDropTargets(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              onAssetDropped: (blockStartFrame, path) =>
+                  onDropMediaAsset!(layer.id, blockStartFrame, path),
               keyPrefix: 'xsheet',
             ),
           // Instruction columns: the sheet's CAM column — bar arrows or

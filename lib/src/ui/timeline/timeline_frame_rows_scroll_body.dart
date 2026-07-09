@@ -12,7 +12,6 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_section_policy.dart';
 
-
 class TimelineFrameRowsScrollBody extends StatelessWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
@@ -36,6 +35,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     this.commaDrag,
     this.laneEdit,
   });
@@ -65,6 +65,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -110,6 +112,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                     audioPeaksFor: audioPeaksFor,
                     projectFps: projectFps,
                     onRemoveAudioClip: onRemoveAudioClip,
+                    onDropMediaAsset: onDropMediaAsset,
                     commaDrag: commaDrag,
                   ),
           if (rows.isEmpty)

@@ -15,7 +15,10 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
+import 'package:quick_animaker_v2/src/ui/audio/audio_peaks_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/media/media_asset_drag_data.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
@@ -287,4 +290,129 @@ void main() {
     expect(session.mediaAssets.single.name, '발소리');
     await tester.pumpAndSettle();
   });
+
+  testWidgets('dragging a media asset onto an SE block links the sound to '
+      'that block', (tester) async {
+    const foot = r'C:\snd\foot.wav';
+    const dragSourceKey = ValueKey<String>('test-media-drag-source');
+    final session = EditorSessionManager(
+      // The linked clip makes the SE row ask for waveform peaks on rebuild;
+      // the stub extractor keeps the real ffmpeg out of fake async (its
+      // pending process would outlive the test).
+      audioPeaksStore: AudioPeaksStore(
+        extractor: const _FailingExtractor(),
+        log: (_) {},
+      ),
+      initialProject: Project(
+        id: const ProjectId('drop-project'),
+        name: 'Drop Project',
+        createdAt: DateTime.utc(2026, 7, 9),
+        tracks: [
+          Track(
+            id: const TrackId('drop-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('drop-cut'),
+                name: 'Drop Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: [
+                      Frame(
+                        id: const FrameId('drop-f1'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: {
+                      2: const TimelineExposure.drawing(
+                        FrameId('drop-f1'),
+                        length: 4,
+                      ),
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              // Stand-in for the media browser's draggable row (the browser
+              // panel lives in the workspace; the payload contract is what
+              // this test pins).
+              SizedBox(
+                height: 40,
+                child: Draggable<MediaAssetDragData>(
+                  data: const MediaAssetDragData(path: foot, name: 'foot.wav'),
+                  feedback: const SizedBox(width: 8, height: 8),
+                  child: Container(
+                    key: dragSourceKey,
+                    width: 40,
+                    height: 40,
+                    color: const Color(0xFF888888),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: session,
+                  builder: (context, _) => TimelineTabHost(
+                    session: session,
+                    orientation: TimelineOrientation.horizontal,
+                    onOrientationChanged: (_) {},
+                    pixelsPerFrame: 48,
+                    onPixelsPerFrameChanged: (_) {},
+                    showSeconds: false,
+                    onShowSecondsChanged: (_) {},
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dropTarget = find.byKey(
+      const ValueKey<String>('timeline-se-asset-drop-audio-se-2'),
+    );
+    expect(dropTarget, findsOneWidget);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(dragSourceKey)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(tester.getCenter(dropTarget));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    Layer seLayer() =>
+        session.layers.firstWhere((layer) => layer.id == _seLayerId);
+    expect(seLayer().audioClips.single.filePath, foot);
+    expect(seLayer().audioClips.single.frameId, const FrameId('drop-f1'));
+    // The drop registered the sound in the pool too.
+    expect(session.mediaAssets.single.path, foot);
+  });
+}
+
+class _FailingExtractor extends AudioPeaksExtractor {
+  const _FailingExtractor();
+
+  @override
+  Future<AudioPeaksExtraction> extract(String filePath) async =>
+      const AudioPeaksExtraction.failure('test stub');
 }

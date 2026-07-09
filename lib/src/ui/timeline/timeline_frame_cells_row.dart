@@ -41,6 +41,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     this.commaDrag,
     this.sectionStart = false,
   });
@@ -80,6 +81,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   /// Removes an audio clip by index (the waveform's context menu).
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop); null hides
+  /// the drop targets.
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
@@ -212,6 +218,19 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
+          ),
+        // Media-browser drops land on SE blocks (sound → block frame).
+        if (layerKindUsesSeSheetCells(layer.kind) && onDropMediaAsset != null)
+          ...timelineRowSeAssetDropTargets(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+            onAssetDropped: (blockStartFrame, path) =>
+                onDropMediaAsset!(layer.id, blockStartFrame, path),
           ),
         // Instruction rows: the sheet's CAM column — bar arrows or the O.L
         // bowtie on the paper block, A → B endpoint values and the name

@@ -68,9 +68,12 @@ import 'timeline/timeline_section_policy.dart';
 /// view state (viewport, brush tool, timeline orientation) intentionally stays
 /// in the widget.
 class EditorSessionManager extends ChangeNotifier {
-  EditorSessionManager({required Project initialProject})
-    : _editingSession = EditingSessionState.forProject(initialProject),
-      _repository = ProjectRepository(initialProject: initialProject) {
+  EditorSessionManager({
+    required Project initialProject,
+    AudioPeaksStore? audioPeaksStore,
+  }) : _editingSession = EditingSessionState.forProject(initialProject),
+       _injectedAudioPeaksStore = audioPeaksStore,
+       _repository = ProjectRepository(initialProject: initialProject) {
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -385,11 +388,16 @@ class EditorSessionManager extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Test seam: widget tests inject a store with a stub extractor so SE-row
+  /// rebuilds never spawn the real ffmpeg inside fake async.
+  final AudioPeaksStore? _injectedAudioPeaksStore;
+
   /// Waveform peaks per audio file (ffmpeg extraction, cached); its
   /// notifications forward through the session so SE rows repaint when a
   /// waveform lands.
-  late final AudioPeaksStore audioPeaksStore = AudioPeaksStore()
-    ..addListener(notifyListeners);
+  late final AudioPeaksStore audioPeaksStore =
+      (_injectedAudioPeaksStore ?? AudioPeaksStore())
+        ..addListener(notifyListeners);
 
   bool _activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
