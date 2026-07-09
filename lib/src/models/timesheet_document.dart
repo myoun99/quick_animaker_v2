@@ -69,6 +69,7 @@ class TimesheetCell {
     this.markType,
     this.valueA,
     this.valueB,
+    this.seName,
   });
 
   static const TimesheetCell blank = TimesheetCell(TimesheetCellKind.empty);
@@ -98,6 +99,11 @@ class TimesheetCell {
   /// painter prints A at the start and B at the end row).
   final String? valueA;
   final String? valueB;
+
+  /// SE drawing start cells only: the entry's speaker/effect name — method
+  /// A prints it across the whole start row (accent box + underline, Toei
+  /// style) with the dialogue distributing below.
+  final String? seName;
 }
 
 /// One sheet column: the printed column header plus one cell per document
@@ -259,8 +265,10 @@ class TimesheetDocument {
                   layer: seLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
-                  // SE columns stay blank between entries on paper — no X.
+                  // SE columns stay blank between entries on paper — no X;
+                  // the speaker name rides along for the method-A name row.
                   markEmptyRuns: false,
+                  includeSeNames: true,
                 )
               : _blankCells(rowCount),
         ),
@@ -387,12 +395,17 @@ class TimesheetDocument {
     required int rowCount,
     required int playbackFrameCount,
     bool markEmptyRuns = true,
+    bool includeSeNames = false,
   }) {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
 
     final labelsByFrameId = <FrameId, String>{
       for (var index = 0; index < layer.frames.length; index += 1)
         layer.frames[index].id: layer.frames[index].name ?? '${index + 1}',
+    };
+    final seNamesByFrameId = <FrameId, String?>{
+      if (includeSeNames)
+        for (final frame in layer.frames) frame.id: frame.seName,
     };
 
     // Drawing coverage + marks straight from the timeline entries.
@@ -412,6 +425,7 @@ class TimesheetDocument {
         TimesheetCellKind.drawing,
         label: labelsByFrameId[exposure.frameId] ?? '?',
         spanLength: endExclusive - start,
+        seName: seNamesByFrameId[exposure.frameId],
       );
       covered[start] = true;
       for (var row = start + 1; row < endExclusive; row += 1) {
@@ -479,6 +493,10 @@ class TimesheetDocument {
           row == endExclusive - 1
               ? TimesheetCellKind.instructionEnd
               : TimesheetCellKind.instructionSpan,
+          // The writing rides EVERY covered row (like the mark geometry):
+          // the painter prints it on the span's middle row, which may sit
+          // in another page half than the start.
+          label: cells[start].label,
           spanLength: spanLength,
           spanOffset: row - start,
           markType: markType,

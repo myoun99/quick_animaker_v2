@@ -412,23 +412,26 @@ class _SeNameBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Upright glyph stack (paper-style vertical writing), never rotated.
-    final glyphStack = Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (final glyph in name.characters)
-          Text(
-            glyph,
-            style: const TextStyle(
-              color: timelineDrawingInkColor,
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              height: 1.05,
-            ),
-          ),
-      ],
+    const style = TextStyle(
+      color: timelineDrawingInkColor,
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      height: 1.05,
     );
+    // The name always reads horizontally; only the box's main-axis slot
+    // follows the orientation. On rows the slim strip stands at the block
+    // start (glyphs stacked upright, paper-style); on X-sheet columns the
+    // strip is a slim BAND at the block top with the name written across —
+    // never two frame cells tall (user fix).
+    final writing = axis == Axis.horizontal
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (final glyph in name.characters) Text(glyph, style: style),
+            ],
+          )
+        : Text(name, maxLines: 1, softWrap: false, style: style);
     final box = Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
@@ -437,15 +440,12 @@ class _SeNameBox extends StatelessWidget {
       child: Container(
         color: AppColors.accent.withValues(alpha: 0.6),
         alignment: Alignment.center,
-        child: ClipRect(child: ExcludeSemantics(child: glyphStack)),
+        child: ClipRect(child: ExcludeSemantics(child: writing)),
       ),
     );
     return axis == Axis.horizontal
         ? SizedBox(width: seNameBoxExtent, child: box)
-        : ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 72),
-            child: box,
-          );
+        : SizedBox(height: seNameBoxExtent, child: box);
   }
 }
 
