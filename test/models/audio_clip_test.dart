@@ -19,6 +19,27 @@ void main() {
     expect(clip.toJson(), {'file': r'C:\sound\voice.wav', 'frame': 'se-frame'});
   });
 
+  test('offsetFrames round-trips, serializes only when set and stays '
+      'backward compatible', () {
+    const trimmed = AudioClip(
+      filePath: 'a.wav',
+      frameId: FrameId('se-frame'),
+      offsetFrames: 12,
+    );
+    expect(trimmed.toJson()['offset'], 12);
+    expect(AudioClip.fromJson(trimmed.toJson()), trimmed);
+
+    // Untrimmed clips keep the old json shape; old files decode to 0.
+    const plain = AudioClip(filePath: 'a.wav', frameId: FrameId('se-frame'));
+    expect(plain.toJson().containsKey('offset'), isFalse);
+    expect(
+      AudioClip.fromJson({'file': 'a.wav', 'frame': 'se-frame'}).offsetFrames,
+      0,
+    );
+    expect(plain, isNot(trimmed));
+    expect(trimmed.copyWith(offsetFrames: 0), plain);
+  });
+
   Layer seLayer() => Layer(
     id: const LayerId('se'),
     name: 'S1',

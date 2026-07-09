@@ -32,6 +32,7 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.onSetAudioClipOffset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -81,6 +82,11 @@ class TimelinePanel extends StatefulWidget {
   /// orientations.
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Commits an audio-lane slide (the clip's offset trim), both
+  /// orientations.
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -265,6 +271,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -294,6 +301,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,

@@ -289,8 +289,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (widget.axis == Axis.horizontal) {
       content = Row(
         children: [
-          _navigator(colorScheme),
-          const SizedBox(width: 6),
+          if (lane.showsKeyNavigator) ...[
+            _navigator(colorScheme),
+            const SizedBox(width: 6),
+          ],
           Flexible(child: label),
           const SizedBox(width: 4),
           if (valueLabel != null)
@@ -312,8 +314,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           label,
-          const SizedBox(height: 4),
-          _navigator(colorScheme),
+          if (lane.showsKeyNavigator) ...[
+            const SizedBox(height: 4),
+            _navigator(colorScheme),
+          ],
           if (valueLabel != null) ...[
             const SizedBox(height: 4),
             _valueCell(colorScheme, valueLabel),
@@ -323,7 +327,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     }
 
     return Container(
-      key: ValueKey<String>('$_keyPrefix-lane-label-${layer.id}-${lane.laneId}'),
+      key: ValueKey<String>(
+        '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
+      ),
       // Horizontal: the section bracket occupies the leading gutter beside
       // the rail, and lane labels indent past the twirl-down chevron slot.
       width:
@@ -643,7 +649,9 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       // The key drags along the frame axis of the owning grid.
-      onHorizontalDragStart: editable && horizontal ? (_) => _startDrag() : null,
+      onHorizontalDragStart: editable && horizontal
+          ? (_) => _startDrag()
+          : null,
       onHorizontalDragUpdate: editable && horizontal ? _updateDrag : null,
       onHorizontalDragEnd: editable && horizontal ? (_) => _endDrag() : null,
       onHorizontalDragCancel: editable && horizontal ? _cancelDrag : null,

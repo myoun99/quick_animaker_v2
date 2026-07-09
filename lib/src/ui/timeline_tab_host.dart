@@ -21,6 +21,7 @@ import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
+import 'timeline/se_audio_lane.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
@@ -87,9 +88,13 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// The camera layer's AE Transform lanes; other layer kinds get lanes
-  /// with the layer-transform work (L3) and FX features later.
+  /// The camera layer's AE Transform lanes and the SE layers' audio lane;
+  /// other layer kinds get lanes with the layer-transform work (L3) and FX
+  /// features later.
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
+    if (layer.kind == LayerKind.se) {
+      return seAudioLanesFor(layer);
+    }
     if (layer.kind != LayerKind.camera) {
       return const [];
     }
@@ -557,6 +562,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   blockStartFrame: blockStartFrame,
                   path: path,
                 ),
+            // The audio lane's slide edit (the clip's offset trim).
+            onSetAudioClipOffset: _session.setAudioClipOffset,
             onAddLayer: _session.addLayer,
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
