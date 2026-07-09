@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +44,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -90,6 +92,12 @@ class LayerTimelineGrid extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Ruler-scrub path: per-move frames go to [onScrubFrame] (cursor-only,
+  /// no commit) and the pointer's release fires [onScrubEnd] to commit
+  /// once. Null falls back to [onSelectFrame] per move.
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
 
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
@@ -312,7 +320,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
 
     _lastRulerScrubbedFrameIndex = clampedFrameIndex;
-    widget.onSelectFrame(clampedFrameIndex);
+    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+  }
+
+  /// The scrub gesture's release (raw pointer up/cancel — fires for taps
+  /// AND drags, wherever the pointer ends up). Tracking is NOT reset here
+  /// so the ruler InkWell's trailing onTap stays deduplicated.
+  void _endRulerScrub() {
+    widget.onScrubEnd?.call();
   }
 
   double? _rulerViewportLocalXFromGlobal(Offset globalPosition) {
@@ -445,6 +460,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           event.position,
                                         );
                                       },
+                                      onPointerUp: (_) => _endRulerScrub(),
+                                      onPointerCancel: (_) => _endRulerScrub(),
                                       child: GestureDetector(
                                         behavior: HitTestBehavior.translucent,
                                         onHorizontalDragStart: (details) {
