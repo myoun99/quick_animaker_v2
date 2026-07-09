@@ -54,6 +54,37 @@ void main() {
     );
   });
 
+  test('the audio lane value field reads the playhead span offset and '
+      'scrubs at 4px per frame', () {
+    final lane = seAudioLanesFor(_seLayer(offsetFrames: 3)).single;
+
+    // Frame 4 sits inside the 2..10 block; outside frames fall back to the
+    // first span so the field stays usable anywhere.
+    expect(lane.valueLabel!(4), '3f');
+    expect(lane.valueLabel!(11), '3f');
+
+    expect(lane.scrubValue!('3f', const Offset(8, 0)), '5f');
+    expect(lane.scrubValue!('3f', const Offset(-40, 0)), '0f');
+    expect(lane.scrubValue!('bogus', const Offset(8, 0)), isNull);
+  });
+
+  test('a clip without a carrying block hides the value field', () {
+    final lane = seAudioLanesFor(
+      _seLayer().copyWith(timeline: const {}, frames: const []),
+    ).single;
+    expect(lane.valueLabel, isNull);
+    expect(lane.scrubValue, isNull);
+  });
+
+  test('parseAudioOffsetInput accepts counts with optional sign and f', () {
+    expect(parseAudioOffsetInput('12'), 12);
+    expect(parseAudioOffsetInput('12f'), 12);
+    expect(parseAudioOffsetInput('-12f'), 12);
+    expect(parseAudioOffsetInput(' 7 '), 7);
+    expect(parseAudioOffsetInput(''), isNull);
+    expect(parseAudioOffsetInput('abc'), isNull);
+  });
+
   Future<void> pumpLane(
     WidgetTester tester, {
     required Layer layer,

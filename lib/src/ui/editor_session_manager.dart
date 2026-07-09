@@ -1120,6 +1120,14 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Silences/unsilences an SE row's sounds (the mute button — view state
+  /// like visibility, not undoable): playback and export skip muted
+  /// layers' clips, waveforms keep displaying.
+  void toggleLayerMuted(LayerId layerId) {
+    _layerController.toggleLayerMuted(layerId);
+    notifyListeners();
+  }
+
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _layerController.setLayerOpacity(layerId: layerId, opacity: opacity);
     notifyListeners();

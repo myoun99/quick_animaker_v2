@@ -26,17 +26,68 @@ const String seAudioLaneId = 'se-audio';
 /// the frame band on this).
 bool laneIsSeAudio(PropertyLaneRow lane) => lane.laneId == seAudioLaneId;
 
+/// The span whose offset the audio lane's value field reads and edits:
+/// the one covering [frameIndex] (AE semantics — the value column shows
+/// the playhead's state), falling back to the layer's first span so the
+/// field stays usable wherever the playhead sits.
+SeAudioSpan? seAudioSpanForLaneValue(Layer layer, int frameIndex) {
+  final spans = seAudioSpans(layer);
+  if (spans.isEmpty) {
+    return null;
+  }
+  for (final span in spans) {
+    if (span.startFrame <= frameIndex && frameIndex < span.endFrameExclusive) {
+      return span;
+    }
+  }
+  return spans.first;
+}
+
+/// Parses the offset field's input: a frame count with optional sign and
+/// trailing 'f' ('12', '12f', '-0f' → 12/12/0); negative offsets clamp to
+/// 0 in the session (a sound cannot start before its block).
+int? parseAudioOffsetInput(String input) {
+  final match = RegExp(r'^-?\s*(\d+)\s*f?$').firstMatch(input.trim());
+  return match == null ? null : int.parse(match.group(1)!);
+}
+
+String formatAudioOffset(int offsetFrames) => '${offsetFrames}f';
+
+/// Value-scrub pixels per frame: 4px of drag per skipped frame (a finer
+/// tool than the waveform's 1-cell-per-frame slide).
+const double _offsetScrubPixelsPerFrame = 4;
+
 /// The lanes an SE layer exposes: the audio lane while it carries sounds.
+/// The label cell's value field shows/edits the playhead span's offset
+/// trim AE-style (tap to type, drag to scrub; commits route through the
+/// host into session.setAudioClipOffset — one undo).
 List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
   if (layer.kind != LayerKind.se || layer.audioClips.isEmpty) {
     return const [];
   }
-  return const [
+  final hasSpans = seAudioSpans(layer).isNotEmpty;
+  return [
     PropertyLaneRow(
       laneId: seAudioLaneId,
       label: 'Audio',
-      keyedFrames: {},
+      keyedFrames: const {},
       showsKeyNavigator: false,
+      valueLabel: !hasSpans
+          ? null
+          : (frameIndex) => formatAudioOffset(
+              seAudioSpanForLaneValue(layer, frameIndex)!.clip.offsetFrames,
+            ),
+      scrubValue: !hasSpans
+          ? null
+          : (currentLabel, dragDelta) {
+              final base = parseAudioOffsetInput(currentLabel);
+              if (base == null) {
+                return null;
+              }
+              final delta = (dragDelta.dx / _offsetScrubPixelsPerFrame).round();
+              final next = base + delta;
+              return formatAudioOffset(next < 0 ? 0 : next);
+            },
     ),
   ];
 }

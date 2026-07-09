@@ -192,7 +192,7 @@ List<ExportAudioClip> buildExportAudioPlan({
     }
     final firstFrameIndex = plan[blockStart].frameIndex;
     for (final layer in cut.layers) {
-      if (layer.kind != LayerKind.se) {
+      if (layer.kind != LayerKind.se || layer.muted) {
         continue;
       }
       for (final span in seAudioSpans(layer)) {

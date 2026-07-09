@@ -38,6 +38,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     required this.orientation,
@@ -93,6 +94,9 @@ class TimelinePanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// SE rows' speaker button (mute), both orientations; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
@@ -273,6 +277,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onAddLayer: widget.onAddLayer,
+                    onToggleLayerMuted: widget.onToggleLayerMuted,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
@@ -303,6 +308,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onAddLayer: widget.onAddLayer,
+                    onToggleLayerMuted: widget.onToggleLayerMuted,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,

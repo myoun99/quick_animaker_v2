@@ -27,6 +27,7 @@ class Layer {
     Map<int, InstructionEvent>? instructions,
     List<AudioClip> audioClips = const [],
     this.isVisible = true,
+    this.muted = false,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
@@ -50,6 +51,11 @@ class Layer {
   /// Sound files placed on this SE layer (empty on other kinds).
   final List<AudioClip> audioClips;
   final bool isVisible;
+
+  /// Whether this layer's sounds are silenced (SE rows' speaker button —
+  /// the audio counterpart of [isVisible]): playback and export skip the
+  /// clips of muted layers, the waveforms keep displaying.
+  final bool muted;
   final double opacity;
   final LayerKind kind;
 
@@ -75,6 +81,7 @@ class Layer {
     Map<int, InstructionEvent>? instructions,
     List<AudioClip>? audioClips,
     bool? isVisible,
+    bool? muted,
     double? opacity,
     LayerKind? kind,
     bool? onTimesheet,
@@ -90,6 +97,7 @@ class Layer {
       instructions: instructions ?? this.instructions,
       audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
+      muted: muted ?? this.muted,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
@@ -110,6 +118,7 @@ class Layer {
     if (audioClips.isNotEmpty)
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
+    if (muted) 'muted': true,
     'opacity': opacity,
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
@@ -164,6 +173,7 @@ class Layer {
                 ?_audioClipFromJson(clip as Map<String, dynamic>, timeline),
             ],
       isVisible: json['isVisible'] as bool,
+      muted: json['muted'] as bool? ?? false,
       opacity: (json['opacity'] as num).toDouble(),
       kind: json.containsKey('kind')
           ? LayerKind.fromJson(json['kind'])
@@ -191,6 +201,7 @@ class Layer {
           mapEquals(other.instructions, instructions) &&
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
+          other.muted == muted &&
           other.opacity == opacity &&
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
@@ -210,6 +221,7 @@ class Layer {
     ),
     Object.hashAll(audioClips),
     isVisible,
+    muted,
     opacity,
     kind,
     onTimesheet,

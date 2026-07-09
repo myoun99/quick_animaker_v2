@@ -113,6 +113,15 @@ class LayerController {
     );
   }
 
+  /// The audio counterpart of [toggleLayerVisibility]: silences the SE
+  /// row's sounds without touching them (view state, not undoable).
+  void toggleLayerMuted(LayerId layerId) {
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(muted: !layer.muted),
+    );
+  }
+
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _repository.updateLayer(
       layerId: layerId,

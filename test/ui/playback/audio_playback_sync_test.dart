@@ -315,4 +315,54 @@ void main() {
     trimmedController.seekToGlobalFrame(6); // shortened end crossed
     expect(trimmedLog, ['stop a.wav']);
   });
+
+  test('muted SE layers are skipped by the schedule entirely', () {
+    final mutedLog = <String>[];
+    final project = Project(
+      id: const ProjectId('mute-project'),
+      name: 'Mute',
+      createdAt: DateTime.utc(2026, 7, 10),
+      tracks: [
+        Track(
+          id: const TrackId('mute-track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('mute-cut'),
+              name: 'M',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [
+                _seLayer(
+                  'se-muted',
+                  file: 'a.wav',
+                  start: 0,
+                  length: 10,
+                ).copyWith(muted: true),
+                _seLayer('se-live', file: 'c.wav', start: 0, length: 10),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final mutedController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('mute-cut'),
+      resolveActiveTrackId: () => const TrackId('mute-track'),
+      resolveFps: () => 10,
+    );
+    final sync = AudioPlaybackSync(
+      controller: mutedController,
+      resolveFps: () => 10,
+      durationSecondsFor: (path) => _durations[path],
+      playerFactory: () => _FakeClipPlayer(mutedLog),
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(mutedController.dispose);
+
+    mutedController.play(scope: PlaybackScope.activeCut);
+    // The muted layer's a.wav never even prepares; the live layer plays.
+    expect(mutedLog, ['prepare c.wav', 'start c.wav @0ms']);
+  });
 }

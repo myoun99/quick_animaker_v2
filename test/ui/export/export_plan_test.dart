@@ -376,6 +376,38 @@ void main() {
       layers: [seLayer('se-b', file: 'c.wav', start: 3, length: 17)],
     );
 
+    test('muted SE layers contribute no clips (the mute speaker silences '
+        'export like playback)', () {
+      final cutWithMuted = cut(
+        'a',
+        duration: 10,
+        layers: [
+          seLayer(
+            'se-a1',
+            file: 'a.wav',
+            start: 0,
+            length: 10,
+          ).copyWith(muted: true),
+          seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
+        ],
+      );
+      final plan = buildExportFramePlan(
+        project: project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [cutWithMuted],
+          ),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.activeCut,
+      );
+
+      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+
+      expect(clips.map((clip) => clip.filePath), ['b.wav']);
+    });
+
     test('all-cuts export lays clips globally, capped at their cut blocks', () {
       final plan = buildExportFramePlan(
         project: project([

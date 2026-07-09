@@ -197,6 +197,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       );
     },
     onSetValue: (layer, lane, frameIndex, input) {
+      // The SE audio lane's value field edits the playhead span's offset
+      // trim instead of a transform property (one undo via the session).
+      if (laneIsSeAudio(lane)) {
+        final offset = parseAudioOffsetInput(input);
+        final span = seAudioSpanForLaneValue(layer, frameIndex);
+        if (offset == null || span == null) {
+          return;
+        }
+        _session.setAudioClipOffset(layer.id, span.clipIndex, offset);
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
@@ -597,6 +608,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The audio lane's slide edit (the clip's offset trim).
             onSetAudioClipOffset: _session.setAudioClipOffset,
             onAddLayer: _session.addLayer,
+            onToggleLayerMuted: _session.toggleLayerMuted,
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _toggleLayerVisibility,
