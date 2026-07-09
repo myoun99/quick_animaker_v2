@@ -29,6 +29,8 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -79,6 +81,13 @@ class TimelinePanel extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Ruler-scrub path (both orientations): per-move frames go to
+  /// [onScrubFrame] (cursor-only, no commit) and the release fires
+  /// [onScrubEnd] to commit once. Null falls back to [onSelectFrame] per
+  /// move (immediate-commit behavior).
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
 
   /// Double-tap cell editor hook (SE label dialog), shared by both
   /// orientations.
@@ -309,6 +318,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onScrubFrame: widget.onScrubFrame,
+                    onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
@@ -345,6 +356,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onScrubFrame: widget.onScrubFrame,
+                    onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,

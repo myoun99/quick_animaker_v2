@@ -78,12 +78,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void initState() {
     super.initState();
+    _syncImagesWithCache();
     _ensureImages();
   }
 
   @override
   void didUpdateWidget(covariant CanvasLayerStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncImagesWithCache();
     _ensureImages();
   }
 
@@ -94,6 +96,42 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
     _images.clear();
     super.dispose();
+  }
+
+  /// Synchronous sweep BEFORE this frame's build: adopt every requested
+  /// layer whose image is already valid in the cache and drop layers that
+  /// left the request set.
+  ///
+  /// This is what keeps a layer switch flicker-free — the just-deactivated
+  /// layer arrives here with a warm cache image (the prerender re-warms it
+  /// after every stroke), and the async pass alone would paint it one frame
+  /// late at best: the artwork visibly vanished and reappeared. The
+  /// just-activated layer leaves the same frame, so it never double-draws
+  /// under the interactive view.
+  void _syncImagesWithCache() {
+    final wanted = <BrushFrameKey>{
+      for (final layer in widget.layers) layer.frameKey,
+    };
+    for (final key in _images.keys.toList()) {
+      if (!wanted.contains(key)) {
+        _images.remove(key)!.clone.dispose();
+      }
+    }
+    for (final layer in widget.layers) {
+      final image = widget.imageCache.validImageOrNull(
+        layer.frameKey,
+        PlaybackQuality.full,
+        canvasSize: widget.canvasSize,
+      );
+      if (image == null) {
+        continue;
+      }
+      final held = _images[layer.frameKey];
+      if (held == null || !identical(held.source, image)) {
+        held?.clone.dispose();
+        _images[layer.frameKey] = (source: image, clone: image.clone());
+      }
+    }
   }
 
   Future<void> _ensureImages() async {

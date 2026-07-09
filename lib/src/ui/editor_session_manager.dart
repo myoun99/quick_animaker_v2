@@ -286,6 +286,7 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: activeCutId,
       initialFrameIndex: _clampedFrameIndex(preferredFrameIndex),
     );
+    editingFrameCursor.value = _timelineController.currentFrameIndex;
   }
 
   int _clampedFrameIndex(int frameIndex) {
@@ -389,6 +390,8 @@ class EditorSessionManager extends ChangeNotifier {
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioPeaksStore.dispose();
+    editingFrameCursor.dispose();
+    frameScrubActive.dispose();
     super.dispose();
   }
 
@@ -2357,8 +2360,52 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectFrameIndex(int frameIndex) {
     _timelineController.selectFrameIndex(frameIndex);
+    editingFrameCursor.value = frameIndex;
     _warmActiveCut();
     notifyListeners();
+  }
+
+  // --- Editing frame scrub (ruler drags ride the cursor path) --------------
+
+  /// The editing playhead as a VALUE stream: every seek — scrub moves
+  /// included — lands here, so cursor-driven widgets (timeline cursor
+  /// layer, frame counter, the canvas scrub preview) follow pointer-fast
+  /// without a session notify rebuilding the tree.
+  final ValueNotifier<int> editingFrameCursor = ValueNotifier<int>(0);
+
+  /// True while a ruler scrub is in flight — the canvas swaps to the
+  /// composite-cache preview (the playback display machinery) until the
+  /// release commit.
+  final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
+
+  /// A scrub move: repositions the playhead WITHOUT notifying — only the
+  /// cursor listenables fire; the full session notify is deferred to
+  /// [commitFrameScrub] on release. The canvas preview engages on the
+  /// first move that actually changes the frame, so a same-frame tap
+  /// never flashes it.
+  void scrubFrameIndex(int frameIndex) {
+    if (frameIndex != _timelineController.currentFrameIndex) {
+      _timelineController.selectFrameIndex(frameIndex);
+      editingFrameCursor.value = frameIndex;
+      if (!frameScrubActive.value) {
+        frameScrubActive.value = true;
+        // One warm per gesture: the preview reads the composite cache, so
+        // a cold cut starts filling immediately (per-move warms would only
+        // thrash the scheduler's ordering).
+        _warmActiveCut();
+      }
+    } else {
+      editingFrameCursor.value = frameIndex;
+    }
+  }
+
+  /// The scrub gesture's release: ends the preview and commits the
+  /// scrubbed playhead as ONE ordinary seek (warm + notify).
+  void commitFrameScrub() {
+    if (frameScrubActive.value) {
+      frameScrubActive.value = false;
+    }
+    selectFrameIndex(_timelineController.currentFrameIndex);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {

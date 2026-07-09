@@ -58,6 +58,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -105,6 +107,12 @@ class XSheetTimelineGrid extends StatefulWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// Frame-rail scrub path: per-move frames go to [onScrubFrame]
+  /// (cursor-only, no commit) and the pointer's release fires [onScrubEnd]
+  /// to commit once. Null falls back to [onSelectFrame] per move.
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
 
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
@@ -345,7 +353,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     _lastRailScrubbedFrameIndex = clampedFrameIndex;
-    widget.onSelectFrame(clampedFrameIndex);
+    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+  }
+
+  /// The scrub gesture's release (raw pointer up/cancel — fires for taps
+  /// AND drags). Tracking is NOT reset here so trailing tap handlers stay
+  /// deduplicated.
+  void _endRailScrub() {
+    widget.onScrubEnd?.call();
   }
 
   void _selectFrameFromRailGlobalPosition(Offset globalPosition) {
@@ -455,6 +470,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 event.position,
                               );
                             },
+                            onPointerUp: (_) => _endRailScrub(),
+                            onPointerCancel: (_) => _endRailScrub(),
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onVerticalDragStart: (details) {

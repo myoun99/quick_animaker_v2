@@ -108,6 +108,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   void initState() {
     super.initState();
     _session.playback.globalFrameIndexListenable.addListener(_syncFrameCursor);
+    // Scrub moves fire the editing cursor WITHOUT a session notify — this
+    // listener is what keeps the playhead glued to the pointer.
+    _session.editingFrameCursor.addListener(_syncFrameCursor);
     _session.addListener(_syncFrameCursor);
   }
 
@@ -116,6 +119,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.playback.globalFrameIndexListenable.removeListener(
       _syncFrameCursor,
     );
+    _session.editingFrameCursor.removeListener(_syncFrameCursor);
     _session.removeListener(_syncFrameCursor);
     _frameCursor.dispose();
     super.dispose();
@@ -637,6 +641,21 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             _session.playback.seekToLocalFrame(frameIndex);
           } else {
             _session.selectFrameIndex(frameIndex);
+          }
+        },
+        // Ruler drags: per-move seeks ride the cursor path (value-only —
+        // the playhead and the canvas preview follow, nothing rebuilds);
+        // the release commits the selection as ONE ordinary seek.
+        onScrubFrame: (frameIndex) {
+          if (_session.playback.isActive) {
+            _session.playback.seekToLocalFrame(frameIndex);
+          } else {
+            _session.scrubFrameIndex(frameIndex);
+          }
+        },
+        onScrubEnd: () {
+          if (!_session.playback.isActive) {
+            _session.commitFrameScrub();
           }
         },
         onActivateCell: _activateCellEditor,
