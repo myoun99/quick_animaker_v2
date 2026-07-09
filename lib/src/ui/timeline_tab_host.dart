@@ -550,6 +550,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 _session.cameraInstructionSet.defById(instructionId),
             audioPeaksFor: _session.audioPeaksStore.peaksFor,
             onRemoveAudioClip: _session.removeAudioClipAt,
+            // Media-browser drops: link the dragged sound to the block.
+            onDropMediaAsset: (layerId, blockStartFrame, path) =>
+                _session.linkMediaAssetToSeBlock(
+                  layerId: layerId,
+                  blockStartFrame: blockStartFrame,
+                  path: path,
+                ),
             onAddLayer: _session.addLayer,
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.

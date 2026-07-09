@@ -8,6 +8,7 @@ import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
+import '../media/media_asset_drag_data.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
@@ -71,11 +72,7 @@ List<Widget> timelineRowSeLabelOverlays({
       key: ValueKey<String>(
         '$keyPrefix-se-label-${layer.id}-${block.startIndex}',
       ),
-      child: SeSpanVisual(
-        axis: axis,
-        dialogue: dialogue ?? '',
-        seName: seName,
-      ),
+      child: SeSpanVisual(axis: axis, dialogue: dialogue ?? '', seName: seName),
     );
 
     overlays.add(switch (axis) {
@@ -162,6 +159,80 @@ List<Widget> timelineRowAudioOverlays({
     );
   }
   return overlays;
+}
+
+/// Media-browser drop targets over an SE row's blocks: dropping an asset
+/// onto a block links the sound to the block's frame (footsteps reuse —
+/// the browser's drag-out counterpart to importing at the playhead).
+/// DragTargets only participate while a matching drag is in flight, so
+/// taps and cell gestures keep falling through; the hovered block shows an
+/// accent outline.
+List<Widget> timelineRowSeAssetDropTargets({
+  required Layer layer,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required double leadingFrameSpacerWidth,
+  required double frameCellExtent,
+  required double crossAxisExtent,
+  required Axis axis,
+  required void Function(int blockStartFrame, String path) onAssetDropped,
+  String keyPrefix = 'timeline',
+}) {
+  final targets = <Widget>[];
+  for (final block in drawingBlocks(layer.timeline)) {
+    if (block.endIndexExclusive <= frameStartIndex ||
+        block.startIndex >= frameEndIndexExclusive) {
+      continue;
+    }
+    final startOffset = frameVisibleX(
+      frameIndex: block.startIndex,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final endOffset = frameVisibleX(
+      frameIndex: block.endIndexExclusive,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final mainExtent = endOffset - startOffset;
+
+    final target = DragTarget<MediaAssetDragData>(
+      key: ValueKey<String>(
+        '$keyPrefix-se-asset-drop-${layer.id}-${block.startIndex}',
+      ),
+      onAcceptWithDetails: (details) =>
+          onAssetDropped(block.startIndex, details.data.path),
+      builder: (context, candidates, _) => candidates.isEmpty
+          ? const SizedBox.expand()
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
+                border: Border.all(color: AppColors.accent, width: 2),
+                color: AppColors.accent.withValues(alpha: 0.12),
+              ),
+            ),
+    );
+
+    targets.add(switch (axis) {
+      Axis.horizontal => Positioned(
+        left: startOffset,
+        top: 0,
+        width: mainExtent,
+        height: crossAxisExtent,
+        child: target,
+      ),
+      Axis.vertical => Positioned(
+        top: startOffset,
+        left: 0,
+        height: mainExtent,
+        width: crossAxisExtent,
+        child: target,
+      ),
+    });
+  }
+  return targets;
 }
 
 /// One positioned waveform window: the full-length strip shifted back by
@@ -416,7 +487,11 @@ class _SePaperPainter extends CustomPainter {
       ..strokeWidth = 1;
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     if (frameCellExtent > 0) {
-      for (var x = frameCellExtent; x < mainExtent - 0.5; x += frameCellExtent) {
+      for (
+        var x = frameCellExtent;
+        x < mainExtent - 0.5;
+        x += frameCellExtent
+      ) {
         final (from, to) = axis == Axis.horizontal
             ? (Offset(x, 0), Offset(x, size.height))
             : (Offset(0, x), Offset(size.width, x));

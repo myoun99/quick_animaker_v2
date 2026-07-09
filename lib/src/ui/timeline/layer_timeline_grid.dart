@@ -47,6 +47,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -84,6 +85,11 @@ class LayerTimelineGrid extends StatefulWidget {
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -683,6 +689,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   projectFps: widget.projectFps,
                                                   onRemoveAudioClip:
                                                       widget.onRemoveAudioClip,
+                                                  onDropMediaAsset:
+                                                      widget.onDropMediaAsset,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

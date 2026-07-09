@@ -31,6 +31,7 @@ class TimelinePanel extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.onRemoveAudioClip,
+    this.onDropMediaAsset,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -75,6 +76,12 @@ class TimelinePanel extends StatefulWidget {
   /// orientations; frames↔seconds via [projectFps]).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop), both
+  /// orientations.
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -257,6 +264,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
+                    onDropMediaAsset: widget.onDropMediaAsset,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -285,6 +293,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
+                    onDropMediaAsset: widget.onDropMediaAsset,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
