@@ -145,8 +145,8 @@ void main() {
     );
   });
 
-  testWidgets('double-tap on an empty instruction cell adds an event with '
-      'the entered length in one undo', (tester) async {
+  testWidgets('double-tap on an empty instruction cell adds a ONE-frame '
+      'event in one undo (the grips own the length)', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -159,6 +159,11 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
     );
     expect(find.text('Add Instruction'), findsOneWidget);
+    // The R3 length input is retired — creation is one frame, like cels.
+    expect(
+      find.byKey(const ValueKey<String>('instance-length-field')),
+      findsNothing,
+    );
 
     // Pick PAN from the vocabulary (near the menu top — far entries sit
     // outside the dropdown's visible window) and give it endpoint values.
@@ -178,12 +183,6 @@ void main() {
       find.byKey(const ValueKey<String>('instruction-value-b-field')),
       '100%',
     );
-    // The creation dialog asks for the span length now (no more auto-fill
-    // to the cut end): 0 seconds + 5 komas.
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('instance-length-field')),
-      '0+5',
-    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
@@ -191,7 +190,7 @@ void main() {
 
     final event = _camLayer(repository).instructions[4]!;
     expect(event.instructionId, 'pan');
-    expect(event.length, 5, reason: 'the dialog length owns the span');
+    expect(event.length, 1, reason: 'new instances are one frame long');
     expect(event.valueA, '0%');
     expect(event.valueB, '100%');
     expect(find.text('PAN'), findsWidgets);
