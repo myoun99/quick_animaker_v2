@@ -1071,11 +1071,42 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
+  /// kind, inserted directly above it, named by its section's own scheme
+  /// (cel letters / S3 / CAM 2). The camera cannot be duplicated (exactly
+  /// one per cut) — with it (or nothing) active, a default cel is added.
   void addLayer() {
     _layerSequence += 1;
-    _layerController.addLayerWithDefaults(
-      layerId: defaultLayerIdForSequence(_layerSequence),
-    );
+    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final kind = activeLayer?.kind ?? LayerKind.animation;
+    switch (kind) {
+      case LayerKind.se:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextSeLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.se,
+          ),
+        );
+      case LayerKind.instruction:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextInstructionLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.instruction,
+          ),
+        );
+      case LayerKind.animation:
+      case LayerKind.storyboard:
+      case LayerKind.art:
+        _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
+      case LayerKind.camera:
+        _layerController.addLayerWithDefaults(layerId: layerId);
+    }
     notifyListeners();
   }
 
@@ -1464,38 +1495,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
   /// carry several SE columns), but converting one away must not break the
   /// S1·S2 floor of two.
-  bool get canToggleTargetLayerSe {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.animation) {
-      return true;
-    }
-    return targetLayer.kind == LayerKind.se &&
-        _layerController.layers
-                .where((layer) => layer.kind == LayerKind.se)
-                .length >
-            2;
-  }
-
-  void toggleTargetLayerSe() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || !canToggleTargetLayerSe) {
-      return;
-    }
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
-      layerId: targetLayer.id,
-      kind: targetLayer.kind == LayerKind.se
-          ? LayerKind.animation
-          : LayerKind.se,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
   String get activeLayerKindLabelText {
     final targetLayer = _targetLayerForKindToggle;
     return switch (targetLayer?.kind) {
@@ -1532,22 +1531,6 @@ class EditorSessionManager extends ChangeNotifier {
           : LayerKind.art,
     );
     _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Adds another camera-work instruction row (CAM 2, CAM 3, …). The display
-  /// sorts it into the camera section regardless of insertion position.
-  void addInstructionLayer() {
-    _layerSequence += 1;
-    _layerController.addLayer(
-      layer: Layer(
-        id: defaultLayerIdForSequence(_layerSequence),
-        name: nextInstructionLayerName(_layerController.layers),
-        frames: const [],
-        timeline: const {},
-        kind: LayerKind.instruction,
-      ),
-    );
     notifyListeners();
   }
 
