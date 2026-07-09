@@ -11,6 +11,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
+import '../models/media_asset.dart';
 import '../models/storyboard_frame_metadata.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
@@ -398,6 +399,10 @@ class ProjectRepository {
     updateProject(
       (project) => project.copyWith(cameraInstructions: instructionSet),
     );
+  }
+
+  void updateMediaAssets(List<MediaAsset> mediaAssets) {
+    updateProject((project) => project.copyWith(mediaAssets: mediaAssets));
   }
 
   void updateLayerAudioClips({

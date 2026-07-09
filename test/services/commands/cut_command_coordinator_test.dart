@@ -12,9 +12,11 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_mark.dart';
+import 'package:quick_animaker_v2/src/models/media_asset.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -905,6 +907,113 @@ void main() {
 
       fixture.historyManager.undo();
       expect(fixture.project.cameraInstructions, CameraInstructionSet.standard);
+    });
+
+    test('updateMediaAssets edits the pool through history and dedupes', () {
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      const pool = [MediaAsset(path: '/snd/foot.wav', name: '발소리')];
+
+      fixture.coordinator.updateMediaAssets(pool);
+      expect(fixture.project.mediaAssets, pool);
+      expect(fixture.historyManager.undoCount, 1);
+
+      // Unchanged pool is a no-op.
+      fixture.coordinator.updateMediaAssets(pool);
+      expect(fixture.historyManager.undoCount, 1);
+
+      fixture.historyManager.undo();
+      expect(fixture.project.mediaAssets, isEmpty);
+    });
+
+    test('relinkMediaAsset rewrites the pool entry AND every referencing '
+        'clip in one undo step; clip identity elsewhere survives', () {
+      const oldPath = '/snd/old/foot.wav';
+      const newPath = '/snd/new/foot.wav';
+      final seLayer = Layer(
+        id: const LayerId('se-1'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
+          2: const TimelineExposure.drawing(FrameId('f2'), length: 2),
+        },
+        audioClips: const [
+          AudioClip(filePath: oldPath, frameId: FrameId('f1')),
+          AudioClip(filePath: '/snd/other.wav', frameId: FrameId('f2')),
+        ],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [seLayer]);
+      final untouchedCut = _cut(id: 'cut-2', name: 'Cut B');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, untouchedCut]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      fixture.coordinator.updateMediaAssets(const [
+        MediaAsset(path: oldPath, name: '발소리'),
+        MediaAsset(path: '/snd/other.wav', name: 'other.wav'),
+      ]);
+      final untouchedBefore = fixture.project.tracks.single.cuts[1];
+
+      fixture.coordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
+
+      expect(fixture.project.mediaAssetByPath(newPath)?.name, '발소리');
+      expect(fixture.project.mediaAssetByPath(oldPath), isNull);
+      final clips =
+          fixture.project.tracks.single.cuts.first.layers.single.audioClips;
+      expect(clips.first.filePath, newPath);
+      expect(clips.first.frameId, const FrameId('f1'));
+      expect(clips.last.filePath, '/snd/other.wav');
+      // Untouched subtrees keep their identity (cache warmth).
+      expect(
+        identical(fixture.project.tracks.single.cuts[1], untouchedBefore),
+        isTrue,
+      );
+
+      fixture.historyManager.undo();
+      expect(fixture.project.mediaAssetByPath(oldPath)?.name, '발소리');
+      expect(
+        fixture
+            .project
+            .tracks
+            .single
+            .cuts
+            .first
+            .layers
+            .single
+            .audioClips
+            .first
+            .filePath,
+        oldPath,
+      );
+
+      // Guards: same path, unknown asset, or occupied target are no-ops.
+      final undoCountBefore = fixture.historyManager.undoCount;
+      fixture.coordinator.relinkMediaAsset(oldPath: oldPath, newPath: oldPath);
+      fixture.coordinator.relinkMediaAsset(
+        oldPath: '/missing.wav',
+        newPath: newPath,
+      );
+      fixture.coordinator.relinkMediaAsset(
+        oldPath: oldPath,
+        newPath: '/snd/other.wav',
+      );
+      expect(fixture.historyManager.undoCount, undoCountBefore);
     });
 
     test('duplicateLayer carries instruction spans to the copy', () {

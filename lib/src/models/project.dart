@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
+import 'media_asset.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
 import 'track.dart';
@@ -17,8 +18,10 @@ class Project {
     this.cameraSize = defaultProjectCameraSize,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
+    List<MediaAsset> mediaAssets = const [],
   }) : tracks = List.unmodifiable(tracks),
-       cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard;
+       cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
+       mediaAssets = immutableMediaAssetList(mediaAssets);
 
   final ProjectId id;
   final String name;
@@ -34,6 +37,20 @@ class Project {
   /// standard 撮影 terms and is user-editable.
   final CameraInstructionSet cameraInstructions;
 
+  /// The media pool the browser panel lists, keyed by absolute path.
+  /// Loading reconciles it against every clip reference, so legacy projects
+  /// (and hand-edited files) always open with a complete pool.
+  final List<MediaAsset> mediaAssets;
+
+  MediaAsset? mediaAssetByPath(String path) {
+    for (final asset in mediaAssets) {
+      if (asset.path == path) {
+        return asset;
+      }
+    }
+    return null;
+  }
+
   Project copyWith({
     ProjectId? id,
     String? name,
@@ -43,6 +60,7 @@ class Project {
     CanvasSize? cameraSize,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
+    List<MediaAsset>? mediaAssets,
   }) {
     return Project(
       id: id ?? this.id,
@@ -53,6 +71,7 @@ class Project {
       cameraSize: cameraSize ?? this.cameraSize,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
+      mediaAssets: mediaAssets ?? this.mediaAssets,
     );
   }
 
@@ -65,15 +84,24 @@ class Project {
     'cameraSize': cameraSize.toJson(),
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
+    'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
+    final tracks = (json['tracks'] as List<dynamic>)
+        .map((track) => Track.fromJson(track as Map<String, dynamic>))
+        .toList();
+    final storedAssets = json['mediaAssets'] == null
+        ? const <MediaAsset>[]
+        : (json['mediaAssets'] as List<dynamic>)
+              .map(
+                (asset) => MediaAsset.fromJson(asset as Map<String, dynamic>),
+              )
+              .toList();
     return Project(
       id: ProjectId.fromJson(json['id'] as Map<String, dynamic>),
       name: json['name'] as String,
-      tracks: (json['tracks'] as List<dynamic>)
-          .map((track) => Track.fromJson(track as Map<String, dynamic>))
-          .toList(),
+      tracks: tracks,
       createdAt: DateTime.parse(json['createdAt'] as String),
       fps: json['fps'] as int,
       cameraSize: json['cameraSize'] == null
@@ -89,6 +117,7 @@ class Project {
           : CameraInstructionSet.fromJson(
               json['cameraInstructions'] as Map<String, dynamic>,
             ),
+      mediaAssets: reconciledMediaAssets(storedAssets, tracks),
     );
   }
 
@@ -103,7 +132,8 @@ class Project {
           other.fps == fps &&
           other.cameraSize == cameraSize &&
           other.timesheetInfo == timesheetInfo &&
-          other.cameraInstructions == cameraInstructions;
+          other.cameraInstructions == cameraInstructions &&
+          listEquals(other.mediaAssets, mediaAssets);
 
   @override
   int get hashCode => Object.hash(
@@ -115,9 +145,40 @@ class Project {
     cameraSize,
     timesheetInfo,
     cameraInstructions,
+    Object.hashAll(mediaAssets),
   );
 
   @override
   String toString() =>
       'Project(id: $id, name: $name, tracks: $tracks, createdAt: $createdAt, fps: $fps, cameraSize: $cameraSize)';
+}
+
+/// [stored] plus a synthesized entry (file-name display name) for every
+/// clip-referenced path the pool does not know yet, in first-reference
+/// order. Legacy projects predate the pool entirely; newer files can also
+/// arrive with pool/clips out of sync (hand edits, merges) — loading always
+/// reconciles rather than trusting the stored list.
+List<MediaAsset> reconciledMediaAssets(
+  List<MediaAsset> stored,
+  List<Track> tracks,
+) {
+  final known = {for (final asset in stored) asset.path};
+  final synthesized = <MediaAsset>[];
+  for (final track in tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        for (final clip in layer.audioClips) {
+          if (known.add(clip.filePath)) {
+            synthesized.add(
+              MediaAsset(
+                path: clip.filePath,
+                name: mediaAssetDefaultName(clip.filePath),
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+  return synthesized.isEmpty ? stored : [...stored, ...synthesized];
 }
