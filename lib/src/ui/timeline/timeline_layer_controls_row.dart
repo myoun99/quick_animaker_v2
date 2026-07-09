@@ -157,7 +157,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
                 onPressed: () => onToggleLayerVisibility(layer.id),
               ),
-              // Instruction rows never composite — no dead control there.
               // The camera row's slider drives the camera-view DIM opacity
               // (unified layer controls).
               if (layerKindShowsOpacityControl(layer.kind)) ...[

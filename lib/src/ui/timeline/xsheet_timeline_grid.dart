@@ -1404,9 +1404,8 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  // Instruction rows never composite — no dead control
-                  // there. The camera column's slider drives the
-                  // camera-view DIM opacity (unified layer controls).
+                  // The camera column's slider drives the camera-view DIM
+                  // opacity (unified layer controls).
                   if (layerKindShowsOpacityControl(layer.kind)) ...[
                     Expanded(
                       child: Slider(

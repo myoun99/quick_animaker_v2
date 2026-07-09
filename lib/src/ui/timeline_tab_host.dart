@@ -88,14 +88,13 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// Every kind's twirl-down lanes: the camera's AE Transform lanes (the
-  /// cut camera track), the SAME Transform lanes on every drawing layer
-  /// (L3 — the layer's own track, applied at composite time) and the SE
-  /// layers' audio lane. Instruction rows have no composited content.
+  /// Every kind's twirl-down lanes — the SAME AE Transform lanes on truly
+  /// every layer (unified layer controls): the camera rides the cut camera
+  /// track, every other kind its own layer track (applied at composite
+  /// time; SE transforms move the canvas dialogue, instruction transforms
+  /// are authored state for parity). SE layers append their audio lane.
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
     switch (layer.kind) {
-      case LayerKind.se:
-        return seAudioLanesFor(layer);
       case LayerKind.camera:
         final cut = _session.activeCut;
         return transformPropertyLanes(
@@ -106,16 +105,21 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             frameIndex: frameIndex,
           ),
         );
+      case LayerKind.se:
+        return [..._layerTransformLanes(layer), ...seAudioLanesFor(layer)];
       case LayerKind.animation:
       case LayerKind.art:
       case LayerKind.storyboard:
-        return transformPropertyLanes(
-          layer.transformTrack,
-          poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
-        );
       case LayerKind.instruction:
-        return const [];
+        return _layerTransformLanes(layer);
     }
+  }
+
+  List<PropertyLaneRow> _layerTransformLanes(Layer layer) {
+    return transformPropertyLanes(
+      layer.transformTrack,
+      poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
+    );
   }
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
