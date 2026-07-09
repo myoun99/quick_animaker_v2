@@ -391,8 +391,9 @@ class ExportDialogState extends State<ExportDialog> {
         final videoPlan = framePlan!;
         summary = await widget.videoExportService.exportVideo(
           count: count,
+          // Video frames bake the cut fade (MP4 has no alpha channel).
           renderImage: (index) =>
-              renderer.renderComposite(videoPlan[index], sizeMode),
+              renderer.renderCompositeForVideo(videoPlan[index], sizeMode),
           outputFilePath: videoPath!,
           fps: widget.session.projectFps,
           // SE audio clips muxed onto the video timeline (silent export

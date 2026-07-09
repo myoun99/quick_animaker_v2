@@ -5,6 +5,7 @@ import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
 import 'layer_section_defaults.dart';
+import 'transform_track.dart';
 
 class Cut {
   Cut({
@@ -15,8 +16,10 @@ class Cut {
     required this.canvasSize,
     this.metadata = const CutMetadata.empty(),
     CutCamera? camera,
+    TransformTrack? transformTrack,
   }) : layers = List.unmodifiable(layers),
-       camera = camera ?? CutCamera.empty();
+       camera = camera ?? CutCamera.empty(),
+       transformTrack = transformTrack ?? TransformTrack.empty();
 
   final CutId id;
   final String name;
@@ -26,6 +29,26 @@ class Cut {
   final CutMetadata metadata;
   final CutCamera camera;
 
+  /// CUT-level transform on the cut's playback frame axis — the V-track's
+  /// track-level effects. Only the opacity lane is consumed today (cut
+  /// fade in/out over the whole composed frame); the other lanes wait for
+  /// V-track transform UI. Applied at playback/export display time, never
+  /// baked into composites (a fade would shard the composite cache per
+  /// frame).
+  final TransformTrack transformTrack;
+
+  /// The composed frame's opacity at [frameIndex] (the cut fade), 1 when
+  /// the opacity lane is unkeyed.
+  double fadeOpacityAt(int frameIndex) {
+    return transformTrack.opacity
+        .resolveAt(
+          frameIndex: frameIndex,
+          orElse: () => 1.0,
+          lerp: (a, b, t) => a + (b - a) * t,
+        )
+        .clamp(0.0, 1.0);
+  }
+
   Cut copyWith({
     CutId? id,
     String? name,
@@ -34,6 +57,7 @@ class Cut {
     CanvasSize? canvasSize,
     CutMetadata? metadata,
     CutCamera? camera,
+    TransformTrack? transformTrack,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -43,6 +67,7 @@ class Cut {
       canvasSize: canvasSize ?? this.canvasSize,
       metadata: metadata ?? this.metadata,
       camera: camera ?? this.camera,
+      transformTrack: transformTrack ?? this.transformTrack,
     );
   }
 
@@ -54,6 +79,7 @@ class Cut {
     'canvasSize': canvasSize.toJson(),
     'metadata': metadata.toJson(),
     'camera': camera.toJson(),
+    if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -79,6 +105,9 @@ class Cut {
       camera: json['camera'] == null
           ? null
           : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
+      transformTrack: json['transform'] == null
+          ? null
+          : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
     );
   }
 
@@ -92,7 +121,8 @@ class Cut {
           other.duration == duration &&
           other.canvasSize == canvasSize &&
           other.metadata == metadata &&
-          other.camera == camera;
+          other.camera == camera &&
+          other.transformTrack == transformTrack;
 
   @override
   int get hashCode => Object.hash(
@@ -103,9 +133,10 @@ class Cut {
     canvasSize,
     metadata,
     camera,
+    transformTrack,
   );
 
   @override
   String toString() =>
-      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, camera: $camera)';
+      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, camera: $camera, transformTrack: $transformTrack)';
 }

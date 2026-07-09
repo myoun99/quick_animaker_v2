@@ -65,6 +65,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -114,6 +116,19 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Commits an audio-lane fade-handle drag.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -673,6 +688,36 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                             .id,
                                                                         clipIndex,
                                                                         offsetFrames,
+                                                                      ),
+                                                                onSetClipFades:
+                                                                    widget.onSetAudioClipFades ==
+                                                                        null
+                                                                    ? null
+                                                                    : (
+                                                                        clipIndex,
+                                                                        fadeIn,
+                                                                        fadeOut,
+                                                                      ) => widget.onSetAudioClipFades!(
+                                                                        entries[index]
+                                                                            .layer
+                                                                            .id,
+                                                                        clipIndex,
+                                                                        fadeIn,
+                                                                        fadeOut,
+                                                                      ),
+                                                                onSetClipGain:
+                                                                    widget.onSetAudioClipGain ==
+                                                                        null
+                                                                    ? null
+                                                                    : (
+                                                                        clipIndex,
+                                                                        gain,
+                                                                      ) => widget.onSetAudioClipGain!(
+                                                                        entries[index]
+                                                                            .layer
+                                                                            .id,
+                                                                        clipIndex,
+                                                                        gain,
                                                                       ),
                                                               )
                                                             : TimelineLaneFrameRow(

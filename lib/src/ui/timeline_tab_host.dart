@@ -605,8 +605,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   blockStartFrame: blockStartFrame,
                   path: path,
                 ),
-            // The audio lane's slide edit (the clip's offset trim).
+            // The audio lane's slide edit (the clip's offset trim), edge
+            // fade handles and gain dialog.
             onSetAudioClipOffset: _session.setAudioClipOffset,
+            onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
+                _session.setAudioClipFades(
+                  layerId,
+                  clipIndex,
+                  fadeInFrames: fadeIn,
+                  fadeOutFrames: fadeOut,
+                ),
+            onSetAudioClipGain: _session.setAudioClipGain,
             onAddLayer: _session.addLayer,
             onToggleLayerMuted: _session.toggleLayerMuted,
             // Kind-dispatched (unified layer controls): the camera row drives

@@ -103,6 +103,51 @@ void main() {
       expect(filter, contains('[a0][a1]amix=inputs=2:normalize=0[aout]'));
       expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[aout]']));
     });
+
+    test('gain and fades chain volume/afade before adelay, in clip time', () {
+      final args = VideoExportService.buildFfmpegArguments(
+        fps: 24,
+        outputFilePath: 'out.mp4',
+        audioClips: const [
+          ExportAudioClip(
+            filePath: 'voice.wav',
+            delaySeconds: 1,
+            durationSeconds: 3,
+            gain: 1.5,
+            fadeInSeconds: 0.5,
+            fadeOutSeconds: 1,
+          ),
+        ],
+      );
+
+      final filter = args[args.indexOf('-filter_complex') + 1];
+      expect(
+        filter,
+        contains(
+          '[1:a]volume=1.500,afade=t=in:st=0:d=0.500,'
+          'afade=t=out:st=2.000:d=1.000,adelay=1000:all=1[a0]',
+        ),
+      );
+    });
+
+    test('a default envelope emits the exact legacy adelay-only chain', () {
+      final args = VideoExportService.buildFfmpegArguments(
+        fps: 24,
+        outputFilePath: 'out.mp4',
+        audioClips: const [
+          ExportAudioClip(
+            filePath: 'voice.wav',
+            delaySeconds: 0.25,
+            durationSeconds: 2,
+          ),
+        ],
+      );
+
+      final filter = args[args.indexOf('-filter_complex') + 1];
+      expect(filter, contains('[1:a]adelay=250:all=1[a0]'));
+      expect(filter, isNot(contains('volume=')));
+      expect(filter, isNot(contains('afade')));
+    });
   });
 
   test('missing ffmpeg surfaces an install hint', () async {

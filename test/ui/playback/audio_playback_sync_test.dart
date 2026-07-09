@@ -17,9 +17,13 @@ import 'package:quick_animaker_v2/src/ui/playback/audio_playback_sync.dart';
 import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
 
 class _FakeClipPlayer implements AudioClipPlayer {
-  _FakeClipPlayer(this.log);
+  _FakeClipPlayer(this.log, {this.volumeLog});
 
   final List<String> log;
+
+  /// Volume ramps log separately — the lifecycle assertions stay
+  /// volume-agnostic (every start is preceded by a setVolume).
+  final List<String>? volumeLog;
   String? _path;
 
   @override
@@ -31,6 +35,10 @@ class _FakeClipPlayer implements AudioClipPlayer {
   @override
   Future<void> startAt(Duration position) async =>
       log.add('start $_path @${position.inMilliseconds}ms');
+
+  @override
+  Future<void> setVolume(double volume) async =>
+      volumeLog?.add('$_path ${volume.toStringAsFixed(2)}');
 
   @override
   Future<void> pause() async => log.add('pause $_path');
@@ -364,5 +372,83 @@ void main() {
     mutedController.play(scope: PlaybackScope.activeCut);
     // The muted layer's a.wav never even prepares; the live layer plays.
     expect(mutedLog, ['prepare c.wav', 'start c.wav @0ms']);
+  });
+
+  test('gain and fades ramp the volume per tick, clamped into 0..1', () {
+    // One 10-frame cut: gain 2.0 (platform-clamped to 1), fade-in over 4
+    // frames, fade-out over 5 anchored at the audible end (10).
+    final rampLog = <String>[];
+    final volumeLog = <String>[];
+    final project = Project(
+      id: const ProjectId('ramp-project'),
+      name: 'Ramp',
+      createdAt: DateTime.utc(2026, 7, 10),
+      tracks: [
+        Track(
+          id: const TrackId('ramp-track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('ramp-cut'),
+              name: 'R',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [
+                _seLayer(
+                  'se-ramp',
+                  file: 'a.wav',
+                  start: 0,
+                  length: 10,
+                ).copyWith(
+                  audioClips: const [
+                    AudioClip(
+                      filePath: 'a.wav',
+                      frameId: FrameId('se-ramp-frame'),
+                      gain: 2.0,
+                      fadeInFrames: 4,
+                      fadeOutFrames: 5,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final rampController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('ramp-cut'),
+      resolveActiveTrackId: () => const TrackId('ramp-track'),
+      resolveFps: () => 10,
+    );
+    final sync = AudioPlaybackSync(
+      controller: rampController,
+      resolveFps: () => 10,
+      durationSecondsFor: (path) => _durations[path],
+      playerFactory: () => _FakeClipPlayer(rampLog, volumeLog: volumeLog),
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(rampController.dispose);
+
+    // Frame 0: fade-in floor — volume lands BEFORE the first samples.
+    rampController.play(scope: PlaybackScope.activeCut);
+    expect(volumeLog, ['a.wav 0.00']);
+    expect(rampLog.last, 'start a.wav @0ms');
+
+    // Mid-fade-in (frame 2 of 4): gain 2 × 0.5 = 1.0 after the clamp;
+    // frame 3 stays clamped at 1.00 → no redundant platform call.
+    volumeLog.clear();
+    rampController.seekToGlobalFrame(2);
+    rampController.seekToGlobalFrame(3);
+    expect(volumeLog, ['a.wav 1.00']);
+
+    // Fade-out: remaining 3 of 5 → 2 × 3/5 = 1.2 → clamped 1.00 (silent
+    // ramp until the clamp releases), then remaining 2 → 0.80.
+    volumeLog.clear();
+    rampController.seekToGlobalFrame(7);
+    expect(volumeLog, isEmpty);
+    rampController.seekToGlobalFrame(8);
+    expect(volumeLog, ['a.wav 0.80']);
   });
 }

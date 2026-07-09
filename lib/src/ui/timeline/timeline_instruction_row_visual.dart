@@ -14,9 +14,16 @@ import 'timeline_frame_coordinate_policy.dart';
 /// [instructionCellExposureState] feeding the shared cell style), this
 /// overlay adds the mark background — the straight duration line
 /// (A ⊢───⊣ B), the FI/FO hatched fade wedges or the O.L bowtie, per the
-/// def's markType — with the instruction name at the span's START (unified
-/// with frame blocks) and the A/B endpoint values at the span's ends.
-/// Shared by both orientations (Axis policy).
+/// def's markType — with the A/B instance names centered in the start/end
+/// cells (frame-name style) and the instruction name centered on the
+/// span's middle cell ([instructionLabelAnchorCell] — R3 restores the
+/// center rule after the R2 start-anchor detour). Shared by both
+/// orientations (Axis policy).
+
+/// The instruction name's anchor cell — the span's middle: odd spans
+/// center exactly, even spans sit one cell left of the middle boundary,
+/// so the writing always lands ON a cell like on paper (user-confirmed).
+int instructionLabelAnchorCell(int eventLength) => (eventLength - 1) ~/ 2;
 
 /// Paper-cell adapter: instruction events have no timeline entries, so
 /// this maps a frame index onto the shared cell exposure states (span
@@ -210,11 +217,6 @@ class _InstructionSpan extends StatelessWidget {
     };
   }
 
-  /// Endpoint values sit on the line's far side (below it on rows, right of
-  /// it on X-sheet columns) — the sheet writes them beside the shaft.
-  AlignmentGeometry get _valueAlignment =>
-      axis == Axis.horizontal ? Alignment.bottomCenter : Alignment.centerRight;
-
   /// Writing runs along the frame axis: plain text on horizontal rows, an
   /// upright glyph stack (paper-style vertical writing, never rotated) on
   /// X-sheet columns.
@@ -238,10 +240,11 @@ class _InstructionSpan extends StatelessWidget {
     // The mark and the writing are independent: free per-event text wins,
     // the vocabulary name is the fallback.
     final name = event.displayLabel(def);
-    final valueStyle = TextStyle(
-      color: timelineDrawingInkColor.withValues(alpha: 0.8),
-      fontSize: 10,
-      fontWeight: FontWeight.w600,
+    // The A/B instance names read exactly like frame names on drawing
+    // blocks: ink, bold, ambient size, centered in their cells.
+    const valueStyle = TextStyle(
+      color: timelineDrawingInkColor,
+      fontWeight: FontWeight.bold,
       height: 1.1,
     );
     final nameStyle = TextStyle(
@@ -278,29 +281,19 @@ class _InstructionSpan extends StatelessWidget {
           if (valueA != null && valueA.isNotEmpty)
             _cellSlot(
               cellIndex: 0,
-              alignment: _valueAlignment,
               child: ExcludeSemantics(child: _writing(valueA, valueStyle)),
             ),
           if (valueB != null && valueB.isNotEmpty)
             _cellSlot(
               cellIndex: event.length - 1,
-              alignment: _valueAlignment,
               child: ExcludeSemantics(child: _writing(valueB, valueStyle)),
             ),
-          // The name anchors to the span's START and runs along it, on the
-          // line's near side — unified with frame blocks (user direction);
-          // the sheet writes it the same way beside the shaft.
+          // The name centers on the span's MIDDLE cell — the paper rule
+          // (R3: the R2 start anchor is retired).
           if (name.isNotEmpty)
-            Positioned.fill(
-              child: OverflowBox(
-                alignment: Alignment.topLeft,
-                maxWidth: double.infinity,
-                maxHeight: double.infinity,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 2, top: 1),
-                  child: ExcludeSemantics(child: _writing(name, nameStyle)),
-                ),
-              ),
+            _cellSlot(
+              cellIndex: instructionLabelAnchorCell(event.length),
+              child: ExcludeSemantics(child: _writing(name, nameStyle)),
             ),
         ],
       ),

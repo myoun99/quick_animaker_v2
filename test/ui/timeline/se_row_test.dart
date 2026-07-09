@@ -17,6 +17,8 @@ import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_se_row_visual.dart'
+    show seNameBoxExtent;
 
 const _cutId = CutId('se-cut');
 const _seLayerId = LayerId('se-voice');
@@ -221,6 +223,36 @@ void main() {
       _seDialogueAt(tester, 'timeline-se-label-se-voice-1'),
       '그건 아니라고 생각해',
     );
+  });
+
+  testWidgets('the XSheet SE name box is a slim horizontal band, never a '
+      'frame-cells-tall stack (R3 fix)', (tester) async {
+    await _pumpHome(
+      tester,
+      _project(
+        frames: [
+          Frame(
+            id: const FrameId('se-f1'),
+            duration: 3,
+            name: '그건 아니라고 생각해',
+            seName: '앨리스',
+            strokes: const [],
+          ),
+        ],
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final nameBox = find.bySemanticsLabel('SE name 앨리스');
+    expect(nameBox, findsOneWidget);
+    final size = tester.getSize(nameBox);
+    // A partial band of the first frame cell, written horizontally.
+    expect(size.height, seNameBoxExtent);
+    expect(size.width, greaterThan(size.height));
   });
 
   testWidgets('XSheet SE column shows the same label overlay', (tester) async {

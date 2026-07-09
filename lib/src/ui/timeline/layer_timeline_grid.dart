@@ -49,6 +49,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -95,6 +97,19 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Commits an audio-lane fade-handle drag.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -704,6 +719,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onDropMediaAsset,
                                                   onSetAudioClipOffset: widget
                                                       .onSetAudioClipOffset,
+                                                  onSetAudioClipFades: widget
+                                                      .onSetAudioClipFades,
+                                                  onSetAudioClipGain:
+                                                      widget.onSetAudioClipGain,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

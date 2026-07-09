@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -26,6 +27,9 @@ class ExportAudioClip {
     this.seekSeconds = 0,
     this.delaySeconds = 0,
     required this.durationSeconds,
+    this.gain = 1.0,
+    this.fadeInSeconds = 0,
+    this.fadeOutSeconds = 0,
   });
 
   final String filePath;
@@ -33,22 +37,42 @@ class ExportAudioClip {
   final double delaySeconds;
   final double durationSeconds;
 
+  /// The clip's volume envelope in the trimmed clip's own time: [gain]
+  /// multiplies the whole clip (ffmpeg `volume`, exact — no platform
+  /// clamp), [fadeInSeconds] ramps up from the trimmed start and
+  /// [fadeOutSeconds] ramps down into the trimmed end (ffmpeg `afade`).
+  final double gain;
+  final double fadeInSeconds;
+  final double fadeOutSeconds;
+
   @override
   bool operator ==(Object other) =>
       other is ExportAudioClip &&
       other.filePath == filePath &&
       other.seekSeconds == seekSeconds &&
       other.delaySeconds == delaySeconds &&
-      other.durationSeconds == durationSeconds;
+      other.durationSeconds == durationSeconds &&
+      other.gain == gain &&
+      other.fadeInSeconds == fadeInSeconds &&
+      other.fadeOutSeconds == fadeOutSeconds;
 
   @override
-  int get hashCode =>
-      Object.hash(filePath, seekSeconds, delaySeconds, durationSeconds);
+  int get hashCode => Object.hash(
+    filePath,
+    seekSeconds,
+    delaySeconds,
+    durationSeconds,
+    gain,
+    fadeInSeconds,
+    fadeOutSeconds,
+  );
 
   @override
   String toString() =>
       'ExportAudioClip(filePath: $filePath, seekSeconds: $seekSeconds, '
-      'delaySeconds: $delaySeconds, durationSeconds: $durationSeconds)';
+      'delaySeconds: $delaySeconds, durationSeconds: $durationSeconds, '
+      'gain: $gain, fadeInSeconds: $fadeInSeconds, '
+      'fadeOutSeconds: $fadeOutSeconds)';
 }
 
 /// A video export failure with a user-presentable [message] (missing ffmpeg,
@@ -131,8 +155,22 @@ class VideoExportService {
     // the graph alongside the audio chain.
     final filters = <String>['[0:v]$_evenPadFilter[vout]'];
     for (var index = 0; index < audioClips.length; index += 1) {
-      final delayMs = (audioClips[index].delaySeconds * 1000).round();
-      filters.add('[${index + 1}:a]adelay=$delayMs:all=1[a$index]');
+      final clip = audioClips[index];
+      final delayMs = (clip.delaySeconds * 1000).round();
+      // The volume envelope runs in the trimmed clip's own time, BEFORE
+      // adelay shifts it onto the output timeline. A default envelope
+      // (gain 1, no fades) emits the exact legacy chain.
+      final chain = <String>[
+        if (clip.gain != 1.0) 'volume=${clip.gain.toStringAsFixed(3)}',
+        if (clip.fadeInSeconds > 0)
+          'afade=t=in:st=0:d=${seconds(clip.fadeInSeconds)}',
+        if (clip.fadeOutSeconds > 0)
+          'afade=t=out'
+              ':st=${seconds(math.max(0, clip.durationSeconds - clip.fadeOutSeconds))}'
+              ':d=${seconds(clip.fadeOutSeconds)}',
+        'adelay=$delayMs:all=1',
+      ];
+      filters.add('[${index + 1}:a]${chain.join(',')}[a$index]');
     }
     final String audioOut;
     if (audioClips.length == 1) {
