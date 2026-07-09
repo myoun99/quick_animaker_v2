@@ -88,14 +88,13 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// Every kind's twirl-down lanes: the camera's AE Transform lanes (the
-  /// cut camera track), the SAME Transform lanes on every drawing layer
-  /// (L3 — the layer's own track, applied at composite time) and the SE
-  /// layers' audio lane. Instruction rows have no composited content.
+  /// Every kind's twirl-down lanes — the SAME AE Transform lanes on truly
+  /// every layer (unified layer controls): the camera rides the cut camera
+  /// track, every other kind its own layer track (applied at composite
+  /// time; SE transforms move the canvas dialogue, instruction transforms
+  /// are authored state for parity). SE layers append their audio lane.
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
     switch (layer.kind) {
-      case LayerKind.se:
-        return seAudioLanesFor(layer);
       case LayerKind.camera:
         final cut = _session.activeCut;
         return transformPropertyLanes(
@@ -106,6 +105,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             frameIndex: frameIndex,
           ),
         );
+      case LayerKind.se:
+        return [..._layerTransformLanes(layer), ...seAudioLanesFor(layer)];
       case LayerKind.animation:
       case LayerKind.art:
       case LayerKind.storyboard:
@@ -121,8 +122,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session.layerOpacityAtFrame(layer, frameIndex),
         );
       case LayerKind.instruction:
-        return const [];
+        return _layerTransformLanes(layer);
     }
+  }
+
+  List<PropertyLaneRow> _layerTransformLanes(Layer layer) {
+    return transformPropertyLanes(
+      layer.transformTrack,
+      poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
+    );
   }
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
@@ -207,6 +215,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       );
     },
     onSetValue: (layer, lane, frameIndex, input) {
+      // The SE audio lane's value field edits the playhead span's offset
+      // trim instead of a transform property (one undo via the session).
+      if (laneIsSeAudio(lane)) {
+        final offset = parseAudioOffsetInput(input);
+        final span = seAudioSpanForLaneValue(layer, frameIndex);
+        if (offset == null || span == null) {
+          return;
+        }
+        _session.setAudioClipOffset(layer.id, span.clipIndex, offset);
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
@@ -368,6 +387,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
         initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
         previewAxis: _previewAxis,
+        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -379,6 +399,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _session.createSeEntryAtCurrentFrame(
         name: result.dialogue,
         seName: seName,
+        lengthFrames: result.lengthFrames,
       );
     } else {
       // SE edits never hit the link-conflict flow (duplicates allowed).
@@ -404,6 +425,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         editing: covering != null,
         onEditInstructionSet: () => _editInstructionSet(context),
         previewAxis: _previewAxis,
+        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -429,6 +451,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         valueB: result.valueB,
         memo: result.memo,
       ),
+      createLengthFrames: result.lengthFrames,
     );
   }
 
@@ -600,9 +623,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   blockStartFrame: blockStartFrame,
                   path: path,
                 ),
-            // The audio lane's slide edit (the clip's offset trim).
+            // The audio lane's slide edit (the clip's offset trim), edge
+            // fade handles and gain dialog.
             onSetAudioClipOffset: _session.setAudioClipOffset,
+            onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
+                _session.setAudioClipFades(
+                  layerId,
+                  clipIndex,
+                  fadeInFrames: fadeIn,
+                  fadeOutFrames: fadeOut,
+                ),
+            onSetAudioClipGain: _session.setAudioClipGain,
             onAddLayer: _session.addLayer,
+            onToggleLayerMuted: _session.toggleLayerMuted,
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _toggleLayerVisibility,

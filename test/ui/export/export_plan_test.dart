@@ -376,6 +376,38 @@ void main() {
       layers: [seLayer('se-b', file: 'c.wav', start: 3, length: 17)],
     );
 
+    test('muted SE layers contribute no clips (the mute speaker silences '
+        'export like playback)', () {
+      final cutWithMuted = cut(
+        'a',
+        duration: 10,
+        layers: [
+          seLayer(
+            'se-a1',
+            file: 'a.wav',
+            start: 0,
+            length: 10,
+          ).copyWith(muted: true),
+          seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
+        ],
+      );
+      final plan = buildExportFramePlan(
+        project: project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [cutWithMuted],
+          ),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.activeCut,
+      );
+
+      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+
+      expect(clips.map((clip) => clip.filePath), ['b.wav']);
+    });
+
     test('all-cuts export lays clips globally, capped at their cut blocks', () {
       final plan = buildExportFramePlan(
         project: project([
@@ -489,6 +521,68 @@ void main() {
           filePath: 'a.wav',
           seekSeconds: 0.7,
           durationSeconds: 0.4,
+        ),
+      ]);
+    });
+
+    test('gain and fades land on the plan; a range starting mid-fade keeps '
+        'the fade-in remainder', () {
+      final shapedCut = cut(
+        'a',
+        duration: 10,
+        layers: [
+          seLayer('se-a1', file: 'a.wav', start: 2, length: 8).copyWith(
+            audioClips: const [
+              AudioClip(
+                filePath: 'a.wav',
+                frameId: FrameId('se-a1-frame'),
+                gain: 1.5,
+                fadeInFrames: 4,
+                fadeOutFrames: 2,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final fullPlan = buildExportFramePlan(
+        project: project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [shapedCut]),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+      );
+      expect(buildExportAudioPlan(plan: fullPlan, fps: 10), const [
+        ExportAudioClip(
+          filePath: 'a.wav',
+          delaySeconds: 0.2,
+          durationSeconds: 0.8,
+          gain: 1.5,
+          fadeInSeconds: 0.4,
+          fadeOutSeconds: 0.2,
+        ),
+      ]);
+
+      // Frames 4..9: the range trims 2 of the 4 fade-in frames — the
+      // remainder ramps from the trimmed start; the fade-out anchors to
+      // the audible end as before.
+      final rangedPlan = buildExportFramePlan(
+        project: project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [shapedCut]),
+        ]),
+        activeCutId: const CutId('a'),
+        range: ExportRange.frameRange,
+        rangeStartFrame: 4,
+        rangeEndFrame: 9,
+      );
+      expect(buildExportAudioPlan(plan: rangedPlan, fps: 10), const [
+        ExportAudioClip(
+          filePath: 'a.wav',
+          seekSeconds: 0.2,
+          durationSeconds: 0.6,
+          gain: 1.5,
+          fadeInSeconds: 0.2,
+          fadeOutSeconds: 0.2,
         ),
       ]);
     });

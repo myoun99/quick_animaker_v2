@@ -16,11 +16,17 @@ import '../models/track_id.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/waveform_painter.dart';
 import 'panels/panel_scrollbar.dart';
+import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
+import 'theme/app_theme.dart';
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_cell_style.dart'
-    show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
+    show
+        timelineDrawingHeldColor,
+        timelineDrawingInkColor,
+        timelineDrawingStartBorderColor,
+        timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
@@ -81,6 +87,13 @@ class StoryboardPanel extends StatefulWidget {
     this.isFrameCached,
     this.thumbnailFor,
     this.audioPeaksFor,
+    this.hiddenWaveformSeRows = const {},
+    this.onToggleSeRowWaveform,
+    this.expandedSeAudioRows = const {},
+    this.onToggleSeRowLane,
+    this.expandedOpacityTracks = const {},
+    this.onToggleTrackLane,
+    this.onSetCutFade,
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
@@ -147,6 +160,29 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// S rows whose waveform display is toggled OFF (the rail's eye), keyed
+  /// by [seRowKey]. View state lives with the host.
+  final Set<String> hiddenWaveformSeRows;
+  final void Function(Track track, int slot)? onToggleSeRowWaveform;
+
+  /// Twirled-down S rows ([seRowKey]): an enlarged read-only waveform lane
+  /// under the row, the timeline Audio lane's storyboard sibling.
+  final Set<String> expandedSeAudioRows;
+  final void Function(Track track, int slot)? onToggleSeRowLane;
+
+  /// Twirled-down V tracks (track id value): the cut-fade Opacity lane
+  /// under the track row.
+  final Set<String> expandedOpacityTracks;
+  final void Function(Track track)? onToggleTrackLane;
+
+  /// Commits a cut-fade handle drag (one undo); null makes the Opacity
+  /// lane display-only.
+  final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
+  onSetCutFade;
+
+  /// The per-S-row view-state key: `<trackId>-<slot>`.
+  static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
 
   // Cut management actions (the storyboard owns cut lifecycle; these were
   // the temporary top-toolbar controls). All act on the active cut.
@@ -385,7 +421,28 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               _StoryboardTrackLabel(
                                 track: widget.project.tracks[index],
                                 trackLabel: 'V${index + 1}',
+                                laneExpanded: widget.expandedOpacityTracks
+                                    .contains(
+                                      widget.project.tracks[index].id.value,
+                                    ),
+                                onToggleLane: widget.onToggleTrackLane == null
+                                    ? null
+                                    : () => widget.onToggleTrackLane!(
+                                        widget.project.tracks[index],
+                                      ),
                               ),
+                              if (widget.expandedOpacityTracks.contains(
+                                widget.project.tracks[index].id.value,
+                              ))
+                                _StoryboardLaneLabel(
+                                  laneKey:
+                                      'storyboard-lane-label-'
+                                      '${widget.project.tracks[index].id.value}'
+                                      '-opacity',
+                                  label: 'Opacity',
+                                  icon: Icons.opacity,
+                                  height: _opacityLaneHeight,
+                                ),
                               // The track's synced SE rows (the timesheet's
                               // S1·S2 columns laid along the conte sheet).
                               for (
@@ -393,11 +450,54 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 slot <
                                     _seSlotCount(widget.project.tracks[index]);
                                 slot++
-                              )
+                              ) ...[
                                 _StoryboardSeLabel(
                                   track: widget.project.tracks[index],
                                   slot: slot,
+                                  waveformVisible: !widget.hiddenWaveformSeRows
+                                      .contains(
+                                        StoryboardPanel.seRowKey(
+                                          widget.project.tracks[index],
+                                          slot,
+                                        ),
+                                      ),
+                                  onToggleWaveform:
+                                      widget.onToggleSeRowWaveform == null
+                                      ? null
+                                      : () => widget.onToggleSeRowWaveform!(
+                                          widget.project.tracks[index],
+                                          slot,
+                                        ),
+                                  laneExpanded: widget.expandedSeAudioRows
+                                      .contains(
+                                        StoryboardPanel.seRowKey(
+                                          widget.project.tracks[index],
+                                          slot,
+                                        ),
+                                      ),
+                                  onToggleLane: widget.onToggleSeRowLane == null
+                                      ? null
+                                      : () => widget.onToggleSeRowLane!(
+                                          widget.project.tracks[index],
+                                          slot,
+                                        ),
                                 ),
+                                if (widget.expandedSeAudioRows.contains(
+                                  StoryboardPanel.seRowKey(
+                                    widget.project.tracks[index],
+                                    slot,
+                                  ),
+                                ))
+                                  _StoryboardLaneLabel(
+                                    laneKey:
+                                        'storyboard-lane-label-'
+                                        '${widget.project.tracks[index].id.value}'
+                                        '-s${slot + 1}-audio',
+                                    label: 'Audio',
+                                    icon: Icons.graphic_eq,
+                                    height: _audioLaneHeight,
+                                  ),
+                              ],
                             ],
                           ],
                         ),
@@ -467,11 +567,25 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         showSeconds: widget.showSeconds,
                                         projectFps: widget.projectFps,
                                       ),
+                                      if (widget.expandedOpacityTracks.contains(
+                                        widget.project.tracks[index].id.value,
+                                      ))
+                                        _StoryboardOpacityLaneRow(
+                                          trackIndex: index,
+                                          layoutEntries: layoutEntries
+                                              .where(
+                                                (entry) =>
+                                                    entry.trackIndex == index,
+                                              )
+                                              .toList(growable: false),
+                                          width: contentWidth,
+                                          timelineScale: scale,
+                                          onSetCutFade: widget.onSetCutFade,
+                                        ),
                                       // Synced SE rows: the same per-cut
                                       // SE data the timeline edits,
                                       // mapped to track-global frames
-                                      // (read-only; the audio waveform
-                                      // slots in here later).
+                                      // (read-only).
                                       for (
                                         var slot = 0;
                                         slot <
@@ -479,7 +593,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                               widget.project.tracks[index],
                                             );
                                         slot++
-                                      )
+                                      ) ...[
                                         _StoryboardSeRow(
                                           trackIndex: index,
                                           slot: slot,
@@ -492,8 +606,40 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                           width: contentWidth,
                                           timelineScale: scale,
                                           projectFps: widget.projectFps,
-                                          audioPeaksFor: widget.audioPeaksFor,
+                                          audioPeaksFor:
+                                              widget.hiddenWaveformSeRows
+                                                  .contains(
+                                                    StoryboardPanel.seRowKey(
+                                                      widget
+                                                          .project
+                                                          .tracks[index],
+                                                      slot,
+                                                    ),
+                                                  )
+                                              ? null
+                                              : widget.audioPeaksFor,
                                         ),
+                                        if (widget.expandedSeAudioRows.contains(
+                                          StoryboardPanel.seRowKey(
+                                            widget.project.tracks[index],
+                                            slot,
+                                          ),
+                                        ))
+                                          _StoryboardAudioLaneRow(
+                                            trackIndex: index,
+                                            slot: slot,
+                                            layoutEntries: layoutEntries
+                                                .where(
+                                                  (entry) =>
+                                                      entry.trackIndex == index,
+                                                )
+                                                .toList(growable: false),
+                                            width: contentWidth,
+                                            timelineScale: scale,
+                                            projectFps: widget.projectFps,
+                                            audioPeaksFor: widget.audioPeaksFor,
+                                          ),
+                                      ],
                                     ],
                                   ],
                                 ),
@@ -754,6 +900,11 @@ class _StoryboardRuler extends StatelessWidget {
 const double _seRowHeight = 22;
 const double _seRowBottomPadding = 2;
 
+/// Twirl-down lane heights: the enlarged waveform strip and the cut-fade
+/// (Opacity) envelope lane.
+const double _audioLaneHeight = 36;
+const double _opacityLaneHeight = 26;
+
 /// The track's SE row count: the widest cut decides (every cut carries the
 /// S1·S2 fixtures, more when the user added rows).
 int _seSlotCount(Track track) {
@@ -786,12 +937,25 @@ Layer? _seLayerAt(Cut cut, int slot) {
 }
 
 /// SE slot rows in the rail: the same bordered-row language as the track
-/// row above them, compact like the timeline's SE rows.
+/// row above them, compact like the timeline's SE rows — with the timeline
+/// rows' controls: a lane chevron (twirl-down waveform strip) and the
+/// waveform's eye toggle.
 class _StoryboardSeLabel extends StatelessWidget {
-  const _StoryboardSeLabel({required this.track, required this.slot});
+  const _StoryboardSeLabel({
+    required this.track,
+    required this.slot,
+    this.waveformVisible = true,
+    this.onToggleWaveform,
+    this.laneExpanded = false,
+    this.onToggleLane,
+  });
 
   final Track track;
   final int slot;
+  final bool waveformVisible;
+  final VoidCallback? onToggleWaveform;
+  final bool laneExpanded;
+  final VoidCallback? onToggleLane;
 
   @override
   Widget build(BuildContext context) {
@@ -804,13 +968,32 @@ class _StoryboardSeLabel extends StatelessWidget {
         ),
         width: StoryboardPanel._trackLabelWidth,
         height: _seRowHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.only(left: 2, right: 4),
         decoration: BoxDecoration(
           color: colorScheme.surface,
           border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: Row(
           children: [
+            // The timeline rows' lane chevron, storyboard-prefixed.
+            if (onToggleLane != null)
+              InkWell(
+                key: ValueKey<String>(
+                  'storyboard-se-lane-toggle-${track.id.value}-${slot + 1}',
+                ),
+                onTap: onToggleLane,
+                child: SizedBox(
+                  width: 16,
+                  height: _seRowHeight,
+                  child: Icon(
+                    laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            else
+              const SizedBox(width: 16),
             Icon(
               Icons.music_note_outlined,
               size: 14,
@@ -819,6 +1002,81 @@ class _StoryboardSeLabel extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               'S${slot + 1}',
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            if (onToggleWaveform != null)
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: IconButton(
+                  key: ValueKey<String>(
+                    'storyboard-se-waveform-toggle-'
+                    '${track.id.value}-${slot + 1}',
+                  ),
+                  tooltip: waveformVisible ? 'Hide Waveform' : 'Show Waveform',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 20,
+                    height: 20,
+                  ),
+                  icon: Icon(
+                    waveformVisible
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 13,
+                    color: waveformVisible
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: onToggleWaveform,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A twirled-down lane's rail label row (Audio / Opacity), indented under
+/// its owner row like the timeline's lane labels.
+class _StoryboardLaneLabel extends StatelessWidget {
+  const _StoryboardLaneLabel({
+    required this.laneKey,
+    required this.label,
+    required this.icon,
+    required this.height,
+  });
+
+  final String laneKey;
+  final String label;
+  final IconData icon;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: Container(
+        key: ValueKey<String>(laneKey),
+        width: StoryboardPanel._trackLabelWidth,
+        height: height,
+        padding: const EdgeInsets.only(left: 18, right: 8),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
               style: TextStyle(
                 fontSize: 11,
                 color: colorScheme.onSurfaceVariant,
@@ -1011,16 +1269,422 @@ class _StoryboardSeRow extends StatelessWidget {
   }
 }
 
+/// The twirled-down S row's enlarged waveform strip: the timeline Audio
+/// lane's storyboard sibling — each audible span gets a paper block with
+/// its trimmed, envelope-shaped waveform (read-only here; sliding/fades
+/// edit in the timeline's Audio lane).
+class _StoryboardAudioLaneRow extends StatelessWidget {
+  const _StoryboardAudioLaneRow({
+    required this.trackIndex,
+    required this.slot,
+    required this.layoutEntries,
+    required this.width,
+    required this.timelineScale,
+    required this.projectFps,
+    this.audioPeaksFor,
+  });
+
+  final int trackIndex;
+  final int slot;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
+  final double width;
+  final TimelineScale timelineScale;
+  final int projectFps;
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <Widget>[];
+    final audioPeaksFor = this.audioPeaksFor;
+    for (final entry in layoutEntries) {
+      final layer = _seLayerAt(entry.cut, slot);
+      if (layer == null) {
+        continue;
+      }
+      for (final span in seAudioSpans(layer)) {
+        if (span.startFrame >= entry.duration) {
+          continue;
+        }
+        final peaks = audioPeaksFor?.call(span.clip.filePath);
+        final endExclusive = math.min(span.endFrameExclusive, entry.duration);
+        if (endExclusive <= span.startFrame) {
+          continue;
+        }
+        spans.add(
+          Positioned(
+            left: timelineScale.leftForFrame(
+              entry.startFrame + span.startFrame,
+            ),
+            top: 1,
+            bottom: 1,
+            width:
+                (endExclusive - span.startFrame) * timelineScale.pixelsPerFrame,
+            child: IgnorePointer(
+              key: ValueKey<String>(
+                'storyboard-audio-lane-span-${entry.cut.id.value}'
+                '-${span.clipIndex}-b${span.startFrame}',
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: timelineDrawingHeldColor.withValues(alpha: 0.6),
+                  borderRadius: const BorderRadius.all(Radius.circular(4)),
+                  border: Border.all(color: timelineDrawingStartBorderColor),
+                ),
+                child: peaks == null
+                    ? null
+                    : CustomPaint(
+                        painter: WaveformPainter(
+                          peaks: peaks,
+                          fps: projectFps,
+                          pixelsPerFrame: timelineScale.pixelsPerFrame,
+                          color: timelineDrawingInkColor.withValues(
+                            alpha: 0.45,
+                          ),
+                          leadingFrames: span.clip.offsetFrames,
+                          gain: span.clip.gain,
+                          fadeInFrames: span.clip.fadeInFrames,
+                          fadeOutFrames: span.clip.fadeOutFrames,
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: SizedBox(
+        key: ValueKey<String>(
+          'storyboard-audio-lane-row-$trackIndex-${slot + 1}',
+        ),
+        width: width,
+        height: _audioLaneHeight,
+        child: Stack(children: spans),
+      ),
+    );
+  }
+}
+
+/// The twirled-down V track's Opacity lane: one fade-envelope span per cut
+/// with draggable fade in/out handles at the span edges — the cut fade
+/// ("opacity joins the transform system"). Commits ONE undo per handle
+/// drag via [StoryboardPanel.onSetCutFade].
+class _StoryboardOpacityLaneRow extends StatelessWidget {
+  const _StoryboardOpacityLaneRow({
+    required this.trackIndex,
+    required this.layoutEntries,
+    required this.width,
+    required this.timelineScale,
+    this.onSetCutFade,
+  });
+
+  final int trackIndex;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
+  final double width;
+  final TimelineScale timelineScale;
+  final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
+  onSetCutFade;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: SizedBox(
+        key: ValueKey<String>('storyboard-opacity-lane-row-$trackIndex'),
+        width: width,
+        height: _opacityLaneHeight,
+        child: Stack(
+          children: [
+            for (final entry in layoutEntries)
+              Positioned(
+                left: timelineScale.leftForFrame(entry.startFrame),
+                top: 1,
+                bottom: 1,
+                width: entry.duration * timelineScale.pixelsPerFrame,
+                child: _CutFadeSpan(
+                  key: ValueKey<String>(
+                    'storyboard-cut-fade-span-${entry.cut.id.value}',
+                  ),
+                  cut: entry.cut,
+                  frameCellExtent: timelineScale.pixelsPerFrame,
+                  onSetFade: onSetCutFade == null
+                      ? null
+                      : (fadeIn, fadeOut) =>
+                            onSetCutFade!(entry.cut.id, fadeIn, fadeOut),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One cut's fade-envelope span. The opacity envelope paints from the
+/// cut's own lane (any key shape), while dragging an EDGE ZONE previews
+/// and commits the canonical fade shape for that end.
+class _CutFadeSpan extends StatefulWidget {
+  const _CutFadeSpan({
+    super.key,
+    required this.cut,
+    required this.frameCellExtent,
+    this.onSetFade,
+  });
+
+  final Cut cut;
+  final double frameCellExtent;
+  final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
+
+  @override
+  State<_CutFadeSpan> createState() => _CutFadeSpanState();
+}
+
+class _CutFadeSpanState extends State<_CutFadeSpan> {
+  static const double _handleExtent = 14;
+
+  double _dragDelta = 0;
+  bool _dragging = false;
+  bool _draggingOut = false;
+
+  int get _deltaFrames => (_dragDelta / widget.frameCellExtent).round();
+
+  int get _maxFade => math.max(0, widget.cut.duration - 1);
+
+  int get _previewFadeIn {
+    final base = cutFadeLengths(widget.cut).fadeInFrames;
+    if (!_dragging || _draggingOut) {
+      return base;
+    }
+    return (base + _deltaFrames).clamp(0, _maxFade);
+  }
+
+  int get _previewFadeOut {
+    final base = cutFadeLengths(widget.cut).fadeOutFrames;
+    if (!_dragging || !_draggingOut) {
+      return base;
+    }
+    return (base - _deltaFrames).clamp(0, _maxFade);
+  }
+
+  void _endDrag() {
+    final fadeIn = _previewFadeIn;
+    final fadeOut = _previewFadeOut;
+    final base = cutFadeLengths(widget.cut);
+    setState(() {
+      _dragging = false;
+      _dragDelta = 0;
+    });
+    if (fadeIn != base.fadeInFrames || fadeOut != base.fadeOutFrames) {
+      widget.onSetFade?.call(fadeIn, fadeOut);
+    }
+  }
+
+  /// Per-frame opacity samples: the cut's own lane at rest, the canonical
+  /// preview shape while a handle drags.
+  List<double> _envelopeSamples() {
+    final duration = math.max(1, widget.cut.duration);
+    if (!_dragging) {
+      return [
+        for (var frame = 0; frame < duration; frame += 1)
+          widget.cut.fadeOpacityAt(frame),
+      ];
+    }
+    final fadeIn = _previewFadeIn;
+    final fadeOut = _previewFadeOut;
+    final last = duration - 1;
+    return [
+      for (var frame = 0; frame < duration; frame += 1)
+        math.min(
+          fadeIn > 0 && frame < fadeIn ? frame / fadeIn : 1.0,
+          fadeOut > 0 && frame > last - fadeOut
+              ? (last - frame) / fadeOut
+              : 1.0,
+        ),
+    ];
+  }
+
+  Widget _handleZone({required bool trailing}) {
+    return Positioned(
+      left: trailing ? null : 0,
+      right: trailing ? 0 : null,
+      top: 0,
+      bottom: 0,
+      width: _handleExtent,
+      child: Tooltip(
+        message: trailing ? 'Fade Out' : 'Fade In',
+        waitDuration: const Duration(milliseconds: 600),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeLeftRight,
+          child: GestureDetector(
+            key: ValueKey<String>(
+              'storyboard-cut-fade-${trailing ? 'out' : 'in'}-handle-'
+              '${widget.cut.id.value}',
+            ),
+            behavior: HitTestBehavior.opaque,
+            dragStartBehavior: DragStartBehavior.down,
+            onHorizontalDragStart: (_) => setState(() {
+              _dragging = true;
+              _draggingOut = trailing;
+              _dragDelta = 0;
+            }),
+            onHorizontalDragUpdate: (details) =>
+                setState(() => _dragDelta += details.delta.dx),
+            onHorizontalDragEnd: (_) => _endDrag(),
+            onHorizontalDragCancel: () => setState(() {
+              _dragging = false;
+              _dragDelta = 0;
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final editable = widget.onSetFade != null && widget.cut.duration > 1;
+    final fadeIn = _previewFadeIn;
+    final fadeOut = _previewFadeOut;
+
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+                borderRadius: const BorderRadius.all(Radius.circular(3)),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: CustomPaint(
+                painter: _CutFadeEnvelopePainter(
+                  samples: _envelopeSamples(),
+                  pixelsPerFrame: widget.frameCellExtent,
+                  lineColor: AppColors.accent,
+                  fillColor: AppColors.accent.withValues(alpha: 0.15),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (editable) _handleZone(trailing: false),
+        if (editable) _handleZone(trailing: true),
+        if (_dragging)
+          Positioned(
+            left: 4,
+            top: 1,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  child: Text(
+                    _draggingOut ? 'out ${fadeOut}f' : 'in ${fadeIn}f',
+                    style: const TextStyle(fontSize: 9, color: Colors.black),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Paints a cut's opacity envelope: a line through per-frame samples with
+/// the area underneath filled — 1.0 rides the top edge, 0.0 the bottom.
+class _CutFadeEnvelopePainter extends CustomPainter {
+  const _CutFadeEnvelopePainter({
+    required this.samples,
+    required this.pixelsPerFrame,
+    required this.lineColor,
+    required this.fillColor,
+  });
+
+  final List<double> samples;
+  final double pixelsPerFrame;
+  final Color lineColor;
+  final Color fillColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (samples.isEmpty || size.isEmpty) {
+      return;
+    }
+    const inset = 2.0;
+    final usable = size.height - inset * 2;
+    double yFor(double value) => inset + (1 - value.clamp(0.0, 1.0)) * usable;
+
+    final line = Path()..moveTo(0, yFor(samples.first));
+    for (var frame = 0; frame < samples.length; frame += 1) {
+      // Each frame holds its value across its own cell.
+      final left = frame * pixelsPerFrame;
+      final right = math.min(size.width, left + pixelsPerFrame);
+      final y = yFor(samples[frame]);
+      line.lineTo(left, y);
+      line.lineTo(right, y);
+      if (right >= size.width) {
+        break;
+      }
+    }
+
+    final fill = Path.from(line)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = fillColor);
+    canvas.drawPath(
+      line,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = lineColor,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CutFadeEnvelopePainter oldDelegate) {
+    if (oldDelegate.pixelsPerFrame != pixelsPerFrame ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.samples.length != samples.length) {
+      return true;
+    }
+    for (var index = 0; index < samples.length; index += 1) {
+      if (oldDelegate.samples[index] != samples[index]) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 /// Rail rows share the timeline label rail's row language — bordered
 /// surface rows, a kind icon leading the name — so the storyboard's left
 /// edge reads near-identically to the timeline's layers/sections rail
 /// (user direction). The track row opens its section like the timeline's
 /// heavier section divider.
 class _StoryboardTrackLabel extends StatelessWidget {
-  const _StoryboardTrackLabel({required this.track, required this.trackLabel});
+  const _StoryboardTrackLabel({
+    required this.track,
+    required this.trackLabel,
+    this.laneExpanded = false,
+    this.onToggleLane,
+  });
 
   final Track track;
   final String trackLabel;
+  final bool laneExpanded;
+  final VoidCallback? onToggleLane;
 
   @override
   Widget build(BuildContext context) {
@@ -1037,13 +1701,35 @@ class _StoryboardTrackLabel extends StatelessWidget {
             ),
             width: StoryboardPanel._trackLabelWidth,
             height: StoryboardPanel._trackLaneHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.only(left: 2, right: 8),
             decoration: BoxDecoration(
               color: colorScheme.surface,
               border: Border.all(color: colorScheme.outlineVariant),
             ),
             child: Row(
               children: [
+                // The timeline rows' lane chevron: twirls down the track's
+                // Opacity (cut fade) lane.
+                if (onToggleLane != null)
+                  InkWell(
+                    key: ValueKey<String>(
+                      'storyboard-track-lane-toggle-${track.id.value}',
+                    ),
+                    onTap: onToggleLane,
+                    child: SizedBox(
+                      width: 16,
+                      height: 24,
+                      child: Icon(
+                        laneExpanded
+                            ? Icons.arrow_drop_down
+                            : Icons.arrow_right,
+                        size: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 16),
                 const Icon(Icons.movie_outlined, size: 18),
                 const SizedBox(width: 6),
                 Expanded(

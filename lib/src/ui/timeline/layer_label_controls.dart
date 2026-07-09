@@ -20,12 +20,11 @@ const double layerMarkSlotWidth = 14;
 /// sheet columns and the CAMERA layer gates the printed CAM column.
 bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
 
-/// Which layer kinds show the opacity slider on their row: compositing
-/// cels, plus the CAMERA layer whose slider drives the camera-view DIM
-/// opacity (unified layer controls — the camera panel used to own it).
-bool layerKindShowsOpacityControl(LayerKind kind) {
-  return layerKindHoldsDrawings(kind) || kind == LayerKind.camera;
-}
+/// Every layer kind shows the opacity slider (unified layer controls —
+/// "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
+/// row's slider drives the camera-view DIM opacity, and instruction rows
+/// carry the same control for entrance parity.
+bool layerKindShowsOpacityControl(LayerKind kind) => true;
 
 /// Which layer kinds show the fx switch: kinds whose transform/FX apply at
 /// composite time. Grows with the kinds that gain transform lanes (SE and

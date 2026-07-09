@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
@@ -33,6 +33,8 @@ class TimelinePanel extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -40,6 +42,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     required this.orientation,
@@ -90,6 +93,19 @@ class TimelinePanel extends StatefulWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Commits an audio-lane fade-handle drag, both orientations.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog, both orientations.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -100,6 +116,9 @@ class TimelinePanel extends StatefulWidget {
   /// null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// SE rows' speaker button (mute), both orientations; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
@@ -279,7 +298,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    onSetAudioClipFades: widget.onSetAudioClipFades,
+                    onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
+                    onToggleLayerMuted: widget.onToggleLayerMuted,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
@@ -311,7 +333,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    onSetAudioClipFades: widget.onSetAudioClipFades,
+                    onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
+                    onToggleLayerMuted: widget.onToggleLayerMuted,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,

@@ -218,6 +218,23 @@ class ProjectRepository {
     });
   }
 
+  void updateCutTransform({
+    required CutId cutId,
+    required TransformTrack transformTrack,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(transformTrack: transformTrack),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
   void updateCutMetadata({
     required CutId cutId,
     required CutMetadata metadata,

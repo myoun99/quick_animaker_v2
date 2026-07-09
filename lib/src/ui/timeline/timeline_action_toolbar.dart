@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../models/layer_kind.dart';
 import '../editor_session_manager.dart';
@@ -73,8 +73,7 @@ class TimelineActionToolbar extends StatelessWidget {
       LayerKind.camera ||
       LayerKind.instruction => session.hasActiveNonNegativeCell,
       LayerKind.se =>
-        session.selectedFrame != null ||
-            session.canCreateDrawingAtCurrentFrame,
+        session.selectedFrame != null || session.canCreateDrawingAtCurrentFrame,
       _ => session.canRenameFrameAtCurrentFrame,
     };
   }
@@ -173,26 +172,12 @@ class TimelineActionToolbar extends StatelessWidget {
                         : null,
                   ),
                   _iconButton(
-                    key: const ValueKey<String>('toggle-se-layer-button'),
-                    tooltip: 'Toggle SE Layer',
-                    icon: Icons.music_note_outlined,
-                    onPressed: session.canToggleTargetLayerSe
-                        ? session.toggleTargetLayerSe
-                        : null,
-                  ),
-                  _iconButton(
                     key: const ValueKey<String>('toggle-art-layer-button'),
                     tooltip: 'Toggle Art Layer',
                     icon: Icons.landscape_outlined,
                     onPressed: session.canToggleTargetLayerArt
                         ? session.toggleTargetLayerArt
                         : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('add-instruction-layer-button'),
-                    tooltip: 'Add Instruction Layer',
-                    icon: Icons.theaters_outlined,
-                    onPressed: session.addInstructionLayer,
                   ),
                   _sectionToggleButton(
                     context,

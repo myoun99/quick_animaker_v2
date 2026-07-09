@@ -275,36 +275,14 @@ void main() {
     );
   });
 
-  testWidgets('SE toggle flips animation to SE with undo; the floor of two '
-      'blocks toggling back', (tester) async {
-    late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
-
-    expect(find.byTooltip('Toggle SE Layer'), findsOneWidget);
-
-    await _tapKey(tester, _seToggleKey);
-
-    expect(_layer(repository).kind, LayerKind.se);
-    expect(find.bySemanticsLabel('SE layer'), findsOneWidget);
-
-    // At (or below) the S1·S2 floor, an SE row cannot convert away — undo is
-    // the way back.
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
-
-    await _tapKey(tester, _undoKey);
-    expect(_layer(repository).kind, LayerKind.animation);
-
-    await _tapKey(tester, _redoKey);
-    expect(_layer(repository).kind, LayerKind.se);
-  });
-
-  // A storyboard layer cannot become SE directly, and an SE layer cannot
-  // become a storyboard directly — go through animation. A lone SE row also
-  // sits below the S1·S2 floor, so its own toggle is disabled too.
-  testWidgets('kind toggles are disabled for a floor SE layer', (tester) async {
+  // The SE kind toggle is retired (entrance unification): SE rows are
+  // created by the unified Add Layer with an SE row active, never by
+  // converting a cel.
+  testWidgets('the SE kind toggle is gone and SE rows refuse the '
+      'storyboard toggle', (tester) async {
     await _pumpHome(tester, project: _projectWithLayer(kind: LayerKind.se));
 
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
+    expect(find.byKey(_seToggleKey), findsNothing);
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
   });
 
@@ -320,9 +298,8 @@ void main() {
 
     expect(_layer(repository).kind, LayerKind.art);
     expect(find.bySemanticsLabel('Art layer'), findsOneWidget);
-    // Art rows use their own toggle; storyboard/SE toggles stay off.
+    // Art rows use their own toggle; the storyboard toggle stays off.
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
 
     await _tapKey(tester, _undoKey);
     expect(_layer(repository).kind, LayerKind.animation);
@@ -334,47 +311,70 @@ void main() {
     expect(_layer(repository).kind, LayerKind.animation);
   });
 
-  testWidgets('add instruction layer creates a protected CAM row', (
-    tester,
-  ) async {
+  // The dedicated instruction-add button is retired: the unified Add Layer
+  // duplicates the ACTIVE row's kind directly above it, named by the
+  // section's own scheme.
+  testWidgets('Add Layer with an instruction row active adds another CAM '
+      'row above it', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    await _pumpHome(
+      tester,
+      project: _projectWithLayer(kind: LayerKind.instruction),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('add-instruction-layer-button')),
+      findsNothing,
+    );
 
     await _tapKey(
       tester,
-      const ValueKey<String>('add-instruction-layer-button'),
+      const ValueKey<String>('timeline-toolbar-add-layer-button'),
     );
 
     final layers = repository.requireProject().tracks.single.cuts.single.layers;
     expect(layers, hasLength(2));
-    final instruction = layers.firstWhere(
-      (layer) => layer.kind == LayerKind.instruction,
-    );
-    expect(instruction.name, 'CAM 1');
-    expect(find.bySemanticsLabel('Instruction layer'), findsOneWidget);
-
-    // The new row is active; it is the only instruction row, so it cannot be
-    // deleted, and no kind toggle applies to it.
-    expect(
-      _isIconButtonEnabled(
-        tester,
-        const ValueKey<String>('delete-layer-button'),
-      ),
-      isFalse,
-    );
+    // Raw list order is reversed for the timeline display: raw index+1 =
+    // directly ABOVE the previously active row on screen.
+    expect(layers[0].name, 'Target Layer');
+    expect(layers[1].kind, LayerKind.instruction);
+    expect(layers[1].name, 'CAM 1');
+    // No kind toggle applies to instruction rows.
     expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
     expect(_isIconButtonEnabled(tester, _artToggleKey), isFalse);
   });
 
-  testWidgets('SE toggle is disabled for a storyboard layer', (tester) async {
+  testWidgets('Add Layer with an SE row active adds the next S-numbered '
+      'row above it', (tester) async {
+    late ProjectRepository repository;
     await _pumpHome(
       tester,
-      project: _projectWithLayer(kind: LayerKind.storyboard),
+      project: _projectWithLayer(kind: LayerKind.se),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+    // The fixture SE row keeps its own name; the new row takes the first
+    // free S-number.
+    await _tapKey(
+      tester,
+      const ValueKey<String>('timeline-toolbar-add-layer-button'),
     );
 
-    expect(_isIconButtonEnabled(tester, _seToggleKey), isFalse);
-    expect(_isIconButtonEnabled(tester, _toggleKey), isTrue);
+    var layers = repository.requireProject().tracks.single.cuts.single.layers;
+    expect(layers, hasLength(2));
+    // Raw index+1 = directly above the active row in the display.
+    expect(layers[1].kind, LayerKind.se);
+    expect(layers[1].name, 'S1');
+
+    // Adding again with the new S1 active skips to S2.
+    await _tapKey(
+      tester,
+      const ValueKey<String>('timeline-toolbar-add-layer-button'),
+    );
+    layers = repository.requireProject().tracks.single.cuts.single.layers;
+    expect(layers, hasLength(3));
+    expect(layers[2].name, 'S2');
+    expect(layers[2].kind, LayerKind.se);
   });
 
   testWidgets('does not expose future storyboard or inspector UI', (
