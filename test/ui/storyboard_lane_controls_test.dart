@@ -6,11 +6,14 @@ import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
+    show TimelineCommaDragCallbacks;
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
@@ -64,6 +67,15 @@ Future<void> _pumpPanel(
   WidgetTester tester, {
   required Project project,
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
+  void Function(CutId cutId, CutFadeTarget fadeTarget)? onSetCutFadeTarget,
+  ValueChanged<LayerId>? onToggleLayerVisibility,
+  ValueChanged<LayerId>? onToggleLayerMuted,
+  void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
+  void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
+  onSelectSeBlock,
+  TimelineCommaDragCallbacks? seCommaDrag,
+  void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset,
 }) async {
   final hiddenWaveforms = <String>{};
   final expandedAudio = <String>{};
@@ -100,6 +112,13 @@ Future<void> _pumpPanel(
               }
             }),
             onSetCutFade: onSetCutFade,
+            onSetCutFadeTarget: onSetCutFadeTarget,
+            onToggleLayerVisibility: onToggleLayerVisibility,
+            onToggleLayerMuted: onToggleLayerMuted,
+            onLayerOpacityChanged: onLayerOpacityChanged,
+            onSelectSeBlock: onSelectSeBlock,
+            seCommaDrag: seCommaDrag,
+            onSetAudioClipOffset: onSetAudioClipOffset,
           ),
         ),
       ),
@@ -156,10 +175,14 @@ void main() {
       ),
       findsOneWidget,
     );
-    // The lane carries the clip's enlarged waveform span.
+    // The lane carries the clip's enlarged waveform span — the REUSED
+    // timeline Audio lane substrate ('완벽통일': its span keys ride the
+    // storyboard-<cutId> prefix).
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-audio-lane-span-lane-cut-0-b0'),
+        const ValueKey<String>(
+          'storyboard-lane-cut-audio-lane-span-lane-se-0-b0',
+        ),
       ),
       findsOneWidget,
     );
@@ -282,5 +305,164 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(commits, [(const CutId('lane-cut'), 4, 0)]);
+  });
+
+  testWidgets('the fade span\'s context menu sets the fade TARGET '
+      '(FO=black default, WO=white)', (tester) async {
+    final targets = <(CutId, CutFadeTarget)>[];
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      onSetCutFade: (_, _, _) {},
+      onSetCutFadeTarget: (cutId, target) => targets.add((cutId, target)),
+    );
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(
+      find.byKey(const ValueKey<String>('storyboard-cut-fade-span-lane-cut')),
+    );
+    await tester.pumpAndSettle();
+
+    // Black is checked by default; picking White commits.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cut-fade-target-white')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(targets, [(const CutId('lane-cut'), CutFadeTarget.white)]);
+  });
+
+  group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
+    testWidgets('the rail carries the ACTIVE cut layer\'s eye/mute/opacity '
+        'controls with the shared session hooks', (tester) async {
+      final visibilityToggles = <LayerId>[];
+      final muteToggles = <LayerId>[];
+      final opacityChanges = <(LayerId, double)>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        onToggleLayerVisibility: visibilityToggles.add,
+        onToggleLayerMuted: muteToggles.add,
+        onLayerOpacityChanged: (layerId, opacity) =>
+            opacityChanges.add((layerId, opacity)),
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('storyboard-layer-visibility-lane-se'),
+        ),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-layer-mute-lane-se')),
+      );
+      await tester.drag(
+        find.byKey(const ValueKey<String>('storyboard-layer-opacity-lane-se')),
+        const Offset(-20, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(visibilityToggles, [const LayerId('lane-se')]);
+      expect(muteToggles, [const LayerId('lane-se')]);
+      expect(opacityChanges, isNotEmpty);
+      expect(opacityChanges.last.$1, const LayerId('lane-se'));
+      expect(opacityChanges.last.$2, lessThan(1));
+    });
+
+    testWidgets('tapping an SE block selects its cut/layer/frame '
+        '(timeline cell-tap parity)', (tester) async {
+      final selections = <(CutId, LayerId, int)>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        onSelectSeBlock: (cutId, layerId, start) =>
+            selections.add((cutId, layerId, start)),
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('storyboard-se-block-select-lane-cut-0'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(selections, [
+        (const CutId('lane-cut'), const LayerId('lane-se'), 0),
+      ]);
+    });
+
+    testWidgets('the ACTIVE cut\'s SE blocks carry the timeline comma '
+        'grips: an end-edge drag rides the session drag hooks', (tester) async {
+      final log = <String>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        seCommaDrag: TimelineCommaDragCallbacks(
+          onBegin: (layerId, blockStartIndex, edge) {
+            log.add('begin $layerId $blockStartIndex ${edge.name}');
+            return true;
+          },
+          onUpdate: (delta) => log.add('update $delta'),
+          onEnd: () => log.add('end'),
+          onCancel: () => log.add('cancel'),
+        ),
+      );
+
+      // 12px per frame; the recognizer's slop eats ~20px, so 48px lands a
+      // whole-frame delta (same allowance as the XSheet grip tests).
+      await tester.drag(
+        find.byKey(const ValueKey<String>('storyboard-se-grip-lane-cut-0-end')),
+        const Offset(48, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(log.first, 'begin lane-se 0 end');
+      expect(
+        log.where((entry) => entry.startsWith('update')),
+        isNotEmpty,
+        reason: 'the drag must report whole-frame deltas',
+      );
+      expect(log.last, 'end');
+    });
+
+    testWidgets('the twirled-down audio lane IS the timeline lane substrate '
+        'and slide-edits the ACTIVE cut\'s clip', (tester) async {
+      final offsets = <(LayerId, int, int)>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        onSetAudioClipOffset: (layerId, clipIndex, offsetFrames) =>
+            offsets.add((layerId, clipIndex, offsetFrames)),
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final span = find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-cut-audio-lane-span-lane-se-0-b0',
+        ),
+      );
+      expect(span, findsOneWidget, reason: 'the reused timeline lane span');
+
+      // Slide LEFT (a later part of the file plays at the block start —
+      // offset grows; rightward from offset 0 clamps to no-op), exactly
+      // like the timeline's Audio lane.
+      await tester.drag(span, const Offset(-60, 0));
+      await tester.pumpAndSettle();
+
+      expect(offsets, isNotEmpty);
+      expect(offsets.last.$1, const LayerId('lane-se'));
+      expect(offsets.last.$3, greaterThan(0));
+    });
   });
 }

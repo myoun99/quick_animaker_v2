@@ -399,19 +399,30 @@ class SeSpanVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seName = this.seName ?? '';
-    return Flex(
-      direction: axis,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (seName.isNotEmpty) _SeNameBox(axis: axis, name: seName),
-        Expanded(
-          child: DialogueFitText(
-            text: dialogue,
-            axis: axis,
-            color: timelineDrawingInkColor,
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Narrow spans drop the name box instead of overflowing it (the
+        // storyboard's zoomed-out blocks can be slimmer than the box —
+        // same rule as narrow cut blocks dropping their thumbnail slot).
+        final mainExtent = axis == Axis.horizontal
+            ? constraints.maxWidth
+            : constraints.maxHeight;
+        final showName = seName.isNotEmpty && mainExtent >= seNameBoxExtent * 2;
+        return Flex(
+          direction: axis,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showName) _SeNameBox(axis: axis, name: seName),
+            Expanded(
+              child: DialogueFitText(
+                text: dialogue,
+                axis: axis,
+                color: timelineDrawingInkColor,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -452,7 +463,14 @@ class _SeNameBox extends StatelessWidget {
       child: Container(
         color: AppColors.accent.withValues(alpha: 0.6),
         alignment: Alignment.center,
-        child: ClipRect(child: ExcludeSemantics(child: writing)),
+        // scaleDown: a LONG name shrinks to the box instead of overflowing
+        // the row (the striped-error report — R4 improvement 2).
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ExcludeSemantics(child: writing),
+          ),
+        ),
       ),
     );
     return axis == Axis.horizontal

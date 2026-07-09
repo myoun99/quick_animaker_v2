@@ -8,6 +8,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
+import '../storyboard_cut_fade_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
@@ -132,6 +133,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               fadeOpacity: cut != null && position != null
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
+              fadeColor: cut != null
+                  ? cutFadeTargetColor(cut)
+                  : const Color(0xFF000000),
             ),
           ),
           Positioned(

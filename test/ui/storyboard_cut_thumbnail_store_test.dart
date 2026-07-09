@@ -4,15 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_cache_invalidation.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/camera_pose.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_camera.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/playback/editor_cache_invalidation_hub.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_cut_thumbnail_store.dart';
 
@@ -148,5 +154,142 @@ void main() {
     });
 
     expect(renderCount, 1);
+  });
+
+  // R4-⑩ regression pins: everything the camera-view render consumes must
+  // join the signature — these edits used to leave a permanently stale
+  // (often permanently EMPTY) thumbnail.
+  group('signature covers the full camera-view render input', () {
+    Future<int> renderCountAfter(
+      WidgetTester tester,
+      Cut Function() before,
+      Cut Function() after,
+    ) async {
+      var renderCount = 0;
+      final store = StoryboardCutThumbnailStore(
+        render: (_) {
+          renderCount += 1;
+          return tinyImage();
+        },
+      );
+      addTearDown(store.dispose);
+      await tester.runAsync(() async {
+        store.thumbnailFor(before());
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        store.thumbnailFor(after());
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      return renderCount;
+    }
+
+    testWidgets('camera keyframe edits re-render', (tester) async {
+      expect(
+        await renderCountAfter(
+          tester,
+          cut,
+          () => cut().copyWith(
+            camera: CutCamera(
+              keyframes: {
+                0: CameraPose(center: CanvasPoint(x: 1, y: 1), zoom: 2),
+              },
+            ),
+          ),
+        ),
+        2,
+      );
+    });
+
+    testWidgets('layer transform-lane edits re-render', (tester) async {
+      expect(
+        await renderCountAfter(tester, cut, () {
+          final base = cut();
+          return base.copyWith(
+            layers: [
+              base.layers.single.copyWith(
+                transformTrack: TransformTrack(
+                  keyframes: {
+                    0: TransformPose(center: CanvasPoint(x: 9, y: 9)),
+                  },
+                ),
+              ),
+            ],
+          );
+        }),
+        2,
+      );
+    });
+
+    testWidgets('exposure-only timeline edits re-render', (tester) async {
+      expect(
+        await renderCountAfter(tester, cut, () {
+          final base = cut();
+          return base.copyWith(
+            layers: [
+              base.layers.single.copyWith(
+                timeline: {
+                  0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
+                },
+              ),
+            ],
+          );
+        }),
+        2,
+      );
+    });
+
+    testWidgets('cut fade edits re-render', (tester) async {
+      expect(
+        await renderCountAfter(
+          tester,
+          cut,
+          () => cut().copyWith(
+            transformTrack: TransformTrack.empty().copyWith(
+              opacity: PropertyTrack<double>().withKey(0, 0.5),
+            ),
+          ),
+        ),
+        2,
+      );
+    });
+  });
+
+  testWidgets('a FAILED render is remembered (no hot re-kick loop) and a '
+      'content change retries', (tester) async {
+    var renderCount = 0;
+    var failFirst = true;
+    final errors = <FlutterErrorDetails>[];
+    final previousHandler = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previousHandler);
+
+    final store = StoryboardCutThumbnailStore(
+      render: (_) async {
+        renderCount += 1;
+        if (failFirst) {
+          failFirst = false;
+          throw StateError('render exploded');
+        }
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+
+    await tester.runAsync(() async {
+      store.thumbnailFor(cut());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // Same signature: the failure must NOT re-kick on every build.
+      store.thumbnailFor(cut());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(renderCount, 1);
+      expect(errors, hasLength(1), reason: 'failures surface, never vanish');
+
+      // A content change retries and succeeds.
+      store.thumbnailFor(cut(layerVisible: false));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(renderCount, 2);
+      expect(store.thumbnailFor(cut(layerVisible: false)), isNotNull);
+    });
+    await tester.pump();
   });
 }

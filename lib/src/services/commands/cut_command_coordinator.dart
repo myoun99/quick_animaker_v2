@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/cut_metadata.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -41,6 +42,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_cut_transform_command.dart';
+import 'update_cut_fade_target_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
@@ -168,6 +170,26 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         frameIndex: frameIndex,
+      ),
+    );
+  }
+
+  /// Sets what the cut fade fades TO (FO=black, WO=white); one undo step,
+  /// no-op when unchanged.
+  void updateCutFadeTarget({
+    required CutId cutId,
+    required CutFadeTarget fadeTarget,
+  }) {
+    final cut = _requireCut(cutId);
+    if (cut.metadata.fadeTarget == fadeTarget) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateCutFadeTargetCommand(
+        repository: repository,
+        cutId: cutId,
+        fadeTarget: fadeTarget,
       ),
     );
   }

@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/layer.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 
 /// Renders and caches the small first-frame composite each storyboard cut
@@ -18,11 +19,12 @@ import '../services/playback/editor_cache_invalidation_hub.dart';
 /// [notifyListeners] → the panel rebuilds with the fresh image.
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
-/// visibility/opacity/frames) plus a per-cut edit generation bumped by the
-/// hub's brush-frame events (stroke commit / undo / redo). Deliberately NOT
-/// covered: exposure-only timeline edits that swap which frame is exposed at
-/// index 0 without touching the frames list — rare, and the next edit
-/// refreshes the thumb.
+/// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
+/// the cut fade — everything the camera-view render consumes) plus a
+/// per-cut edit generation bumped by the hub's brush-frame events (stroke
+/// commit / undo / redo). Camera work, transform-lane edits and exposure
+/// moves used to be signature-blind (R4-⑩): a cut whose thumbnail first
+/// rendered empty stayed a white block forever unless a stroke landed.
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
     required Future<ui.Image?> Function(Cut cut) render,
@@ -74,8 +76,24 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
             _renderedSignatures[cut.id] = signature;
             notifyListeners();
           })
-          .catchError((Object _) {
+          .catchError((Object error, StackTrace stack) {
             _rendering.remove(cut.id);
+            // Remember the failed signature: silently swallowing AND
+            // forgetting re-kicked the same failing render on every
+            // rebuild (a hot loop behind a permanently empty block). The
+            // next CONTENT change retries; the failure itself is surfaced.
+            _renderedSignatures[cut.id] = signature;
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stack,
+                library: 'storyboard thumbnails',
+                context: ErrorDescription(
+                  'rendering the storyboard thumbnail for cut '
+                  '${cut.id.value}',
+                ),
+              ),
+            );
           }),
     );
   }
@@ -98,7 +116,16 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       ..write(cut.duration)
       // Re-render when the pinned thumbnail frame changes.
       ..write('#')
-      ..write(cut.metadata.thumbnailFrameIndex ?? -1);
+      ..write(cut.metadata.thumbnailFrameIndex ?? -1)
+      // The thumbnail renders THROUGH the camera: camera work must
+      // re-render it (was signature-blind — R4-⑩).
+      ..write('#cam')
+      ..write(cut.camera.track.hashCode)
+      // The cut fade bakes into video frames only, but the fade keys live
+      // on the cut transform track — cheap to include, keeps the door
+      // open for fade-aware thumbs.
+      ..write('#fade')
+      ..write(cut.transformTrack.hashCode);
     for (final layer in cut.layers) {
       buffer
         ..write('|')
@@ -110,9 +137,27 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
         ..write(':')
         ..write(layer.frames.length)
         ..write(':')
-        ..write(layer.frames.isEmpty ? '' : layer.frames.first.id.value);
+        ..write(layer.frames.isEmpty ? '' : layer.frames.first.id.value)
+        // Layer transforms apply at composite time — lane edits must
+        // re-render (was signature-blind — R4-⑩).
+        ..write(':')
+        ..write(layer.transformTrack.hashCode)
+        // Which frame is EXPOSED at the thumbnail index is timeline data;
+        // exposure-only edits used to leave a stale thumb (documented gap,
+        // now closed). Deterministic fold over the entries — Map itself
+        // hashes by identity.
+        ..write(':')
+        ..write(_timelineDigest(layer));
     }
     return buffer.toString();
+  }
+
+  int _timelineDigest(Layer layer) {
+    var digest = 0;
+    for (final entry in layer.timeline.entries) {
+      digest = Object.hash(digest, entry.key, entry.value);
+    }
+    return digest;
   }
 
   /// Disposes a replaced image AFTER the next frame paints: a RawImage from
