@@ -291,6 +291,12 @@ void main() {
       exportDirectoryPicker: () async => directory.path,
     );
 
+    // The fx toggle row made the dialog taller — scroll the control into
+    // view first.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('export-instance-toggle')),
+    );
+    await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('export-instance-toggle')),
     );
@@ -460,6 +466,10 @@ void main() {
     await pumpDialog(tester, exportSession());
     await selectMp4Format(tester);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('export-instance-toggle')),
+    );
+    await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('export-instance-toggle')),
     );
@@ -470,6 +480,33 @@ void main() {
     );
     expect(dropdown.value, ExportFormat.pngSequence);
     expect(dropdown.onChanged, isNull);
+  });
+
+  testWidgets("the Apply-layer-FX toggle defaults ON and disables for cel "
+      'export (cels never carry FX)', (tester) async {
+    await pumpDialog(tester, exportSession());
+
+    final fxToggle = find.byKey(
+      const ValueKey<String>('export-apply-fx-toggle'),
+    );
+    await tester.ensureVisible(fxToggle);
+    await tester.pump();
+    expect(tester.widget<Switch>(fxToggle).value, isTrue);
+    expect(tester.widget<Switch>(fxToggle).onChanged, isNotNull);
+
+    await tester.tap(fxToggle);
+    await tester.pump();
+    expect(tester.widget<Switch>(fxToggle).value, isFalse);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('export-instance-toggle')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-instance-toggle')),
+    );
+    await tester.pump();
+    expect(tester.widget<Switch>(fxToggle).onChanged, isNull);
   });
 
   testWidgets('XDTS export writes the active cut sheet through the save '
