@@ -200,7 +200,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 ? null
                 : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
             color: timelineDrawingInkColor.withValues(alpha: 0.22),
-            clipToBlocks: drawingBlocks(layer.timeline),
           ),
         // SE rows: the sheet's writing on the paper blocks — name box at
         // the block start plus the dialogue fitted across the span.

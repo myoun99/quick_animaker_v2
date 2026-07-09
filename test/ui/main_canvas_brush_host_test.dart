@@ -39,6 +39,36 @@ void main() {
     },
   );
 
+  testWidgets('no editable frame keeps the composited underlay VISIBLE — '
+      'the blank content must not paint paper over it', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            // No selection: the active layer has no frame at the playhead,
+            // but the other layers' composite (the underlay) must show.
+            viewportUnderlayBuilder: (context, viewport) => const ColoredBox(
+              key: ValueKey<String>('underlay-probe'),
+              color: Colors.red,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('underlay-probe')), findsOneWidget);
+    final blank = tester.widget(
+      find.byKey(const ValueKey<String>('main-canvas-brush-host-blank-canvas')),
+    );
+    expect(
+      blank,
+      isA<SizedBox>(),
+      reason: 'with an underlay the blank content stays transparent — an '
+          'opaque paper here buried the layers below the active one',
+    );
+  });
+
   testWidgets('missing selection does not create fake editable brush state', (
     tester,
   ) async {

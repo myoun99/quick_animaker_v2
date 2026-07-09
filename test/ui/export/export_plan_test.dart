@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
@@ -341,33 +342,40 @@ void main() {
   });
 
   group('buildExportAudioPlan', () {
-    Layer seLayer(String id, List<AudioClip> clips) => Layer(
+    // Frame-linked sounds: one SE layer per sound, its block = the window.
+    Layer seLayer(
+      String id, {
+      required String file,
+      required int start,
+      required int length,
+    }) => Layer(
       id: LayerId(id),
       name: 'S1',
       kind: LayerKind.se,
-      frames: const [],
-      timeline: const {},
-      audioClips: clips,
+      frames: [
+        Frame(id: FrameId('$id-frame'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        start: TimelineExposure.drawing(FrameId('$id-frame'), length: length),
+      },
+      audioClips: [AudioClip(filePath: file, frameId: FrameId('$id-frame'))],
     );
 
-    // fps 10 for readable seconds. Cut a: 10 frames, clips at 0 and 6.
-    // Cut b: 20 frames, clip at local 3 (global 13 in all-cuts order).
+    // fps 10 for readable seconds. Cut a: 10 frames, blocks at 0 (full cut)
+    // and 6..10. Cut b: 20 frames, block at local 3 (global 13 in all-cuts
+    // order) running to the cut end.
     Cut cutA() => cut(
       'a',
       duration: 10,
       layers: [
-        seLayer('se-a', const [
-          AudioClip(filePath: 'a.wav', startFrame: 0),
-          AudioClip(filePath: 'b.wav', startFrame: 6),
-        ]),
+        seLayer('se-a1', file: 'a.wav', start: 0, length: 10),
+        seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
       ],
     );
     Cut cutB() => cut(
       'b',
       duration: 20,
-      layers: [
-        seLayer('se-b', const [AudioClip(filePath: 'c.wav', startFrame: 3)]),
-      ],
+      layers: [seLayer('se-b', file: 'c.wav', start: 3, length: 17)],
     );
 
     test('all-cuts export lays clips globally, capped at their cut blocks', () {

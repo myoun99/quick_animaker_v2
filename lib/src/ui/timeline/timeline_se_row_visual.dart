@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
@@ -95,15 +98,12 @@ List<Widget> timelineRowSeLabelOverlays({
   return overlays;
 }
 
-/// Waveform strips for an SE row's audio clips, painted ABOVE the paper
-/// cells and BELOW the writing overlays (list them between the two in the
-/// Stack). Clip length comes from the extracted peaks; clips whose peaks
-/// are still extracting (or failed) draw nothing until the store notifies.
-///
-/// With [clipToBlocks] the waveform only shows INSIDE the row's drawing
-/// blocks (one clipped window per clip × block intersection, envelope
-/// buckets staying globally aligned); portions outside any block draw
-/// nothing — a block without audio shows the fitted dialogue alone.
+/// Waveform strips for an SE row's audio, painted ABOVE the paper cells
+/// and BELOW the writing overlays (list them between the two in the
+/// Stack). Sounds are FRAME-LINKED (block = instance): each carrying block
+/// shows the waveform from its own start, clipped to the block AND to the
+/// file's length from the extracted peaks; clips whose peaks are still
+/// extracting (or failed) draw nothing until the store notifies.
 /// Right-click/long-press opens the removal menu.
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
@@ -116,79 +116,50 @@ List<Widget> timelineRowAudioOverlays({
   required AudioPeaks? Function(String filePath) audioPeaksFor,
   void Function(int clipIndex)? onRemoveClip,
   required Color color,
-  List<TimelineDrawingBlock>? clipToBlocks,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
-  for (var index = 0; index < layer.audioClips.length; index += 1) {
-    final clip = layer.audioClips[index];
-    final peaks = audioPeaksFor(clip.filePath);
+  for (final span in seAudioSpans(layer)) {
+    final peaks = audioPeaksFor(span.clip.filePath);
     if (peaks == null) {
       continue;
     }
-    final clipEndExclusive = clip.startFrame + peaks.durationFrames(fps);
-
-    final strip = _AudioClipStrip(
-      peaks: peaks,
-      fps: fps,
-      pixelsPerFrame: frameCellExtent,
-      axis: axis,
-      color: color,
-      onRemove: onRemoveClip == null ? null : () => onRemoveClip(index),
+    final audibleFrames = math.min(
+      span.lengthFrames,
+      peaks.durationFrames(fps),
     );
-
-    if (clipToBlocks == null) {
-      final startOffset = frameVisibleX(
-        frameIndex: clip.startFrame,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
-      final mainExtent = (clipEndExclusive - clip.startFrame) * frameCellExtent;
-      overlays.add(
-        _positionedAudioWindow(
-          key: ValueKey<String>('$keyPrefix-audio-clip-${layer.id}-$index'),
-          axis: axis,
-          startOffset: startOffset,
-          mainExtent: mainExtent,
-          crossAxisExtent: crossAxisExtent,
-          leadingShift: 0,
-          strip: strip,
-        ),
-      );
+    if (audibleFrames <= 0) {
       continue;
     }
-
-    for (final block in clipToBlocks) {
-      final windowStart = clip.startFrame > block.startIndex
-          ? clip.startFrame
-          : block.startIndex;
-      final windowEndExclusive = clipEndExclusive < block.endIndexExclusive
-          ? clipEndExclusive
-          : block.endIndexExclusive;
-      if (windowEndExclusive <= windowStart) {
-        continue;
-      }
-      final startOffset = frameVisibleX(
-        frameIndex: windowStart,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
-      overlays.add(
-        _positionedAudioWindow(
-          key: ValueKey<String>(
-            '$keyPrefix-audio-clip-${layer.id}-$index-b${block.startIndex}',
-          ),
-          axis: axis,
-          startOffset: startOffset,
-          mainExtent: (windowEndExclusive - windowStart) * frameCellExtent,
-          crossAxisExtent: crossAxisExtent,
-          leadingShift: (windowStart - clip.startFrame) * frameCellExtent,
-          strip: strip,
+    final startOffset = frameVisibleX(
+      frameIndex: span.startFrame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    overlays.add(
+      _positionedAudioWindow(
+        key: ValueKey<String>(
+          '$keyPrefix-audio-clip-${layer.id}-${span.clipIndex}'
+          '-b${span.startFrame}',
         ),
-      );
-    }
+        axis: axis,
+        startOffset: startOffset,
+        mainExtent: audibleFrames * frameCellExtent,
+        crossAxisExtent: crossAxisExtent,
+        leadingShift: 0,
+        strip: _AudioClipStrip(
+          peaks: peaks,
+          fps: fps,
+          pixelsPerFrame: frameCellExtent,
+          axis: axis,
+          color: color,
+          onRemove: onRemoveClip == null
+              ? null
+              : () => onRemoveClip(span.clipIndex),
+        ),
+      ),
+    );
   }
   return overlays;
 }

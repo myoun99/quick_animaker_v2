@@ -29,9 +29,9 @@ final _peaks = AudioPeaks(
   peaks: Float32List.fromList(List.filled(80, 0.5)),
 );
 
-/// SE layer with a 12-frame entry and a clip at frame 2: timeline
-/// waveforms only paint inside drawing blocks, so the visible window is
-/// the [2, 12) intersection.
+/// SE layer with a 12-frame entry carrying a frame-linked sound: the block
+/// IS the window — the waveform starts at the block start and clips to the
+/// block's 12 frames (the file itself is 24 frames long).
 Layer _seLayer() => Layer(
   id: const LayerId('wave-se'),
   name: 'S1',
@@ -42,7 +42,9 @@ Layer _seLayer() => Layer(
   timeline: {
     0: const TimelineExposure.drawing(FrameId('wave-f'), length: 12),
   },
-  audioClips: const [AudioClip(filePath: 'voice.wav', startFrame: 2)],
+  audioClips: const [
+    AudioClip(filePath: 'voice.wav', frameId: FrameId('wave-f')),
+  ],
 );
 
 void main() {
@@ -82,8 +84,8 @@ void main() {
       const ValueKey<String>('timeline-audio-clip-wave-se-0-b0'),
     );
     expect(strip, findsOneWidget);
-    // Clipped to the block: [2, 12) of the 24-frame clip at 48 px/frame.
-    expect(tester.getSize(strip).width, moreOrLessEquals(10 * 48));
+    // The block is the window: [0, 12) of the 24-frame file at 48 px/frame.
+    expect(tester.getSize(strip).width, moreOrLessEquals(12 * 48));
 
     // The strip is wider than the viewport — long-press a visible spot
     // near its left edge instead of the (offscreen) center.
@@ -137,10 +139,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final strip = find.byKey(
-      const ValueKey<String>('storyboard-audio-clip-wave-cut-0'),
+      const ValueKey<String>('storyboard-audio-clip-wave-cut-0-b0'),
     );
     expect(strip, findsOneWidget);
-    expect(tester.getSize(strip).width, moreOrLessEquals(10 * 8));
+    expect(tester.getSize(strip).width, moreOrLessEquals(12 * 8));
   });
 
   test(

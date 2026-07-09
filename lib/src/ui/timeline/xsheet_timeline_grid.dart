@@ -7,7 +7,6 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
-import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart';
 import 'selected_exposure_display_range_policy.dart';
@@ -1081,7 +1080,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   ? null
                   : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
               color: timelineDrawingInkColor.withValues(alpha: 0.22),
-              clipToBlocks: drawingBlocks(layer.timeline),
               keyPrefix: 'xsheet',
             ),
           // SE columns: the sheet's writing on the paper blocks — name box

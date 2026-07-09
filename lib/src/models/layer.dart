@@ -105,27 +105,51 @@ class Layer {
     'mark': mark.toJson(),
   };
 
+  /// Migrates a legacy free-floating clip ({'file', 'start'}) onto the SE
+  /// frame whose block covered its start frame; clips landing on empty
+  /// cells have nothing to link to and drop.
+  static AudioClip? _audioClipFromJson(
+    Map<String, dynamic> json,
+    Map<int, TimelineExposure> timeline,
+  ) {
+    if (json.containsKey('frame')) {
+      return AudioClip.fromJson(json);
+    }
+    final startFrame = json['start'] as int? ?? 0;
+    for (final block in drawingBlocks(SplayTreeMap.of(timeline))) {
+      if (block.startIndex <= startFrame &&
+          startFrame < block.endIndexExclusive) {
+        return AudioClip(
+          filePath: json['file'] as String,
+          frameId: block.frameId,
+        );
+      }
+    }
+    return null;
+  }
+
   factory Layer.fromJson(Map<String, dynamic> json) {
     final frames = (json['frames'] as List<dynamic>)
         .map((frame) => Frame.fromJson(frame as Map<String, dynamic>))
         .toList();
+    final timeline = json.containsKey('timeline')
+        ? _timelineFromJson(
+            json['timeline'],
+            legacyMarksJson: json['marks'],
+            frames: frames,
+          )
+        : _deriveTimeline(frames);
     return Layer(
       id: LayerId.fromJson(json['id'] as Map<String, dynamic>),
       name: json['name'] as String,
       frames: frames,
-      timeline: json.containsKey('timeline')
-          ? _timelineFromJson(
-              json['timeline'],
-              legacyMarksJson: json['marks'],
-              frames: frames,
-            )
-          : _deriveTimeline(frames),
+      timeline: timeline,
       instructions: instructionMapFromJson(json['instructions']),
       audioClips: json['audioClips'] == null
           ? const []
           : [
               for (final clip in json['audioClips'] as List<dynamic>)
-                AudioClip.fromJson(clip as Map<String, dynamic>),
+                ?_audioClipFromJson(clip as Map<String, dynamic>, timeline),
             ],
       isVisible: json['isVisible'] as bool,
       opacity: (json['opacity'] as num).toDouble(),

@@ -8,6 +8,8 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+    show drawingBlocks;
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -125,7 +127,12 @@ void main() {
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
     expect(seLayer().audioClips.single.filePath, r'C:\sound\voice.wav');
-    expect(seLayer().audioClips.single.startFrame, 4);
+    // Frame-linked: importing onto the empty cell created an SE instance
+    // at the playhead and linked the sound to ITS frame — the block is the
+    // sound's window.
+    final carrierBlock = drawingBlocks(seLayer().timeline).single;
+    expect(carrierBlock.startIndex, 4);
+    expect(seLayer().audioClips.single.frameId, carrierBlock.frameId);
 
     session.undo();
     await tester.pumpAndSettle();
