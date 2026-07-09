@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
@@ -657,7 +658,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
         // SE dialogue runs vertically beside its duration line; instruction
-        // writing runs beside the arrow shaft (paper notation).
+        // writing runs beside the mark line (paper notation).
         final seColumn = spec.kind == TimesheetColumnKind.se;
         final holdLineX = seColumn ? centerX + 5 : centerX;
         final shaftX = centerX + 8;
@@ -727,19 +728,31 @@ class TimesheetDocumentPainter extends CustomPainter {
               Paint()..color = _ink,
             );
           case TimesheetCellKind.instructionStart:
-            final shaft = Paint()
-              ..color = _ink
-              ..strokeWidth = 1.4;
             final singleRow = (cell.spanLength ?? 1) <= 1;
-            // Shaft leaves from the row middle; single-frame instructions
-            // get the arrowhead right here.
-            canvas.drawLine(
-              Offset(shaftX, cellCenterY),
-              Offset(shaftX, cellBottom),
-              shaft,
-            );
-            if (singleRow) {
-              _paintArrowhead(canvas, Offset(shaftX, cellBottom), shaft);
+            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
+                CameraInstructionMarkType.bar) {
+              final shaft = Paint()
+                ..color = _ink
+                ..strokeWidth = 1.4;
+              // The completely straight duration line leaves from the row
+              // middle under its start tick (A ⊢ … — no arrowheads);
+              // single-frame instructions close right here.
+              canvas.drawLine(
+                Offset(shaftX, cellCenterY),
+                Offset(shaftX, cellBottom),
+                shaft,
+              );
+              _paintLineTick(canvas, Offset(shaftX, cellCenterY), shaft);
+              if (singleRow) {
+                _paintLineTick(canvas, Offset(shaftX, cellBottom - 1), shaft);
+              }
+            } else {
+              _paintInstructionMarkSlice(
+                canvas,
+                cell: cell,
+                shaftX: shaftX,
+                cellTop: cellTop,
+              );
             }
             if (drawTexts) {
               final rowsHere = (cell.spanLength ?? 1).clamp(1, rowCount - row);
@@ -770,23 +783,43 @@ class TimesheetDocumentPainter extends CustomPainter {
               }
             }
           case TimesheetCellKind.instructionSpan:
-            canvas.drawLine(
-              Offset(shaftX, cellTop),
-              Offset(shaftX, cellBottom),
-              Paint()
-                ..color = _ink
-                ..strokeWidth = 1.4,
-            );
+            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
+                CameraInstructionMarkType.bar) {
+              canvas.drawLine(
+                Offset(shaftX, cellTop),
+                Offset(shaftX, cellBottom),
+                Paint()
+                  ..color = _ink
+                  ..strokeWidth = 1.4,
+              );
+            } else {
+              _paintInstructionMarkSlice(
+                canvas,
+                cell: cell,
+                shaftX: shaftX,
+                cellTop: cellTop,
+              );
+            }
           case TimesheetCellKind.instructionEnd:
-            final shaft = Paint()
-              ..color = _ink
-              ..strokeWidth = 1.4;
-            canvas.drawLine(
-              Offset(shaftX, cellTop),
-              Offset(shaftX, cellBottom - 1),
-              shaft,
-            );
-            _paintArrowhead(canvas, Offset(shaftX, cellBottom - 1), shaft);
+            if ((cell.markType ?? CameraInstructionMarkType.bar) ==
+                CameraInstructionMarkType.bar) {
+              final shaft = Paint()
+                ..color = _ink
+                ..strokeWidth = 1.4;
+              canvas.drawLine(
+                Offset(shaftX, cellTop),
+                Offset(shaftX, cellBottom - 1),
+                shaft,
+              );
+              _paintLineTick(canvas, Offset(shaftX, cellBottom - 1), shaft);
+            } else {
+              _paintInstructionMarkSlice(
+                canvas,
+                cell: cell,
+                shaftX: shaftX,
+                cellTop: cellTop,
+              );
+            }
             if (drawTexts && cell.valueB != null && cell.valueB!.isNotEmpty) {
               _text(
                 canvas,
@@ -803,10 +836,98 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-  /// A small downward arrowhead closing an instruction span.
-  void _paintArrowhead(Canvas canvas, Offset tip, Paint paint) {
-    canvas.drawLine(tip, tip + const Offset(-3.2, -4.5), paint);
-    canvas.drawLine(tip, tip + const Offset(3.2, -4.5), paint);
+  /// A short perpendicular tick capping the duration line (the sheet's
+  /// A ⊢───⊣ B notation — completely straight, no arrowheads).
+  void _paintLineTick(Canvas canvas, Offset center, Paint paint) {
+    canvas.drawLine(
+      center + const Offset(-3.2, 0),
+      center + const Offset(3.2, 0),
+      paint,
+    );
+  }
+
+  /// One row's slice of an instruction span's FI/FO wedge or O.L bowtie:
+  /// the mark geometry derives span-globally from the cell's
+  /// spanOffset/spanLength and clips to this row, so spans crossing page
+  /// halves paint seamlessly (each half paints only its own rows).
+  void _paintInstructionMarkSlice(
+    Canvas canvas, {
+    required TimesheetCell cell,
+    required double shaftX,
+    required double cellTop,
+  }) {
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    const halfWidth = 7.0;
+    final spanTop = cellTop - (cell.spanOffset ?? 0) * rowHeight;
+    final spanBottom = spanTop + (cell.spanLength ?? 1) * rowHeight;
+    final mid = (spanTop + spanBottom) / 2;
+    canvas.save();
+    canvas.clipRect(
+      Rect.fromLTWH(
+        shaftX - halfWidth - 1,
+        cellTop,
+        (halfWidth + 1) * 2,
+        rowHeight,
+      ),
+    );
+    switch (cell.markType ?? CameraInstructionMarkType.bar) {
+      case CameraInstructionMarkType.ol:
+        final fill = Paint()..color = _ink.withValues(alpha: 0.15);
+        canvas.drawPath(
+          Path()..addPolygon([
+            Offset(shaftX - halfWidth, spanTop),
+            Offset(shaftX + halfWidth, spanTop),
+            Offset(shaftX, mid),
+          ], true),
+          fill,
+        );
+        canvas.drawPath(
+          Path()..addPolygon([
+            Offset(shaftX - halfWidth, spanBottom),
+            Offset(shaftX + halfWidth, spanBottom),
+            Offset(shaftX, mid),
+          ], true),
+          fill,
+        );
+      case CameraInstructionMarkType.fi:
+      case CameraInstructionMarkType.fo:
+        // The fade wedge: full width where the screen is covered, a point
+        // where it is clear — FI narrows downward, FO mirrors.
+        final fadeIn = cell.markType == CameraInstructionMarkType.fi;
+        final wideY = fadeIn ? spanTop + 1 : spanBottom - 1;
+        final pointY = fadeIn ? spanBottom - 1 : spanTop + 1;
+        final wedge = Path()
+          ..addPolygon([
+            Offset(shaftX - halfWidth, wideY),
+            Offset(shaftX, pointY),
+            Offset(shaftX + halfWidth, wideY),
+          ], true);
+        canvas.save();
+        canvas.clipPath(wedge);
+        final hatch = Paint()
+          ..color = _ink.withValues(alpha: 0.55)
+          ..strokeWidth = 0.7;
+        final bounds = wedge.getBounds();
+        for (var x = bounds.left - bounds.height; x < bounds.right; x += 4.0) {
+          canvas.drawLine(
+            Offset(x, bounds.bottom),
+            Offset(x + bounds.height, bounds.top),
+            hatch,
+          );
+        }
+        canvas.restore();
+        canvas.drawPath(
+          wedge,
+          Paint()
+            ..color = _ink
+            ..strokeWidth = 1.0
+            ..style = PaintingStyle.stroke,
+        );
+      case CameraInstructionMarkType.bar:
+        // Dispatched to the straight-line path before reaching here.
+        break;
+    }
+    canvas.restore();
   }
 
   void _paintGroupTitles(Canvas canvas, double halfLeft, double groupTop) {

@@ -312,7 +312,7 @@ void main() {
       );
     });
 
-    test('instruction rows fill CAM 2+ with writing, arrow span and A→B', () {
+    test('instruction rows fill CAM 2+ with writing, mark span and A→B', () {
       final document = TimesheetDocument.fromCut(
         cut: _cut(
           layers: [
@@ -357,13 +357,30 @@ void main() {
       expect(cells[2].label, 'PAN', reason: 'vocabulary-name fallback');
       expect(cells[2].spanLength, 4);
       expect(cells[2].valueA, 'A');
+      expect(cells[2].markType, CameraInstructionMarkType.bar);
       expect(cells[3].kind, TimesheetCellKind.instructionSpan);
       expect(cells[5].kind, TimesheetCellKind.instructionEnd);
       expect(cells[5].valueB, 'B');
-      // Free per-event text wins over the vocabulary name.
+      // Every covered row re-derives the span's mark geometry (page-half
+      // crossing rule): offset within the span plus the full extent.
+      expect(
+        [
+          for (final row in [2, 3, 4, 5]) cells[row].spanOffset,
+        ],
+        [0, 1, 2, 3],
+      );
+      expect(
+        [
+          for (final row in [3, 4, 5]) cells[row].spanLength,
+        ],
+        [4, 4, 4],
+      );
+      // Free per-event text wins over the vocabulary name; the FI def
+      // carries its fade-wedge mark onto the cells.
       expect(cells[10].kind, TimesheetCellKind.instructionStart);
       expect(cells[10].label, 'ゆっくりFI');
       expect(cells[10].spanLength, 1);
+      expect(cells[10].markType, CameraInstructionMarkType.fi);
       expect(cells[11].kind, TimesheetCellKind.empty);
     });
 
