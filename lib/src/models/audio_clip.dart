@@ -1,32 +1,37 @@
-/// One sound file placed on an SE layer: [filePath] starts playing at the
-/// cut-local [startFrame]. The clip's length comes from the file itself
-/// (the waveform/peaks pipeline measures it) — the model stores placement
-/// only.
+import 'frame_id.dart';
+
+/// One sound linked to an SE layer FRAME — exactly like drawings link to
+/// frames: the sound belongs to the instance, every timeline block exposing
+/// that frame carries it (block start = sound start, block length clamps
+/// playback), and removing the block removes the sound with it. Linked
+/// blocks sharing the frame share the sound (footsteps reuse).
+///
+/// The clip's own length comes from the file (the waveform/peaks pipeline
+/// measures it) — the model stores the link only.
 ///
 /// v1 stores the ABSOLUTE path (the first file reference a project
 /// carries); relative-to-project paths arrive with project bundling.
 class AudioClip {
-  const AudioClip({required this.filePath, required this.startFrame})
-    : assert(startFrame >= 0);
+  const AudioClip({required this.filePath, required this.frameId});
 
   final String filePath;
 
-  /// Cut-local frame the clip starts on.
-  final int startFrame;
+  /// The SE frame (instance) this sound belongs to.
+  final FrameId frameId;
 
-  AudioClip copyWith({String? filePath, int? startFrame}) {
+  AudioClip copyWith({String? filePath, FrameId? frameId}) {
     return AudioClip(
       filePath: filePath ?? this.filePath,
-      startFrame: startFrame ?? this.startFrame,
+      frameId: frameId ?? this.frameId,
     );
   }
 
-  Map<String, dynamic> toJson() => {'file': filePath, 'start': startFrame};
+  Map<String, dynamic> toJson() => {'file': filePath, 'frame': frameId.value};
 
   factory AudioClip.fromJson(Map<String, dynamic> json) {
     return AudioClip(
       filePath: json['file'] as String,
-      startFrame: json['start'] as int,
+      frameId: FrameId(json['frame'] as String),
     );
   }
 
@@ -35,11 +40,11 @@ class AudioClip {
       identical(this, other) ||
       other is AudioClip &&
           other.filePath == filePath &&
-          other.startFrame == startFrame;
+          other.frameId == frameId;
 
   @override
-  int get hashCode => Object.hash(filePath, startFrame);
+  int get hashCode => Object.hash(filePath, frameId);
 
   @override
-  String toString() => 'AudioClip(filePath: $filePath, start: $startFrame)';
+  String toString() => 'AudioClip(filePath: $filePath, frameId: $frameId)';
 }

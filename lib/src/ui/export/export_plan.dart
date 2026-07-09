@@ -6,6 +6,7 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import 'video_export_service.dart' show ExportAudioClip;
 
@@ -194,22 +195,28 @@ List<ExportAudioClip> buildExportAudioPlan({
       if (layer.kind != LayerKind.se) {
         continue;
       }
-      for (final clip in layer.audioClips) {
-        // The clip's start on the export timeline, in frames (negative =
-        // it began before the exported range).
-        final offsetFrames = blockStart + (clip.startFrame - firstFrameIndex);
+      for (final span in seAudioSpans(layer)) {
+        // The span's start on the export timeline, in frames (negative =
+        // its block began before the exported range).
+        final offsetFrames = blockStart + (span.startFrame - firstFrameIndex);
         if (offsetFrames >= blockEnd) {
           continue;
         }
         // Where the audible part begins on the export timeline; anything
-        // before it is seeked over in the source.
+        // before it is seeked over in the source. The end clamps to the
+        // carrying BLOCK (the sound's instance) as well as the exported
+        // range, matching canvas playback.
         final audibleStart = math.max(blockStart, offsetFrames);
+        final audibleEnd = math.min(blockEnd, offsetFrames + span.lengthFrames);
+        if (audibleEnd <= audibleStart) {
+          continue;
+        }
         clips.add(
           ExportAudioClip(
-            filePath: clip.filePath,
+            filePath: span.clip.filePath,
             seekSeconds: (audibleStart - offsetFrames) / safeFps,
             delaySeconds: audibleStart / safeFps,
-            durationSeconds: (blockEnd - audibleStart) / safeFps,
+            durationSeconds: (audibleEnd - audibleStart) / safeFps,
           ),
         );
       }

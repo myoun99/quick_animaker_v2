@@ -125,9 +125,15 @@ class TimelineFrameCell extends StatelessWidget {
 
     final cell = InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
-      // Semantics/keyboard activation path; pointer selection happens on
-      // the raw down below.
-      onTap: select,
+      // Deliberate NO-OP: pointer selection rides the raw pointer-down
+      // below. Selecting here replayed LATE — with onDoubleTap registered
+      // the arena resolves ~300ms after a quick tap, so tapping cell B
+      // right after cell A fired A's deferred tap AFTER B's selection (the
+      // selection visibly jumped B → A → B). The recognizer itself must
+      // STAY registered though: dropping it changes how much drag slop the
+      // scroll viewport consumes over cells (grid scroll tests pin that).
+      // Assistive-tech activation goes through the Semantics onTap.
+      onTap: () {},
       onDoubleTap: onActivateCell == null
           ? null
           : () {
@@ -150,6 +156,7 @@ class TimelineFrameCell extends StatelessWidget {
         child: Center(
           child: Semantics(
             key: selected ? selectedSemanticsKey : null,
+            onTap: select,
             child: Text(
               // Zoomed-out cells are too narrow for glyphs; the block
               // colors alone carry the overview (Premiere-style).

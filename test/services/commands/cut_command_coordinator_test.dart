@@ -954,7 +954,9 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      const clips = [AudioClip(filePath: 'voice.wav', startFrame: 4)];
+      const clips = [
+        AudioClip(filePath: 'voice.wav', frameId: FrameId('se-voice')),
+      ];
 
       fixture.coordinator.updateLayerAudioClips(
         cutId: cutA.id,
@@ -994,7 +996,9 @@ void main() {
         kind: LayerKind.se,
         frames: const [],
         timeline: const {},
-        audioClips: const [AudioClip(filePath: 'voice.wav', startFrame: 2)],
+        audioClips: const [
+          AudioClip(filePath: 'voice.wav', frameId: FrameId('se-voice')),
+        ],
       );
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [se]);
       final fixture = _fixture(

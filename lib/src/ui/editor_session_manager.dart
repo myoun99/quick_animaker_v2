@@ -1188,8 +1188,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// Whether the active layer can take an audio clip (SE rows only).
   bool get canImportAudioToActiveLayer => activeLayer?.kind == LayerKind.se;
 
-  /// Places [filePath] on the active SE layer at the playhead; one undo
-  /// step. The clip's length comes from the file (waveform pipeline).
+  /// Links [filePath] to the SE instance under the playhead — sounds are
+  /// FRAME-LINKED like drawings: the carrying block is the sound's window
+  /// (start, length) and deleting the block silences it. Importing onto an
+  /// empty cell creates the SE instance first (its own undo step), then
+  /// links the sound (one more).
   void addAudioClipToActiveSeLayer(String filePath) {
     final layer = activeLayer;
     if (layer == null || layer.kind != LayerKind.se) {
@@ -1198,17 +1201,27 @@ class EditorSessionManager extends ChangeNotifier {
     // Re-importing a path restarts its waveform extraction from scratch
     // (fresh attempt budget — the file may have changed on disk).
     audioPeaksStore.invalidate(filePath);
+    final frameIndex = _timelineController.currentFrameIndex < 0
+        ? 0
+        : _timelineController.currentFrameIndex;
+    var frame = resolveExposedFrameAt(layer, frameIndex);
+    if (frame == null) {
+      createSeEntryAtCurrentFrame(name: '');
+      final created = activeLayer;
+      frame = created == null
+          ? null
+          : resolveExposedFrameAt(created, frameIndex);
+      if (frame == null) {
+        return;
+      }
+    }
+    final carrier = activeLayer ?? layer;
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: _editingSession.activeCutId,
-      layerId: layer.id,
+      layerId: carrier.id,
       audioClips: [
-        ...layer.audioClips,
-        AudioClip(
-          filePath: filePath,
-          startFrame: _timelineController.currentFrameIndex < 0
-              ? 0
-              : _timelineController.currentFrameIndex,
-        ),
+        ...carrier.audioClips,
+        AudioClip(filePath: filePath, frameId: frame.id),
       ],
       description: 'Import audio',
     );

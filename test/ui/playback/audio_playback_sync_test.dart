@@ -3,11 +3,14 @@ import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_playback_sync.dart';
@@ -42,18 +45,28 @@ class _FakeClipPlayer implements AudioClipPlayer {
   Future<void> dispose() async => log.add('dispose $_path');
 }
 
-Layer _seLayer(String id, List<AudioClip> clips) => Layer(
+/// One SE layer with one sound linked to a single block (frame-linked
+/// model: the block is the sound's window).
+Layer _seLayer(
+  String id, {
+  required String file,
+  required int start,
+  required int length,
+}) => Layer(
   id: LayerId(id),
   name: 'S1',
   kind: LayerKind.se,
-  frames: const [],
-  timeline: const {},
-  audioClips: clips,
+  frames: [Frame(id: FrameId('$id-frame'), duration: 1, strokes: const [])],
+  timeline: {
+    start: TimelineExposure.drawing(FrameId('$id-frame'), length: length),
+  },
+  audioClips: [AudioClip(filePath: file, frameId: FrameId('$id-frame'))],
 );
 
-// fps 10: cut-a (10 frames) carries a.wav (1.0 s = full cut) and b.wav
-// (unknown length → clamped to the cut end); cut-b (20 frames, global
-// 10..30) carries c.wav at local 3 (global 13..18).
+// fps 10: cut-a (10 frames) carries a.wav on a full-cut block (1.0 s = the
+// whole window) and b.wav on a 6..10 block (unknown length → clamped to
+// the block/cut end); cut-b (20 frames, global 10..30) carries c.wav on a
+// block at local 3 (0.5 s → global 13..18).
 final Project _project = Project(
   id: const ProjectId('sync-project'),
   name: 'Sync',
@@ -69,10 +82,8 @@ final Project _project = Project(
           duration: 10,
           canvasSize: const CanvasSize(width: 640, height: 360),
           layers: [
-            _seLayer('se-a', const [
-              AudioClip(filePath: 'a.wav', startFrame: 0),
-              AudioClip(filePath: 'b.wav', startFrame: 6),
-            ]),
+            _seLayer('se-a1', file: 'a.wav', start: 0, length: 10),
+            _seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
           ],
         ),
         Cut(
@@ -80,11 +91,7 @@ final Project _project = Project(
           name: 'B',
           duration: 20,
           canvasSize: const CanvasSize(width: 640, height: 360),
-          layers: [
-            _seLayer('se-b', const [
-              AudioClip(filePath: 'c.wav', startFrame: 3),
-            ]),
-          ],
+          layers: [_seLayer('se-b', file: 'c.wav', start: 3, length: 17)],
         ),
       ],
     ),

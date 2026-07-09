@@ -179,7 +179,7 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
               onTap: () => _focusNode?.unfocus(),
             ),
           ),
-          _buildEditor(target),
+          ..._buildEditor(target),
         ],
       ],
     );
@@ -201,57 +201,98 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
     );
   }
 
-  Widget _buildEditor(_EditTarget target) {
+  /// The in-place editor, split in two: an outline over the whole box (the
+  /// printed 'TITLE' label etc. stays visible through it) and the TextField
+  /// positioned on the painter's EXACT text geometry — header values paint
+  /// top-left at (left+8, top+26) @14 w600, the memo at (left+8, top+6)
+  /// @11 — so editing happens literally on the printed glyphs (WYSIWYG).
+  List<Widget> _buildEditor(_EditTarget target) {
     final zoom = widget.viewport.zoom;
-    final rect = _screenRect(target.documentRect);
+    final boxRect = _screenRect(target.documentRect);
     final memo = target.field == null;
-    // WYSIWYG-ish: the editor text tracks the printed size under zoom.
     final fontSize = (memo ? 11.0 : 14.0) * zoom;
 
-    return Positioned(
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      child: Focus(
-        onKeyEvent: (node, event) {
-          if (event is KeyDownEvent &&
-              event.logicalKey == LogicalKeyboardKey.escape) {
-            _cancel();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: AppColors.accent, width: 1.5),
-          ),
-          alignment: memo ? Alignment.topLeft : Alignment.bottomLeft,
-          child: TextField(
-            key: const ValueKey<String>('timesheet-header-edit-field'),
-            controller: _controller,
-            focusNode: _focusNode,
-            autofocus: true,
-            maxLines: memo ? null : 1,
-            expands: memo,
-            onSubmitted: memo ? null : (_) => _commit(),
-            style: TextStyle(
-              color: const Color(0xFF33322F),
-              fontSize: fontSize,
-              fontWeight: memo ? FontWeight.w400 : FontWeight.w600,
+    final Rect textRect;
+    if (memo) {
+      // Left of the framed memo box, same inset as the painted cut note.
+      final memoBoxWidth =
+          target.documentRect.width *
+          TimesheetDocumentLayout.memoBoxWidthFraction;
+      textRect = _screenRect(
+        Rect.fromLTRB(
+          target.documentRect.left + 8,
+          target.documentRect.top + 6,
+          target.documentRect.right - memoBoxWidth - 12,
+          target.documentRect.bottom - 6,
+        ),
+      );
+    } else {
+      textRect = _screenRect(
+        Rect.fromLTRB(
+          target.documentRect.left + 8,
+          target.documentRect.top + 26,
+          target.documentRect.right - 8,
+          target.documentRect.bottom - 4,
+        ),
+      );
+    }
+
+    return [
+      // Affordance outline only — no fill, the printed box label stays
+      // visible.
+      Positioned(
+        left: boxRect.left,
+        top: boxRect.top,
+        width: boxRect.width,
+        height: boxRect.height,
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.accent, width: 1.5),
             ),
-            decoration: InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 8 * zoom,
-                vertical: 6 * zoom,
+          ),
+        ),
+      ),
+      Positioned(
+        left: textRect.left,
+        top: textRect.top,
+        width: textRect.width,
+        height: textRect.height,
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              _cancel();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          // Paper-colored backing hides only the printed glyphs the field
+          // replaces (the live text sits exactly on top of them).
+          child: Container(
+            color: const Color(0xFFF6F4F0),
+            alignment: Alignment.topLeft,
+            child: TextField(
+              key: const ValueKey<String>('timesheet-header-edit-field'),
+              controller: _controller,
+              focusNode: _focusNode,
+              autofocus: true,
+              maxLines: memo ? null : 1,
+              expands: memo,
+              onSubmitted: memo ? null : (_) => _commit(),
+              style: TextStyle(
+                color: const Color(0xFF33322F),
+                fontSize: fontSize,
+                fontWeight: memo ? FontWeight.w400 : FontWeight.w600,
+              ),
+              decoration: const InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
               ),
             ),
           ),
         ),
       ),
-    );
+    ];
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/layer_kind.dart';
+import '../../models/se_audio_spans.dart';
 import '../storyboard_timeline_layout.dart';
 import 'canvas_playback_controller.dart';
 
@@ -232,13 +233,18 @@ class AudioPlaybackSync {
         if (layer.kind != LayerKind.se) {
           continue;
         }
-        for (final clip in layer.audioClips) {
-          if (clip.startFrame >= entry.duration) {
+        for (final span in seAudioSpans(layer)) {
+          if (span.startFrame >= entry.duration) {
             continue;
           }
-          final startFrame = entry.startFrame + clip.startFrame;
-          var endFrameExclusive = entry.endFrame;
-          final seconds = durationSecondsFor(clip.filePath);
+          final startFrame = entry.startFrame + span.startFrame;
+          // The BLOCK is the instance: playback never runs past its end
+          // (nor past the cut end, nor past the file's own length).
+          var endFrameExclusive = math.min(
+            entry.endFrame,
+            startFrame + span.lengthFrames,
+          );
+          final seconds = durationSecondsFor(span.clip.filePath);
           if (seconds != null) {
             endFrameExclusive = math.min(
               endFrameExclusive,
@@ -250,7 +256,7 @@ class AudioPlaybackSync {
           }
           schedule.add(
             _ScheduledClip(
-              filePath: clip.filePath,
+              filePath: span.clip.filePath,
               startFrame: startFrame,
               endFrameExclusive: endFrameExclusive,
             ),

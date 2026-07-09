@@ -9,6 +9,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
+import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
@@ -873,8 +874,9 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
     }
-    // Waveforms above the paper (painted UNDER the SE writing): each clip
-    // mapped to track-global frames and clamped at its cut's end.
+    // Waveforms above the paper (painted UNDER the SE writing): sounds are
+    // FRAME-LINKED — each carrying block windows its waveform, clamped to
+    // the block, the file length and the cut's span.
     final audioPeaksFor = this.audioPeaksFor;
     if (audioPeaksFor != null) {
       for (final entry in layoutEntries) {
@@ -882,32 +884,38 @@ class _StoryboardSeRow extends StatelessWidget {
         if (layer == null) {
           continue;
         }
-        for (var index = 0; index < layer.audioClips.length; index += 1) {
-          final clip = layer.audioClips[index];
-          if (clip.startFrame >= entry.duration) {
+        for (final span in seAudioSpans(layer)) {
+          if (span.startFrame >= entry.duration) {
             continue;
           }
-          final peaks = audioPeaksFor(clip.filePath);
+          final peaks = audioPeaksFor(span.clip.filePath);
           if (peaks == null) {
             continue;
           }
           final endExclusive = math.min(
-            clip.startFrame + peaks.durationFrames(projectFps),
+            math.min(
+              span.startFrame + peaks.durationFrames(projectFps),
+              span.endFrameExclusive,
+            ),
             entry.duration,
           );
+          if (endExclusive <= span.startFrame) {
+            continue;
+          }
           spans.add(
             Positioned(
               left: timelineScale.leftForFrame(
-                entry.startFrame + clip.startFrame,
+                entry.startFrame + span.startFrame,
               ),
               top: 0,
               bottom: 0,
               width:
-                  (endExclusive - clip.startFrame) *
+                  (endExclusive - span.startFrame) *
                   timelineScale.pixelsPerFrame,
               child: IgnorePointer(
                 key: ValueKey<String>(
-                  'storyboard-audio-clip-${entry.cut.id.value}-$index',
+                  'storyboard-audio-clip-${entry.cut.id.value}'
+                  '-${span.clipIndex}-b${span.startFrame}',
                 ),
                 child: CustomPaint(
                   painter: WaveformPainter(

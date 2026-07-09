@@ -149,6 +149,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   }
 
   Widget _blankCanvasContent(BuildContext context, CanvasViewport viewport) {
+    // With an underlay the paper AND the layers below the active one are
+    // already painted underneath — drawing another opaque paper here buried
+    // them (the "artwork exists but the canvas shows blank paper" bug
+    // whenever the active layer had no frame at the playhead). Only the
+    // standalone case paints its own paper.
+    if (widget.viewportUnderlayBuilder != null) {
+      return const SizedBox.expand(
+        key: ValueKey<String>('main-canvas-brush-host-blank-canvas'),
+      );
+    }
     return CustomPaint(
       key: const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
       painter: PlaybackFramePainter(
