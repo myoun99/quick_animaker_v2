@@ -15,14 +15,16 @@ import '../theme/app_theme.dart';
 const double layerTimesheetSlotWidth = 24;
 const double layerMarkSlotWidth = 14;
 
-/// Which layer kinds carry the timesheet-output toggle: sheet-recordable
-/// rows (cel columns + the SE column; art cels ride the ACTION block like
-/// animation). Camera always has its own sheet column, storyboard and
-/// instruction rows never appear via this flag.
-bool layerKindEligibleForTimesheetToggle(LayerKind kind) {
-  return kind == LayerKind.animation ||
-      kind == LayerKind.art ||
-      kind == LayerKind.se;
+/// Every layer kind carries the timesheet-output toggle — one entrance for
+/// every row (unified layer controls, user rule): cel/art/SE gate their
+/// sheet columns and the CAMERA layer gates the printed CAM column.
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
+
+/// Which layer kinds show the opacity slider on their row: compositing
+/// cels, plus the CAMERA layer whose slider drives the camera-view DIM
+/// opacity (unified layer controls — the camera panel used to own it).
+bool layerKindShowsOpacityControl(LayerKind kind) {
+  return layerKindHoldsDrawings(kind) || kind == LayerKind.camera;
 }
 
 /// Chip color of [mark]; null for [LayerMark.none].

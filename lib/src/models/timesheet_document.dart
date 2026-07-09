@@ -199,8 +199,14 @@ class TimesheetDocument {
     ];
     final instructionLayers = [
       for (final layer in cut.layers)
-        if (layer.kind == LayerKind.instruction) layer,
+        if (layer.kind == LayerKind.instruction && layer.onTimesheet) layer,
     ];
+    // The CAM keyframe column obeys the camera layer's timesheet toggle
+    // (unified layer controls); toggled off it stays printed blank form
+    // space, like an unbacked slot.
+    final cameraOnSheet = cut.layers
+        .where((layer) => layer.kind == LayerKind.camera)
+        .every((layer) => layer.onTimesheet);
     // CAM slots: the camera-keyframe column plus one per instruction row.
     final cameraSlotCount = 1 + instructionLayers.length > cameraColumnCount
         ? 1 + instructionLayers.length
@@ -264,7 +270,9 @@ class TimesheetDocument {
               ? instructionLayers[slot - 1].name
               : null,
           cells: slot == 0
-              ? _cameraCells(cut: cut, rowCount: rowCount)
+              ? (cameraOnSheet
+                    ? _cameraCells(cut: cut, rowCount: rowCount)
+                    : _blankCells(rowCount))
               : slot - 1 < instructionLayers.length
               ? _instructionCells(
                   layer: instructionLayers[slot - 1],

@@ -148,7 +148,10 @@ class CutCommandCoordinator {
 
   /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
   /// first frame); one undo step.
-  void updateCutThumbnailFrame({required CutId cutId, required int? frameIndex}) {
+  void updateCutThumbnailFrame({
+    required CutId cutId,
+    required int? frameIndex,
+  }) {
     final cut = _requireCut(cutId);
     if (cut.metadata.thumbnailFrameIndex == frameIndex) {
       return;
@@ -380,10 +383,9 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required bool onTimesheet,
   }) {
+    // Every kind carries the toggle now (unified layer controls): the
+    // camera layer gates the sheet's printed CAM keyframe column.
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (layer.kind == LayerKind.camera) {
-      throw StateError('The camera layer is always recorded on the timesheet.');
-    }
     if (layer.onTimesheet == onTimesheet) {
       return;
     }

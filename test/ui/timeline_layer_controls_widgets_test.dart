@@ -225,9 +225,8 @@ void main() {
       expect(selectedMark, LayerMark.blue);
     });
 
-    testWidgets('non-animation layers hide the timesheet toggle', (
-      tester,
-    ) async {
+    testWidgets('every kind carries the timesheet toggle (unified layer '
+        'controls)', (tester) async {
       final storyboardLayer = _layer().copyWith(kind: LayerKind.storyboard);
 
       await tester.pumpWidget(_row(layer: storyboardLayer));
@@ -236,9 +235,8 @@ void main() {
         find.byKey(
           ValueKey<String>('timeline-layer-timesheet-${storyboardLayer.id}'),
         ),
-        findsNothing,
+        findsOneWidget,
       );
-      // The mark chip stays available for storyboard layers.
       expect(
         find.byKey(
           ValueKey<String>('timeline-layer-mark-${storyboardLayer.id}'),
@@ -247,7 +245,8 @@ void main() {
       );
     });
 
-    testWidgets('camera layer hides both chips', (tester) async {
+    testWidgets('the camera layer carries both chips AND the opacity '
+        'slider (camera-view dim, unified layer controls)', (tester) async {
       final cameraLayer = _layer().copyWith(kind: LayerKind.camera);
 
       await tester.pumpWidget(_row(layer: cameraLayer));
@@ -256,11 +255,17 @@ void main() {
         find.byKey(
           ValueKey<String>('timeline-layer-timesheet-${cameraLayer.id}'),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.byKey(ValueKey<String>('timeline-layer-mark-${cameraLayer.id}')),
-        findsNothing,
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          ValueKey<String>('timeline-layer-opacity-${cameraLayer.id}'),
+        ),
+        findsOneWidget,
       );
     });
   });

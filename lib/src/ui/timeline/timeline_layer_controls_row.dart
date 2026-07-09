@@ -100,15 +100,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
               else
                 const SizedBox(width: layerTimesheetSlotWidth),
               const SizedBox(width: 4),
-              if (layer.kind != LayerKind.camera)
-                LayerMarkChip(
-                  keyPrefix: 'timeline',
-                  layerId: layer.id,
-                  mark: layer.mark,
-                  onMarkSelected: onLayerMarkSelected,
-                )
-              else
-                const SizedBox(width: layerMarkSlotWidth),
+              LayerMarkChip(
+                keyPrefix: 'timeline',
+                layerId: layer.id,
+                mark: layer.mark,
+                onMarkSelected: onLayerMarkSelected,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: InkWell(
@@ -160,9 +157,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
                 onPressed: () => onToggleLayerVisibility(layer.id),
               ),
-              // Camera and instruction rows never composite; hide the
-              // opacity slider rather than offering a dead control.
-              if (layerKindHoldsDrawings(layer.kind)) ...[
+              // Instruction rows never composite — no dead control there.
+              // The camera row's slider drives the camera-view DIM opacity
+              // (unified layer controls).
+              if (layerKindShowsOpacityControl(layer.kind)) ...[
                 SizedBox(
                   width: 64,
                   child: Slider(

@@ -629,6 +629,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onToggleLayerLanes: _toggleLayerLanes,
               hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
+              // Unified layer controls: the camera row's visibility/opacity
+              // drive the same camera-view state as the canvas overlay and
+              // the camera panel.
+              cameraViewEnabled: _cameraViewEnabled,
+              cameraDimOpacity: _cameraDimOpacity,
             ),
           ),
         );

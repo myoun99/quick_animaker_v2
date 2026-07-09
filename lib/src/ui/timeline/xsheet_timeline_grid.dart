@@ -588,8 +588,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .contains(
                                                       entries[index].layer.id,
                                                     ),
-                                                onToggleLanes: widget
-                                                    .onToggleLayerLanes,
+                                                onToggleLanes:
+                                                    widget.onToggleLayerLanes,
                                               ),
                                     ],
                                   ),
@@ -1272,15 +1272,12 @@ class _LayerHeader extends StatelessWidget {
                   else
                     const SizedBox(width: layerTimesheetSlotWidth),
                   const SizedBox(width: 4),
-                  if (layer.kind != LayerKind.camera)
-                    LayerMarkChip(
-                      keyPrefix: 'xsheet',
-                      layerId: layer.id,
-                      mark: layer.mark,
-                      onMarkSelected: onLayerMarkSelected,
-                    )
-                  else
-                    const SizedBox(width: layerMarkSlotWidth),
+                  LayerMarkChip(
+                    keyPrefix: 'xsheet',
+                    layerId: layer.id,
+                    mark: layer.mark,
+                    onMarkSelected: onLayerMarkSelected,
+                  ),
                   Expanded(
                     child: InkWell(
                       key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
@@ -1323,9 +1320,10 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  // Camera and instruction rows never composite; hide the
-                  // opacity slider rather than offering a dead control.
-                  if (layerKindHoldsDrawings(layer.kind)) ...[
+                  // Instruction rows never composite — no dead control
+                  // there. The camera column's slider drives the
+                  // camera-view DIM opacity (unified layer controls).
+                  if (layerKindShowsOpacityControl(layer.kind)) ...[
                     Expanded(
                       child: Slider(
                         key: ValueKey<String>(
