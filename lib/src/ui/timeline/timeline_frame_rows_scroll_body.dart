@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
@@ -37,6 +37,8 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     this.commaDrag,
     this.laneEdit,
   });
@@ -73,6 +75,19 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Commits an audio-lane fade-handle drag; null hides the handles.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog; null hides the menu entry.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
+
   final TimelineCommaDragCallbacks? commaDrag;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -107,6 +122,22 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                                         clipIndex,
                                         offsetFrames,
                                       ),
+                            onSetClipFades: onSetAudioClipFades == null
+                                ? null
+                                : (clipIndex, fadeIn, fadeOut) =>
+                                      onSetAudioClipFades!(
+                                        row.layer.id,
+                                        clipIndex,
+                                        fadeIn,
+                                        fadeOut,
+                                      ),
+                            onSetClipGain: onSetAudioClipGain == null
+                                ? null
+                                : (clipIndex, gain) => onSetAudioClipGain!(
+                                    row.layer.id,
+                                    clipIndex,
+                                    gain,
+                                  ),
                           )
                         : TimelineLaneFrameRow(
                             layer: row.layer,

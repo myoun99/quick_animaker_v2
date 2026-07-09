@@ -55,6 +55,15 @@ class AudioplayersClipPlayer implements AudioClipPlayer {
   }
 
   @override
+  Future<void> setVolume(double volume) async {
+    try {
+      await _player.setVolume(volume);
+    } catch (error) {
+      debugPrint('[AudioplayersClipPlayer] failed to set volume: $error');
+    }
+  }
+
+  @override
   Future<void> pause() => _player.pause();
 
   @override

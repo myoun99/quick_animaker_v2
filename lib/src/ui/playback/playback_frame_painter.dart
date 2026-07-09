@@ -28,6 +28,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.viewport,
     this.cameraPose,
     this.cameraFrameSize,
+    this.fadeOpacity = 1,
     this.letterboxColor = const Color(0xFF15191C),
     this.paperColor = const Color(0xFFEDEDED),
   }) : assert(
@@ -46,6 +47,10 @@ class PlaybackFramePainter extends CustomPainter {
   /// Non-null = look through the camera.
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
+
+  /// The cut fade (Cut.fadeOpacityAt): paper and composite fade together
+  /// toward the dark surround. 1 costs nothing (no saveLayer).
+  final double fadeOpacity;
 
   final Color letterboxColor;
   final Color paperColor;
@@ -95,6 +100,15 @@ class PlaybackFramePainter extends CustomPainter {
       canvasSize.width.toDouble(),
       canvasSize.height.toDouble(),
     );
+    final fading = fadeOpacity < 1;
+    if (fading) {
+      // Paper and composite fade as ONE image toward whatever lies behind
+      // (canvas mode: the panel surround; camera mode: the letterbox).
+      canvas.saveLayer(
+        canvasRect,
+        Paint()..color = Color.fromRGBO(0, 0, 0, fadeOpacity.clamp(0.0, 1.0)),
+      );
+    }
     canvas.drawRect(canvasRect, Paint()..color = paperColor);
     final composite = image;
     if (composite != null) {
@@ -111,6 +125,9 @@ class PlaybackFramePainter extends CustomPainter {
         Paint()..filterQuality = FilterQuality.low,
       );
     }
+    if (fading) {
+      canvas.restore();
+    }
     canvas.restore();
   }
 
@@ -121,6 +138,7 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.viewport != viewport ||
       oldDelegate.cameraPose != cameraPose ||
       oldDelegate.cameraFrameSize != cameraFrameSize ||
+      oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.letterboxColor != letterboxColor ||
       oldDelegate.paperColor != paperColor;
 }

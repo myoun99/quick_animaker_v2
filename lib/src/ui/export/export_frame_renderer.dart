@@ -83,10 +83,13 @@ class ExportFrameRenderer {
             ),
           );
     return renderService.renderThroughCamera(
+      // The fx-bypass switches apply here too (AE semantics: the layer fx
+      // switch affects the render) — WYSIWYG with playback.
       layers: planCutFrameComposite(
         cut: cut,
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        fxBypassedLayerIds: session.fxBypassedLayerIds,
       ),
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera
@@ -94,6 +97,43 @@ class ExportFrameRenderer {
           : cut.canvasSize,
       outputSize: outputSize,
     );
+  }
+
+  /// [renderComposite] with the cut fade baked in for VIDEO frames: the
+  /// frame draws at its fade opacity over black — MP4 carries no alpha
+  /// (yuv420p drops the channel without blending), so the fade must land
+  /// in the RGB values. Unfaded frames pass through untouched. PNG
+  /// sequences deliberately stay unfaded (they are compositing sources).
+  Future<ui.Image> renderCompositeForVideo(
+    ExportFrameTask task,
+    ExportSizeMode mode,
+  ) async {
+    final image = await renderComposite(task, mode);
+    final fade = task.cut.fadeOpacityAt(task.frameIndex);
+    if (fade >= 1) {
+      return image;
+    }
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final bounds = ui.Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
+    canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+    canvas.drawImage(
+      image,
+      ui.Offset.zero,
+      ui.Paint()..color = ui.Color.fromRGBO(0, 0, 0, fade),
+    );
+    final picture = recorder.endRecording();
+    try {
+      return await picture.toImage(image.width, image.height);
+    } finally {
+      picture.dispose();
+      image.dispose();
+    }
   }
 
   /// One cel exactly as drawn, no compositing; `null` when the frame has no

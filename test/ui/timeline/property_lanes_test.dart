@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_camera.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
@@ -66,7 +68,17 @@ CameraPose _pose(double x) => CameraPose(
 );
 
 Future<void> _pump(WidgetTester tester, Project project) async {
+  // The AE 'Transform' group header (+ anchor/opacity lanes on drawing
+  // layers) deepens the twirl-down; a wide surface and a taller bottom
+  // dock (splitter drag, like a user would) keep every lane row on screen.
+  await tester.binding.setSurfaceSize(const Size(1280, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
+  await tester.pumpAndSettle();
+  await tester.drag(
+    find.byKey(const ValueKey<String>('dock-resize-bottom')),
+    const Offset(0, -300),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -135,15 +147,51 @@ void main() {
 
       final lanes = transformPropertyLanes(track);
 
+      // The AE structure: the 'Transform' GROUP HEADER leads its lanes
+      // (Effects stack below on the same substrate later).
       expect(lanes.map((lane) => lane.laneId), [
+        'transform-group',
         'position',
         'scale',
         'rotation',
       ]);
-      expect(lanes[0].keyedFrames, {0, 6});
-      expect(lanes[0].holdOutFrames, {6});
-      expect(lanes[1].keyedFrames, isEmpty);
-      expect(lanes[2].keyedFrames, {3});
+      expect(lanes.first.isGroupHeader, isTrue);
+      expect(lanes.first.showsKeyNavigator, isFalse);
+      expect(lanes[1].keyedFrames, {0, 6});
+      expect(lanes[1].holdOutFrames, {6});
+      expect(lanes[2].keyedFrames, isEmpty);
+      expect(lanes[3].keyedFrames, {3});
+    });
+
+    test('includeAnchorAndOpacity adds the two layer-only lanes in AE '
+        'order (Anchor Point first, Opacity last)', () {
+      final track = TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+          2,
+          CanvasPoint(x: 10, y: 20),
+        ),
+        opacity: PropertyTrack<double>().withKey(5, 0.5),
+      );
+
+      final lanes = transformPropertyLanes(
+        track,
+        includeAnchorAndOpacity: true,
+        anchorAt: (_) => CanvasPoint(x: 10, y: 20),
+        opacityAt: (_) => 0.5,
+      );
+
+      expect(lanes.map((lane) => lane.laneId), [
+        'transform-group',
+        'anchor-point',
+        'position',
+        'scale',
+        'rotation',
+        'opacity',
+      ]);
+      expect(lanes[1].keyedFrames, {2});
+      expect(lanes[1].valueLabel!(0), '10, 20');
+      expect(lanes[5].keyedFrames, {5});
+      expect(lanes[5].valueLabel!(0), '50%');
     });
   });
 
@@ -207,6 +255,8 @@ void main() {
       tester,
     ) async {
       late ProjectRepository repository;
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
           home: HomePage(
@@ -214,6 +264,11 @@ void main() {
             onRepositoryCreated: (repo) => repository = repo,
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -300),
       );
       await tester.pumpAndSettle();
 
@@ -263,6 +318,198 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await tester.pumpAndSettle();
       expect(drawLayer().transformTrack.isEmpty, isTrue);
+    });
+  });
+
+  // ⑤ unified lanes: truly EVERY kind twirls down the same Transform
+  // group — SE rows (their transform moves the canvas dialogue) keep the
+  // audio lane BELOW the transform lanes, instruction rows get the lanes
+  // too (entrance parity).
+  group('transform lanes on SE and instruction rows', () {
+    const seLayerId = LayerId('lane-se-layer');
+    const instructionLayerId = LayerId('lane-instr-layer');
+
+    Project seInstructionProject() {
+      return Project(
+        id: const ProjectId('lanes-se-project'),
+        name: 'Lanes SE Project',
+        createdAt: DateTime.utc(2026, 7, 10),
+        tracks: [
+          Track(
+            id: const TrackId('lanes-track'),
+            name: 'Video Track',
+            cuts: [
+              Cut(
+                id: const CutId('lanes-cut'),
+                name: 'Lanes Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 1280, height: 720),
+                layers: [
+                  Layer(
+                    id: const LayerId('lane-draw-layer'),
+                    name: 'Drawing',
+                    frames: const [],
+                  ),
+                  Layer(
+                    id: seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: const [],
+                    audioClips: const [
+                      AudioClip(
+                        filePath: 'hit.wav',
+                        frameId: FrameId('se-frame'),
+                      ),
+                    ],
+                  ),
+                  Layer(
+                    id: instructionLayerId,
+                    name: 'CAM 1',
+                    kind: LayerKind.instruction,
+                    frames: const [],
+                  ),
+                  Layer(
+                    id: _cameraLayerId,
+                    name: 'Camera',
+                    kind: LayerKind.camera,
+                    frames: const [],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    testWidgets('SE rows twirl down Transform lanes above the audio lane '
+        'and key their own track', (tester) async {
+      late ProjectRepository repository;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            initialProject: seInstructionProject(),
+            onRepositoryCreated: (repo) => repository = repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Layer seLayer() => repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .firstWhere((layer) => layer.id == seLayerId);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-toggle-lane-se-layer'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final positionLabel = find.byKey(
+        const ValueKey<String>('timeline-lane-label-lane-se-layer-position'),
+      );
+      final audioLabel = find.byKey(
+        const ValueKey<String>('timeline-lane-label-lane-se-layer-se-audio'),
+      );
+      expect(positionLabel, findsOneWidget);
+      expect(audioLabel, findsOneWidget);
+      // Transform group first, the audio strip below it (AE ordering).
+      expect(
+        tester.getTopLeft(positionLabel).dy,
+        lessThan(tester.getTopLeft(audioLabel).dy),
+      );
+
+      // The navigator diamond keys the SE layer's OWN transform track.
+      expect(seLayer().transformTrack.isEmpty, isTrue);
+      await tester.ensureVisible(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-se-layer-position',
+          ),
+        ),
+      );
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-se-layer-position',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(seLayer().transformTrack.position.keys.keys, {0});
+    });
+
+    testWidgets('instruction rows twirl down the same Transform lanes', (
+      tester,
+    ) async {
+      late ProjectRepository repository;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            initialProject: seInstructionProject(),
+            onRepositoryCreated: (repo) => repository = repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Layer instructionLayer() => repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .firstWhere((layer) => layer.id == instructionLayerId);
+
+      final toggle = find.byKey(
+        const ValueKey<String>('timeline-lane-toggle-lane-instr-layer'),
+      );
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-label-lane-instr-layer-position',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // No audio lane on instruction rows.
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-label-lane-instr-layer-se-audio',
+          ),
+        ),
+        findsNothing,
+      );
+
+      expect(instructionLayer().transformTrack.isEmpty, isTrue);
+      await tester.ensureVisible(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-instr-layer-rotation',
+          ),
+        ),
+      );
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-instr-layer-rotation',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(instructionLayer().transformTrack.rotation.keys.keys, {0});
     });
   });
 
@@ -650,7 +897,19 @@ void main() {
         scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
         '-5°',
       );
-      expect(scrubTransformLaneValue('opacity', '100', Offset.zero), isNull);
+      // The anchor lane scrubs like position; opacity clamps to 0–100.
+      expect(
+        scrubTransformLaneValue('anchor-point', '10, 20', const Offset(4, -6)),
+        '14, 14',
+      );
+      expect(
+        scrubTransformLaneValue('opacity', '100%', const Offset(-30, 0)),
+        '85%',
+      );
+      expect(
+        scrubTransformLaneValue('opacity', '100%', const Offset(30, 0)),
+        '100%',
+      );
       expect(
         scrubTransformLaneValue('scale', 'garbage', const Offset(1, 0)),
         isNull,

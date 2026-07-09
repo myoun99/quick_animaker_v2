@@ -18,10 +18,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.onToggleLayerMuted,
     this.sectionStart = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.fxEnabled = true,
+    this.onToggleLayerFx,
   });
 
   final Layer layer;
@@ -33,6 +36,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
+  /// SE rows' speaker button (the audio counterpart of visibility); null
+  /// hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
+
   /// Whether this row opens a new timesheet section (drawing/SE/camera);
   /// draws a heavier divider along the rail row's top edge.
   final bool sectionStart;
@@ -43,6 +50,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool hasLanes;
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
+
+  /// The AE-style fx switch (session view state): bypasses the layer's
+  /// transform/FX on every composite route while off. Null hides it.
+  final bool fxEnabled;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +155,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onToggleLayerFx != null && layerKindShowsFxToggle(layer.kind))
+                LayerFxToggleButton(
+                  keyPrefix: 'timeline',
+                  layerId: layer.id,
+                  fxEnabled: fxEnabled,
+                  onToggle: onToggleLayerFx!,
+                ),
               IconButton(
                 key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
                 tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
@@ -157,12 +176,36 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
                 onPressed: () => onToggleLayerVisibility(layer.id),
               ),
-              // Instruction rows never composite — no dead control there.
+              // SE rows carry the mute speaker beside the eye (sounds
+              // silence, waveforms keep displaying). Tight SizedBox: the M3
+              // IconButton otherwise inflates its layout box to the 48px
+              // minimum tap target, overflowing the rail row.
+              if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
+                SizedBox(
+                  width: 20,
+                  height: 32,
+                  child: IconButton(
+                    key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
+                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 20,
+                      height: 32,
+                    ),
+                    icon: Icon(
+                      layer.muted ? Icons.volume_off : Icons.volume_up,
+                      size: 18,
+                    ),
+                    onPressed: () => onToggleLayerMuted!(layer.id),
+                  ),
+                ),
               // The camera row's slider drives the camera-view DIM opacity
-              // (unified layer controls).
+              // (unified layer controls). 56+30: the SE rows' mute slot
+              // needs the 12px back — every row shrinks alike so the
+              // control columns stay aligned.
               if (layerKindShowsOpacityControl(layer.kind)) ...[
                 SizedBox(
-                  width: 64,
+                  width: 56,
                   child: Slider(
                     key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
                     min: 0,
@@ -173,7 +216,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  width: 34,
+                  width: 30,
                   child: Text(
                     '${(layer.opacity * 100).round()}%',
                     textAlign: TextAlign.right,

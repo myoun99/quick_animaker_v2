@@ -49,6 +49,20 @@ String nextInstructionLayerName(List<Layer> layers) {
   }
 }
 
+/// Names an additional SE row: S1, S2, S3, … skipping names the cut
+/// already uses (S1 selected + Add Layer → S3 when S1·S2 exist).
+String nextSeLayerName(List<Layer> layers) {
+  final usedNames = layers.map((layer) => layer.name).toSet();
+  var index = 1;
+  while (true) {
+    final name = 'S$index';
+    if (!usedNames.contains(name)) {
+      return name;
+    }
+    index += 1;
+  }
+}
+
 /// Backfills the SE/instruction fixtures a cut is expected to carry: at
 /// least two SE rows and one instruction row. Existing layers are never
 /// touched; missing fixtures are inserted before the camera layer (display

@@ -16,6 +16,7 @@ class PropertyLaneRow {
     this.valueLabel,
     this.scrubValue,
     this.showsKeyNavigator = true,
+    this.isGroupHeader = false,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -44,6 +45,11 @@ class PropertyLaneRow {
   /// Whether the label cell shows the keyframe navigator (◀ ◆ ▶). Lanes
   /// without key semantics (the SE audio lane) hide it.
   final bool showsKeyNavigator;
+
+  /// AE-style GROUP HEADER row ('Transform', later 'Effects'): a structural
+  /// label leading its member lanes — no keys, no value, no navigator; the
+  /// frame band stays a quiet strip.
+  final bool isGroupHeader;
 }
 
 /// One display row of the timeline grids: a layer row or one of its

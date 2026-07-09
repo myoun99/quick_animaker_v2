@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
@@ -215,6 +218,55 @@ void main() {
       expect(
         layout.cutEndLine.y,
         layout.halfRowsTop(0) + 150 * TimesheetDocumentLayout.rowHeight,
+      );
+    });
+  });
+
+  group('B4 paper width vs instruction rows', () {
+    TimesheetDocument documentWithInstructionLayers(int count) {
+      return TimesheetDocument.fromCut(
+        cut: Cut(
+          id: const CutId('cut-cam'),
+          name: 'Cut CAM',
+          layers: [
+            for (var index = 0; index < count; index += 1)
+              Layer(
+                id: LayerId('cam-$index'),
+                name: 'CAM ${index + 1}',
+                kind: LayerKind.instruction,
+                frames: const [],
+                timeline: const {},
+              ),
+          ],
+          duration: 48,
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ),
+        projectName: 'Project',
+        fps: 24,
+      );
+    }
+
+    test('adding instruction layers NEVER widens the paper: the CAM group '
+        'keeps its fixed width and its columns narrow instead', () {
+      final base = TimesheetDocumentLayout(
+        document: documentWithInstructionLayers(0),
+      );
+      final crowded = TimesheetDocumentLayout(
+        document: documentWithInstructionLayers(5),
+      );
+
+      expect(crowded.paperWidth, base.paperWidth);
+      expect(crowded.halfWidth, base.halfWidth);
+
+      // 1 keyframe column + 5 instruction columns share the two-slot
+      // allotment.
+      expect(
+        crowded.columnWidthFor(TimesheetColumnKind.camera) * 6,
+        moreOrLessEquals(TimesheetDocumentLayout.cameraGroupWidth),
+      );
+      expect(
+        base.columnWidthFor(TimesheetColumnKind.camera),
+        TimesheetDocumentLayout.cameraColumnWidth,
       );
     });
   });

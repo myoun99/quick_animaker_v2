@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
@@ -243,5 +244,97 @@ void main() {
     expect(pose.center.y, 2);
     expect(pose.zoom, 1);
     expect(pose.rotationDegrees, 0);
+  });
+
+  Layer animated({TransformTrack? track, double opacity = 1}) => Layer(
+    id: const LayerId('animated'),
+    name: 'A',
+    frames: [frame('frame-1')],
+    timeline: {
+      0: TimelineExposure.drawing(const FrameId('frame-1'), length: 12),
+    },
+    transformTrack: track,
+    opacity: opacity,
+  );
+
+  test('the animated Opacity lane multiplies the static layer opacity; a '
+      'zero sample skips the layer', () {
+    final fading = TransformTrack.empty().copyWith(
+      opacity: PropertyTrack<double>().withKey(0, 1).withKey(10, 0),
+    );
+
+    final plan = planCutFrameComposite(
+      cut: cut([animated(track: fading, opacity: 0.5)]),
+      frameIndex: 5,
+      surfaceResolver: resolver,
+    );
+    expect(plan.single.opacity, closeTo(0.25, 1e-9));
+    // Opacity animation alone never forces the transform path.
+    expect(plan.single.pose, isNull);
+
+    final faded = planCutFrameComposite(
+      cut: cut([animated(track: fading)]),
+      frameIndex: 10,
+      surfaceResolver: resolver,
+    );
+    expect(faded, isEmpty);
+  });
+
+  test('the anchor point resolves into the plan (null = canvas center)', () {
+    final anchored = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>().withKey(
+        0,
+        CanvasPoint(x: 3, y: 3),
+      ),
+      anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+        0,
+        CanvasPoint(x: 1, y: 1),
+      ),
+    );
+
+    final plan = planCutFrameComposite(
+      cut: cut([animated(track: anchored)]),
+      frameIndex: 0,
+      surfaceResolver: resolver,
+    );
+    expect(plan.single.anchorPoint, CanvasPoint(x: 1, y: 1));
+
+    final unanchored = planCutFrameComposite(
+      cut: cut([
+        animated(
+          track: TransformTrack(
+            keyframes: {0: TransformPose(center: CanvasPoint(x: 3, y: 3))},
+          ),
+        ),
+      ]),
+      frameIndex: 0,
+      surfaceResolver: resolver,
+    );
+    expect(unanchored.single.anchorPoint, isNull);
+  });
+
+  test('fx-bypassed layers compose with identity pose and static opacity '
+      '(the layer-label fx switch)', () {
+    final track =
+        TransformTrack(
+          keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
+        ).copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 0.5),
+          anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 1, y: 1),
+          ),
+        );
+
+    final bypassed = planCutFrameComposite(
+      cut: cut([animated(track: track, opacity: 0.8)]),
+      frameIndex: 0,
+      surfaceResolver: resolver,
+      fxBypassedLayerIds: {const LayerId('animated')},
+    ).single;
+
+    expect(bypassed.pose, isNull);
+    expect(bypassed.anchorPoint, isNull);
+    expect(bypassed.opacity, closeTo(0.8, 1e-9));
   });
 }

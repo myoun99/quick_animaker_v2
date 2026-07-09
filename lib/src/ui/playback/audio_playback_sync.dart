@@ -22,6 +22,10 @@ abstract class AudioClipPlayer {
   /// Seeks the prepared source to [position] and plays.
   Future<void> startAt(Duration position);
 
+  /// Sets the playback volume, already clamped into 0..1 by the sync (the
+  /// gain × fade ramp; platforms don't amplify past 1).
+  Future<void> setVolume(double volume);
+
   Future<void> pause();
   Future<void> resume();
   Future<void> stop();
@@ -73,6 +77,10 @@ class AudioPlaybackSync {
   List<_ScheduledClip> _schedule = const [];
   List<AudioClipPlayer> _players = const [];
   final Set<int> _playing = {};
+
+  /// Last volume sent per playing clip — the per-tick fade ramp only
+  /// touches the platform channel when the value actually moves.
+  final Map<int, double> _sentVolume = {};
   bool _wasActive = false;
   bool _wasPlaying = false;
   int? _lastFrame;
@@ -170,6 +178,35 @@ class AudioPlaybackSync {
         _stopClip(index);
       }
     }
+    _updateVolumes(frame);
+  }
+
+  /// The gain × fade envelope at [frame]: fade-in ramps from the clip's
+  /// start, fade-out ramps into its scheduled end (block/cut/file clamp),
+  /// overlapping fades multiply. Clamped into 0..1 — platform players
+  /// don't amplify past 1 (export applies the exact gain instead).
+  double _volumeAt(_ScheduledClip clip, int frame) {
+    var volume = clip.gain;
+    final position = frame - clip.startFrame;
+    if (clip.fadeInFrames > 0 && position < clip.fadeInFrames) {
+      volume *= math.max(0, position / clip.fadeInFrames);
+    }
+    final remaining = clip.endFrameExclusive - frame;
+    if (clip.fadeOutFrames > 0 && remaining < clip.fadeOutFrames) {
+      volume *= math.max(0, remaining / clip.fadeOutFrames);
+    }
+    return volume.clamp(0.0, 1.0);
+  }
+
+  /// Sends the ramp to every playing clip whose volume moved this tick.
+  void _updateVolumes(int frame) {
+    for (final index in _playing) {
+      final volume = _volumeAt(_schedule[index], frame);
+      if (_sentVolume[index] != volume) {
+        _sentVolume[index] = volume;
+        unawaited(_players[index].setVolume(volume));
+      }
+    }
   }
 
   /// Stops everything and starts every clip overlapping [frame] at the
@@ -190,6 +227,10 @@ class AudioPlaybackSync {
     }
     final clip = _schedule[index];
     final fps = math.max(1, resolveFps());
+    // Volume lands before the first samples so a fade-in never pops.
+    final volume = _volumeAt(clip, frame);
+    _sentVolume[index] = volume;
+    unawaited(_players[index].setVolume(volume));
     unawaited(
       _players[index].startAt(
         Duration(
@@ -207,6 +248,7 @@ class AudioPlaybackSync {
     if (!_playing.remove(index)) {
       return;
     }
+    _sentVolume.remove(index);
     unawaited(_players[index].stop());
   }
 
@@ -233,7 +275,7 @@ class AudioPlaybackSync {
     final schedule = <_ScheduledClip>[];
     for (final entry in playlist) {
       for (final layer in entry.cut.layers) {
-        if (layer.kind != LayerKind.se) {
+        if (layer.kind != LayerKind.se || layer.muted) {
           continue;
         }
         for (final span in seAudioSpans(layer)) {
@@ -264,6 +306,9 @@ class AudioPlaybackSync {
               startFrame: startFrame,
               endFrameExclusive: endFrameExclusive,
               offsetFrames: span.clip.offsetFrames,
+              gain: span.clip.gain,
+              fadeInFrames: span.clip.fadeInFrames,
+              fadeOutFrames: span.clip.fadeOutFrames,
             ),
           );
         }
@@ -281,6 +326,9 @@ class _ScheduledClip {
     required this.startFrame,
     required this.endFrameExclusive,
     this.offsetFrames = 0,
+    this.gain = 1.0,
+    this.fadeInFrames = 0,
+    this.fadeOutFrames = 0,
   });
 
   final String filePath;
@@ -289,4 +337,10 @@ class _ScheduledClip {
 
   /// Frames skipped into the file where the block starts (the clip's trim).
   final int offsetFrames;
+
+  /// The clip's volume envelope (see [AudioClip]); fades anchor to this
+  /// schedule entry's own start/end.
+  final double gain;
+  final int fadeInFrames;
+  final int fadeOutFrames;
 }

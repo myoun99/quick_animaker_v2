@@ -127,6 +127,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cameraFrameSize: widget.cameraViewEnabled
                   ? widget.cameraFrameSize
                   : null,
+              // The cut fade: applied at display time, never baked into
+              // the composite cache (it would shard entries per frame).
+              fadeOpacity: cut != null && position != null
+                  ? cut.fadeOpacityAt(position.localFrameIndex)
+                  : 1,
             ),
           ),
           Positioned(

@@ -10,6 +10,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'brush_tool_state.dart';
@@ -38,6 +39,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
     this.interactiveContentOpacity = 1.0,
+    this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
   });
@@ -73,6 +75,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the active layer's display opacity.
   final double interactiveContentOpacity;
+
+  /// Forwarded to [BrushCanvasPanel]: the active layer's pose sample (the
+  /// draw-through wrap; null = identity).
+  final LayerPoseSample? interactiveContentPose;
 
   /// Forwarded to [BrushCanvasPanel]: replaces the interactive canvas inside
   /// the panel shell (playback). Without an editable frame the host supplies
@@ -143,6 +149,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
       interactiveContentOpacity: widget.interactiveContentOpacity,
+      interactiveContentPose: widget.interactiveContentPose,
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
     );

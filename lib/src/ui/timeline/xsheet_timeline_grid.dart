@@ -65,11 +65,16 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -122,11 +127,31 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Commits an audio-lane fade-handle drag.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// The AE-style layer fx switch (session view state); null hides it.
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// SE columns' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -625,8 +650,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onLayerOpacityChanged,
                                                 onToggleLayerTimesheet: widget
                                                     .onToggleLayerTimesheet,
+                                                fxEnabled:
+                                                    widget.layerFxEnabledOf
+                                                        ?.call(
+                                                          entries[index]
+                                                              .layer
+                                                              .id,
+                                                        ) ??
+                                                    true,
+                                                onToggleLayerFx:
+                                                    widget.onToggleLayerFx,
                                                 onLayerMarkSelected:
                                                     widget.onLayerMarkSelected,
+                                                onToggleLayerMuted:
+                                                    widget.onToggleLayerMuted,
                                                 hasLanes: _lanesFor(
                                                   entries[index].layer,
                                                 ).isNotEmpty,
@@ -707,6 +744,36 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                               .id,
                                                                           clipIndex,
                                                                           offsetFrames,
+                                                                        ),
+                                                                  onSetClipFades:
+                                                                      widget.onSetAudioClipFades ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          clipIndex,
+                                                                          fadeIn,
+                                                                          fadeOut,
+                                                                        ) => widget.onSetAudioClipFades!(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                          clipIndex,
+                                                                          fadeIn,
+                                                                          fadeOut,
+                                                                        ),
+                                                                  onSetClipGain:
+                                                                      widget.onSetAudioClipGain ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          clipIndex,
+                                                                          gain,
+                                                                        ) => widget.onSetAudioClipGain!(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                          clipIndex,
+                                                                          gain,
                                                                         ),
                                                                 )
                                                               : TimelineLaneFrameRow(
@@ -1303,10 +1370,13 @@ class _LayerHeader extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     required this.metrics,
+    this.onToggleLayerMuted,
     this.sectionStart = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.fxEnabled = true,
+    this.onToggleLayerFx,
   });
 
   final TimelineGridMetrics metrics;
@@ -1319,6 +1389,9 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
+  /// SE columns' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
+
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the header's left edge.
   final bool sectionStart;
@@ -1330,6 +1403,10 @@ class _LayerHeader extends StatelessWidget {
   final bool hasLanes;
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
+
+  /// The AE-style fx switch (session view state). Null hides it.
+  final bool fxEnabled;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   @override
   Widget build(BuildContext context) {
@@ -1420,6 +1497,14 @@ class _LayerHeader extends StatelessWidget {
               ),
               Row(
                 children: [
+                  if (onToggleLayerFx != null &&
+                      layerKindShowsFxToggle(layer.kind))
+                    LayerFxToggleButton(
+                      keyPrefix: 'xsheet',
+                      layerId: layer.id,
+                      fxEnabled: fxEnabled,
+                      onToggle: onToggleLayerFx!,
+                    ),
                   IconButton(
                     key: ValueKey<String>(
                       'xsheet-layer-visibility-${layer.id}',
@@ -1436,9 +1521,30 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  // Instruction rows never composite — no dead control
-                  // there. The camera column's slider drives the
-                  // camera-view DIM opacity (unified layer controls).
+                  // SE columns carry the mute speaker beside the eye. Tight
+                  // SizedBox: the M3 IconButton otherwise inflates to the
+                  // 48px tap target, overflowing the header column.
+                  if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
+                    SizedBox(
+                      width: 24,
+                      height: 28,
+                      child: IconButton(
+                        key: ValueKey<String>('xsheet-layer-mute-${layer.id}'),
+                        tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 24,
+                          height: 28,
+                        ),
+                        icon: Icon(
+                          layer.muted ? Icons.volume_off : Icons.volume_up,
+                          size: 16,
+                        ),
+                        onPressed: () => onToggleLayerMuted!(layer.id),
+                      ),
+                    ),
+                  // The camera column's slider drives the camera-view DIM
+                  // opacity (unified layer controls).
                   if (layerKindShowsOpacityControl(layer.kind)) ...[
                     Expanded(
                       child: Slider(

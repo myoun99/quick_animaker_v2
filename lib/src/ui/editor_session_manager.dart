@@ -11,6 +11,7 @@ import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
+import '../models/canvas_point.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -40,6 +41,7 @@ import '../services/cut_frame_composite_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/layer_pose_paint.dart';
 import 'playback/audio_playback_sync.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -47,6 +49,7 @@ import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
+import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -112,6 +115,7 @@ class EditorSessionManager extends ChangeNotifier {
         layerImages: layerFrameImageCache,
         frameStore: brushFrameStore,
         frameKeyOf: brushFrameKeyForCut,
+        fxBypassedLayerIdsOf: () => _fxBypassedLayerIds,
       );
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
@@ -629,7 +633,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// The editing canvas's layer stack at the playhead: which non-active
   /// layers composite below/above the interactive layer (bottom → top,
   /// hidden/transparent/undrawn layers skipped) and the active layer's own
-  /// display opacity (0 while hidden).
+  /// display opacity (0 while hidden; includes its animated Opacity). The
+  /// active layer's pose rides separately ([layerCanvasPoseSample]) into
+  /// the interactive view's draw-through wrap.
   ({
     List<CanvasLayerImageRequest> below,
     List<CanvasLayerImageRequest> above,
@@ -648,16 +654,28 @@ class EditorSessionManager extends ChangeNotifier {
     final frameIndex = _timelineController.currentFrameIndex;
     var seenActiveLayer = false;
     for (final layer in cut.layers) {
+      final fxEnabled = isLayerFxEnabled(layer.id);
       if (layer.id == activeLayerId) {
         seenActiveLayer = true;
-        activeLayerOpacity = layer.isVisible
-            ? layer.opacity.clamp(0.0, 1.0).toDouble()
-            : 0.0;
+        activeLayerOpacity = !layer.isVisible
+            ? 0.0
+            : fxEnabled
+            ? resolveLayerEffectiveOpacityAt(
+                layer: layer,
+                frameIndex: frameIndex,
+              )
+            : layer.opacity.clamp(0.0, 1.0).toDouble();
         continue;
       }
       if (layer.kind == LayerKind.camera ||
           !layer.isVisible ||
           layer.opacity <= 0) {
+        continue;
+      }
+      final opacity = fxEnabled
+          ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
+          : layer.opacity.clamp(0.0, 1.0).toDouble();
+      if (opacity <= 0) {
         continue;
       }
       final frame = resolveExposedFrameAt(layer, frameIndex);
@@ -667,16 +685,54 @@ class EditorSessionManager extends ChangeNotifier {
       (seenActiveLayer ? above : below).add(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
-          pose: resolveLayerPoseAt(
-            layer: layer,
-            canvasSize: cut.canvasSize,
-            frameIndex: frameIndex,
-          ),
+          opacity: opacity,
+          pose: fxEnabled
+              ? resolveLayerPoseAt(
+                  layer: layer,
+                  canvasSize: cut.canvasSize,
+                  frameIndex: frameIndex,
+                )
+              : null,
+          anchorPoint: fxEnabled
+              ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
+              : null,
         ),
       );
     }
     return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+  }
+
+  /// The geometric pose sample the interactive canvas shows for [layerId]
+  /// at the playhead — the draw-through wrap input. Null = identity (no
+  /// transform work, fx bypassed, or no such layer), which skips the wrap:
+  /// the ALWAYS-APPLIED rule (the active layer shows its transform too; the
+  /// old edit-in-artwork-space rule is retired, R3 ⑩).
+  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) {
+    final cut = activeCutOrNull;
+    if (cut == null || !isLayerFxEnabled(layerId)) {
+      return null;
+    }
+    for (final layer in cut.layers) {
+      if (layer.id != layerId) {
+        continue;
+      }
+      final pose = resolveLayerPoseAt(
+        layer: layer,
+        canvasSize: cut.canvasSize,
+        frameIndex: _timelineController.currentFrameIndex,
+      );
+      if (pose == null) {
+        return null;
+      }
+      return (
+        pose: pose,
+        anchorPoint: resolveLayerAnchorPointAt(
+          layer: layer,
+          frameIndex: _timelineController.currentFrameIndex,
+        ),
+      );
+    }
+    return null;
   }
 
   /// Whether the playback composite for [frameIndex] is warmed at the
@@ -781,6 +837,31 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sets [cutId]'s fade in/out lengths (the storyboard V-track's fade
+  /// handles): rewrites the cut-level transform's opacity lane to the
+  /// canonical fade shape; one undo step, no-op when unchanged.
+  void setCutFade(
+    CutId cutId, {
+    required int fadeInFrames,
+    required int fadeOutFrames,
+  }) {
+    final cut = cutById(cutId);
+    if (cut == null) {
+      return;
+    }
+    _cutCommandCoordinator.updateCutTransform(
+      cutId: cutId,
+      transformTrack: cutTransformWithFade(
+        cut,
+        fadeInFrames: fadeInFrames,
+        fadeOutFrames: fadeOutFrames,
+      ),
+      description: 'Fade cut',
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
   /// drawing layer — applied at composite time, never baked); one undo
   /// step, no-op when unchanged.
@@ -805,6 +886,42 @@ class EditorSessionManager extends ChangeNotifier {
       frameIndex: frameIndex,
       orElse: () => layerIdentityPose(activeCut.canvasSize),
     );
+  }
+
+  /// The layer's resolved anchor point at [frameIndex] — the anchor-point
+  /// lane's value column and key-freeze source (canvas center while
+  /// unkeyed).
+  CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
+    return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
+        CanvasPoint(
+          x: activeCut.canvasSize.width / 2,
+          y: activeCut.canvasSize.height / 2,
+        );
+  }
+
+  /// The layer's animated Opacity sample (0..1; 1 while unkeyed) — the
+  /// opacity lane's value column and key-freeze source.
+  double layerOpacityAtFrame(Layer layer, int frameIndex) {
+    return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
+  }
+
+  // --- Layer FX bypass (session view state, not persisted) -----------------
+
+  /// Layers whose FX (transform + animated opacity) are bypassed on every
+  /// composite route — the layer-label fx switch. The set joins the
+  /// composite signatures, so toggling self-invalidates the caches.
+  final Set<LayerId> _fxBypassedLayerIds = {};
+
+  Set<LayerId> get fxBypassedLayerIds => _fxBypassedLayerIds;
+
+  bool isLayerFxEnabled(LayerId layerId) =>
+      !_fxBypassedLayerIds.contains(layerId);
+
+  void toggleLayerFx(LayerId layerId) {
+    if (!_fxBypassedLayerIds.remove(layerId)) {
+      _fxBypassedLayerIds.add(layerId);
+    }
+    notifyListeners();
   }
 
   void undo() {
@@ -1071,11 +1188,42 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
+  /// kind, inserted directly above it, named by its section's own scheme
+  /// (cel letters / S3 / CAM 2). The camera cannot be duplicated (exactly
+  /// one per cut) — with it (or nothing) active, a default cel is added.
   void addLayer() {
     _layerSequence += 1;
-    _layerController.addLayerWithDefaults(
-      layerId: defaultLayerIdForSequence(_layerSequence),
-    );
+    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final kind = activeLayer?.kind ?? LayerKind.animation;
+    switch (kind) {
+      case LayerKind.se:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextSeLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.se,
+          ),
+        );
+      case LayerKind.instruction:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextInstructionLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.instruction,
+          ),
+        );
+      case LayerKind.animation:
+      case LayerKind.storyboard:
+      case LayerKind.art:
+        _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
+      case LayerKind.camera:
+        _layerController.addLayerWithDefaults(layerId: layerId);
+    }
     notifyListeners();
   }
 
@@ -1086,6 +1234,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   void toggleLayerVisibility(LayerId layerId) {
     _layerController.toggleLayerVisibility(layerId);
+    notifyListeners();
+  }
+
+  /// Silences/unsilences an SE row's sounds (the mute button — view state
+  /// like visibility, not undoable): playback and export skip muted
+  /// layers' clips, waveforms keep displaying.
+  void toggleLayerMuted(LayerId layerId) {
+    _layerController.toggleLayerMuted(layerId);
     notifyListeners();
   }
 
@@ -1172,13 +1328,17 @@ class EditorSessionManager extends ChangeNotifier {
   void upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
-    InstructionEvent event,
-  ) {
+    InstructionEvent event, {
+    int? createLengthFrames,
+  }) {
     final layer = _layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
 
+    // New events take the dialog's length (clamped into the cut; the add
+    // helper clamps at the next span too); null fills to the cut end.
+    final available = (activeCut.duration - frameIndex).clamp(1, 1 << 20);
     final covering = instructionSpanCovering(layer.instructions, frameIndex);
     final next = covering != null
         ? instructionMapWithEventReplaced(
@@ -1190,7 +1350,7 @@ class EditorSessionManager extends ChangeNotifier {
             layer.instructions,
             startIndex: frameIndex,
             event: event.copyWith(
-              length: (activeCut.duration - frameIndex).clamp(1, 1 << 20),
+              length: (createLengthFrames ?? available).clamp(1, available),
             ),
           );
     if (next == null) {
@@ -1310,6 +1470,66 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       audioClips: next,
       description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's fade lengths (the audio lane's edge
+  /// handles); one undo step, clamped non-negative, no-op when unchanged.
+  void setAudioClipFades(
+    LayerId layerId,
+    int clipIndex, {
+    required int fadeInFrames,
+    required int fadeOutFrames,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clampedIn = fadeInFrames < 0 ? 0 : fadeInFrames;
+    final clampedOut = fadeOutFrames < 0 ? 0 : fadeOutFrames;
+    final clip = layer.audioClips[clipIndex];
+    if (clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = clip.copyWith(
+      fadeInFrames: clampedIn,
+      fadeOutFrames: clampedOut,
+    );
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Fade sound',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's gain (the audio lane's volume dialog);
+  /// one undo step, clamped non-negative, no-op when unchanged.
+  void setAudioClipGain(LayerId layerId, int clipIndex, double gain) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clamped = gain < 0 ? 0.0 : gain;
+    if (layer.audioClips[clipIndex].gain == clamped) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(gain: clamped);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Sound gain',
     );
     notifyListeners();
   }
@@ -1464,38 +1684,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
   /// carry several SE columns), but converting one away must not break the
   /// S1·S2 floor of two.
-  bool get canToggleTargetLayerSe {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.animation) {
-      return true;
-    }
-    return targetLayer.kind == LayerKind.se &&
-        _layerController.layers
-                .where((layer) => layer.kind == LayerKind.se)
-                .length >
-            2;
-  }
-
-  void toggleTargetLayerSe() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || !canToggleTargetLayerSe) {
-      return;
-    }
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
-      layerId: targetLayer.id,
-      kind: targetLayer.kind == LayerKind.se
-          ? LayerKind.animation
-          : LayerKind.se,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
   String get activeLayerKindLabelText {
     final targetLayer = _targetLayerForKindToggle;
     return switch (targetLayer?.kind) {
@@ -1532,22 +1720,6 @@ class EditorSessionManager extends ChangeNotifier {
           : LayerKind.art,
     );
     _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Adds another camera-work instruction row (CAM 2, CAM 3, …). The display
-  /// sorts it into the camera section regardless of insertion position.
-  void addInstructionLayer() {
-    _layerSequence += 1;
-    _layerController.addLayer(
-      layer: Layer(
-        id: defaultLayerIdForSequence(_layerSequence),
-        name: nextInstructionLayerName(_layerController.layers),
-        frames: const [],
-        timeline: const {},
-        kind: LayerKind.instruction,
-      ),
-    );
     notifyListeners();
   }
 
@@ -2103,9 +2275,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
-  /// box) in ONE undo step. Sheet semantics: the entry holds until the
-  /// next entry or the cut's end, whichever comes first.
-  void createSeEntryAtCurrentFrame({required String name, String? seName}) {
+  /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
+  /// length input), clamped into the room to the next entry / cut end;
+  /// null falls back to filling that room (legacy behavior).
+  void createSeEntryAtCurrentFrame({
+    required String name,
+    String? seName,
+    int? lengthFrames,
+  }) {
     final layer = activeLayer;
     if (layer == null ||
         layer.kind != LayerKind.se ||
@@ -2115,11 +2292,12 @@ class EditorSessionManager extends ChangeNotifier {
 
     final remaining =
         activeCut.duration - _timelineController.currentFrameIndex;
+    final available = remaining < 1 ? 1 : remaining;
     _frameSequence += 1;
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
-      length: remaining < 1 ? 1 : remaining,
+      length: (lengthFrames ?? available).clamp(1, available),
       name: name,
       seName: seName,
     );

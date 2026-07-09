@@ -51,11 +51,16 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.onSetAudioClipFades,
+    this.onSetAudioClipGain,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
     required this.onLayerMarkSelected,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -107,11 +112,31 @@ class LayerTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Commits an audio-lane fade-handle drag.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetAudioClipFades;
+
+  /// Commits the audio-lane gain dialog.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetAudioClipGain;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
+
+  /// The AE-style layer fx switch (session view state); null hides it.
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// SE rows' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
@@ -608,9 +633,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           onToggleLayerTimesheet:
                                                               widget
                                                                   .onToggleLayerTimesheet,
+                                                          fxEnabled:
+                                                              widget
+                                                                  .layerFxEnabledOf
+                                                                  ?.call(
+                                                                    rows[rowIndex]
+                                                                        .layer
+                                                                        .id,
+                                                                  ) ??
+                                                              true,
+                                                          onToggleLayerFx: widget
+                                                              .onToggleLayerFx,
                                                           onLayerMarkSelected:
                                                               widget
                                                                   .onLayerMarkSelected,
+                                                          onToggleLayerMuted: widget
+                                                              .onToggleLayerMuted,
                                                           hasLanes: _lanesFor(
                                                             rows[rowIndex]
                                                                 .layer,
@@ -743,6 +781,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onDropMediaAsset,
                                                   onSetAudioClipOffset: widget
                                                       .onSetAudioClipOffset,
+                                                  onSetAudioClipFades: widget
+                                                      .onSetAudioClipFades,
+                                                  onSetAudioClipGain:
+                                                      widget.onSetAudioClipGain,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

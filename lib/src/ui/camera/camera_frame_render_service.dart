@@ -182,6 +182,7 @@ class CameraFrameRenderService {
           canvas,
           layerPose,
           layers[index].surface.canvasSize,
+          anchorPoint: layers[index].anchorPoint,
         );
       }
       canvas.drawImage(

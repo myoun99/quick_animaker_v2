@@ -54,10 +54,43 @@ void main() {
     );
   });
 
+  test('the audio lane value field reads the playhead span offset and '
+      'scrubs at 4px per frame', () {
+    final lane = seAudioLanesFor(_seLayer(offsetFrames: 3)).single;
+
+    // Frame 4 sits inside the 2..10 block; outside frames fall back to the
+    // first span so the field stays usable anywhere.
+    expect(lane.valueLabel!(4), '3f');
+    expect(lane.valueLabel!(11), '3f');
+
+    expect(lane.scrubValue!('3f', const Offset(8, 0)), '5f');
+    expect(lane.scrubValue!('3f', const Offset(-40, 0)), '0f');
+    expect(lane.scrubValue!('bogus', const Offset(8, 0)), isNull);
+  });
+
+  test('a clip without a carrying block hides the value field', () {
+    final lane = seAudioLanesFor(
+      _seLayer().copyWith(timeline: const {}, frames: const []),
+    ).single;
+    expect(lane.valueLabel, isNull);
+    expect(lane.scrubValue, isNull);
+  });
+
+  test('parseAudioOffsetInput accepts counts with optional sign and f', () {
+    expect(parseAudioOffsetInput('12'), 12);
+    expect(parseAudioOffsetInput('12f'), 12);
+    expect(parseAudioOffsetInput('-12f'), 12);
+    expect(parseAudioOffsetInput(' 7 '), 7);
+    expect(parseAudioOffsetInput(''), isNull);
+    expect(parseAudioOffsetInput('abc'), isNull);
+  });
+
   Future<void> pumpLane(
     WidgetTester tester, {
     required Layer layer,
     required void Function(int clipIndex, int offsetFrames) onSetClipOffset,
+    void Function(int clipIndex, int fadeInFrames, int fadeOutFrames)?
+    onSetClipFades,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -74,6 +107,7 @@ void main() {
               fps: 24,
               audioPeaksFor: (_) => _peaks,
               onSetClipOffset: onSetClipOffset,
+              onSetClipFades: onSetClipFades,
             ),
           ),
         ),
@@ -143,5 +177,90 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(commits, [(0, 2)]);
+  });
+
+  testWidgets('edge-zone drags set the fade lengths; the middle keeps '
+      'sliding', (tester) async {
+    final offsets = <(int, int)>[];
+    final fades = <(int, int, int)>[];
+    await pumpLane(
+      tester,
+      layer: _seLayer(),
+      onSetClipOffset: (clipIndex, offsetFrames) =>
+          offsets.add((clipIndex, offsetFrames)),
+      onSetClipFades: (clipIndex, fadeIn, fadeOut) =>
+          fades.add((clipIndex, fadeIn, fadeOut)),
+    );
+
+    final span = find.byKey(
+      const ValueKey<String>('timeline-audio-lane-span-se-0-b2'),
+    );
+    final rect = tester.getRect(span);
+    final cell = TimelineGridMetrics.defaults.frameCellWidth;
+
+    // The leading edge zone drags the fade-in length rightward.
+    final fadeInGesture = await tester.startGesture(
+      rect.centerLeft + const Offset(6, 0),
+    );
+    await fadeInGesture.moveBy(Offset(3 * cell, 0));
+    await fadeInGesture.up();
+    await tester.pumpAndSettle();
+    expect(fades, [(0, 3, 0)]);
+    expect(offsets, isEmpty);
+
+    // The trailing edge zone drags the fade-out length leftward.
+    final fadeOutGesture = await tester.startGesture(
+      rect.centerRight - const Offset(6, 0),
+    );
+    await fadeOutGesture.moveBy(Offset(-2 * cell, 0));
+    await fadeOutGesture.up();
+    await tester.pumpAndSettle();
+    expect(fades, [(0, 3, 0), (0, 0, 2)]);
+    expect(offsets, isEmpty);
+
+    // The middle still slides the sound.
+    await tester.drag(span, Offset(-2 * cell, 0));
+    await tester.pumpAndSettle();
+    expect(offsets, [(0, 2)]);
+    expect(fades, hasLength(2));
+  });
+
+  testWidgets('fade lengths clamp to the span and never go negative', (
+    tester,
+  ) async {
+    final fades = <(int, int, int)>[];
+    await pumpLane(
+      tester,
+      layer: _seLayer(),
+      onSetClipOffset: (_, _) {},
+      onSetClipFades: (clipIndex, fadeIn, fadeOut) =>
+          fades.add((clipIndex, fadeIn, fadeOut)),
+    );
+
+    final span = find.byKey(
+      const ValueKey<String>('timeline-audio-lane-span-se-0-b2'),
+    );
+    final rect = tester.getRect(span);
+    final cell = TimelineGridMetrics.defaults.frameCellWidth;
+
+    // Way past the span end: the fade-in clamps to the block's 8 frames.
+    final overGesture = await tester.startGesture(
+      rect.centerLeft + const Offset(6, 0),
+    );
+    await overGesture.moveBy(Offset(20 * cell, 0));
+    await overGesture.up();
+    await tester.pumpAndSettle();
+    expect(fades, [(0, 8, 0)]);
+
+    // Dragging the fade-in backward from zero clamps to zero: no commit
+    // (the layer in this harness never carries the earlier commit).
+    fades.clear();
+    final underGesture = await tester.startGesture(
+      rect.centerLeft + const Offset(6, 0),
+    );
+    await underGesture.moveBy(Offset(-3 * cell, 0));
+    await underGesture.up();
+    await tester.pumpAndSettle();
+    expect(fades, isEmpty);
   });
 }

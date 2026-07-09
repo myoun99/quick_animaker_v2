@@ -4,6 +4,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/history_manager.dart';
@@ -91,10 +92,17 @@ class LayerController {
     _activeLayerId = layer.id;
   }
 
-  void addLayerWithDefaults({required LayerId layerId, String? name}) {
+  void addLayerWithDefaults({
+    required LayerId layerId,
+    String? name,
+    LayerKind kind = LayerKind.animation,
+  }) {
     final cut = _findCut();
     addLayer(
-      layer: createDefaultAnimationLayer(layerId: layerId, cut: cut),
+      layer: createDefaultAnimationLayer(
+        layerId: layerId,
+        cut: cut,
+      ).copyWith(kind: kind),
     );
   }
 
@@ -102,6 +110,15 @@ class LayerController {
     _repository.updateLayer(
       layerId: layerId,
       update: (layer) => layer.copyWith(isVisible: !layer.isVisible),
+    );
+  }
+
+  /// The audio counterpart of [toggleLayerVisibility]: silences the SE
+  /// row's sounds without touching them (view state, not undoable).
+  void toggleLayerMuted(LayerId layerId) {
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(muted: !layer.muted),
     );
   }
 

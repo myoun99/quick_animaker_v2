@@ -1,4 +1,5 @@
 import '../../core/collection_equality.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
@@ -22,11 +23,16 @@ class CompositeLayerSignature {
     required this.opacity,
     required this.sourceRevision,
     this.pose,
+    this.anchorPoint,
   });
 
   final LayerId layerId;
   final FrameId frameId;
+
+  /// The layer's EFFECTIVE opacity (static × animated Opacity sample) — an
+  /// opacity-lane edit must change the composite's identity.
   final double opacity;
+
   final int sourceRevision;
 
   /// The layer's resolved transform at the frame (null = identity): a
@@ -34,6 +40,9 @@ class CompositeLayerSignature {
   /// change the composite's identity, and the compose loop draws with
   /// exactly this pose (the signature IS the compose input).
   final TransformPose? pose;
+
+  /// The pose's anchor point (null = canvas center) — same rule as [pose].
+  final CanvasPoint? anchorPoint;
 
   @override
   bool operator ==(Object other) =>
@@ -43,16 +52,18 @@ class CompositeLayerSignature {
           other.frameId == frameId &&
           other.opacity == opacity &&
           other.sourceRevision == sourceRevision &&
-          other.pose == pose;
+          other.pose == pose &&
+          other.anchorPoint == anchorPoint;
 
   @override
   int get hashCode =>
-      Object.hash(layerId, frameId, opacity, sourceRevision, pose);
+      Object.hash(layerId, frameId, opacity, sourceRevision, pose, anchorPoint);
 
   @override
   String toString() =>
       'CompositeLayerSignature(layerId: $layerId, frameId: $frameId, '
-      'opacity: $opacity, sourceRevision: $sourceRevision, pose: $pose)';
+      'opacity: $opacity, sourceRevision: $sourceRevision, pose: $pose, '
+      'anchorPoint: $anchorPoint)';
 }
 
 /// Identity of a composited cut frame's pixels.
@@ -95,18 +106,28 @@ class CutFrameCompositeSignature {
 }
 
 /// Computes the signature of the cut's picture at [frameIndex], visiting
-/// layers with the exact skip/exposure rules of [planCutFrameComposite].
+/// layers with the exact skip/exposure rules of [planCutFrameComposite]
+/// (including the fx-bypass view state — a toggled switch changes the
+/// signature, so composites self-invalidate).
 CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
+  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   final layers = <CompositeLayerSignature>[];
   for (final layer in cut.layers) {
     if (layer.kind == LayerKind.camera ||
         !layer.isVisible ||
         layer.opacity <= 0) {
+      continue;
+    }
+    final fxEnabled = !fxBypassedLayerIds.contains(layer.id);
+    final opacity = fxEnabled
+        ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
+        : layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (opacity <= 0) {
       continue;
     }
     final frame = resolveExposedFrameAt(layer, frameIndex);
@@ -117,13 +138,18 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
       CompositeLayerSignature(
         layerId: layer.id,
         frameId: frame.id,
-        opacity: layer.opacity.clamp(0.0, 1.0).toDouble(),
+        opacity: opacity,
         sourceRevision: revisionOf(layer.id, frame.id),
-        pose: resolveLayerPoseAt(
-          layer: layer,
-          canvasSize: cut.canvasSize,
-          frameIndex: frameIndex,
-        ),
+        pose: fxEnabled
+            ? resolveLayerPoseAt(
+                layer: layer,
+                canvasSize: cut.canvasSize,
+                frameIndex: frameIndex,
+              )
+            : null,
+        anchorPoint: fxEnabled
+            ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
+            : null,
       ),
     );
   }

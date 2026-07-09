@@ -4,6 +4,7 @@ import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
+import 'instance_length_field.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
 /// deletion, or (when the user edited the vocabulary meanwhile) the edited
@@ -15,6 +16,7 @@ class InstructionEventDialogResult {
     this.valueA,
     this.valueB,
     this.memo,
+    this.lengthFrames,
     this.delete = false,
   });
 
@@ -28,14 +30,20 @@ class InstructionEventDialogResult {
 
   /// Free memo, printed into the timesheet's memo band.
   final String? memo;
+
+  /// The new event's length in frames (creation only; null on edits —
+  /// existing spans resize with their grips).
+  final int? lengthFrames;
   final bool delete;
 }
 
 /// The instruction layer's instance editor in the shared shell: the sheet's
 /// start/end instance names (A/B), the mark (vocabulary pick — the def
 /// carries bar/O.L), the free instruction name, the timesheet memo and the
-/// live paper-block preview. Blank fields simply don't display. Editing an
-/// existing event offers Delete.
+/// live paper-block preview. Creating also asks for the span LENGTH (the
+/// same persisted s+k / frames field as the SE dialog) — new events no
+/// longer auto-run to the cut end. Blank fields simply don't display.
+/// Editing an existing event offers Delete.
 class InstructionEventDialog extends StatefulWidget {
   const InstructionEventDialog({
     super.key,
@@ -48,6 +56,7 @@ class InstructionEventDialog extends StatefulWidget {
     this.editing = false,
     this.onEditInstructionSet,
     this.previewAxis = Axis.horizontal,
+    this.fps = 24,
   });
 
   final CameraInstructionSet instructionSet;
@@ -67,6 +76,9 @@ class InstructionEventDialog extends StatefulWidget {
   /// Follows the timeline orientation so the preview matches what the
   /// user is looking at.
   final Axis previewAxis;
+
+  /// The project fps — the length field's s+k notation needs it.
+  final int fps;
 
   @override
   State<InstructionEventDialog> createState() => _InstructionEventDialogState();
@@ -90,6 +102,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   late final TextEditingController _memoController = TextEditingController(
     text: widget.initialMemo ?? '',
   );
+  int? _lengthFrames = InstanceLengthMemory.lengthFrames;
 
   @override
   void initState() {
@@ -121,6 +134,13 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
     if (instructionId == null) {
       return;
     }
+    final lengthFrames = widget.editing ? null : _lengthFrames;
+    if (!widget.editing) {
+      if (lengthFrames == null) {
+        return;
+      }
+      InstanceLengthMemory.lengthFrames = lengthFrames;
+    }
     Navigator.of(context).pop(
       InstructionEventDialogResult(
         instructionId: instructionId,
@@ -128,6 +148,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
         valueA: _trimmedOrNull(_valueAController),
         valueB: _trimmedOrNull(_valueBController),
         memo: _trimmedOrNull(_memoController),
+        lengthFrames: lengthFrames,
       ),
     );
   }
@@ -200,6 +221,14 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               labelText: 'Memo (timesheet memo band)',
             ),
           ),
+          if (!widget.editing) ...[
+            const SizedBox(height: 8),
+            InstanceLengthField(
+              fps: widget.fps,
+              onChanged: (lengthFrames) =>
+                  setState(() => _lengthFrames = lengthFrames),
+            ),
+          ],
           if (widget.onEditInstructionSet != null) ...[
             const SizedBox(height: 8),
             Align(
@@ -227,7 +256,10 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               ),
               defById: widget.instructionSet.defById,
             ),
-      onSubmit: instructionId == null ? null : _submit,
+      onSubmit:
+          instructionId == null || (!widget.editing && _lengthFrames == null)
+          ? null
+          : _submit,
       onDelete: widget.editing
           ? () => Navigator.of(
               context,

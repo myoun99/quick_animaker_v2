@@ -10,16 +10,32 @@ import '../../models/transform_track.dart';
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
 /// the existing key — the keyframe-navigator diamond toggle.
+/// [resolvedAnchorPoint]/[resolvedOpacity] feed the layer-only lanes (the
+/// caller resolves them; a null anchor no-ops the anchor lane).
 TransformTrack? transformTrackWithLaneKeyToggled(
   TransformTrack track, {
   required String laneId,
   required int frameIndex,
   required TransformPose resolvedPose,
+  CanvasPoint? resolvedAnchorPoint,
+  double resolvedOpacity = 1,
 }) {
   if (frameIndex < 0) {
     return null;
   }
   switch (laneId) {
+    case 'anchor-point':
+      if (track.anchorPoint.keyAt(frameIndex) != null) {
+        return track.copyWith(
+          anchorPoint: track.anchorPoint.withoutKey(frameIndex),
+        );
+      }
+      if (resolvedAnchorPoint == null) {
+        return null;
+      }
+      return track.copyWith(
+        anchorPoint: track.anchorPoint.withKey(frameIndex, resolvedAnchorPoint),
+      );
     case 'position':
       return track.copyWith(
         position: track.position.keyAt(frameIndex) != null
@@ -38,6 +54,15 @@ TransformTrack? transformTrackWithLaneKeyToggled(
             ? track.rotation.withoutKey(frameIndex)
             : track.rotation.withKey(frameIndex, resolvedPose.rotationDegrees),
       );
+    case 'opacity':
+      return track.copyWith(
+        opacity: track.opacity.keyAt(frameIndex) != null
+            ? track.opacity.withoutKey(frameIndex)
+            : track.opacity.withKey(
+                frameIndex,
+                resolvedOpacity.clamp(0.0, 1.0).toDouble(),
+              ),
+      );
   }
   return null;
 }
@@ -55,6 +80,10 @@ TransformTrack? transformTrackWithLaneKeyMoved(
     return null;
   }
   switch (laneId) {
+    case 'anchor-point':
+      return _moved(track.anchorPoint, fromFrame, toFrame, (next) {
+        return track.copyWith(anchorPoint: next);
+      });
     case 'position':
       return _moved(track.position, fromFrame, toFrame, (next) {
         return track.copyWith(position: next);
@@ -67,6 +96,10 @@ TransformTrack? transformTrackWithLaneKeyMoved(
       return _moved(track.rotation, fromFrame, toFrame, (next) {
         return track.copyWith(rotation: next);
       });
+    case 'opacity':
+      return _moved(track.opacity, fromFrame, toFrame, (next) {
+        return track.copyWith(opacity: next);
+      });
   }
   return null;
 }
@@ -78,6 +111,11 @@ TransformTrack? transformTrackWithLaneKeyRemoved(
   required int frameIndex,
 }) {
   switch (laneId) {
+    case 'anchor-point':
+      if (track.anchorPoint.keyAt(frameIndex) == null) return null;
+      return track.copyWith(
+        anchorPoint: track.anchorPoint.withoutKey(frameIndex),
+      );
     case 'position':
       if (track.position.keyAt(frameIndex) == null) return null;
       return track.copyWith(position: track.position.withoutKey(frameIndex));
@@ -87,6 +125,9 @@ TransformTrack? transformTrackWithLaneKeyRemoved(
     case 'rotation':
       if (track.rotation.keyAt(frameIndex) == null) return null;
       return track.copyWith(rotation: track.rotation.withoutKey(frameIndex));
+    case 'opacity':
+      if (track.opacity.keyAt(frameIndex) == null) return null;
+      return track.copyWith(opacity: track.opacity.withoutKey(frameIndex));
   }
   return null;
 }
@@ -99,6 +140,9 @@ TransformTrack? transformTrackWithLaneHoldToggled(
   required int frameIndex,
 }) {
   switch (laneId) {
+    case 'anchor-point':
+      final next = _holdToggled(track.anchorPoint, frameIndex);
+      return next == null ? null : track.copyWith(anchorPoint: next);
     case 'position':
       final next = _holdToggled(track.position, frameIndex);
       return next == null ? null : track.copyWith(position: next);
@@ -108,6 +152,9 @@ TransformTrack? transformTrackWithLaneHoldToggled(
     case 'rotation':
       final next = _holdToggled(track.rotation, frameIndex);
       return next == null ? null : track.copyWith(rotation: next);
+    case 'opacity':
+      final next = _holdToggled(track.opacity, frameIndex);
+      return next == null ? null : track.copyWith(opacity: next);
   }
   return null;
 }
@@ -115,8 +162,9 @@ TransformTrack? transformTrackWithLaneHoldToggled(
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
 /// playhead), preserving an existing key's interpolation. Accepted input
-/// per lane (AE display units): position `x, y`; scale `150` or `150%`
-/// (zoom·100); rotation `45` or `45°`. Null on parse failure.
+/// per lane (AE display units): position/anchor `x, y`; scale `150` or
+/// `150%` (zoom·100); rotation `45` or `45°`; opacity `75` or `75%`
+/// (clamped 0–100). Null on parse failure.
 TransformTrack? transformTrackWithLaneValueEdited(
   TransformTrack track, {
   required String laneId,
@@ -127,20 +175,27 @@ TransformTrack? transformTrackWithLaneValueEdited(
     return null;
   }
   switch (laneId) {
-    case 'position':
-      final parts = input.split(',');
-      if (parts.length != 2) {
+    case 'anchor-point':
+      final point = _parsePoint(input);
+      if (point == null) {
         return null;
       }
-      final x = double.tryParse(parts[0].trim());
-      final y = double.tryParse(parts[1].trim());
-      if (x == null || y == null) {
+      return track.copyWith(
+        anchorPoint: track.anchorPoint.withKey(
+          frameIndex,
+          point,
+          interpolation: _keptInterpolation(track.anchorPoint, frameIndex),
+        ),
+      );
+    case 'position':
+      final point = _parsePoint(input);
+      if (point == null) {
         return null;
       }
       return track.copyWith(
         position: track.position.withKey(
           frameIndex,
-          CanvasPoint(x: x, y: y),
+          point,
           interpolation: _keptInterpolation(track.position, frameIndex),
         ),
       );
@@ -168,8 +223,51 @@ TransformTrack? transformTrackWithLaneValueEdited(
           interpolation: _keptInterpolation(track.rotation, frameIndex),
         ),
       );
+    case 'opacity':
+      final percent = double.tryParse(input.replaceAll('%', '').trim());
+      if (percent == null) {
+        return null;
+      }
+      return track.copyWith(
+        opacity: track.opacity.withKey(
+          frameIndex,
+          (percent / 100).clamp(0.0, 1.0).toDouble(),
+          interpolation: _keptInterpolation(track.opacity, frameIndex),
+        ),
+      );
   }
   return null;
+}
+
+/// Applies the canvas Position gizmo's drag: keys the dragged position at
+/// [frameIndex] (AE: changing an animated value keys it at the playhead),
+/// preserving an existing key's interpolation — the same rule as the value
+/// editor, minus the text form.
+TransformTrack transformTrackWithPositionDragged(
+  TransformTrack track, {
+  required int frameIndex,
+  required CanvasPoint position,
+}) {
+  return track.copyWith(
+    position: track.position.withKey(
+      frameIndex,
+      position,
+      interpolation: _keptInterpolation(track.position, frameIndex),
+    ),
+  );
+}
+
+CanvasPoint? _parsePoint(String input) {
+  final parts = input.split(',');
+  if (parts.length != 2) {
+    return null;
+  }
+  final x = double.tryParse(parts[0].trim());
+  final y = double.tryParse(parts[1].trim());
+  if (x == null || y == null) {
+    return null;
+  }
+  return CanvasPoint(x: x, y: y);
 }
 
 PropertyKeyInterpolation _keptInterpolation<T>(
@@ -183,9 +281,11 @@ PropertyKeyInterpolation _keptInterpolation<T>(
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) {
   return switch (laneId) {
+    'anchor-point' => track.anchorPoint.keys.keys.toSet(),
     'position' => track.position.keys.keys.toSet(),
     'scale' => track.scale.keys.keys.toSet(),
     'rotation' => track.rotation.keys.keys.toSet(),
+    'opacity' => track.opacity.keys.keys.toSet(),
     _ => const {},
   };
 }

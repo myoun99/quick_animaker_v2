@@ -278,6 +278,39 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (lane.isGroupHeader) {
+      // AE group header ('Transform'): a structural label one indent LEFT
+      // of its member lanes, no navigator/value.
+      return Container(
+        key: ValueKey<String>(
+          '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
+        ),
+        width:
+            widget.width ??
+            (widget.metrics.layerControlsWidth -
+                widget.metrics.sectionLabelGutterWidth),
+        height: widget.height ?? widget.metrics.layerRowHeight,
+        padding: widget.axis == Axis.horizontal
+            ? const EdgeInsets.only(left: 14, right: 8)
+            : const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
+        ),
+        alignment: widget.axis == Axis.horizontal
+            ? Alignment.centerLeft
+            : Alignment.center,
+        child: Text(
+          lane.label,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+          ),
+        ),
+      );
+    }
     final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
     final label = Text(
       lane.label,
