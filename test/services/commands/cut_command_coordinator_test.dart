@@ -1112,7 +1112,8 @@ void main() {
       expect(fixture.historyManager.undoCount, 0);
     });
 
-    test('setLayerTimesheet rejects the camera layer', () {
+    test('setLayerTimesheet toggles the camera layer too (unified layer '
+        'controls — it gates the printed CAM column)', () {
       final cameraLayer = _layer(id: 'camera-1', kind: LayerKind.camera);
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [cameraLayer]);
       final fixture = _fixture(
@@ -1124,15 +1125,16 @@ void main() {
         activeCutId: cutA.id,
       );
 
-      expect(
-        () => fixture.coordinator.setLayerTimesheet(
-          cutId: cutA.id,
-          layerId: cameraLayer.id,
-          onTimesheet: false,
-        ),
-        throwsStateError,
+      fixture.coordinator.setLayerTimesheet(
+        cutId: cutA.id,
+        layerId: cameraLayer.id,
+        onTimesheet: false,
       );
-      expect(fixture.historyManager.undoCount, 0);
+
+      expect(_layerById(fixture.project, cameraLayer.id).onTimesheet, isFalse);
+      expect(fixture.historyManager.undoCount, 1);
+      fixture.historyManager.undo();
+      expect(_layerById(fixture.project, cameraLayer.id).onTimesheet, isTrue);
     });
 
     test('setTimesheetInfo updates through history and dedupes', () {

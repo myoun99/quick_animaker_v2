@@ -48,6 +48,8 @@ class TimelineTabHost extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.audioFilePicker,
+    this.cameraViewEnabled,
+    this.cameraDimOpacity,
   });
 
   final EditorSessionManager session;
@@ -70,6 +72,13 @@ class TimelineTabHost extends StatefulWidget {
 
   /// Injectable for tests; defaults to the platform open-file dialog.
   final Future<String?> Function()? audioFilePicker;
+
+  /// Unified layer controls: the CAMERA row's visibility button and opacity
+  /// slider drive the camera-view overlay state (workspace-owned notifiers,
+  /// shared with the canvas and the camera panel). Null keeps the camera
+  /// row's controls on the plain layer flags.
+  final ValueNotifier<bool>? cameraViewEnabled;
+  final ValueNotifier<double>? cameraDimOpacity;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -451,97 +460,151 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.linkSelectedFrame(conflictingFrameId);
   }
 
+  /// Layers as DISPLAYED (unified layer controls): the camera row mirrors
+  /// the camera-view overlay state on its visibility icon and opacity
+  /// slider — the same notifiers the canvas and the camera panel share.
+  List<Layer> _displayLayers() {
+    final view = widget.cameraViewEnabled;
+    final dim = widget.cameraDimOpacity;
+    if (view == null && dim == null) {
+      return _session.layers;
+    }
+    return [
+      for (final layer in _session.layers)
+        layer.kind == LayerKind.camera
+            ? layer.copyWith(
+                isVisible: view?.value ?? layer.isVisible,
+                opacity: dim?.value ?? layer.opacity,
+              )
+            : layer,
+    ];
+  }
+
+  LayerKind? _kindOf(LayerId layerId) {
+    for (final layer in _session.layers) {
+      if (layer.id == layerId) {
+        return layer.kind;
+      }
+    }
+    return null;
+  }
+
+  void _toggleLayerVisibility(LayerId layerId) {
+    final view = widget.cameraViewEnabled;
+    if (view != null && _kindOf(layerId) == LayerKind.camera) {
+      view.value = !view.value;
+      return;
+    }
+    _session.toggleLayerVisibility(layerId);
+  }
+
+  void _setLayerOpacity(LayerId layerId, double opacity) {
+    final dim = widget.cameraDimOpacity;
+    if (dim != null && _kindOf(layerId) == LayerKind.camera) {
+      dim.value = opacity;
+      return;
+    }
+    _session.setLayerOpacity(layerId: layerId, opacity: opacity);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Playback ticks flow through the playback-only frame listenable —
     // never the session's notifyListeners — so during playback only this
     // panel rebuilds and the playhead follows every frame. The prerender
     // progress listenable keeps the cached-range green bar live while
-    // frames warm in the background.
-    return ValueListenableBuilder<PrerenderProgress>(
-      valueListenable: _session.prerenderScheduler.progress,
-      builder: (context, _, _) => ValueListenableBuilder<int?>(
-        valueListenable: _session.playback.globalFrameIndexListenable,
-        builder: (context, playbackGlobalFrame, _) => TimelinePanel(
-          layers: _session.layers,
-          activeLayerId: _session.activeLayerId,
-          currentFrameIndex: playbackGlobalFrame == null
-              ? _session.currentFrameIndex
-              : _session.playback.position?.localFrameIndex ??
-                    _session.currentFrameIndex,
-          isFrameCached: _session.isPlaybackFrameCached,
-          playbackFrameCount: _session.activeCutPlaybackFrameCount,
-          exposureStateForLayer: _session.exposureStateForLayer,
-          frameNameForLayer: _session.frameNameForLayer,
-          onSelectLayer: _session.selectLayer,
-          // Ruler scrubs during playback SEEK the playback clock instead of
-          // moving the (hidden) editing playhead.
-          onSelectFrame: (frameIndex) {
-            if (_session.playback.isActive) {
-              _session.playback.seekToLocalFrame(frameIndex);
-            } else {
-              _session.selectFrameIndex(frameIndex);
-            }
-          },
-          onActivateCell: _activateCellEditor,
-          instructionDefById: (instructionId) =>
-              _session.cameraInstructionSet.defById(instructionId),
-          audioPeaksFor: _session.audioPeaksStore.peaksFor,
-          onRemoveAudioClip: _session.removeAudioClipAt,
-          onAddLayer: _session.addLayer,
-          onToggleLayerVisibility: _session.toggleLayerVisibility,
-          onLayerOpacityChanged: (layerId, opacity) {
-            _session.setLayerOpacity(layerId: layerId, opacity: opacity);
-          },
-          onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-          onLayerMarkSelected: _session.setLayerMark,
-          // Comma edge drags preview live from the session's drag-start
-          // snapshot and commit as ONE undo entry on release.
-          commaDrag: TimelineCommaDragCallbacks(
-            onBegin: (layerId, blockStartIndex, edge) =>
-                _session.beginExposureEdgeDrag(
-                  layerId: layerId,
-                  blockStartIndex: blockStartIndex,
-                  edge: edge,
+    // frames warm in the background. The camera-view notifiers keep the
+    // camera row's unified controls live.
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        ?widget.cameraViewEnabled,
+        ?widget.cameraDimOpacity,
+      ]),
+      builder: (context, _) => ValueListenableBuilder<PrerenderProgress>(
+        valueListenable: _session.prerenderScheduler.progress,
+        builder: (context, _, _) => ValueListenableBuilder<int?>(
+          valueListenable: _session.playback.globalFrameIndexListenable,
+          builder: (context, playbackGlobalFrame, _) => TimelinePanel(
+            layers: _displayLayers(),
+            activeLayerId: _session.activeLayerId,
+            currentFrameIndex: playbackGlobalFrame == null
+                ? _session.currentFrameIndex
+                : _session.playback.position?.localFrameIndex ??
+                      _session.currentFrameIndex,
+            isFrameCached: _session.isPlaybackFrameCached,
+            playbackFrameCount: _session.activeCutPlaybackFrameCount,
+            exposureStateForLayer: _session.exposureStateForLayer,
+            frameNameForLayer: _session.frameNameForLayer,
+            onSelectLayer: _session.selectLayer,
+            // Ruler scrubs during playback SEEK the playback clock instead of
+            // moving the (hidden) editing playhead.
+            onSelectFrame: (frameIndex) {
+              if (_session.playback.isActive) {
+                _session.playback.seekToLocalFrame(frameIndex);
+              } else {
+                _session.selectFrameIndex(frameIndex);
+              }
+            },
+            onActivateCell: _activateCellEditor,
+            instructionDefById: (instructionId) =>
+                _session.cameraInstructionSet.defById(instructionId),
+            audioPeaksFor: _session.audioPeaksStore.peaksFor,
+            onRemoveAudioClip: _session.removeAudioClipAt,
+            onAddLayer: _session.addLayer,
+            // Kind-dispatched (unified layer controls): the camera row drives
+            // the camera-view notifiers, every other row the layer flags.
+            onToggleLayerVisibility: _toggleLayerVisibility,
+            onLayerOpacityChanged: _setLayerOpacity,
+            onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+            onLayerMarkSelected: _session.setLayerMark,
+            // Comma edge drags preview live from the session's drag-start
+            // snapshot and commit as ONE undo entry on release.
+            commaDrag: TimelineCommaDragCallbacks(
+              onBegin: (layerId, blockStartIndex, edge) =>
+                  _session.beginExposureEdgeDrag(
+                    layerId: layerId,
+                    blockStartIndex: blockStartIndex,
+                    edge: edge,
+                  ),
+              onUpdate: _session.updateExposureEdgeDrag,
+              onEnd: _session.endExposureEdgeDrag,
+              onCancel: _session.cancelExposureEdgeDrag,
+            ),
+            orientation: widget.orientation,
+            onOrientationChanged: widget.onOrientationChanged,
+            pixelsPerFrame: widget.pixelsPerFrame,
+            onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+            showSeconds: widget.showSeconds,
+            onShowSecondsChanged: widget.onShowSecondsChanged,
+            projectFps: _session.projectFps,
+            expandedLaneLayerIds: widget.expandedLaneLayerIds,
+            onToggleLayerLanes: widget.onToggleLayerLanes,
+            hiddenSections: widget.hiddenSections,
+            lanesForLayer: _lanesForLayer,
+            laneEdit: _laneEdit,
+            timelineActionToolbar: Row(
+              children: [
+                PlaybackTransportControls(
+                  controller: _session.playback,
+                  scope: PlaybackScope.activeCut,
+                  quality: _session.playbackQuality,
+                  onQualityChanged: _session.setPlaybackQuality,
+                  playbackStartFrame: () => _session.currentFrameIndex,
                 ),
-            onUpdate: _session.updateExposureEdgeDrag,
-            onEnd: _session.endExposureEdgeDrag,
-            onCancel: _session.cancelExposureEdgeDrag,
-          ),
-          orientation: widget.orientation,
-          onOrientationChanged: widget.onOrientationChanged,
-          pixelsPerFrame: widget.pixelsPerFrame,
-          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-          showSeconds: widget.showSeconds,
-          onShowSecondsChanged: widget.onShowSecondsChanged,
-          projectFps: _session.projectFps,
-          expandedLaneLayerIds: widget.expandedLaneLayerIds,
-          onToggleLayerLanes: widget.onToggleLayerLanes,
-          hiddenSections: widget.hiddenSections,
-          lanesForLayer: _lanesForLayer,
-          laneEdit: _laneEdit,
-          timelineActionToolbar: Row(
-            children: [
-              PlaybackTransportControls(
-                controller: _session.playback,
-                scope: PlaybackScope.activeCut,
-                quality: _session.playbackQuality,
-                onQualityChanged: _session.setPlaybackQuality,
-                playbackStartFrame: () => _session.currentFrameIndex,
-              ),
-              Expanded(
-                child: TimelineActionToolbar(
-                  session: _session,
-                  onRenameLayer: _renameActiveLayer,
-                  onDeleteLayer: _deleteActiveLayer,
-                  onEditInstance: _editActiveInstance,
-                  onCreateInstance: _createActiveInstance,
-                  onImportAudio: _importAudio,
-                  hiddenSections: widget.hiddenSections,
-                  onToggleSection: widget.onToggleSection,
+                Expanded(
+                  child: TimelineActionToolbar(
+                    session: _session,
+                    onRenameLayer: _renameActiveLayer,
+                    onDeleteLayer: _deleteActiveLayer,
+                    onEditInstance: _editActiveInstance,
+                    onCreateInstance: _createActiveInstance,
+                    onImportAudio: _importAudio,
+                    hiddenSections: widget.hiddenSections,
+                    onToggleSection: widget.onToggleSection,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
