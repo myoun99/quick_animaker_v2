@@ -11,16 +11,18 @@ import 'timeline_exposure_block_visual.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_se_row_visual.dart';
 
+/// One frame cell. Deliberately CURSOR-INDEPENDENT: the selected-cell ring,
+/// the selected-exposure outline and the playhead all live on the grid's
+/// TimelineCursorLayer, so a playhead move never rebuilds cells (the
+/// playback-performance architecture).
 class TimelineFrameCell extends StatelessWidget {
   const TimelineFrameCell({
     super.key,
     required this.layer,
     required this.frameIndex,
     required this.active,
-    required this.selected,
     required this.outsidePlaybackRange,
     required this.exposureState,
-    required this.selectedExposureRangeSegment,
     required this.exposureBlockSegment,
     this.emptyRunStart = false,
     this.frameName,
@@ -31,18 +33,13 @@ class TimelineFrameCell extends StatelessWidget {
     this.width,
     this.height,
     this.cellKeyPrefix = 'timeline-cell',
-    this.selectedSemanticsKey = const ValueKey<String>(
-      'timeline-selected-cell',
-    ),
   });
 
   final Layer layer;
   final int frameIndex;
   final bool active;
-  final bool selected;
   final bool outsidePlaybackRange;
   final TimelineCellExposureState exposureState;
-  final bool selectedExposureRangeSegment;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
 
   /// Whether this cell opens an empty run — the timesheet X marks only the
@@ -69,9 +66,6 @@ class TimelineFrameCell extends StatelessWidget {
   /// this widget while keeping their stable test keys.
   final String cellKeyPrefix;
 
-  /// Semantics key marking the selected cell in this grid's namespace.
-  final ValueKey<String> selectedSemanticsKey;
-
   static const TimelineGridMetrics _metrics = TimelineGridMetrics.defaults;
 
   @override
@@ -82,39 +76,27 @@ class TimelineFrameCell extends StatelessWidget {
     // exception — their "coverage" is the lane-key union summary, drawn as
     // accent ◆/■ markers on empty-cell styling instead of paper.
     final cameraSummaryCell = layer.kind == LayerKind.camera;
-    final effectiveExposureState =
-        cameraSummaryCell && exposureState.isCovered
+    final effectiveExposureState = cameraSummaryCell && exposureState.isCovered
         ? TimelineCellExposureState.uncovered
         : exposureState;
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: effectiveExposureState,
       active: active,
-      selected: selected,
-    );
-    final normalStyleColors = timelineCellStyleColors(
-      colorScheme: colorScheme,
-      exposureState: effectiveExposureState,
-      active: active,
       selected: false,
     );
-    final baseBackgroundColor = outsidePlaybackRange
+    final backgroundColor = outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
             styleColors.background,
           )
         : styleColors.background;
-    final backgroundColor = baseBackgroundColor;
-    final cellBorderColor = selected && selectedExposureRangeSegment
-        ? normalStyleColors.border
-        : styleColors.border;
     final borderColor = outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
-            cellBorderColor,
+            styleColors.border,
           )
-        : cellBorderColor;
-    final borderWidth = selected && !selectedExposureRangeSegment ? 3.0 : 1.0;
+        : styleColors.border;
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     final onActivateCell = this.onActivateCell;
@@ -147,7 +129,7 @@ class TimelineFrameCell extends StatelessWidget {
         decoration: _timelineCellDecoration(
           backgroundColor: backgroundColor,
           borderColor: borderColor,
-          borderWidth: borderWidth,
+          borderWidth: 1.0,
           exposureBlockSegment: cameraSummaryCell
               ? TimelineExposureBlockVisualSegment.none
               : exposureBlockSegment,
@@ -155,7 +137,6 @@ class TimelineFrameCell extends StatelessWidget {
         ),
         child: Center(
           child: Semantics(
-            key: selected ? selectedSemanticsKey : null,
             onTap: select,
             child: Text(
               // Zoomed-out cells are too narrow for glyphs; the block
@@ -190,8 +171,6 @@ class TimelineFrameCell extends StatelessWidget {
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
                     : outsidePlaybackRange
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
-                    : selected
-                    ? colorScheme.onPrimaryContainer
                     : colorScheme.onSurface,
                 fontWeight:
                     !isEmptyX && exposureState != TimelineCellExposureState.held

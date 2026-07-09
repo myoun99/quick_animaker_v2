@@ -19,7 +19,6 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     required this.layers,
     required this.rows,
     required this.activeLayerId,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -48,7 +47,6 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   /// Display rows: layer rows interleaved with expanded property lanes.
   final List<TimelineDisplayRow> rows;
   final LayerId? activeLayerId;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -85,63 +83,67 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // RepaintBoundary per row: one row's repaint (ink, hover, drags)
+          // never re-rasterizes its neighbours, and the cursor layer above
+          // repaints without touching the row layers at all.
           for (final row in rows)
-            row.isLane
-                ? (laneIsSeAudio(row.lane!)
-                      ? SeAudioLaneFrameRow(
-                          layer: row.layer,
-                          frameStartIndex: frameStartIndex,
-                          frameEndIndexExclusive: frameEndIndexExclusive,
-                          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-                          trailingFrameSpacerWidth: trailingFrameSpacerWidth,
-                          metrics: metrics,
-                          fps: projectFps,
-                          audioPeaksFor: audioPeaksFor,
-                          onSetClipOffset: onSetAudioClipOffset == null
-                              ? null
-                              : (clipIndex, offsetFrames) =>
-                                    onSetAudioClipOffset!(
-                                      row.layer.id,
-                                      clipIndex,
-                                      offsetFrames,
-                                    ),
-                        )
-                      : TimelineLaneFrameRow(
-                          layer: row.layer,
-                          lane: row.lane!,
-                          frameStartIndex: frameStartIndex,
-                          frameEndIndexExclusive: frameEndIndexExclusive,
-                          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-                          trailingFrameSpacerWidth: trailingFrameSpacerWidth,
-                          metrics: metrics,
-                          laneEdit: laneEdit,
-                        ))
-                : TimelineFrameCellsRow(
-                    layer: row.layer,
-                    active: row.layer.id == activeLayerId,
-                    sectionStart: timelineSectionStartsAt(
-                      layers,
-                      row.layerIndex,
+            RepaintBoundary(
+              child: row.isLane
+                  ? (laneIsSeAudio(row.lane!)
+                        ? SeAudioLaneFrameRow(
+                            layer: row.layer,
+                            frameStartIndex: frameStartIndex,
+                            frameEndIndexExclusive: frameEndIndexExclusive,
+                            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                            trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+                            metrics: metrics,
+                            fps: projectFps,
+                            audioPeaksFor: audioPeaksFor,
+                            onSetClipOffset: onSetAudioClipOffset == null
+                                ? null
+                                : (clipIndex, offsetFrames) =>
+                                      onSetAudioClipOffset!(
+                                        row.layer.id,
+                                        clipIndex,
+                                        offsetFrames,
+                                      ),
+                          )
+                        : TimelineLaneFrameRow(
+                            layer: row.layer,
+                            lane: row.lane!,
+                            frameStartIndex: frameStartIndex,
+                            frameEndIndexExclusive: frameEndIndexExclusive,
+                            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                            trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+                            metrics: metrics,
+                            laneEdit: laneEdit,
+                          ))
+                  : TimelineFrameCellsRow(
+                      layer: row.layer,
+                      active: row.layer.id == activeLayerId,
+                      sectionStart: timelineSectionStartsAt(
+                        layers,
+                        row.layerIndex,
+                      ),
+                      playbackFrameCount: playbackFrameCount,
+                      frameStartIndex: frameStartIndex,
+                      frameEndIndexExclusive: frameEndIndexExclusive,
+                      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                      trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+                      metrics: metrics,
+                      exposureStateForLayer: exposureStateForLayer,
+                      frameNameForLayer: frameNameForLayer,
+                      onSelectLayer: onSelectLayer,
+                      onSelectFrame: onSelectFrame,
+                      onActivateCell: onActivateCell,
+                      instructionDefById: instructionDefById,
+                      audioPeaksFor: audioPeaksFor,
+                      projectFps: projectFps,
+                      onRemoveAudioClip: onRemoveAudioClip,
+                      onDropMediaAsset: onDropMediaAsset,
+                      commaDrag: commaDrag,
                     ),
-                    currentFrameIndex: currentFrameIndex,
-                    playbackFrameCount: playbackFrameCount,
-                    frameStartIndex: frameStartIndex,
-                    frameEndIndexExclusive: frameEndIndexExclusive,
-                    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-                    trailingFrameSpacerWidth: trailingFrameSpacerWidth,
-                    metrics: metrics,
-                    exposureStateForLayer: exposureStateForLayer,
-                    frameNameForLayer: frameNameForLayer,
-                    onSelectLayer: onSelectLayer,
-                    onSelectFrame: onSelectFrame,
-                    onActivateCell: onActivateCell,
-                    instructionDefById: instructionDefById,
-                    audioPeaksFor: audioPeaksFor,
-                    projectFps: projectFps,
-                    onRemoveAudioClip: onRemoveAudioClip,
-                    onDropMediaAsset: onDropMediaAsset,
-                    commaDrag: commaDrag,
-                  ),
+            ),
           if (rows.isEmpty)
             SizedBox(
               width: totalFrameContentWidth,

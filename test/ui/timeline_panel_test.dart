@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -402,7 +402,7 @@ Widget _panel({
       body: TimelinePanel(
         layers: layers ?? _layers,
         activeLayerId: activeLayerId ?? const LayerId('layer-1'),
-        currentFrameIndex: currentFrameIndex,
+        frameCursor: ValueNotifier<int>(currentFrameIndex),
         playbackFrameCount: playbackFrameCount,
         exposureStateForLayer:
             exposureStateForLayer ??

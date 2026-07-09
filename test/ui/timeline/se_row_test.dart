@@ -164,7 +164,9 @@ void main() {
       final startCell = tester.widget<Container>(
         find
             .descendant(
-              of: find.byKey(const ValueKey<String>('timeline-cell-se-voice-1')),
+              of: find.byKey(
+                const ValueKey<String>('timeline-cell-se-voice-1'),
+              ),
               matching: find.byType(Container),
             )
             .first,
@@ -328,9 +330,6 @@ void main() {
 
     final layer = _seLayer(repository);
     expect(layer.frames.map((frame) => frame.name), ['Hello!', 'Hello!']);
-    expect(
-      _allSeDialogues(tester).where((text) => text == 'Hello!').length,
-      2,
-    );
+    expect(_allSeDialogues(tester).where((text) => text == 'Hello!').length, 2);
   });
 }

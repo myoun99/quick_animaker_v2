@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -120,7 +120,7 @@ Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {
         child: LayerTimelineGrid(
           layers: _layers,
           activeLayerId: const LayerId('layer-1'),
-          currentFrameIndex: currentFrameIndex,
+          frameCursor: ValueNotifier<int>(currentFrameIndex),
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
           onSelectLayer: (_) {},

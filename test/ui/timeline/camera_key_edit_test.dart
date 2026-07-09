@@ -96,10 +96,7 @@ void main() {
     final before = cameraKeyLaneStatesAt(
       track,
       frameIndex: 3,
-      resolvedPose: CameraPose(
-        center: CanvasPoint(x: 320, y: 180),
-        zoom: 1.5,
-      ),
+      resolvedPose: CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: 1.5),
     );
     expect(before[1].keyed, isTrue);
     expect(before[1].hold, isFalse);

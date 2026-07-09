@@ -21,53 +21,56 @@ class _StubExtractor extends AudioPeaksExtractor {
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
 void main() {
-  test('a failed path retries after the delay, up to the attempt cap', () async {
-    var calls = 0;
-    final logs = <String>[];
-    var now = DateTime.utc(2026, 7, 9);
-    final store = AudioPeaksStore(
-      extractor: _StubExtractor((_) async {
-        calls += 1;
-        return const AudioPeaksExtraction.failure('ffmpeg missing');
-      }),
-      now: () => now,
-      maxAttempts: 3,
-      retryDelay: const Duration(seconds: 2),
-      log: logs.add,
-    );
-    addTearDown(store.dispose);
+  test(
+    'a failed path retries after the delay, up to the attempt cap',
+    () async {
+      var calls = 0;
+      final logs = <String>[];
+      var now = DateTime.utc(2026, 7, 9);
+      final store = AudioPeaksStore(
+        extractor: _StubExtractor((_) async {
+          calls += 1;
+          return const AudioPeaksExtraction.failure('ffmpeg missing');
+        }),
+        now: () => now,
+        maxAttempts: 3,
+        retryDelay: const Duration(seconds: 2),
+        log: logs.add,
+      );
+      addTearDown(store.dispose);
 
-    // First attempt fails; a paint straight after stays gated.
-    expect(store.peaksFor('a.wav'), isNull);
-    await _settle();
-    expect(calls, 1);
-    expect(store.failureFor('a.wav'), 'ffmpeg missing');
-    store.peaksFor('a.wav');
-    await _settle();
-    expect(calls, 1);
+      // First attempt fails; a paint straight after stays gated.
+      expect(store.peaksFor('a.wav'), isNull);
+      await _settle();
+      expect(calls, 1);
+      expect(store.failureFor('a.wav'), 'ffmpeg missing');
+      store.peaksFor('a.wav');
+      await _settle();
+      expect(calls, 1);
 
-    // After the delay a paint retries — twice more up to the cap.
-    now = now.add(const Duration(seconds: 3));
-    store.peaksFor('a.wav');
-    await _settle();
-    expect(calls, 2);
+      // After the delay a paint retries — twice more up to the cap.
+      now = now.add(const Duration(seconds: 3));
+      store.peaksFor('a.wav');
+      await _settle();
+      expect(calls, 2);
 
-    now = now.add(const Duration(seconds: 3));
-    store.peaksFor('a.wav');
-    await _settle();
-    expect(calls, 3);
+      now = now.add(const Duration(seconds: 3));
+      store.peaksFor('a.wav');
+      await _settle();
+      expect(calls, 3);
 
-    // The cap holds no matter how much time passes.
-    now = now.add(const Duration(hours: 1));
-    store.peaksFor('a.wav');
-    await _settle();
-    expect(calls, 3);
+      // The cap holds no matter how much time passes.
+      now = now.add(const Duration(hours: 1));
+      store.peaksFor('a.wav');
+      await _settle();
+      expect(calls, 3);
 
-    // Every failure was logged with the extractor's reason.
-    expect(logs, hasLength(3));
-    expect(logs.first, contains('ffmpeg missing'));
-    expect(logs.first, contains('a.wav'));
-  });
+      // Every failure was logged with the extractor's reason.
+      expect(logs, hasLength(3));
+      expect(logs.first, contains('ffmpeg missing'));
+      expect(logs.first, contains('a.wav'));
+    },
+  );
 
   test('a retry that succeeds clears the failure', () async {
     var calls = 0;
@@ -122,15 +125,18 @@ void main() {
     expect(calls, 2);
   });
 
-  test('an extractor that throws is treated as a failure, not a crash', () async {
-    final store = AudioPeaksStore(
-      extractor: _StubExtractor((_) async => throw StateError('boom')),
-      log: (_) {},
-    );
-    addTearDown(store.dispose);
+  test(
+    'an extractor that throws is treated as a failure, not a crash',
+    () async {
+      final store = AudioPeaksStore(
+        extractor: _StubExtractor((_) async => throw StateError('boom')),
+        log: (_) {},
+      );
+      addTearDown(store.dispose);
 
-    store.peaksFor('a.wav');
-    await _settle();
-    expect(store.failureFor('a.wav'), contains('boom'));
-  });
+      store.peaksFor('a.wav');
+      await _settle();
+      expect(store.failureFor('a.wav'), contains('boom'));
+    },
+  );
 }

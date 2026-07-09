@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -123,7 +123,7 @@ void main() {
           body: TimelinePanel(
             layers: layers,
             activeLayerId: const LayerId('a'),
-            currentFrameIndex: 0,
+            frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 12,
             exposureStateForLayer: (_, _) =>
                 TimelineCellExposureState.uncovered,

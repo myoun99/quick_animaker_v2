@@ -107,15 +107,20 @@ void main() {
     final repository = await _pumpHome(tester);
 
     // Single tap: selection only, no dialog.
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-draw-2')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-cell-draw-2')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Rename Frame'), findsNothing);
+    // The selection ring lives on the grid cursor layer and sits exactly
+    // over the tapped cell.
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-cell-draw-2')),
-        matching: find.byKey(const ValueKey<String>('timeline-selected-cell')),
+      tester.getTopLeft(
+        find.byKey(const ValueKey<String>('timeline-selected-cell')),
       ),
-      findsOneWidget,
+      tester.getTopLeft(
+        find.byKey(const ValueKey<String>('timeline-cell-draw-2')),
+      ),
     );
 
     await _doubleTapCell(tester, 'timeline-cell-draw-1');
@@ -129,10 +134,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      _cut(repository).layers.first.frames.single.name,
-      'A2',
-    );
+    expect(_cut(repository).layers.first.frames.single.name, 'A2');
   });
 
   testWidgets('camera cell double-tap opens the key dialog; keying a lane '
@@ -214,9 +216,7 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-button')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('rename-frame-button')),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('rename-frame-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Camera Keys — Frame 1'), findsOneWidget);

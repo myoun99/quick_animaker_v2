@@ -57,14 +57,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('underlay-probe')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('underlay-probe')),
+      findsOneWidget,
+    );
     final blank = tester.widget(
       find.byKey(const ValueKey<String>('main-canvas-brush-host-blank-canvas')),
     );
     expect(
       blank,
       isA<SizedBox>(),
-      reason: 'with an underlay the blank content stays transparent — an '
+      reason:
+          'with an underlay the blank content stays transparent — an '
           'opaque paper here buried the layers below the active one',
     );
   });

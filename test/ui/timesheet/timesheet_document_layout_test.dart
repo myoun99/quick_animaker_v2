@@ -107,16 +107,18 @@ void main() {
       expect(pageTwo.left, layout.halfLeft(1, 0));
     });
 
-    test('continuous mode keeps the same left alignment on the fixed paper',
-        () {
-      final layout = TimesheetDocumentLayout(
-        document: _document(),
-        continuous: true,
-      );
+    test(
+      'continuous mode keeps the same left alignment on the fixed paper',
+      () {
+        final layout = TimesheetDocumentLayout(
+          document: _document(),
+          continuous: true,
+        );
 
-      expect(layout.headerBandRect(0).left, layout.halfLeft(0, 0));
-      expect(layout.memoBandRect(0).left, layout.halfLeft(0, 0));
-    });
+        expect(layout.headerBandRect(0).left, layout.halfLeft(0, 0));
+        expect(layout.memoBandRect(0).left, layout.halfLeft(0, 0));
+      },
+    );
   });
 
   group('TimesheetDocumentLayout header field boxes', () {

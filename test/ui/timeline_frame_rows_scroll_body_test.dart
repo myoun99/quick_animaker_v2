@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -97,9 +97,8 @@ void main() {
       );
     });
 
-    testWidgets('forwards active layer state to downstream cells', (
-      tester,
-    ) async {
+    testWidgets('rows are cursor-independent: no selection visuals render '
+        'here (they live on the grid cursor layer)', (tester) async {
       const activeLayerId = LayerId('layer-active');
 
       await tester.pumpWidget(
@@ -114,16 +113,22 @@ void main() {
       );
 
       expect(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-active-1')),
+        findsOneWidget,
+      );
+      // The playback-performance architecture: the selection ring and the
+      // exposure outline are the grid cursor layer's job, never the rows'.
+      expect(
         find.byKey(
           const ValueKey<String>(
             'timeline-selected-exposure-range-outline-layer-active',
           ),
         ),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('timeline-selected-cell')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -220,7 +225,6 @@ Widget _body({
             lanesForLayer: (_) => const [],
           ),
           activeLayerId: activeLayerId,
-          currentFrameIndex: currentFrameIndex,
           playbackFrameCount: playbackFrameCount,
           frameStartIndex: frameStartIndex,
           frameEndIndexExclusive: frameEndIndexExclusive,

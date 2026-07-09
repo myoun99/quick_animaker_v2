@@ -19,10 +19,9 @@ Future<void> _openDialog<T>(
         builder: (context) => Center(
           child: TextButton(
             onPressed: () async {
-              onResult(await showDialog<T>(
-                context: context,
-                builder: (_) => dialog,
-              ));
+              onResult(
+                await showDialog<T>(context: context, builder: (_) => dialog),
+              );
             },
             child: const Text('open'),
           ),

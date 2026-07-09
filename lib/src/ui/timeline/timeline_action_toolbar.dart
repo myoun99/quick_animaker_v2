@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../models/layer_kind.dart';
 import '../editor_session_manager.dart';
@@ -73,8 +73,7 @@ class TimelineActionToolbar extends StatelessWidget {
       LayerKind.camera ||
       LayerKind.instruction => session.hasActiveNonNegativeCell,
       LayerKind.se =>
-        session.selectedFrame != null ||
-            session.canCreateDrawingAtCurrentFrame,
+        session.selectedFrame != null || session.canCreateDrawingAtCurrentFrame,
       _ => session.canRenameFrameAtCurrentFrame,
     };
   }

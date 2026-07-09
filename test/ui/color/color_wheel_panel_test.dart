@@ -43,10 +43,7 @@ void main() {
       // The triangle rotates with the hue.
       final rotated = ColorWheelGeometry(const Size(200, 200), hue: 90);
       expect(rotated.hueCorner.dx, closeTo(100, 1e-9));
-      expect(
-        rotated.hueCorner.dy,
-        closeTo(100 + rotated.triangleRadius, 1e-9),
-      );
+      expect(rotated.hueCorner.dy, closeTo(100 + rotated.triangleRadius, 1e-9));
     });
 
     test('svAt inverts svPosition across the triangle', () {

@@ -18,8 +18,7 @@ double zoomAnchoredScrollOffset({
 }) {
   if (anchorFrame != null && viewportExtent > 0) {
     // Anchor on the frame CELL's center, matching the playhead tint.
-    final anchorOnScreen =
-        (anchorFrame + 0.5) * oldPixelsPerFrame - oldOffset;
+    final anchorOnScreen = (anchorFrame + 0.5) * oldPixelsPerFrame - oldOffset;
     if (anchorOnScreen >= 0 && anchorOnScreen <= viewportExtent) {
       return math.max(
         0,

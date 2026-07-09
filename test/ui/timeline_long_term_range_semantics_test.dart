@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -190,7 +190,7 @@ Widget _panel(_TimelineRangeFixture fixture, {int currentFrameIndex = 0}) {
         child: TimelinePanel(
           layers: cut.layers,
           activeLayerId: cut.layers.single.id,
-          currentFrameIndex: currentFrameIndex,
+          frameCursor: ValueNotifier<int>(currentFrameIndex),
           playbackFrameCount: cut.duration,
           exposureStateForLayer: fixture.exposureStateForLayer,
           frameNameForLayer: fixture.frameNameForLayer,

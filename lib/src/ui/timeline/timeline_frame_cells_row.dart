@@ -6,7 +6,6 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
-import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -18,14 +17,17 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
-import 'timeline_selected_exposure_outline.dart';
 
+/// One layer's row of frame cells. CURSOR-INDEPENDENT by design: nothing
+/// here reads the playhead — the selected-cell ring, the selected-exposure
+/// outline and the playhead tint live on the grid's TimelineCursorLayer,
+/// so a frame tick never rebuilds this row (playback-performance
+/// architecture).
 class TimelineFrameCellsRow extends StatelessWidget {
   const TimelineFrameCellsRow({
     super.key,
     required this.layer,
     required this.active,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -53,7 +55,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   final Layer layer;
   final bool active;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -98,14 +99,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
         layer.kind == LayerKind.instruction
         ? instructionCellExposureState(layer, frameIndex)
         : exposureStateForLayer(layer, frameIndex);
-    final selectedExposureDisplayRange = resolveSelectedExposureDisplayRange(
-      active: active,
-      currentFrameIndex: currentFrameIndex,
-      frameStartIndex: frameStartIndex,
-      frameEndIndexExclusive: frameEndIndexExclusive,
-      exposureStateAt: stateAt,
-    );
-    final selectedExposureRange = selectedExposureDisplayRange.resolvedRange;
     final commaDrag = this.commaDrag;
 
     return Stack(
@@ -131,12 +124,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 width: metrics.frameCellWidth,
                 height: metrics.layerRowHeight,
                 active: active,
-                selected: active && frameIndex == currentFrameIndex,
                 outsidePlaybackRange: frameIndex >= playbackFrameCount,
                 exposureState: stateAt(frameIndex),
-                selectedExposureRangeSegment:
-                    frameIndex >= selectedExposureRange.startFrameIndex &&
-                    frameIndex < selectedExposureRange.endFrameIndexExclusive,
                 exposureBlockSegment:
                     calculateTimelineExposureBlockVisualSegment(
                       previous: frameIndex == 0
@@ -164,16 +153,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
               height: metrics.layerRowHeight,
             ),
           ],
-        ),
-        TimelineSelectedExposureOutline(
-          layerId: layer.id,
-          displayRange: selectedExposureDisplayRange,
-          frameStartIndex: frameStartIndex,
-          leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-          frameCellWidth: metrics.frameCellWidth,
-          rowHeight: metrics.layerRowHeight,
-          borderColor: timelineSelectedFrameBorderColor,
-          borderRadius: const BorderRadius.all(Radius.circular(6)),
         ),
         if (sectionStart)
           Positioned(

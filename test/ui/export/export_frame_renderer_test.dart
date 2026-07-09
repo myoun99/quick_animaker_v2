@@ -116,10 +116,7 @@ void main() {
         frameKey,
         command.id,
       );
-      session.brushFrameStore.restorePaintCommandFromUndo(
-        frameKey,
-        command.id,
-      );
+      session.brushFrameStore.restorePaintCommandFromUndo(frameKey, command.id);
       expect(
         session.brushFrameStore.displayCacheOrNull(frameKey)!.dirty,
         isTrue,

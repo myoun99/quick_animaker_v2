@@ -49,10 +49,7 @@ void main() {
     final image = await bitmapSurfaceToImage(surface);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
-    return bytes!.buffer.asUint8List(
-      bytes.offsetInBytes,
-      bytes.lengthInBytes,
-    );
+    return bytes!.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
   }
 
   testWidgets('the isolate-assembled upload is byte-identical to the '

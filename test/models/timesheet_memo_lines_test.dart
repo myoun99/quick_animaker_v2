@@ -121,9 +121,6 @@ void main() {
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
-    expect(document.memoInstructionLines, [
-      'C⋈D O.L(カットO.L)',
-      'A→B PAN',
-    ]);
+    expect(document.memoInstructionLines, ['C⋈D O.L(カットO.L)', 'A→B PAN']);
   });
 }

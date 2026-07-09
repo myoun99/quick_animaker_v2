@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -1502,13 +1502,17 @@ void main() {
   testWidgets('marks only the active current cell as selected', (tester) async {
     await tester.pumpWidget(_grid(currentFrameIndex: 2));
 
+    // The selection ring lives on the cursor layer (cells are
+    // cursor-independent by design) and sits exactly over the active
+    // layer's current cell.
+    final ring = find.byKey(const ValueKey<String>('timeline-selected-cell'));
+    expect(ring, findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-cell')),
-      findsOneWidget,
+      tester.getTopLeft(ring),
+      tester.getTopLeft(
+        find.byKey(const ValueKey<String>('timeline-cell-layer-1-2')),
+      ),
     );
-    final selectedBorder =
-        _cellDecoration(tester, 'timeline-cell-layer-1-2').border as Border;
-    expect(selectedBorder.top.width, 3);
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
@@ -2382,7 +2386,7 @@ Widget _grid({
         child: LayerTimelineGrid(
           layers: layers ?? _layers,
           activeLayerId: const LayerId('layer-1'),
-          currentFrameIndex: currentFrameIndex,
+          frameCursor: ValueNotifier<int>(currentFrameIndex),
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??

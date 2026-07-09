@@ -245,7 +245,6 @@ Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
         child: TimelineFrameCellsRow(
           layer: layer,
           active: true,
-          currentFrameIndex: 0,
           playbackFrameCount: 24,
           frameStartIndex: 0,
           frameEndIndexExclusive: 8,
@@ -273,7 +272,7 @@ Widget _xsheetHarness({
       body: XSheetTimelineGrid(
         layers: [layer],
         activeLayerId: layer.id,
-        currentFrameIndex: 0,
+        frameCursor: ValueNotifier<int>(0),
         frameCount: 24,
         exposureStateForLayer: _stateFor,
         onSelectLayer: (_) {},
