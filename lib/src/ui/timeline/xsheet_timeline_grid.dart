@@ -77,6 +77,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
+    this.seEmptyFill = true,
     this.metrics = defaultMetrics,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
@@ -122,6 +123,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Links a media-browser asset to an SE block (drag-drop).
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Light wash over SE columns' empty stretches (project toggle mirrored
+  /// from TimesheetInfo.seEmptyFill).
+  final bool seEmptyFill;
 
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
@@ -817,6 +822,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                     .onRemoveAudioClip,
                                                             onDropMediaAsset: widget
                                                                 .onDropMediaAsset,
+                                                            seEmptyFill: widget
+                                                                .seEmptyFill,
                                                             layer:
                                                                 entries[index]
                                                                     .layer,
@@ -1117,6 +1124,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.onDropMediaAsset,
     this.commaDrag,
     this.sectionStart = false,
+    this.seEmptyFill = true,
   });
 
   final Layer layer;
@@ -1149,6 +1157,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   onDropMediaAsset;
 
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Light wash over SE columns' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   @override
   Widget build(BuildContext context) {
@@ -1232,6 +1243,21 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.outline,
                 ),
               ),
+            ),
+          // SE empty stretches: dotted guide + optional light wash (Toei
+          // print convention), under the audio and writing overlays.
+          if (layerKindUsesSeSheetCells(layer.kind))
+            ...timelineRowSeEmptyOverlays(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              playbackFrameCount: playbackFrameCount,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              seEmptyFill: seEmptyFill,
+              keyPrefix: 'xsheet',
             ),
           // SE audio clips paint over the paper cells, under the writing —
           // clipped to the column's drawing blocks (no block, no waveform).

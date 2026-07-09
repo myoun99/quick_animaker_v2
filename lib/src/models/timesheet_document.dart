@@ -163,6 +163,8 @@ class TimesheetDocument {
     required this.memoText,
     required this.memoInstructionLines,
     required this.visibleHeaderFields,
+    required this.exposureBarThreshold,
+    required this.seEmptyFill,
     required this.cutName,
     required this.fps,
     required this.playbackFrameCount,
@@ -319,6 +321,8 @@ class TimesheetDocument {
             ),
       ]),
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
+      exposureBarThreshold: info.exposureBarThreshold,
+      seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -348,8 +352,16 @@ class TimesheetDocument {
 
   /// One shorthand line per instruction event, printed into the memo band
   /// under the cut note — the sheet notation the user writes by hand
-  /// ('A⋈ O.L', 'C⋈D O.L(カットO.L)'), in layer order then start frame.
+  /// ('A⋈ O.L', 'C⋈D O.L カットO.L'), in layer order then start frame.
   final List<String> memoInstructionLines;
+
+  /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
+  /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
+  final int? exposureBarThreshold;
+
+  /// Whether SE columns wash their empty stretches light gray (mirrored
+  /// from [TimesheetInfo.seEmptyFill]).
+  final bool seEmptyFill;
 
   /// The header boxes the form prints, in printing order (the user hides
   /// boxes per project via [TimesheetInfo.hiddenFields]).
@@ -429,7 +441,14 @@ class TimesheetDocument {
       );
       covered[start] = true;
       for (var row = start + 1; row < endExclusive; row += 1) {
-        cells[row] = const TimesheetCell(TimesheetCellKind.held);
+        // Held rows know their place in the span so the painter can gate
+        // the ACTION hold bar per the exposure-bar setting (drawn from the
+        // (N+1)th comma of N+ holds only).
+        cells[row] = TimesheetCell(
+          TimesheetCellKind.held,
+          spanLength: endExclusive - start,
+          spanOffset: row - start,
+        );
         covered[row] = true;
       }
     }
@@ -536,9 +555,10 @@ class TimesheetDocument {
 }
 
 /// One memo-band line for an instruction event — the sheet shorthand the
-/// user writes by hand: `<A><mark><B> <name>(<memo>)`, e.g. 'A⋈ O.L' or
-/// 'C⋈D O.L(カットO.L)'. The mark glyph mirrors the def's markType (⋈ =
-/// the O.L bowtie, → = the bar arrows); blank parts simply drop out.
+/// user writes by hand: `<A><mark><B> <name> <memo>`, e.g. 'A⋈ O.L' or
+/// 'C⋈D O.L カットO.L' (a single space before the memo — R4 dropped the
+/// parentheses). The mark glyph mirrors the def's markType (⋈ = the O.L
+/// bowtie, → = the bar); blank parts simply drop out.
 String timesheetMemoInstructionLine(
   InstructionEvent event,
   CameraInstructionDef? def,
@@ -551,6 +571,6 @@ String timesheetMemoInstructionLine(
   final endpoints = '${event.valueA ?? ''}$markGlyph${event.valueB ?? ''}';
   final memo = event.memo;
   final label =
-      '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : '($memo)'}';
+      '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : ' $memo'}';
   return label.isEmpty ? endpoints : '$endpoints $label';
 }

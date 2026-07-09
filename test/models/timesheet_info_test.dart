@@ -53,5 +53,34 @@ void main() {
         TimesheetHeaderField.sheet,
       ]);
     });
+
+    test('notation settings default to bar-off / SE-fill-on, round-trip and '
+        'stay absent from default JSON', () {
+      const defaults = TimesheetInfo();
+      expect(defaults.exposureBarThreshold, isNull);
+      expect(defaults.seEmptyFill, isTrue);
+      expect(defaults.toJson().containsKey('exposureBarThreshold'), isFalse);
+      expect(defaults.toJson().containsKey('seEmptyFill'), isFalse);
+
+      const custom = TimesheetInfo(exposureBarThreshold: 3, seEmptyFill: false);
+      final restored = TimesheetInfo.fromJson(custom.toJson());
+      expect(restored, custom);
+      expect(restored.exposureBarThreshold, 3);
+      expect(restored.seEmptyFill, isFalse);
+    });
+
+    test('copyWith keeps and clears the exposure-bar threshold via the '
+        'nullable closure', () {
+      const info = TimesheetInfo(exposureBarThreshold: 3);
+      expect(info.copyWith(seEmptyFill: false).exposureBarThreshold, 3);
+      expect(
+        info.copyWith(exposureBarThreshold: () => null).exposureBarThreshold,
+        isNull,
+      );
+      expect(
+        info.copyWith(exposureBarThreshold: () => 5).exposureBarThreshold,
+        5,
+      );
+    });
   });
 }

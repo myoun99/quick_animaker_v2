@@ -50,6 +50,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.projectFps = 24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.seEmptyFill = true,
     this.onSetAudioClipOffset,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
@@ -107,6 +108,9 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Links a media-browser asset to an SE block (drag-drop).
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Light wash over SE rows' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
@@ -785,6 +789,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       .onSetAudioClipFades,
                                                   onSetAudioClipGain:
                                                       widget.onSetAudioClipGain,
+                                                  seEmptyFill:
+                                                      widget.seEmptyFill,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),
