@@ -1203,13 +1203,17 @@ class EditorSessionManager extends ChangeNotifier {
   void upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
-    InstructionEvent event,
-  ) {
+    InstructionEvent event, {
+    int? createLengthFrames,
+  }) {
     final layer = _layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
 
+    // New events take the dialog's length (clamped into the cut; the add
+    // helper clamps at the next span too); null fills to the cut end.
+    final available = (activeCut.duration - frameIndex).clamp(1, 1 << 20);
     final covering = instructionSpanCovering(layer.instructions, frameIndex);
     final next = covering != null
         ? instructionMapWithEventReplaced(
@@ -1221,7 +1225,7 @@ class EditorSessionManager extends ChangeNotifier {
             layer.instructions,
             startIndex: frameIndex,
             event: event.copyWith(
-              length: (activeCut.duration - frameIndex).clamp(1, 1 << 20),
+              length: (createLengthFrames ?? available).clamp(1, available),
             ),
           );
     if (next == null) {
@@ -2086,9 +2090,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
-  /// box) in ONE undo step. Sheet semantics: the entry holds until the
-  /// next entry or the cut's end, whichever comes first.
-  void createSeEntryAtCurrentFrame({required String name, String? seName}) {
+  /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
+  /// length input), clamped into the room to the next entry / cut end;
+  /// null falls back to filling that room (legacy behavior).
+  void createSeEntryAtCurrentFrame({
+    required String name,
+    String? seName,
+    int? lengthFrames,
+  }) {
     final layer = activeLayer;
     if (layer == null ||
         layer.kind != LayerKind.se ||
@@ -2098,11 +2107,12 @@ class EditorSessionManager extends ChangeNotifier {
 
     final remaining =
         activeCut.duration - _timelineController.currentFrameIndex;
+    final available = remaining < 1 ? 1 : remaining;
     _frameSequence += 1;
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
-      length: remaining < 1 ? 1 : remaining,
+      length: (lengthFrames ?? available).clamp(1, available),
       name: name,
       seName: seName,
     );

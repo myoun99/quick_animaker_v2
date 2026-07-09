@@ -145,8 +145,8 @@ void main() {
     );
   });
 
-  testWidgets('double-tap on an empty instruction cell adds an event to the '
-      'cut end in one undo', (tester) async {
+  testWidgets('double-tap on an empty instruction cell adds an event with '
+      'the entered length in one undo', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -178,6 +178,12 @@ void main() {
       find.byKey(const ValueKey<String>('instruction-value-b-field')),
       '100%',
     );
+    // The creation dialog asks for the span length now (no more auto-fill
+    // to the cut end): 0 seconds + 5 komas.
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instance-length-field')),
+      '0+5',
+    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
@@ -185,7 +191,7 @@ void main() {
 
     final event = _camLayer(repository).instructions[4]!;
     expect(event.instructionId, 'pan');
-    expect(event.length, 8, reason: 'holds to the cut end (12 - 4)');
+    expect(event.length, 5, reason: 'the dialog length owns the span');
     expect(event.valueA, '0%');
     expect(event.valueB, '100%');
     expect(find.text('PAN'), findsWidgets);
@@ -319,6 +325,12 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
     );
+    // The length field made the creation dialog taller — scroll the
+    // vocabulary button into view first.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('instruction-edit-set-button')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-edit-set-button')),
     );

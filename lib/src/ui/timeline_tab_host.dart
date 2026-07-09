@@ -358,6 +358,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
         initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
         previewAxis: _previewAxis,
+        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -369,6 +370,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _session.createSeEntryAtCurrentFrame(
         name: result.dialogue,
         seName: seName,
+        lengthFrames: result.lengthFrames,
       );
     } else {
       // SE edits never hit the link-conflict flow (duplicates allowed).
@@ -394,6 +396,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         editing: covering != null,
         onEditInstructionSet: () => _editInstructionSet(context),
         previewAxis: _previewAxis,
+        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -419,6 +422,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         valueB: result.valueB,
         memo: result.memo,
       ),
+      createLengthFrames: result.lengthFrames,
     );
   }
 
