@@ -47,6 +47,7 @@ import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
+import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -781,6 +782,31 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sets [cutId]'s fade in/out lengths (the storyboard V-track's fade
+  /// handles): rewrites the cut-level transform's opacity lane to the
+  /// canonical fade shape; one undo step, no-op when unchanged.
+  void setCutFade(
+    CutId cutId, {
+    required int fadeInFrames,
+    required int fadeOutFrames,
+  }) {
+    final cut = cutById(cutId);
+    if (cut == null) {
+      return;
+    }
+    _cutCommandCoordinator.updateCutTransform(
+      cutId: cutId,
+      transformTrack: cutTransformWithFade(
+        cut,
+        fadeInFrames: fadeInFrames,
+        fadeOutFrames: fadeOutFrames,
+      ),
+      description: 'Fade cut',
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
   /// drawing layer — applied at composite time, never baked); one undo
   /// step, no-op when unchanged.
@@ -1310,6 +1336,66 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       audioClips: next,
       description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's fade lengths (the audio lane's edge
+  /// handles); one undo step, clamped non-negative, no-op when unchanged.
+  void setAudioClipFades(
+    LayerId layerId,
+    int clipIndex, {
+    required int fadeInFrames,
+    required int fadeOutFrames,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clampedIn = fadeInFrames < 0 ? 0 : fadeInFrames;
+    final clampedOut = fadeOutFrames < 0 ? 0 : fadeOutFrames;
+    final clip = layer.audioClips[clipIndex];
+    if (clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = clip.copyWith(
+      fadeInFrames: clampedIn,
+      fadeOutFrames: clampedOut,
+    );
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Fade sound',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's gain (the audio lane's volume dialog);
+  /// one undo step, clamped non-negative, no-op when unchanged.
+  void setAudioClipGain(LayerId layerId, int clipIndex, double gain) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clamped = gain < 0 ? 0.0 : gain;
+    if (layer.audioClips[clipIndex].gain == clamped) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(gain: clamped);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Sound gain',
     );
     notifyListeners();
   }

@@ -211,6 +211,17 @@ List<ExportAudioClip> buildExportAudioPlan({
         if (audibleEnd <= audibleStart) {
           continue;
         }
+        final audibleFrames = audibleEnd - audibleStart;
+        // Fade windows in the TRIMMED clip's own time: the fade-in anchors
+        // to the span (block) start — a range starting mid-fade keeps only
+        // the remainder — and the fade-out anchors to the audible end,
+        // both capped at the audible length (same anchors playback ramps).
+        final fadeInFrames =
+            (offsetFrames + span.clip.fadeInFrames - audibleStart).clamp(
+              0,
+              audibleFrames,
+            );
+        final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
         clips.add(
           ExportAudioClip(
             filePath: span.clip.filePath,
@@ -220,7 +231,10 @@ List<ExportAudioClip> buildExportAudioPlan({
                 (audibleStart - offsetFrames + span.clip.offsetFrames) /
                 safeFps,
             delaySeconds: audibleStart / safeFps,
-            durationSeconds: (audibleEnd - audibleStart) / safeFps,
+            durationSeconds: audibleFrames / safeFps,
+            gain: span.clip.gain,
+            fadeInSeconds: fadeInFrames / safeFps,
+            fadeOutSeconds: fadeOutFrames / safeFps,
           ),
         );
       }

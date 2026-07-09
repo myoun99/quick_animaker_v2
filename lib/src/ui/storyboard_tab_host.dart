@@ -47,6 +47,21 @@ class StoryboardTabHost extends StatefulWidget {
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
+  /// Rail view state (waveform eyes, twirled-down lanes). Session-scoped
+  /// like the timeline's lane expansion; lost on tab switch for now (the
+  /// host rebuilds) — hoist to the workspace if that stings.
+  final Set<String> _hiddenWaveformSeRows = {};
+  final Set<String> _expandedSeAudioRows = {};
+  final Set<String> _expandedOpacityTracks = {};
+
+  void _toggleSetEntry(Set<String> set, String key) {
+    setState(() {
+      if (!set.add(key)) {
+        set.remove(key);
+      }
+    });
+  }
+
   Future<void> _editActiveCutNote() async {
     final initialNote = _session.activeCutNote;
     if (initialNote == null) {
@@ -197,6 +212,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       storyboardFrameCached(_session, frame),
                   thumbnailFor: widget.thumbnailFor,
                   audioPeaksFor: _session.audioPeaksStore.peaksFor,
+                  // Rail parity with the timeline rows: waveform eyes,
+                  // twirl-down audio lanes and the V track's cut-fade
+                  // (Opacity) lane.
+                  hiddenWaveformSeRows: _hiddenWaveformSeRows,
+                  onToggleSeRowWaveform: (track, slot) => _toggleSetEntry(
+                    _hiddenWaveformSeRows,
+                    StoryboardPanel.seRowKey(track, slot),
+                  ),
+                  expandedSeAudioRows: _expandedSeAudioRows,
+                  onToggleSeRowLane: (track, slot) => _toggleSetEntry(
+                    _expandedSeAudioRows,
+                    StoryboardPanel.seRowKey(track, slot),
+                  ),
+                  expandedOpacityTracks: _expandedOpacityTracks,
+                  onToggleTrackLane: (track) =>
+                      _toggleSetEntry(_expandedOpacityTracks, track.id.value),
+                  onSetCutFade: (cutId, fadeIn, fadeOut) => _session.setCutFade(
+                    cutId,
+                    fadeInFrames: fadeIn,
+                    fadeOutFrames: fadeOut,
+                  ),
                   onNewCut: _session.createCut,
                   onRenameActiveCut: _renameActiveCut,
                   onEditActiveCutNote: _editActiveCutNote,
