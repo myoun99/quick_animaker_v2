@@ -22,6 +22,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.fxEnabled = true,
+    this.onToggleLayerFx,
   });
 
   final Layer layer;
@@ -43,6 +45,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool hasLanes;
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
+
+  /// The AE-style fx switch (session view state): bypasses the layer's
+  /// transform/FX on every composite route while off. Null hides it.
+  final bool fxEnabled;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +150,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onToggleLayerFx != null && layerKindShowsFxToggle(layer.kind))
+                LayerFxToggleButton(
+                  keyPrefix: 'timeline',
+                  layerId: layer.id,
+                  fxEnabled: fxEnabled,
+                  onToggle: onToggleLayerFx!,
+                ),
               IconButton(
                 key: ValueKey<String>('timeline-layer-visibility-${layer.id}'),
                 tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',

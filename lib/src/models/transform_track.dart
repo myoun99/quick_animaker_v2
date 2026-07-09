@@ -241,6 +241,36 @@ class TransformTrack {
   String toString() => 'TransformTrack(keyframes: $keyframes)';
 }
 
+/// Samples an AE Opacity track as a 0..1 multiplier; 1 while the track is
+/// empty. Deliberately track-level and layer-agnostic — a layer's animated
+/// opacity multiplies its static opacity, and the storyboard V-track fades
+/// ride the same function.
+double resolveOpacityTrackAt(PropertyTrack<double> track, int frameIndex) {
+  if (track.isEmpty) {
+    return 1;
+  }
+  return track
+      .resolveAt(frameIndex: frameIndex, orElse: () => 1, lerp: lerpDouble)
+      .clamp(0.0, 1.0)
+      .toDouble();
+}
+
+/// Samples an anchor-point track; null while the track is empty (the
+/// consumer supplies its default — the canvas center for layer poses).
+CanvasPoint? resolveAnchorTrackAt(
+  PropertyTrack<CanvasPoint> track,
+  int frameIndex,
+) {
+  if (track.isEmpty) {
+    return null;
+  }
+  return track.resolveAt(
+    frameIndex: frameIndex,
+    orElse: () => CanvasPoint(x: 0, y: 0),
+    lerp: lerpCanvasPoint,
+  );
+}
+
 /// Component-wise linear interpolation; rotation lerps as-is (no
 /// wrap-around), so keyframing 0 → 360 produces a full turn.
 TransformPose lerpTransformPose(TransformPose a, TransformPose b, double t) {

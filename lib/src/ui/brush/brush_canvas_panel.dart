@@ -12,6 +12,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import 'canvas_viewport_pan_metrics.dart';
@@ -54,6 +55,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
     this.interactiveContentOpacity = 1.0,
+    this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
     this.autoFrame,
@@ -91,6 +93,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Display opacity of the interactive layer itself (the active layer's
   /// visibility/opacity preview); strokes still commit at full strength.
   final double interactiveContentOpacity;
+
+  /// The active layer's geometric transform at the playhead (null =
+  /// identity). The interactive view wraps in the pose's screen matrix so
+  /// the layer shows POSED exactly like every composite route, while hit
+  /// testing inverse-maps pointers — strokes record in original artwork
+  /// coordinates (draw-through). Brush sizes are artwork-space: the live
+  /// stroke and the committed composite stay pixel-identical.
+  final LayerPoseSample? interactiveContentPose;
 
   /// Replaces the interactive canvas INSIDE the panel shell (title, zoom
   /// toolbar and panbars keep working) — playback and the blank-canvas
@@ -333,12 +343,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       // background here would hide them.
       showTransparentBackground: widget.viewportUnderlayBuilder == null,
     );
+    // The draw-through wrap: display AND hit testing share one screen
+    // matrix, so the active layer draws posed and pointers inverse-map to
+    // artwork coordinates in lockstep (R3 ⑩ — always-applied transforms).
+    final pose = widget.interactiveContentPose;
+    final Widget posedView = pose == null
+        ? interactiveView
+        : Transform(
+            transform: layerPoseViewportWrapMatrix(
+              pose.pose,
+              widget.canvasSize,
+              _viewport,
+              anchorPoint: pose.anchorPoint,
+            ),
+            child: interactiveView,
+          );
     if (widget.interactiveContentOpacity >= 1.0) {
-      return interactiveView;
+      return posedView;
     }
     return Opacity(
       opacity: widget.interactiveContentOpacity.clamp(0.0, 1.0).toDouble(),
-      child: interactiveView,
+      child: posedView,
     );
   }
 

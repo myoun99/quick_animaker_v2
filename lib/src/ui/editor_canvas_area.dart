@@ -2,12 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/canvas_viewport.dart';
+import '../models/layer_id.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
+import 'timeline/layer_label_controls.dart';
+import 'timeline/transform_lane_editing.dart';
 
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
@@ -24,6 +28,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.brushToolState,
     required this.cameraViewEnabled,
     required this.cameraDimOpacity,
+    this.expandedLaneLayerIds,
   });
 
   final EditorSessionManager session;
@@ -35,6 +40,11 @@ class EditorCanvasArea extends StatefulWidget {
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
   final ValueListenable<double> cameraDimOpacity;
+
+  /// The timeline's lane twirl-down state (workspace-owned): the Position
+  /// drag gizmo shows only while the active layer's Transform lanes are
+  /// open, so the handle never blocks ordinary drawing.
+  final ValueListenable<Set<LayerId>>? expandedLaneLayerIds;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -51,6 +61,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.brushToolState,
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
+        ?widget.expandedLaneLayerIds,
       ]),
       builder: (context, _) {
         final isCameraLayerActive = session.isCameraLayerActive;
@@ -83,6 +94,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final isPlaybackActive = session.playback.isActive;
     final layerStack = session.editingCanvasStack;
     final showAboveLayers = !isPlaybackActive && layerStack.above.isNotEmpty;
+    final selection = isCameraLayerActive
+        ? session.cameraBackdropSelection
+        : session.activeBrushEditorSelection;
+    // The layer shown in the interactive view draws POSED (always-applied
+    // transforms, active layer included) with draw-through input.
+    final interactivePose = selection == null
+        ? null
+        : session.layerCanvasPoseSample(selection.layerId);
+    // The Position drag gizmo: only while the active layer's Transform
+    // lanes are twirled open (deliberate transform-editing mode) and its
+    // fx apply.
+    final activeLayer = session.activeLayer;
+    final showPositionGizmo =
+        !isPlaybackActive &&
+        !isCameraLayerActive &&
+        activeLayer != null &&
+        layerKindShowsFxToggle(activeLayer.kind) &&
+        session.isLayerFxEnabled(activeLayer.id) &&
+        (widget.expandedLaneLayerIds?.value.contains(activeLayer.id) ?? false);
     // Camera mode retargets the Fit button at the camera frame's bounds —
     // fitting the cut canvas there framed the wrong rectangle.
     final fitFocusRect = isCameraLayerActive
@@ -97,9 +127,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         child: MainCanvasBrushHost(
           // Camera mode still needs artwork on screen: fall
           // back to the first drawn layer at the playhead.
-          selection: isCameraLayerActive
-              ? session.cameraBackdropSelection
-              : session.activeBrushEditorSelection,
+          selection: selection,
           canvasSize: session.activeCut.canvasSize,
           frameStore: session.brushFrameStore,
           cacheInvalidationSink: session.cacheInvalidationHub,
@@ -125,10 +153,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   paintPaper: true,
                 ),
           interactiveContentOpacity: layerStack.activeLayerOpacity,
+          interactiveContentPose: interactivePose,
           // The playback view renders the camera framing itself; the editing
           // overlay would show a stale playhead pose on top of it.
           viewportOverlayBuilder:
-              (showCameraOverlay || showAboveLayers) && !isPlaybackActive
+              (showCameraOverlay || showAboveLayers || showPositionGizmo) &&
+                  !isPlaybackActive
               ? (context, viewport) => Stack(
                   children: [
                     if (showAboveLayers)
@@ -154,6 +184,28 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           interactive: isCameraLayerActive,
                           onPoseCommitted:
                               session.setCameraKeyframeAtCurrentFrame,
+                        ),
+                      ),
+                    if (showPositionGizmo)
+                      Positioned.fill(
+                        child: LayerPositionGizmo(
+                          pose: session.layerPoseAtFrame(
+                            activeLayer,
+                            session.currentFrameIndex,
+                          ),
+                          viewport: viewport,
+                          // ONE key at the playhead per drag (AE rule, one
+                          // undo).
+                          onPositionCommitted: (position) =>
+                              session.updateLayerTransformTrack(
+                                activeLayer.id,
+                                transformTrackWithPositionDragged(
+                                  activeLayer.transformTrack,
+                                  frameIndex: session.currentFrameIndex,
+                                  position: position,
+                                ),
+                                description: 'Move ${activeLayer.name}',
+                              ),
                         ),
                       ),
                   ],

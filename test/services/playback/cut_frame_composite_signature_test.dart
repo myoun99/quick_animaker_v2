@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/playback/cut_frame_composite_signature.dart';
@@ -53,12 +54,14 @@ void main() {
     int frameIndex = 0,
     PlaybackQuality quality = PlaybackQuality.half,
     int Function(LayerId, FrameId)? revisionOf,
+    Set<LayerId> fxBypassedLayerIds = const {},
   }) {
     return computeCutFrameCompositeSignature(
       cut: forCut ?? cut(),
       frameIndex: frameIndex,
       quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
+      fxBypassedLayerIds: fxBypassedLayerIds,
     );
   }
 
@@ -171,5 +174,93 @@ void main() {
       signature(forCut: moved, frameIndex: 5),
       signature(forCut: moved, frameIndex: 5),
     );
+  });
+
+  test('the anchor point and the animated Opacity join the signature '
+      '(their edits invalidate composites)', () {
+    final anchored = cut(
+      layers: [
+        drawingLayer().copyWith(
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>().withKey(
+              0,
+              CanvasPoint(x: 5, y: 5),
+            ),
+            anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+              0,
+              CanvasPoint(x: 10, y: 10),
+            ),
+          ),
+        ),
+      ],
+    );
+    final unanchored = cut(
+      layers: [
+        drawingLayer().copyWith(
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>().withKey(
+              0,
+              CanvasPoint(x: 5, y: 5),
+            ),
+          ),
+        ),
+      ],
+    );
+    expect(signature(forCut: anchored), isNot(signature(forCut: unanchored)));
+    expect(
+      signature(forCut: anchored).layers.single.anchorPoint,
+      CanvasPoint(x: 10, y: 10),
+    );
+
+    final fading = cut(
+      layers: [
+        drawingLayer().copyWith(
+          transformTrack: TransformTrack.empty().copyWith(
+            opacity: PropertyTrack<double>().withKey(0, 1).withKey(4, 0.5),
+          ),
+        ),
+      ],
+    );
+    // The animated multiplier splits frames a held exposure would share...
+    expect(
+      signature(forCut: fading, frameIndex: 0),
+      isNot(signature(forCut: fading, frameIndex: 2)),
+    );
+    // ...and a fully faded-out sample drops the layer entirely.
+    final gone = cut(
+      layers: [
+        drawingLayer().copyWith(
+          transformTrack: TransformTrack.empty().copyWith(
+            opacity: PropertyTrack<double>().withKey(0, 0),
+          ),
+        ),
+      ],
+    );
+    expect(signature(forCut: gone).layers, isEmpty);
+  });
+
+  test('the fx-bypass view state joins the signature, so flipping the '
+      'switch self-invalidates (pose/anchor drop, opacity back to static)', () {
+    final moved = cut(
+      layers: [
+        drawingLayer(opacity: 0.8).copyWith(
+          transformTrack: TransformTrack(
+            keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
+          ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5)),
+        ),
+      ],
+    );
+
+    final applied = signature(forCut: moved);
+    final bypassed = signature(
+      forCut: moved,
+      fxBypassedLayerIds: {const LayerId('layer-1')},
+    );
+
+    expect(applied, isNot(bypassed));
+    expect(bypassed.layers.single.pose, isNull);
+    expect(bypassed.layers.single.anchorPoint, isNull);
+    expect(bypassed.layers.single.opacity, closeTo(0.8, 1e-9));
+    expect(applied.layers.single.opacity, closeTo(0.4, 1e-9));
   });
 }

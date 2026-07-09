@@ -66,7 +66,17 @@ CameraPose _pose(double x) => CameraPose(
 );
 
 Future<void> _pump(WidgetTester tester, Project project) async {
+  // The AE 'Transform' group header (+ anchor/opacity lanes on drawing
+  // layers) deepens the twirl-down; a wide surface and a taller bottom
+  // dock (splitter drag, like a user would) keep every lane row on screen.
+  await tester.binding.setSurfaceSize(const Size(1280, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
+  await tester.pumpAndSettle();
+  await tester.drag(
+    find.byKey(const ValueKey<String>('dock-resize-bottom')),
+    const Offset(0, -300),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -135,15 +145,51 @@ void main() {
 
       final lanes = transformPropertyLanes(track);
 
+      // The AE structure: the 'Transform' GROUP HEADER leads its lanes
+      // (Effects stack below on the same substrate later).
       expect(lanes.map((lane) => lane.laneId), [
+        'transform-group',
         'position',
         'scale',
         'rotation',
       ]);
-      expect(lanes[0].keyedFrames, {0, 6});
-      expect(lanes[0].holdOutFrames, {6});
-      expect(lanes[1].keyedFrames, isEmpty);
-      expect(lanes[2].keyedFrames, {3});
+      expect(lanes.first.isGroupHeader, isTrue);
+      expect(lanes.first.showsKeyNavigator, isFalse);
+      expect(lanes[1].keyedFrames, {0, 6});
+      expect(lanes[1].holdOutFrames, {6});
+      expect(lanes[2].keyedFrames, isEmpty);
+      expect(lanes[3].keyedFrames, {3});
+    });
+
+    test('includeAnchorAndOpacity adds the two layer-only lanes in AE '
+        'order (Anchor Point first, Opacity last)', () {
+      final track = TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+          2,
+          CanvasPoint(x: 10, y: 20),
+        ),
+        opacity: PropertyTrack<double>().withKey(5, 0.5),
+      );
+
+      final lanes = transformPropertyLanes(
+        track,
+        includeAnchorAndOpacity: true,
+        anchorAt: (_) => CanvasPoint(x: 10, y: 20),
+        opacityAt: (_) => 0.5,
+      );
+
+      expect(lanes.map((lane) => lane.laneId), [
+        'transform-group',
+        'anchor-point',
+        'position',
+        'scale',
+        'rotation',
+        'opacity',
+      ]);
+      expect(lanes[1].keyedFrames, {2});
+      expect(lanes[1].valueLabel!(0), '10, 20');
+      expect(lanes[5].keyedFrames, {5});
+      expect(lanes[5].valueLabel!(0), '50%');
     });
   });
 
@@ -207,6 +253,8 @@ void main() {
       tester,
     ) async {
       late ProjectRepository repository;
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
           home: HomePage(
@@ -214,6 +262,11 @@ void main() {
             onRepositoryCreated: (repo) => repository = repo,
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -300),
       );
       await tester.pumpAndSettle();
 
@@ -650,7 +703,19 @@ void main() {
         scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
         '-5°',
       );
-      expect(scrubTransformLaneValue('opacity', '100', Offset.zero), isNull);
+      // The anchor lane scrubs like position; opacity clamps to 0–100.
+      expect(
+        scrubTransformLaneValue('anchor-point', '10, 20', const Offset(4, -6)),
+        '14, 14',
+      );
+      expect(
+        scrubTransformLaneValue('opacity', '100%', const Offset(-30, 0)),
+        '85%',
+      );
+      expect(
+        scrubTransformLaneValue('opacity', '100%', const Offset(30, 0)),
+        '100%',
+      );
       expect(
         scrubTransformLaneValue('scale', 'garbage', const Offset(1, 0)),
         isNull,

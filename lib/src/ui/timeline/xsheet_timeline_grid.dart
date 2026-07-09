@@ -70,6 +70,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
     this.commaDrag,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -119,6 +121,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// The AE-style layer fx switch (session view state); null hides it.
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -590,6 +596,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onLayerOpacityChanged,
                                                 onToggleLayerTimesheet: widget
                                                     .onToggleLayerTimesheet,
+                                                fxEnabled:
+                                                    widget.layerFxEnabledOf
+                                                        ?.call(
+                                                          entries[index]
+                                                              .layer
+                                                              .id,
+                                                        ) ??
+                                                    true,
+                                                onToggleLayerFx:
+                                                    widget.onToggleLayerFx,
                                                 onLayerMarkSelected:
                                                     widget.onLayerMarkSelected,
                                                 hasLanes: _lanesFor(
@@ -1275,6 +1291,8 @@ class _LayerHeader extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.fxEnabled = true,
+    this.onToggleLayerFx,
   });
 
   final TimelineGridMetrics metrics;
@@ -1298,6 +1316,10 @@ class _LayerHeader extends StatelessWidget {
   final bool hasLanes;
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
+
+  /// The AE-style fx switch (session view state). Null hides it.
+  final bool fxEnabled;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   @override
   Widget build(BuildContext context) {
@@ -1388,6 +1410,14 @@ class _LayerHeader extends StatelessWidget {
               ),
               Row(
                 children: [
+                  if (onToggleLayerFx != null &&
+                      layerKindShowsFxToggle(layer.kind))
+                    LayerFxToggleButton(
+                      keyPrefix: 'xsheet',
+                      layerId: layer.id,
+                      fxEnabled: fxEnabled,
+                      onToggle: onToggleLayerFx!,
+                    ),
                   IconButton(
                     key: ValueKey<String>(
                       'xsheet-layer-visibility-${layer.id}',

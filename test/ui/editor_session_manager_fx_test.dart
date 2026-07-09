@@ -1,0 +1,102 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+
+void main() {
+  group('layer fx bypass (session view state)', () {
+    late EditorSessionManager session;
+
+    setUp(() {
+      session = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(session.dispose);
+    });
+
+    test('toggleLayerFx flips the switch and notifies', () {
+      final layerId = session.activeLayer!.id;
+      var notified = 0;
+      session.addListener(() => notified += 1);
+
+      expect(session.isLayerFxEnabled(layerId), isTrue);
+      session.toggleLayerFx(layerId);
+      expect(session.isLayerFxEnabled(layerId), isFalse);
+      expect(session.fxBypassedLayerIds, {layerId});
+      session.toggleLayerFx(layerId);
+      expect(session.isLayerFxEnabled(layerId), isTrue);
+      expect(notified, 2);
+    });
+
+    test('layerCanvasPoseSample: the active layer shows its pose '
+        '(always-applied rule), bypass returns identity', () {
+      final layer = session.activeLayer!;
+      expect(
+        session.layerCanvasPoseSample(layer.id),
+        isNull,
+        reason: 'no transform work = identity, no wrap',
+      );
+
+      session.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 100, y: 60),
+          ),
+          anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 10, y: 20),
+          ),
+        ),
+      );
+
+      final sample = session.layerCanvasPoseSample(layer.id)!;
+      expect(sample.pose.center.x, 100);
+      expect(sample.pose.center.y, 60);
+      expect(sample.anchorPoint, CanvasPoint(x: 10, y: 20));
+
+      session.toggleLayerFx(layer.id);
+      expect(session.layerCanvasPoseSample(layer.id), isNull);
+      session.toggleLayerFx(layer.id);
+      expect(session.layerCanvasPoseSample(layer.id), isNotNull);
+    });
+
+    test('editingCanvasStack: the active layer display opacity carries the '
+        'animated Opacity sample; bypass restores the static value', () {
+      final layer = session.activeLayer!;
+      session.setLayerOpacity(layerId: layer.id, opacity: 0.8);
+      session.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 0.5),
+        ),
+      );
+
+      expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.4, 1e-9));
+
+      session.toggleLayerFx(layer.id);
+      expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.8, 1e-9));
+    });
+
+    test('lane value resolvers: anchor defaults to the canvas center and '
+        'opacity to 1 while unkeyed', () {
+      final layer = session.activeLayer!;
+      final canvasSize = session.activeCut.canvasSize;
+
+      final anchor = session.layerAnchorPointAtFrame(layer, 0);
+      expect(anchor.x, canvasSize.width / 2);
+      expect(anchor.y, canvasSize.height / 2);
+      expect(session.layerOpacityAtFrame(layer, 0), 1);
+
+      session.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0),
+        ),
+      );
+      final updated = session.activeLayer!;
+      expect(session.layerOpacityAtFrame(updated, 4), closeTo(0.5, 1e-9));
+    });
+  });
+}

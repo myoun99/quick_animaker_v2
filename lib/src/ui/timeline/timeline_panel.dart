@@ -38,6 +38,8 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
     this.commaDrag,
     this.isFrameCached,
     required this.orientation,
@@ -93,6 +95,11 @@ class TimelinePanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// The AE-style layer fx switch (session view state), both orientations;
+  /// null hides it.
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
@@ -277,6 +284,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
+                    layerFxEnabledOf: widget.layerFxEnabledOf,
+                    onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
@@ -307,6 +316,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
+                    layerFxEnabledOf: widget.layerFxEnabledOf,
+                    onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

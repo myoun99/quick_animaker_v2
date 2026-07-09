@@ -112,6 +112,11 @@ void main() {
     testWidgets(
       'selected exposure outline is a display-range visual beyond playback duration',
       (tester) async {
+        // The 312px layer rail (fx switch) narrows the default test
+        // viewport's frame window below cell 12 — widen the surface so the
+        // asserted cells stay rendered.
+        await tester.binding.setSurfaceSize(const Size(1000, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
         final fixture = _fixture(cutDuration: 3);
 
         await tester.pumpWidget(_panel(fixture, currentFrameIndex: 10));

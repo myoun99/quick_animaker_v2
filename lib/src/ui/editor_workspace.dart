@@ -503,6 +503,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             brushToolState: _brushTool,
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
+            expandedLaneLayerIds: _expandedLaneLayerIds,
           ),
         );
       case EditorWorkspace.brushesTabId:

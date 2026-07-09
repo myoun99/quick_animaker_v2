@@ -53,6 +53,8 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
     required this.onLayerMarkSelected,
     this.commaDrag,
     this.isFrameCached,
@@ -99,6 +101,10 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
+
+  /// The AE-style layer fx switch (session view state); null hides it.
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
@@ -561,6 +567,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           onToggleLayerTimesheet:
                                                               widget
                                                                   .onToggleLayerTimesheet,
+                                                          fxEnabled:
+                                                              widget
+                                                                  .layerFxEnabledOf
+                                                                  ?.call(
+                                                                    rows[rowIndex]
+                                                                        .layer
+                                                                        .id,
+                                                                  ) ??
+                                                              true,
+                                                          onToggleLayerFx: widget
+                                                              .onToggleLayerFx,
                                                           onLayerMarkSelected:
                                                               widget
                                                                   .onLayerMarkSelected,
