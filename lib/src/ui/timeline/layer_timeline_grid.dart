@@ -56,6 +56,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -115,6 +116,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// SE rows' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
@@ -579,6 +583,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           onLayerMarkSelected:
                                                               widget
                                                                   .onLayerMarkSelected,
+                                                          onToggleLayerMuted: widget
+                                                              .onToggleLayerMuted,
                                                           hasLanes: _lanesFor(
                                                             rows[rowIndex]
                                                                 .layer,

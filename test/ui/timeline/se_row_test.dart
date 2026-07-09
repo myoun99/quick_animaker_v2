@@ -270,8 +270,10 @@ void main() {
     expect(_seDialogueAt(tester, 'xsheet-se-label-se-voice-1'), 'Hello!');
   });
 
-  testWidgets('double-tap on an empty SE cell creates a labeled entry to the '
-      'cut end in one undo', (tester) async {
+  testWidgets('double-tap on an empty SE cell creates a labeled entry with '
+      'the entered length in one undo; the length is remembered', (
+    tester,
+  ) async {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -294,6 +296,12 @@ void main() {
       find.byKey(const ValueKey<String>('se-name-field')),
       '앨리스',
     );
+    // The creation dialog asks for the block length now (no more auto-fill
+    // to the cut end): 0 seconds + 6 komas.
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('instance-length-field')),
+      '0+6',
+    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
@@ -303,8 +311,7 @@ void main() {
     final entry = layer.timeline[4]!;
     expect(layer.frames.single.name, '와아!');
     expect(layer.frames.single.seName, '앨리스');
-    // Sheet semantics: holds to the cut end (duration 12, start 4).
-    expect(entry.length, 8);
+    expect(entry.length, 6, reason: 'the dialog length owns the block');
     expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-4'), '와아!');
     expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
 
@@ -313,6 +320,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(_seLayer(repository).timeline, isEmpty);
     expect(_seLayer(repository).frames, isEmpty);
+
+    // The value and notation persist: the next creation dialog prefills
+    // the committed '0+6'.
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
+    );
+    final lengthField = tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('instance-length-field')),
+    );
+    expect(lengthField.controller!.text, '0+6');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+    );
+    await tester.pumpAndSettle();
   });
 
   testWidgets('double-tap on an existing SE entry edits its label; duplicate '

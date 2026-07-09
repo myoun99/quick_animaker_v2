@@ -275,7 +275,7 @@ class AudioPlaybackSync {
     final schedule = <_ScheduledClip>[];
     for (final entry in playlist) {
       for (final layer in entry.cut.layers) {
-        if (layer.kind != LayerKind.se) {
+        if (layer.kind != LayerKind.se || layer.muted) {
           continue;
         }
         for (final span in seAudioSpans(layer)) {

@@ -1097,11 +1097,42 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
+  /// kind, inserted directly above it, named by its section's own scheme
+  /// (cel letters / S3 / CAM 2). The camera cannot be duplicated (exactly
+  /// one per cut) — with it (or nothing) active, a default cel is added.
   void addLayer() {
     _layerSequence += 1;
-    _layerController.addLayerWithDefaults(
-      layerId: defaultLayerIdForSequence(_layerSequence),
-    );
+    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final kind = activeLayer?.kind ?? LayerKind.animation;
+    switch (kind) {
+      case LayerKind.se:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextSeLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.se,
+          ),
+        );
+      case LayerKind.instruction:
+        _layerController.addLayer(
+          layer: Layer(
+            id: layerId,
+            name: nextInstructionLayerName(_layerController.layers),
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.instruction,
+          ),
+        );
+      case LayerKind.animation:
+      case LayerKind.storyboard:
+      case LayerKind.art:
+        _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
+      case LayerKind.camera:
+        _layerController.addLayerWithDefaults(layerId: layerId);
+    }
     notifyListeners();
   }
 
@@ -1112,6 +1143,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   void toggleLayerVisibility(LayerId layerId) {
     _layerController.toggleLayerVisibility(layerId);
+    notifyListeners();
+  }
+
+  /// Silences/unsilences an SE row's sounds (the mute button — view state
+  /// like visibility, not undoable): playback and export skip muted
+  /// layers' clips, waveforms keep displaying.
+  void toggleLayerMuted(LayerId layerId) {
+    _layerController.toggleLayerMuted(layerId);
     notifyListeners();
   }
 
@@ -1198,13 +1237,17 @@ class EditorSessionManager extends ChangeNotifier {
   void upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
-    InstructionEvent event,
-  ) {
+    InstructionEvent event, {
+    int? createLengthFrames,
+  }) {
     final layer = _layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
 
+    // New events take the dialog's length (clamped into the cut; the add
+    // helper clamps at the next span too); null fills to the cut end.
+    final available = (activeCut.duration - frameIndex).clamp(1, 1 << 20);
     final covering = instructionSpanCovering(layer.instructions, frameIndex);
     final next = covering != null
         ? instructionMapWithEventReplaced(
@@ -1216,7 +1259,7 @@ class EditorSessionManager extends ChangeNotifier {
             layer.instructions,
             startIndex: frameIndex,
             event: event.copyWith(
-              length: (activeCut.duration - frameIndex).clamp(1, 1 << 20),
+              length: (createLengthFrames ?? available).clamp(1, available),
             ),
           );
     if (next == null) {
@@ -1550,38 +1593,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
   /// carry several SE columns), but converting one away must not break the
   /// S1·S2 floor of two.
-  bool get canToggleTargetLayerSe {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.animation) {
-      return true;
-    }
-    return targetLayer.kind == LayerKind.se &&
-        _layerController.layers
-                .where((layer) => layer.kind == LayerKind.se)
-                .length >
-            2;
-  }
-
-  void toggleTargetLayerSe() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || !canToggleTargetLayerSe) {
-      return;
-    }
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
-      layerId: targetLayer.id,
-      kind: targetLayer.kind == LayerKind.se
-          ? LayerKind.animation
-          : LayerKind.se,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
   String get activeLayerKindLabelText {
     final targetLayer = _targetLayerForKindToggle;
     return switch (targetLayer?.kind) {
@@ -1618,22 +1629,6 @@ class EditorSessionManager extends ChangeNotifier {
           : LayerKind.art,
     );
     _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Adds another camera-work instruction row (CAM 2, CAM 3, …). The display
-  /// sorts it into the camera section regardless of insertion position.
-  void addInstructionLayer() {
-    _layerSequence += 1;
-    _layerController.addLayer(
-      layer: Layer(
-        id: defaultLayerIdForSequence(_layerSequence),
-        name: nextInstructionLayerName(_layerController.layers),
-        frames: const [],
-        timeline: const {},
-        kind: LayerKind.instruction,
-      ),
-    );
     notifyListeners();
   }
 
@@ -2189,9 +2184,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
-  /// box) in ONE undo step. Sheet semantics: the entry holds until the
-  /// next entry or the cut's end, whichever comes first.
-  void createSeEntryAtCurrentFrame({required String name, String? seName}) {
+  /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
+  /// length input), clamped into the room to the next entry / cut end;
+  /// null falls back to filling that room (legacy behavior).
+  void createSeEntryAtCurrentFrame({
+    required String name,
+    String? seName,
+    int? lengthFrames,
+  }) {
     final layer = activeLayer;
     if (layer == null ||
         layer.kind != LayerKind.se ||
@@ -2201,11 +2201,12 @@ class EditorSessionManager extends ChangeNotifier {
 
     final remaining =
         activeCut.duration - _timelineController.currentFrameIndex;
+    final available = remaining < 1 ? 1 : remaining;
     _frameSequence += 1;
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
-      length: remaining < 1 ? 1 : remaining,
+      length: (lengthFrames ?? available).clamp(1, available),
       name: name,
       seName: seName,
     );

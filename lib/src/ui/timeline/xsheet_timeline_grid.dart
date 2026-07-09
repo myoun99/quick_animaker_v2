@@ -72,6 +72,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -134,6 +135,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// SE columns' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -607,6 +611,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onToggleLayerTimesheet,
                                                 onLayerMarkSelected:
                                                     widget.onLayerMarkSelected,
+                                                onToggleLayerMuted:
+                                                    widget.onToggleLayerMuted,
                                                 hasLanes: _lanesFor(
                                                   entries[index].layer,
                                                 ).isNotEmpty,
@@ -1316,6 +1322,7 @@ class _LayerHeader extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     required this.metrics,
+    this.onToggleLayerMuted,
     this.sectionStart = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
@@ -1331,6 +1338,9 @@ class _LayerHeader extends StatelessWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// SE columns' speaker button (mute); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Whether this column opens a new timesheet section; draws a heavier
   /// divider along the header's left edge.
@@ -1449,9 +1459,30 @@ class _LayerHeader extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerVisibility(layer.id),
                   ),
-                  // Instruction rows never composite — no dead control
-                  // there. The camera column's slider drives the
-                  // camera-view DIM opacity (unified layer controls).
+                  // SE columns carry the mute speaker beside the eye. Tight
+                  // SizedBox: the M3 IconButton otherwise inflates to the
+                  // 48px tap target, overflowing the header column.
+                  if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
+                    SizedBox(
+                      width: 24,
+                      height: 28,
+                      child: IconButton(
+                        key: ValueKey<String>('xsheet-layer-mute-${layer.id}'),
+                        tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 24,
+                          height: 28,
+                        ),
+                        icon: Icon(
+                          layer.muted ? Icons.volume_off : Icons.volume_up,
+                          size: 16,
+                        ),
+                        onPressed: () => onToggleLayerMuted!(layer.id),
+                      ),
+                    ),
+                  // The camera column's slider drives the camera-view DIM
+                  // opacity (unified layer controls).
                   if (layerKindShowsOpacityControl(layer.kind)) ...[
                     Expanded(
                       child: Slider(
