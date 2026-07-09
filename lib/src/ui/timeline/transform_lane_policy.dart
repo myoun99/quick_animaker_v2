@@ -16,6 +16,19 @@ const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
   isGroupHeader: true,
 );
 
+/// [transformGroupHeaderLane] carrying the collapse state (the header's
+/// chevron; tapping the header toggles it — AE group collapse).
+PropertyLaneRow transformGroupHeader({required bool expanded}) {
+  return PropertyLaneRow(
+    laneId: transformGroupHeaderLane.laneId,
+    label: transformGroupHeaderLane.label,
+    keyedFrames: const {},
+    showsKeyNavigator: false,
+    isGroupHeader: true,
+    groupExpanded: expanded,
+  );
+}
+
 /// The AE Transform-group lanes of a [TransformTrack], in AE order under
 /// the 'Transform' group header — Anchor Point / Position / Scale /
 /// Rotation / Opacity ([includeAnchorAndOpacity] gates the two layer-only

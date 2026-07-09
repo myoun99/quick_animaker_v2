@@ -1497,6 +1497,114 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Audio offset live drags (comma-drag idiom) --------------------------
+
+  List<AudioClip>? _audioOffsetDragBefore;
+  LayerId? _audioOffsetDragLayerId;
+  int? _audioOffsetDragClipIndex;
+
+  /// Starts a live slide of [layerId]'s [clipIndex]th sound: the drag
+  /// previews repo-direct (every waveform view repaints from the model in
+  /// real time) and [endAudioClipOffsetDrag] commits ONE undo step.
+  bool beginAudioClipOffsetDrag({
+    required LayerId layerId,
+    required int clipIndex,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return false;
+    }
+    _audioOffsetDragBefore = layer.audioClips;
+    _audioOffsetDragLayerId = layerId;
+    _audioOffsetDragClipIndex = clipIndex;
+    return true;
+  }
+
+  /// Applies the dragged ABSOLUTE offset as a live preview (clamped ≥ 0);
+  /// no-op while no drag is in flight or the value is unchanged.
+  void updateAudioClipOffsetDrag(int offsetFrames) {
+    final layerId = _audioOffsetDragLayerId;
+    final clipIndex = _audioOffsetDragClipIndex;
+    if (layerId == null || clipIndex == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null || clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clamped = offsetFrames < 0 ? 0 : offsetFrames;
+    if (layer.audioClips[clipIndex].offsetFrames == clamped) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+    );
+    notifyListeners();
+  }
+
+  /// Commits the slide as a single undo step: the preview reverts
+  /// silently, then the normal clip command applies the final list (its
+  /// before-snapshot stays correct).
+  void endAudioClipOffsetDrag() {
+    final before = _audioOffsetDragBefore;
+    final layerId = _audioOffsetDragLayerId;
+    _audioOffsetDragBefore = null;
+    _audioOffsetDragLayerId = null;
+    _audioOffsetDragClipIndex = null;
+    if (before == null || layerId == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    final after = layer.audioClips;
+    if (listEquals(after, before)) {
+      return;
+    }
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: before,
+    );
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: after,
+      description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
+  /// Reverts an in-flight slide preview without touching history.
+  void cancelAudioClipOffsetDrag() {
+    final before = _audioOffsetDragBefore;
+    final layerId = _audioOffsetDragLayerId;
+    _audioOffsetDragBefore = null;
+    _audioOffsetDragLayerId = null;
+    _audioOffsetDragClipIndex = null;
+    if (before == null || layerId == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null || listEquals(layer.audioClips, before)) {
+      return;
+    }
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: before,
+    );
+    notifyListeners();
+  }
+
   /// Sets the [clipIndex]th clip's fade lengths (the audio lane's edge
   /// handles); one undo step, clamped non-negative, no-op when unchanged.
   void setAudioClipFades(

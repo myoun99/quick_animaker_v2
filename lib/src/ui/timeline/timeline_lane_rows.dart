@@ -23,6 +23,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.currentFrameIndex = 0,
     this.onSelectFrame,
     this.laneEdit,
+    this.onToggleLaneGroup,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     this.width,
@@ -35,6 +36,10 @@ class TimelineLaneControlsRow extends StatefulWidget {
   final int currentFrameIndex;
   final ValueChanged<int>? onSelectFrame;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Group headers: tapping the header twirls its member lanes open/closed
+  /// (AE group collapse); null leaves the header inert.
+  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -280,7 +285,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final colorScheme = Theme.of(context).colorScheme;
     if (lane.isGroupHeader) {
       // AE group header ('Transform'): a structural label one indent LEFT
-      // of its member lanes, no navigator/value.
+      // of its member lanes, no navigator/value. Tapping the header
+      // twirls the group's member lanes open/closed (default collapsed);
+      // the chevron mirrors the state.
+      final onToggleGroup = widget.onToggleLaneGroup;
       return Container(
         key: ValueKey<String>(
           '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
@@ -290,23 +298,45 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
             (widget.metrics.layerControlsWidth -
                 widget.metrics.sectionLabelGutterWidth),
         height: widget.height ?? widget.metrics.layerRowHeight,
-        padding: widget.axis == Axis.horizontal
-            ? const EdgeInsets.only(left: 14, right: 8)
-            : const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
         ),
-        alignment: widget.axis == Axis.horizontal
-            ? Alignment.centerLeft
-            : Alignment.center,
-        child: Text(
-          lane.label,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
+        child: InkWell(
+          key: ValueKey<String>(
+            '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+          ),
+          onTap: onToggleGroup == null
+              ? null
+              : () => onToggleGroup(layer, lane),
+          child: Padding(
+            padding: widget.axis == Axis.horizontal
+                ? const EdgeInsets.only(left: 10, right: 8)
+                : const EdgeInsets.symmetric(horizontal: 2),
+            child: Row(
+              mainAxisAlignment: widget.axis == Axis.horizontal
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
+              children: [
+                Icon(
+                  lane.groupExpanded
+                      ? Icons.arrow_drop_down
+                      : Icons.arrow_right,
+                  size: 16,
+                ),
+                Flexible(
+                  child: Text(
+                    lane.label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
