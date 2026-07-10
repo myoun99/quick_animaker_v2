@@ -98,11 +98,28 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     );
   }
 
+  /// Coalesces invalidation-driven notifies: a stroke commits MANY hub
+  /// events, one microtask notify covers them all.
+  bool _invalidationNotifyScheduled = false;
+
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
     final cutId = invalidation.frameKey.cutId;
     _editGenerations[cutId] = (_editGenerations[cutId] ?? 0) + 1;
-    // Lazy refresh: no render here — the next thumbnailFor call (the panel
-    // is only built in storyboard mode) sees the bumped signature.
+    // Rendering stays lazy (the next thumbnailFor call sees the bumped
+    // signature) but the notify must fire HERE: brush strokes never notify
+    // the session, so without it nothing rebuilt a visible storyboard and
+    // freshly drawn artwork never reached its thumbnail (the R5-⑩
+    // "thumbnails never show up" device report).
+    if (_invalidationNotifyScheduled || _disposed) {
+      return;
+    }
+    _invalidationNotifyScheduled = true;
+    scheduleMicrotask(() {
+      _invalidationNotifyScheduled = false;
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
   }
 
   String _signatureFor(Cut cut) {
