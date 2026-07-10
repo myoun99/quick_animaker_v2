@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_cut_fade_policy.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -179,6 +182,71 @@ void main() {
     expect(s.cutById(first)!.duration, firstDuration - 2);
     expect(s.cutById(second)!.leadingGapFrames, 4);
     expect(layoutStart(s, second), firstDuration - 2 + 4);
+  });
+
+  test('a trim re-anchors the CANONICAL fade to the new duration — the '
+      'fade-out keeps riding the cut end, in the SAME undo step (W4 fade '
+      'durability)', () {
+    final (s, first, _) = twoCutSession();
+    final duration = s.cutById(first)!.duration;
+    s.setCutFade(first, fadeInFrames: 0, fadeOutFrames: 6);
+
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(-4);
+    s.endCutEdgeDrag();
+
+    final trimmed = s.cutById(first)!;
+    expect(trimmed.duration, duration - 4);
+    expect(cutFadeLengths(trimmed), (fadeInFrames: 0, fadeOutFrames: 6));
+    final trimmedLast = trimmed.duration - 1;
+    expect(trimmed.transformTrack.opacity.keyAt(trimmedLast)!.value, 0.0);
+    expect(trimmed.transformTrack.opacity.keyAt(trimmedLast - 6)!.value, 1.0);
+
+    // ONE undo restores the duration AND the original fade keys exactly.
+    s.undo();
+    final restored = s.cutById(first)!;
+    expect(restored.duration, duration);
+    expect(cutFadeLengths(restored), (fadeInFrames: 0, fadeOutFrames: 6));
+    expect(restored.transformTrack.opacity.keyAt(duration - 1)!.value, 0.0);
+    expect(restored.transformTrack.opacity.keyAt(duration - 1 - 6)!.value, 1.0);
+
+    // Growth re-anchors the same way: the fade-out rides the new end.
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(5);
+    s.endCutEdgeDrag();
+    final grown = s.cutById(first)!;
+    expect(grown.duration, duration + 5);
+    expect(grown.transformTrack.opacity.keyAt(grown.duration - 1)!.value, 0.0);
+    expect(cutFadeLengths(grown), (fadeInFrames: 0, fadeOutFrames: 6));
+  });
+
+  test('a hand-keyed (non-canonical) opacity lane survives a trim '
+      'untouched — the invariant only owns the canonical fade shape', () {
+    final (s, first, _) = twoCutSession();
+    final custom = TransformTrack.empty().copyWith(
+      opacity: PropertyTrack<double>.empty().withKey(3, 0.4).withKey(7, 0.9),
+    );
+    s.updateCutTransformTrack(first, custom);
+
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(-4);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(first)!.transformTrack.opacity, custom.opacity);
+  });
+
+  test('a start-edge SLIDE never touches the fade (gap only — keys are '
+      'cut-local)', () {
+    final (s, _, second) = twoCutSession();
+    s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
+    final before = s.cutById(second)!.transformTrack;
+
+    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(5);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(second)!.leadingGapFrames, 5);
+    expect(s.cutById(second)!.transformTrack, before);
   });
 
   test('cancel drops the preview without touching history or the repo', () {

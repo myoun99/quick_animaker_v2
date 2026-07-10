@@ -2519,7 +2519,10 @@ class EditorSessionManager extends ChangeNotifier {
     final durations = <CutId, int>{};
     final gaps = <CutId, int>{};
     if (edge == TimelineBlockEdge.end) {
-      final newDuration = math.max(1, beforeDurations[cutId]! + cumulativeDelta);
+      final newDuration = math.max(
+        1,
+        beforeDurations[cutId]! + cumulativeDelta,
+      );
       durations[cutId] = newDuration;
       final nextId = _cutTrimNextCutId;
       if (nextId != null) {
@@ -2542,7 +2545,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
-  /// the command's execute applies the final durations AND gaps.
+  /// the command's execute applies the final durations AND gaps, plus the
+  /// fade re-anchor (W4 fade durability) — a trimmed cut's CANONICAL fade
+  /// envelope is rebuilt for the new duration so the fade-out keeps riding
+  /// the cut's end. Hand-keyed opacity lanes are left untouched (the
+  /// "Opacity lane = fade envelope" invariant only owns the canonical
+  /// shape).
   void endCutEdgeDrag() {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
@@ -2578,11 +2586,43 @@ class EditorSessionManager extends ChangeNotifier {
     if (!changed) {
       return;
     }
+
+    // Fade durability: re-anchor each resized cut's canonical fade to its
+    // new duration. cutFadeLengths returns (0, 0) for unkeyed AND for
+    // hand-keyed (non-canonical) lanes — both stay untouched.
+    final beforeTransforms = <CutId, TransformTrack>{};
+    final afterTransforms = <CutId, TransformTrack>{};
+    for (final entry in afterDurations.entries) {
+      if (entry.value == beforeDurations[entry.key]) {
+        continue;
+      }
+      final cut = cutById(entry.key);
+      if (cut == null) {
+        continue;
+      }
+      final lengths = cutFadeLengths(cut);
+      if (lengths.fadeInFrames == 0 && lengths.fadeOutFrames == 0) {
+        continue;
+      }
+      final rebuilt = cutTransformWithFade(
+        cut.copyWith(duration: entry.value),
+        fadeInFrames: lengths.fadeInFrames,
+        fadeOutFrames: lengths.fadeOutFrames,
+      );
+      if (rebuilt == cut.transformTrack) {
+        continue;
+      }
+      beforeTransforms[entry.key] = cut.transformTrack;
+      afterTransforms[entry.key] = rebuilt;
+    }
+
     _cutCommandCoordinator.commitCutDurationDrag(
       beforeDurations: beforeDurations,
       afterDurations: afterDurations,
       beforeGaps: beforeGaps,
       afterGaps: afterGaps,
+      beforeTransforms: beforeTransforms,
+      afterTransforms: afterTransforms,
     );
     _refreshAfterCutCommand();
     notifyListeners();

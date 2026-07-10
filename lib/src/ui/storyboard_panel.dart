@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -90,12 +91,15 @@ class StoryboardPanel extends StatefulWidget {
     required this.project,
     required this.activeCutId,
     required this.onCutSelected,
+    this.activeLayerId,
+    this.onSelectLayer,
     this.onCutReordered,
     this.cutTrim,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.projectFps = 24,
-    this.playheadGlobalFrame,
+    this.playheadFrame,
+    this.cacheProgress,
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
     this.onScrubEnd,
@@ -166,6 +170,15 @@ class StoryboardPanel extends StatefulWidget {
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
 
+  /// The session's active layer — the S row carrying it gets the timeline
+  /// row's active highlight (W4 S-row selection; the V row is not a layer
+  /// and stands down). Null = no row highlighted.
+  final LayerId? activeLayerId;
+
+  /// Tapping an S-row label selects its TRACK layer (the same session
+  /// selection a timeline row tap makes). Null keeps labels display-only.
+  final ValueChanged<LayerId>? onSelectLayer;
+
   /// Dragging a cut block onto another block of the same track reorders the
   /// cuts (same semantics as the top-bar chips). Null disables dragging.
   final CutReorderedCallback? onCutReordered;
@@ -185,8 +198,15 @@ class StoryboardPanel extends StatefulWidget {
   final int projectFps;
 
   /// Track-global frame the playhead line sits on (playback position while
-  /// playing, the active cut's playhead otherwise). Null hides the line.
-  final int? playheadGlobalFrame;
+  /// playing, the active cut's playhead otherwise) — a LISTENABLE, the
+  /// cursor-layer pattern (W4): only the playhead overlay and the ruler
+  /// subscribe, so scrub moves and playback ticks never rebuild the
+  /// panel's strips/blocks/rails. Null (or a null value) hides the line.
+  final ValueListenable<int?>? playheadFrame;
+
+  /// Repaints the ruler's cached-range (green) bar as the prerender cache
+  /// fills; null leaves the bar static per build.
+  final Listenable? cacheProgress;
 
   /// Tapping or scrubbing the ruler reports the track-global frame under
   /// the pointer. Null makes the ruler display-only.
@@ -364,7 +384,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           oldPixelsPerFrame: oldWidget.pixelsPerFrame,
           newPixelsPerFrame: widget.pixelsPerFrame,
           viewportExtent: _horizontalController.position.viewportDimension,
-          anchorFrame: widget.playheadGlobalFrame,
+          anchorFrame: widget.playheadFrame?.value,
         ),
       );
     }
@@ -586,9 +606,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   Widget _seLabelRow(Track track, int slot) {
+    final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
       track: track,
       slot: slot,
+      active:
+          trackLayer != null &&
+          widget.activeLayerId != null &&
+          trackLayer.id == widget.activeLayerId,
+      onSelectLayer: widget.onSelectLayer,
       waveformVisible: !widget.hiddenWaveformSeRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),
@@ -946,7 +972,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       scale.leftForFrame(renderedFrames) +
           StoryboardPanel._timelineTrailingPadding,
     );
-    final playheadFrame = widget.playheadGlobalFrame;
+    // The playhead + green bar repaint through their own listenables (the
+    // cursor-layer pattern) — the ruler and the overlay subscribe below,
+    // nothing else in this build does.
+    final playheadListenable = widget.playheadFrame;
+    final rulerRefresh = Listenable.merge([
+      ?playheadListenable,
+      ?widget.cacheProgress,
+    ]);
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -992,18 +1025,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               maxHeight: StoryboardPanel._rulerHeight,
                               child: Transform.translate(
                                 offset: Offset(-_horizontalScrollOffset, 0),
-                                child: _StoryboardRuler(
-                                  width: contentWidth,
-                                  renderedFrames: renderedFrames,
-                                  contentFrames: totalFrames,
-                                  playheadFrame: playheadFrame,
-                                  scrollOffset: _horizontalScrollOffset,
-                                  viewportWidth: viewportWidth,
-                                  timelineScale: scale,
-                                  onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                                  onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                                  onScrubEnd: widget.onScrubEnd,
-                                  isFrameCached: widget.isFrameCached,
+                                child: ListenableBuilder(
+                                  listenable: rulerRefresh,
+                                  builder: (context, _) => _StoryboardRuler(
+                                    width: contentWidth,
+                                    renderedFrames: renderedFrames,
+                                    contentFrames: totalFrames,
+                                    playheadFrame: playheadListenable?.value,
+                                    scrollOffset: _horizontalScrollOffset,
+                                    viewportWidth: viewportWidth,
+                                    timelineScale: scale,
+                                    onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                                    onScrubGlobalFrame:
+                                        widget.onScrubGlobalFrame,
+                                    onScrubEnd: widget.onScrubEnd,
+                                    isFrameCached: widget.isFrameCached,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1128,26 +1165,35 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       ),
                                   ],
                                 ),
-                                if (playheadFrame != null)
+                                if (playheadListenable != null)
                                   // Frame-wide accent tint only 窶・no solid
                                   // edge line over the blocks (user
                                   // direction); the ruler carries its own
-                                  // current-frame highlight.
-                                  Positioned(
-                                    key: const ValueKey<String>(
-                                      'storyboard-playhead',
-                                    ),
-                                    left: scale.leftForFrame(playheadFrame),
-                                    top: 0,
-                                    bottom: 0,
-                                    width: scale.pixelsPerFrame,
-                                    child: IgnorePointer(
-                                      child: ColoredBox(
-                                        color: timelinePlayheadColor.withValues(
-                                          alpha: 0.18,
-                                        ),
-                                      ),
-                                    ),
+                                  // current-frame highlight. Subscribes to
+                                  // the cursor itself: a tick moves THIS
+                                  // overlay, the blocks never rebuild.
+                                  ValueListenableBuilder<int?>(
+                                    valueListenable: playheadListenable,
+                                    builder: (context, playheadFrame, _) =>
+                                        playheadFrame == null
+                                        ? const SizedBox.shrink()
+                                        : Positioned(
+                                            key: const ValueKey<String>(
+                                              'storyboard-playhead',
+                                            ),
+                                            left: scale.leftForFrame(
+                                              playheadFrame,
+                                            ),
+                                            top: 0,
+                                            bottom: 0,
+                                            width: scale.pixelsPerFrame,
+                                            child: IgnorePointer(
+                                              child: ColoredBox(
+                                                color: timelinePlayheadColor
+                                                    .withValues(alpha: 0.18),
+                                              ),
+                                            ),
+                                          ),
                                   ),
                               ],
                             ),
@@ -1441,6 +1487,8 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeLayer,
+    this.active = false,
+    this.onSelectLayer,
     this.onToggleLayerVisibility,
     this.onToggleLayerMuted,
     this.onLayerOpacityChanged,
@@ -1460,6 +1508,15 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// lives on another track or has no such slot) 窶・the timeline-parity
   /// controls act on it.
   final Layer? activeLayer;
+
+  /// Whether this row's TRACK layer is the session's active layer — the
+  /// same highlight the timeline row shows (W3 identity keeps them in
+  /// sync automatically).
+  final bool active;
+
+  /// Tapping the row selects its track layer, like tapping a timeline
+  /// row label. Null keeps the row display-only.
+  final ValueChanged<LayerId>? onSelectLayer;
   final ValueChanged<LayerId>? onToggleLayerVisibility;
   final ValueChanged<LayerId>? onToggleLayerMuted;
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
@@ -1471,163 +1528,195 @@ class _StoryboardSeLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final layer = activeLayer;
+    final trackLayer = _trackSeAt(track, slot);
+    final onSelect = onSelectLayer;
     // Rows stack FLUSH like the timeline rail 窶・no inter-row padding
     // (R7-竭､); the 1px borders carry the separation.
-    return Container(
+    return InkWell(
       key: ValueKey<String>(
         'storyboard-se-label-${track.id.value}-${slot + 1}',
       ),
-      width: StoryboardPanel._trackLabelWidth,
-      height: _seRowHeight,
-      padding: const EdgeInsets.only(left: 2, right: 4),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          // The timeline rows' lane chevron, storyboard-prefixed.
-          if (onToggleLane != null)
-            InkWell(
-              key: ValueKey<String>(
-                'storyboard-se-lane-toggle-${track.id.value}-${slot + 1}',
-              ),
-              onTap: onToggleLane,
-              child: SizedBox(
-                width: 16,
-                height: _seRowHeight,
-                child: Icon(
-                  laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: 16),
-          Icon(
-            Icons.music_note_outlined,
-            size: 14,
-            color: colorScheme.onSurfaceVariant,
+      onTap: trackLayer == null || onSelect == null
+          ? null
+          : () => onSelect(trackLayer.id),
+      child: Container(
+        width: StoryboardPanel._trackLabelWidth,
+        height: _seRowHeight,
+        padding: const EdgeInsets.only(left: 2, right: 4),
+        decoration: BoxDecoration(
+          // The timeline row's active treatment verbatim (S-row selection,
+          // W4): secondaryContainer fill + 2px secondary border.
+          color: active
+              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+              : colorScheme.surface,
+          border: Border.all(
+            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
+            width: active ? 2 : 1,
           ),
-          const SizedBox(width: 6),
-          Text(
-            // The TRACK layer's stored name 窶・the same label the timeline
-            // row shows (S1, S3, S2 insertion order survives; W3 ordering
-            // unification).
-            _trackSeAt(track, slot)?.name ?? 'S${slot + 1}',
-            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(width: 4),
-          // Timeline-parity controls on the ACTIVE cut's slot layer:
-          // mark chip, fx (policy-gated), mute, eye and opacity 窶・the
-          // same shared widgets/session hooks the timeline rows use.
-          if (layer != null && onLayerMarkSelected != null)
-            LayerMarkChip(
-              keyPrefix: 'storyboard',
-              layerId: layer.id,
-              mark: layer.mark,
-              onMarkSelected: onLayerMarkSelected!,
-            ),
-          const Spacer(),
-          if (layer != null &&
-              onToggleLayerFx != null &&
-              layerKindShowsFxToggle(layer.kind))
-            LayerFxToggleButton(
-              keyPrefix: 'storyboard',
-              layerId: layer.id,
-              fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
-              onToggle: onToggleLayerFx!,
-            ),
-          if (layer != null && onToggleLayerMuted != null)
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: IconButton(
-                key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
-                tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 20,
-                  height: 20,
-                ),
-                icon: Icon(
-                  layer.muted ? Icons.volume_off : Icons.volume_up,
-                  size: 13,
-                ),
-                onPressed: () => onToggleLayerMuted!(layer.id),
-              ),
-            ),
-          if (layer != null && onToggleLayerVisibility != null)
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: IconButton(
-                key: ValueKey<String>(
-                  'storyboard-layer-visibility-${layer.id}',
-                ),
-                tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 20,
-                  height: 20,
-                ),
-                icon: Icon(
-                  layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                  size: 13,
-                ),
-                onPressed: () => onToggleLayerVisibility!(layer.id),
-              ),
-            ),
-          if (layer != null && onLayerOpacityChanged != null)
-            SizedBox(
-              width: 44,
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 2,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 5,
+        ),
+        child: Semantics(
+          key: active
+              ? const ValueKey<String>('storyboard-selected-layer')
+              : null,
+          label: active ? 'selected layer' : 'layer',
+          container: true,
+          explicitChildNodes: true,
+          child: Row(
+            children: [
+              // The timeline rows' lane chevron, storyboard-prefixed.
+              if (onToggleLane != null)
+                InkWell(
+                  key: ValueKey<String>(
+                    'storyboard-se-lane-toggle-${track.id.value}-${slot + 1}',
                   ),
-                  overlayShape: SliderComponentShape.noOverlay,
-                ),
-                child: Slider(
-                  key: ValueKey<String>('storyboard-layer-opacity-${layer.id}'),
-                  min: 0,
-                  max: 1,
-                  value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                  onChanged: (opacity) =>
-                      onLayerOpacityChanged!(layer.id, opacity),
-                ),
+                  onTap: onToggleLane,
+                  child: SizedBox(
+                    width: 16,
+                    height: _seRowHeight,
+                    child: Icon(
+                      laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                      size: 16,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: 16),
+              Icon(
+                Icons.music_note_outlined,
+                size: 14,
+                color: colorScheme.onSurfaceVariant,
               ),
-            ),
-          if (onToggleWaveform != null)
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: IconButton(
-                key: ValueKey<String>(
-                  'storyboard-se-waveform-toggle-'
-                  '${track.id.value}-${slot + 1}',
-                ),
-                tooltip: waveformVisible ? 'Hide Waveform' : 'Show Waveform',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 20,
-                  height: 20,
-                ),
-                icon: Icon(
-                  waveformVisible
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  size: 13,
-                  color: waveformVisible
+              const SizedBox(width: 6),
+              Text(
+                // The TRACK layer's stored name 窶・the same label the timeline
+                // row shows (S1, S3, S2 insertion order survives; W3 ordering
+                // unification).
+                trackLayer?.name ?? 'S${slot + 1}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                  color: active
                       ? colorScheme.onSurface
                       : colorScheme.onSurfaceVariant,
                 ),
-                onPressed: onToggleWaveform,
               ),
-            ),
-        ],
+              const SizedBox(width: 4),
+              // Timeline-parity controls on the ACTIVE cut's slot layer:
+              // mark chip, fx (policy-gated), mute, eye and opacity 窶・the
+              // same shared widgets/session hooks the timeline rows use.
+              if (layer != null && onLayerMarkSelected != null)
+                LayerMarkChip(
+                  keyPrefix: 'storyboard',
+                  layerId: layer.id,
+                  mark: layer.mark,
+                  onMarkSelected: onLayerMarkSelected!,
+                ),
+              const Spacer(),
+              if (layer != null &&
+                  onToggleLayerFx != null &&
+                  layerKindShowsFxToggle(layer.kind))
+                LayerFxToggleButton(
+                  keyPrefix: 'storyboard',
+                  layerId: layer.id,
+                  fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
+                  onToggle: onToggleLayerFx!,
+                ),
+              if (layer != null && onToggleLayerMuted != null)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: IconButton(
+                    key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
+                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 20,
+                      height: 20,
+                    ),
+                    icon: Icon(
+                      layer.muted ? Icons.volume_off : Icons.volume_up,
+                      size: 13,
+                    ),
+                    onPressed: () => onToggleLayerMuted!(layer.id),
+                  ),
+                ),
+              if (layer != null && onToggleLayerVisibility != null)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: IconButton(
+                    key: ValueKey<String>(
+                      'storyboard-layer-visibility-${layer.id}',
+                    ),
+                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 20,
+                      height: 20,
+                    ),
+                    icon: Icon(
+                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                      size: 13,
+                    ),
+                    onPressed: () => onToggleLayerVisibility!(layer.id),
+                  ),
+                ),
+              if (layer != null && onLayerOpacityChanged != null)
+                SizedBox(
+                  width: 44,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 5,
+                      ),
+                      overlayShape: SliderComponentShape.noOverlay,
+                    ),
+                    child: Slider(
+                      key: ValueKey<String>(
+                        'storyboard-layer-opacity-${layer.id}',
+                      ),
+                      min: 0,
+                      max: 1,
+                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                      onChanged: (opacity) =>
+                          onLayerOpacityChanged!(layer.id, opacity),
+                    ),
+                  ),
+                ),
+              if (onToggleWaveform != null)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: IconButton(
+                    key: ValueKey<String>(
+                      'storyboard-se-waveform-toggle-'
+                      '${track.id.value}-${slot + 1}',
+                    ),
+                    tooltip: waveformVisible
+                        ? 'Hide Waveform'
+                        : 'Show Waveform',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 20,
+                      height: 20,
+                    ),
+                    icon: Icon(
+                      waveformVisible
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 13,
+                      color: waveformVisible
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: onToggleWaveform,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

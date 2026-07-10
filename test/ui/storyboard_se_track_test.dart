@@ -79,6 +79,61 @@ Project _project() {
 }
 
 void main() {
+  testWidgets('tapping an S-row label selects the TRACK layer — the same '
+      'highlight language as the timeline row, synced by identity (W4)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _project())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+
+    // The initial active layer is the cut's drawing cel — no S row lights.
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-selected-layer')),
+      findsNothing,
+    );
+
+    // Tap the row's NAME (the row also carries controls; the text is the
+    // safe dead zone, like the timeline label tests).
+    final label = find.byKey(
+      const ValueKey<String>('storyboard-se-label-sb-se-track-1'),
+    );
+    await tester.tap(find.descendant(of: label, matching: find.text('S1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: label,
+        matching: find.byKey(
+          const ValueKey<String>('storyboard-selected-layer'),
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    // The timeline shows the SAME selection — one track-layer identity.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-layer-row-se-row-1')),
+        matching: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the storyboard renders the TRACK SE row on the global axis: '
       'true lengths across cut ends with a ~ crossing mark', (tester) async {
     await tester.pumpWidget(

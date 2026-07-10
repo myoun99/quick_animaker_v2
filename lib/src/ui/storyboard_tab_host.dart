@@ -11,7 +11,6 @@ import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
-import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_panel.dart';
@@ -64,6 +63,41 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   final Set<String> _expandedSeAudioRows = {};
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
+
+  /// The storyboard playhead's track-global frame — the cursor-layer
+  /// pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
+  /// and session changes update THIS notifier, and only the panel's
+  /// playhead overlay + ruler subscribe. The panel itself (strips, blocks,
+  /// rails, waveforms) never rebuilds on a tick.
+  final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
+
+  void _refreshPlayheadGlobalFrame() {
+    _playheadGlobalFrame.value = storyboardPlayheadFrame(_session);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshPlayheadGlobalFrame();
+    _session.addListener(_refreshPlayheadGlobalFrame);
+    _session.editingFrameCursor.addListener(_refreshPlayheadGlobalFrame);
+    _session.frameSeekCommitted.addListener(_refreshPlayheadGlobalFrame);
+    _session.playback.globalFrameIndexListenable.addListener(
+      _refreshPlayheadGlobalFrame,
+    );
+  }
+
+  @override
+  void dispose() {
+    _session.removeListener(_refreshPlayheadGlobalFrame);
+    _session.editingFrameCursor.removeListener(_refreshPlayheadGlobalFrame);
+    _session.frameSeekCommitted.removeListener(_refreshPlayheadGlobalFrame);
+    _session.playback.globalFrameIndexListenable.removeListener(
+      _refreshPlayheadGlobalFrame,
+    );
+    _playheadGlobalFrame.dispose();
+    super.dispose();
+  }
 
   void _toggleSetEntry(Set<String> set, String key) {
     setState(() {
@@ -261,19 +295,21 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
       child: Row(
         children: [
-          Text(
-            widget.showSeconds
-                ? timelineSecondsLabel(
-                    _session.currentFrameIndex + 1,
-                    _session.projectFps,
-                  )
-                : '${_session.currentFrameIndex + 1}',
-            key: const ValueKey<String>('timeline-current-frame-counter'),
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.primary,
+          // The counter subscribes to the cursor itself (timeline parity):
+          // a scrub tick rebuilds this one Text, nothing else.
+          ValueListenableBuilder<int>(
+            valueListenable: _session.editingFrameCursor,
+            builder: (context, cursorFrame, _) => Text(
+              widget.showSeconds
+                  ? timelineSecondsLabel(cursorFrame + 1, _session.projectFps)
+                  : '${cursorFrame + 1}',
+              key: const ValueKey<String>('timeline-current-frame-counter'),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.primary,
+              ),
             ),
           ),
           const Spacer(),
@@ -309,175 +345,172 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // Same rebuild channels as the timeline tab: playback ticks through the
-    // playback-only listenable, green-bar updates through the prerender
-    // progress.
+    // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
+    // moves ride _playheadGlobalFrame into the panel's playhead overlay +
+    // ruler; the green bar rides the prerender progress into the ruler;
+    // the counter subscribes to the cursor. Cut crossings during playback
+    // still notify the session (cut follow), which rebuilds the host from
+    // the workspace subscription.
     return Material(
       color: colorScheme.surfaceContainerHighest,
-      child: ValueListenableBuilder<PrerenderProgress>(
-        valueListenable: _session.prerenderScheduler.progress,
-        builder: (context, _, _) => ValueListenableBuilder<int?>(
-          valueListenable: _session.playback.globalFrameIndexListenable,
-          builder: (context, _, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _toolbarRow(context),
-              PlaybackTransportControls(
-                controller: _session.playback,
-                scope: PlaybackScope.allCuts,
-                quality: _session.playbackQuality,
-                onQualityChanged: _session.setPlaybackQuality,
-                // Play from the storyboard playhead, like the timeline's
-                // transport does.
-                playbackStartFrame: () =>
-                    storyboardPlayheadFrame(_session) ?? 0,
-              ),
-              Expanded(
-                // Edit drags (cut trims, SE comma drags) preview through
-                // the session's scoped channel: this builder substitutes
-                // the preview into the rendered project snapshot per step,
-                // so the strips follow the pointer while the repository —
-                // and every other panel — stays untouched until the
-                // release commits.
-                child: ValueListenableBuilder<TimelineDragPreview?>(
-                  valueListenable: _session.dragPreview,
-                  builder: (context, preview, _) => StoryboardPanel(
-                    project: projectWithTimelineDragPreview(
-                      _session.repository.requireProject(),
-                      preview,
-                    ),
-                    // While playing, the highlight follows the PLAYING cut
-                    // (onStopped syncs the real active cut).
-                    activeCutId: _session.playback.isActive
-                        ? _session.playback.position?.cutId ??
-                              _session.activeCutId
-                        : _session.activeCutId,
-                    onCutSelected: _session.selectCut,
-                    onCutReordered: _session.reorderCut,
-                    pixelsPerFrame: widget.pixelsPerFrame,
-                    showSeconds: widget.showSeconds,
-                    projectFps: _session.projectFps,
-                    // Edge-grip trims preview live and commit ONE undo on
-                    // release, like the timeline's comma drags.
-                    cutTrim: StoryboardCutTrimCallbacks(
-                      onBegin: (cutId, edge) =>
-                          _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
-                      onUpdate: _session.updateCutEdgeDrag,
-                      onEnd: _session.endCutEdgeDrag,
-                      onCancel: _session.cancelCutEdgeDrag,
-                    ),
-                    playheadGlobalFrame: storyboardPlayheadFrame(_session),
-                    onSeekGlobalFrame: (frame) =>
-                        seekStoryboardGlobalFrame(_session, frame),
-                    // Ruler drags ride the cursor path (the host rebuilds
-                    // per cursor move — the same cost playback ticks pay);
-                    // the release commits the selection once.
-                    onScrubGlobalFrame: (frame) =>
-                        scrubStoryboardGlobalFrame(_session, frame),
-                    onScrubEnd: () => commitStoryboardScrub(_session),
-                    isFrameCached: (frame) =>
-                        storyboardFrameCached(_session, frame),
-                    thumbnailFor: widget.thumbnailFor,
-                    audioPeaksFor: _session.audioPeaksStore.peaksFor,
-                    // Rail parity with the timeline rows: waveform eyes,
-                    // twirl-down audio lanes and the V track's cut-fade
-                    // (Opacity) lane.
-                    hiddenWaveformSeRows: _hiddenWaveformSeRows,
-                    onToggleSeRowWaveform: (track, slot) => _toggleSetEntry(
-                      _hiddenWaveformSeRows,
-                      StoryboardPanel.seRowKey(track, slot),
-                    ),
-                    expandedSeAudioRows: _expandedSeAudioRows,
-                    onToggleSeRowLane: (track, slot) => _toggleSetEntry(
-                      _expandedSeAudioRows,
-                      StoryboardPanel.seRowKey(track, slot),
-                    ),
-                    expandedTransformTracks: _expandedTransformTracks,
-                    onToggleTrackLane: (track) => _toggleSetEntry(
-                      _expandedTransformTracks,
-                      track.id.value,
-                    ),
-                    // AE group collapse for the V tracks' and S rows'
-                    // Transform groups (default collapsed).
-                    expandedTransformGroups: _expandedTransformGroups,
-                    onToggleTransformGroup: (groupKey) =>
-                        _toggleSetEntry(_expandedTransformGroups, groupKey),
-                    // The V track's cut-level Transform lanes (AE precomp:
-                    // the whole cut moving on the screen) and the S rows'
-                    // layer Transform lanes.
-                    cutLaneEditFor: _cutLaneEditFor,
-                    layerLaneEdit: _layerLaneEdit,
-                    activeCutFrameIndex: _session.currentFrameIndex,
-                    onSelectFrameIndex: _session.selectFrameIndex,
-                    poseDisplaySize: _session.cameraFrameSize,
-                    onSetCutFade: (cutId, fadeIn, fadeOut) =>
-                        _session.setCutFade(
-                          cutId,
-                          fadeInFrames: fadeIn,
-                          fadeOutFrames: fadeOut,
-                        ),
-                    // FO=black / WO=white — the fade span's context menu.
-                    onSetCutFadeTarget: _session.setCutFadeTarget,
-                    // Timeline-parity layer controls on the ACTIVE cut's SE
-                    // rows — the SAME session hooks the timeline host wires.
-                    onToggleLayerVisibility: _session.toggleLayerVisibility,
-                    onToggleLayerMuted: _session.toggleLayerMuted,
-                    onLayerOpacityChanged: (layerId, opacity) => _session
-                        .setLayerOpacity(layerId: layerId, opacity: opacity),
-                    onLayerMarkSelected: _session.setLayerMark,
-                    layerFxEnabledOf: _session.isLayerFxEnabled,
-                    onToggleLayerFx: _session.toggleLayerFx,
-                    // V-row display toggles (R9): cut FX bypass + picture
-                    // eye — session view state the playback display reads.
-                    cutFxEnabledOf: _session.isCutFxEnabled,
-                    onToggleCutFx: _session.toggleCutFx,
-                    cutPictureVisibleOf: _session.isCutPictureVisible,
-                    onToggleCutPictureVisibility:
-                        _session.toggleCutPictureVisibility,
-                    // SE block tap-select: cut + layer + frame, like tapping
-                    // the timeline's cells.
-                    onSelectSeBlock: (cutId, layerId, blockStartFrame) {
-                      _session.selectCut(cutId);
-                      _session.selectLayer(layerId);
-                      _session.selectFrameIndex(blockStartFrame);
-                    },
-                    // The ACTIVE cut's SE blocks reuse the timeline's comma
-                    // edge grips (live preview + ONE undo per drag).
-                    seCommaDrag: TimelineCommaDragCallbacks(
-                      onBegin: (layerId, blockStartIndex, edge) =>
-                          _session.beginExposureEdgeDrag(
-                            layerId: layerId,
-                            blockStartIndex: blockStartIndex,
-                            edge: edge,
-                          ),
-                      onUpdate: _session.updateExposureEdgeDrag,
-                      onEnd: _session.endExposureEdgeDrag,
-                      onCancel: _session.cancelExposureEdgeDrag,
-                    ),
-                    // The Audio lane's slide edit (active cut).
-                    onSetAudioClipOffset: _session.setAudioClipOffset,
-                    onNewCut: _session.createCut,
-                    onRenameActiveCut: _renameActiveCut,
-                    onEditActiveCutNote: _editActiveCutNote,
-                    onResizeActiveCutCanvas: _resizeActiveCutCanvas,
-                    onDuplicateActiveCut: _session.duplicateActiveCut,
-                    onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                        ? _session.moveActiveCutLeft
-                        : null,
-                    onMoveActiveCutRight: _session.canMoveActiveCutRight
-                        ? _session.moveActiveCutRight
-                        : null,
-                    onDeleteActiveCut: _session.deleteActiveCut,
-                    onToggleActiveCutThumbnail:
-                        _session.toggleActiveCutThumbnailFrame,
-                    isThumbnailPinnedHere:
-                        _session.isActiveCutThumbnailPinnedHere,
-                  ),
-                ),
-              ),
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _toolbarRow(context),
+          PlaybackTransportControls(
+            controller: _session.playback,
+            scope: PlaybackScope.allCuts,
+            quality: _session.playbackQuality,
+            onQualityChanged: _session.setPlaybackQuality,
+            // Play from the storyboard playhead, like the timeline's
+            // transport does.
+            playbackStartFrame: () => storyboardPlayheadFrame(_session) ?? 0,
           ),
-        ),
+          Expanded(
+            // Edit drags (cut trims, SE comma drags) preview through
+            // the session's scoped channel: this builder substitutes
+            // the preview into the rendered project snapshot per step,
+            // so the strips follow the pointer while the repository —
+            // and every other panel — stays untouched until the
+            // release commits.
+            child: ValueListenableBuilder<TimelineDragPreview?>(
+              valueListenable: _session.dragPreview,
+              builder: (context, preview, _) => StoryboardPanel(
+                project: projectWithTimelineDragPreview(
+                  _session.repository.requireProject(),
+                  preview,
+                ),
+                // While playing, the highlight follows the PLAYING cut
+                // (onStopped syncs the real active cut).
+                activeCutId: _session.playback.isActive
+                    ? _session.playback.position?.cutId ?? _session.activeCutId
+                    : _session.activeCutId,
+                onCutSelected: _session.selectCut,
+                // S-row selection (W4): tapping a rail label selects the
+                // TRACK layer — the timeline row highlight follows for
+                // free (same layer identity).
+                activeLayerId: _session.activeLayerId,
+                onSelectLayer: _session.selectLayer,
+                onCutReordered: _session.reorderCut,
+                pixelsPerFrame: widget.pixelsPerFrame,
+                showSeconds: widget.showSeconds,
+                projectFps: _session.projectFps,
+                // Edge-grip trims preview live and commit ONE undo on
+                // release, like the timeline's comma drags.
+                cutTrim: StoryboardCutTrimCallbacks(
+                  onBegin: (cutId, edge) =>
+                      _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
+                  onUpdate: _session.updateCutEdgeDrag,
+                  onEnd: _session.endCutEdgeDrag,
+                  onCancel: _session.cancelCutEdgeDrag,
+                ),
+                playheadFrame: _playheadGlobalFrame,
+                cacheProgress: _session.prerenderScheduler.progress,
+                onSeekGlobalFrame: (frame) =>
+                    seekStoryboardGlobalFrame(_session, frame),
+                // Ruler drags ride the cursor path (the host rebuilds
+                // per cursor move — the same cost playback ticks pay);
+                // the release commits the selection once.
+                onScrubGlobalFrame: (frame) =>
+                    scrubStoryboardGlobalFrame(_session, frame),
+                onScrubEnd: () => commitStoryboardScrub(_session),
+                isFrameCached: (frame) =>
+                    storyboardFrameCached(_session, frame),
+                thumbnailFor: widget.thumbnailFor,
+                audioPeaksFor: _session.audioPeaksStore.peaksFor,
+                // Rail parity with the timeline rows: waveform eyes,
+                // twirl-down audio lanes and the V track's cut-fade
+                // (Opacity) lane.
+                hiddenWaveformSeRows: _hiddenWaveformSeRows,
+                onToggleSeRowWaveform: (track, slot) => _toggleSetEntry(
+                  _hiddenWaveformSeRows,
+                  StoryboardPanel.seRowKey(track, slot),
+                ),
+                expandedSeAudioRows: _expandedSeAudioRows,
+                onToggleSeRowLane: (track, slot) => _toggleSetEntry(
+                  _expandedSeAudioRows,
+                  StoryboardPanel.seRowKey(track, slot),
+                ),
+                expandedTransformTracks: _expandedTransformTracks,
+                onToggleTrackLane: (track) =>
+                    _toggleSetEntry(_expandedTransformTracks, track.id.value),
+                // AE group collapse for the V tracks' and S rows'
+                // Transform groups (default collapsed).
+                expandedTransformGroups: _expandedTransformGroups,
+                onToggleTransformGroup: (groupKey) =>
+                    _toggleSetEntry(_expandedTransformGroups, groupKey),
+                // The V track's cut-level Transform lanes (AE precomp:
+                // the whole cut moving on the screen) and the S rows'
+                // layer Transform lanes.
+                cutLaneEditFor: _cutLaneEditFor,
+                layerLaneEdit: _layerLaneEdit,
+                activeCutFrameIndex: _session.currentFrameIndex,
+                onSelectFrameIndex: _session.selectFrameIndex,
+                poseDisplaySize: _session.cameraFrameSize,
+                onSetCutFade: (cutId, fadeIn, fadeOut) => _session.setCutFade(
+                  cutId,
+                  fadeInFrames: fadeIn,
+                  fadeOutFrames: fadeOut,
+                ),
+                // FO=black / WO=white — the fade span's context menu.
+                onSetCutFadeTarget: _session.setCutFadeTarget,
+                // Timeline-parity layer controls on the ACTIVE cut's SE
+                // rows — the SAME session hooks the timeline host wires.
+                onToggleLayerVisibility: _session.toggleLayerVisibility,
+                onToggleLayerMuted: _session.toggleLayerMuted,
+                onLayerOpacityChanged: (layerId, opacity) => _session
+                    .setLayerOpacity(layerId: layerId, opacity: opacity),
+                onLayerMarkSelected: _session.setLayerMark,
+                layerFxEnabledOf: _session.isLayerFxEnabled,
+                onToggleLayerFx: _session.toggleLayerFx,
+                // V-row display toggles (R9): cut FX bypass + picture
+                // eye — session view state the playback display reads.
+                cutFxEnabledOf: _session.isCutFxEnabled,
+                onToggleCutFx: _session.toggleCutFx,
+                cutPictureVisibleOf: _session.isCutPictureVisible,
+                onToggleCutPictureVisibility:
+                    _session.toggleCutPictureVisibility,
+                // SE block tap-select: cut + layer + frame, like tapping
+                // the timeline's cells.
+                onSelectSeBlock: (cutId, layerId, blockStartFrame) {
+                  _session.selectCut(cutId);
+                  _session.selectLayer(layerId);
+                  _session.selectFrameIndex(blockStartFrame);
+                },
+                // The ACTIVE cut's SE blocks reuse the timeline's comma
+                // edge grips (live preview + ONE undo per drag).
+                seCommaDrag: TimelineCommaDragCallbacks(
+                  onBegin: (layerId, blockStartIndex, edge) =>
+                      _session.beginExposureEdgeDrag(
+                        layerId: layerId,
+                        blockStartIndex: blockStartIndex,
+                        edge: edge,
+                      ),
+                  onUpdate: _session.updateExposureEdgeDrag,
+                  onEnd: _session.endExposureEdgeDrag,
+                  onCancel: _session.cancelExposureEdgeDrag,
+                ),
+                // The Audio lane's slide edit (active cut).
+                onSetAudioClipOffset: _session.setAudioClipOffset,
+                onNewCut: _session.createCut,
+                onRenameActiveCut: _renameActiveCut,
+                onEditActiveCutNote: _editActiveCutNote,
+                onResizeActiveCutCanvas: _resizeActiveCutCanvas,
+                onDuplicateActiveCut: _session.duplicateActiveCut,
+                onMoveActiveCutLeft: _session.canMoveActiveCutLeft
+                    ? _session.moveActiveCutLeft
+                    : null,
+                onMoveActiveCutRight: _session.canMoveActiveCutRight
+                    ? _session.moveActiveCutRight
+                    : null,
+                onDeleteActiveCut: _session.deleteActiveCut,
+                onToggleActiveCutThumbnail:
+                    _session.toggleActiveCutThumbnailFrame,
+                isThumbnailPinnedHere: _session.isActiveCutThumbnailPinnedHere,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
