@@ -22,6 +22,7 @@ import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
+import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'brush_edit_canvas_input_settings.dart';
@@ -154,6 +155,16 @@ class _InteractiveBrushEditCanvasViewState
   /// wander the spacing.
   BrushDab? _previousBaseDab;
 
+  /// Pull-string stabilization for the active stroke (P7): created at
+  /// pointer-down when the strength is non-zero (rope = screen px / zoom,
+  /// frozen per stroke); pen positions run through it BEFORE clipping and
+  /// interpolation, so every downstream route sees the smoothed chain.
+  StrokeStabilizer? _stabilizer;
+
+  /// The last RAW pen position (pre-stabilization) — pen-up catches the
+  /// brush up to it with a straight segment through the normal pipeline.
+  CanvasPoint? _lastPenPosition;
+
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
   /// (the exact commit-rasterizer math) and re-decode the touched overlay
   /// tiles; decode completions repaint the canvas painter directly through
@@ -279,6 +290,14 @@ class _InteractiveBrushEditCanvasViewState
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
     _previousRawCanvasPosition = canvasPosition;
+    _lastPenPosition = canvasPosition;
+    final stabilizerStrength = widget.inputSettings.stabilizerStrength;
+    _stabilizer = stabilizerStrength > 0
+        ? StrokeStabilizer(
+            ropeLength: stabilizerStrength / widget.viewport.zoom,
+            start: canvasPosition,
+          )
+        : null;
     _strokeDynamics = BrushStrokeDynamics(settings: widget.inputSettings);
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
@@ -315,7 +334,15 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _currentPressure = _normalizedPressure(event);
-    final canvasPosition = _canvasPositionFromLocal(event.localPosition);
+    final penPosition = _canvasPositionFromLocal(event.localPosition);
+    _lastPenPosition = penPosition;
+    // The stabilizer smooths BEFORE clipping/interpolation, so every
+    // downstream consumer (overlay, commit, replay) sees one chain — the
+    // three-route parity holds by construction (P7).
+    _advanceStrokeTo(_stabilizer?.follow(penPosition) ?? penPosition);
+  }
+
+  void _advanceStrokeTo(CanvasPoint canvasPosition) {
     final previousRaw = _previousRawCanvasPosition;
     _previousRawCanvasPosition = canvasPosition;
     if (previousRaw == null) {
@@ -432,6 +459,14 @@ class _InteractiveBrushEditCanvasViewState
     _forgetTouchPointer(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
+    }
+
+    // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
+    // length — pen-up closes the gap with one straight segment through
+    // the normal pipeline, so line ends land where the pen lifted.
+    final lastPen = _lastPenPosition;
+    if (_stabilizer != null && lastPen != null) {
+      _advanceStrokeTo(lastPen);
     }
 
     final hadDabs = _collectedDabs.isNotEmpty;
@@ -596,6 +631,8 @@ class _InteractiveBrushEditCanvasViewState
     _strokeDynamics = null;
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
+    _stabilizer = null;
+    _lastPenPosition = null;
     _collectedDabs.clear();
     _pendingOverlayDabs.clear();
   }

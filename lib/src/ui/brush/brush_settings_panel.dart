@@ -87,6 +87,20 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),
           ),
+          // Pull-string stabilization (P7): a hand-feel setting, kept OUT
+          // of brush presets on purpose.
+          _PanelSlider(
+            label: 'Stabilizer',
+            valueLabel: '${state.stabilizerStrength.round()}',
+            value: BrushToolState.clampStabilizerStrength(
+              state.stabilizerStrength,
+            ),
+            min: 0,
+            max: 100,
+            keyValue: 'brush-tool-stabilizer-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(stabilizerStrength: value)),
+          ),
           const SizedBox(height: 8),
           Text('Tip Shape', style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 6),

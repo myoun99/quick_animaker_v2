@@ -42,6 +42,7 @@ class BrushToolState {
     double textureScale = 1.0,
     double textureDensity = 1.0,
     CanvasTool tool = CanvasTool.brush,
+    double stabilizerStrength = 0.0,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -70,6 +71,7 @@ class BrushToolState {
       textureScale: textureScale,
       textureDensity: textureDensity,
       tool: tool,
+      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -100,6 +102,7 @@ class BrushToolState {
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.tool = CanvasTool.brush,
+    this.stabilizerStrength = 0.0,
   });
 
   factory BrushToolState.clamped({
@@ -129,6 +132,7 @@ class BrushToolState {
     double? textureScale,
     double? textureDensity,
     CanvasTool? tool,
+    double? stabilizerStrength,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -157,6 +161,7 @@ class BrushToolState {
       textureScale: clampDualMaskScale(textureScale ?? 1.0),
       textureDensity: clampZeroToOne(textureDensity ?? 1.0),
       tool: tool ?? CanvasTool.brush,
+      stabilizerStrength: clampStabilizerStrength(stabilizerStrength ?? 0.0),
     );
   }
 
@@ -250,6 +255,11 @@ class BrushToolState {
   /// it); applying a preset returns to the brush, CSP-style.
   final CanvasTool tool;
 
+  /// Pull-string stabilization strength (P7), 0..100 screen px of rope.
+  /// A HAND-FEEL setting, deliberately outside brush presets — preset
+  /// application carries it over unchanged.
+  final double stabilizerStrength;
+
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) {
@@ -342,6 +352,7 @@ class BrushToolState {
       textureScale: textureScale,
       textureDensity: textureDensity,
       erase: tool == CanvasTool.eraser,
+      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -372,6 +383,7 @@ class BrushToolState {
     double? textureScale,
     double? textureDensity,
     CanvasTool? tool,
+    double? stabilizerStrength,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -400,6 +412,7 @@ class BrushToolState {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       tool: tool ?? this.tool,
+      stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
     );
   }
 
@@ -476,6 +489,14 @@ class BrushToolState {
     return value.clamp(0.05, 10.0).toDouble();
   }
 
+  /// Clamps the stabilizer rope to [0, 100] screen pixels.
+  static double clampStabilizerStrength(double value) {
+    if (!value.isFinite) {
+      return 0.0;
+    }
+    return value.clamp(0.0, 100.0).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -505,7 +526,8 @@ class BrushToolState {
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
-          other.tool == tool;
+          other.tool == tool &&
+          other.stabilizerStrength == stabilizerStrength;
 
   @override
   int get hashCode => Object.hashAll([
@@ -535,5 +557,6 @@ class BrushToolState {
     textureScale,
     textureDensity,
     tool,
+    stabilizerStrength,
   ]);
 }
