@@ -768,6 +768,26 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
+  /// The ACTIVE cut's cut-level pose over the CANVAS at [frameIndex]
+  /// (default: the playhead) — the storyboard V-row fx preview on the
+  /// EDITING canvas and the scrub preview (R9-B). Non-null only while the
+  /// cut's geometric lanes carry keys AND its fx apply; canvas-space via
+  /// the camera-frame conjugation (cutPoseForCanvasPreview — the exact
+  /// remap playback uses, R8-③).
+  LayerPoseSample? activeCutCanvasPoseSample({int? frameIndex}) {
+    final cut = activeCutOrNull;
+    if (cut == null || !isCutFxEnabled(cut.id) || !cutPoseIsActive(cut)) {
+      return null;
+    }
+    final preview = cutPoseForCanvasPreview(
+      cut,
+      frameIndex ?? _timelineController.currentFrameIndex,
+      cameraFrameSize: cameraFrameSize,
+      canvasSize: cut.canvasSize,
+    );
+    return (pose: preview.pose, anchorPoint: preview.anchorPoint);
+  }
+
   /// Whether the playback composite for [frameIndex] is warmed at the
   /// current quality (the timeline's cached-range "green bar").
   bool isPlaybackFrameCached(int frameIndex) {

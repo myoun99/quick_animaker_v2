@@ -7,6 +7,7 @@ import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
@@ -122,6 +123,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final interactivePose = selection == null
         ? null
         : session.layerCanvasPoseSample(selection.layerId);
+    // The CUT-level pose (storyboard V-row fx, R9-B): with fx on, the
+    // editing canvas shows the cut's transform exactly like the layer fx —
+    // the paper stays put, all layer CONTENT rides the pose. The active
+    // layer's wrap composes cut ∘ layer into ONE pose sample (similarities
+    // compose exactly), so draw-through keeps landing strokes in artwork
+    // coordinates through the single Transform's hit-test inverse.
+    final canvasSize = session.activeCut.canvasSize;
+    final cutPoseSample = session.activeCutCanvasPoseSample();
+    final interactiveWrapPose = cutPoseSample == null
+        ? interactivePose
+        : interactivePose == null
+        ? cutPoseSample
+        : composeLayerPoseSamples(cutPoseSample, interactivePose, canvasSize);
     // The Position drag gizmo: only while the active layer's Transform
     // lanes are twirled open (deliberate transform-editing mode) and its
     // fx apply.
@@ -163,18 +177,49 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // Layers below/above the active one composite around the
           // interactive view from the layer image cache — this is what makes
           // the other layers (and their visibility/opacity) visible while
-          // editing. During playback the composite covers everything.
+          // editing. During playback the composite covers everything. Under
+          // an active CUT pose (R9-B) the paper splits out of the wrap: the
+          // canvas is the static stage, only the content rides the pose.
           viewportUnderlayBuilder: isPlaybackActive || isScrubbing
               ? null
-              : (context, viewport) => CanvasLayerStackView(
-                  layers: layerStack.below,
-                  imageCache: session.layerFrameImageCache,
-                  canvasSize: session.activeCut.canvasSize,
-                  viewport: viewport,
-                  paintPaper: true,
-                ),
+              : (context, viewport) {
+                  final below = CanvasLayerStackView(
+                    layers: layerStack.below,
+                    imageCache: session.layerFrameImageCache,
+                    canvasSize: canvasSize,
+                    viewport: viewport,
+                    paintPaper: cutPoseSample == null,
+                  );
+                  if (cutPoseSample == null) {
+                    return below;
+                  }
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: CanvasLayerStackView(
+                          layers: const [],
+                          imageCache: session.layerFrameImageCache,
+                          canvasSize: canvasSize,
+                          viewport: viewport,
+                          paintPaper: true,
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Transform(
+                          transform: layerPoseViewportWrapMatrix(
+                            cutPoseSample.pose,
+                            canvasSize,
+                            viewport,
+                            anchorPoint: cutPoseSample.anchorPoint,
+                          ),
+                          child: below,
+                        ),
+                      ),
+                    ],
+                  );
+                },
           interactiveContentOpacity: layerStack.activeLayerOpacity,
-          interactiveContentPose: interactivePose,
+          interactiveContentPose: interactiveWrapPose,
           // The playback view renders the camera framing itself; the editing
           // overlay would show a stale playhead pose on top of it. A scrub
           // keeps the CAMERA overlay only — the preview is the current view
@@ -187,11 +232,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   children: [
                     if (showAboveLayers)
                       Positioned.fill(
-                        child: CanvasLayerStackView(
-                          layers: layerStack.above,
-                          imageCache: session.layerFrameImageCache,
-                          canvasSize: session.activeCut.canvasSize,
-                          viewport: viewport,
+                        child: Builder(
+                          builder: (context) {
+                            final above = CanvasLayerStackView(
+                              layers: layerStack.above,
+                              imageCache: session.layerFrameImageCache,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                            );
+                            if (cutPoseSample == null) {
+                              return above;
+                            }
+                            // Above-layers ride the cut pose too (R9-B);
+                            // the camera overlay and the gizmo below stay
+                            // unposed — they are canvas-space chrome.
+                            return Transform(
+                              transform: layerPoseViewportWrapMatrix(
+                                cutPoseSample.pose,
+                                canvasSize,
+                                viewport,
+                                anchorPoint: cutPoseSample.anchorPoint,
+                              ),
+                              child: above,
+                            );
+                          },
                         ),
                       ),
                     if (showCameraOverlay)
@@ -260,6 +324,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   compositeCache: session.cutFrameCompositeCache,
                   cut: session.activeCut,
                   qualityOf: () => session.playbackQuality,
+                  // The cut pose follows the editing canvas (R9-B): fx-gated
+                  // per cursor frame, identity when off.
+                  cutPoseSampleAt: (frame) =>
+                      session.activeCutCanvasPoseSample(frameIndex: frame),
                   viewport: viewport,
                 )
               : null,
