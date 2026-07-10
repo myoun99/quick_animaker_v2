@@ -68,6 +68,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       listenable: Listenable.merge([
         session,
         session.frameSeekCommitted,
+        // Onion-skin toggles/pegs re-plan the underlay ghosts (P2).
+        session.onionSkinSettings,
         widget.brushToolState,
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
@@ -215,7 +217,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ? null
               : (context, viewport) {
                   final below = CanvasLayerStackView(
-                    layers: layerStack.below,
+                    layers: [
+                      ...layerStack.below,
+                      // Onion ghosts (P2) sit ABOVE the other layers and
+                      // directly UNDER the active drawing; playback and
+                      // scrubs never reach here, so they auto-hide.
+                      ...session.onionSkinCanvasRequests(),
+                    ],
                     imageCache: session.layerFrameImageCache,
                     canvasSize: canvasSize,
                     viewport: viewport,

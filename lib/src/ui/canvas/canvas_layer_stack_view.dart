@@ -18,6 +18,7 @@ class CanvasLayerImageRequest {
     required this.opacity,
     this.pose,
     this.anchorPoint,
+    this.tint,
   });
 
   final BrushFrameKey frameKey;
@@ -32,6 +33,10 @@ class CanvasLayerImageRequest {
 
   /// The pose's anchor point; null = canvas center.
   final CanvasPoint? anchorPoint;
+
+  /// ARGB tint MULTIPLIED over the artwork's colors (onion-skin Colors
+  /// mode); null paints the artwork as-is.
+  final int? tint;
 }
 
 /// Paints the non-active layers of the editing canvas (below or above the
@@ -204,6 +209,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
                   opacity: layer.opacity,
                   pose: layer.pose,
                   anchorPoint: layer.anchorPoint,
+                  tint: layer.tint,
                 ),
           ],
           canvasSize: widget.canvasSize,
@@ -230,6 +236,7 @@ class _LayerStackPainter extends CustomPainter {
       double opacity,
       TransformPose? pose,
       CanvasPoint? anchorPoint,
+      int? tint,
     })
   >
   images;
@@ -266,6 +273,16 @@ class _LayerStackPainter extends CustomPainter {
           anchorPoint: layer.anchorPoint,
         );
       }
+      final paint = Paint()
+        ..filterQuality = FilterQuality.low
+        ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0));
+      // Onion-skin Colors mode: the tint MULTIPLIES the artwork's colors
+      // (ink lines go red/green, white stays white-ish) — the Callipeg
+      // look; the paint alpha above still fades the whole ghost.
+      final tint = layer.tint;
+      if (tint != null) {
+        paint.colorFilter = ColorFilter.mode(Color(tint), BlendMode.modulate);
+      }
       canvas.drawImageRect(
         layer.image,
         Rect.fromLTWH(
@@ -275,9 +292,7 @@ class _LayerStackPainter extends CustomPainter {
           layer.image.height.toDouble(),
         ),
         canvasRect,
-        Paint()
-          ..filterQuality = FilterQuality.low
-          ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0)),
+        paint,
       );
       if (layerPose != null) {
         canvas.restore();
@@ -298,7 +313,8 @@ class _LayerStackPainter extends CustomPainter {
       if (!identical(oldDelegate.images[index].image, images[index].image) ||
           oldDelegate.images[index].opacity != images[index].opacity ||
           oldDelegate.images[index].pose != images[index].pose ||
-          oldDelegate.images[index].anchorPoint != images[index].anchorPoint) {
+          oldDelegate.images[index].anchorPoint != images[index].anchorPoint ||
+          oldDelegate.images[index].tint != images[index].tint) {
         return true;
       }
     }

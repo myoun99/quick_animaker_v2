@@ -41,6 +41,7 @@ abstract final class EditorActionIds {
   static const redo = 'edit-redo';
   static const toolBrush = 'tool-brush';
   static const toolEraser = 'tool-eraser';
+  static const onionSkinToggle = 'onion-skin-toggle';
 }
 
 /// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
@@ -115,5 +116,11 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Eraser Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyE)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.onionSkinToggle,
+    label: 'Toggle Onion Skin',
+    category: 'View',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyO)],
   ),
 ];

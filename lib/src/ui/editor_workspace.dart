@@ -33,6 +33,8 @@ import 'panels/workspace_panels_menu.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_section_policy.dart';
+import '../models/onion_skin_settings.dart';
+import 'panels/onion_skin_panel.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
@@ -107,6 +109,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
   static const String colorWheelTabId = 'color-wheel';
+  static const String onionSkinTabId = 'onion-skin';
   static const String cameraTabId = 'camera';
   static const String mediaTabId = 'media';
   static const String timelineTabId = 'timeline';
@@ -139,6 +142,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           EditorWorkspace.colorWheelTabId,
           EditorWorkspace.cameraTabId,
           EditorWorkspace.mediaTabId,
+          // Trailing so the long-standing tab positions (and every test
+          // tapping them) stay put; the strip scrolls to reach it.
+          EditorWorkspace.onionSkinTabId,
         ],
         activeTabId: EditorWorkspace.brushesTabId,
       ),
@@ -598,6 +604,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 onBackgroundColorChanged: (color) =>
                     _colorWheelBackground.value = color,
               ),
+            ),
+          ),
+        );
+      case EditorWorkspace.onionSkinTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Onion Skin',
+          icon: Icons.layers_outlined,
+          locked: locked,
+          builder: (context) => ValueListenableBuilder<OnionSkinSettings>(
+            valueListenable: widget.session.onionSkinSettings,
+            builder: (context, settings, _) => OnionSkinPanel(
+              settings: settings,
+              onChanged: (next) =>
+                  widget.session.onionSkinSettings.value = next,
             ),
           ),
         );
