@@ -101,4 +101,25 @@ void main() {
     s.toggleCutFx(cutId);
     expect(s.activeCutCanvasPoseSample(), isNotNull);
   });
+
+  test('activeCutEditingFadeOpacity (R9-C): the editing canvas fade wash '
+      'follows the fx switch — fx always reflects, bypass restores 1', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final cutId = s.activeCutId;
+
+    expect(s.activeCutEditingFadeOpacity(), 1, reason: 'no fade keyed');
+
+    s.setCutFade(cutId, fadeInFrames: 4, fadeOutFrames: 0);
+    expect(s.activeCutEditingFadeOpacity(frameIndex: 0), 0.0);
+    expect(s.activeCutEditingFadeOpacity(frameIndex: 2), closeTo(0.5, 1e-9));
+    expect(s.activeCutEditingFadeOpacity(frameIndex: 4), 1.0);
+
+    s.toggleCutFx(cutId);
+    expect(
+      s.activeCutEditingFadeOpacity(frameIndex: 0),
+      1,
+      reason: 'fx bypass lifts the wash',
+    );
+  });
 }

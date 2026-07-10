@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
 import 'brush/brush_tool_state.dart';
@@ -12,6 +13,7 @@ import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_scrub_preview.dart';
+import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
 import 'timeline/layer_label_controls.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -102,6 +104,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
+  /// Wraps editing-canvas content in the CUT pose (R9-B) — identity
+  /// pass-through when [sample] is null. Content only: the paper, the
+  /// camera overlay chrome and the fade wash stay outside.
+  Widget _wrapInCutPose(
+    Widget child, {
+    required LayerPoseSample? sample,
+    required CanvasSize canvasSize,
+    required CanvasViewport viewport,
+  }) {
+    if (sample == null) {
+      return child;
+    }
+    return Transform(
+      transform: layerPoseViewportWrapMatrix(
+        sample.pose,
+        canvasSize,
+        viewport,
+        anchorPoint: sample.anchorPoint,
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildInteractiveCanvas(
     EditorSessionManager session, {
     required bool isCameraLayerActive,
@@ -136,6 +161,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         : interactivePose == null
         ? cutPoseSample
         : composeLayerPoseSamples(cutPoseSample, interactivePose, canvasSize);
+    // The cut FADE follows the fx switch too (R9-C: fx ALWAYS reflects —
+    // dark faded frames are worked with fx off): a wash of the fade target
+    // color over the canvas, above the content, below the chrome.
+    final cutFadeOpacity = session.activeCutEditingFadeOpacity();
+    final showFadeWash =
+        !isPlaybackActive && !isScrubbing && cutFadeOpacity < 1;
     // The Position drag gizmo: only while the active layer's Transform
     // lanes are twirled open (deliberate transform-editing mode) and its
     // fx apply.
@@ -205,14 +236,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         ),
                       ),
                       Positioned.fill(
-                        child: Transform(
-                          transform: layerPoseViewportWrapMatrix(
-                            cutPoseSample.pose,
-                            canvasSize,
-                            viewport,
-                            anchorPoint: cutPoseSample.anchorPoint,
-                          ),
-                          child: below,
+                        child: _wrapInCutPose(
+                          below,
+                          sample: cutPoseSample,
+                          canvasSize: canvasSize,
+                          viewport: viewport,
                         ),
                       ),
                     ],
@@ -226,36 +254,46 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // moving through time, so the frame stays visible and rides the
           // cursor.
           viewportOverlayBuilder:
-              (showCameraOverlay || showAboveLayers || showPositionGizmo) &&
+              (showCameraOverlay ||
+                      showAboveLayers ||
+                      showPositionGizmo ||
+                      showFadeWash) &&
                   !isPlaybackActive
               ? (context, viewport) => Stack(
                   children: [
                     if (showAboveLayers)
                       Positioned.fill(
-                        child: Builder(
-                          builder: (context) {
-                            final above = CanvasLayerStackView(
-                              layers: layerStack.above,
-                              imageCache: session.layerFrameImageCache,
-                              canvasSize: canvasSize,
+                        // Above-layers ride the cut pose too (R9-B); the
+                        // camera overlay stays unposed (canvas chrome).
+                        child: _wrapInCutPose(
+                          CanvasLayerStackView(
+                            layers: layerStack.above,
+                            imageCache: session.layerFrameImageCache,
+                            canvasSize: canvasSize,
+                            viewport: viewport,
+                          ),
+                          sample: cutPoseSample,
+                          canvasSize: canvasSize,
+                          viewport: viewport,
+                        ),
+                      ),
+                    if (showFadeWash)
+                      Positioned.fill(
+                        // The cut fade as a wash of the fade target color
+                        // over the canvas (R9-C) — above every layer,
+                        // below the chrome; matches playback's overlay at
+                        // (1 − fade).
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _CutFadeWashPainter(
                               viewport: viewport,
-                            );
-                            if (cutPoseSample == null) {
-                              return above;
-                            }
-                            // Above-layers ride the cut pose too (R9-B);
-                            // the camera overlay and the gizmo below stay
-                            // unposed — they are canvas-space chrome.
-                            return Transform(
-                              transform: layerPoseViewportWrapMatrix(
-                                cutPoseSample.pose,
-                                canvasSize,
-                                viewport,
-                                anchorPoint: cutPoseSample.anchorPoint,
-                              ),
-                              child: above,
-                            );
-                          },
+                              canvasSize: canvasSize,
+                              color: cutFadeTargetColor(session.activeCut)
+                                  .withValues(
+                                    alpha: (1 - cutFadeOpacity).clamp(0.0, 1.0),
+                                  ),
+                            ),
+                          ),
                         ),
                       ),
                     if (showCameraOverlay)
@@ -282,24 +320,34 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       ),
                     if (showPositionGizmo)
                       Positioned.fill(
-                        child: LayerPositionGizmo(
-                          pose: session.layerPoseAtFrame(
-                            activeLayer,
-                            session.currentFrameIndex,
-                          ),
-                          viewport: viewport,
-                          // ONE key at the playhead per drag (AE rule, one
-                          // undo).
-                          onPositionCommitted: (position) =>
-                              session.updateLayerTransformTrack(
-                                activeLayer.id,
-                                transformTrackWithPositionDragged(
-                                  activeLayer.transformTrack,
-                                  frameIndex: session.currentFrameIndex,
-                                  position: position,
+                        // The gizmo rides the cut pose too (R9-C): the
+                        // crosshair sits ON the posed picture and the
+                        // wrap's hit-test inverse maps drag deltas back
+                        // into the layer's own canvas space — the
+                        // committed Position stays unposed.
+                        child: _wrapInCutPose(
+                          LayerPositionGizmo(
+                            pose: session.layerPoseAtFrame(
+                              activeLayer,
+                              session.currentFrameIndex,
+                            ),
+                            viewport: viewport,
+                            // ONE key at the playhead per drag (AE rule,
+                            // one undo).
+                            onPositionCommitted: (position) =>
+                                session.updateLayerTransformTrack(
+                                  activeLayer.id,
+                                  transformTrackWithPositionDragged(
+                                    activeLayer.transformTrack,
+                                    frameIndex: session.currentFrameIndex,
+                                    position: position,
+                                  ),
+                                  description: 'Move ${activeLayer.name}',
                                 ),
-                                description: 'Move ${activeLayer.name}',
-                              ),
+                          ),
+                          sample: cutPoseSample,
+                          canvasSize: canvasSize,
+                          viewport: viewport,
                         ),
                       ),
                   ],
@@ -324,10 +372,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   compositeCache: session.cutFrameCompositeCache,
                   cut: session.activeCut,
                   qualityOf: () => session.playbackQuality,
-                  // The cut pose follows the editing canvas (R9-B): fx-gated
-                  // per cursor frame, identity when off.
+                  // The cut pose AND fade follow the editing canvas
+                  // (R9-B/C): fx-gated per cursor frame, identity when off.
                   cutPoseSampleAt: (frame) =>
                       session.activeCutCanvasPoseSample(frameIndex: frame),
+                  cutFadeOpacityAt: (frame) =>
+                      session.activeCutEditingFadeOpacity(frameIndex: frame),
+                  fadeColor: cutFadeTargetColor(session.activeCut),
                   viewport: viewport,
                 )
               : null,
@@ -335,4 +386,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       ),
     );
   }
+}
+
+/// The editing canvas's cut-fade wash (R9-C): the fade target color over
+/// the canvas rect at (1 − fadeOpacity), under the panel viewport — the
+/// same overlay playback paints, so an fx-on faded frame reads identically
+/// while editing.
+class _CutFadeWashPainter extends CustomPainter {
+  const _CutFadeWashPainter({
+    required this.viewport,
+    required this.canvasSize,
+    required this.color,
+  });
+
+  final CanvasViewport viewport;
+  final CanvasSize canvasSize;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawRect(
+      Rect.fromLTWH(
+        viewport.panX,
+        viewport.panY,
+        canvasSize.width * viewport.zoom,
+        canvasSize.height * viewport.zoom,
+      ),
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CutFadeWashPainter oldDelegate) =>
+      oldDelegate.viewport != viewport ||
+      oldDelegate.canvasSize != canvasSize ||
+      oldDelegate.color != color;
 }

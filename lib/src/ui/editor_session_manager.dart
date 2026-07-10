@@ -788,6 +788,20 @@ class EditorSessionManager extends ChangeNotifier {
     return (pose: preview.pose, anchorPoint: preview.anchorPoint);
   }
 
+  /// The cut fade the editing canvas (and the scrub preview) shows at
+  /// [frameIndex] (default: the playhead) — the resolved opacity while the
+  /// cut's fx apply, 1 when bypassed. R9-C rule: fx ALWAYS reflects; dark
+  /// faded frames are worked with the fx switch off.
+  double activeCutEditingFadeOpacity({int? frameIndex}) {
+    final cut = activeCutOrNull;
+    if (cut == null || !isCutFxEnabled(cut.id)) {
+      return 1;
+    }
+    return cut.fadeOpacityAt(
+      frameIndex ?? _timelineController.currentFrameIndex,
+    );
+  }
+
   /// Whether the playback composite for [frameIndex] is warmed at the
   /// current quality (the timeline's cached-range "green bar").
   bool isPlaybackFrameCached(int frameIndex) {
