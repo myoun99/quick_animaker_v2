@@ -708,20 +708,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // (3-surface rule: sheet, X-sheet and timeline read the same).
         seEmptyFill: _session.timesheetInfo.seEmptyFill,
         // The audio lane's slide edit (the clip's offset trim), edge
-        // fade handles and gain dialog. The slide DRAG rides the live
-        // session (repo-direct preview — waveforms and blocks follow in
-        // real time, one undo on release); the value field keeps the
-        // one-shot commit.
+        // fade handles and gain dialog. The slide previews LOCALLY in the
+        // lane span (its own painter, no session traffic per move) and
+        // commits ONE undo on release — the repo-live drag session
+        // rebuilt every panel per move and made the slide feel heavy
+        // (R5-⑧); the session drag API stays for callers that need the
+        // cross-panel mirror.
         onSetAudioClipOffset: _session.setAudioClipOffset,
-        audioOffsetDrag: AudioOffsetDragCallbacks(
-          onBegin: (layerId, clipIndex) => _session.beginAudioClipOffsetDrag(
-            layerId: layerId,
-            clipIndex: clipIndex,
-          ),
-          onUpdate: _session.updateAudioClipOffsetDrag,
-          onEnd: _session.endAudioClipOffsetDrag,
-          onCancel: _session.cancelAudioClipOffsetDrag,
-        ),
         onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
             _session.setAudioClipFades(
               layerId,

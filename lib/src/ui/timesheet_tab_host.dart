@@ -175,10 +175,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
     // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
     // data and hand the windows fresh ink session surfaces; ink commits
-    // notify through the controller. Committed seeks (no longer session
-    // notifies) move the playhead row/page.
+    // notify through the controller. The editing frame cursor keeps the
+    // sheet playhead glued to ruler scrubs LIVE (user-requested) —
+    // affordable because the document/layout memo turns a cursor-only
+    // rebuild into a repaint, not a recompute.
     final listenable = Listenable.merge([
       session,
+      session.editingFrameCursor,
       session.frameSeekCommitted,
       session.playback.globalFrameIndexListenable,
       ?inkController,

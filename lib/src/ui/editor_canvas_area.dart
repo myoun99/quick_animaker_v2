@@ -176,11 +176,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           interactiveContentOpacity: layerStack.activeLayerOpacity,
           interactiveContentPose: interactivePose,
           // The playback view renders the camera framing itself; the editing
-          // overlay would show a stale playhead pose on top of it.
+          // overlay would show a stale playhead pose on top of it. A scrub
+          // keeps the CAMERA overlay only — the preview is the current view
+          // moving through time, so the frame stays visible and rides the
+          // cursor.
           viewportOverlayBuilder:
               (showCameraOverlay || showAboveLayers || showPositionGizmo) &&
-                  !isPlaybackActive &&
-                  !isScrubbing
+                  !isPlaybackActive
               ? (context, viewport) => Stack(
                   children: [
                     if (showAboveLayers)
@@ -194,18 +196,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       ),
                     if (showCameraOverlay)
                       Positioned.fill(
-                        child: CameraFrameOverlay(
-                          pose: session.cameraPoseAtCurrentFrame,
-                          cameraFrameSize: session.cameraFrameSize,
-                          viewport: viewport,
-                          // Dim belongs to camera-view mode; plain
-                          // manipulation keeps the artwork undimmed.
-                          dimOpacity: widget.cameraViewEnabled.value
-                              ? widget.cameraDimOpacity.value
-                              : 0,
-                          interactive: isCameraLayerActive,
-                          onPoseCommitted:
-                              session.setCameraKeyframeAtCurrentFrame,
+                        // The cursor subscription keeps the frame gliding
+                        // along its animated pose during scrubs (and after
+                        // committed seeks) without any wider rebuild.
+                        child: ListenableBuilder(
+                          listenable: session.editingFrameCursor,
+                          builder: (context, _) => CameraFrameOverlay(
+                            pose: session.cameraPoseAtCurrentFrame,
+                            cameraFrameSize: session.cameraFrameSize,
+                            viewport: viewport,
+                            // Dim belongs to camera-view mode; plain
+                            // manipulation keeps the artwork undimmed.
+                            dimOpacity: widget.cameraViewEnabled.value
+                                ? widget.cameraDimOpacity.value
+                                : 0,
+                            interactive: isCameraLayerActive && !isScrubbing,
+                            onPoseCommitted:
+                                session.setCameraKeyframeAtCurrentFrame,
+                          ),
                         ),
                       ),
                     if (showPositionGizmo)
@@ -250,9 +258,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   compositeCache: session.cutFrameCompositeCache,
                   cut: session.activeCut,
                   qualityOf: () => session.playbackQuality,
-                  cameraViewEnabled: widget.cameraViewEnabled.value,
-                  cameraFrameSize: session.cameraFrameSize,
-                  cameraPoseOf: session.cameraPoseForCut,
                   viewport: viewport,
                 )
               : null,
