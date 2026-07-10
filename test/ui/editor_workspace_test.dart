@@ -393,7 +393,13 @@ void main() {
       // The neighbouring tab takes over the section.
       expect(find.byType(BrushSettingsPanel), findsOneWidget);
 
-      // Reopen from the AppBar's Panels menu.
+      // Reopen from the menu bar's Window menu (the retired Panels menu's
+      // keys). Ahem-wide labels can push the button past the strip's
+      // scroll clip in tests — bring it into view first.
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('panels-menu-button')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('panels-menu-button')),
       );
