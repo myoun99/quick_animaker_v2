@@ -1,0 +1,69 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+
+/// R6-④: the brush only lands on drawing-section layers — SE cels are
+/// timing/dialogue data and instruction/camera rows are notation, so they
+/// never produce an editable brush target (their existing cels still
+/// composite read-only in the editing canvas stack).
+void main() {
+  late EditorSessionManager session;
+
+  setUp(() {
+    session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+  });
+
+  test('the brush-input policy bans SE, instruction and camera kinds', () {
+    expect(layerKindAcceptsBrushInput(LayerKind.animation), isTrue);
+    expect(layerKindAcceptsBrushInput(LayerKind.storyboard), isTrue);
+    expect(layerKindAcceptsBrushInput(LayerKind.art), isTrue);
+    expect(layerKindAcceptsBrushInput(LayerKind.se), isFalse);
+    expect(layerKindAcceptsBrushInput(LayerKind.instruction), isFalse);
+    expect(layerKindAcceptsBrushInput(LayerKind.camera), isFalse);
+  });
+
+  test('an active SE layer yields NO brush editor selection even with a '
+      'selected entry, while a drawing layer still does', () {
+    // Sanity: the default active drawing layer edits normally.
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    expect(session.activeBrushEditorSelection, isNotNull);
+
+    // The SE fixture layer: create an entry, land the selection on it.
+    final seLayer = session.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.se,
+    );
+    session.selectLayer(seLayer.id);
+    session.selectFrameIndex(0);
+    session.createSeEntryAtCurrentFrame(name: '쿵');
+    expect(session.selectedFrame, isNotNull, reason: 'entry exists');
+    expect(
+      session.activeBrushEditorSelection,
+      isNull,
+      reason: 'SE cels are data rows — the pen must not land on them',
+    );
+  });
+
+  test('a brush-banned active layer still composites read-only in the '
+      'editing canvas stack', () {
+    final seLayer = session.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.se,
+    );
+    session.selectLayer(seLayer.id);
+    session.selectFrameIndex(0);
+    session.createSeEntryAtCurrentFrame(name: '쿵');
+
+    final stack = session.editingCanvasStack;
+    final stackLayerIds = [
+      for (final request in [...stack.below, ...stack.above])
+        request.frameKey.layerId,
+    ];
+    expect(
+      stackLayerIds,
+      contains(seLayer.id),
+      reason: 'the active-but-banned layer draws like any stack layer',
+    );
+  });
+}

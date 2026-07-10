@@ -685,7 +685,10 @@ class EditorSessionManager extends ChangeNotifier {
     var seenActiveLayer = false;
     for (final layer in cut.layers) {
       final fxEnabled = isLayerFxEnabled(layer.id);
-      if (layer.id == activeLayerId) {
+      // A brush-banned active layer (SE/instruction, R6-④) has no
+      // interactive surface — it composites like any other stack layer so
+      // its existing cels keep displaying read-only.
+      if (layer.id == activeLayerId && layerKindAcceptsBrushInput(layer.kind)) {
         seenActiveLayer = true;
         activeLayerOpacity = !layer.isVisible
             ? 0.0
@@ -1024,6 +1027,12 @@ class EditorSessionManager extends ChangeNotifier {
     final activeLayer = this.activeLayer;
     final selectedFrame = this.selectedFrame;
     if (activeLayer == null || selectedFrame == null) {
+      return null;
+    }
+    // R6-④: SE/instruction cels are data rows — no editable brush target,
+    // so the canvas never accepts strokes on them (the drawn stack still
+    // composites them read-only).
+    if (!layerKindAcceptsBrushInput(activeLayer.kind)) {
       return null;
     }
 

@@ -568,7 +568,23 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
 
     // Row lines: light per frame, medium every 6 frames, bold on second
-    // boundaries.
+    // boundaries. SE columns print NO interior frame rules (R6-② — the
+    // real Toei sheet leaves the S strip clean; its vertical borders and
+    // the table's outer edges stay), so interior lines draw in segments
+    // skipping the SE ranges.
+    final seRanges = <(double, double)>[];
+    for (var column = 0; column < document.columns.length; column += 1) {
+      if (document.columns[column].kind != TimesheetColumnKind.se) {
+        continue;
+      }
+      final seLeft = left + layout.columnLeftInHalf(column);
+      final seRight = seLeft + layout.columnWidthFor(TimesheetColumnKind.se);
+      if (seRanges.isNotEmpty && seRanges.last.$2 >= seLeft) {
+        seRanges[seRanges.length - 1] = (seRanges.last.$1, seRight);
+      } else {
+        seRanges.add((seLeft, seRight));
+      }
+    }
     final numbersRight = left - 4;
     for (var row = 0; row <= rowCount; row += 1) {
       final frame = startFrame + row;
@@ -581,7 +597,21 @@ class TimesheetDocumentPainter extends CustomPainter {
       } else {
         paint = lightPaint;
       }
-      canvas.drawLine(Offset(left, y), Offset(right, y), paint);
+      if (row == 0 || row == rowCount || seRanges.isEmpty) {
+        // The table's outer edges close full width.
+        canvas.drawLine(Offset(left, y), Offset(right, y), paint);
+        continue;
+      }
+      var segmentStart = left;
+      for (final (seLeft, seRight) in seRanges) {
+        if (seLeft > segmentStart) {
+          canvas.drawLine(Offset(segmentStart, y), Offset(seLeft, y), paint);
+        }
+        segmentStart = seRight;
+      }
+      if (segmentStart < right) {
+        canvas.drawLine(Offset(segmentStart, y), Offset(right, y), paint);
+      }
     }
 
     // Vertical lines: half edges + column separators (bold at section
@@ -807,16 +837,16 @@ class TimesheetDocumentPainter extends CustomPainter {
 
     if ((cell.markType ?? CameraInstructionMarkType.bar) ==
         CameraInstructionMarkType.bar) {
-      // R5-⑤: the endpoint cells carry NO line — the names own them; each
-      // row BETWEEN draws its own short stroke (a bar per cell, the
-      // hand-drawn sheet feel), so the line never touches the endpoints.
+      // R5-⑤: the endpoint cells carry NO line — the names own them. Each
+      // row between draws edge to edge (R6-①a: the per-cell padding made
+      // the bar read as broken dashes), thin like a ruled sheet line.
       if (spanLength > 2 && !isFirst && !isLast) {
         canvas.drawLine(
-          Offset(centerX, cellTop + 2),
-          Offset(centerX, cellBottom - 2),
+          Offset(centerX, cellTop),
+          Offset(centerX, cellBottom),
           Paint()
             ..color = _ink
-            ..strokeWidth = 1.4,
+            ..strokeWidth = 0.9,
         );
       }
     } else {
@@ -832,12 +862,15 @@ class TimesheetDocumentPainter extends CustomPainter {
     if (!drawTexts) {
       return;
     }
+    // Writing goes BOLD (R6-①a): it sits directly on the bar/mark and has
+    // to stay readable over it.
     if (isFirst && (cell.valueA ?? '').isNotEmpty) {
       _text(
         canvas,
         cell.valueA!,
         Offset(centerX, cellTop + 3),
         fontSize: 10,
+        bold: true,
         color: _ink,
         centeredAtX: true,
         maxWidth: columnWidth - 2,
@@ -849,6 +882,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         cell.valueB!,
         Offset(centerX, cellTop + 3),
         fontSize: 10,
+        bold: true,
         color: _ink,
         centeredAtX: true,
         maxWidth: columnWidth - 2,
@@ -861,6 +895,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         cell.valueB!,
         Offset(centerX, cellBottom - 9),
         fontSize: 7,
+        bold: true,
         color: _ink,
         centeredAtX: true,
         maxWidth: columnWidth - 2,
@@ -874,7 +909,11 @@ class TimesheetDocumentPainter extends CustomPainter {
       final painter = TextPainter(
         text: TextSpan(
           text: cell.label!,
-          style: const TextStyle(color: _ink, fontSize: 9),
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         textDirection: TextDirection.ltr,
         maxLines: 1,
@@ -1047,6 +1086,8 @@ class TimesheetDocumentPainter extends CustomPainter {
 
     var dialogueTop = cellTop + 3;
     if (seName.isNotEmpty) {
+      // R6-②: a soft accent tint with dark ink writing — the full-strength
+      // accent read too loud against the paper.
       canvas.drawRect(
         Rect.fromLTWH(
           columnLeft + 1,
@@ -1054,7 +1095,7 @@ class TimesheetDocumentPainter extends CustomPainter {
           columnWidth - 2,
           nameBoxHeight,
         ),
-        Paint()..color = AppColors.accent,
+        Paint()..color = AppColors.accent.withValues(alpha: 0.3),
       );
       _text(
         canvas,
@@ -1062,7 +1103,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         Offset(centerX, cellTop + 4),
         fontSize: 7,
         bold: true,
-        color: const Color(0xFF002020),
+        color: _ink,
         centeredAtX: true,
         maxWidth: columnWidth - 4,
       );

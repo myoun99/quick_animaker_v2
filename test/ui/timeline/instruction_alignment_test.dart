@@ -119,11 +119,11 @@ void main() {
       find.text('ㄴ'),
       find.byKey(const ValueKey<String>('xsheet-cell-cam-1-6')),
     );
-    // The vertical name is a glyph COLUMN ('P','A','N' stacked): pin the
-    // stack's overall center via the middle glyph 'A'.
+    // R6-①c: the name reads HORIZONTALLY on the X-sheet too (glyph stack
+    // retired) — one Text, dead center on the span like the timeline.
     expectCentered(
       tester,
-      find.text('A'),
+      find.text('PAN'),
       find.byKey(const ValueKey<String>('xsheet-cell-cam-1-4')),
     );
   });

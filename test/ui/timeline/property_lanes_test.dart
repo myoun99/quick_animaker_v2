@@ -471,6 +471,22 @@ void main() {
         tester.getTopLeft(audioLabel).dy,
         lessThan(tester.getTopLeft(positionLabel).dy),
       );
+      // R6-④: the group is the FULL AE set, identical to drawing layers —
+      // Anchor Point and Opacity included.
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-label-lane-se-layer-anchor-point',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-label-lane-se-layer-opacity'),
+        ),
+        findsOneWidget,
+      );
 
       // The navigator diamond keys the SE layer's OWN transform track.
       expect(seLayer().transformTrack.isEmpty, isTrue);
