@@ -30,7 +30,13 @@ class BrushEditCanvasInputSettings {
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.erase = false,
+    this.stabilizerStrength = 0.0,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
+       assert(
+         stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
+         'BrushEditCanvasInputSettings.stabilizerStrength must be in '
+         '[0, 100].',
+       ),
        assert(
          textureScale > 0.0,
          'BrushEditCanvasInputSettings.textureScale must be > 0.',
@@ -139,6 +145,11 @@ class BrushEditCanvasInputSettings {
   /// of painting color.
   final bool erase;
 
+  /// Pull-string stabilization strength (P7): the rope length in SCREEN
+  /// pixels (0 = off), frozen per stroke as canvas px = strength / zoom.
+  /// A hand-feel setting, deliberately not part of brush presets.
+  final double stabilizerStrength;
+
   BrushEditCanvasInputSettings copyWith({
     int? color,
     double? size,
@@ -166,6 +177,7 @@ class BrushEditCanvasInputSettings {
     double? textureScale,
     double? textureDensity,
     bool? erase,
+    double? stabilizerStrength,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -194,6 +206,7 @@ class BrushEditCanvasInputSettings {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       erase: erase ?? this.erase,
+      stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
     );
   }
 
@@ -226,7 +239,8 @@ class BrushEditCanvasInputSettings {
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
-          other.erase == erase;
+          other.erase == erase &&
+          other.stabilizerStrength == stabilizerStrength;
 
   @override
   int get hashCode => Object.hashAll([
@@ -256,6 +270,7 @@ class BrushEditCanvasInputSettings {
     textureScale,
     textureDensity,
     erase,
+    stabilizerStrength,
   ]);
 
   @override

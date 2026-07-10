@@ -34,6 +34,8 @@ import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
+import '../services/color_palette_file_service.dart';
+import 'color/color_palette_strip.dart';
 import 'panels/onion_skin_panel.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
@@ -196,6 +198,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
   final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
+
+  /// The pinned palette + recent colors (P4), persisted app-side.
+  final ValueNotifier<ColorPaletteState> _colorPalette = ValueNotifier(
+    const ColorPaletteState(),
+  );
+  ColorPaletteFileService? _paletteService;
+
+  void _setColorPalette(ColorPaletteState next) {
+    _colorPalette.value = next;
+    unawaited(_paletteService?.save(next));
+  }
+
+  void _recordRecentColor() {
+    _setColorPalette(
+      _colorPalette.value.withRecentColor(_brushTool.value.color),
+    );
+  }
+
   late final BrushPresetLibrary _presetLibrary;
 
   /// Camera view mode: overlay shown with the outside dimmed.
@@ -279,6 +299,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       filePicker: widget.brushFilePicker,
     );
     unawaited(_presetLibrary.load());
+    _paletteService = Platform.environment['FLUTTER_TEST'] == 'true'
+        ? null
+        : ColorPaletteFileService();
+    unawaited(
+      _paletteService?.loadOrDefaults().then((palette) {
+        if (mounted) {
+          _colorPalette.value = palette;
+        }
+      }),
+    );
+    // Recent colors record on COMMITTED work (history changes) — the color
+    // actually drawn with, not every wheel drag sample (P4).
+    widget.session.historyManager.addListener(_recordRecentColor);
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.cacheInvalidationHub,
@@ -397,6 +430,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   @override
   void dispose() {
+    widget.session.historyManager.removeListener(_recordRecentColor);
+    _colorPalette.dispose();
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     // An injected tool notifier belongs to the shell; only a local
@@ -475,7 +510,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   void _applyPreset(BrushPreset preset) {
-    _brushTool.value = BrushToolState.fromBrushSettings(preset.settings);
+    // The stabilizer is a hand-feel setting, not preset payload (P7): it
+    // carries over unchanged when a preset applies.
+    _brushTool.value = BrushToolState.fromBrushSettings(
+      preset.settings,
+    ).copyWith(stabilizerStrength: _brushTool.value.stabilizerStrength);
     _presetLibrary.markActive(preset.id);
   }
 
@@ -596,13 +635,37 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             valueListenable: _brushTool,
             builder: (context, toolState, _) => ValueListenableBuilder<int>(
               valueListenable: _colorWheelBackground,
-              builder: (context, background, _) => ColorWheelPanel(
-                color: toolState.color,
-                backgroundColor: background,
-                onColorChanged: (color) =>
-                    _brushTool.value = toolState.copyWith(color: color),
-                onBackgroundColorChanged: (color) =>
-                    _colorWheelBackground.value = color,
+              builder: (context, background, _) => Column(
+                children: [
+                  Expanded(
+                    child: ColorWheelPanel(
+                      color: toolState.color,
+                      backgroundColor: background,
+                      onColorChanged: (color) =>
+                          _brushTool.value = toolState.copyWith(color: color),
+                      onBackgroundColorChanged: (color) =>
+                          _colorWheelBackground.value = color,
+                    ),
+                  ),
+                  // The palette rows (P4) sit under the wheel; squat
+                  // panels scroll them instead of overflowing.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 140),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: ValueListenableBuilder<ColorPaletteState>(
+                        valueListenable: _colorPalette,
+                        builder: (context, palette, _) => ColorPaletteStrip(
+                          palette: palette,
+                          currentColor: toolState.color,
+                          onColorSelected: (color) => _brushTool.value =
+                              toolState.copyWith(color: color),
+                          onPaletteChanged: _setColorPalette,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
