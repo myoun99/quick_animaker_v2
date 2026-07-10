@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/track.dart';
 import '../storyboard_timeline_layout.dart';
 import 'canvas_playback_controller.dart';
 
@@ -67,12 +70,19 @@ class AudioPlaybackSync {
     required this.resolveFps,
     required this.durationSecondsFor,
     required this.playerFactory,
+    this.resolveProject,
   });
 
   final CanvasPlaybackController controller;
   final int Function() resolveFps;
   final double? Function(String filePath) durationSecondsFor;
   final AudioClipPlayerFactory playerFactory;
+
+  /// Resolves the project for the TRACK-owned SE rows (sounds on the
+  /// track's global axis, allowed to cross cut boundaries). Null skips
+  /// them (legacy fixtures with cut-owned SE layers keep working through
+  /// the per-cut loop).
+  final Project? Function()? resolveProject;
 
   List<_ScheduledClip> _schedule = const [];
   List<AudioClipPlayer> _players = const [];
@@ -268,11 +278,32 @@ class AudioPlaybackSync {
     _lastFrame = null;
   }
 
+  /// Clamps [endFrameExclusive] to the file's own audible length.
+  int _clampToFileLength({
+    required int startFrame,
+    required int endFrameExclusive,
+    required String filePath,
+    required int offsetFrames,
+    required int fps,
+  }) {
+    final seconds = durationSecondsFor(filePath);
+    if (seconds == null) {
+      return endFrameExclusive;
+    }
+    return math.min(
+      endFrameExclusive,
+      startFrame + (seconds * fps).ceil() - offsetFrames,
+    );
+  }
+
   List<_ScheduledClip> _buildSchedule(
     List<StoryboardTimelineLayoutEntry> playlist,
   ) {
     final fps = math.max(1, resolveFps());
     final schedule = <_ScheduledClip>[];
+
+    // Legacy path: cut-owned SE layers (test fixtures; production cuts no
+    // longer carry SE rows). Ends clamp at the cut boundary as before.
     for (final entry in playlist) {
       for (final layer in entry.cut.layers) {
         if (layer.kind != LayerKind.se || layer.muted) {
@@ -283,20 +314,17 @@ class AudioPlaybackSync {
             continue;
           }
           final startFrame = entry.startFrame + span.startFrame;
-          // The BLOCK is the instance: playback never runs past its end
-          // (nor past the cut end, nor past the file's own length — the
-          // offset trim shortens the remaining file accordingly).
           var endFrameExclusive = math.min(
             entry.endFrame,
             startFrame + span.lengthFrames,
           );
-          final seconds = durationSecondsFor(span.clip.filePath);
-          if (seconds != null) {
-            endFrameExclusive = math.min(
-              endFrameExclusive,
-              startFrame + (seconds * fps).ceil() - span.clip.offsetFrames,
-            );
-          }
+          endFrameExclusive = _clampToFileLength(
+            startFrame: startFrame,
+            endFrameExclusive: endFrameExclusive,
+            filePath: span.clip.filePath,
+            offsetFrames: span.clip.offsetFrames,
+            fps: fps,
+          );
           if (endFrameExclusive <= startFrame) {
             continue;
           }
@@ -311,6 +339,124 @@ class AudioPlaybackSync {
               fadeOutFrames: span.clip.fadeOutFrames,
             ),
           );
+        }
+      }
+    }
+
+    // Track-owned SE rows: spans live on each track's GLOBAL frame axis
+    // and may cross cut boundaries. Each span maps into the playlist axis
+    // once — at the entry containing its start (or the first overlapping
+    // entry when the playlist begins mid-sound, bumping the file offset by
+    // the clipped lead) — and its end runs to the span's true end, clamped
+    // only where the playlist run stops being contiguous with the track.
+    final project = resolveProject?.call();
+    if (project != null && playlist.isNotEmpty) {
+      final trackStartByCutId = <CutId, int>{};
+      final trackByCutId = <CutId, Track>{};
+      for (final track in project.tracks) {
+        var start = 0;
+        for (final cut in track.cuts) {
+          trackStartByCutId[cut.id] = start;
+          trackByCutId[cut.id] = track;
+          start += cut.duration;
+        }
+      }
+
+      /// The playlist frame where the contiguous run starting at
+      /// [entryIndex] ends (both playlist- and track-contiguous).
+      int contiguousPlaylistEndFrom(int entryIndex) {
+        var end = playlist[entryIndex].endFrame;
+        var trackEnd =
+            (trackStartByCutId[playlist[entryIndex].cutId] ?? 0) +
+            playlist[entryIndex].duration;
+        final track = trackByCutId[playlist[entryIndex].cutId];
+        for (var i = entryIndex + 1; i < playlist.length; i += 1) {
+          final next = playlist[i];
+          final nextTrackStart = trackStartByCutId[next.cutId];
+          if (nextTrackStart == null ||
+              next.startFrame != end ||
+              nextTrackStart != trackEnd ||
+              !identical(trackByCutId[next.cutId], track)) {
+            break;
+          }
+          end = next.endFrame;
+          trackEnd = nextTrackStart + next.duration;
+        }
+        return end;
+      }
+
+      for (var i = 0; i < playlist.length; i += 1) {
+        final entry = playlist[i];
+        final track = trackByCutId[entry.cutId];
+        final cutTrackStart = trackStartByCutId[entry.cutId];
+        if (track == null || cutTrackStart == null) {
+          continue;
+        }
+        final windowStart = cutTrackStart;
+        final windowEnd = cutTrackStart + entry.duration;
+        // A run-start entry also carries sounds spilling in from before
+        // the playlist window (offset-bumped); interior entries only emit
+        // spans STARTING in their window (no duplicates).
+        final previous = i == 0 ? null : playlist[i - 1];
+        final previousTrackStart = previous == null
+            ? null
+            : trackStartByCutId[previous.cutId];
+        final isRunStart =
+            previous == null ||
+            previousTrackStart == null ||
+            previous.endFrame != entry.startFrame ||
+            previousTrackStart + previous.duration != windowStart ||
+            !identical(trackByCutId[previous.cutId], track);
+        final runEnd = contiguousPlaylistEndFrom(i);
+
+        for (final layer in track.seLayers) {
+          if (layer.muted) {
+            continue;
+          }
+          for (final span in seAudioSpans(layer)) {
+            final spanEnd = span.startFrame + span.lengthFrames;
+            final startsHere =
+                span.startFrame >= windowStart && span.startFrame < windowEnd;
+            final spillsIntoRunStart =
+                isRunStart &&
+                span.startFrame < windowStart &&
+                spanEnd > windowStart;
+            if (!startsHere && !spillsIntoRunStart) {
+              continue;
+            }
+            final clippedLead = spillsIntoRunStart
+                ? windowStart - span.startFrame
+                : 0;
+            final startFrame =
+                entry.startFrame +
+                (spillsIntoRunStart ? 0 : span.startFrame - windowStart);
+            var endFrameExclusive = math.min(
+              runEnd,
+              startFrame + span.lengthFrames - clippedLead,
+            );
+            final offsetFrames = span.clip.offsetFrames + clippedLead;
+            endFrameExclusive = _clampToFileLength(
+              startFrame: startFrame,
+              endFrameExclusive: endFrameExclusive,
+              filePath: span.clip.filePath,
+              offsetFrames: offsetFrames,
+              fps: fps,
+            );
+            if (endFrameExclusive <= startFrame) {
+              continue;
+            }
+            schedule.add(
+              _ScheduledClip(
+                filePath: span.clip.filePath,
+                startFrame: startFrame,
+                endFrameExclusive: endFrameExclusive,
+                offsetFrames: offsetFrames,
+                gain: span.clip.gain,
+                fadeInFrames: span.clip.fadeInFrames,
+                fadeOutFrames: span.clip.fadeOutFrames,
+              ),
+            );
+          }
         }
       }
     }

@@ -200,6 +200,8 @@ class EditorSessionManager extends ChangeNotifier {
     durationSecondsFor: (filePath) =>
         audioPeaksStore.peaksFor(filePath)?.durationSeconds,
     playerFactory: AudioplayersClipPlayer.new,
+    // Track-owned SE rows schedule from the tracks' global axes.
+    resolveProject: () => _repository.currentProject,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {

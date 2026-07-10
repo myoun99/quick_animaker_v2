@@ -180,9 +180,60 @@ List<ExportFrameTask> buildExportFramePlan({
 List<ExportAudioClip> buildExportAudioPlan({
   required List<ExportFrameTask> plan,
   required int fps,
+  Project? project,
 }) {
   final clips = <ExportAudioClip>[];
   final safeFps = math.max(1, fps);
+
+  void emit({
+    required int spanExportStart,
+    required int audibleStart,
+    required int audibleEnd,
+    required SeAudioSpan span,
+  }) {
+    if (audibleEnd <= audibleStart) {
+      return;
+    }
+    final audibleFrames = audibleEnd - audibleStart;
+    // Fade windows in the TRIMMED clip's own time: the fade-in anchors to
+    // the span (block) start — a range starting mid-fade keeps only the
+    // remainder — and the fade-out anchors to the audible end, both capped
+    // at the audible length (same anchors playback ramps).
+    final fadeInFrames = (spanExportStart + span.clip.fadeInFrames -
+            audibleStart)
+        .clamp(0, audibleFrames);
+    final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
+    clips.add(
+      ExportAudioClip(
+        filePath: span.clip.filePath,
+        // The clip's offset trim seeks past the skipped file head on top
+        // of any range clipping.
+        seekSeconds:
+            (audibleStart - spanExportStart + span.clip.offsetFrames) /
+            safeFps,
+        delaySeconds: audibleStart / safeFps,
+        durationSeconds: audibleFrames / safeFps,
+        gain: span.clip.gain,
+        fadeInSeconds: fadeInFrames / safeFps,
+        fadeOutSeconds: fadeOutFrames / safeFps,
+      ),
+    );
+  }
+
+  // Track starts for the TRACK-owned SE rows (global axis, cut-crossing).
+  final trackStartByCutId = <CutId, int>{};
+  final trackByCutId = <CutId, Track>{};
+  if (project != null) {
+    for (final track in project.tracks) {
+      var start = 0;
+      for (final cut in track.cuts) {
+        trackStartByCutId[cut.id] = start;
+        trackByCutId[cut.id] = track;
+        start += cut.duration;
+      }
+    }
+  }
+
   var blockStart = 0;
   while (blockStart < plan.length) {
     final cut = plan[blockStart].cut;
@@ -191,52 +242,92 @@ List<ExportAudioClip> buildExportAudioPlan({
       blockEnd += 1;
     }
     final firstFrameIndex = plan[blockStart].frameIndex;
+
+    // Legacy path: cut-owned SE layers (test fixtures; production cuts no
+    // longer carry SE rows). Ends clamp at the cut's exported block.
     for (final layer in cut.layers) {
       if (layer.kind != LayerKind.se || layer.muted) {
         continue;
       }
       for (final span in seAudioSpans(layer)) {
-        // The span's start on the export timeline, in frames (negative =
-        // its block began before the exported range).
         final offsetFrames = blockStart + (span.startFrame - firstFrameIndex);
         if (offsetFrames >= blockEnd) {
           continue;
         }
-        // Where the audible part begins on the export timeline; anything
-        // before it is seeked over in the source. The end clamps to the
-        // carrying BLOCK (the sound's instance) as well as the exported
-        // range, matching canvas playback.
-        final audibleStart = math.max(blockStart, offsetFrames);
-        final audibleEnd = math.min(blockEnd, offsetFrames + span.lengthFrames);
-        if (audibleEnd <= audibleStart) {
+        emit(
+          spanExportStart: offsetFrames,
+          audibleStart: math.max(blockStart, offsetFrames),
+          audibleEnd: math.min(blockEnd, offsetFrames + span.lengthFrames),
+          span: span,
+        );
+      }
+    }
+
+    // Track-owned SE rows: spans sit on the track's global axis and may
+    // cross cut boundaries. Each span is laid once — at the block where it
+    // starts (or a run-start block it spills into) — and runs to its true
+    // end, clamped where the exported sequence stops being contiguous with
+    // the track (a frame-subrange boundary, a skipped cut).
+    final track = trackByCutId[cut.id];
+    final cutTrackStart = trackStartByCutId[cut.id];
+    if (track != null && cutTrackStart != null) {
+      final windowTrackStart = cutTrackStart + firstFrameIndex;
+
+      bool blocksContiguous(int endIndex) {
+        if (endIndex >= plan.length) {
+          return false;
+        }
+        final prevTask = plan[endIndex - 1];
+        final nextTask = plan[endIndex];
+        final nextTrackStart = trackStartByCutId[nextTask.cut.id];
+        return nextTrackStart != null &&
+            identical(trackByCutId[nextTask.cut.id], track) &&
+            prevTask.frameIndex == prevTask.cut.duration - 1 &&
+            nextTask.frameIndex == 0 &&
+            nextTrackStart ==
+                (trackStartByCutId[prevTask.cut.id] ?? 0) +
+                    prevTask.cut.duration;
+      }
+
+      var runEnd = blockEnd;
+      while (blocksContiguous(runEnd)) {
+        final nextCutId = plan[runEnd].cut.id;
+        while (runEnd < plan.length && plan[runEnd].cut.id == nextCutId) {
+          runEnd += 1;
+        }
+      }
+      final isRunStart =
+          blockStart == 0 ||
+          !(plan[blockStart - 1].frameIndex ==
+                  plan[blockStart - 1].cut.duration - 1 &&
+              firstFrameIndex == 0 &&
+              identical(trackByCutId[plan[blockStart - 1].cut.id], track) &&
+              (trackStartByCutId[plan[blockStart - 1].cut.id] ?? -1) +
+                      plan[blockStart - 1].cut.duration ==
+                  cutTrackStart);
+
+      for (final layer in track.seLayers) {
+        if (layer.muted) {
           continue;
         }
-        final audibleFrames = audibleEnd - audibleStart;
-        // Fade windows in the TRIMMED clip's own time: the fade-in anchors
-        // to the span (block) start — a range starting mid-fade keeps only
-        // the remainder — and the fade-out anchors to the audible end,
-        // both capped at the audible length (same anchors playback ramps).
-        final fadeInFrames =
-            (offsetFrames + span.clip.fadeInFrames - audibleStart).clamp(
-              0,
-              audibleFrames,
-            );
-        final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
-        clips.add(
-          ExportAudioClip(
-            filePath: span.clip.filePath,
-            // The clip's offset trim seeks past the skipped file head on
-            // top of any range clipping.
-            seekSeconds:
-                (audibleStart - offsetFrames + span.clip.offsetFrames) /
-                safeFps,
-            delaySeconds: audibleStart / safeFps,
-            durationSeconds: audibleFrames / safeFps,
-            gain: span.clip.gain,
-            fadeInSeconds: fadeInFrames / safeFps,
-            fadeOutSeconds: fadeOutFrames / safeFps,
-          ),
-        );
+        for (final span in seAudioSpans(layer)) {
+          final exportPos =
+              blockStart + (span.startFrame - windowTrackStart);
+          final startsHere = exportPos >= blockStart && exportPos < blockEnd;
+          final spillsIn =
+              isRunStart &&
+              exportPos < blockStart &&
+              exportPos + span.lengthFrames > blockStart;
+          if (!startsHere && !spillsIn) {
+            continue;
+          }
+          emit(
+            spanExportStart: exportPos,
+            audibleStart: math.max(blockStart, exportPos),
+            audibleEnd: math.min(runEnd, exportPos + span.lengthFrames),
+            span: span,
+          );
+        }
       }
     }
     blockStart = blockEnd;
