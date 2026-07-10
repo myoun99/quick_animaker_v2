@@ -3042,6 +3042,62 @@ class EditorSessionManager extends ChangeNotifier {
     frameSeekCommitted.value += 1;
   }
 
+  // --- Frame flipping (P1 shortcuts) ----------------------------------------
+
+  /// Steps the playhead one frame back (flipping `,`) — a committed seek,
+  /// clamped at the cut start.
+  void selectPreviousFrame() {
+    final current = _timelineController.currentFrameIndex;
+    if (current <= 0) {
+      return;
+    }
+    selectFrameIndex(current - 1);
+  }
+
+  /// Steps the playhead one frame forward (flipping `.`), clamped at the
+  /// cut's last frame.
+  void selectNextFrame() {
+    final last = math.max(0, activeCut.duration - 1);
+    final current = _timelineController.currentFrameIndex;
+    if (current >= last) {
+      return;
+    }
+    selectFrameIndex(current + 1);
+  }
+
+  /// Jumps to the previous drawing block's START on the active layer
+  /// (Ctrl+`,`): from mid-block that is the current block's start — the
+  /// clip-navigation convention.
+  void selectPreviousDrawing() {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    final block = previousDrawingBlockBefore(
+      layer.timeline,
+      _timelineController.currentFrameIndex,
+    );
+    if (block != null) {
+      selectFrameIndex(block.startIndex);
+    }
+  }
+
+  /// Jumps to the next drawing block's start on the active layer
+  /// (Ctrl+`.`).
+  void selectNextDrawing() {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    final block = nextDrawingBlockAfter(
+      layer.timeline,
+      _timelineController.currentFrameIndex,
+    );
+    if (block != null) {
+      selectFrameIndex(block.startIndex);
+    }
+  }
+
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
 
   /// The editing playhead as a VALUE stream: every seek — scrub moves

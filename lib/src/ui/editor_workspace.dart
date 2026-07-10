@@ -64,9 +64,15 @@ class EditorWorkspace extends StatefulWidget {
     this.brushFilePicker,
     this.layoutStore,
     this.panelsMenu,
+    this.brushTool,
   });
 
   final EditorSessionManager session;
+
+  /// The active-tool notifier, owned by the shell (HomePage) so the tool
+  /// shortcuts (B/E) and the workspace panels drive one state. Null keeps
+  /// a workspace-local notifier (focused widget tests).
+  final ValueNotifier<BrushToolState>? brushTool;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -178,9 +184,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// canvas tab re-docks.
   final GlobalKey _canvasAreaKey = GlobalKey();
 
-  final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
-    BrushToolState.defaults,
-  );
+  late final ValueNotifier<BrushToolState> _brushTool =
+      widget.brushTool ?? ValueNotifier(BrushToolState.defaults);
 
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
@@ -388,7 +393,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void dispose() {
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
-    _brushTool.dispose();
+    // An injected tool notifier belongs to the shell; only a local
+    // fallback is ours to dispose.
+    if (widget.brushTool == null) {
+      _brushTool.dispose();
+    }
     _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();

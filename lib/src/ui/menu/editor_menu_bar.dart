@@ -11,6 +11,9 @@ import '../editor_session_manager.dart';
 import '../export/export_dialog.dart';
 import '../panels/workspace_panels_menu.dart';
 import '../playback/canvas_playback_controller.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_bindings.dart';
+import '../shortcuts/shortcut_settings_dialog.dart';
 import '../storyboard_playhead_mapping.dart';
 
 /// The editor's top menu bar (the CSP/Photoshop File-Edit-… language),
@@ -19,18 +22,28 @@ import '../storyboard_playhead_mapping.dart';
 /// paths, only entrances.
 ///
 /// Forward slots: File > Open/Save/Save As stay disabled until project
-/// persistence lands (P3), Edit > Keyboard Shortcuts… until the shortcut
-/// registry lands (P1b) — the registry will also feed
+/// persistence lands (P3). Edit > Keyboard Shortcuts… opens the P1
+/// registry's settings dialog; the registry also feeds
 /// [MenuItemButton.shortcut] labels through [_item].
 class EditorMenuBar extends StatelessWidget {
   const EditorMenuBar({
     super.key,
     required this.session,
     required this.panelsMenu,
+    this.shortcuts,
   });
 
   final EditorSessionManager session;
   final WorkspacePanelsMenuController panelsMenu;
+
+  /// The customizable shortcut bindings (P1); null hides the shortcut
+  /// labels and disables the settings entry (focused widget tests).
+  final EditorShortcutBindings? shortcuts;
+
+  /// The LIVE shortcut label for a registry action (menu items show the
+  /// primary activator).
+  MenuSerializableShortcut? _shortcutFor(String actionId) =>
+      shortcuts?.primaryActivatorFor(actionId);
 
   /// One menu entry. The single funnel every item goes through so the P1
   /// shortcut registry can later inject `shortcut:` labels without
@@ -79,11 +92,13 @@ class EditorMenuBar extends StatelessWidget {
       id: 'edit-undo',
       label: 'Undo',
       onPressed: session.canUndo ? session.undo : null,
+      shortcut: _shortcutFor(EditorActionIds.undo),
     ),
     _item(
       id: 'edit-redo',
       label: 'Redo',
       onPressed: session.canRedo ? session.redo : null,
+      shortcut: _shortcutFor(EditorActionIds.redo),
     ),
     const Divider(height: 8),
     _item(
@@ -129,8 +144,21 @@ class EditorMenuBar extends StatelessWidget {
           : null,
     ),
     const Divider(height: 8),
-    // Enabled once the customizable shortcut registry lands (P1b).
-    _item(id: 'edit-keyboard-shortcuts', label: 'Keyboard Shortcuts…'),
+    _item(
+      id: 'edit-keyboard-shortcuts',
+      label: 'Keyboard Shortcuts…',
+      onPressed: shortcuts == null
+          ? null
+          : () {
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (context) =>
+                      ShortcutSettingsDialog(bindings: shortcuts!),
+                ),
+              );
+            },
+    ),
   ];
 
   // --- Cut ------------------------------------------------------------------
@@ -304,6 +332,7 @@ class EditorMenuBar extends StatelessWidget {
           ? 'Pause'
           : 'Play',
       onPressed: _togglePlayPause,
+      shortcut: _shortcutFor(EditorActionIds.playbackToggle),
     ),
     _item(
       id: 'playback-stop',

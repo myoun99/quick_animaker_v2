@@ -1,0 +1,249 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'editor_action_registry.dart';
+import 'editor_shortcut_bindings.dart';
+import 'shortcut_activator_codec.dart';
+
+/// The Keyboard Shortcuts editor (Edit menu): a searchable action list
+/// grouped by category, click-to-record capture, conflict highlighting
+/// and per-action / global resets — the PS/CSP settings-page convention.
+class ShortcutSettingsDialog extends StatefulWidget {
+  const ShortcutSettingsDialog({super.key, required this.bindings});
+
+  final EditorShortcutBindings bindings;
+
+  @override
+  State<ShortcutSettingsDialog> createState() => _ShortcutSettingsDialogState();
+}
+
+class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
+  final TextEditingController _search = TextEditingController();
+
+  /// The action currently recording a new key (null = none). While set, a
+  /// key-event listener captures the next non-modifier press.
+  String? _recordingActionId;
+  final FocusNode _recordFocus = FocusNode(debugLabel: 'shortcut-record');
+
+  @override
+  void initState() {
+    super.initState();
+    widget.bindings.addListener(_onBindingsChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.bindings.removeListener(_onBindingsChanged);
+    _search.dispose();
+    _recordFocus.dispose();
+    super.dispose();
+  }
+
+  void _onBindingsChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _startRecording(String actionId) {
+    setState(() => _recordingActionId = actionId);
+    _recordFocus.requestFocus();
+  }
+
+  KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
+    final actionId = _recordingActionId;
+    if (actionId == null || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      setState(() => _recordingActionId = null);
+      return KeyEventResult.handled;
+    }
+    // Modifier presses alone keep waiting for the real trigger.
+    final modifiers = {
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.controlRight,
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.shiftRight,
+      LogicalKeyboardKey.altLeft,
+      LogicalKeyboardKey.altRight,
+      LogicalKeyboardKey.metaLeft,
+      LogicalKeyboardKey.metaRight,
+    };
+    if (modifiers.contains(key)) {
+      return KeyEventResult.handled;
+    }
+    final pressed = HardwareKeyboard.instance;
+    widget.bindings.setActivators(actionId, [
+      SingleActivator(
+        key,
+        control: pressed.isControlPressed,
+        shift: pressed.isShiftPressed,
+        alt: pressed.isAltPressed,
+        meta: pressed.isMetaPressed,
+      ),
+    ]);
+    setState(() => _recordingActionId = null);
+    return KeyEventResult.handled;
+  }
+
+  List<EditorActionDefinition> get _filtered {
+    final query = _search.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      return widget.bindings.definitions;
+    }
+    return [
+      for (final definition in widget.bindings.definitions)
+        if (definition.label.toLowerCase().contains(query) ||
+            definition.category.toLowerCase().contains(query))
+          definition,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bindings = widget.bindings;
+    final conflicted = bindings.conflictedActionIds;
+    final definitions = _filtered;
+
+    final rows = <Widget>[];
+    String? category;
+    for (final definition in definitions) {
+      if (definition.category != category) {
+        category = definition.category;
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Text(
+              category,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ),
+        );
+      }
+      rows.add(_actionRow(definition, conflicted.contains(definition.id)));
+    }
+
+    return AlertDialog(
+      title: const Text('Keyboard Shortcuts'),
+      content: Focus(
+        focusNode: _recordFocus,
+        onKeyEvent: _onRecordKey,
+        child: SizedBox(
+          width: 480,
+          height: 420,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const ValueKey<String>('shortcut-search-field'),
+                controller: _search,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Search actions',
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              if (conflicted.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Some actions share the same key — the highlighted '
+                    'bindings collide.',
+                    key: const ValueKey<String>('shortcut-conflict-banner'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: ListView(
+                  key: const ValueKey<String>('shortcut-action-list'),
+                  children: rows,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('shortcut-reset-all-button'),
+          onPressed: bindings.resetAll,
+          child: const Text('Reset All'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('shortcut-close-button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionRow(EditorActionDefinition definition, bool conflicted) {
+    final theme = Theme.of(context);
+    final bindings = widget.bindings;
+    final recording = _recordingActionId == definition.id;
+    final activators = bindings.activatorsFor(definition.id);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(definition.label, style: theme.textTheme.bodyMedium),
+          ),
+          if (recording)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                'Press keys… (Esc cancels)',
+                key: const ValueKey<String>('shortcut-recording-hint'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            )
+          else
+            for (final activator in activators)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Chip(
+                  label: Text(
+                    singleActivatorLabel(activator),
+                    style: theme.textTheme.labelSmall,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: conflicted
+                      ? theme.colorScheme.errorContainer
+                      : null,
+                ),
+              ),
+          IconButton(
+            key: ValueKey<String>('shortcut-record-${definition.id}'),
+            tooltip: 'Record new shortcut',
+            icon: const Icon(Icons.keyboard, size: 18),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _startRecording(definition.id),
+          ),
+          IconButton(
+            key: ValueKey<String>('shortcut-reset-${definition.id}'),
+            tooltip: 'Reset to default',
+            icon: const Icon(Icons.restart_alt, size: 18),
+            visualDensity: VisualDensity.compact,
+            onPressed: bindings.isOverridden(definition.id)
+                ? () => bindings.resetAction(definition.id)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
