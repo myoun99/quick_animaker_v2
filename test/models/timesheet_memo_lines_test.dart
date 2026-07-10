@@ -26,7 +26,7 @@ void main() {
         valueB: 'D',
         memo: 'カットO.L',
       );
-      expect(timesheetMemoInstructionLine(event, _ol), 'C⋈D O.L(カットO.L)');
+      expect(timesheetMemoInstructionLine(event, _ol), 'C⋈D O.L カットO.L');
     });
 
     test('blank parts drop out; bar defs use the arrow glyph', () {
@@ -63,7 +63,7 @@ void main() {
           ),
           _pan,
         ),
-        '→ メモリPAN(ゆっくり)',
+        '→ メモリPAN ゆっくり',
       );
       expect(
         timesheetMemoInstructionLine(
@@ -121,6 +121,6 @@ void main() {
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
-    expect(document.memoInstructionLines, ['C⋈D O.L(カットO.L)', 'A→B PAN']);
+    expect(document.memoInstructionLines, ['C⋈D O.L カットO.L', 'A→B PAN']);
   });
 }

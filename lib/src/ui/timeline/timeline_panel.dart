@@ -36,6 +36,7 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.seEmptyFill = true,
     this.onSetAudioClipOffset,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
@@ -106,6 +107,9 @@ class TimelinePanel extends StatefulWidget {
   /// orientations.
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Light wash over SE rows' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   /// Commits an audio-lane slide (the clip's offset trim), both
   /// orientations.
@@ -326,6 +330,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,
@@ -364,6 +369,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,

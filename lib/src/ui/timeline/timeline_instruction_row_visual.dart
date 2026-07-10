@@ -12,18 +12,13 @@ import 'timeline_frame_coordinate_policy.dart';
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
 /// [instructionCellExposureState] feeding the shared cell style), this
-/// overlay adds the mark background — the straight duration line
-/// (A ⊢───⊣ B), the FI/FO hatched fade wedges or the O.L bowtie, per the
-/// def's markType — with the A/B instance names centered in the start/end
-/// cells (frame-name style) and the instruction name centered on the
-/// span's middle cell ([instructionLabelAnchorCell] — R3 restores the
-/// center rule after the R2 start-anchor detour). Shared by both
-/// orientations (Axis policy).
-
-/// The instruction name's anchor cell — the span's middle: odd spans
-/// center exactly, even spans sit one cell left of the middle boundary,
-/// so the writing always lands ON a cell like on paper (user-confirmed).
-int instructionLabelAnchorCell(int eventLength) => (eventLength - 1) ~/ 2;
+/// overlay adds the mark — ONE unadorned continuous line for bar terms
+/// (no end ticks, never broken for text) or a light-gray filled wedge for
+/// the dedicated FI/FO/O.L marks (R4, user sketch) — with the A/B
+/// instance names dead-centered in the start/end cells (frame-name style)
+/// and the instruction name overlaid on the SPAN's true center. Shared by
+/// both orientations (Axis policy); the printed sheet mirrors this
+/// verbatim.
 
 /// Paper-cell adapter: instruction events have no timeline entries, so
 /// this maps a frame index onto the shared cell exposure states (span
@@ -288,12 +283,16 @@ class _InstructionSpan extends StatelessWidget {
               cellIndex: event.length - 1,
               child: ExcludeSemantics(child: _writing(valueB, valueStyle)),
             ),
-          // The name centers on the span's MIDDLE cell — the paper rule
-          // (R3: the R2 start anchor is retired).
+          // The name overlays the SPAN's true center, written over the
+          // line/wedge (R4: the cell-snap anchor is retired — labels sit
+          // dead center like handwriting on the sheet).
           if (name.isNotEmpty)
-            _cellSlot(
-              cellIndex: instructionLabelAnchorCell(event.length),
-              child: ExcludeSemantics(child: _writing(name, nameStyle)),
+            Positioned.fill(
+              child: OverflowBox(
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: ExcludeSemantics(child: _writing(name, nameStyle)),
+              ),
             ),
         ],
       ),
@@ -325,26 +324,30 @@ class _InstructionMarkPainter extends CustomPainter {
   Offset _at(double main, double cross) =>
       axis == Axis.horizontal ? Offset(main, cross) : Offset(cross, main);
 
+  /// The dedicated marks' light-gray fill — laid under the writing, with
+  /// the cell borders showing through (R4: hatching and outlines retired).
+  Paint get _wedgeFill => Paint()..color = color.withValues(alpha: 0.15);
+
   @override
   void paint(Canvas canvas, Size size) {
     switch (markType) {
       case CameraInstructionMarkType.bar:
         _paintDurationLine(canvas, size);
       case CameraInstructionMarkType.fi:
-        _paintFadeWedge(canvas, size, wideAtStart: true);
-      case CameraInstructionMarkType.fo:
         _paintFadeWedge(canvas, size, wideAtStart: false);
+      case CameraInstructionMarkType.fo:
+        _paintFadeWedge(canvas, size, wideAtStart: true);
       case CameraInstructionMarkType.ol:
         _paintBowtie(canvas, size);
     }
   }
 
-  /// One completely straight line between the endpoint cells' centers with
-  /// a perpendicular tick at each end; single-cell spans carry writing
-  /// only, like on paper.
+  /// ONE unadorned continuous line between the endpoint cells' centers —
+  /// no end ticks and no gap for the writing (the name overlays it, R4
+  /// user rule); single-cell spans carry writing only, like on paper.
   void _paintDurationLine(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withValues(alpha: 0.55)
+      ..color = color
       ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round;
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
@@ -356,20 +359,12 @@ class _InstructionMarkPainter extends CustomPainter {
     if (end - start < 2) {
       return;
     }
-    final tickExtent = (frameCellExtent * 0.14).clamp(2.5, 4.0);
     canvas.drawLine(_at(start, crossCenter), _at(end, crossCenter), paint);
-    for (final main in [start, end]) {
-      canvas.drawLine(
-        _at(main, crossCenter - tickExtent),
-        _at(main, crossCenter + tickExtent),
-        paint,
-      );
-    }
   }
 
-  /// The fade wedge: a hatched triangle spanning the whole event, full
-  /// cross width where the screen is covered narrowing to a point where it
-  /// is clear — FI narrows toward the span end, FO mirrors it.
+  /// The fade wedge, a plain light-gray fill following the light: FI opens
+  /// narrow → wide (the picture grows in), FO wide → narrow (R4
+  /// orientation fix; hatching retired).
   void _paintFadeWedge(Canvas canvas, Size size, {required bool wideAtStart}) {
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final crossExtent = axis == Axis.horizontal ? size.height : size.width;
@@ -380,37 +375,18 @@ class _InstructionMarkPainter extends CustomPainter {
     }
     final wideMain = wideAtStart ? 1.0 : mainExtent - 1;
     final pointMain = wideAtStart ? mainExtent - 1 : 1.0;
-    final wedge = Path()
-      ..addPolygon([
+    canvas.drawPath(
+      Path()..addPolygon([
         _at(wideMain, crossCenter - wideHalf),
         _at(pointMain, crossCenter),
         _at(wideMain, crossCenter + wideHalf),
-      ], true);
-    canvas.save();
-    canvas.clipPath(wedge);
-    final hatch = Paint()
-      ..color = color.withValues(alpha: 0.3)
-      ..strokeWidth = 1.0;
-    final bounds = wedge.getBounds();
-    for (var x = bounds.left - bounds.height; x < bounds.right; x += 5.0) {
-      canvas.drawLine(
-        Offset(x, bounds.bottom),
-        Offset(x + bounds.height, bounds.top),
-        hatch,
-      );
-    }
-    canvas.restore();
-    canvas.drawPath(
-      wedge,
-      Paint()
-        ..color = color.withValues(alpha: 0.55)
-        ..strokeWidth = 1.2
-        ..style = PaintingStyle.stroke,
+      ], true),
+      _wedgeFill,
     );
   }
 
   void _paintBowtie(Canvas canvas, Size size) {
-    final paint = Paint()..color = color.withValues(alpha: 0.18);
+    final paint = _wedgeFill;
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final mid = mainExtent / 2;
     final startTriangle = Path();
