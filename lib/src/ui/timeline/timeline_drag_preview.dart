@@ -37,21 +37,32 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   int get hashCode => previewLayer.hashCode;
 }
 
-/// A storyboard cut-trim drag in flight: the involved cuts' previewed
-/// durations (one cut for an end trim, the boundary pair for a roll).
+/// A storyboard cut edge drag in flight: the involved cuts' previewed
+/// durations (end trims) and leading gaps (start slides / gap
+/// consumption).
 class CutTrimDragPreview extends TimelineDragPreview {
-  const CutTrimDragPreview({required this.previewDurations});
+  const CutTrimDragPreview({
+    required this.previewDurations,
+    this.previewGaps = const {},
+  });
 
   final Map<CutId, int> previewDurations;
+  final Map<CutId, int> previewGaps;
 
   @override
   bool operator ==(Object other) =>
       other is CutTrimDragPreview &&
-      mapEquals(other.previewDurations, previewDurations);
+      mapEquals(other.previewDurations, previewDurations) &&
+      mapEquals(other.previewGaps, previewGaps);
 
   @override
-  int get hashCode => Object.hashAllUnordered(
-    previewDurations.entries.map((e) => Object.hash(e.key, e.value)),
+  int get hashCode => Object.hash(
+    Object.hashAllUnordered(
+      previewDurations.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
+    Object.hashAllUnordered(
+      previewGaps.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
   );
 }
 
@@ -77,15 +88,20 @@ Project projectWithTimelineDragPreview(
   switch (preview) {
     case null:
       return project;
-    case CutTrimDragPreview(:final previewDurations):
+    case CutTrimDragPreview(:final previewDurations, :final previewGaps):
       return project.copyWith(
         tracks: [
           for (final track in project.tracks)
             track.copyWith(
               cuts: [
                 for (final cut in track.cuts)
-                  previewDurations.containsKey(cut.id)
-                      ? cut.copyWith(duration: previewDurations[cut.id])
+                  previewDurations.containsKey(cut.id) ||
+                          previewGaps.containsKey(cut.id)
+                      ? cut.copyWith(
+                          duration: previewDurations[cut.id] ?? cut.duration,
+                          leadingGapFrames:
+                              previewGaps[cut.id] ?? cut.leadingGapFrames,
+                        )
                       : cut,
               ],
             ),

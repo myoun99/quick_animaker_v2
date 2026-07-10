@@ -228,6 +228,7 @@ List<ExportAudioClip> buildExportAudioPlan({
     for (final track in project.tracks) {
       var start = 0;
       for (final cut in track.cuts) {
+        start += cut.leadingGapFrames;
         trackStartByCutId[cut.id] = start;
         trackByCutId[cut.id] = track;
         start += cut.duration;

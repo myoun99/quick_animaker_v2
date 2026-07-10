@@ -15,9 +15,11 @@ class Cut {
     required this.duration,
     required this.canvasSize,
     this.metadata = const CutMetadata.empty(),
+    this.leadingGapFrames = 0,
     CutCamera? camera,
     TransformTrack? transformTrack,
-  }) : layers = List.unmodifiable(layers),
+  }) : assert(leadingGapFrames >= 0),
+       layers = List.unmodifiable(layers),
        camera = camera ?? CutCamera.empty(),
        transformTrack = transformTrack ?? TransformTrack.empty();
 
@@ -25,6 +27,13 @@ class Cut {
   final String name;
   final List<Layer> layers;
   final int duration;
+
+  /// Empty frames BEFORE this cut on the track's global axis (black on
+  /// playback/export). Track list order stays the single source of cut
+  /// sequence — a gap is an attribute of the boundary, so overlap is
+  /// unrepresentable and reorders need no renumbering.
+  final int leadingGapFrames;
+
   final CanvasSize canvasSize;
   final CutMetadata metadata;
   final CutCamera camera;
@@ -56,6 +65,7 @@ class Cut {
     int? duration,
     CanvasSize? canvasSize,
     CutMetadata? metadata,
+    int? leadingGapFrames,
     CutCamera? camera,
     TransformTrack? transformTrack,
   }) {
@@ -66,6 +76,7 @@ class Cut {
       duration: duration ?? this.duration,
       canvasSize: canvasSize ?? this.canvasSize,
       metadata: metadata ?? this.metadata,
+      leadingGapFrames: leadingGapFrames ?? this.leadingGapFrames,
       camera: camera ?? this.camera,
       transformTrack: transformTrack ?? this.transformTrack,
     );
@@ -78,6 +89,8 @@ class Cut {
     'duration': duration,
     'canvasSize': canvasSize.toJson(),
     'metadata': metadata.toJson(),
+    // Omitted at 0: legacy files load gap-free with no migration.
+    if (leadingGapFrames > 0) 'leadingGap': leadingGapFrames,
     'camera': camera.toJson(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
   };
@@ -102,6 +115,7 @@ class Cut {
       metadata: json['metadata'] == null
           ? const CutMetadata.empty()
           : CutMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
+      leadingGapFrames: (json['leadingGap'] as int?) ?? 0,
       camera: json['camera'] == null
           ? null
           : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
@@ -121,6 +135,7 @@ class Cut {
           other.duration == duration &&
           other.canvasSize == canvasSize &&
           other.metadata == metadata &&
+          other.leadingGapFrames == leadingGapFrames &&
           other.camera == camera &&
           other.transformTrack == transformTrack;
 
@@ -132,6 +147,7 @@ class Cut {
     duration,
     canvasSize,
     metadata,
+    leadingGapFrames,
     camera,
     transformTrack,
   );

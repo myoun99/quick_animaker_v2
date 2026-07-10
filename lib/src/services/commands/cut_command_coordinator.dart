@@ -128,18 +128,21 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Commits an already-applied storyboard trim drag as one undoable step
-  /// (the drag preview left the repository holding [after]; execute is
-  /// idempotent).
+  /// Commits a storyboard edge drag as one undoable step: durations (end
+  /// trims) AND leading gaps (start slides / gap consumption) together.
   void commitCutDurationDrag({
-    required Map<CutId, int> before,
-    required Map<CutId, int> after,
+    required Map<CutId, int> beforeDurations,
+    required Map<CutId, int> afterDurations,
+    Map<CutId, int> beforeGaps = const {},
+    Map<CutId, int> afterGaps = const {},
   }) {
     historyManager.execute(
       UpdateCutDurationsCommand(
         repository: repository,
-        before: before,
-        after: after,
+        before: beforeDurations,
+        after: afterDurations,
+        beforeGaps: beforeGaps,
+        afterGaps: afterGaps,
       ),
     );
   }
