@@ -848,39 +848,48 @@ class TimesheetDocumentPainter extends CustomPainter {
         );
       } else if (isFirst && isLast) {
         if (!hasA && !hasB) {
+          // Single-row nameless span: both caps in the one cell (▼ over ▲).
           _paintBarEndpointTriangle(
             canvas,
             centerX: centerX,
             columnWidth: columnWidth,
-            baseY: cellTop + (rowHeight - triangleLength) / 2,
+            baseY: cellTop,
+            apexDown: true,
+          );
+          _paintBarEndpointTriangle(
+            canvas,
+            centerX: centerX,
+            columnWidth: columnWidth,
+            baseY: cellBottom,
+            apexDown: false,
           );
         }
       } else if (isFirst) {
         if (!hasA) {
-          final baseY = cellTop + 1.5;
           _paintBarEndpointTriangle(
             canvas,
             centerX: centerX,
             columnWidth: columnWidth,
-            baseY: baseY,
+            baseY: cellTop,
+            apexDown: true,
           );
           canvas.drawLine(
-            Offset(centerX, baseY + triangleLength),
+            Offset(centerX, cellTop + triangleLength),
             Offset(centerX, cellBottom),
             linePaint,
           );
         }
       } else if (!hasB) {
-        final baseY = cellBottom - 1.5 - triangleLength;
         _paintBarEndpointTriangle(
           canvas,
           centerX: centerX,
           columnWidth: columnWidth,
-          baseY: baseY,
+          baseY: cellBottom,
+          apexDown: false,
         );
         canvas.drawLine(
           Offset(centerX, cellTop),
-          Offset(centerX, baseY),
+          Offset(centerX, cellBottom - triangleLength),
           linePaint,
         );
       }
@@ -964,21 +973,25 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// The solid triangle capping a NAMELESS bar endpoint (R7-①, real-sheet
-  /// convention): ▼ pointing down the page's time axis at both ends — the
-  /// start cap hangs the line off its apex, the end cap closes it
-  /// arrowhead-style. Mirrors the X-sheet overlay's mark exactly.
+  /// convention), APEX pointing INTO the span (R8-① direction fix): the
+  /// start cap reads ▼ from the span's top edge, the end cap ▲ from its
+  /// bottom edge — both bases sit FLUSH on the cell edge (compact, no
+  /// inset). The duration line meets the apex. Mirrors the X-sheet
+  /// overlay's mark.
   void _paintBarEndpointTriangle(
     Canvas canvas, {
     required double centerX,
     required double columnWidth,
     required double baseY,
+    required bool apexDown,
   }) {
     final length = math.min(7.0, TimesheetDocumentLayout.rowHeight - 4);
     final halfWidth = math.min(4.0, columnWidth / 2 - 2);
+    final apexY = apexDown ? baseY + length : baseY - length;
     canvas.drawPath(
       Path()..addPolygon([
         Offset(centerX - halfWidth, baseY),
-        Offset(centerX, baseY + length),
+        Offset(centerX, apexY),
         Offset(centerX + halfWidth, baseY),
       ], true),
       Paint()..color = _ink,
