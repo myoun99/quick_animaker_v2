@@ -102,7 +102,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 const SizedBox(width: 16),
               // Timesheet + mark chips lead the label; ineligible rows keep
               // empty slots so kind icons and names stay column-aligned.
-              if (layerKindEligibleForTimesheetToggle(layer.kind))
+              // Attach rows (W5) hide the sheet toggle — they are display
+              // accessories of their base, never sheet columns.
+              if (layerKindEligibleForTimesheetToggle(layer.kind) &&
+                  layer.attachedToLayerId == null)
                 LayerTimesheetToggleButton(
                   keyPrefix: 'timeline',
                   layerId: layer.id,
@@ -127,6 +130,20 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Row(
                       children: [
+                        // Attach rows (W5) indent under their base with a
+                        // branch glyph — the row reads as part of the
+                        // base's group.
+                        if (layer.attachedToLayerId != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6, right: 2),
+                            child: Icon(
+                              Icons.subdirectory_arrow_right,
+                              key: ValueKey<String>(
+                                'timeline-layer-attach-indent-${layer.id}',
+                              ),
+                              size: 14,
+                            ),
+                          ),
                         Semantics(
                           label: _semanticLabelForLayerKind(layer.kind),
                           container: true,
@@ -155,7 +172,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onToggleLayerFx != null && layerKindShowsFxToggle(layer.kind))
+              // Attach rows hide the fx switch — the BASE's switch governs
+              // the shared transform/opacity lanes (W5 fx sharing).
+              if (onToggleLayerFx != null &&
+                  layerKindShowsFxToggle(layer.kind) &&
+                  layer.attachedToLayerId == null)
                 LayerFxToggleButton(
                   keyPrefix: 'timeline',
                   layerId: layer.id,

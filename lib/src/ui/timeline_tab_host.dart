@@ -139,6 +139,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// time; SE transforms move the canvas dialogue, instruction transforms
   /// are authored state for parity). SE layers append their audio lane.
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
+    // Attach rows ride their BASE's transform/opacity lanes (W5 fx
+    // sharing) — no lanes of their own in v1.
+    if (layer.attachedToLayerId != null) {
+      return const [];
+    }
     switch (layer.kind) {
       case LayerKind.camera:
         final cut = _session.activeCut;

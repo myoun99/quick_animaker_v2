@@ -4,7 +4,6 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
 import '../cut_frame_composite_plan.dart';
@@ -105,10 +104,11 @@ class CutFrameCompositeSignature {
       'quality: $quality, layers: $layers)';
 }
 
-/// Computes the signature of the cut's picture at [frameIndex], visiting
-/// layers with the exact skip/exposure rules of [planCutFrameComposite]
-/// (including the fx-bypass view state — a toggled switch changes the
-/// signature, so composites self-invalidate).
+/// Computes the signature of the cut's picture at [frameIndex] from the
+/// SAME shared visit the composite plan consumes
+/// ([resolveCutFrameCompositeEntries] — skip rules, exposure resolution,
+/// fx-bypass view state and the attach-layer expansion agree by
+/// construction, so composites self-invalidate on any of those changing).
 CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
@@ -116,46 +116,23 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required BrushFrameRevisionResolver revisionOf,
   Set<LayerId> fxBypassedLayerIds = const {},
 }) {
-  final layers = <CompositeLayerSignature>[];
-  for (final layer in cut.layers) {
-    if (layer.kind == LayerKind.camera ||
-        !layer.isVisible ||
-        layer.opacity <= 0) {
-      continue;
-    }
-    final fxEnabled = !fxBypassedLayerIds.contains(layer.id);
-    final opacity = fxEnabled
-        ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
-        : layer.opacity.clamp(0.0, 1.0).toDouble();
-    if (opacity <= 0) {
-      continue;
-    }
-    final frame = resolveExposedFrameAt(layer, frameIndex);
-    if (frame == null) {
-      continue;
-    }
-    layers.add(
-      CompositeLayerSignature(
-        layerId: layer.id,
-        frameId: frame.id,
-        opacity: opacity,
-        sourceRevision: revisionOf(layer.id, frame.id),
-        pose: fxEnabled
-            ? resolveLayerPoseAt(
-                layer: layer,
-                canvasSize: cut.canvasSize,
-                frameIndex: frameIndex,
-              )
-            : null,
-        anchorPoint: fxEnabled
-            ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
-            : null,
-      ),
-    );
-  }
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
     quality: quality,
-    layers: layers,
+    layers: [
+      for (final entry in resolveCutFrameCompositeEntries(
+        cut: cut,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      ))
+        CompositeLayerSignature(
+          layerId: entry.layer.id,
+          frameId: entry.frame.id,
+          opacity: entry.opacity,
+          sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+          pose: entry.pose,
+          anchorPoint: entry.anchorPoint,
+        ),
+    ],
   );
 }

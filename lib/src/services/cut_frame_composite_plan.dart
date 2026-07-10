@@ -1,3 +1,4 @@
+import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
@@ -90,7 +91,28 @@ double resolveLayerEffectiveOpacityAt({
 typedef LayerFrameSurfaceResolver =
     BitmapSurface? Function(Layer layer, Frame frame);
 
-/// Plans which surfaces make up the cut's picture at [frameIndex].
+/// One resolved contributor to the cut's picture at a frame — the SHARED
+/// visit both the composite plan and the composite cache signature consume,
+/// so every route (playback, export, thumbnails, editing stack) agrees on
+/// skip rules, exposure resolution AND the attach-layer expansion by
+/// construction.
+class CutFrameCompositeEntry {
+  const CutFrameCompositeEntry({
+    required this.layer,
+    required this.frame,
+    required this.opacity,
+    this.pose,
+    this.anchorPoint,
+  });
+
+  final Layer layer;
+  final Frame frame;
+  final double opacity;
+  final TransformPose? pose;
+  final CanvasPoint? anchorPoint;
+}
+
+/// The visible contributors at [frameIndex], bottom → top.
 ///
 /// Layers are visited in list order (first = bottom, later layers draw on
 /// top, matching "add layer above"). The camera layer, hidden layers and
@@ -98,9 +120,96 @@ typedef LayerFrameSurfaceResolver =
 /// timeline: the drawing block covering [frameIndex] shows; uncovered
 /// cells contribute nothing.
 ///
+/// ATTACH LAYERS (W5) ride their base: the cel resolves through the base's
+/// exposure + the cell link, the POSE and the animated-opacity sample come
+/// from the BASE's transform track (fx shared — the base's fx switch
+/// governs both), while the eye, static opacity and cels stay the attach
+/// layer's own. Hiding the base hides its attach layers too (they are part
+/// of the base's group); dangling links contribute nothing. The layer list
+/// keeps attach layers adjacent to their base, so plain list order already
+/// yields [below…, base, above…].
+///
 /// Layers in [fxBypassedLayerIds] compose with their FX ignored — identity
 /// pose and no animated opacity (the layer-label fx switch, session view
 /// state).
+List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
+  required Cut cut,
+  required int frameIndex,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  final entries = <CutFrameCompositeEntry>[];
+  for (final layer in cut.layers) {
+    if (layer.kind == LayerKind.camera) {
+      continue;
+    }
+    final base = isAttachedLayer(layer)
+        ? attachedBaseOf(layer, cut.layers)
+        : null;
+    if (isAttachedLayer(layer) && base == null) {
+      // Dangling attach link (base gone): the row contributes nothing.
+      continue;
+    }
+    // The base's eye cascades over its attach layers; each row's own eye
+    // and static opacity gate it individually.
+    if (base != null && !base.isVisible) {
+      continue;
+    }
+    if (!layer.isVisible || layer.opacity <= 0) {
+      continue;
+    }
+    final fxCarrier = base ?? layer;
+    final fxEnabled = !fxBypassedLayerIds.contains(fxCarrier.id);
+    final opacity = fxEnabled
+        ? (layer.opacity *
+                  resolveOpacityTrackAt(
+                    fxCarrier.transformTrack.opacity,
+                    frameIndex,
+                  ))
+              .clamp(0.0, 1.0)
+              .toDouble()
+        : layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (opacity <= 0) {
+      continue;
+    }
+
+    final frame = base == null
+        ? resolveExposedFrameAt(layer, frameIndex)
+        : resolveAttachedFrameAt(
+            attached: layer,
+            base: base,
+            frameIndex: frameIndex,
+          );
+    if (frame == null) {
+      continue;
+    }
+
+    entries.add(
+      CutFrameCompositeEntry(
+        layer: layer,
+        frame: frame,
+        opacity: opacity,
+        pose: fxEnabled
+            ? resolveLayerPoseAt(
+                layer: fxCarrier,
+                canvasSize: cut.canvasSize,
+                frameIndex: frameIndex,
+              )
+            : null,
+        anchorPoint: fxEnabled
+            ? resolveLayerAnchorPointAt(
+                layer: fxCarrier,
+                frameIndex: frameIndex,
+              )
+            : null,
+      ),
+    );
+  }
+  return entries;
+}
+
+/// Plans which surfaces make up the cut's picture at [frameIndex] — the
+/// shared [resolveCutFrameCompositeEntries] visit with surfaces resolved
+/// (entries whose frame has no artwork drop out).
 List<CutFrameCompositeLayer> planCutFrameComposite({
   required Cut cut,
   required int frameIndex,
@@ -108,44 +217,21 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   final plan = <CutFrameCompositeLayer>[];
-  for (final layer in cut.layers) {
-    if (layer.kind == LayerKind.camera ||
-        !layer.isVisible ||
-        layer.opacity <= 0) {
-      continue;
-    }
-    final fxEnabled = !fxBypassedLayerIds.contains(layer.id);
-    final opacity = fxEnabled
-        ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
-        : layer.opacity.clamp(0.0, 1.0).toDouble();
-    if (opacity <= 0) {
-      continue;
-    }
-
-    final frame = resolveExposedFrameAt(layer, frameIndex);
-    if (frame == null) {
-      continue;
-    }
-
-    final surface = surfaceResolver(layer, frame);
+  for (final entry in resolveCutFrameCompositeEntries(
+    cut: cut,
+    frameIndex: frameIndex,
+    fxBypassedLayerIds: fxBypassedLayerIds,
+  )) {
+    final surface = surfaceResolver(entry.layer, entry.frame);
     if (surface == null) {
       continue;
     }
-
     plan.add(
       CutFrameCompositeLayer(
         surface: surface,
-        opacity: opacity,
-        pose: fxEnabled
-            ? resolveLayerPoseAt(
-                layer: layer,
-                canvasSize: cut.canvasSize,
-                frameIndex: frameIndex,
-              )
-            : null,
-        anchorPoint: fxEnabled
-            ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
-            : null,
+        opacity: entry.opacity,
+        pose: entry.pose,
+        anchorPoint: entry.anchorPoint,
       ),
     );
   }

@@ -6,6 +6,8 @@ import '../controllers/default_layer_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/attached_layer_resolve.dart';
+import '../models/attached_placement.dart';
 import '../models/bitmap_surface.dart';
 import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
@@ -55,6 +57,7 @@ import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
+import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/commands/track_se_layer_commands.dart';
@@ -752,10 +755,18 @@ class EditorSessionManager extends ChangeNotifier {
 
     final frameIndex = _timelineController.currentFrameIndex;
     var seenActiveLayer = false;
-    // Track-owned SE rows join as their cut-local display clones — they
-    // composite read-only like before the ownership move.
-    for (final layer in [...cut.layers, ...trackSeDisplayLayers]) {
-      final fxEnabled = isLayerFxEnabled(layer.id);
+    // The CUT layers ride the shared composite visit (skip rules, fx
+    // sharing and the W5 attach-layer expansion agree with playback by
+    // construction); the split around the active layer happens here.
+    final entryByLayerId = {
+      for (final entry in resolveCutFrameCompositeEntries(
+        cut: cut,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      ))
+        entry.layer.id: entry,
+    };
+    for (final layer in cut.layers) {
       // A brush-banned active layer (SE/instruction, R6-④) has no
       // interactive surface — it composites like any other stack layer so
       // its existing cels keep displaying read-only.
@@ -763,17 +774,28 @@ class EditorSessionManager extends ChangeNotifier {
         seenActiveLayer = true;
         activeLayerOpacity = !layer.isVisible
             ? 0.0
-            : fxEnabled
-            ? resolveLayerEffectiveOpacityAt(
-                layer: layer,
-                frameIndex: frameIndex,
-              )
-            : layer.opacity.clamp(0.0, 1.0).toDouble();
+            : _stackLayerOpacity(layer, cut.layers, frameIndex);
         continue;
       }
-      if (layer.kind == LayerKind.camera ||
-          !layer.isVisible ||
-          layer.opacity <= 0) {
+      final entry = entryByLayerId[layer.id];
+      if (entry == null) {
+        continue;
+      }
+      (seenActiveLayer ? above : below).add(
+        CanvasLayerImageRequest(
+          frameKey: brushFrameKeyForCut(cut, entry.layer.id, entry.frame.id),
+          opacity: entry.opacity,
+          pose: entry.pose,
+          anchorPoint: entry.anchorPoint,
+        ),
+      );
+    }
+    // Track-owned SE rows join as their cut-local display clones — they
+    // composite read-only like before the ownership move (their transform
+    // tracks are stripped, so the plain resolve path suffices).
+    for (final layer in trackSeDisplayLayers) {
+      final fxEnabled = isLayerFxEnabled(layer.id);
+      if (!layer.isVisible || layer.opacity <= 0) {
         continue;
       }
       final opacity = fxEnabled
@@ -790,20 +812,28 @@ class EditorSessionManager extends ChangeNotifier {
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
-          pose: fxEnabled
-              ? resolveLayerPoseAt(
-                  layer: layer,
-                  canvasSize: cut.canvasSize,
-                  frameIndex: frameIndex,
-                )
-              : null,
-          anchorPoint: fxEnabled
-              ? resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex)
-              : null,
+          pose: null,
+          anchorPoint: null,
         ),
       );
     }
     return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+  }
+
+  /// The display opacity the editing stack (and the interactive view's
+  /// dimming) uses for [layer]: the shared composite semantics — an attach
+  /// layer multiplies its own static opacity with its BASE's animated
+  /// Opacity sample (fx shared), a regular layer with its own.
+  double _stackLayerOpacity(Layer layer, List<Layer> layers, int frameIndex) {
+    final base = isAttachedLayer(layer) ? attachedBaseOf(layer, layers) : null;
+    final fxCarrier = base ?? layer;
+    if (!isLayerFxEnabled(fxCarrier.id)) {
+      return layer.opacity.clamp(0.0, 1.0).toDouble();
+    }
+    return (layer.opacity *
+            resolveOpacityTrackAt(fxCarrier.transformTrack.opacity, frameIndex))
+        .clamp(0.0, 1.0)
+        .toDouble();
   }
 
   /// The geometric pose sample the interactive canvas shows for [layerId]
@@ -813,15 +843,24 @@ class EditorSessionManager extends ChangeNotifier {
   /// old edit-in-artwork-space rule is retired, R3 ⑩).
   LayerPoseSample? layerCanvasPoseSample(LayerId layerId) {
     final cut = activeCutOrNull;
-    if (cut == null || !isLayerFxEnabled(layerId)) {
+    if (cut == null) {
       return null;
     }
     for (final layer in cut.layers) {
       if (layer.id != layerId) {
         continue;
       }
+      // An attach layer rides its BASE's transform (fx shared, W5): the
+      // interactive view wraps in the base's pose so drawing on the attach
+      // row lines up with the composite.
+      final fxCarrier = isAttachedLayer(layer)
+          ? (attachedBaseOf(layer, cut.layers) ?? layer)
+          : layer;
+      if (!isLayerFxEnabled(fxCarrier.id)) {
+        return null;
+      }
       final pose = resolveLayerPoseAt(
-        layer: layer,
+        layer: fxCarrier,
         canvasSize: cut.canvasSize,
         frameIndex: _timelineController.currentFrameIndex,
       );
@@ -831,7 +870,7 @@ class EditorSessionManager extends ChangeNotifier {
       return (
         pose: pose,
         anchorPoint: resolveLayerAnchorPointAt(
-          layer: layer,
+          layer: fxCarrier,
           frameIndex: _timelineController.currentFrameIndex,
         ),
       );
@@ -1207,6 +1246,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null) {
       return false;
     }
+    // Attach rows are accessories: always deletable, never counted toward
+    // the drawing floor (deleting a BASE cascades over its attach rows).
+    if (isAttachedLayer(activeLayer)) {
+      return true;
+    }
     final layers = activeCut.layers;
     return switch (activeLayer.kind) {
       LayerKind.camera => false,
@@ -1220,8 +1264,9 @@ class EditorSessionManager extends ChangeNotifier {
         layers
                 .where(
                   (layer) =>
+                      !isAttachedLayer(layer) &&
                       timelineSectionForLayerKind(layer.kind) ==
-                      TimelineSection.drawing,
+                          TimelineSection.drawing,
                 )
                 .length >=
             2,
@@ -1313,10 +1358,12 @@ class EditorSessionManager extends ChangeNotifier {
     final activeLayer = this.activeLayer;
     // SE rows are track-owned (global frame axis) — copying a cut-local
     // window onto the cut-layer clipboard would recreate the retired
-    // cut-owned SE shape; stands down for now.
+    // cut-owned SE shape; stands down for now. Attach rows stand down too
+    // (their cel links point into THIS cut's base).
     if (activeLayer == null ||
         activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se) {
+        activeLayer.kind == LayerKind.se ||
+        isAttachedLayer(activeLayer)) {
       return;
     }
 
@@ -1351,10 +1398,12 @@ class EditorSessionManager extends ChangeNotifier {
   void duplicateActiveLayer() {
     final activeLayer = this.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
-    // reason as copyActiveLayer).
+    // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
+    // double-link the same base cels).
     if (activeLayer == null ||
         activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se) {
+        activeLayer.kind == LayerKind.se ||
+        isAttachedLayer(activeLayer)) {
       return;
     }
 
@@ -1468,10 +1517,88 @@ class EditorSessionManager extends ChangeNotifier {
       case LayerKind.animation:
       case LayerKind.storyboard:
       case LayerKind.art:
+        // With an attach row active, the new regular layer lands ABOVE the
+        // whole attach group — never inside it (the list keeps a base's
+        // attach rows adjacent, W5).
+        final active = activeLayer;
+        if (active != null && isAttachedLayer(active)) {
+          final cut = activeCut;
+          _layerController.addLayer(
+            layer: createDefaultAnimationLayer(
+              layerId: layerId,
+              cut: cut,
+            ).copyWith(kind: kind),
+            insertionIndex: attachedGroupEndIndex(
+              active.attachedToLayerId!,
+              cut.layers,
+            ),
+          );
+          break;
+        }
         _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
       case LayerKind.camera:
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
+    notifyListeners();
+  }
+
+  /// Whether the active layer can carry (or already rides within) an
+  /// attach group — the Add Attach Layer entrance's gate (W5).
+  bool get canAddAttachedLayerToActive {
+    final active = activeLayer;
+    if (active == null) {
+      return false;
+    }
+    if (isAttachedLayer(active)) {
+      // Adding from an attach row targets ITS base (same group).
+      return attachedBaseOf(active, activeCut.layers) != null;
+    }
+    return canCarryAttachedLayers(active);
+  }
+
+  /// Adds an ATTACH LAYER riding the active layer (or the active attach
+  /// row's base): own cels/eye/opacity/mark, the base's timing and FX;
+  /// [placement] picks above or below the base's picture. Selected on
+  /// creation; excluded from the timesheet by default.
+  void addAttachedLayer(AttachedPlacement placement) {
+    if (!canAddAttachedLayerToActive) {
+      return;
+    }
+    final active = activeLayer!;
+    final cut = activeCut;
+    final base = isAttachedLayer(active)
+        ? attachedBaseOf(active, cut.layers)!
+        : active;
+    _layerSequence += 1;
+    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final baseIndex = cut.layers.indexWhere((layer) => layer.id == base.id);
+    if (baseIndex == -1) {
+      return;
+    }
+    // [below…, base, above…]: a new below goes bottommost (before the
+    // existing belows), a new above topmost (past the group).
+    final insertionIndex = placement == AttachedPlacement.below
+        ? baseIndex -
+              attachedLayersOf(base.id, cut.layers)
+                  .where(
+                    (layer) =>
+                        layer.attachedPlacement == AttachedPlacement.below,
+                  )
+                  .length
+        : attachedGroupEndIndex(base.id, cut.layers);
+    _layerController.addLayer(
+      layer: Layer(
+        id: layerId,
+        name: nextAttachedLayerName(base, cut.layers),
+        frames: const [],
+        timeline: const {},
+        kind: base.kind,
+        onTimesheet: false,
+        attachedToLayerId: base.id,
+        attachedPlacement: placement,
+      ),
+      insertionIndex: insertionIndex,
+    );
     notifyListeners();
   }
 
@@ -2046,8 +2173,9 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
     // Only the animation ⇄ storyboard pair; other kinds have their own
-    // toggles (SE/art) or are fixed (camera/instruction).
+    // toggles (SE/art) or are fixed (camera/instruction/attach rows).
     if (targetLayer == null ||
+        isAttachedLayer(targetLayer) ||
         targetLayer.kind != LayerKind.animation &&
             targetLayer.kind != LayerKind.storyboard) {
       return false;
@@ -2083,6 +2211,7 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canToggleTargetLayerArt {
     final targetLayer = _targetLayerForKindToggle;
     return targetLayer != null &&
+        !isAttachedLayer(targetLayer) &&
         (targetLayer.kind == LayerKind.animation ||
             targetLayer.kind == LayerKind.art);
   }
@@ -2134,11 +2263,36 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
+    // Attach rows (W5): "Create Drawing" makes a cel RIDING the base's
+    // exposed cel at the playhead — possible only where the base shows a
+    // cel that has no link on this row yet.
+    if (isAttachedLayer(layer)) {
+      return _attachTargetBaseFrameIdAt(layer) != null;
+    }
 
     return _timelineController.canCreateDrawingAt(
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
     );
+  }
+
+  /// The base cel id an attach cel would link to at the playhead; null
+  /// when the base shows nothing there, the base is gone, or the cel is
+  /// already linked on [attached].
+  FrameId? _attachTargetBaseFrameIdAt(Layer attached) {
+    final base = attachedBaseOf(attached, activeCut.layers);
+    if (base == null) {
+      return null;
+    }
+    final baseFrameId = _timelineController.resolveFrameIdForLayer(
+      layer: base,
+      frameIndex: _timelineController.currentFrameIndex,
+    );
+    if (baseFrameId == null ||
+        attached.baseFrameLinks.containsKey(baseFrameId)) {
+      return null;
+    }
+    return baseFrameId;
   }
 
   bool get canCopyFrameAtCurrentFrame {
@@ -2150,7 +2304,10 @@ class EditorSessionManager extends ChangeNotifier {
     final copiedFrame = _copiedFrame;
     if (layer == null ||
         copiedFrame == null ||
-        layer.id != copiedFrame.layerId) {
+        layer.id != copiedFrame.layerId ||
+        // Attach rows own no timeline — linked reuse happens through the
+        // BASE's links (link the base cel instead).
+        isAttachedLayer(layer)) {
       return false;
     }
 
@@ -2191,7 +2348,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// current cell (and the rest of the old hold) becomes empty.
   bool get canCutExposureAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+    // Attach rows have no timing of their own (the base owns it).
+    if (layer == null ||
+        !layerKindHoldsDrawings(layer.kind) ||
+        isAttachedLayer(layer)) {
       return false;
     }
 
@@ -2208,6 +2368,23 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _frameSequence += 1;
+    if (isAttachedLayer(layer)) {
+      final baseFrameId = _attachTargetBaseFrameIdAt(layer);
+      if (baseFrameId == null) {
+        return;
+      }
+      _historyManager.execute(
+        CreateAttachedCelCommand(
+          repository: _repository,
+          cutId: _editingSession.activeCutId,
+          layerId: layer.id,
+          baseFrameId: baseFrameId,
+          frameId: FrameId(_nextFrameId(layer.id)),
+        ),
+      );
+      notifyListeners();
+      return;
+    }
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
@@ -2326,6 +2503,11 @@ class EditorSessionManager extends ChangeNotifier {
     required int blockStartIndex,
     required TimelineBlockEdge edge,
   }) {
+    // Attach rows own no timing — no comma grips (the BASE's grips move
+    // both, W5).
+    if (_isAttachedLayerId(layerId)) {
+      return false;
+    }
     if (isTrackSeLayerId(layerId)) {
       final global = trackSeGlobalLayerById(layerId);
       if (global == null) {
@@ -2659,9 +2841,26 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
+  /// Whether [layerId] names one of the active cut's ATTACH rows (W5).
+  bool _isAttachedLayerId(LayerId layerId) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    for (final layer in cut.layers) {
+      if (layer.id == layerId) {
+        return isAttachedLayer(layer);
+      }
+    }
+    return false;
+  }
+
   bool get canToggleMarkAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+    // Attach rows carry no cell marks (the base's sheet row does).
+    if (layer == null ||
+        !layerKindHoldsDrawings(layer.kind) ||
+        isAttachedLayer(layer)) {
       return false;
     }
 
@@ -2695,7 +2894,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canDeleteCellAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null) {
+    // Attach rows: cel removal is out of v1 scope (delete the row or undo
+    // the creation) — cells are display material here.
+    if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
 

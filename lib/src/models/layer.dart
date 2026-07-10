@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'attached_placement.dart';
 import 'audio_clip.dart';
 import 'camera_instruction.dart';
 import 'frame.dart';
@@ -33,11 +34,15 @@ class Layer {
     this.onTimesheet = true,
     this.mark = LayerMark.none,
     TransformTrack? transformTrack,
+    this.attachedToLayerId,
+    this.attachedPlacement = AttachedPlacement.above,
+    Map<FrameId, FrameId> baseFrameLinks = const {},
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
-       transformTrack = transformTrack ?? TransformTrack.empty();
+       transformTrack = transformTrack ?? TransformTrack.empty(),
+       baseFrameLinks = Map.unmodifiable(baseFrameLinks);
 
   final LayerId id;
   final String name;
@@ -73,6 +78,25 @@ class Layer {
   /// untouched default for every layer).
   final TransformTrack transformTrack;
 
+  /// Non-null makes this an ATTACH LAYER riding the named base layer (W5):
+  /// it shares the base's exposure timing and FX (transform + opacity
+  /// lanes) while keeping its own cels, eye, static opacity and mark. Its
+  /// own [timeline] stays empty — cels resolve through [baseFrameLinks].
+  /// v1: bases are drawing-kind layers only, no nesting.
+  final LayerId? attachedToLayerId;
+
+  /// Whether this attach layer draws above or below its base (meaningful
+  /// only while [attachedToLayerId] is set; the layer list keeps attach
+  /// layers adjacent to their base in [below…, base, above…] order).
+  final AttachedPlacement attachedPlacement;
+
+  /// CELL-level links: base frame id → this layer's frame id. Linking per
+  /// cel (not per block start) keeps attach cels riding linked-cel reuse
+  /// and comma drags automatically. A base cel without a link simply shows
+  /// nothing on this layer; links to deleted base cels are orphans that
+  /// come back with the cel (audio-clip semantics).
+  final Map<FrameId, FrameId> baseFrameLinks;
+
   Layer copyWith({
     LayerId? id,
     String? name,
@@ -87,6 +111,9 @@ class Layer {
     bool? onTimesheet,
     LayerMark? mark,
     TransformTrack? transformTrack,
+    LayerId? attachedToLayerId,
+    AttachedPlacement? attachedPlacement,
+    Map<FrameId, FrameId>? baseFrameLinks,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -103,6 +130,11 @@ class Layer {
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
       transformTrack: transformTrack ?? this.transformTrack,
+      // Detaching is not expressible here (attach rows are created and
+      // deleted whole); copyWith only carries the linkage along.
+      attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
+      attachedPlacement: attachedPlacement ?? this.attachedPlacement,
+      baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
     );
   }
 
@@ -124,6 +156,15 @@ class Layer {
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
+    if (attachedToLayerId != null) ...{
+      'attachedTo': attachedToLayerId!.toJson(),
+      'attachedPlacement': attachedPlacement.toJson(),
+      if (baseFrameLinks.isNotEmpty)
+        'baseFrameLinks': [
+          for (final entry in baseFrameLinks.entries)
+            {'base': entry.key.toJson(), 'frame': entry.value.toJson()},
+        ],
+    },
   };
 
   /// Migrates a legacy free-floating clip ({'file', 'start'}) onto the SE
@@ -187,6 +228,21 @@ class Layer {
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
+      attachedToLayerId: json['attachedTo'] == null
+          ? null
+          : LayerId.fromJson(json['attachedTo'] as Map<String, dynamic>),
+      attachedPlacement: AttachedPlacement.fromJson(json['attachedPlacement']),
+      baseFrameLinks: json['baseFrameLinks'] == null
+          ? const {}
+          : {
+              for (final link in json['baseFrameLinks'] as List<dynamic>)
+                FrameId.fromJson(
+                  (link as Map<String, dynamic>)['base']
+                      as Map<String, dynamic>,
+                ): FrameId.fromJson(
+                  link['frame'] as Map<String, dynamic>,
+                ),
+            },
     );
   }
 
@@ -206,7 +262,10 @@ class Layer {
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
-          other.transformTrack == transformTrack;
+          other.transformTrack == transformTrack &&
+          other.attachedToLayerId == attachedToLayerId &&
+          other.attachedPlacement == attachedPlacement &&
+          mapEquals(other.baseFrameLinks, baseFrameLinks);
 
   @override
   int get hashCode => Object.hash(
@@ -227,6 +286,13 @@ class Layer {
     onTimesheet,
     mark,
     transformTrack,
+    attachedToLayerId,
+    attachedPlacement,
+    Object.hashAllUnordered(
+      baseFrameLinks.entries.map(
+        (entry) => Object.hash(entry.key, entry.value),
+      ),
+    ),
   );
 
   @override

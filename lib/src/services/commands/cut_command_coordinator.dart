@@ -1,6 +1,7 @@
 import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../core/collection_equality.dart';
+import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
@@ -340,37 +341,67 @@ class CutCommandCoordinator {
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    // Mirrors the session's canDeleteActiveLayer floors: camera fixed, at
-    // least two SE rows (S1·S2), one instruction row and one drawing cel.
-    final refused = switch (layer.kind) {
-      LayerKind.camera => true,
-      LayerKind.se =>
-        cut.layers.where((other) => other.kind == LayerKind.se).length <= 2,
-      LayerKind.instruction =>
-        cut.layers
-                .where((other) => other.kind == LayerKind.instruction)
-                .length <=
-            1,
-      LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
-        cut.layers
-                .where(
-                  (other) =>
-                      other.kind == LayerKind.animation ||
-                      other.kind == LayerKind.storyboard ||
-                      other.kind == LayerKind.art,
-                )
-                .length <=
-            1,
-    };
-    if (refused) {
-      return;
+    // Attach rows are accessories — always deletable, never counted toward
+    // the section floors below.
+    if (!isAttachedLayer(layer)) {
+      // Mirrors the session's canDeleteActiveLayer floors: camera fixed, at
+      // least two SE rows (S1·S2), one instruction row and one drawing cel.
+      final refused = switch (layer.kind) {
+        LayerKind.camera => true,
+        LayerKind.se =>
+          cut.layers.where((other) => other.kind == LayerKind.se).length <= 2,
+        LayerKind.instruction =>
+          cut.layers
+                  .where((other) => other.kind == LayerKind.instruction)
+                  .length <=
+              1,
+        LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
+          cut.layers
+                  .where(
+                    (other) =>
+                        !isAttachedLayer(other) &&
+                        (other.kind == LayerKind.animation ||
+                            other.kind == LayerKind.storyboard ||
+                            other.kind == LayerKind.art),
+                  )
+                  .length <=
+              1,
+      };
+      if (refused) {
+        return;
+      }
     }
 
+    // Deleting a BASE cascades over its attach rows (they cannot stand
+    // alone) — ONE undo step; the composite undoes in reverse, restoring
+    // each layer at its captured index.
+    final attachedRows = attachedLayersOf(layerId, cut.layers);
+    if (attachedRows.isEmpty) {
+      historyManager.execute(
+        DeleteLayerCommand(
+          repository: repository,
+          cutId: cutId,
+          layerId: layerId,
+        ),
+      );
+      return;
+    }
     historyManager.execute(
-      DeleteLayerCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
+      CompositeCommand(
+        description: 'Delete layer ${layer.name} and its attach layers',
+        commands: [
+          for (final attached in attachedRows)
+            DeleteLayerCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: attached.id,
+            ),
+          DeleteLayerCommand(
+            repository: repository,
+            cutId: cutId,
+            layerId: layerId,
+          ),
+        ],
       ),
     );
   }
@@ -640,6 +671,9 @@ class CutCommandCoordinator {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (layer.kind == kind) {
       return;
+    }
+    if (isAttachedLayer(layer)) {
+      throw StateError('Attach layers keep their base\'s kind: $layerId');
     }
     if (layer.kind == LayerKind.camera || kind == LayerKind.camera) {
       throw StateError(

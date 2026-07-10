@@ -337,4 +337,121 @@ void main() {
     expect(bypassed.anchorPoint, isNull);
     expect(bypassed.opacity, closeTo(0.8, 1e-9));
   });
+
+  group('attach layers (W5)', () {
+    // Base at list position 1, flanked by its attach rows: [below, base,
+    // above]. Base block b-1 at [0,4); links: below → f-2, above → f-3.
+    Layer baseLayer({TransformTrack? track, bool isVisible = true}) => Layer(
+      id: const LayerId('base'),
+      name: 'A',
+      frames: [frame('frame-1')],
+      timeline: {
+        0: TimelineExposure.drawing(const FrameId('frame-1'), length: 4),
+      },
+      transformTrack: track,
+      isVisible: isVisible,
+    );
+    Layer attachRow(
+      String id,
+      int marker, {
+      double opacity = 1,
+      bool isVisible = true,
+      LayerId attachedTo = const LayerId('base'),
+    }) => Layer(
+      id: LayerId(id),
+      name: 'A +',
+      frames: [frame('frame-$marker')],
+      timeline: const {},
+      opacity: opacity,
+      isVisible: isVisible,
+      attachedToLayerId: attachedTo,
+      baseFrameLinks: {const FrameId('frame-1'): FrameId('frame-$marker')},
+    );
+
+    test('attach rows composite in list order around their base — '
+        '[below, base, above] — riding the base exposure', () {
+      final plan = planCutFrameComposite(
+        cut: cut([attachRow('below', 2), baseLayer(), attachRow('above', 3)]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+      expect(plan.map(markerOf), [2, 1, 3]);
+
+      // Past the base's block, nothing on any of the three.
+      final past = planCutFrameComposite(
+        cut: cut([attachRow('below', 2), baseLayer(), attachRow('above', 3)]),
+        frameIndex: 5,
+        surfaceResolver: resolver,
+      );
+      expect(past, isEmpty);
+    });
+
+    test('the BASE pose and animated opacity apply to attach rows (fx '
+        'shared), multiplied with each row own static opacity', () {
+      final track = TransformTrack(
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
+      ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5));
+      final plan = planCutFrameComposite(
+        cut: cut([
+          baseLayer(track: track),
+          attachRow('above', 3, opacity: 0.5),
+        ]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+
+      expect(plan, hasLength(2));
+      final basePlan = plan[0];
+      final attachPlan = plan[1];
+      expect(attachPlan.pose, isNotNull);
+      expect(attachPlan.pose!.center.x, basePlan.pose!.center.x);
+      expect(attachPlan.pose!.center.y, basePlan.pose!.center.y);
+      // 0.5 static × 0.5 base opacity sample.
+      expect(attachPlan.opacity, closeTo(0.25, 1e-9));
+    });
+
+    test('bypassing the BASE fx bypasses its attach rows too (one switch '
+        'for the group)', () {
+      final track = TransformTrack(
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
+      ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5));
+      final plan = planCutFrameComposite(
+        cut: cut([baseLayer(track: track), attachRow('above', 3)]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+        fxBypassedLayerIds: {const LayerId('base')},
+      );
+
+      expect(plan.map(markerOf), [1, 3]);
+      expect(plan[1].pose, isNull);
+      expect(plan[1].opacity, 1.0);
+    });
+
+    test('hiding the base hides its attach rows; each row own eye still '
+        'hides it alone; dangling links contribute nothing', () {
+      final baseHidden = planCutFrameComposite(
+        cut: cut([baseLayer(isVisible: false), attachRow('above', 3)]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+      expect(baseHidden, isEmpty);
+
+      final rowHidden = planCutFrameComposite(
+        cut: cut([baseLayer(), attachRow('above', 3, isVisible: false)]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+      expect(rowHidden.map(markerOf), [1]);
+
+      final dangling = planCutFrameComposite(
+        cut: cut([
+          baseLayer(),
+          attachRow('above', 3, attachedTo: const LayerId('gone')),
+        ]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+      expect(dangling.map(markerOf), [1]);
+    });
+  });
 }
