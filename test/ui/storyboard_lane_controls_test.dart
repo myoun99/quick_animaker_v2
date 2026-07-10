@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -12,6 +13,9 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart'
+    show PropertyLaneEditCallbacks;
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'package:quick_animaker_v2/src/models/project.dart';
@@ -76,10 +80,13 @@ Future<void> _pumpPanel(
   TimelineCommaDragCallbacks? seCommaDrag,
   void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset,
+  PropertyLaneEditCallbacks? Function(Cut cut)? cutLaneEditFor,
+  PropertyLaneEditCallbacks? layerLaneEdit,
 }) async {
   final hiddenWaveforms = <String>{};
   final expandedAudio = <String>{};
-  final expandedOpacity = <String>{};
+  final expandedTransform = <String>{};
+  final expandedGroups = <String>{};
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -105,12 +112,21 @@ Future<void> _pumpPanel(
                 expandedAudio.remove(key);
               }
             }),
-            expandedOpacityTracks: expandedOpacity,
+            expandedTransformTracks: expandedTransform,
             onToggleTrackLane: (track) => setState(() {
-              if (!expandedOpacity.add(track.id.value)) {
-                expandedOpacity.remove(track.id.value);
+              if (!expandedTransform.add(track.id.value)) {
+                expandedTransform.remove(track.id.value);
               }
             }),
+            expandedTransformGroups: expandedGroups,
+            onToggleTransformGroup: (groupKey) => setState(() {
+              if (!expandedGroups.add(groupKey)) {
+                expandedGroups.remove(groupKey);
+              }
+            }),
+            cutLaneEditFor: cutLaneEditFor,
+            layerLaneEdit: layerLaneEdit,
+            poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onSetCutFadeTarget: onSetCutFadeTarget,
             onToggleLayerVisibility: onToggleLayerVisibility,
@@ -127,18 +143,40 @@ Future<void> _pumpPanel(
   await tester.pumpAndSettle();
 }
 
+/// Twirls down the V track and its Transform group (AE double step: the
+/// chevron reveals the group header, the header opens the lanes).
+Future<void> _expandVTransform(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(
+      const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(
+      const ValueKey<String>(
+        'storyboard-lane-group-toggle-v-lane-track-transform-group',
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('the V-track chevron twirls down the Opacity lane and the '
-      'S-row chevron the audio lane, timeline-style', (tester) async {
+  testWidgets('the V-track chevron twirls down the Transform GROUP header '
+      '(collapsed, AE-style) and the header opens the lanes with the '
+      'fade-envelope Opacity strip last', (tester) async {
     await _pumpPanel(tester, project: _project());
 
-    // Collapsed: no lane rows.
+    // Collapsed: no lane rows at all.
     expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-lane-row-0-transform-group'),
+      ),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
       findsNothing,
     );
 
@@ -148,15 +186,89 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    // The group header shows, its members stay collapsed (default).
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-label-v-lane-track-transform-group',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-cut-lane-row-0-position')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-group-toggle-v-lane-track-transform-group',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // AE order: Anchor Point / Position / Scale / Rotation / Opacity —
+    // the Opacity strip IS the cut-fade envelope row.
+    for (final laneId in ['anchor-point', 'position', 'scale', 'rotation']) {
+      expect(
+        find.byKey(
+          ValueKey<String>('storyboard-lane-label-v-lane-track-$laneId'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('storyboard-cut-lane-row-0-$laneId')),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-label-v-lane-track-opacity'),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
       findsOneWidget,
     );
     expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-lane-label-lane-track-opacity'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-cut-fade-span-lane-cut')),
       findsOneWidget,
+    );
+
+    // The chevron twirls the whole group back up.
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-cut-lane-row-0-transform-group'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the S-row chevron twirls down the audio lane plus its OWN '
+      'Transform group on the active cut\'s slot layer', (tester) async {
+    await _pumpPanel(tester, project: _project());
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      findsNothing,
     );
 
     await tester.tap(
@@ -187,16 +299,184 @@ void main() {
       findsOneWidget,
     );
 
-    // Chevrons twirl back up.
+    // Audio leads; the Transform group header sits BELOW it, collapsed.
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-label-lane-se-transform-group'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-position')),
+      findsNothing,
+    );
+
     await tester.tap(
       find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
+        const ValueKey<String>(
+          'storyboard-lane-group-toggle-lane-se-transform-group',
+        ),
       ),
     );
     await tester.pumpAndSettle();
+    for (final laneId in [
+      'anchor-point',
+      'position',
+      'scale',
+      'rotation',
+      'opacity',
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>('storyboard-lane-label-lane-se-$laneId')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('storyboard-se-lane-row-0-1-$laneId')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('the V Transform lanes edit the CUT-level track: key toggles '
+      'route the per-cut lane edit hooks and keyed frames show as markers '
+      'on the cut\'s span', (tester) async {
+    final toggles = <(String, String, int)>[];
+    await _pumpPanel(
+      tester,
+      project: _project(
+        mapCut: (cut) => cut.copyWith(
+          transformTrack: cut.transformTrack.copyWith(
+            position: PropertyTrack<CanvasPoint>.empty().withKey(
+              2,
+              CanvasPoint(x: 10, y: 20),
+            ),
+          ),
+        ),
+      ),
+      cutLaneEditFor: (cut) => PropertyLaneEditCallbacks(
+        onToggleKeyAt: (_, lane, frame) =>
+            toggles.add((cut.id.value, lane.laneId, frame)),
+        onMoveKey: (_, _, _, _) {},
+        onRemoveKey: (_, _, _) {},
+        onToggleHold: (_, _, _) {},
+      ),
+    );
+    await _expandVTransform(tester);
+
+    // The keyed frame rides the cut's OWN span (cut-local frame 2).
     expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
-      findsNothing,
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-key-v-lane-cut-position-2'),
+      ),
+      findsOneWidget,
+    );
+    // The value column resolves the cut pose over the display space —
+    // unkeyed lanes read the identity (display center).
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('storyboard-lane-value-v-lane-track-scale'),
+        ),
+        matching: find.text('100%'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-key-toggle-v-lane-track-position',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(toggles, [('lane-cut', 'position', 0)]);
+  });
+
+  testWidgets('the S-row Transform lanes edit the slot LAYER\'s track '
+      'through the shared layer lane hooks', (tester) async {
+    final toggles = <(String, String, int)>[];
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      layerLaneEdit: PropertyLaneEditCallbacks(
+        onToggleKeyAt: (layer, lane, frame) =>
+            toggles.add((layer.id.value, lane.laneId, frame)),
+        onMoveKey: (_, _, _, _) {},
+        onRemoveKey: (_, _, _) {},
+        onToggleHold: (_, _, _) {},
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-group-toggle-lane-se-transform-group',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-key-toggle-lane-se-position'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(toggles, [('lane-se', 'position', 0)]);
+  });
+
+  testWidgets('track groups run in TIMELINE order (R6 B3): the S rows sit '
+      'ABOVE the V track, and the section divider caps the group', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, project: _project());
+
+    final seLabelTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-se-label-lane-track-1'),
+          ),
+        )
+        .dy;
+    final vLabelTop = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-track-label-row-lane-track'),
+          ),
+        )
+        .dy;
+    expect(
+      seLabelTop,
+      lessThan(vLabelTop),
+      reason: 'rail order: S rows above the V track',
+    );
+
+    final seRowTop = tester
+        .getTopLeft(find.byKey(const ValueKey<String>('storyboard-se-row-0-1')))
+        .dy;
+    final vRowTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('storyboard-track-row-lane-track')),
+        )
+        .dy;
+    expect(
+      seRowTop,
+      lessThan(vRowTop),
+      reason: 'strip order mirrors the rail: S rows above the V track',
+    );
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-section-divider-rail-lane-track'),
+      ),
+      findsOneWidget,
     );
   });
 
@@ -241,12 +521,7 @@ void main() {
           commits.add((cutId, fadeIn, fadeOut)),
     );
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await _expandVTransform(tester);
 
     // 12 px/frame: 3 frames = 36 px rightward on the fade-in handle.
     await tester.drag(
@@ -290,12 +565,7 @@ void main() {
           commits.add((cutId, fadeIn, fadeOut)),
     );
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await _expandVTransform(tester);
 
     await tester.drag(
       find.byKey(
@@ -317,12 +587,7 @@ void main() {
       onSetCutFadeTarget: (cutId, target) => targets.add((cutId, target)),
     );
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await _expandVTransform(tester);
 
     await tester.longPress(
       find.byKey(const ValueKey<String>('storyboard-cut-fade-span-lane-cut')),
