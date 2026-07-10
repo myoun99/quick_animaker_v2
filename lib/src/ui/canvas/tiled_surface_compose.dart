@@ -65,6 +65,48 @@ Future<ui.Image> composeTiledSurfaceImage(
   }
 }
 
+/// Synchronous variant for latency-critical swaps (the layer-switch
+/// handoff): composes ONLY when every tile is already decoded in [reuse] —
+/// the on-screen frame's tiles always are — via [ui.Picture.toImageSync]
+/// (rasterization stays deferred on the GPU). Returns null when any tile
+/// is missing so the caller falls back to the async path; byte parity
+/// matches [composeTiledSurfaceImage] (same tile images, same 1:1
+/// integer-offset draws). The caller owns the returned image.
+ui.Image? composeTiledSurfaceImageSyncOrNull(
+  BitmapSurface surface, {
+  required BitmapTileImageCache reuse,
+}) {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+
+  for (final tile in surface.tiles.values) {
+    final image = reuse.imageFor(tile);
+    if (image == null) {
+      recorder.endRecording().dispose();
+      return null;
+    }
+    canvas.drawImage(
+      image,
+      ui.Offset(
+        (tile.coord.x * tile.size).toDouble(),
+        (tile.coord.y * tile.size).toDouble(),
+      ),
+      paint,
+    );
+  }
+
+  final picture = recorder.endRecording();
+  try {
+    return picture.toImageSync(
+      surface.canvasSize.width,
+      surface.canvasSize.height,
+    );
+  } finally {
+    picture.dispose();
+  }
+}
+
 Future<ui.Image> _decodeTile(BitmapTile tile) {
   final completer = Completer<ui.Image>();
   ui.decodeImageFromPixels(

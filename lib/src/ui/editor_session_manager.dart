@@ -393,6 +393,7 @@ class EditorSessionManager extends ChangeNotifier {
     audioPeaksStore.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
+    frameSeekCommitted.dispose();
     super.dispose();
   }
 
@@ -2502,11 +2503,16 @@ class EditorSessionManager extends ChangeNotifier {
 
   int get currentFrameIndex => _timelineController.currentFrameIndex;
 
+  /// A seek is NOT a session notify: the playhead move rebuilds nothing by
+  /// itself. Cursor-driven widgets follow [editingFrameCursor]; the few
+  /// seek-dependent surfaces (editing canvas, timeline toolbar enablement,
+  /// camera pose panel, timesheet playhead) subscribe to
+  /// [frameSeekCommitted] and rebuild once per committed seek.
   void selectFrameIndex(int frameIndex) {
     _timelineController.selectFrameIndex(frameIndex);
     editingFrameCursor.value = frameIndex;
     _warmActiveCut();
-    notifyListeners();
+    frameSeekCommitted.value += 1;
   }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
@@ -2516,6 +2522,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// layer, frame counter, the canvas scrub preview) follow pointer-fast
   /// without a session notify rebuilding the tree.
   final ValueNotifier<int> editingFrameCursor = ValueNotifier<int>(0);
+
+  /// Bumped once per committed seek ([selectFrameIndex]) — a serial, not a
+  /// frame (a same-frame commit must still fire after a scrub returned to
+  /// its start). Seek-dependent panels subscribe here instead of the full
+  /// session notify.
+  final ValueNotifier<int> frameSeekCommitted = ValueNotifier<int>(0);
 
   /// True while a ruler scrub is in flight — the canvas swaps to the
   /// composite-cache preview (the playback display machinery) until the
@@ -2544,7 +2556,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The scrub gesture's release: ends the preview and commits the
-  /// scrubbed playhead as ONE ordinary seek (warm + notify).
+  /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).
   void commitFrameScrub() {
     if (frameScrubActive.value) {
       frameScrubActive.value = false;

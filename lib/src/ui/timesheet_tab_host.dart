@@ -122,9 +122,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
     // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
     // data and hand the windows fresh ink session surfaces; ink commits
-    // notify through the controller.
+    // notify through the controller. Committed seeks (no longer session
+    // notifies) move the playhead row/page.
     final listenable = Listenable.merge([
       session,
+      session.frameSeekCommitted,
       session.playback.globalFrameIndexListenable,
       ?inkController,
     ]);
@@ -166,7 +168,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             ? null
             : widget.continuous
             ? CanvasAutoFrameRequest(
-                token: ('timesheet-reveal', session.activeCut.id, playheadFrame),
+                token: (
+                  'timesheet-reveal',
+                  session.activeCut.id,
+                  playheadFrame,
+                ),
                 rect: Rect.fromLTWH(
                   layout.paperLeft,
                   layout.frameRowTop(playheadFrame),
@@ -199,7 +205,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                   const Spacer(),
                   if (widget.onInkEnabledChanged != null)
                     IconButton(
-                      key: const ValueKey<String>('timesheet-ink-toggle-button'),
+                      key: const ValueKey<String>(
+                        'timesheet-ink-toggle-button',
+                      ),
                       tooltip: widget.inkEnabled
                           ? 'Block Sheet Ink'
                           : 'Allow Sheet Ink',
@@ -254,8 +262,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 // Fit frames the page the playhead is on.
                 fitFocusRect: layout.pageRect(playheadPage),
                 autoFrame: autoFrame,
-                contentStrokeActive:
-                    inkController == null || !widget.inkEnabled
+                contentStrokeActive: inkController == null || !widget.inkEnabled
                     ? null
                     : _inkStrokeActive,
                 contentOverride: (context, viewport) => Stack(

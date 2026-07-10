@@ -771,28 +771,34 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         onToggleLaneGroup: widget.onToggleTransformGroup == null
             ? null
             : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
-        timelineActionToolbar: Row(
-          children: [
-            PlaybackTransportControls(
-              controller: _session.playback,
-              scope: PlaybackScope.activeCut,
-              quality: _session.playbackQuality,
-              onQualityChanged: _session.setPlaybackQuality,
-              playbackStartFrame: () => _session.currentFrameIndex,
-            ),
-            Expanded(
-              child: TimelineActionToolbar(
-                session: _session,
-                onRenameLayer: _renameActiveLayer,
-                onDeleteLayer: _deleteActiveLayer,
-                onEditInstance: _editActiveInstance,
-                onCreateInstance: _createActiveInstance,
-                onImportAudio: _importAudio,
-                hiddenSections: widget.hiddenSections,
-                onToggleSection: widget.onToggleSection,
+        // Button enablement reads the playhead, and committed seeks are no
+        // longer session notifies — the toolbar re-reads them here without
+        // the panel (or its grids) rebuilding.
+        timelineActionToolbar: ListenableBuilder(
+          listenable: _session.frameSeekCommitted,
+          builder: (context, _) => Row(
+            children: [
+              PlaybackTransportControls(
+                controller: _session.playback,
+                scope: PlaybackScope.activeCut,
+                quality: _session.playbackQuality,
+                onQualityChanged: _session.setPlaybackQuality,
+                playbackStartFrame: () => _session.currentFrameIndex,
               ),
-            ),
-          ],
+              Expanded(
+                child: TimelineActionToolbar(
+                  session: _session,
+                  onRenameLayer: _renameActiveLayer,
+                  onDeleteLayer: _deleteActiveLayer,
+                  onEditInstance: _editActiveInstance,
+                  onCreateInstance: _createActiveInstance,
+                  onImportAudio: _importAudio,
+                  hiddenSections: widget.hiddenSections,
+                  onToggleSection: widget.onToggleSection,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -58,7 +58,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   Widget build(BuildContext context) {
     final session = widget.session;
     return ListenableBuilder(
+      // The session subscription lives HERE now (HomePage no longer
+      // setStates the world). Committed seeks retarget the editing stack
+      // through frameSeekCommitted — deliberately NOT the frame cursor,
+      // whose per-move scrub firehose must never rebuild the brush host.
       listenable: Listenable.merge([
+        session,
+        session.frameSeekCommitted,
         widget.brushToolState,
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,

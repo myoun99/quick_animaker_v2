@@ -118,10 +118,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       }
     }
     for (final layer in widget.layers) {
-      final image = widget.imageCache.validImageOrNull(
-        layer.frameKey,
-        PlaybackQuality.full,
+      // Valid cache image, or a synchronous per-tile compose (the just-
+      // deactivated layer's on-screen tiles are already decoded) — either
+      // way the artwork paints THIS frame; only true cold misses fall to
+      // the async pass.
+      final image = widget.imageCache.prepareSyncOrNull(
+        key: layer.frameKey,
         canvasSize: widget.canvasSize,
+        quality: PlaybackQuality.full,
       );
       if (image == null) {
         continue;

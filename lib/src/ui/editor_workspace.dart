@@ -587,7 +587,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.videocam_outlined,
           locked: locked,
           builder: (context) => ListenableBuilder(
+            // The session subscription lives HERE now (HomePage no longer
+            // setStates the world); the pose readout additionally tracks
+            // committed seeks, which are no longer session notifies.
             listenable: Listenable.merge([
+              widget.session,
+              widget.session.frameSeekCommitted,
               _cameraViewEnabled,
               _cameraDimOpacity,
             ]),
@@ -641,7 +646,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
           builder: (context) => ListenableBuilder(
+            // The session subscription lives HERE now (HomePage no longer
+            // setStates the world). Seeks are NOT session notifies — the
+            // grids ride the frame cursor and never rebuild for them.
             listenable: Listenable.merge([
+              widget.session,
               _timelineOrientation,
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
@@ -688,7 +697,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
           builder: (context) => ListenableBuilder(
+            // Session subscription (see the timeline tab) + the editing
+            // frame cursor: the storyboard playhead follows scrubs and
+            // committed seeks live — this whole-panel rebuild is the same
+            // one playback ticks already pay, measured cheap on device.
             listenable: Listenable.merge([
+              widget.session,
+              widget.session.editingFrameCursor,
               _storyboardPixelsPerFrame,
               _showSecondsDisplay,
               _storyboardThumbnails,

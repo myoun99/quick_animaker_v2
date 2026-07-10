@@ -15,6 +15,7 @@ import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
@@ -164,11 +165,13 @@ void main() {
       );
     }
 
-    test('scrub moves never notify; the commit notifies once', () {
+    test('scrub moves never notify; the commit fires the committed-seek '
+        'signal once and never a session notify', () {
       final manager = session();
       addTearDown(manager.dispose);
       var notifies = 0;
       manager.addListener(() => notifies += 1);
+      final commitsBefore = manager.frameSeekCommitted.value;
 
       manager.scrubFrameIndex(5);
       manager.scrubFrameIndex(9);
@@ -176,9 +179,19 @@ void main() {
       expect(manager.currentFrameIndex, 9);
       expect(manager.editingFrameCursor.value, 9);
       expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.frameSeekCommitted.value, commitsBefore);
 
       manager.commitFrameScrub();
-      expect(notifies, 1, reason: 'the release commits exactly once');
+      expect(
+        manager.frameSeekCommitted.value,
+        commitsBefore + 1,
+        reason: 'the release commits exactly once',
+      );
+      expect(
+        notifies,
+        0,
+        reason: 'a seek is never a session notify — nothing else rebuilds',
+      );
       expect(manager.frameScrubActive.value, isFalse);
       expect(manager.currentFrameIndex, 9);
     });
@@ -198,12 +211,18 @@ void main() {
       expect(manager.frameScrubActive.value, isFalse);
     });
 
-    test('selectFrameIndex keeps the editing cursor in sync', () {
+    test('selectFrameIndex keeps the editing cursor in sync and fires the '
+        'committed-seek signal instead of a session notify', () {
       final manager = session();
       addTearDown(manager.dispose);
+      var notifies = 0;
+      manager.addListener(() => notifies += 1);
+      final commitsBefore = manager.frameSeekCommitted.value;
 
       manager.selectFrameIndex(7);
       expect(manager.editingFrameCursor.value, 7);
+      expect(manager.frameSeekCommitted.value, commitsBefore + 1);
+      expect(notifies, 0);
     });
 
     testWidgets('tab host: a ruler drag moves the playhead without a '
@@ -265,10 +284,16 @@ void main() {
         ),
       );
 
+      final commitsBefore = manager.frameSeekCommitted.value;
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(notifies, 1, reason: 'the release commits exactly once');
+      expect(
+        manager.frameSeekCommitted.value,
+        commitsBefore + 1,
+        reason: 'the release commits exactly once',
+      );
+      expect(notifies, 0, reason: 'seeks are never session notifies');
       expect(manager.currentFrameIndex, 5);
       expect(manager.frameScrubActive.value, isFalse);
     });
@@ -316,6 +341,61 @@ void main() {
         findsNothing,
         reason: 'the commit swaps back to the editing canvas',
       );
+    });
+
+    testWidgets('storyboard: a ruler drag scrubs the active cut on the '
+        'cursor path and commits once on release', (tester) async {
+      final manager = session();
+      addTearDown(manager.dispose);
+      var notifies = 0;
+      manager.addListener(() => notifies += 1);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            // The workspace-style wrapper: session notifies AND cursor
+            // moves rebuild the host (the playhead follows scrubs live).
+            body: ListenableBuilder(
+              listenable: Listenable.merge([
+                manager,
+                manager.editingFrameCursor,
+              ]),
+              builder: (context, _) => StoryboardTabHost(
+                session: manager,
+                pixelsPerFrame: 12,
+                onPixelsPerFrameChanged: (_) {},
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+                thumbnailFor: null,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      notifies = 0;
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final start = tester.getTopLeft(ruler) + const Offset(12 * 2 + 4, 10);
+      final gesture = await tester.startGesture(start);
+      await gesture.moveBy(const Offset(12 * 6, 0));
+      await tester.pump();
+
+      expect(
+        notifies,
+        0,
+        reason: 'storyboard scrub moves ride the cursor path',
+      );
+      expect(manager.currentFrameIndex, greaterThan(2));
+      expect(manager.frameScrubActive.value, isTrue);
+
+      final commitsBefore = manager.frameSeekCommitted.value;
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(manager.frameSeekCommitted.value, commitsBefore + 1);
+      expect(notifies, 0, reason: 'seeks are never session notifies');
+      expect(manager.frameScrubActive.value, isFalse);
     });
   });
 }
