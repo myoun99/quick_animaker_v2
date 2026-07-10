@@ -56,6 +56,9 @@ Layer _duplicateLayer({
     newLayerId: newLayerId,
     newName: layer.name,
     frameIdMap: frameIdMap,
+    // The whole cut duplicates together: attach linkage remaps onto the
+    // copied base (both the layer pointer and the per-cel links).
+    layerIdMap: layerIdMap,
   );
 }
 
@@ -65,7 +68,9 @@ Layer duplicateLayerAsIndependentCopy({
   required String newName,
   required Map<FrameId, FrameId> frameIdMap,
   LayerKind? kind,
+  Map<LayerId, LayerId> layerIdMap = const {},
 }) {
+  final attachedTo = source.attachedToLayerId;
   return Layer(
     id: newLayerId,
     name: newName,
@@ -79,8 +84,30 @@ Layer duplicateLayerAsIndependentCopy({
       ),
     ),
     isVisible: source.isVisible,
+    muted: source.muted,
     opacity: source.opacity,
     kind: kind ?? source.kind,
+    onTimesheet: source.onTimesheet,
+    mark: source.mark,
+    transformTrack: source.transformTrack,
+    instructions: source.instructions,
+    audioClips: [
+      for (final clip in source.audioClips)
+        clip.copyWith(frameId: frameIdMap[clip.frameId] ?? clip.frameId),
+    ],
+    // Attach linkage: the base pointer remaps when its copy is known (a
+    // whole-cut duplicate); a lone-layer copy keeps pointing at the
+    // original base in the same cut. Cel links remap on BOTH sides where
+    // mapped.
+    attachedToLayerId: attachedTo == null
+        ? null
+        : (layerIdMap[attachedTo] ?? attachedTo),
+    attachedPlacement: source.attachedPlacement,
+    baseFrameLinks: {
+      for (final entry in source.baseFrameLinks.entries)
+        (frameIdMap[entry.key] ?? entry.key):
+            frameIdMap[entry.value] ?? entry.value,
+    },
   );
 }
 

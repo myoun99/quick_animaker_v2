@@ -1,3 +1,4 @@
+import '../models/attached_layer_resolve.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -45,11 +46,24 @@ class LayerController {
 
   List<Layer> get layers {
     final cutLayers = _findCut().layers;
+    // Attach rows join as DISPLAY clones whose timeline mirrors the base
+    // through the cell links (W5) — the same read-clone pattern as the
+    // track SE rows below; writes address the real layers via commands.
+    final displayed = [
+      for (final layer in cutLayers)
+        if (isAttachedLayer(layer))
+          switch (attachedBaseOf(layer, cutLayers)) {
+            null => layer,
+            final base => attachedDisplayLayer(attached: layer, base: base),
+          }
+        else
+          layer,
+    ];
     final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
     if (trackSe.isEmpty) {
-      return cutLayers;
+      return displayed;
     }
-    return [...cutLayers, ...trackSe];
+    return [...displayed, ...trackSe];
   }
 
   LayerId? get activeLayerId {
@@ -94,14 +108,13 @@ class LayerController {
     _activeLayerId = layerId;
   }
 
-  void addLayer({required Layer layer}) {
-    final insertionIndex = _insertionIndexAboveActiveLayer();
+  void addLayer({required Layer layer, int? insertionIndex}) {
     _historyManager.execute(
       AddLayerCommand(
         repository: _repository,
         cutId: _cutId,
         layer: layer,
-        insertionIndex: insertionIndex,
+        insertionIndex: insertionIndex ?? _insertionIndexAboveActiveLayer(),
       ),
     );
     _activeLayerId = layer.id;

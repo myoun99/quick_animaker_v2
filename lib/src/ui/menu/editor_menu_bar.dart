@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../models/attached_placement.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
@@ -232,6 +233,21 @@ class EditorMenuBar extends StatelessWidget {
 
   List<Widget> _layerItems(BuildContext context) => [
     _item(id: 'layer-add', label: 'Add Layer', onPressed: session.addLayer),
+    // Attach layers (W5): own cels riding the active layer's timing + FX.
+    _item(
+      id: 'layer-add-attach-above',
+      label: 'Add Attach Layer Above',
+      onPressed: session.canAddAttachedLayerToActive
+          ? () => session.addAttachedLayer(AttachedPlacement.above)
+          : null,
+    ),
+    _item(
+      id: 'layer-add-attach-below',
+      label: 'Add Attach Layer Below',
+      onPressed: session.canAddAttachedLayerToActive
+          ? () => session.addAttachedLayer(AttachedPlacement.below)
+          : null,
+    ),
     _item(
       id: 'layer-duplicate',
       label: 'Duplicate Layer',
