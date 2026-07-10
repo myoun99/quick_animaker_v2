@@ -655,6 +655,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       builder: (context, _) => TimelinePanel(
         layers: _displayLayers(),
         activeLayerId: _session.activeLayerId,
+        // Edit drags (comma/trim) preview through the scoped channel: a
+        // step rebuilds the dragged row's gate + the cursor overlay only,
+        // never this host (the release commit is the one session notify).
+        dragPreview: _session.dragPreview,
         frameCursor: _frameCursor,
         cacheProgress: _session.prerenderScheduler.progress,
         isFrameCached: _session.isPlaybackFrameCached,

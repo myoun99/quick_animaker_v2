@@ -472,7 +472,16 @@ void main() {
         lessThan(tester.getTopLeft(positionLabel).dy),
       );
       // R6-④: the group is the FULL AE set, identical to drawing layers —
-      // Anchor Point and Opacity included.
+      // Anchor Point and Opacity included. The layer axis is virtualized,
+      // so rows below the viewport need a scroll to be built at all.
+      final verticalScrollable = find
+          .descendant(
+            of: find.byKey(
+              const ValueKey<String>('timeline-vertical-scroll-viewport'),
+            ),
+            matching: find.byType(Scrollable),
+          )
+          .first;
       expect(
         find.byKey(
           const ValueKey<String>(
@@ -480,6 +489,13 @@ void main() {
           ),
         ),
         findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-label-lane-se-layer-opacity'),
+        ),
+        52,
+        scrollable: verticalScrollable,
       );
       expect(
         find.byKey(
@@ -490,12 +506,14 @@ void main() {
 
       // The navigator diamond keys the SE layer's OWN transform track.
       expect(seLayer().transformTrack.isEmpty, isTrue);
-      await tester.ensureVisible(
+      await tester.scrollUntilVisible(
         find.byKey(
           const ValueKey<String>(
             'timeline-lane-key-toggle-lane-se-layer-position',
           ),
         ),
+        -52,
+        scrollable: verticalScrollable,
       );
       await tester.tap(
         find.byKey(

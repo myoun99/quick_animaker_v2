@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
@@ -32,6 +33,7 @@ import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_section_bracket_rail.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
+import 'timeline_visible_range.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -74,10 +76,16 @@ class LayerTimelineGrid extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
+    this.dragPreview,
   });
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
+
+  /// The session's edit-drag preview channel: a comma-drag step rebuilds
+  /// only the dragged layer's row (its gate) and the cursor overlay —
+  /// never this grid.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The frame cursor (editing playhead, or the playback position while
   /// playing). ONLY the cursor layer, the ruler and the lane labels
@@ -189,6 +197,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
   double _horizontalScrollOffset = 0;
+  double _verticalScrollOffset = 0;
   double _lastEffectiveHorizontalScrollOffset = 0;
   double? _scheduledHorizontalOffsetCorrection;
   int _endlessTrailingFrames = 0;
@@ -201,6 +210,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController = ScrollController();
     _verticalScrollController = ScrollController();
     _horizontalScrollController.addListener(_handleHorizontalScroll);
+    _verticalScrollController.addListener(_handleVerticalScroll);
   }
 
   @override
@@ -229,8 +239,28 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController
       ..removeListener(_handleHorizontalScroll)
       ..dispose();
-    _verticalScrollController.dispose();
+    _verticalScrollController
+      ..removeListener(_handleVerticalScroll)
+      ..dispose();
     super.dispose();
+  }
+
+  /// Layer-axis virtualization: re-plan only when the scroll crosses a
+  /// row boundary (the ≥2-row overscan absorbs sub-row movement).
+  void _handleVerticalScroll() {
+    final offset = _verticalScrollController.hasClients
+        ? _verticalScrollController.offset
+        : 0.0;
+    if (offset == _verticalScrollOffset) {
+      return;
+    }
+    final rowExtent = _metrics.layerRowHeight;
+    final oldBucket = (_verticalScrollOffset / rowExtent).floor();
+    final newBucket = (offset / rowExtent).floor();
+    _verticalScrollOffset = offset;
+    if (oldBucket != newBucket) {
+      setState(() {});
+    }
   }
 
   void _handleHorizontalScroll() {
@@ -370,6 +400,44 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.lanesForLayer?.call(layer) ?? const [];
 
+  /// One rail row (layer controls or a lane label), extracted so the
+  /// windowed rail loop stays readable.
+  Widget _railRow(TimelineDisplayRow row) {
+    if (row.isLane) {
+      // Lane labels show the value AT the cursor: subscribe here so a
+      // tick rebuilds only these small cells.
+      return ValueListenableBuilder<int>(
+        valueListenable: widget.frameCursor,
+        builder: (context, cursorFrame, _) => TimelineLaneControlsRow(
+          layer: row.layer,
+          lane: row.lane!,
+          metrics: _metrics,
+          currentFrameIndex: cursorFrame,
+          onSelectFrame: widget.onSelectFrame,
+          laneEdit: widget.laneEdit,
+          onToggleLaneGroup: widget.onToggleLaneGroup,
+        ),
+      );
+    }
+    return TimelineLayerControlsRow(
+      layer: row.layer,
+      active: row.layer.id == widget.activeLayerId,
+      sectionStart: timelineSectionStartsAt(widget.layers, row.layerIndex),
+      metrics: _metrics,
+      onSelectLayer: widget.onSelectLayer,
+      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+      onLayerOpacityChanged: widget.onLayerOpacityChanged,
+      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+      fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
+      onToggleLayerFx: widget.onToggleLayerFx,
+      onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerMuted: widget.onToggleLayerMuted,
+      hasLanes: _lanesFor(row.layer).isNotEmpty,
+      lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
+      onToggleLanes: widget.onToggleLayerLanes,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -408,6 +476,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                       timelineDisplayRowsExtent(rows, _metrics),
                       _metrics.layerRowHeight,
                     );
+                    // Layer-axis window: only the rows in view (plus
+                    // overscan) are built; spacers preserve the scroll
+                    // geometry of the rest. The cursor and preview
+                    // overlays keep the FULL row list — their offsets are
+                    // absolute. Without a real viewport measurement
+                    // (unbounded hosts) every row builds, like before.
+                    final rowWindow = bodyViewportHeight <= 0
+                        ? TimelineVisibleRange(
+                            startIndex: 0,
+                            endIndexExclusive: rows.length,
+                          )
+                        : calculateVisibleIndexRange(
+                            scrollOffset: _verticalScrollOffset,
+                            viewportExtent: bodyViewportHeight,
+                            itemExtent: _metrics.layerRowHeight,
+                            itemCount: rows.length,
+                          );
+                    final windowRows = rows.sublist(
+                      rowWindow.startIndex,
+                      rowWindow.endIndexExclusive,
+                    );
+                    final leadingRowSpacerHeight =
+                        rowWindow.startIndex * _metrics.layerRowHeight;
+                    final trailingRowSpacerHeight =
+                        (rows.length - rowWindow.endIndexExclusive) *
+                        _metrics.layerRowHeight;
 
                     return Column(
                       children: [
@@ -592,106 +686,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                for (
-                                                  var rowIndex = 0;
-                                                  rowIndex < rows.length;
-                                                  rowIndex += 1
-                                                )
-                                                  rows[rowIndex].isLane
-                                                      // Lane labels show the
-                                                      // value AT the cursor:
-                                                      // subscribe here so a
-                                                      // tick rebuilds only
-                                                      // these small cells.
-                                                      ? ValueListenableBuilder<
-                                                          int
-                                                        >(
-                                                          valueListenable:
-                                                              widget
-                                                                  .frameCursor,
-                                                          builder:
-                                                              (
-                                                                context,
-                                                                cursorFrame,
-                                                                _,
-                                                              ) => TimelineLaneControlsRow(
-                                                                layer:
-                                                                    rows[rowIndex]
-                                                                        .layer,
-                                                                lane:
-                                                                    rows[rowIndex]
-                                                                        .lane!,
-                                                                metrics:
-                                                                    _metrics,
-                                                                currentFrameIndex:
-                                                                    cursorFrame,
-                                                                onSelectFrame:
-                                                                    widget
-                                                                        .onSelectFrame,
-                                                                laneEdit: widget
-                                                                    .laneEdit,
-                                                                onToggleLaneGroup:
-                                                                    widget
-                                                                        .onToggleLaneGroup,
-                                                              ),
-                                                        )
-                                                      : TimelineLayerControlsRow(
-                                                          layer: rows[rowIndex]
-                                                              .layer,
-                                                          active:
-                                                              rows[rowIndex]
-                                                                  .layer
-                                                                  .id ==
-                                                              widget
-                                                                  .activeLayerId,
-                                                          sectionStart:
-                                                              timelineSectionStartsAt(
-                                                                widget.layers,
-                                                                rows[rowIndex]
-                                                                    .layerIndex,
-                                                              ),
-                                                          metrics: _metrics,
-                                                          onSelectLayer: widget
-                                                              .onSelectLayer,
-                                                          onToggleLayerVisibility:
-                                                              widget
-                                                                  .onToggleLayerVisibility,
-                                                          onLayerOpacityChanged:
-                                                              widget
-                                                                  .onLayerOpacityChanged,
-                                                          onToggleLayerTimesheet:
-                                                              widget
-                                                                  .onToggleLayerTimesheet,
-                                                          fxEnabled:
-                                                              widget
-                                                                  .layerFxEnabledOf
-                                                                  ?.call(
-                                                                    rows[rowIndex]
-                                                                        .layer
-                                                                        .id,
-                                                                  ) ??
-                                                              true,
-                                                          onToggleLayerFx: widget
-                                                              .onToggleLayerFx,
-                                                          onLayerMarkSelected:
-                                                              widget
-                                                                  .onLayerMarkSelected,
-                                                          onToggleLayerMuted: widget
-                                                              .onToggleLayerMuted,
-                                                          hasLanes: _lanesFor(
-                                                            rows[rowIndex]
-                                                                .layer,
-                                                          ).isNotEmpty,
-                                                          lanesExpanded: widget
-                                                              .expandedLaneLayerIds
-                                                              .contains(
-                                                                rows[rowIndex]
-                                                                    .layer
-                                                                    .id,
-                                                              ),
-                                                          onToggleLanes: widget
-                                                              .onToggleLayerLanes,
-                                                        ),
+                                                // The rail is windowed with
+                                                // the same layer-axis slice
+                                                // as the frame rows; keys
+                                                // keep row state glued to
+                                                // its layer through window
+                                                // shifts.
+                                                if (leadingRowSpacerHeight > 0)
+                                                  SizedBox(
+                                                    height:
+                                                        leadingRowSpacerHeight,
+                                                  ),
+                                                for (final row in windowRows)
+                                                  KeyedSubtree(
+                                                    key: ValueKey<String>(
+                                                      'timeline-rail-row-'
+                                                      '${row.layer.id}-'
+                                                      '${row.lane?.laneId ?? 'row'}',
+                                                    ),
+                                                    child: _railRow(row),
+                                                  ),
+                                                if (trailingRowSpacerHeight > 0)
+                                                  SizedBox(
+                                                    height:
+                                                        trailingRowSpacerHeight,
+                                                  ),
                                                 if (widget.layers.isEmpty)
                                                   SizedBox(
                                                     width:
@@ -772,7 +791,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               child: TimelineFrameGridStack(
                                                 rowsBody: TimelineFrameRowsScrollBody(
                                                   layers: widget.layers,
-                                                  rows: rows,
+                                                  rows: windowRows,
+                                                  leadingLayerSpacerHeight:
+                                                      leadingRowSpacerHeight,
+                                                  trailingLayerSpacerHeight:
+                                                      trailingRowSpacerHeight,
+                                                  dragPreview:
+                                                      widget.dragPreview,
                                                   activeLayerId:
                                                       widget.activeLayerId,
                                                   playbackFrameCount:
@@ -836,6 +861,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 playhead: TimelineCursorLayer(
                                                   frameCursor:
                                                       widget.frameCursor,
+                                                  dragPreview:
+                                                      widget.dragPreview,
                                                   rows: rows,
                                                   activeLayerId:
                                                       widget.activeLayerId,

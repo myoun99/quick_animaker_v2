@@ -1421,6 +1421,22 @@ Line 8''';
     );
     _expectCellText('default-layer-3', 0, 'X');
 
+    // The layer axis is virtualized and the drawing rows sit at the BOTTOM
+    // of the display order — scroll them into the window before measuring.
+    final verticalScrollable = find
+        .descendant(
+          of: find.byKey(
+            const ValueKey<String>('timeline-vertical-scroll-viewport'),
+          ),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final verticalPosition = tester
+        .state<ScrollableState>(verticalScrollable)
+        .position;
+    verticalPosition.jumpTo(verticalPosition.maxScrollExtent);
+    await tester.pumpAndSettle();
+
     final layerCTop = tester
         .getTopLeft(
           find.byKey(

@@ -62,6 +62,7 @@ import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
 import 'timeline/timeline_cell_exposure_state.dart';
+import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
 
 /// Owns the editable project session for [HomePage]: the repository, undo
@@ -395,6 +396,7 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
+    dragPreview.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -2172,8 +2174,16 @@ class EditorSessionManager extends ChangeNotifier {
   //
   // A drag previews live by recomputing the shifted layer from the drag-start
   // snapshot with the CUMULATIVE frame delta (idempotent — no per-step
-  // accounting) and writing it straight to the repository; releasing commits
-  // the before→after pair as ONE undoable command.
+  // accounting) and publishing it on [dragPreview]; releasing commits the
+  // before→after pair as ONE undoable command. The repository and the
+  // session listeners stay untouched until the release — a step rebuilds
+  // only the preview consumers (the dragged row's gate, the cursor
+  // overlay, the storyboard strips), never the panels (R5-⑧ generalized).
+
+  /// The scoped edit-drag preview channel (exposure commas + cut trims).
+  /// Value-only: per-step updates never fire a session notify.
+  final ValueNotifier<TimelineDragPreview?> dragPreview =
+      ValueNotifier<TimelineDragPreview?>(null);
 
   Layer? _edgeDragBefore;
   TimelineBlockEdge? _edgeDragEdge;
@@ -2234,7 +2244,8 @@ class EditorSessionManager extends ChangeNotifier {
         before;
   }
 
-  /// Applies the drag's current cumulative frame delta as a live preview.
+  /// Applies the drag's current cumulative frame delta as a live preview
+  /// on [dragPreview] — the repository is NOT touched.
   void updateExposureEdgeDrag(int cumulativeDelta) {
     final before = _edgeDragBefore;
     final edge = _edgeDragEdge;
@@ -2249,34 +2260,36 @@ class EditorSessionManager extends ChangeNotifier {
       edge: edge,
       delta: cumulativeDelta,
     );
-    final current = _layerById(before.id);
-    if (current == null || current == after) {
-      return;
-    }
-
     // No notifyEditActivity here: composites self-validate against the
-    // preview edits, the drag-end warm request re-renders what changed, and
-    // the idle gate's REAL-time delay would leave timers pending under the
-    // fake test clock.
-    _repository.replaceLayer(layer: after);
-    notifyListeners();
+    // committed edit, the drag-end warm request re-renders what changed,
+    // and the idle gate's REAL-time delay would leave timers pending under
+    // the fake test clock.
+    dragPreview.value = after == before
+        ? null
+        : ExposureEdgeDragPreview(previewLayer: after);
   }
 
-  /// Commits the drag as a single undo step (no-op when nothing changed).
+  /// Commits the drag as a single undo step (no-op when nothing changed):
+  /// the command's execute applies the final preview to the repository.
   void endExposureEdgeDrag() {
     final before = _edgeDragBefore;
+    final preview = dragPreview.value;
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    dragPreview.value = null;
     if (before == null) {
       return;
     }
 
-    final current = _layerById(before.id);
-    if (current == null || current == before) {
+    final after =
+        preview is ExposureEdgeDragPreview && preview.layerId == before.id
+        ? preview.previewLayer
+        : null;
+    if (after == null || after == before) {
       return;
     }
-    _timelineController.commitLayerTimelineDrag(before: before, after: current);
+    _timelineController.commitLayerTimelineDrag(before: before, after: after);
     _warmActiveCut();
     notifyListeners();
   }
@@ -2330,10 +2343,11 @@ class EditorSessionManager extends ChangeNotifier {
     return true;
   }
 
-  /// Applies the trim drag's cumulative frame delta as a live preview: the
-  /// END edge changes this cut's own duration (later cuts ripple through
-  /// the cumulative layout), the START edge rolls the boundary with the
-  /// previous cut. Both cuts stay at least one frame long.
+  /// Applies the trim drag's cumulative frame delta as a live preview on
+  /// [dragPreview] (the repository is NOT touched): the END edge changes
+  /// this cut's own duration (later cuts ripple through the cumulative
+  /// layout), the START edge rolls the boundary with the previous cut.
+  /// Both cuts stay at least one frame long.
   void updateCutEdgeDrag(int cumulativeDelta) {
     final before = _cutTrimBeforeDurations;
     final cutId = _cutTrimCutId;
@@ -2359,30 +2373,36 @@ class EditorSessionManager extends ChangeNotifier {
 
     var changed = false;
     for (final entry in target.entries) {
-      if (cutById(entry.key)?.duration != entry.value) {
-        _repository.updateCutDuration(cutId: entry.key, duration: entry.value);
+      if (before[entry.key] != entry.value) {
         changed = true;
+        break;
       }
     }
-    if (changed) {
-      notifyListeners();
-    }
+    dragPreview.value = changed
+        ? CutTrimDragPreview(previewDurations: target)
+        : null;
   }
 
   /// Commits the trim drag as a single undo step (no-op when nothing
-  /// changed).
+  /// changed): the command's execute applies the final preview durations
+  /// to the repository.
   void endCutEdgeDrag() {
     final before = _cutTrimBeforeDurations;
+    final preview = dragPreview.value;
     _cutTrimBeforeDurations = null;
     _cutTrimCutId = null;
     _cutTrimPreviousCutId = null;
     _cutTrimEdge = null;
+    dragPreview.value = null;
     if (before == null) {
       return;
     }
 
+    final previewDurations = preview is CutTrimDragPreview
+        ? preview.previewDurations
+        : const <CutId, int>{};
     final after = {
-      for (final id in before.keys) id: cutById(id)?.duration ?? before[id]!,
+      for (final id in before.keys) id: previewDurations[id] ?? before[id]!,
     };
     var changed = false;
     for (final id in before.keys) {
@@ -2399,44 +2419,23 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reverts an in-flight trim preview without touching history.
+  /// Drops an in-flight trim preview without touching history (the
+  /// repository was never written during the drag).
   void cancelCutEdgeDrag() {
-    final before = _cutTrimBeforeDurations;
     _cutTrimBeforeDurations = null;
     _cutTrimCutId = null;
     _cutTrimPreviousCutId = null;
     _cutTrimEdge = null;
-    if (before == null) {
-      return;
-    }
-
-    var changed = false;
-    for (final entry in before.entries) {
-      if (cutById(entry.key)?.duration != entry.value) {
-        _repository.updateCutDuration(cutId: entry.key, duration: entry.value);
-        changed = true;
-      }
-    }
-    if (changed) {
-      notifyListeners();
-    }
+    dragPreview.value = null;
   }
 
-  /// Reverts an in-flight drag preview without touching history.
+  /// Drops an in-flight drag preview without touching history (the
+  /// repository was never written during the drag).
   void cancelExposureEdgeDrag() {
-    final before = _edgeDragBefore;
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
-    if (before == null) {
-      return;
-    }
-
-    final current = _layerById(before.id);
-    if (current != null && current != before) {
-      _repository.replaceLayer(layer: before);
-    }
-    notifyListeners();
+    dragPreview.value = null;
   }
 
   Layer? _layerById(LayerId layerId) {
