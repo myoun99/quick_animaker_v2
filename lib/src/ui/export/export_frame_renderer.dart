@@ -14,6 +14,7 @@ import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../camera/camera_frame_render_service.dart';
 import '../editor_session_manager.dart';
+import '../storyboard_cut_fade_policy.dart';
 import 'export_plan.dart';
 
 /// Renders export output at full quality straight from the brush store, so
@@ -110,10 +111,12 @@ class ExportFrameRenderer {
   }
 
   /// [renderComposite] with the cut fade baked in for VIDEO frames: the
-  /// frame draws at its fade opacity over black — MP4 carries no alpha
-  /// (yuv420p drops the channel without blending), so the fade must land
-  /// in the RGB values. Unfaded frames pass through untouched. PNG
-  /// sequences deliberately stay unfaded (they are compositing sources).
+  /// frame draws at its fade opacity over the cut's fade TARGET color
+  /// (FO=black default, WO=white — cutFadeTargetColor, the same value
+  /// playback overlays) — MP4 carries no alpha (yuv420p drops the channel
+  /// without blending), so the fade must land in the RGB values. Unfaded
+  /// frames pass through untouched. PNG sequences deliberately stay
+  /// unfaded (they are compositing sources).
   Future<ui.Image> renderCompositeForVideo(
     ExportFrameTask task,
     ExportSizeMode mode,
@@ -131,7 +134,7 @@ class ExportFrameRenderer {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+    canvas.drawRect(bounds, ui.Paint()..color = cutFadeTargetColor(task.cut));
     canvas.drawImage(
       image,
       ui.Offset.zero,

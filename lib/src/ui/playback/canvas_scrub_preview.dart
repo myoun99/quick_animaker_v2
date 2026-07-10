@@ -8,6 +8,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
+import '../storyboard_cut_fade_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 
@@ -116,6 +117,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
               : null,
           // The cut fade: applied at display time, exactly like playback.
           fadeOpacity: cut.fadeOpacityAt(frameIndex),
+          fadeColor: cutFadeTargetColor(cut),
         ),
       ),
     );

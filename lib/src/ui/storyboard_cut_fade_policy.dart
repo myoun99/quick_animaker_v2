@@ -1,6 +1,8 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 
 import '../models/cut.dart';
+import '../models/cut_metadata.dart';
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
 
@@ -52,6 +54,16 @@ import '../models/transform_track.dart';
     }
   }
   return (fadeInFrames: fadeIn, fadeOutFrames: fadeOut);
+}
+
+/// What [cut]'s fade fades TO as a paint color — FO=black (default),
+/// WO=white. Playback overlays this color at (1 − fadeOpacity); the MP4
+/// bake draws the frame over it. ONE function so every consumer agrees.
+Color cutFadeTargetColor(Cut cut) {
+  return switch (cut.metadata.fadeTarget) {
+    CutFadeTarget.black => const Color(0xFF000000),
+    CutFadeTarget.white => const Color(0xFFFFFFFF),
+  };
 }
 
 /// The cut's transform with its opacity lane rebuilt to the canonical fade

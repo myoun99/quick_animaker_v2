@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/cut_metadata.dart';
 import '../models/layer.dart';
+import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
@@ -20,15 +23,15 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
+import 'timeline/layer_label_controls.dart';
+import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_cell_style.dart'
-    show
-        timelineDrawingHeldColor,
-        timelineDrawingInkColor,
-        timelineDrawingStartBorderColor,
-        timelineSelectedFrameBorderColor;
+    show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
+import 'timeline/timeline_exposure_comma_drag_handle.dart'
+    show TimelineBlockEdgeGrip;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
-    show commaDragFrameDelta;
+    show TimelineCommaDragCallbacks, commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
     show
         defaultEndlessRunwayFrames,
@@ -94,6 +97,16 @@ class StoryboardPanel extends StatefulWidget {
     this.expandedOpacityTracks = const {},
     this.onToggleTrackLane,
     this.onSetCutFade,
+    this.onSetCutFadeTarget,
+    this.onToggleLayerVisibility,
+    this.onToggleLayerMuted,
+    this.onLayerOpacityChanged,
+    this.onLayerMarkSelected,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
+    this.onSelectSeBlock,
+    this.seCommaDrag,
+    this.onSetAudioClipOffset,
     this.onNewCut,
     this.onRenameActiveCut,
     this.onEditActiveCutNote,
@@ -112,7 +125,10 @@ class StoryboardPanel extends StatefulWidget {
   static const double _minBlockWidth = 8;
 
   // Wide enough for the timeline-style rows (icon + names) the rail mirrors.
-  static const double _trackLabelWidth = 140;
+  // 140 → 240 when the S rows gained the timeline-parity layer controls
+  // (R4-⑨ '완벽통일'); the control set needs the width, like the timeline
+  // rail's own widening for the fx switch.
+  static const double _trackLabelWidth = 240;
   static const double _trackLaneHeight = 64;
   static const double _trackRowBottomPadding = 4;
   static const double _rulerHeight = 24;
@@ -180,6 +196,38 @@ class StoryboardPanel extends StatefulWidget {
   /// lane display-only.
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
+
+  /// Sets what a cut's fade fades TO (FO=black / WO=white) — the fade
+  /// span's context menu. Null hides the menu.
+  final void Function(CutId cutId, CutFadeTarget fadeTarget)?
+  onSetCutFadeTarget;
+
+  // --- Timeline-parity layer controls ('완벽통일', R4-⑨) -------------------
+  // The S rows carry the SAME layer controls as the timeline rows, acting
+  // on the ACTIVE cut's slot layer (the storyboard rail is track-global;
+  // the active cut supplies the concrete layer). All LayerId-generic —
+  // wired to the same session methods the timeline host uses.
+  final ValueChanged<LayerId>? onToggleLayerVisibility;
+  final ValueChanged<LayerId>? onToggleLayerMuted;
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
+  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// SE block tap-select (timeline parity): selects the cut, its slot layer
+  /// and the block's start frame.
+  final void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
+  onSelectSeBlock;
+
+  /// The timeline's comma-drag hooks for the ACTIVE cut's SE blocks (the
+  /// session's exposure edge drags are active-cut scoped — other cuts'
+  /// blocks select on tap first). Null hides the grips.
+  final TimelineCommaDragCallbacks? seCommaDrag;
+
+  /// The Audio lane's slide edit for the ACTIVE cut's clips (same reused
+  /// timeline lane substrate). Null keeps the lane display-only.
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
@@ -481,6 +529,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                           widget.project.tracks[index],
                                           slot,
                                         ),
+                                  activeLayer: _activeSlotLayerOf(
+                                    widget.project.tracks[index],
+                                    widget.activeCutId,
+                                    slot,
+                                  ),
+                                  onToggleLayerVisibility:
+                                      widget.onToggleLayerVisibility,
+                                  onToggleLayerMuted: widget.onToggleLayerMuted,
+                                  onLayerOpacityChanged:
+                                      widget.onLayerOpacityChanged,
+                                  onLayerMarkSelected:
+                                      widget.onLayerMarkSelected,
+                                  layerFxEnabledOf: widget.layerFxEnabledOf,
+                                  onToggleLayerFx: widget.onToggleLayerFx,
                                 ),
                                 if (widget.expandedSeAudioRows.contains(
                                   StoryboardPanel.seRowKey(
@@ -581,6 +643,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                           width: contentWidth,
                                           timelineScale: scale,
                                           onSetCutFade: widget.onSetCutFade,
+                                          onSetCutFadeTarget:
+                                              widget.onSetCutFadeTarget,
                                         ),
                                       // Synced SE rows: the same per-cut
                                       // SE data the timeline edits,
@@ -618,6 +682,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   )
                                               ? null
                                               : widget.audioPeaksFor,
+                                          activeCutId: widget.activeCutId,
+                                          onSelectSeBlock:
+                                              widget.onSelectSeBlock,
+                                          seCommaDrag: widget.seCommaDrag,
                                         ),
                                         if (widget.expandedSeAudioRows.contains(
                                           StoryboardPanel.seRowKey(
@@ -638,6 +706,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             timelineScale: scale,
                                             projectFps: widget.projectFps,
                                             audioPeaksFor: widget.audioPeaksFor,
+                                            activeCutId: widget.activeCutId,
+                                            onSetAudioClipOffset:
+                                                widget.onSetAudioClipOffset,
                                           ),
                                       ],
                                     ],
@@ -897,7 +968,8 @@ class _StoryboardRuler extends StatelessWidget {
 }
 
 /// SE rows under a track: one per SE slot, S1·S2… like the sheet columns.
-const double _seRowHeight = 22;
+// 22 → 30 with the timeline-parity S-row controls (mute/eye/opacity).
+const double _seRowHeight = 30;
 const double _seRowBottomPadding = 2;
 
 /// Twirl-down lane heights: the enlarged waveform strip and the cut-fade
@@ -918,6 +990,18 @@ int _seSlotCount(Track track) {
     }
   }
   return slots;
+}
+
+/// The ACTIVE cut's [slot]th SE layer within [track]; null while the
+/// active cut lives on another track (the rail's timeline-parity controls
+/// then hide — they need a concrete layer to act on).
+Layer? _activeSlotLayerOf(Track track, CutId activeCutId, int slot) {
+  for (final cut in track.cuts) {
+    if (cut.id == activeCutId) {
+      return _seLayerAt(cut, slot);
+    }
+  }
+  return null;
 }
 
 /// The [slot]th SE layer of [cut], in layer order; null when the cut has
@@ -948,6 +1032,13 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onToggleWaveform,
     this.laneExpanded = false,
     this.onToggleLane,
+    this.activeLayer,
+    this.onToggleLayerVisibility,
+    this.onToggleLayerMuted,
+    this.onLayerOpacityChanged,
+    this.onLayerMarkSelected,
+    this.layerFxEnabledOf,
+    this.onToggleLayerFx,
   });
 
   final Track track;
@@ -957,9 +1048,21 @@ class _StoryboardSeLabel extends StatelessWidget {
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
+  /// The ACTIVE cut's layer behind this slot (null while the active cut
+  /// lives on another track or has no such slot) — the timeline-parity
+  /// controls act on it.
+  final Layer? activeLayer;
+  final ValueChanged<LayerId>? onToggleLayerVisibility;
+  final ValueChanged<LayerId>? onToggleLayerMuted;
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
+  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerFx;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final layer = activeLayer;
     return Padding(
       padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
       child: Container(
@@ -1007,7 +1110,90 @@ class _StoryboardSeLabel extends StatelessWidget {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(width: 4),
+            // Timeline-parity controls on the ACTIVE cut's slot layer:
+            // mark chip, fx (policy-gated), mute, eye and opacity — the
+            // same shared widgets/session hooks the timeline rows use.
+            if (layer != null && onLayerMarkSelected != null)
+              LayerMarkChip(
+                keyPrefix: 'storyboard',
+                layerId: layer.id,
+                mark: layer.mark,
+                onMarkSelected: onLayerMarkSelected!,
+              ),
             const Spacer(),
+            if (layer != null &&
+                onToggleLayerFx != null &&
+                layerKindShowsFxToggle(layer.kind))
+              LayerFxToggleButton(
+                keyPrefix: 'storyboard',
+                layerId: layer.id,
+                fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
+                onToggle: onToggleLayerFx!,
+              ),
+            if (layer != null && onToggleLayerMuted != null)
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: IconButton(
+                  key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
+                  tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 20,
+                    height: 20,
+                  ),
+                  icon: Icon(
+                    layer.muted ? Icons.volume_off : Icons.volume_up,
+                    size: 13,
+                  ),
+                  onPressed: () => onToggleLayerMuted!(layer.id),
+                ),
+              ),
+            if (layer != null && onToggleLayerVisibility != null)
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: IconButton(
+                  key: ValueKey<String>(
+                    'storyboard-layer-visibility-${layer.id}',
+                  ),
+                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 20,
+                    height: 20,
+                  ),
+                  icon: Icon(
+                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                    size: 13,
+                  ),
+                  onPressed: () => onToggleLayerVisibility!(layer.id),
+                ),
+              ),
+            if (layer != null && onLayerOpacityChanged != null)
+              SizedBox(
+                width: 44,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 5,
+                    ),
+                    overlayShape: SliderComponentShape.noOverlay,
+                  ),
+                  child: Slider(
+                    key: ValueKey<String>(
+                      'storyboard-layer-opacity-${layer.id}',
+                    ),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged!(layer.id, opacity),
+                  ),
+                ),
+              ),
             if (onToggleWaveform != null)
               SizedBox(
                 width: 20,
@@ -1102,6 +1288,9 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFps,
     this.audioPeaksFor,
+    this.activeCutId,
+    this.onSelectSeBlock,
+    this.seCommaDrag,
   });
 
   final int trackIndex;
@@ -1111,6 +1300,14 @@ class _StoryboardSeRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final int projectFps;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Timeline parity: SE blocks tap-select (any cut) and carry the comma
+  /// edge grips on the ACTIVE cut (the session's exposure drags are
+  /// active-cut scoped).
+  final CutId? activeCutId;
+  final void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
+  onSelectSeBlock;
+  final TimelineCommaDragCallbacks? seCommaDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -1256,6 +1453,96 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
     }
+    // Timeline parity: tap zones select the block (cut + layer + frame)…
+    if (onSelectSeBlock != null) {
+      for (final entry in layoutEntries) {
+        final layer = _seLayerAt(entry.cut, slot);
+        if (layer == null) {
+          continue;
+        }
+        for (final block in drawingBlocks(layer.timeline)) {
+          if (block.startIndex >= entry.duration) {
+            continue;
+          }
+          final endExclusive = math.min(
+            block.endIndexExclusive,
+            entry.duration,
+          );
+          spans.add(
+            Positioned(
+              left: timelineScale.leftForFrame(
+                entry.startFrame + block.startIndex,
+              ),
+              top: 0,
+              bottom: 0,
+              width:
+                  (endExclusive - block.startIndex) *
+                  timelineScale.pixelsPerFrame,
+              child: GestureDetector(
+                key: ValueKey<String>(
+                  'storyboard-se-block-select-${entry.cut.id.value}'
+                  '-${block.startIndex}',
+                ),
+                behavior: HitTestBehavior.opaque,
+                onTap: () =>
+                    onSelectSeBlock!(entry.cut.id, layer.id, block.startIndex),
+              ),
+            ),
+          );
+        }
+      }
+    }
+    // …and the ACTIVE cut's blocks carry the timeline's own comma edge
+    // grips (the SAME shared widget + session drag hooks).
+    final seCommaDrag = this.seCommaDrag;
+    if (seCommaDrag != null && activeCutId != null) {
+      for (final entry in layoutEntries) {
+        if (entry.cut.id != activeCutId) {
+          continue;
+        }
+        final layer = _seLayerAt(entry.cut, slot);
+        if (layer == null) {
+          continue;
+        }
+        var ordinal = 0;
+        for (final block in drawingBlocks(layer.timeline)) {
+          final blockOrdinal = ordinal;
+          ordinal += 1;
+          if (block.startIndex >= entry.duration) {
+            continue;
+          }
+          final endExclusive = math.min(
+            block.endIndexExclusive,
+            entry.duration,
+          );
+          final startOffset = timelineScale.leftForFrame(
+            entry.startFrame + block.startIndex,
+          );
+          final endOffset = timelineScale.leftForFrame(
+            entry.startFrame + endExclusive,
+          );
+          for (final edge in TimelineBlockEdge.values) {
+            spans.add(
+              TimelineBlockEdgeGrip(
+                key: ValueKey<String>(
+                  'storyboard-se-grip-${entry.cut.id.value}-$blockOrdinal'
+                  '-${edge.name}',
+                ),
+                layerId: layer.id,
+                blockStartIndex: block.startIndex,
+                blockOrdinal: blockOrdinal,
+                edge: edge,
+                blockStartOffset: startOffset,
+                blockEndOffset: endOffset,
+                frameCellExtent: timelineScale.pixelsPerFrame,
+                crossAxisExtent: _seRowHeight,
+                callbacks: seCommaDrag,
+              ),
+            );
+          }
+        }
+      }
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
@@ -1270,9 +1557,11 @@ class _StoryboardSeRow extends StatelessWidget {
 }
 
 /// The twirled-down S row's enlarged waveform strip: the timeline Audio
-/// lane's storyboard sibling — each audible span gets a paper block with
-/// its trimmed, envelope-shaped waveform (read-only here; sliding/fades
-/// edit in the timeline's Audio lane).
+/// lane ITSELF, remounted per cut (real substrate reuse — '완벽통일'): the
+/// ACTIVE cut's spans slide-edit exactly like the timeline lane (offset
+/// drag, fade handles, gain menu when wired); other cuts' spans display
+/// read-only until selected (the session's clip edits are active-cut
+/// scoped).
 class _StoryboardAudioLaneRow extends StatelessWidget {
   const _StoryboardAudioLaneRow({
     required this.trackIndex,
@@ -1282,6 +1571,8 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFps,
     this.audioPeaksFor,
+    this.activeCutId,
+    this.onSetAudioClipOffset,
   });
 
   final int trackIndex;
@@ -1291,66 +1582,56 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final int projectFps;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final CutId? activeCutId;
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetAudioClipOffset;
 
   @override
   Widget build(BuildContext context) {
     final spans = <Widget>[];
-    final audioPeaksFor = this.audioPeaksFor;
+    final onSetAudioClipOffset = this.onSetAudioClipOffset;
+    // The reused lane renders with timeline metrics: the frame-axis zoom is
+    // the storyboard's pixels-per-frame, the cross extent this lane's
+    // height.
+    final laneMetrics = TimelineGridMetrics(
+      frameCellWidth: timelineScale.pixelsPerFrame,
+      layerRowHeight: _audioLaneHeight - 2,
+    );
     for (final entry in layoutEntries) {
       final layer = _seLayerAt(entry.cut, slot);
       if (layer == null) {
         continue;
       }
-      for (final span in seAudioSpans(layer)) {
-        if (span.startFrame >= entry.duration) {
-          continue;
-        }
-        final peaks = audioPeaksFor?.call(span.clip.filePath);
-        final endExclusive = math.min(span.endFrameExclusive, entry.duration);
-        if (endExclusive <= span.startFrame) {
-          continue;
-        }
-        spans.add(
-          Positioned(
-            left: timelineScale.leftForFrame(
-              entry.startFrame + span.startFrame,
+      final editable =
+          entry.cut.id == activeCutId && onSetAudioClipOffset != null;
+      spans.add(
+        Positioned(
+          left: timelineScale.leftForFrame(entry.startFrame),
+          top: 1,
+          width: entry.duration * timelineScale.pixelsPerFrame,
+          height: _audioLaneHeight - 2,
+          child: KeyedSubtree(
+            key: ValueKey<String>(
+              'storyboard-audio-lane-span-${entry.cut.id.value}',
             ),
-            top: 1,
-            bottom: 1,
-            width:
-                (endExclusive - span.startFrame) * timelineScale.pixelsPerFrame,
-            child: IgnorePointer(
-              key: ValueKey<String>(
-                'storyboard-audio-lane-span-${entry.cut.id.value}'
-                '-${span.clipIndex}-b${span.startFrame}',
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: timelineDrawingHeldColor.withValues(alpha: 0.6),
-                  borderRadius: const BorderRadius.all(Radius.circular(4)),
-                  border: Border.all(color: timelineDrawingStartBorderColor),
-                ),
-                child: peaks == null
-                    ? null
-                    : CustomPaint(
-                        painter: WaveformPainter(
-                          peaks: peaks,
-                          fps: projectFps,
-                          pixelsPerFrame: timelineScale.pixelsPerFrame,
-                          color: timelineDrawingInkColor.withValues(
-                            alpha: 0.45,
-                          ),
-                          leadingFrames: span.clip.offsetFrames,
-                          gain: span.clip.gain,
-                          fadeInFrames: span.clip.fadeInFrames,
-                          fadeOutFrames: span.clip.fadeOutFrames,
-                        ),
-                      ),
-              ),
+            child: SeAudioLaneFrameRow(
+              layer: layer,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: entry.duration,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              metrics: laneMetrics,
+              fps: projectFps,
+              audioPeaksFor: audioPeaksFor,
+              keyPrefix: 'storyboard-${entry.cut.id.value}',
+              onSetClipOffset: editable
+                  ? (clipIndex, offsetFrames) =>
+                        onSetAudioClipOffset(layer.id, clipIndex, offsetFrames)
+                  : null,
             ),
           ),
-        );
-      }
+        ),
+      );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
@@ -1377,6 +1658,7 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
     required this.width,
     required this.timelineScale,
     this.onSetCutFade,
+    this.onSetCutFadeTarget,
   });
 
   final int trackIndex;
@@ -1385,6 +1667,8 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
+  final void Function(CutId cutId, CutFadeTarget fadeTarget)?
+  onSetCutFadeTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -1412,6 +1696,9 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
                       ? null
                       : (fadeIn, fadeOut) =>
                             onSetCutFade!(entry.cut.id, fadeIn, fadeOut),
+                  onSetFadeTarget: onSetCutFadeTarget == null
+                      ? null
+                      : (target) => onSetCutFadeTarget!(entry.cut.id, target),
                 ),
               ),
           ],
@@ -1430,11 +1717,16 @@ class _CutFadeSpan extends StatefulWidget {
     required this.cut,
     required this.frameCellExtent,
     this.onSetFade,
+    this.onSetFadeTarget,
   });
 
   final Cut cut;
   final double frameCellExtent;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
+
+  /// Sets what the fade fades TO (FO=black / WO=white) — the span's
+  /// right-click/long-press menu. Null hides the menu.
+  final ValueChanged<CutFadeTarget>? onSetFadeTarget;
 
   @override
   State<_CutFadeSpan> createState() => _CutFadeSpanState();
@@ -1541,18 +1833,65 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
     );
   }
 
+  Future<void> _showFadeTargetMenu(Offset globalPosition) async {
+    final onSetFadeTarget = widget.onSetFadeTarget;
+    if (onSetFadeTarget == null) {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final current = widget.cut.metadata.fadeTarget;
+    final selected = await showMenu<CutFadeTarget>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        for (final target in CutFadeTarget.values)
+          CheckedPopupMenuItem<CutFadeTarget>(
+            key: ValueKey<String>('cut-fade-target-${target.name}'),
+            value: target,
+            checked: target == current,
+            child: Text(
+              target == CutFadeTarget.black
+                  ? 'Fade to Black (FO)'
+                  : 'Fade to White (WO)',
+            ),
+          ),
+      ],
+    );
+    if (selected != null && selected != current) {
+      onSetFadeTarget(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final editable = widget.onSetFade != null && widget.cut.duration > 1;
     final fadeIn = _previewFadeIn;
     final fadeOut = _previewFadeOut;
+    // The envelope tints toward the fade TARGET so a white fade reads at a
+    // glance (FO=accent as before, WO=near-white line).
+    final fadeToWhite = widget.cut.metadata.fadeTarget == CutFadeTarget.white;
+    final envelopeColor = fadeToWhite
+        ? const Color(0xFFE8E6E1)
+        : AppColors.accent;
 
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned.fill(
-          child: IgnorePointer(
+          // Right-click/long-press: the fade-target menu (FO/WO).
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapUp: widget.onSetFadeTarget == null
+                ? null
+                : (details) => _showFadeTargetMenu(details.globalPosition),
+            onLongPressStart: widget.onSetFadeTarget == null
+                ? null
+                : (details) => _showFadeTargetMenu(details.globalPosition),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
@@ -1563,8 +1902,8 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
                 painter: _CutFadeEnvelopePainter(
                   samples: _envelopeSamples(),
                   pixelsPerFrame: widget.frameCellExtent,
-                  lineColor: AppColors.accent,
-                  fillColor: AppColors.accent.withValues(alpha: 0.15),
+                  lineColor: envelopeColor,
+                  fillColor: envelopeColor.withValues(alpha: 0.15),
                 ),
               ),
             ),

@@ -11,6 +11,8 @@ import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
 import 'storyboard_panel.dart';
+import 'timeline/timeline_exposure_comma_drag_policy.dart'
+    show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
@@ -233,6 +235,39 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     fadeInFrames: fadeIn,
                     fadeOutFrames: fadeOut,
                   ),
+                  // FO=black / WO=white — the fade span's context menu.
+                  onSetCutFadeTarget: _session.setCutFadeTarget,
+                  // Timeline-parity layer controls on the ACTIVE cut's SE
+                  // rows — the SAME session hooks the timeline host wires.
+                  onToggleLayerVisibility: _session.toggleLayerVisibility,
+                  onToggleLayerMuted: _session.toggleLayerMuted,
+                  onLayerOpacityChanged: (layerId, opacity) => _session
+                      .setLayerOpacity(layerId: layerId, opacity: opacity),
+                  onLayerMarkSelected: _session.setLayerMark,
+                  layerFxEnabledOf: _session.isLayerFxEnabled,
+                  onToggleLayerFx: _session.toggleLayerFx,
+                  // SE block tap-select: cut + layer + frame, like tapping
+                  // the timeline's cells.
+                  onSelectSeBlock: (cutId, layerId, blockStartFrame) {
+                    _session.selectCut(cutId);
+                    _session.selectLayer(layerId);
+                    _session.selectFrameIndex(blockStartFrame);
+                  },
+                  // The ACTIVE cut's SE blocks reuse the timeline's comma
+                  // edge grips (live preview + ONE undo per drag).
+                  seCommaDrag: TimelineCommaDragCallbacks(
+                    onBegin: (layerId, blockStartIndex, edge) =>
+                        _session.beginExposureEdgeDrag(
+                          layerId: layerId,
+                          blockStartIndex: blockStartIndex,
+                          edge: edge,
+                        ),
+                    onUpdate: _session.updateExposureEdgeDrag,
+                    onEnd: _session.endExposureEdgeDrag,
+                    onCancel: _session.cancelExposureEdgeDrag,
+                  ),
+                  // The Audio lane's slide edit (active cut).
+                  onSetAudioClipOffset: _session.setAudioClipOffset,
                   onNewCut: _session.createCut,
                   onRenameActiveCut: _renameActiveCut,
                   onEditActiveCutNote: _editActiveCutNote,

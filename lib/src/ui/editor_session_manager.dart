@@ -18,6 +18,7 @@ import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
+import '../models/cut_metadata.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -883,6 +884,18 @@ class EditorSessionManager extends ChangeNotifier {
         fadeOutFrames: fadeOutFrames,
       ),
       description: 'Fade cut',
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Sets what [cutId]'s fade fades TO — black (FO) or white (WO); one
+  /// undo step, no-op when unchanged. Playback and the MP4 bake share the
+  /// value.
+  void setCutFadeTarget(CutId cutId, CutFadeTarget fadeTarget) {
+    _cutCommandCoordinator.updateCutFadeTarget(
+      cutId: cutId,
+      fadeTarget: fadeTarget,
     );
     _refreshAfterCutCommand();
     notifyListeners();

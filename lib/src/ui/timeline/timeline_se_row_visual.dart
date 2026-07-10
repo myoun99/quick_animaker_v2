@@ -512,42 +512,53 @@ class SeSpanVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seName = this.seName ?? '';
-    return Stack(
-      children: [
-        Flex(
-          direction: axis,
-          crossAxisAlignment: CrossAxisAlignment.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Narrow spans drop the name box instead of overflowing it (the
+        // storyboard's zoomed-out blocks can be slimmer than the box —
+        // same rule as narrow cut blocks dropping their thumbnail slot).
+        final mainExtent = axis == Axis.horizontal
+            ? constraints.maxWidth
+            : constraints.maxHeight;
+        final showName = seName.isNotEmpty && mainExtent >= seNameBoxExtent * 2;
+        return Stack(
           children: [
-            if (seName.isNotEmpty) _SeNameBox(axis: axis, name: seName),
-            Expanded(
-              child: DialogueFitText(
-                text: dialogue,
-                axis: axis,
-                color: timelineDrawingInkColor,
+            Flex(
+              direction: axis,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showName) _SeNameBox(axis: axis, name: seName),
+                Expanded(
+                  child: DialogueFitText(
+                    text: dialogue,
+                    axis: axis,
+                    color: timelineDrawingInkColor,
+                  ),
+                ),
+              ],
+            ),
+            // The block's end closes with a short red underline (Toei
+            // notation) — perpendicular to the flow, hugging the end edge.
+            Positioned(
+              right: axis == Axis.horizontal ? 1 : 0,
+              bottom: axis == Axis.horizontal ? 0 : 1,
+              top: axis == Axis.horizontal ? 0 : null,
+              left: axis == Axis.horizontal ? null : 0,
+              width: axis == Axis.horizontal ? 2 : null,
+              height: axis == Axis.horizontal ? null : 2,
+              child: IgnorePointer(
+                child: Center(
+                  child: FractionallySizedBox(
+                    widthFactor: axis == Axis.horizontal ? null : 0.6,
+                    heightFactor: axis == Axis.horizontal ? 0.6 : null,
+                    child: const ColoredBox(color: AppColors.danger),
+                  ),
+                ),
               ),
             ),
           ],
-        ),
-        // The block's end closes with a short red underline (Toei
-        // notation) — perpendicular to the flow, hugging the end edge.
-        Positioned(
-          right: axis == Axis.horizontal ? 1 : 0,
-          bottom: axis == Axis.horizontal ? 0 : 1,
-          top: axis == Axis.horizontal ? 0 : null,
-          left: axis == Axis.horizontal ? null : 0,
-          width: axis == Axis.horizontal ? 2 : null,
-          height: axis == Axis.horizontal ? null : 2,
-          child: IgnorePointer(
-            child: Center(
-              child: FractionallySizedBox(
-                widthFactor: axis == Axis.horizontal ? null : 0.6,
-                heightFactor: axis == Axis.horizontal ? 0.6 : null,
-                child: const ColoredBox(color: AppColors.danger),
-              ),
-            ),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -587,7 +598,14 @@ class _SeNameBox extends StatelessWidget {
       child: Container(
         color: timelineDrawingInkColor,
         alignment: Alignment.center,
-        child: ClipRect(child: ExcludeSemantics(child: writing)),
+        // scaleDown: a LONG name shrinks to the box instead of overflowing
+        // the row (the striped-error report — R4 improvement 2).
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ExcludeSemantics(child: writing),
+          ),
+        ),
       ),
     );
     return axis == Axis.horizontal
