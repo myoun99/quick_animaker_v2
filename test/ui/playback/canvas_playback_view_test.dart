@@ -133,6 +133,8 @@ void main() {
     required CutFrameCompositeCache composites,
     bool cameraViewEnabled = false,
     ValueListenable<PrerenderProgress>? progress,
+    bool Function(CutId cutId)? cutFxEnabledOf,
+    bool Function(CutId cutId)? cutPictureVisibleOf,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -147,6 +149,8 @@ void main() {
             cameraFrameSize: const CanvasSize(width: 4, height: 2),
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
+            cutFxEnabledOf: cutFxEnabledOf,
+            cutPictureVisibleOf: cutPictureVisibleOf,
           ),
         ),
       ),
@@ -286,6 +290,58 @@ void main() {
     fadeOnly.controller.stop();
     await tester.pump();
     fadeOnly.composites.dispose();
+  });
+
+  testWidgets('the V-row display gates (R9): fx off bypasses the cut pose '
+      'AND the fade; the eye off drops the picture (paper only)', (
+    tester,
+  ) async {
+    // fx off: a posed + faded cut plays pose-free at full opacity.
+    final posed = fixture(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 6, y: 4),
+        ),
+        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
+      ),
+    );
+    posed.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: posed.controller,
+      composites: posed.composites,
+      cutFxEnabledOf: (_) => false,
+    );
+    expect(painterOf(tester).cutPose, isNull, reason: 'pose bypassed');
+    expect(painterOf(tester).fadeOpacity, 1, reason: 'fade bypassed');
+
+    posed.controller.stop();
+    await tester.pump();
+    posed.composites.dispose();
+
+    // eye off: the warmed composite is withheld from the painter — the
+    // paper stays, the picture doesn't draw.
+    final hidden = fixture();
+    await tester.runAsync(() async {
+      await hidden.composites.prepareComposite(
+        cut: cut(),
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+    });
+    hidden.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: hidden.controller,
+      composites: hidden.composites,
+      cutPictureVisibleOf: (_) => false,
+    );
+    expect(painterOf(tester).image, isNull, reason: 'picture hidden');
+
+    hidden.controller.stop();
+    await tester.pump();
+    hidden.composites.dispose();
   });
 
   testWidgets('cache misses keep the last displayed frame on screen', (

@@ -124,6 +124,10 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
+    this.cutFxEnabledOf,
+    this.onToggleCutFx,
+    this.cutPictureVisibleOf,
+    this.onToggleCutPictureVisibility,
     this.onSelectSeBlock,
     this.seCommaDrag,
     this.onSetAudioClipOffset,
@@ -274,6 +278,15 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// V-row display toggles (R9, session view state, ACTIVE-cut scoped like
+  /// the S-row layer controls): the fx switch bypasses the cut-level
+  /// Transform group (pose + fade) in the playback display, the eye hides
+  /// the cut's picture there. Null hides the buttons.
+  final bool Function(CutId cutId)? cutFxEnabledOf;
+  final ValueChanged<CutId>? onToggleCutFx;
+  final bool Function(CutId cutId)? cutPictureVisibleOf;
+  final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
   /// SE block tap-select (timeline parity): selects the cut, its slot layer
   /// and the block's start frame.
@@ -646,6 +659,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         onToggleLane: widget.onToggleTrackLane == null
             ? null
             : () => widget.onToggleTrackLane!(track),
+        activeCut: activeCut,
+        cutFxEnabledOf: widget.cutFxEnabledOf,
+        onToggleCutFx: widget.onToggleCutFx,
+        cutPictureVisibleOf: widget.cutPictureVisibleOf,
+        onToggleCutPictureVisibility: widget.onToggleCutPictureVisibility,
       ),
       if (widget.expandedTransformTracks.contains(track.id.value))
         ..._transformLaneLabels(
@@ -2483,12 +2501,26 @@ class _StoryboardTrackLabel extends StatelessWidget {
     required this.trackLabel,
     this.laneExpanded = false,
     this.onToggleLane,
+    this.activeCut,
+    this.cutFxEnabledOf,
+    this.onToggleCutFx,
+    this.cutPictureVisibleOf,
+    this.onToggleCutPictureVisibility,
   });
 
   final Track track;
   final String trackLabel;
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
+
+  /// The ACTIVE cut when it lives on this track (null otherwise) — the
+  /// V-row display toggles act on it, standing down like the S rows'
+  /// layer controls when the active cut lives elsewhere.
+  final Cut? activeCut;
+  final bool Function(CutId cutId)? cutFxEnabledOf;
+  final ValueChanged<CutId>? onToggleCutFx;
+  final bool Function(CutId cutId)? cutPictureVisibleOf;
+  final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
   @override
   Widget build(BuildContext context) {
@@ -2555,7 +2587,86 @@ class _StoryboardTrackLabel extends StatelessWidget {
               ],
             ),
           ),
+          // V-row display toggles on the ACTIVE cut (R9), in the S rows'
+          // visual language: the fx switch bypasses the cut-level
+          // Transform group (pose + fade) in the playback display, the
+          // eye hides the cut's picture there.
+          if (activeCut != null && onToggleCutFx != null)
+            _CutFxToggleButton(
+              cutId: activeCut!.id,
+              fxEnabled: cutFxEnabledOf?.call(activeCut!.id) ?? true,
+              onToggle: onToggleCutFx!,
+            ),
+          if (activeCut != null && onToggleCutPictureVisibility != null)
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: IconButton(
+                key: ValueKey<String>(
+                  'storyboard-cut-visibility-${activeCut!.id.value}',
+                ),
+                tooltip: (cutPictureVisibleOf?.call(activeCut!.id) ?? true)
+                    ? 'Hide cut picture'
+                    : 'Show cut picture',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 20,
+                  height: 20,
+                ),
+                icon: Icon(
+                  (cutPictureVisibleOf?.call(activeCut!.id) ?? true)
+                      ? Icons.visibility
+                      : Icons.visibility_off,
+                  size: 13,
+                ),
+                onPressed: () => onToggleCutPictureVisibility!(activeCut!.id),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// The V-row fx switch — [LayerFxToggleButton]'s exact look, cut-typed
+/// (the shared widget speaks LayerId; the key and callback are the only
+/// differences).
+class _CutFxToggleButton extends StatelessWidget {
+  const _CutFxToggleButton({
+    required this.cutId,
+    required this.fxEnabled,
+    required this.onToggle,
+  });
+
+  final CutId cutId;
+  final bool fxEnabled;
+  final ValueChanged<CutId> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    // Tight SizedBox: the M3 IconButton otherwise inflates to the 48px
+    // minimum tap target and overflows the row (shared gotcha).
+    return SizedBox(
+      width: 26,
+      height: 26,
+      child: IconButton(
+        key: ValueKey<String>('storyboard-cut-fx-${cutId.value}'),
+        tooltip: fxEnabled ? 'Bypass cut FX' : 'Apply cut FX',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+        icon: Text(
+          'fx',
+          style: TextStyle(
+            fontSize: 13,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w700,
+            color: fxEnabled
+                ? AppColors.accent
+                : colorScheme.onSurface.withValues(alpha: 0.35),
+          ),
+        ),
+        onPressed: () => onToggle(cutId),
       ),
     );
   }

@@ -412,6 +412,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onLayerMarkSelected: _session.setLayerMark,
                   layerFxEnabledOf: _session.isLayerFxEnabled,
                   onToggleLayerFx: _session.toggleLayerFx,
+                  // V-row display toggles (R9): cut FX bypass + picture
+                  // eye — session view state the playback display reads.
+                  cutFxEnabledOf: _session.isCutFxEnabled,
+                  onToggleCutFx: _session.toggleCutFx,
+                  cutPictureVisibleOf: _session.isCutPictureVisible,
+                  onToggleCutPictureVisibility:
+                      _session.toggleCutPictureVisibility,
                   // SE block tap-select: cut + layer + frame, like tapping
                   // the timeline's cells.
                   onSelectSeBlock: (cutId, layerId, blockStartFrame) {
