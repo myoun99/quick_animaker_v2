@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -127,6 +128,82 @@ void main() {
         ),
       );
       expect(cutFadeLengths(custom), (fadeInFrames: 0, fadeOutFrames: 0));
+    });
+  });
+
+  group('cut pose policy (V track full transform)', () {
+    const displaySize = CanvasSize(width: 1920, height: 1080);
+
+    test('cutPoseIsActive fires only on GEOMETRIC keys — opacity-only '
+        '(the classic fade) stays on the zero-cost path', () {
+      expect(cutPoseIsActive(_cut()), isFalse);
+      final fadeOnly = _cut(
+        transformTrack: cutTransformWithFade(
+          _cut(),
+          fadeInFrames: 3,
+          fadeOutFrames: 0,
+        ),
+      );
+      expect(cutPoseIsActive(fadeOnly), isFalse);
+
+      for (final track in [
+        TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 1, y: 2),
+          ),
+        ),
+        TransformTrack.empty().copyWith(
+          scale: PropertyTrack<double>.empty().withKey(0, 2.0),
+        ),
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>.empty().withKey(0, 45.0),
+        ),
+        TransformTrack.empty().copyWith(
+          anchorPoint: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 3, y: 4),
+          ),
+        ),
+      ]) {
+        expect(cutPoseIsActive(_cut(transformTrack: track)), isTrue);
+      }
+    });
+
+    test('cutPoseAt resolves per lane over the DISPLAY space, identity '
+        'while unkeyed', () {
+      final identity = cutPoseAt(_cut(), 0, displaySize);
+      expect(identity.center, CanvasPoint(x: 960, y: 540));
+      expect(identity.zoom, 1);
+      expect(identity.rotationDegrees, 0);
+
+      final posed = _cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty()
+              .withKey(0, CanvasPoint(x: 0, y: 0))
+              .withKey(4, CanvasPoint(x: 100, y: 200)),
+          scale: PropertyTrack<double>.empty().withKey(0, 2.0),
+        ),
+      );
+      final mid = cutPoseAt(posed, 2, displaySize);
+      expect(mid.center, CanvasPoint(x: 50, y: 100));
+      expect(mid.zoom, 2.0);
+      // Unkeyed rotation stays the display identity.
+      expect(mid.rotationDegrees, 0);
+    });
+
+    test('cutAnchorPointAt samples the anchor lane, null while unkeyed '
+        '(consumers default to the display center)', () {
+      expect(cutAnchorPointAt(_cut(), 0), isNull);
+      final anchored = _cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          anchorPoint: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 10, y: 20),
+          ),
+        ),
+      );
+      expect(cutAnchorPointAt(anchored, 5), CanvasPoint(x: 10, y: 20));
     });
   });
 }

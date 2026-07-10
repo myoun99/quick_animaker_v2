@@ -128,8 +128,25 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cameraFrameSize: widget.cameraViewEnabled
                   ? widget.cameraFrameSize
                   : null,
-              // The cut fade: applied at display time, never baked into
-              // the composite cache (it would shard entries per frame).
+              // The cut-level transform (V track, AE precomp semantics)
+              // and the cut fade: both applied at display time, never
+              // baked into the composite cache (it would shard entries
+              // per frame). The pose resolves over the same display space
+              // the painter draws — camera frame in camera mode, canvas
+              // otherwise.
+              cutPose: cut != null && position != null && cutPoseIsActive(cut)
+                  ? cutPoseAt(
+                      cut,
+                      position.localFrameIndex,
+                      widget.cameraViewEnabled
+                          ? widget.cameraFrameSize
+                          : canvasSize,
+                    )
+                  : null,
+              cutAnchorPoint:
+                  cut != null && position != null && cutPoseIsActive(cut)
+                  ? cutAnchorPointAt(cut, position.localFrameIndex)
+                  : null,
               fadeOpacity: cut != null && position != null
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,

@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
@@ -16,7 +18,9 @@ import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/transform_track.dart';
 import '../services/audio/audio_peaks_extractor.dart';
+import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
 import 'panels/panel_scrollbar.dart';
 import 'storyboard_cut_fade_policy.dart';
@@ -24,7 +28,13 @@ import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/property_lane_model.dart'
+    show PropertyLaneEditCallbacks, PropertyLaneRow;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
+import 'timeline/timeline_lane_rows.dart'
+    show TimelineLaneControlsRow, TimelineLaneFrameRow;
+import 'timeline/transform_lane_policy.dart'
+    show transformGroupHeader, transformGroupHeaderLane, transformPropertyLanes;
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_cell_style.dart'
     show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
@@ -96,8 +106,15 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleSeRowWaveform,
     this.expandedSeAudioRows = const {},
     this.onToggleSeRowLane,
-    this.expandedOpacityTracks = const {},
+    this.expandedTransformTracks = const {},
     this.onToggleTrackLane,
+    this.expandedTransformGroups = const {},
+    this.onToggleTransformGroup,
+    this.cutLaneEditFor,
+    this.layerLaneEdit,
+    this.activeCutFrameIndex = 0,
+    this.onSelectFrameIndex,
+    this.poseDisplaySize,
     this.onSetCutFade,
     this.onSetCutFadeTarget,
     this.onToggleLayerVisibility,
@@ -195,10 +212,40 @@ class StoryboardPanel extends StatefulWidget {
   final Set<String> expandedSeAudioRows;
   final void Function(Track track, int slot)? onToggleSeRowLane;
 
-  /// Twirled-down V tracks (track id value): the cut-fade Opacity lane
-  /// under the track row.
-  final Set<String> expandedOpacityTracks;
+  /// Twirled-down V tracks (track id value): the cut-level Transform group
+  /// under the track row (V-track full transform, R6 — the AE lanes plus
+  /// the cut-fade Opacity strip).
+  final Set<String> expandedTransformTracks;
   final void Function(Track track)? onToggleTrackLane;
+
+  /// Twirled-open Transform GROUP HEADERS (AE group collapse, default
+  /// collapsed): track id values for the V tracks, [seRowKey]s for the S
+  /// rows. One set — the key shapes never collide.
+  final Set<String> expandedTransformGroups;
+  final void Function(String groupKey)? onToggleTransformGroup;
+
+  /// Per-cut lane edit hooks for the V track's Transform lanes: the host
+  /// builds callbacks that edit THAT cut's cut-level transform track (one
+  /// undo per edit). The carrier Layer the substrate hands back is
+  /// synthetic — the closures capture their cut. Null = display-only.
+  final PropertyLaneEditCallbacks? Function(Cut cut)? cutLaneEditFor;
+
+  /// Lane edit hooks for the S rows' Transform lanes — the timeline's
+  /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
+  /// display-only.
+  final PropertyLaneEditCallbacks? layerLaneEdit;
+
+  /// The ACTIVE cut's playhead (cut-local): the lane labels' value column
+  /// and keyframe navigator read here.
+  final int activeCutFrameIndex;
+
+  /// Key-navigator jumps (◀ ▶) select this cut-local frame on the session.
+  final ValueChanged<int>? onSelectFrameIndex;
+
+  /// The display space the CUT pose resolves over for the value column
+  /// (the camera's output frame — the same space playback and the MP4
+  /// bake use). Null hides the V lanes' values.
+  final CanvasSize? poseDisplaySize;
 
   /// Commits a cut-fade handle drag (one undo); null makes the Opacity
   /// lane display-only.
@@ -370,6 +417,404 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return total;
   }
 
+  /// The ACTIVE cut when it lives on [track]; null otherwise (the rail's
+  /// lane controls then stand down, like the S-row layer controls).
+  Cut? _activeCutOf(Track track) {
+    for (final cut in track.cuts) {
+      if (cut.id == widget.activeCutId) {
+        return cut;
+      }
+    }
+    return null;
+  }
+
+  /// The shared lane substrate speaks Layer; the V track's cut-level lanes
+  /// ride a synthetic carrier — its id only feeds the widget keys, the
+  /// edit closures capture their cut ([StoryboardPanel.cutLaneEditFor]).
+  Layer _vLaneCarrier(String seed) =>
+      Layer(id: LayerId('v-$seed'), name: 'V', frames: const []);
+
+  /// The Transform-group member lanes of one V track, header first: the
+  /// AE lane list valued against the ACTIVE cut (label-only rows while the
+  /// active cut lives elsewhere). The Opacity lane stays LAST — its strip
+  /// is the cut-fade envelope row, and the labels must line up.
+  List<PropertyLaneRow> _cutTransformLanes(Track track, Cut? activeCut) {
+    final expanded = widget.expandedTransformGroups.contains(track.id.value);
+    final displaySize = widget.poseDisplaySize;
+    final lanes = activeCut == null
+        ? transformPropertyLanes(
+            TransformTrack.empty(),
+            includeAnchorAndOpacity: true,
+          )
+        : transformPropertyLanes(
+            activeCut.transformTrack,
+            includeAnchorAndOpacity: true,
+            poseAt: displaySize == null
+                ? null
+                : (frame) => cutPoseAt(activeCut, frame, displaySize),
+            anchorAt: displaySize == null
+                ? null
+                : (frame) =>
+                      cutAnchorPointAt(activeCut, frame) ??
+                      CanvasPoint(
+                        x: displaySize.width / 2,
+                        y: displaySize.height / 2,
+                      ),
+            opacityAt: activeCut.fadeOpacityAt,
+          );
+    return [
+      transformGroupHeader(expanded: expanded),
+      if (expanded) ...lanes.where((lane) => !lane.isGroupHeader),
+    ];
+  }
+
+  /// One S row's Transform-group lanes, header first, valued against the
+  /// ACTIVE cut's slot layer (the same raw-track resolution the timeline's
+  /// value column uses — fx bypass never touches authoring values).
+  List<PropertyLaneRow> _seTransformLanes(
+    Track track,
+    int slot,
+    Cut? activeCut,
+    Layer? layer,
+  ) {
+    final expanded = widget.expandedTransformGroups.contains(
+      StoryboardPanel.seRowKey(track, slot),
+    );
+    final lanes = layer == null || activeCut == null
+        ? transformPropertyLanes(
+            TransformTrack.empty(),
+            includeAnchorAndOpacity: true,
+          )
+        : transformPropertyLanes(
+            layer.transformTrack,
+            includeAnchorAndOpacity: true,
+            poseAt: (frame) => layer.transformTrack.resolveAt(
+              frameIndex: frame,
+              orElse: () => layerIdentityPose(activeCut.canvasSize),
+            ),
+            anchorAt: (frame) =>
+                resolveAnchorTrackAt(layer.transformTrack.anchorPoint, frame) ??
+                CanvasPoint(
+                  x: activeCut.canvasSize.width / 2,
+                  y: activeCut.canvasSize.height / 2,
+                ),
+            opacityAt: (frame) =>
+                resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
+          );
+    return [
+      transformGroupHeader(expanded: expanded),
+      if (expanded) ...lanes.where((lane) => !lane.isGroupHeader),
+    ];
+  }
+
+  /// Transform-lane rail label rows on the shared substrate ([lanes] from
+  /// [_cutTransformLanes]/[_seTransformLanes]): the group header row plus
+  /// the twirled-open member lanes, storyboard-prefixed. [active] gates
+  /// the navigator's frame jumps and value edits to the active cut.
+  List<Widget> _transformLaneLabels({
+    required Layer carrier,
+    required String groupKey,
+    required List<PropertyLaneRow> lanes,
+    required PropertyLaneEditCallbacks? laneEdit,
+    required bool active,
+  }) {
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: widget.pixelsPerFrame,
+      layerRowHeight: _transformLaneHeight - 2,
+    );
+    final onToggleGroup = widget.onToggleTransformGroup;
+    return [
+      for (final lane in lanes)
+        Padding(
+          padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+          child: TimelineLaneControlsRow(
+            layer: carrier,
+            lane: lane,
+            metrics: metrics,
+            width: StoryboardPanel._trackLabelWidth,
+            height: _transformLaneHeight,
+            currentFrameIndex: widget.activeCutFrameIndex,
+            onSelectFrame: active ? widget.onSelectFrameIndex : null,
+            laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
+            onToggleLaneGroup: onToggleGroup == null
+                ? null
+                : (_, _) => onToggleGroup(groupKey),
+            keyPrefix: 'storyboard',
+          ),
+        ),
+    ];
+  }
+
+  /// The 2px section divider overlaying the top of a track group's FIRST
+  /// rail row — zero height cost, so the rail and the strips column (which
+  /// carries no divider element) stay row-for-row height-synced.
+  Widget _withRailDivider(Track track, Widget row) {
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          top: 0,
+          left: 0,
+          width: StoryboardPanel._trackLabelWidth,
+          height: 2,
+          child: IgnorePointer(
+            child: Container(
+              key: ValueKey<String>(
+                'storyboard-section-divider-rail-${track.id.value}',
+              ),
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _seLabelRow(Track track, int slot) {
+    return _StoryboardSeLabel(
+      track: track,
+      slot: slot,
+      waveformVisible: !widget.hiddenWaveformSeRows.contains(
+        StoryboardPanel.seRowKey(track, slot),
+      ),
+      onToggleWaveform: widget.onToggleSeRowWaveform == null
+          ? null
+          : () => widget.onToggleSeRowWaveform!(track, slot),
+      laneExpanded: widget.expandedSeAudioRows.contains(
+        StoryboardPanel.seRowKey(track, slot),
+      ),
+      onToggleLane: widget.onToggleSeRowLane == null
+          ? null
+          : () => widget.onToggleSeRowLane!(track, slot),
+      activeLayer: _activeSlotLayerOf(track, widget.activeCutId, slot),
+      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+      onToggleLayerMuted: widget.onToggleLayerMuted,
+      onLayerOpacityChanged: widget.onLayerOpacityChanged,
+      onLayerMarkSelected: widget.onLayerMarkSelected,
+      layerFxEnabledOf: widget.layerFxEnabledOf,
+      onToggleLayerFx: widget.onToggleLayerFx,
+    );
+  }
+
+  /// One track group's rail rows in TIMELINE order (R6 B3): the S rows
+  /// (each with its twirled-down Audio lane and Transform group) ABOVE the
+  /// V track row and ITS Transform group; the section divider overlays the
+  /// group's first row.
+  List<Widget> _railRowsForTrack(Track track, int index) {
+    final activeCut = _activeCutOf(track);
+    final rows = <Widget>[
+      for (var slot = 0; slot < _seSlotCount(track); slot++) ...[
+        _seLabelRow(track, slot),
+        if (widget.expandedSeAudioRows.contains(
+          StoryboardPanel.seRowKey(track, slot),
+        )) ...[
+          // Audio leads the S twirl-down (the row's main tool, timeline
+          // parity); the Transform group sits below, collapsed default.
+          _StoryboardLaneLabel(
+            laneKey:
+                'storyboard-lane-label-'
+                '${track.id.value}'
+                '-s${slot + 1}-audio',
+            label: 'Audio',
+            icon: Icons.graphic_eq,
+            height: _audioLaneHeight,
+          ),
+          ..._transformLaneLabels(
+            carrier:
+                (activeCut == null ? null : _seLayerAt(activeCut, slot)) ??
+                _vLaneCarrier('se-${StoryboardPanel.seRowKey(track, slot)}'),
+            groupKey: StoryboardPanel.seRowKey(track, slot),
+            lanes: _seTransformLanes(
+              track,
+              slot,
+              activeCut,
+              activeCut == null ? null : _seLayerAt(activeCut, slot),
+            ),
+            laneEdit: widget.layerLaneEdit,
+            active: activeCut != null && _seLayerAt(activeCut, slot) != null,
+          ),
+        ],
+      ],
+      _StoryboardTrackLabel(
+        track: track,
+        trackLabel: 'V${index + 1}',
+        laneExpanded: widget.expandedTransformTracks.contains(track.id.value),
+        onToggleLane: widget.onToggleTrackLane == null
+            ? null
+            : () => widget.onToggleTrackLane!(track),
+      ),
+      if (widget.expandedTransformTracks.contains(track.id.value))
+        ..._transformLaneLabels(
+          carrier: _vLaneCarrier(track.id.value),
+          groupKey: track.id.value,
+          lanes: _cutTransformLanes(track, activeCut),
+          laneEdit: activeCut == null
+              ? null
+              : widget.cutLaneEditFor?.call(activeCut),
+          active: activeCut != null,
+        ),
+    ];
+    return [_withRailDivider(track, rows.first), ...rows.skip(1)];
+  }
+
+  /// One track group's strip rows, mirroring [_railRowsForTrack] row for
+  /// row (heights must stay in lockstep — the two columns share no
+  /// scaffolding).
+  List<Widget> _stripRowsForTrack(
+    Track track,
+    int index,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+  ) {
+    return [
+      for (var slot = 0; slot < _seSlotCount(track); slot++) ...[
+        _StoryboardSeRow(
+          trackIndex: index,
+          slot: slot,
+          layoutEntries: entries,
+          width: width,
+          timelineScale: scale,
+          projectFps: widget.projectFps,
+          audioPeaksFor:
+              widget.hiddenWaveformSeRows.contains(
+                StoryboardPanel.seRowKey(track, slot),
+              )
+              ? null
+              : widget.audioPeaksFor,
+          activeCutId: widget.activeCutId,
+          onSelectSeBlock: widget.onSelectSeBlock,
+          seCommaDrag: widget.seCommaDrag,
+        ),
+        if (widget.expandedSeAudioRows.contains(
+          StoryboardPanel.seRowKey(track, slot),
+        )) ...[
+          _StoryboardAudioLaneRow(
+            trackIndex: index,
+            slot: slot,
+            layoutEntries: entries,
+            width: width,
+            timelineScale: scale,
+            projectFps: widget.projectFps,
+            audioPeaksFor: widget.audioPeaksFor,
+            activeCutId: widget.activeCutId,
+            onSetAudioClipOffset: widget.onSetAudioClipOffset,
+          ),
+          ..._seTransformLaneStrips(track, index, slot, entries, width, scale),
+        ],
+      ],
+      _StoryboardTrackRow(
+        track: track,
+        layoutEntries: entries,
+        activeCutId: widget.activeCutId,
+        onCutSelected: widget.onCutSelected,
+        onCutReordered: widget.onCutReordered,
+        cutTrim: widget.cutTrim,
+        thumbnailFor: widget.thumbnailFor,
+        timelineScale: scale,
+        showSeconds: widget.showSeconds,
+        projectFps: widget.projectFps,
+      ),
+      if (widget.expandedTransformTracks.contains(track.id.value))
+        ..._cutTransformLaneStrips(track, index, entries, width, scale),
+    ];
+  }
+
+  /// Resolves [laneId] against a transform [track] for one strip span.
+  PropertyLaneRow _laneOfTrack(TransformTrack track, String laneId) {
+    if (laneId == transformGroupHeaderLane.laneId) {
+      return transformGroupHeaderLane;
+    }
+    return transformPropertyLanes(
+      track,
+      includeAnchorAndOpacity: true,
+    ).firstWhere((lane) => lane.laneId == laneId);
+  }
+
+  /// The V track's Transform strip rows: the group header band plus,
+  /// twirled open, the AE lanes' key-marker strips — and the cut-fade
+  /// envelope row AS the Opacity strip (fade handles unchanged, canonical
+  /// key policy intact).
+  List<Widget> _cutTransformLaneStrips(
+    Track track,
+    int trackIndex,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+  ) {
+    final expanded = widget.expandedTransformGroups.contains(track.id.value);
+    Widget strip(String laneId) => _StoryboardLaneStripRow(
+      rowKey: 'storyboard-cut-lane-row-$trackIndex-$laneId',
+      layoutEntries: entries,
+      width: width,
+      timelineScale: scale,
+      activeCutId: widget.activeCutId,
+      laneOf: (cut) => (
+        _vLaneCarrier(cut.id.value),
+        _laneOfTrack(cut.transformTrack, laneId),
+      ),
+      laneEditFor: widget.cutLaneEditFor,
+    );
+    return [
+      strip(transformGroupHeaderLane.laneId),
+      if (expanded) ...[
+        strip('anchor-point'),
+        strip('position'),
+        strip('scale'),
+        strip('rotation'),
+        _StoryboardOpacityLaneRow(
+          trackIndex: trackIndex,
+          layoutEntries: entries,
+          width: width,
+          timelineScale: scale,
+          onSetCutFade: widget.onSetCutFade,
+          onSetCutFadeTarget: widget.onSetCutFadeTarget,
+        ),
+      ],
+    ];
+  }
+
+  /// One S row's Transform strip rows: per-cut key-marker strips on the
+  /// slot layers' OWN tracks (cuts without the slot skip), editing gated
+  /// to the active cut.
+  List<Widget> _seTransformLaneStrips(
+    Track track,
+    int trackIndex,
+    int slot,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+  ) {
+    final rowKey = StoryboardPanel.seRowKey(track, slot);
+    final expanded = widget.expandedTransformGroups.contains(rowKey);
+    final layerLaneEdit = widget.layerLaneEdit;
+    Widget strip(String laneId) => _StoryboardLaneStripRow(
+      rowKey: 'storyboard-se-lane-row-$trackIndex-${slot + 1}-$laneId',
+      layoutEntries: entries,
+      width: width,
+      timelineScale: scale,
+      activeCutId: widget.activeCutId,
+      laneOf: (cut) {
+        final layer = _seLayerAt(cut, slot);
+        if (layer == null) {
+          return null;
+        }
+        return (layer, _laneOfTrack(layer.transformTrack, laneId));
+      },
+      laneEditFor: layerLaneEdit == null ? null : (_) => layerLaneEdit,
+    );
+    return [
+      strip(transformGroupHeaderLane.laneId),
+      if (expanded) ...[
+        strip('anchor-point'),
+        strip('position'),
+        strip('scale'),
+        strip('rotation'),
+        strip('opacity'),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -471,106 +916,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Track groups in TIMELINE order (R6 B3): the
+                            // S rows sit ABOVE their V track, top-down
+                            // S1, S2, V.
                             for (
                               var index = 0;
                               index < widget.project.tracks.length;
                               index++
-                            ) ...[
-                              _StoryboardTrackLabel(
-                                track: widget.project.tracks[index],
-                                trackLabel: 'V${index + 1}',
-                                laneExpanded: widget.expandedOpacityTracks
-                                    .contains(
-                                      widget.project.tracks[index].id.value,
-                                    ),
-                                onToggleLane: widget.onToggleTrackLane == null
-                                    ? null
-                                    : () => widget.onToggleTrackLane!(
-                                        widget.project.tracks[index],
-                                      ),
+                            )
+                              ..._railRowsForTrack(
+                                widget.project.tracks[index],
+                                index,
                               ),
-                              if (widget.expandedOpacityTracks.contains(
-                                widget.project.tracks[index].id.value,
-                              ))
-                                _StoryboardLaneLabel(
-                                  laneKey:
-                                      'storyboard-lane-label-'
-                                      '${widget.project.tracks[index].id.value}'
-                                      '-opacity',
-                                  label: 'Opacity',
-                                  icon: Icons.opacity,
-                                  height: _opacityLaneHeight,
-                                ),
-                              // The track's synced SE rows (the timesheet's
-                              // S1·S2 columns laid along the conte sheet).
-                              for (
-                                var slot = 0;
-                                slot <
-                                    _seSlotCount(widget.project.tracks[index]);
-                                slot++
-                              ) ...[
-                                _StoryboardSeLabel(
-                                  track: widget.project.tracks[index],
-                                  slot: slot,
-                                  waveformVisible: !widget.hiddenWaveformSeRows
-                                      .contains(
-                                        StoryboardPanel.seRowKey(
-                                          widget.project.tracks[index],
-                                          slot,
-                                        ),
-                                      ),
-                                  onToggleWaveform:
-                                      widget.onToggleSeRowWaveform == null
-                                      ? null
-                                      : () => widget.onToggleSeRowWaveform!(
-                                          widget.project.tracks[index],
-                                          slot,
-                                        ),
-                                  laneExpanded: widget.expandedSeAudioRows
-                                      .contains(
-                                        StoryboardPanel.seRowKey(
-                                          widget.project.tracks[index],
-                                          slot,
-                                        ),
-                                      ),
-                                  onToggleLane: widget.onToggleSeRowLane == null
-                                      ? null
-                                      : () => widget.onToggleSeRowLane!(
-                                          widget.project.tracks[index],
-                                          slot,
-                                        ),
-                                  activeLayer: _activeSlotLayerOf(
-                                    widget.project.tracks[index],
-                                    widget.activeCutId,
-                                    slot,
-                                  ),
-                                  onToggleLayerVisibility:
-                                      widget.onToggleLayerVisibility,
-                                  onToggleLayerMuted: widget.onToggleLayerMuted,
-                                  onLayerOpacityChanged:
-                                      widget.onLayerOpacityChanged,
-                                  onLayerMarkSelected:
-                                      widget.onLayerMarkSelected,
-                                  layerFxEnabledOf: widget.layerFxEnabledOf,
-                                  onToggleLayerFx: widget.onToggleLayerFx,
-                                ),
-                                if (widget.expandedSeAudioRows.contains(
-                                  StoryboardPanel.seRowKey(
-                                    widget.project.tracks[index],
-                                    slot,
-                                  ),
-                                ))
-                                  _StoryboardLaneLabel(
-                                    laneKey:
-                                        'storyboard-lane-label-'
-                                        '${widget.project.tracks[index].id.value}'
-                                        '-s${slot + 1}-audio',
-                                    label: 'Audio',
-                                    icon: Icons.graphic_eq,
-                                    height: _audioLaneHeight,
-                                  ),
-                              ],
-                            ],
                           ],
                         ),
                       ),
@@ -617,111 +974,26 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     // row is narrower (the pinned ruler used
                                     // to do this from inside the content).
                                     SizedBox(width: contentWidth),
+                                    // Track groups in TIMELINE order (R6
+                                    // B3), mirroring the rail exactly —
+                                    // row for row, height for height.
                                     for (
                                       var index = 0;
                                       index < widget.project.tracks.length;
                                       index++
-                                    ) ...[
-                                      _StoryboardTrackRow(
-                                        track: widget.project.tracks[index],
-                                        layoutEntries: layoutEntries
+                                    )
+                                      ..._stripRowsForTrack(
+                                        widget.project.tracks[index],
+                                        index,
+                                        layoutEntries
                                             .where(
                                               (entry) =>
                                                   entry.trackIndex == index,
                                             )
                                             .toList(growable: false),
-                                        activeCutId: widget.activeCutId,
-                                        onCutSelected: widget.onCutSelected,
-                                        onCutReordered: widget.onCutReordered,
-                                        cutTrim: widget.cutTrim,
-                                        thumbnailFor: widget.thumbnailFor,
-                                        timelineScale: scale,
-                                        showSeconds: widget.showSeconds,
-                                        projectFps: widget.projectFps,
+                                        contentWidth,
+                                        scale,
                                       ),
-                                      if (widget.expandedOpacityTracks.contains(
-                                        widget.project.tracks[index].id.value,
-                                      ))
-                                        _StoryboardOpacityLaneRow(
-                                          trackIndex: index,
-                                          layoutEntries: layoutEntries
-                                              .where(
-                                                (entry) =>
-                                                    entry.trackIndex == index,
-                                              )
-                                              .toList(growable: false),
-                                          width: contentWidth,
-                                          timelineScale: scale,
-                                          onSetCutFade: widget.onSetCutFade,
-                                          onSetCutFadeTarget:
-                                              widget.onSetCutFadeTarget,
-                                        ),
-                                      // Synced SE rows: the same per-cut
-                                      // SE data the timeline edits,
-                                      // mapped to track-global frames
-                                      // (read-only).
-                                      for (
-                                        var slot = 0;
-                                        slot <
-                                            _seSlotCount(
-                                              widget.project.tracks[index],
-                                            );
-                                        slot++
-                                      ) ...[
-                                        _StoryboardSeRow(
-                                          trackIndex: index,
-                                          slot: slot,
-                                          layoutEntries: layoutEntries
-                                              .where(
-                                                (entry) =>
-                                                    entry.trackIndex == index,
-                                              )
-                                              .toList(growable: false),
-                                          width: contentWidth,
-                                          timelineScale: scale,
-                                          projectFps: widget.projectFps,
-                                          audioPeaksFor:
-                                              widget.hiddenWaveformSeRows
-                                                  .contains(
-                                                    StoryboardPanel.seRowKey(
-                                                      widget
-                                                          .project
-                                                          .tracks[index],
-                                                      slot,
-                                                    ),
-                                                  )
-                                              ? null
-                                              : widget.audioPeaksFor,
-                                          activeCutId: widget.activeCutId,
-                                          onSelectSeBlock:
-                                              widget.onSelectSeBlock,
-                                          seCommaDrag: widget.seCommaDrag,
-                                        ),
-                                        if (widget.expandedSeAudioRows.contains(
-                                          StoryboardPanel.seRowKey(
-                                            widget.project.tracks[index],
-                                            slot,
-                                          ),
-                                        ))
-                                          _StoryboardAudioLaneRow(
-                                            trackIndex: index,
-                                            slot: slot,
-                                            layoutEntries: layoutEntries
-                                                .where(
-                                                  (entry) =>
-                                                      entry.trackIndex == index,
-                                                )
-                                                .toList(growable: false),
-                                            width: contentWidth,
-                                            timelineScale: scale,
-                                            projectFps: widget.projectFps,
-                                            audioPeaksFor: widget.audioPeaksFor,
-                                            activeCutId: widget.activeCutId,
-                                            onSetAudioClipOffset:
-                                                widget.onSetAudioClipOffset,
-                                          ),
-                                      ],
-                                    ],
                                   ],
                                 ),
                                 if (playheadFrame != null)
@@ -998,10 +1270,12 @@ class _StoryboardRuler extends StatelessWidget {
 const double _seRowHeight = 30;
 const double _seRowBottomPadding = 2;
 
-/// Twirl-down lane heights: the enlarged waveform strip and the cut-fade
-/// (Opacity) envelope lane.
+/// Twirl-down lane heights: the enlarged waveform strip, the cut-fade
+/// (Opacity) envelope lane and the Transform lanes (labels and strips
+/// share these — the rail and strips columns must stay height-synced).
 const double _audioLaneHeight = 36;
 const double _opacityLaneHeight = 26;
+const double _transformLaneHeight = 26;
 
 /// The track's SE row count: the widest cut decides (every cut carries the
 /// S1·S2 fixtures, more when the user added rows).
@@ -1673,6 +1947,83 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
   }
 }
 
+/// One Transform lane's frame band: the reused timeline lane substrate
+/// rendered PER CUT (the audio lane's remount pattern — each span runs
+/// cut-local frames at the cut's global left). Key markers ride each
+/// cut's own transform track; editing is gated to the ACTIVE cut, like
+/// the audio lane's slide edit.
+class _StoryboardLaneStripRow extends StatelessWidget {
+  const _StoryboardLaneStripRow({
+    required this.rowKey,
+    required this.layoutEntries,
+    required this.width,
+    required this.timelineScale,
+    required this.laneOf,
+    this.activeCutId,
+    this.laneEditFor,
+  });
+
+  final String rowKey;
+  final List<StoryboardTimelineLayoutEntry> layoutEntries;
+  final double width;
+  final TimelineScale timelineScale;
+
+  /// Resolves one cut's (carrier layer, lane) pair; null skips the cut
+  /// (an S slot the cut doesn't carry).
+  final (Layer, PropertyLaneRow)? Function(Cut cut) laneOf;
+  final CutId? activeCutId;
+  final PropertyLaneEditCallbacks? Function(Cut cut)? laneEditFor;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: timelineScale.pixelsPerFrame,
+      layerRowHeight: _transformLaneHeight - 2,
+    );
+    final spans = <Widget>[];
+    for (final entry in layoutEntries) {
+      final resolved = laneOf(entry.cut);
+      if (resolved == null) {
+        continue;
+      }
+      final (carrier, lane) = resolved;
+      spans.add(
+        Positioned(
+          left: timelineScale.leftForFrame(entry.startFrame),
+          top: 1,
+          width: entry.duration * timelineScale.pixelsPerFrame,
+          height: _transformLaneHeight - 2,
+          child: KeyedSubtree(
+            key: ValueKey<String>('$rowKey-span-${entry.cut.id.value}'),
+            child: TimelineLaneFrameRow(
+              layer: carrier,
+              lane: lane,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: entry.duration,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              metrics: metrics,
+              laneEdit: entry.cut.id == activeCutId
+                  ? laneEditFor?.call(entry.cut)
+                  : null,
+              keyPrefix: 'storyboard',
+            ),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _seRowBottomPadding),
+      child: SizedBox(
+        key: ValueKey<String>(rowKey),
+        width: width,
+        height: _transformLaneHeight,
+        child: Stack(children: spans),
+      ),
+    );
+  }
+}
+
 /// The twirled-down V track's Opacity lane: one fade-envelope span per cut
 /// with draggable fade in/out handles at the span edges — the cut fade
 /// ("opacity joins the transform system"). Commits ONE undo per handle
@@ -2058,92 +2409,70 @@ class _StoryboardTrackLabel extends StatelessWidget {
       padding: const EdgeInsets.only(
         bottom: StoryboardPanel._trackRowBottomPadding,
       ),
-      child: Stack(
-        children: [
-          Container(
-            key: ValueKey<String>(
-              'storyboard-track-label-row-${track.id.value}',
-            ),
-            width: StoryboardPanel._trackLabelWidth,
-            height: StoryboardPanel._trackLaneHeight,
-            padding: const EdgeInsets.only(left: 2, right: 8),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                // The timeline rows' lane chevron: twirls down the track's
-                // Opacity (cut fade) lane.
-                if (onToggleLane != null)
-                  InkWell(
+      child: Container(
+        key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
+        width: StoryboardPanel._trackLabelWidth,
+        height: StoryboardPanel._trackLaneHeight,
+        padding: const EdgeInsets.only(left: 2, right: 8),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            // The timeline rows' lane chevron: twirls down the track's
+            // cut-level Transform group (the V-track lanes + fade strip).
+            if (onToggleLane != null)
+              InkWell(
+                key: ValueKey<String>(
+                  'storyboard-track-lane-toggle-${track.id.value}',
+                ),
+                onTap: onToggleLane,
+                child: SizedBox(
+                  width: 16,
+                  height: 24,
+                  child: Icon(
+                    laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            else
+              const SizedBox(width: 16),
+            const Icon(Icons.movie_outlined, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    trackLabel,
                     key: ValueKey<String>(
-                      'storyboard-track-lane-toggle-${track.id.value}',
+                      'storyboard-track-label-${track.id.value}',
                     ),
-                    onTap: onToggleLane,
-                    child: SizedBox(
-                      width: 16,
-                      height: 24,
-                      child: Icon(
-                        laneExpanded
-                            ? Icons.arrow_drop_down
-                            : Icons.arrow_right,
-                        size: 16,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (track.name.isNotEmpty)
+                    Text(
+                      track.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 11,
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  )
-                else
-                  const SizedBox(width: 16),
-                const Icon(Icons.movie_outlined, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        trackLabel,
-                        key: ValueKey<String>(
-                          'storyboard-track-label-${track.id.value}',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      if (track.name.isNotEmpty)
-                        Text(
-                          track.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          softWrap: false,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            width: StoryboardPanel._trackLabelWidth,
-            height: 2,
-            child: IgnorePointer(
-              child: Container(
-                key: ValueKey<String>(
-                  'storyboard-section-divider-rail-${track.id.value}',
-                ),
-                color: colorScheme.outline,
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

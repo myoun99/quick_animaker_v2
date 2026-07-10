@@ -18,9 +18,11 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
@@ -43,11 +45,12 @@ void main() {
         frameId: frameId,
       );
 
-  Cut cut() => Cut(
+  Cut cut({TransformTrack? transformTrack}) => Cut(
     id: const CutId('cut'),
     name: 'Cut',
     duration: 2,
     canvasSize: canvasSize,
+    transformTrack: transformTrack,
     layers: [
       Layer(
         id: const LayerId('layer'),
@@ -62,19 +65,23 @@ void main() {
     ],
   );
 
-  Project project() => Project(
+  Project project({TransformTrack? transformTrack}) => Project(
     id: const ProjectId('project'),
     name: 'Project',
     fps: 10,
     cameraSize: const CanvasSize(width: 4, height: 2),
     tracks: [
-      Track(id: const TrackId('track'), name: 'Track', cuts: [cut()]),
+      Track(
+        id: const TrackId('track'),
+        name: 'Track',
+        cuts: [cut(transformTrack: transformTrack)],
+      ),
     ],
     createdAt: DateTime.utc(2026),
   );
 
   ({CutFrameCompositeCache composites, CanvasPlaybackController controller})
-  fixture() {
+  fixture({TransformTrack? transformTrack}) {
     final store = BrushFrameStore();
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey(
@@ -112,7 +119,7 @@ void main() {
       frameKeyOf: frameKey,
     );
     final controller = CanvasPlaybackController(
-      resolveProject: project,
+      resolveProject: () => project(transformTrack: transformTrack),
       resolveActiveCutId: () => const CutId('cut'),
       resolveActiveTrackId: () => const TrackId('track'),
       resolveFps: () => 10,
@@ -205,6 +212,55 @@ void main() {
     f.controller.stop();
     await tester.pump();
     f.composites.dispose();
+  });
+
+  testWidgets('the CUT pose (V track) reaches the painter — resolved over '
+      'the current display space — while fade-only cuts stay on the '
+      'pose-free path', (tester) async {
+    // A geometric key activates the pose; the opacity lane alone must not.
+    final posed = fixture(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 6, y: 4),
+        ),
+      ),
+    );
+    posed.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: posed.controller,
+      composites: posed.composites,
+    );
+    final canvasPose = painterOf(tester).cutPose;
+    expect(canvasPose, isNotNull);
+    expect(canvasPose!.center, CanvasPoint(x: 6, y: 4));
+    // Unkeyed lanes resolve to the display space's identity — the canvas
+    // (8×8) in canvas mode.
+    expect(canvasPose.zoom, 1);
+    expect(painterOf(tester).cutAnchorPoint, isNull);
+
+    posed.controller.stop();
+    await tester.pump();
+    posed.composites.dispose();
+
+    final fadeOnly = fixture(
+      transformTrack: TransformTrack.empty().copyWith(
+        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
+      ),
+    );
+    fadeOnly.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: fadeOnly.controller,
+      composites: fadeOnly.composites,
+    );
+    expect(painterOf(tester).cutPose, isNull, reason: 'zero-cost fade path');
+    expect(painterOf(tester).fadeOpacity, 0.5);
+
+    fadeOnly.controller.stop();
+    await tester.pump();
+    fadeOnly.composites.dispose();
   });
 
   testWidgets('cache misses keep the last displayed frame on screen', (

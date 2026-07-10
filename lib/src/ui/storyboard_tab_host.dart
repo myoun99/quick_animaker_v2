@@ -2,7 +2,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../models/canvas_point.dart';
 import '../models/cut.dart';
+import '../models/layer_id.dart';
+import '../models/transform_track.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
@@ -10,12 +13,15 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'playback/playback_transport_controls.dart';
+import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_panel.dart';
+import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
+import 'timeline/transform_lane_editing.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -49,12 +55,14 @@ class StoryboardTabHost extends StatefulWidget {
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// Rail view state (waveform eyes, twirled-down lanes). Session-scoped
-  /// like the timeline's lane expansion; lost on tab switch for now (the
-  /// host rebuilds) — hoist to the workspace if that stings.
+  /// Rail view state (waveform eyes, twirled-down lanes, Transform group
+  /// collapse). Session-scoped like the timeline's lane expansion; lost on
+  /// tab switch for now (the host rebuilds) — hoist to the workspace if
+  /// that stings.
   final Set<String> _hiddenWaveformSeRows = {};
   final Set<String> _expandedSeAudioRows = {};
-  final Set<String> _expandedOpacityTracks = {};
+  final Set<String> _expandedTransformTracks = {};
+  final Set<String> _expandedTransformGroups = {};
 
   void _toggleSetEntry(Set<String> set, String key) {
     setState(() {
@@ -62,6 +70,145 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         set.remove(key);
       }
     });
+  }
+
+  /// Lane edit hooks for one CUT's Transform lanes (the V track): the
+  /// timeline's per-lane track edits applied to the cut-level transform,
+  /// committed as ONE undo through the session — the same command the
+  /// fade handles use, so fades and pose keys share history cleanly.
+  /// The carrier Layer the substrate hands back is synthetic; the cut is
+  /// captured here.
+  PropertyLaneEditCallbacks _cutLaneEditFor(Cut cut) {
+    void commit(TransformTrack? next, String description) {
+      if (next == null) {
+        return;
+      }
+      _session.updateCutTransformTrack(cut.id, next, description: description);
+    }
+
+    // The cut pose lives in DISPLAY space (the camera's output frame —
+    // what playback and the MP4 bake apply it over), so resolved values
+    // freeze against that space's identity.
+    final displaySize = _session.cameraFrameSize;
+    return PropertyLaneEditCallbacks(
+      onToggleKeyAt: (_, lane, frameIndex) => commit(
+        transformTrackWithLaneKeyToggled(
+          cut.transformTrack,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+          resolvedPose: cutPoseAt(cut, frameIndex, displaySize),
+          resolvedAnchorPoint:
+              cutAnchorPointAt(cut, frameIndex) ??
+              CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
+          resolvedOpacity: cut.fadeOpacityAt(frameIndex),
+        ),
+        '${lane.label} keyframe at frame ${frameIndex + 1}',
+      ),
+      onMoveKey: (_, lane, fromFrame, toFrame) => commit(
+        transformTrackWithLaneKeyMoved(
+          cut.transformTrack,
+          laneId: lane.laneId,
+          fromFrame: fromFrame,
+          toFrame: toFrame,
+        ),
+        'Move ${lane.label} keyframe to frame ${toFrame + 1}',
+      ),
+      onRemoveKey: (_, lane, frameIndex) => commit(
+        transformTrackWithLaneKeyRemoved(
+          cut.transformTrack,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+        ),
+        'Delete ${lane.label} keyframe',
+      ),
+      onToggleHold: (_, lane, frameIndex) => commit(
+        transformTrackWithLaneHoldToggled(
+          cut.transformTrack,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+        ),
+        'Toggle hold on ${lane.label} keyframe',
+      ),
+      onSetValue: (_, lane, frameIndex, input) => commit(
+        transformTrackWithLaneValueEdited(
+          cut.transformTrack,
+          laneId: lane.laneId,
+          frameIndex: frameIndex,
+          input: input,
+        ),
+        'Set ${lane.label} at frame ${frameIndex + 1}',
+      ),
+    );
+  }
+
+  /// Lane edit hooks for the S rows' Transform lanes — the timeline
+  /// host's layer-transform editing verbatim (SE layers only here; no
+  /// camera or audio-lane dispatch on these lanes).
+  PropertyLaneEditCallbacks get _layerLaneEdit => PropertyLaneEditCallbacks(
+    onToggleKeyAt: (layer, lane, frameIndex) => _commitLayerLaneEdit(
+      layer.id,
+      transformTrackWithLaneKeyToggled(
+        layer.transformTrack,
+        laneId: lane.laneId,
+        frameIndex: frameIndex,
+        resolvedPose: _session.layerPoseAtFrame(layer, frameIndex),
+        resolvedAnchorPoint: _session.layerAnchorPointAtFrame(
+          layer,
+          frameIndex,
+        ),
+        resolvedOpacity: _session.layerOpacityAtFrame(layer, frameIndex),
+      ),
+      '${lane.label} keyframe at frame ${frameIndex + 1}',
+    ),
+    onMoveKey: (layer, lane, fromFrame, toFrame) => _commitLayerLaneEdit(
+      layer.id,
+      transformTrackWithLaneKeyMoved(
+        layer.transformTrack,
+        laneId: lane.laneId,
+        fromFrame: fromFrame,
+        toFrame: toFrame,
+      ),
+      'Move ${lane.label} keyframe to frame ${toFrame + 1}',
+    ),
+    onRemoveKey: (layer, lane, frameIndex) => _commitLayerLaneEdit(
+      layer.id,
+      transformTrackWithLaneKeyRemoved(
+        layer.transformTrack,
+        laneId: lane.laneId,
+        frameIndex: frameIndex,
+      ),
+      'Delete ${lane.label} keyframe',
+    ),
+    onToggleHold: (layer, lane, frameIndex) => _commitLayerLaneEdit(
+      layer.id,
+      transformTrackWithLaneHoldToggled(
+        layer.transformTrack,
+        laneId: lane.laneId,
+        frameIndex: frameIndex,
+      ),
+      'Toggle hold on ${lane.label} keyframe',
+    ),
+    onSetValue: (layer, lane, frameIndex, input) => _commitLayerLaneEdit(
+      layer.id,
+      transformTrackWithLaneValueEdited(
+        layer.transformTrack,
+        laneId: lane.laneId,
+        frameIndex: frameIndex,
+        input: input,
+      ),
+      'Set ${lane.label} at frame ${frameIndex + 1}',
+    ),
+  );
+
+  void _commitLayerLaneEdit(
+    LayerId layerId,
+    TransformTrack? next,
+    String description,
+  ) {
+    if (next == null) {
+      return;
+    }
+    _session.updateLayerTransformTrack(layerId, next, description: description);
   }
 
   Future<void> _editActiveCutNote() async {
@@ -233,9 +380,22 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     _expandedSeAudioRows,
                     StoryboardPanel.seRowKey(track, slot),
                   ),
-                  expandedOpacityTracks: _expandedOpacityTracks,
+                  expandedTransformTracks: _expandedTransformTracks,
                   onToggleTrackLane: (track) =>
-                      _toggleSetEntry(_expandedOpacityTracks, track.id.value),
+                      _toggleSetEntry(_expandedTransformTracks, track.id.value),
+                  // AE group collapse for the V tracks' and S rows'
+                  // Transform groups (default collapsed).
+                  expandedTransformGroups: _expandedTransformGroups,
+                  onToggleTransformGroup: (groupKey) =>
+                      _toggleSetEntry(_expandedTransformGroups, groupKey),
+                  // The V track's cut-level Transform lanes (AE precomp:
+                  // the whole cut moving on the screen) and the S rows'
+                  // layer Transform lanes.
+                  cutLaneEditFor: _cutLaneEditFor,
+                  layerLaneEdit: _layerLaneEdit,
+                  activeCutFrameIndex: _session.currentFrameIndex,
+                  onSelectFrameIndex: _session.selectFrameIndex,
+                  poseDisplaySize: _session.cameraFrameSize,
                   onSetCutFade: (cutId, fadeIn, fadeOut) => _session.setCutFade(
                     cutId,
                     fadeInFrames: fadeIn,

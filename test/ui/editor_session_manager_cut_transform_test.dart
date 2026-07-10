@@ -1,0 +1,61 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+
+/// The V track's cut-level Transform commits (R6): the same command the
+/// fade handles ride, so pose keys and fades share ONE history.
+void main() {
+  test('updateCutTransformTrack commits one undo step and no-ops when '
+      'unchanged', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final cutId = s.activeCutId;
+    expect(s.cutById(cutId)!.transformTrack.isEmpty, isTrue);
+
+    final posed = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>.empty().withKey(
+        0,
+        CanvasPoint(x: 100, y: 50),
+      ),
+    );
+    s.updateCutTransformTrack(cutId, posed, description: 'Key cut position');
+    expect(s.cutById(cutId)!.transformTrack, posed);
+    expect(s.canUndo, isTrue);
+
+    // Committing the identical track is a no-op (no extra undo step).
+    s.updateCutTransformTrack(cutId, posed);
+    s.undo();
+    expect(s.cutById(cutId)!.transformTrack.isEmpty, isTrue);
+    expect(s.canUndo, isFalse);
+
+    s.redo();
+    expect(s.cutById(cutId)!.transformTrack, posed);
+  });
+
+  test('the fade handles and pose keys edit the SAME track without '
+      'clobbering each other', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final cutId = s.activeCutId;
+
+    s.setCutFade(cutId, fadeInFrames: 3, fadeOutFrames: 0);
+    final faded = s.cutById(cutId)!.transformTrack;
+    expect(faded.opacity.isNotEmpty, isTrue);
+
+    s.updateCutTransformTrack(
+      cutId,
+      faded.copyWith(scale: PropertyTrack<double>.empty().withKey(0, 1.5)),
+    );
+    final combined = s.cutById(cutId)!.transformTrack;
+    expect(combined.opacity, faded.opacity, reason: 'fade keys survive');
+    expect(combined.scale.isNotEmpty, isTrue);
+
+    // Re-fading rewrites ONLY the opacity lane.
+    s.setCutFade(cutId, fadeInFrames: 0, fadeOutFrames: 2);
+    final refaded = s.cutById(cutId)!.transformTrack;
+    expect(refaded.scale.isNotEmpty, isTrue, reason: 'pose keys survive');
+  });
+}

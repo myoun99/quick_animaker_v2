@@ -1,10 +1,13 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_metadata.dart';
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
+import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 
 /// Cut fades as OPACITY KEYS ("opacity joins the transform system", user
 /// direction): the fade handles write a canonical key shape into the
@@ -65,6 +68,33 @@ Color cutFadeTargetColor(Cut cut) {
     CutFadeTarget.white => const Color(0xFFFFFFFF),
   };
 }
+
+/// Whether the cut's GEOMETRIC pose lanes carry any keys — the display
+/// routes skip the transform entirely otherwise, so opacity-only cuts
+/// (the classic fade) stay on the zero-cost path.
+bool cutPoseIsActive(Cut cut) {
+  final track = cut.transformTrack;
+  return track.anchorPoint.isNotEmpty ||
+      track.position.isNotEmpty ||
+      track.scale.isNotEmpty ||
+      track.rotation.isNotEmpty;
+}
+
+/// The cut-level pose at [frameIndex] over the DISPLAY space [displaySize]
+/// (the camera's output frame in camera mode and the MP4 bake, the cut
+/// canvas in canvas mode) — AE precomp semantics, user-confirmed: the
+/// cut's FINISHED picture moves on the screen, above the camera
+/// projection. Identity = display center / zoom 1 / rotation 0.
+TransformPose cutPoseAt(Cut cut, int frameIndex, CanvasSize displaySize) {
+  return cut.transformTrack.resolveAt(
+    frameIndex: frameIndex,
+    orElse: () => layerIdentityPose(displaySize),
+  );
+}
+
+/// The cut pose's anchor at [frameIndex]; null = the display center.
+CanvasPoint? cutAnchorPointAt(Cut cut, int frameIndex) =>
+    resolveAnchorTrackAt(cut.transformTrack.anchorPoint, frameIndex);
 
 /// The cut's transform with its opacity lane rebuilt to the canonical fade
 /// shape (other lanes untouched). Zero lengths clear the lane.
