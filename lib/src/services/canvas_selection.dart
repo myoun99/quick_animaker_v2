@@ -97,3 +97,86 @@ List<BrushDab> translateDabs(
       ),
   ];
 }
+
+/// The Ctrl+T free-transform affine (P9b), canvas space:
+/// `p' = R(θ) · S(sx, sy) · (p − pivot) + pivot + t` — rotate/scale about
+/// the fixed [pivot] (the base box center at session start), then
+/// translate. Anchored handle scaling (Photoshop's opposite-corner
+/// anchor) is expressed by compensating [tx]/[ty], so ONE composite
+/// covers every handle interaction.
+class SelectionAffine {
+  const SelectionAffine({
+    required this.pivot,
+    this.sx = 1,
+    this.sy = 1,
+    this.rotationDegrees = 0,
+    this.tx = 0,
+    this.ty = 0,
+  });
+
+  final CanvasPoint pivot;
+  final double sx;
+  final double sy;
+  final double rotationDegrees;
+  final double tx;
+  final double ty;
+
+  bool get isIdentity =>
+      sx == 1 && sy == 1 && rotationDegrees == 0 && tx == 0 && ty == 0;
+
+  double get _radians => rotationDegrees * math.pi / 180;
+
+  CanvasPoint apply(CanvasPoint point) {
+    final lx = (point.x - pivot.x) * sx;
+    final ly = (point.y - pivot.y) * sy;
+    final cos = math.cos(_radians);
+    final sin = math.sin(_radians);
+    return CanvasPoint(
+      x: lx * cos - ly * sin + pivot.x + tx,
+      y: lx * sin + ly * cos + pivot.y + ty,
+    );
+  }
+
+  SelectionAffine copyWith({
+    double? sx,
+    double? sy,
+    double? rotationDegrees,
+    double? tx,
+    double? ty,
+  }) {
+    return SelectionAffine(
+      pivot: pivot,
+      sx: sx ?? this.sx,
+      sy: sy ?? this.sy,
+      rotationDegrees: rotationDegrees ?? this.rotationDegrees,
+      tx: tx ?? this.tx,
+      ty: ty ?? this.ty,
+    );
+  }
+}
+
+/// The selected dabs through [affine] (the Ctrl+T commit): centers map
+/// exactly, the scalar dab size scales by √|sx·sy| (the plan's mapping —
+/// non-uniform scale approximates through the area factor) and the tip
+/// angle turns with the rotation. Brush properties otherwise untouched.
+List<BrushDab> transformDabs(List<BrushDab> dabs, SelectionAffine affine) {
+  final sizeScale = math.sqrt((affine.sx * affine.sy).abs());
+  return [
+    for (final dab in dabs)
+      dab.copyWith(
+        center: affine.apply(dab.center),
+        size: math.max(dab.size * sizeScale, 0.01),
+        angleDegrees: dab.angleDegrees + affine.rotationDegrees,
+      ),
+  ];
+}
+
+/// The selection region through [affine] — the ants follow the transform.
+CanvasSelectionShape transformShape(
+  CanvasSelectionShape shape,
+  SelectionAffine affine,
+) {
+  return CanvasSelectionShape([
+    for (final point in shape.points) affine.apply(point),
+  ]);
+}

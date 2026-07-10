@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
@@ -10,10 +11,13 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
+import 'dart:math' as math;
+
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../brush/canvas_selection_commands.dart';
 import 'bitmap_surface_painter.dart';
+import 'viewport_canvas_transform.dart';
 
 /// One committed selection move: the affected commands' dabs before and
 /// after (the app-level undo payload).
@@ -78,7 +82,47 @@ class CanvasSelectionLayer extends StatefulWidget {
 
 enum CanvasSelectionTool { rect, lasso }
 
-enum _DragMode { none, marquee, move }
+enum _DragMode { none, marquee, move, transform }
+
+/// Which part of the Ctrl+T box a drag grabbed.
+enum _TransformHandle {
+  topLeft,
+  topRight,
+  bottomRight,
+  bottomLeft,
+  topEdge,
+  rightEdge,
+  bottomEdge,
+  leftEdge,
+  rotate,
+  inside,
+}
+
+/// The grabbed handle's BASE-LOCAL coordinates (relative to the base box
+/// center = the affine pivot); null for rotate/inside.
+CanvasPoint? _handleLocal(_TransformHandle handle, double w, double h) {
+  switch (handle) {
+    case _TransformHandle.topLeft:
+      return CanvasPoint(x: -w / 2, y: -h / 2);
+    case _TransformHandle.topRight:
+      return CanvasPoint(x: w / 2, y: -h / 2);
+    case _TransformHandle.bottomRight:
+      return CanvasPoint(x: w / 2, y: h / 2);
+    case _TransformHandle.bottomLeft:
+      return CanvasPoint(x: -w / 2, y: h / 2);
+    case _TransformHandle.topEdge:
+      return CanvasPoint(x: 0, y: -h / 2);
+    case _TransformHandle.rightEdge:
+      return CanvasPoint(x: w / 2, y: 0);
+    case _TransformHandle.bottomEdge:
+      return CanvasPoint(x: 0, y: h / 2);
+    case _TransformHandle.leftEdge:
+      return CanvasPoint(x: -w / 2, y: 0);
+    case _TransformHandle.rotate:
+    case _TransformHandle.inside:
+      return null;
+  }
+}
 
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin {
@@ -97,6 +141,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   // selected strokes (built once at drag start).
   Offset _moveScreenDelta = Offset.zero;
   BitmapSurface? _floatSurface;
+
+  // Ctrl+T free-transform session (P9b): the composite affine, the base
+  // box it manipulates (the shape's AABB at session start; its center is
+  // the affine pivot) and the per-drag solving context.
+  SelectionAffine? _transform;
+  double _baseBoxWidth = 0;
+  double _baseBoxHeight = 0;
+  _TransformHandle? _transformDragHandle;
+  SelectionAffine? _transformDragStart;
+  CanvasPoint? _transformDragStartPointer;
+  double _transformLastAngle = 0;
+
+  /// Screen-space hit slack around a handle (≥ touch-friendly).
+  static const double _handleHitRadius = 16;
+
+  /// How far the rotate knob sticks out of the top edge, screen pixels.
+  static const double _rotateLeverLength = 28;
 
   late final AnimationController _ants = AnimationController(
     vsync: this,
@@ -138,6 +199,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       hasSelection: () => _hasSelection,
       nudge: _nudge,
       deselect: _deselect,
+      transformActive: () => _transform != null,
+      beginTransform: _beginTransform,
+      commitTransform: _commitTransform,
+      cancelTransform: _cancelTransform,
     );
   }
 
@@ -145,8 +210,80 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       _shape = null;
       _selectedIds = const {};
+      _clearTransform();
       _cancelDrag(notify: _dragMode != _DragMode.none);
     });
+    _syncAnts();
+  }
+
+  void _clearTransform() {
+    _transform = null;
+    _baseBoxWidth = 0;
+    _baseBoxHeight = 0;
+    _transformDragHandle = null;
+    _transformDragStart = null;
+    _transformDragStartPointer = null;
+    _floatSurface = null;
+  }
+
+  /// Ctrl+T: opens the free-transform box on the live selection.
+  void _beginTransform() {
+    final shape = _shape;
+    if (shape == null || _selectedIds.isEmpty || _transform != null) {
+      return;
+    }
+    var minX = shape.points.first.x, maxX = shape.points.first.x;
+    var minY = shape.points.first.y, maxY = shape.points.first.y;
+    for (final point in shape.points.skip(1)) {
+      minX = math.min(minX, point.x);
+      maxX = math.max(maxX, point.x);
+      minY = math.min(minY, point.y);
+      maxY = math.max(maxY, point.y);
+    }
+    setState(() {
+      _baseBoxWidth = math.max(maxX - minX, 1);
+      _baseBoxHeight = math.max(maxY - minY, 1);
+      _transform = SelectionAffine(
+        pivot: CanvasPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+      );
+      _floatSurface = _buildFloatSurface();
+    });
+    _syncAnts();
+  }
+
+  /// Enter: the open transform as ONE undo entry; identity commits
+  /// nothing but still closes the box.
+  void _commitTransform() {
+    final affine = _transform;
+    final shape = _shape;
+    if (affine == null || shape == null) {
+      return;
+    }
+    if (!affine.isIdentity) {
+      final before = <BrushPaintCommandId, List<BrushDab>>{};
+      final after = <BrushPaintCommandId, List<BrushDab>>{};
+      for (final command in widget.visibleCommands()) {
+        if (!_selectedIds.contains(command.id)) {
+          continue;
+        }
+        before[command.id] = command.sourceDabs;
+        after[command.id] = transformDabs(command.sourceDabs, affine);
+      }
+      if (after.isNotEmpty) {
+        widget.onTransformCommitted((before: before, after: after));
+        _shape = transformShape(shape, affine);
+      }
+    }
+    setState(_clearTransform);
+    _syncAnts();
+  }
+
+  /// Escape: discards the open transform.
+  void _cancelTransform() {
+    if (_transform == null) {
+      return;
+    }
+    setState(_clearTransform);
     _syncAnts();
   }
 
@@ -167,7 +304,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// Arrow nudge: one canvas pixel per call, one undo entry per call.
+  /// With an open Ctrl+T session the nudge rides the session's
+  /// translation instead (committed with the transform).
   void _nudge(double dx, double dy) {
+    final transform = _transform;
+    if (transform != null) {
+      setState(() {
+        _transform = transform.copyWith(
+          tx: transform.tx + dx,
+          ty: transform.ty + dy,
+        );
+      });
+      return;
+    }
     final shape = _shape;
     if (shape == null || _selectedIds.isEmpty) {
       return;
@@ -194,6 +343,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final canvasPoint = _toCanvas(event.localPosition);
+    final transform = _transform;
+    if (transform != null) {
+      // Ctrl+T is modal: only the box's handles/inside react; clicks
+      // elsewhere are inert until Enter/Escape closes the session.
+      final handle = _hitTestTransformHandle(event.localPosition, transform);
+      if (handle == null) {
+        return;
+      }
+      _activePointer = event.pointer;
+      setState(() {
+        _dragMode = _DragMode.transform;
+        _transformDragHandle = handle;
+        _transformDragStart = transform;
+        _transformDragStartPointer = canvasPoint;
+        if (handle == _TransformHandle.rotate) {
+          _transformLastAngle = _pointerAngleAbout(canvasPoint, transform);
+        }
+      });
+      widget.onDragActiveChanged?.call(true);
+      return;
+    }
     _activePointer = event.pointer;
     final shape = _shape;
     if (shape != null &&
@@ -235,7 +405,124 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         });
       case _DragMode.move:
         setState(() => _moveScreenDelta += event.delta);
+      case _DragMode.transform:
+        _updateTransformDrag(_toCanvas(event.localPosition));
     }
+  }
+
+  void _updateTransformDrag(CanvasPoint pointer) {
+    final handle = _transformDragHandle;
+    final start = _transformDragStart;
+    final startPointer = _transformDragStartPointer;
+    if (handle == null || start == null || startPointer == null) {
+      return;
+    }
+    switch (handle) {
+      case _TransformHandle.inside:
+        setState(() {
+          _transform = start.copyWith(
+            tx: start.tx + pointer.x - startPointer.x,
+            ty: start.ty + pointer.y - startPointer.y,
+          );
+        });
+      case _TransformHandle.rotate:
+        // Wrapped-delta accumulation (the camera lever rule): continuous
+        // across the ±180° seam. Canvas-space angles, so the P8 view
+        // rotation/flip never skews the feel.
+        final current = _transform ?? start;
+        final angle = _pointerAngleAbout(pointer, current);
+        var delta = angle - _transformLastAngle;
+        while (delta > 180) {
+          delta -= 360;
+        }
+        while (delta < -180) {
+          delta += 360;
+        }
+        _transformLastAngle = angle;
+        setState(() {
+          _transform = current.copyWith(
+            rotationDegrees: current.rotationDegrees + delta,
+          );
+        });
+      default:
+        setState(() => _transform = _solveScaleDrag(start, handle, pointer));
+    }
+  }
+
+  /// Solves the scale drag: the grabbed handle lands under the pointer
+  /// while the anchor — the OPPOSITE handle, or the center with Alt —
+  /// stays fixed (its motion folds into the translation). Shift locks the
+  /// aspect on corner handles.
+  SelectionAffine _solveScaleDrag(
+    SelectionAffine start,
+    _TransformHandle handle,
+    CanvasPoint pointer,
+  ) {
+    final grabbed = _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
+    final centerPivot = HardwareKeyboard.instance.isAltPressed;
+    final anchorLocal = centerPivot
+        ? CanvasPoint(x: 0, y: 0)
+        : CanvasPoint(x: -grabbed.x, y: -grabbed.y);
+    final anchorCanvas = start.apply(
+      CanvasPoint(
+        x: start.pivot.x + anchorLocal.x,
+        y: start.pivot.y + anchorLocal.y,
+      ),
+    );
+    final radians = start.rotationDegrees * math.pi / 180;
+    final cos = math.cos(radians);
+    final sin = math.sin(radians);
+    // v = R(−θ)·(pointer − anchor): the pointer in the box's local frame.
+    final dx = pointer.x - anchorCanvas.x;
+    final dy = pointer.y - anchorCanvas.y;
+    final vx = dx * cos + dy * sin;
+    final vy = -dx * sin + dy * cos;
+
+    var sx = start.sx;
+    var sy = start.sy;
+    if (grabbed.x != anchorLocal.x) {
+      sx = vx / (grabbed.x - anchorLocal.x);
+    }
+    if (grabbed.y != anchorLocal.y) {
+      sy = vy / (grabbed.y - anchorLocal.y);
+    }
+    if (HardwareKeyboard.instance.isShiftPressed &&
+        grabbed.x != anchorLocal.x &&
+        grabbed.y != anchorLocal.y) {
+      final magnitude = math.max(sx.abs(), sy.abs());
+      sx = sx.isNegative ? -magnitude : magnitude;
+      sy = sy.isNegative ? -magnitude : magnitude;
+    }
+    sx = _clampScale(sx);
+    sy = _clampScale(sy);
+
+    // Anchor compensation: R·(S_old∘o − S_new∘o) folds into t.
+    final dLocalX = start.sx * anchorLocal.x - sx * anchorLocal.x;
+    final dLocalY = start.sy * anchorLocal.y - sy * anchorLocal.y;
+    return start.copyWith(
+      sx: sx,
+      sy: sy,
+      tx: start.tx + dLocalX * cos - dLocalY * sin,
+      ty: start.ty + dLocalX * sin + dLocalY * cos,
+    );
+  }
+
+  static double _clampScale(double scale) {
+    if (scale.isNaN || !scale.isFinite) {
+      return 0.01;
+    }
+    if (scale.abs() < 0.01) {
+      return scale.isNegative ? -0.01 : 0.01;
+    }
+    return scale;
+  }
+
+  /// The pointer's canvas-space angle about the transformed box center.
+  double _pointerAngleAbout(CanvasPoint pointer, SelectionAffine affine) {
+    final center = affine.apply(affine.pivot);
+    return math.atan2(pointer.y - center.y, pointer.x - center.x) *
+        180 /
+        math.pi;
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -249,6 +536,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _finishMarquee();
       case _DragMode.move:
         _finishMove();
+      case _DragMode.transform:
+        // The session stays open across drags; Enter/Escape close it.
+        break;
     }
     setState(() => _cancelDrag(notify: true));
     _syncAnts();
@@ -262,7 +552,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// Clears drag bookkeeping (NOT the committed selection).
+  /// Clears drag bookkeeping (NOT the committed selection, and NOT an
+  /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
     _dragMode = _DragMode.none;
@@ -271,7 +562,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _marqueeCurrent = null;
     _lassoPoints = const [];
     _moveScreenDelta = Offset.zero;
-    _floatSurface = null;
+    _transformDragHandle = null;
+    _transformDragStart = null;
+    _transformDragStartPointer = null;
+    if (_transform == null) {
+      _floatSurface = null;
+    }
     if (notify && wasDragging) {
       widget.onDragActiveChanged?.call(false);
     }
@@ -348,6 +644,100 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() => _shape = shape.translated(dx: dx, dy: dy));
   }
 
+  /// A base-local point mapped through [affine] into viewport space.
+  Offset _mapLocalToViewport(SelectionAffine affine, CanvasPoint local) {
+    final canvasPoint = affine.apply(
+      CanvasPoint(x: affine.pivot.x + local.x, y: affine.pivot.y + local.y),
+    );
+    final mapped = widget.viewport.canvasToViewport(canvasPoint);
+    return Offset(mapped.x, mapped.y);
+  }
+
+  static const List<_TransformHandle> _scaleHandles = [
+    _TransformHandle.topLeft,
+    _TransformHandle.topRight,
+    _TransformHandle.bottomRight,
+    _TransformHandle.bottomLeft,
+    _TransformHandle.topEdge,
+    _TransformHandle.rightEdge,
+    _TransformHandle.bottomEdge,
+    _TransformHandle.leftEdge,
+  ];
+
+  Offset _rotateKnobOffset(SelectionAffine affine) {
+    final topMid = _mapLocalToViewport(
+      affine,
+      CanvasPoint(x: 0, y: -_baseBoxHeight / 2),
+    );
+    final centerMapped = widget.viewport.canvasToViewport(
+      affine.apply(affine.pivot),
+    );
+    final direction = topMid - Offset(centerMapped.x, centerMapped.y);
+    final distance = direction.distance;
+    final unit = distance == 0 ? const Offset(0, -1) : direction / distance;
+    return topMid + unit * _rotateLeverLength;
+  }
+
+  /// The transformed box as a canvas-space polygon (inside = translate).
+  CanvasSelectionShape _transformedBoxShape(SelectionAffine affine) {
+    return CanvasSelectionShape([
+      for (final corner in [
+        CanvasPoint(x: -_baseBoxWidth / 2, y: -_baseBoxHeight / 2),
+        CanvasPoint(x: _baseBoxWidth / 2, y: -_baseBoxHeight / 2),
+        CanvasPoint(x: _baseBoxWidth / 2, y: _baseBoxHeight / 2),
+        CanvasPoint(x: -_baseBoxWidth / 2, y: _baseBoxHeight / 2),
+      ])
+        affine.apply(
+          CanvasPoint(
+            x: affine.pivot.x + corner.x,
+            y: affine.pivot.y + corner.y,
+          ),
+        ),
+    ]);
+  }
+
+  _TransformHandle? _hitTestTransformHandle(
+    Offset local,
+    SelectionAffine affine,
+  ) {
+    if ((local - _rotateKnobOffset(affine)).distance <= _handleHitRadius) {
+      return _TransformHandle.rotate;
+    }
+    for (final handle in _scaleHandles) {
+      final position = _mapLocalToViewport(
+        affine,
+        _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
+      );
+      if ((local - position).distance <= _handleHitRadius) {
+        return handle;
+      }
+    }
+    if (_transformedBoxShape(affine).containsPoint(_toCanvas(local))) {
+      return _TransformHandle.inside;
+    }
+    return null;
+  }
+
+  /// The Ctrl+T preview matrix: the canvas-space affine wrapped into
+  /// screen space through the SAME viewport transform painters use.
+  Matrix4 _affineScreenMatrix(SelectionAffine affine) {
+    final radians = affine.rotationDegrees * math.pi / 180;
+    final canvasMatrix =
+        Matrix4.translationValues(
+            affine.pivot.x + affine.tx,
+            affine.pivot.y + affine.ty,
+            0,
+          )
+          ..multiply(Matrix4.rotationZ(radians))
+          ..multiply(Matrix4.diagonal3Values(affine.sx, affine.sy, 1))
+          ..multiply(
+            Matrix4.translationValues(-affine.pivot.x, -affine.pivot.y, 0),
+          );
+    return viewportTransformMatrix(widget.viewport)
+      ..multiply(canvasMatrix)
+      ..multiply(viewportInverseTransformMatrix(widget.viewport));
+  }
+
   /// The selected strokes rendered alone (the live float shown while
   /// moving) — command replay order, so overlaps look exactly like the
   /// committed picture.
@@ -368,6 +758,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   @override
   Widget build(BuildContext context) {
     final floatSurface = _floatSurface;
+    final transform = _transform;
+    final shape = _shape;
+    // With an open Ctrl+T session the ants show the TRANSFORMED region
+    // and the box chrome renders around the transformed base box.
+    final displayShape = transform != null && shape != null
+        ? transformShape(shape, transform)
+        : shape;
+    final chrome = transform == null
+        ? null
+        : (
+            box: [
+              for (final point in _transformedBoxShape(transform).points)
+                _mapCanvasToViewportOffset(point),
+            ],
+            handles: [
+              for (final handle in _scaleHandles)
+                _mapLocalToViewport(
+                  transform,
+                  _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
+                ),
+            ],
+            knob: _rotateKnobOffset(transform),
+          );
     return Listener(
       key: const ValueKey<String>('canvas-selection-layer'),
       behavior: HitTestBehavior.opaque,
@@ -377,11 +790,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       onPointerCancel: _handlePointerCancel,
       child: Stack(
         children: [
-          if (floatSurface != null && _dragMode == _DragMode.move)
+          if (floatSurface != null &&
+              (_dragMode == _DragMode.move || transform != null))
             Positioned.fill(
               child: IgnorePointer(
-                child: Transform.translate(
-                  offset: _moveScreenDelta,
+                child: Transform(
+                  transform: transform != null
+                      ? _affineScreenMatrix(transform)
+                      : Matrix4.translationValues(
+                          _moveScreenDelta.dx,
+                          _moveScreenDelta.dy,
+                          0,
+                        ),
                   child: CustomPaint(
                     painter: BitmapSurfacePainter(
                       surface: floatSurface,
@@ -399,7 +819,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 painter: _SelectionAntsPainter(
                   repaint: _ants,
                   viewport: widget.viewport,
-                  committedShape: _shape,
+                  committedShape: displayShape,
                   screenOffset: _dragMode == _DragMode.move
                       ? _moveScreenDelta
                       : Offset.zero,
@@ -411,6 +831,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                           widget.tool == CanvasSelectionTool.lasso
                       ? _lassoPoints
                       : const [],
+                  transformChrome: chrome,
                 ),
                 child: const SizedBox.expand(),
               ),
@@ -420,7 +841,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       ),
     );
   }
+
+  Offset _mapCanvasToViewportOffset(CanvasPoint point) {
+    final mapped = widget.viewport.canvasToViewport(point);
+    return Offset(mapped.x, mapped.y);
+  }
 }
+
+/// The Ctrl+T box chrome in viewport space: the transformed box outline,
+/// the 8 scale handles and the rotate knob.
+typedef _TransformChrome = ({
+  List<Offset> box,
+  List<Offset> handles,
+  Offset knob,
+});
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
 class _SelectionAntsPainter extends CustomPainter {
@@ -431,6 +865,7 @@ class _SelectionAntsPainter extends CustomPainter {
     required this.screenOffset,
     required this.marqueeShape,
     required this.lassoTrail,
+    this.transformChrome,
   }) : _phase = repaint,
        super(repaint: repaint);
 
@@ -440,6 +875,9 @@ class _SelectionAntsPainter extends CustomPainter {
   final Offset screenOffset;
   final CanvasSelectionShape? marqueeShape;
   final List<CanvasPoint> lassoTrail;
+  final _TransformChrome? transformChrome;
+
+  static const Color _chromeColor = Color(0xFF40C4FF);
 
   static const double _dashOn = 5;
   static const double _dashOff = 4;
@@ -486,6 +924,38 @@ class _SelectionAntsPainter extends CustomPainter {
       }
       _paintAnts(canvas, path, phase);
     }
+
+    final chrome = transformChrome;
+    if (chrome != null) {
+      _paintTransformChrome(canvas, chrome);
+    }
+  }
+
+  void _paintTransformChrome(Canvas canvas, _TransformChrome chrome) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = _chromeColor;
+    final fill = Paint()..color = _chromeColor;
+
+    canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
+    for (final handle in chrome.handles) {
+      canvas.drawRect(
+        Rect.fromCenter(center: handle, width: 9, height: 9),
+        Paint()..color = Colors.white,
+      );
+      canvas.drawRect(
+        Rect.fromCenter(center: handle, width: 9, height: 9),
+        stroke,
+      );
+    }
+    // The rotate lever: line from the top edge midpoint to the knob.
+    final topMid = Offset(
+      (chrome.box[0].dx + chrome.box[1].dx) / 2,
+      (chrome.box[0].dy + chrome.box[1].dy) / 2,
+    );
+    canvas.drawLine(topMid, chrome.knob, stroke);
+    canvas.drawCircle(chrome.knob, 5, fill);
   }
 
   /// White under-stroke + phase-offset black dashes = ants readable on any
@@ -525,5 +995,6 @@ class _SelectionAntsPainter extends CustomPainter {
       oldDelegate.committedShape != committedShape ||
       oldDelegate.screenOffset != screenOffset ||
       oldDelegate.marqueeShape != marqueeShape ||
-      oldDelegate.lassoTrail != lassoTrail;
+      oldDelegate.lassoTrail != lassoTrail ||
+      oldDelegate.transformChrome != transformChrome;
 }

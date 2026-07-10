@@ -48,6 +48,9 @@ abstract final class EditorActionIds {
   static const selectionDeselect = 'selection-deselect';
   static const selectionNudgeUp = 'selection-nudge-up';
   static const selectionNudgeDown = 'selection-nudge-down';
+  static const selectionFreeTransform = 'selection-free-transform';
+  static const selectionTransformCommit = 'selection-transform-commit';
+  static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
@@ -173,6 +176,31 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Nudge Selection Down',
     category: 'Selection',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionFreeTransform,
+    label: 'Free Transform',
+    category: 'Selection',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyT, control: true),
+    ],
+  ),
+  // Enter/Escape only mean commit/cancel while a transform box is open
+  // (no-ops otherwise); text fields keep them (bare keys stand down).
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionTransformCommit,
+    label: 'Commit Transform',
+    category: 'Selection',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.enter),
+      SingleActivator(LogicalKeyboardKey.numpadEnter),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionTransformCancel,
+    label: 'Cancel Transform',
+    category: 'Selection',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.escape)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.onionSkinToggle,
