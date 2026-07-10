@@ -988,6 +988,39 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Cut display toggles (session view state, not persisted) -------------
+
+  /// Cuts whose cut-level FX (the V track's Transform group — the pose AND
+  /// the fade, "opacity joins the transform system") are bypassed at
+  /// DISPLAY time — the storyboard V-row fx switch (R9). Display-time only,
+  /// like the cut pose itself: playback (canvas + camera view) skips
+  /// pose/fade; the MP4 bake, PNG export and thumbnails are untouched.
+  final Set<CutId> _fxBypassedCutIds = {};
+
+  bool isCutFxEnabled(CutId cutId) => !_fxBypassedCutIds.contains(cutId);
+
+  void toggleCutFx(CutId cutId) {
+    if (!_fxBypassedCutIds.remove(cutId)) {
+      _fxBypassedCutIds.add(cutId);
+    }
+    notifyListeners();
+  }
+
+  /// Cuts whose PICTURE is hidden in the playback display — the storyboard
+  /// V-row eye (R9). The paper stays, the composite doesn't draw. A working
+  /// aid: the editing canvas, exports and thumbnails ignore it.
+  final Set<CutId> _hiddenPictureCutIds = {};
+
+  bool isCutPictureVisible(CutId cutId) =>
+      !_hiddenPictureCutIds.contains(cutId);
+
+  void toggleCutPictureVisibility(CutId cutId) {
+    if (!_hiddenPictureCutIds.remove(cutId)) {
+      _hiddenPictureCutIds.add(cutId);
+    }
+    notifyListeners();
+  }
+
   void undo() {
     final beforeLayers = List<Layer>.of(activeCut.layers);
     final previousActiveLayerId = _layerController.activeLayerId;

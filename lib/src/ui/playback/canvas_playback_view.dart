@@ -8,6 +8,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
 import '../storyboard_cut_fade_policy.dart';
@@ -35,6 +36,8 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
+    this.cutFxEnabledOf,
+    this.cutPictureVisibleOf,
     this.viewport,
   });
 
@@ -45,6 +48,14 @@ class CanvasPlaybackView extends StatefulWidget {
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
+
+  /// The storyboard V-row display gates (session view state, R9). FX off
+  /// bypasses the cut-level Transform group — pose AND fade — in this
+  /// display; the eye off hides the cut's PICTURE (the paper stays). Null
+  /// = always on. Display aids only: the MP4 bake and thumbnails never
+  /// consult these.
+  final bool Function(CutId cutId)? cutFxEnabledOf;
+  final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// The panel's live pan/zoom (canvas mode); identity when null.
   final CanvasViewport? viewport;
@@ -110,6 +121,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
+    // The storyboard V-row display gates (R9): fx off bypasses the whole
+    // cut-level Transform group (pose + fade) in this display; the eye off
+    // drops the picture (paper only).
+    final cutFxEnabled =
+        cut == null || (widget.cutFxEnabledOf?.call(cut.id) ?? true);
+    final cutPictureVisible =
+        cut == null || (widget.cutPictureVisibleOf?.call(cut.id) ?? true);
+
     // The cut-level transform (V track, AE precomp semantics), display-time
     // only — never baked into the composite cache. Camera mode resolves the
     // pose over the camera frame (the space the lanes author in); CANVAS
@@ -118,7 +137,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     // every key in the wrong space and snapped the picture top-left (R8-③).
     TransformPose? cutPose;
     CanvasPoint? cutAnchorPoint;
-    if (cut != null && position != null && cutPoseIsActive(cut)) {
+    if (cut != null &&
+        position != null &&
+        cutFxEnabled &&
+        cutPoseIsActive(cut)) {
       if (widget.cameraViewEnabled) {
         cutPose = cutPoseAt(
           cut,
@@ -148,7 +170,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         children: [
           CustomPaint(
             painter: PlaybackFramePainter(
-              image: _heldCanvasSize == canvasSize ? _heldFrame : null,
+              image: cutPictureVisible && _heldCanvasSize == canvasSize
+                  ? _heldFrame
+                  : null,
               canvasSize: canvasSize,
               viewport: widget.viewport,
               cameraPose:
@@ -160,7 +184,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               cutPose: cutPose,
               cutAnchorPoint: cutAnchorPoint,
-              fadeOpacity: cut != null && position != null
+              fadeOpacity: cut != null && position != null && cutFxEnabled
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
               fadeColor: cut != null

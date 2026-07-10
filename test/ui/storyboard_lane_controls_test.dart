@@ -82,6 +82,10 @@ Future<void> _pumpPanel(
   onSetAudioClipOffset,
   PropertyLaneEditCallbacks? Function(Cut cut)? cutLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
+  bool Function(CutId cutId)? cutFxEnabledOf,
+  ValueChanged<CutId>? onToggleCutFx,
+  bool Function(CutId cutId)? cutPictureVisibleOf,
+  ValueChanged<CutId>? onToggleCutPictureVisibility,
 }) async {
   final hiddenWaveforms = <String>{};
   final expandedAudio = <String>{};
@@ -135,6 +139,10 @@ Future<void> _pumpPanel(
             onSelectSeBlock: onSelectSeBlock,
             seCommaDrag: seCommaDrag,
             onSetAudioClipOffset: onSetAudioClipOffset,
+            cutFxEnabledOf: cutFxEnabledOf,
+            onToggleCutFx: onToggleCutFx,
+            cutPictureVisibleOf: cutPictureVisibleOf,
+            onToggleCutPictureVisibility: onToggleCutPictureVisibility,
           ),
         ),
       ),
@@ -728,6 +736,59 @@ void main() {
       expect(offsets, isNotEmpty);
       expect(offsets.last.$1, const LayerId('lane-se'));
       expect(offsets.last.$3, greaterThan(0));
+    });
+  });
+
+  group('V-row display toggles (R9)', () {
+    testWidgets('the fx switch and the eye act on the ACTIVE cut and '
+        'reflect the session state', (tester) async {
+      final fxToggles = <CutId>[];
+      final eyeToggles = <CutId>[];
+      var fxEnabled = true;
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        cutFxEnabledOf: (_) => fxEnabled,
+        onToggleCutFx: (cutId) {
+          fxToggles.add(cutId);
+          fxEnabled = !fxEnabled;
+        },
+        cutPictureVisibleOf: (_) => true,
+        onToggleCutPictureVisibility: eyeToggles.add,
+      );
+
+      final fxFinder = find.byKey(
+        const ValueKey<String>('storyboard-cut-fx-lane-cut'),
+      );
+      final eyeFinder = find.byKey(
+        const ValueKey<String>('storyboard-cut-visibility-lane-cut'),
+      );
+      expect(fxFinder, findsOneWidget);
+      expect(eyeFinder, findsOneWidget);
+
+      await tester.tap(fxFinder);
+      await tester.pumpAndSettle();
+      expect(fxToggles, [const CutId('lane-cut')]);
+
+      await tester.tap(eyeFinder);
+      await tester.pumpAndSettle();
+      expect(eyeToggles, [const CutId('lane-cut')]);
+    });
+
+    testWidgets('the toggles hide without wiring (display-only rail)', (
+      tester,
+    ) async {
+      await _pumpPanel(tester, project: _project());
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('storyboard-cut-visibility-lane-cut'),
+        ),
+        findsNothing,
+      );
     });
   });
 

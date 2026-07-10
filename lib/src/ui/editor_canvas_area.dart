@@ -250,6 +250,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   cameraViewEnabled: widget.cameraViewEnabled.value,
                   cameraFrameSize: session.cameraFrameSize,
                   cameraPoseOf: session.cameraPoseForCut,
+                  cutFxEnabledOf: session.isCutFxEnabled,
+                  cutPictureVisibleOf: session.isCutPictureVisible,
                   viewport: viewport,
                 )
               : isScrubbing
