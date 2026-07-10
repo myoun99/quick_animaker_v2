@@ -20,6 +20,7 @@ import 'package:quick_animaker_v2/src/models/stroke_point.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
@@ -346,35 +347,62 @@ void main() {
   });
 
   testWidgets('Add Layer with an SE row active adds the next S-numbered '
-      'row above it', (tester) async {
+      'row to the TRACK above it', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
       project: _projectWithLayer(kind: LayerKind.se),
       onRepositoryCreated: (repo) => repository = repo,
     );
-    // The fixture SE row keeps its own name; the new row takes the first
-    // free S-number.
+    // SE rows are TRACK-owned: the add lands on the track's SE list (the
+    // cut's legacy fixture row stays untouched); the new row takes the
+    // first free S-number.
     await _tapKey(
       tester,
       const ValueKey<String>('timeline-toolbar-add-layer-button'),
     );
 
-    var layers = repository.requireProject().tracks.single.cuts.single.layers;
-    expect(layers, hasLength(2));
-    // Raw index+1 = directly above the active row in the display.
-    expect(layers[1].kind, LayerKind.se);
-    expect(layers[1].name, 'S1');
+    var track = repository.requireProject().tracks.single;
+    expect(track.cuts.single.layers, hasLength(1));
+    expect(track.seLayers, hasLength(1));
+    expect(track.seLayers[0].kind, LayerKind.se);
+    expect(track.seLayers[0].name, 'S1');
 
-    // Adding again with the new S1 active skips to S2.
+    // Adding again with the new S1 active skips to S2, inserted above it.
     await _tapKey(
       tester,
       const ValueKey<String>('timeline-toolbar-add-layer-button'),
     );
-    layers = repository.requireProject().tracks.single.cuts.single.layers;
-    expect(layers, hasLength(3));
-    expect(layers[2].name, 'S2');
-    expect(layers[2].kind, LayerKind.se);
+    track = repository.requireProject().tracks.single;
+    expect(track.seLayers.map((layer) => layer.name), ['S1', 'S2']);
+  });
+
+  testWidgets('adding an SE row between S1 and S2 keeps insertion order '
+      '(S1, S3, S2 — the ordering every panel shows)', (tester) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      // The default project's track carries the S1·S2 fixtures.
+      project: createDefaultProject(),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+
+    // Select the default track's S1 row (tap its NAME — the row center
+    // lands on the opacity slider), then Add Layer.
+    final s1Row = find.byKey(
+      const ValueKey<String>('timeline-layer-row-default-track-se-1'),
+    );
+    await tester.ensureVisible(s1Row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: s1Row, matching: find.text('S1')));
+    await tester.pumpAndSettle();
+    await _tapKey(
+      tester,
+      const ValueKey<String>('timeline-toolbar-add-layer-button'),
+    );
+
+    final track = repository.requireProject().tracks.single;
+    expect(track.seLayers.map((layer) => layer.name), ['S1', 'S3', 'S2']);
   });
 
   testWidgets('does not expose future storyboard or inspector UI', (

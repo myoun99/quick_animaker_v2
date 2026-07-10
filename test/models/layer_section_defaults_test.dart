@@ -66,10 +66,7 @@ void main() {
         _layer('cel', LayerKind.animation),
       ]);
 
-      expect(
-        ensured.where((layer) => layer.kind == LayerKind.se),
-        isEmpty,
-      );
+      expect(ensured.where((layer) => layer.kind == LayerKind.se), isEmpty);
       expect(
         ensured.where((layer) => layer.kind == LayerKind.instruction),
         hasLength(1),
@@ -103,8 +100,10 @@ void main() {
         _layer('s2', LayerKind.se, name: 'S2'),
       ];
 
-      expect(identical(withEnsuredTrackSeLayers(_trackId, seLayers), seLayers),
-          true);
+      expect(
+        identical(withEnsuredTrackSeLayers(_trackId, seLayers), seLayers),
+        true,
+      );
     });
   });
 

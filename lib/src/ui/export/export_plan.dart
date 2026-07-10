@@ -199,9 +199,11 @@ List<ExportAudioClip> buildExportAudioPlan({
     // the span (block) start — a range starting mid-fade keeps only the
     // remainder — and the fade-out anchors to the audible end, both capped
     // at the audible length (same anchors playback ramps).
-    final fadeInFrames = (spanExportStart + span.clip.fadeInFrames -
-            audibleStart)
-        .clamp(0, audibleFrames);
+    final fadeInFrames =
+        (spanExportStart + span.clip.fadeInFrames - audibleStart).clamp(
+          0,
+          audibleFrames,
+        );
     final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
     clips.add(
       ExportAudioClip(
@@ -209,8 +211,7 @@ List<ExportAudioClip> buildExportAudioPlan({
         // The clip's offset trim seeks past the skipped file head on top
         // of any range clipping.
         seekSeconds:
-            (audibleStart - spanExportStart + span.clip.offsetFrames) /
-            safeFps,
+            (audibleStart - spanExportStart + span.clip.offsetFrames) / safeFps,
         delaySeconds: audibleStart / safeFps,
         durationSeconds: audibleFrames / safeFps,
         gain: span.clip.gain,
@@ -311,8 +312,7 @@ List<ExportAudioClip> buildExportAudioPlan({
           continue;
         }
         for (final span in seAudioSpans(layer)) {
-          final exportPos =
-              blockStart + (span.startFrame - windowTrackStart);
+          final exportPos = blockStart + (span.startFrame - windowTrackStart);
           final startsHere = exportPos >= blockStart && exportPos < blockEnd;
           final spillsIn =
               isRunStart &&

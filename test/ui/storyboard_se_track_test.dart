@@ -16,13 +16,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
 
-Cut _cut({
-  required String id,
-  required int duration,
-  required String seLabel,
-  required int seStart,
-  required int seLength,
-}) {
+Cut _cut(String id, int duration) {
   return Cut(
     id: CutId(id),
     name: id,
@@ -35,29 +29,16 @@ Cut _cut({
         frames: const [],
         timeline: const {},
       ),
-      Layer(
-        id: LayerId('$id-se'),
-        name: 'S1',
-        kind: LayerKind.se,
-        frames: [
-          Frame(
-            id: FrameId('$id-se-f'),
-            duration: seLength,
-            name: seLabel,
-            strokes: const [],
-          ),
-        ],
-        timeline: {
-          seStart: TimelineExposure.drawing(
-            FrameId('$id-se-f'),
-            length: seLength,
-          ),
-        },
-      ),
     ],
   );
 }
 
+Frame _frame(String id, String name, int length) =>
+    Frame(id: FrameId(id), duration: length, name: name, strokes: const []);
+
+/// TRACK-owned SE row on the global frame axis: an entry inside cut 1, an
+/// entry CROSSING the cut-1→cut-2 boundary (frame 8), and one inside
+/// cut 2.
 Project _project() {
   return Project(
     id: const ProjectId('sb-se-project'),
@@ -67,22 +48,29 @@ Project _project() {
       Track(
         id: const TrackId('sb-se-track'),
         name: 'Video',
-        cuts: [
-          _cut(
-            id: 'cut-1',
-            duration: 8,
-            seLabel: 'One!',
-            seStart: 1,
-            seLength: 3,
+        cuts: [_cut('cut-1', 8), _cut('cut-2', 6)],
+        seLayers: [
+          Layer(
+            id: const LayerId('se-row-1'),
+            name: 'S1',
+            kind: LayerKind.se,
+            frames: [
+              _frame('f-one', 'One!', 3),
+              _frame('f-cross', 'Cross!', 4),
+              _frame('f-two', 'Two!', 2),
+            ],
+            timeline: {
+              1: const TimelineExposure.drawing(FrameId('f-one'), length: 3),
+              6: const TimelineExposure.drawing(FrameId('f-cross'), length: 4),
+              10: const TimelineExposure.drawing(FrameId('f-two'), length: 2),
+            },
           ),
-          // The second cut's entry runs past its duration (6): the
-          // storyboard clamps the span at the cut boundary.
-          _cut(
-            id: 'cut-2',
-            duration: 6,
-            seLabel: 'Two!',
-            seStart: 2,
-            seLength: 99,
+          Layer(
+            id: const LayerId('se-row-2'),
+            name: 'S2',
+            kind: LayerKind.se,
+            frames: const [],
+            timeline: const {},
           ),
         ],
       ),
@@ -91,8 +79,8 @@ Project _project() {
 }
 
 void main() {
-  testWidgets('the storyboard shows synced SE rows: rail label + per-cut '
-      'spans on the global frame axis, clamped at cut ends', (tester) async {
+  testWidgets('the storyboard renders the TRACK SE row on the global axis: '
+      'true lengths across cut ends with a ~ crossing mark', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: _project())),
     );
@@ -115,12 +103,16 @@ void main() {
     expect(rowFinder, findsOneWidget);
 
     final spanOne = find.byKey(
-      const ValueKey<String>('storyboard-se-span-cut-1-1'),
+      const ValueKey<String>('storyboard-se-span-se-row-1-1'),
+    );
+    final spanCross = find.byKey(
+      const ValueKey<String>('storyboard-se-span-se-row-1-6'),
     );
     final spanTwo = find.byKey(
-      const ValueKey<String>('storyboard-se-span-cut-2-2'),
+      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
     );
     expect(spanOne, findsOneWidget);
+    expect(spanCross, findsOneWidget);
     expect(spanTwo, findsOneWidget);
     // Dialogue is painted (fitted glyphs) — read the widget fields.
     String dialogueOf(Finder span) => tester
@@ -129,31 +121,38 @@ void main() {
         )
         .text;
     expect(dialogueOf(spanOne), 'One!');
+    expect(dialogueOf(spanCross), 'Cross!');
     expect(dialogueOf(spanTwo), 'Two!');
-    // Each span sits on its own paper block.
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-se-paper-cut-1-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-se-paper-cut-2-2')),
-      findsOneWidget,
-    );
 
-    // Global placement: cut-2 starts at frame 8, its entry at local 2 →
-    // global 10; the 99-frame entry clamps at the cut's 6 frames → 4 wide.
+    // Global placement with TRUE lengths: the crossing entry [6, 10) keeps
+    // its 4 frames straight across the cut boundary at 8…
     final rowLeft = tester.getTopLeft(rowFinder).dx;
     final spanOneRect = tester.getRect(spanOne);
+    final spanCrossRect = tester.getRect(spanCross);
     final spanTwoRect = tester.getRect(spanTwo);
     final pixelsPerFrame = (spanOneRect.left - rowLeft) / 1;
     expect(pixelsPerFrame, greaterThan(0));
+    expect(
+      spanCrossRect.left - rowLeft,
+      moreOrLessEquals(6 * pixelsPerFrame, epsilon: 0.01),
+    );
+    expect(
+      spanCrossRect.width,
+      moreOrLessEquals(4 * pixelsPerFrame, epsilon: 0.01),
+    );
     expect(
       spanTwoRect.left - rowLeft,
       moreOrLessEquals(10 * pixelsPerFrame, epsilon: 0.01),
     );
     expect(
       spanTwoRect.width,
-      moreOrLessEquals(4 * pixelsPerFrame, epsilon: 0.01),
+      moreOrLessEquals(2 * pixelsPerFrame, epsilon: 0.01),
+    );
+
+    // …and the crossed boundary carries the ~ continuation mark.
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-se-crossing-se-row-1-8')),
+      findsOneWidget,
     );
   });
 }

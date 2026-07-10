@@ -57,7 +57,9 @@ void main() {
         ),
         seLayer(
           'cut-1-se-1',
-          timeline: {4: const TimelineExposure.drawing(FrameId('f1'), length: 40)},
+          timeline: {
+            4: const TimelineExposure.drawing(FrameId('f1'), length: 40),
+          },
           frames: [frame('f1')],
           audioClips: const [
             AudioClip(filePath: 'C:/snd/a.wav', frameId: FrameId('f1')),
@@ -74,7 +76,9 @@ void main() {
         ),
         seLayer(
           'cut-2-se-1',
-          timeline: {2: const TimelineExposure.drawing(FrameId('f2'), length: 4)},
+          timeline: {
+            2: const TimelineExposure.drawing(FrameId('f2'), length: 4),
+          },
           frames: [frame('f2')],
         ),
         seLayer('cut-2-se-2'),

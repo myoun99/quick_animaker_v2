@@ -44,13 +44,13 @@ Layer _seLayer() => Layer(
   ],
 );
 
-Project _project({Cut Function(Cut cut)? mapCut}) {
+Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
   var cut = Cut(
     id: const CutId('lane-cut'),
     name: 'Lane Cut',
     duration: 10,
     canvasSize: const CanvasSize(width: 640, height: 360),
-    layers: [_seLayer()],
+    layers: const [],
   );
   if (mapCut != null) {
     cut = mapCut(cut);
@@ -60,7 +60,13 @@ Project _project({Cut Function(Cut cut)? mapCut}) {
     name: 'Lanes',
     createdAt: DateTime.utc(2026, 7, 10),
     tracks: [
-      Track(id: const TrackId('lane-track'), name: 'Video', cuts: [cut]),
+      Track(
+        id: const TrackId('lane-track'),
+        name: 'Video',
+        cuts: [cut],
+        // SE rows are TRACK-owned (global frame axis).
+        seLayers: seLayers ?? [_seLayer()],
+      ),
     ],
   );
 }
@@ -297,11 +303,12 @@ void main() {
     );
     // The lane carries the clip's enlarged waveform span — the REUSED
     // timeline Audio lane substrate ('완벽통일': its span keys ride the
-    // storyboard-<cutId> prefix).
+    // storyboard-<layerId> prefix now that the lane mounts once across
+    // the track).
     expect(
       find.byKey(
         const ValueKey<String>(
-          'storyboard-lane-cut-audio-lane-span-lane-se-0-b0',
+          'storyboard-lane-se-audio-lane-span-lane-se-0-b0',
         ),
       ),
       findsOneWidget,
@@ -492,7 +499,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-cut-0-b0')),
+      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
       findsOneWidget,
     );
 
@@ -503,7 +510,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-cut-0-b0')),
+      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
       findsNothing,
     );
 
@@ -514,7 +521,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-cut-0-b0')),
+      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
       findsOneWidget,
     );
   });
@@ -659,7 +666,7 @@ void main() {
 
       await tester.tap(
         find.byKey(
-          const ValueKey<String>('storyboard-se-block-select-lane-cut-0'),
+          const ValueKey<String>('storyboard-se-block-select-lane-se-0'),
         ),
       );
       await tester.pumpAndSettle();
@@ -689,7 +696,7 @@ void main() {
       // 12px per frame; the recognizer's slop eats ~20px, so 48px lands a
       // whole-frame delta (same allowance as the XSheet grip tests).
       await tester.drag(
-        find.byKey(const ValueKey<String>('storyboard-se-grip-lane-cut-0-end')),
+        find.byKey(const ValueKey<String>('storyboard-se-grip-lane-se-0-end')),
         const Offset(48, 0),
       );
       await tester.pumpAndSettle();
@@ -722,7 +729,7 @@ void main() {
 
       final span = find.byKey(
         const ValueKey<String>(
-          'storyboard-lane-cut-audio-lane-span-lane-se-0-b0',
+          'storyboard-lane-se-audio-lane-span-lane-se-0-b0',
         ),
       );
       expect(span, findsOneWidget, reason: 'the reused timeline lane span');
@@ -793,23 +800,21 @@ void main() {
   });
 
   group('rail layout (R7-④⑤)', () {
-    Cut withSecondSeSlot(Cut cut) => cut.copyWith(
-      layers: [
-        ...cut.layers,
-        Layer(
-          id: const LayerId('lane-se-2'),
-          name: 'S2',
-          kind: LayerKind.se,
-          frames: const [],
-          timeline: const {},
-        ),
-      ],
-    );
+    final twoSeRows = [
+      _seLayer(),
+      Layer(
+        id: const LayerId('lane-se-2'),
+        name: 'S2',
+        kind: LayerKind.se,
+        frames: const [],
+        timeline: const {},
+      ),
+    ];
 
     testWidgets('SE slots count UP from the bottom like the timeline '
         '(top-down S2, S1, V) and the rows stack FLUSH — no inter-row '
         'padding', (tester) async {
-      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+      await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
       final s1 = tester.getRect(
         find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-1')),
@@ -841,7 +846,7 @@ void main() {
         'parity): SE wraps the S rows exactly, V TRACK the track row', (
       tester,
     ) async {
-      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+      await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
       final seBracket = tester.getRect(
         find.byKey(
@@ -873,7 +878,7 @@ void main() {
 
     testWidgets('the SE bracket grows with a twirled-down audio lane and '
         'keeps wrapping the S rows', (tester) async {
-      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+      await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
       await tester.tap(
         find.byKey(

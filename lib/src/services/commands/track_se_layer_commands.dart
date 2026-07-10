@@ -62,9 +62,7 @@ class RemoveTrackSeLayerCommand implements Command {
       if (track.id != trackId) {
         continue;
       }
-      _removedIndex = track.seLayers.indexWhere(
-        (layer) => layer.id == layerId,
-      );
+      _removedIndex = track.seLayers.indexWhere((layer) => layer.id == layerId);
       if (_removedIndex! >= 0) {
         _removed = track.seLayers[_removedIndex!];
       }

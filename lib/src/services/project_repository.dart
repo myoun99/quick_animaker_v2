@@ -306,7 +306,10 @@ class ProjectRepository {
     });
   }
 
-  void removeTrackSeLayer({required TrackId trackId, required LayerId layerId}) {
+  void removeTrackSeLayer({
+    required TrackId trackId,
+    required LayerId layerId,
+  }) {
     updateProject((project) {
       final next = updateTrackById(project, trackId, (track) {
         return track.copyWith(

@@ -751,7 +751,9 @@ class EditorSessionManager extends ChangeNotifier {
 
     final frameIndex = _timelineController.currentFrameIndex;
     var seenActiveLayer = false;
-    for (final layer in cut.layers) {
+    // Track-owned SE rows join as their cut-local display clones — they
+    // composite read-only like before the ownership move.
+    for (final layer in [...cut.layers, ...trackSeDisplayLayers]) {
       final fxEnabled = isLayerFxEnabled(layer.id);
       // A brush-banned active layer (SE/instruction, R6-④) has no
       // interactive surface — it composites like any other stack layer so
