@@ -157,12 +157,16 @@ class BrushFrameEditingCoordinator {
           prerasterizedStrokePixels: prerasterizedStrokePixels,
           prerasterizedStrokeBounds: prerasterizedStrokeBounds,
         );
-    // Bitmap undo snapshots are byte-budgeted: the deepest entries drop
-    // first (their undos fall back to the command replay), so a run of
-    // huge strokes can never pin gigabytes of touched tiles.
+    // Bitmap undo snapshots are byte- AND count-budgeted: the deepest
+    // entries drop first (their undos fall back to the command replay), so
+    // a run of huge strokes can never pin gigabytes of touched tiles — and
+    // a run of SMALL strokes can never pile snapshots past the unified
+    // history's reach (userUndoLimit), which used to fill the whole byte
+    // budget with unreachable entries.
     final budgetedHistory = trimMaterializationHistoryToByteBudget(
       result.sessionState.materializationHistoryState,
       maxBytes: historyPolicy.materializationByteBudget,
+      maxEntries: historyPolicy.userUndoLimit,
     );
     final committedState =
         identical(

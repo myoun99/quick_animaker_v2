@@ -7,6 +7,19 @@ import 'command.dart';
 /// execute here from the canvas WITHOUT a session notify, so nothing else
 /// would ever tell them a stroke landed.
 class HistoryManager extends ChangeNotifier {
+  HistoryManager({this.maxEntries = defaultMaxEntries})
+    : assert(maxEntries > 0);
+
+  /// Undo-depth cap. The stack previously grew for the whole session —
+  /// brush strokes land here at drawing speed, so long sessions pinned
+  /// thousands of command objects (an accumulation source behind the
+  /// progressive brush lag). Deep enough that nobody undoes past it in
+  /// practice; the brush coordinator's own bitmap history is far shorter
+  /// anyway.
+  static const int defaultMaxEntries = 200;
+
+  final int maxEntries;
+
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
 
@@ -21,6 +34,10 @@ class HistoryManager extends ChangeNotifier {
   void execute(Command command) {
     command.execute();
     _undoStack.add(command);
+    if (_undoStack.length > maxEntries) {
+      // The oldest commands fall off the deep end, PS-style.
+      _undoStack.removeRange(0, _undoStack.length - maxEntries);
+    }
     _redoStack.clear();
     notifyListeners();
   }
