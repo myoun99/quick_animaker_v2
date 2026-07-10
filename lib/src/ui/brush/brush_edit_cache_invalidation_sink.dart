@@ -5,8 +5,18 @@ import '../../models/layer_tile_cache_key.dart';
 import '../../models/playback_preview_cache_key.dart';
 import '../../services/cache_invalidation_executor.dart';
 
-/// Debug/manual cache invalidation recorder for temporary Brush hosts.
+/// Debug/manual cache invalidation recorder for standalone Brush hosts
+/// (the timesheet ink stack and the smoke screens run without the editor
+/// session's hub).
+///
+/// The recording is BOUNDED: the hosts using this sink live for the whole
+/// session, and an unbounded per-stroke key log is exactly the kind of
+/// silent accumulation the brush stack must never carry. The newest keys
+/// win; [latestResult] and single-stroke assertions are unaffected.
 class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
+  /// Generous per-list cap — far above any single stroke's key count.
+  static const int maxRecordedKeys = 4096;
+
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
   final playbackPreviews = <PlaybackPreviewCacheKey>[];
@@ -19,18 +29,25 @@ class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
         playbackPreviewCount: playbackPreviews.length,
       );
 
+  void _record<T>(List<T> list, T value) {
+    list.add(value);
+    if (list.length > maxRecordedKeys) {
+      list.removeRange(0, list.length - maxRecordedKeys);
+    }
+  }
+
   @override
   void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
-      brushFrames.add(invalidation);
+      _record(brushFrames, invalidation);
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) =>
-      frameComposites.add(key);
+      _record(frameComposites, key);
 
   @override
-  void invalidateLayerTile(LayerTileCacheKey key) => layerTiles.add(key);
+  void invalidateLayerTile(LayerTileCacheKey key) => _record(layerTiles, key);
 
   @override
   void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) =>
-      playbackPreviews.add(key);
+      _record(playbackPreviews, key);
 }

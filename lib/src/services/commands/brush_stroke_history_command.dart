@@ -13,15 +13,25 @@ import '../command.dart';
 class BrushStrokeHistoryCommand implements Command {
   BrushStrokeHistoryCommand({
     required this.coordinator,
-    required this.strokeData,
+    required BrushStrokeCommitData strokeData,
     this.cacheInvalidationSink,
-  });
+  }) : _strokeData = strokeData;
 
   final BrushFrameEditingCoordinator coordinator;
-  final BrushStrokeCommitData strokeData;
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// The one-shot commit payload; nulled after the first execute. The
+  /// stroke's pre-rasterized pixel buffer can be megabytes, and this
+  /// command sits on the app undo stack for the rest of the session —
+  /// retaining the payload made drawing sessions gradually accumulate
+  /// hundreds of MB (GC pressure = the progressive brush lag). Redo and
+  /// undo run through the coordinator's own history and never need it.
+  BrushStrokeCommitData? _strokeData;
   bool _hasCommitted = false;
   bool _committedChanges = false;
+
+  /// Diagnostic for the accumulation regression guard.
+  bool get retainsCommitPayload => _strokeData != null;
 
   @override
   String get description => 'Brush stroke';
@@ -37,6 +47,7 @@ class BrushStrokeHistoryCommand implements Command {
     // A stroke that changes no pixels creates no brush undo entry; this
     // app-level command then stays inert so undo/redo never pops an
     // unrelated brush entry.
+    final strokeData = _strokeData!;
     _committedChanges =
         coordinator.commitSourceStroke(
           sourceDabs: strokeData.sourceDabs,
@@ -46,6 +57,7 @@ class BrushStrokeHistoryCommand implements Command {
         ) !=
         null;
     _hasCommitted = true;
+    _strokeData = null;
   }
 
   @override
