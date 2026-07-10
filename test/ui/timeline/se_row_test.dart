@@ -270,6 +270,31 @@ void main() {
     expect(_seDialogueAt(tester, 'xsheet-se-label-se-voice-1'), 'Hello!');
   });
 
+  testWidgets('SE empty stretches carry the print-sheet furniture overlay '
+      'inside the playback range, both orientations (R4)', (tester) async {
+    await _pumpHome(tester, _project());
+    await _ensureRowVisible(tester, _seLayerId);
+
+    // Block covers [1, 4): empty runs open at 0 and at 4 (to the cut end).
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-4')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-se-empty-se-voice-4')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('double-tap on an empty SE cell creates a ONE-frame labeled '
       'entry in one undo (the grips own the length)', (tester) async {
     late ProjectRepository repository;

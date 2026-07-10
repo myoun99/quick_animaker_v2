@@ -671,71 +671,38 @@ class TimesheetDocumentPainter extends CustomPainter {
           break;
         }
         final cell = spec.cells[frame];
-        if (cell.kind == TimesheetCellKind.empty) {
-          continue;
-        }
+        final seColumn = spec.kind == TimesheetColumnKind.se;
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
-        // SE dialogue runs vertically beside its duration line.
-        final seColumn = spec.kind == TimesheetColumnKind.se;
-        final holdLineX = seColumn ? centerX + 5 : centerX;
+        if (cell.kind == TimesheetCellKind.empty) {
+          // SE columns mark their empty stretches the print-sheet way: a
+          // dotted center guide, washed light gray while the toggle is on.
+          if (seColumn && frame < document.playbackFrameCount) {
+            _paintSeEmptyRow(
+              canvas,
+              columnLeft: columnLeft,
+              columnWidth: columnWidth,
+              centerX: centerX,
+              cellTop: cellTop,
+            );
+          }
+          continue;
+        }
         switch (cell.kind) {
           case TimesheetCellKind.drawing:
             if (drawTexts) {
               if (seColumn) {
-                final rowsHere = (cell.spanLength ?? 1).clamp(
-                  1,
-                  rowCount - row,
+                _paintSeEntryStart(
+                  canvas,
+                  cell: cell,
+                  row: row,
+                  rowCount: rowCount,
+                  columnLeft: columnLeft,
+                  columnWidth: columnWidth,
+                  centerX: centerX,
+                  cellTop: cellTop,
                 );
-                final seName = cell.seName ?? '';
-                var dialogueTop = cellTop + 2;
-                var dialogueRows = rowsHere;
-                if (seName.isNotEmpty) {
-                  // Method A (Toei look): the whole start row is the name
-                  // cell — horizontal writing on an accent box closed by an
-                  // underline; the dialogue distributes from the NEXT row.
-                  canvas.drawRect(
-                    Rect.fromLTWH(
-                      columnLeft,
-                      cellTop,
-                      columnWidth,
-                      TimesheetDocumentLayout.rowHeight,
-                    ),
-                    Paint()..color = AppColors.accent.withValues(alpha: 0.3),
-                  );
-                  canvas.drawLine(
-                    Offset(columnLeft, cellBottom),
-                    Offset(columnLeft + columnWidth, cellBottom),
-                    Paint()
-                      ..color = AppColors.accent
-                      ..strokeWidth = 1.4,
-                  );
-                  _text(
-                    canvas,
-                    seName,
-                    Offset(centerX, cellTop + 4),
-                    fontSize: 8,
-                    bold: true,
-                    color: _ink,
-                    centeredAtX: true,
-                    maxWidth: columnWidth - 2,
-                  );
-                  dialogueTop = cellBottom + 2;
-                  dialogueRows = rowsHere - 1;
-                }
-                // SE dialogue FITS its block: glyphs distribute evenly over
-                // the covered rows (same centers as the timeline overlay).
-                if (dialogueRows > 0 && (cell.label ?? '').isNotEmpty) {
-                  _fitVerticalText(
-                    canvas,
-                    cell.label!,
-                    topCenter: Offset(centerX - 3, dialogueTop),
-                    fontSize: 9,
-                    extent:
-                        dialogueRows * TimesheetDocumentLayout.rowHeight - 4,
-                  );
-                }
               } else {
                 _text(
                   canvas,
@@ -748,15 +715,38 @@ class TimesheetDocumentPainter extends CustomPainter {
               }
             }
           case TimesheetCellKind.held:
+            if (seColumn) {
+              // Toei SE notation: no hold line down the dialogue; the
+              // block's END closes with a short red underline instead.
+              if ((cell.spanOffset ?? 0) == (cell.spanLength ?? 1) - 1) {
+                _paintSeEndUnderline(
+                  canvas,
+                  centerX: centerX,
+                  columnWidth: columnWidth,
+                  y: cellBottom - 1,
+                );
+              }
+              break;
+            }
+            // ACTION hold bar: off by default; with a threshold N it runs
+            // from the (N+1)th comma of N+ holds only (industry N=3).
+            final threshold = document.exposureBarThreshold;
+            if (threshold != null && (cell.spanOffset ?? 0) >= threshold) {
+              canvas.drawLine(
+                Offset(centerX, cellTop),
+                Offset(centerX, cellBottom),
+                Paint()
+                  ..color = _ink
+                  ..strokeWidth = 1.0,
+              );
+            }
           case TimesheetCellKind.cameraSpan:
             canvas.drawLine(
-              Offset(holdLineX, cellTop),
-              Offset(holdLineX, cellBottom),
+              Offset(centerX, cellTop),
+              Offset(centerX, cellBottom),
               Paint()
                 ..color = _ink
-                ..strokeWidth = cell.kind == TimesheetCellKind.cameraSpan
-                    ? 1.6
-                    : 1.0,
+                ..strokeWidth = 1.6,
             );
           case TimesheetCellKind.mark:
             canvas.drawCircle(
@@ -808,11 +798,12 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// One row of an instruction span, in the X-sheet's exact visual
-  /// language: the bar mark is a straight line between the endpoint rows'
-  /// centers with a tick at each end, FI/FO/O.L marks span the full column
-  /// width; the A/B names center in the start/end cells like frame names
-  /// and the writing centers on the span's middle row (odd spans dead
-  /// center, even spans the row left of the middle boundary).
+  /// language (R4): the bar mark is ONE unadorned continuous line between
+  /// the endpoint rows' centers — no end ticks, never broken for text —
+  /// and FI/FO/O.L marks are light-gray filled wedges owning the full
+  /// column width; the A/B names center in the start/end cells like frame
+  /// names and the writing centers on the SPAN's true center, drawn over
+  /// the mark.
   void _paintInstructionRow(
     Canvas canvas, {
     required TimesheetCell cell,
@@ -834,17 +825,13 @@ class TimesheetDocumentPainter extends CustomPainter {
         CameraInstructionMarkType.bar) {
       // Single-row spans carry writing only, exactly like the row overlay.
       if (spanLength > 1) {
-        final shaft = Paint()
-          ..color = _ink
-          ..strokeWidth = 1.4;
         canvas.drawLine(
           Offset(centerX, isFirst ? cellCenterY : cellTop),
           Offset(centerX, isLast ? cellCenterY : cellBottom),
-          shaft,
+          Paint()
+            ..color = _ink
+            ..strokeWidth = 1.4,
         );
-        if (isFirst || isLast) {
-          _paintLineTick(canvas, Offset(centerX, cellCenterY), shaft);
-        }
       }
     } else {
       _paintInstructionMarkSlice(
@@ -894,23 +881,17 @@ class TimesheetDocumentPainter extends CustomPainter {
       );
     }
     if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
+      // The writing sits on the SPAN's true center (derived span-globally
+      // like the mark geometry), overlaid on the line/wedge — never
+      // breaking them (R4 rule).
+      final spanTop = cellTop - offset * rowHeight;
       _centeredVerticalText(
         canvas,
         cell.label!,
-        center: Offset(centerX, cellCenterY),
+        center: Offset(centerX, spanTop + spanLength * rowHeight / 2),
         fontSize: 9,
       );
     }
-  }
-
-  /// A short perpendicular tick capping the duration line (the sheet's
-  /// A ⊢───⊣ B notation — completely straight, no arrowheads).
-  void _paintLineTick(Canvas canvas, Offset center, Paint paint) {
-    canvas.drawLine(
-      center + const Offset(-3.2, 0),
-      center + const Offset(3.2, 0),
-      paint,
-    );
   }
 
   /// One row's slice of an instruction span's FI/FO wedge or O.L bowtie:
@@ -940,9 +921,11 @@ class TimesheetDocumentPainter extends CustomPainter {
         rowHeight,
       ),
     );
+    // R4: dedicated marks are plain LIGHT-GRAY FILLS laid under the grid
+    // and the writing — no hatching, no outline (user sketch).
+    final fill = Paint()..color = _ink.withValues(alpha: 0.15);
     switch (cell.markType ?? CameraInstructionMarkType.bar) {
       case CameraInstructionMarkType.ol:
-        final fill = Paint()..color = _ink.withValues(alpha: 0.15);
         canvas.drawPath(
           Path()..addPolygon([
             Offset(shaftX - halfWidth, spanTop),
@@ -961,37 +944,18 @@ class TimesheetDocumentPainter extends CustomPainter {
         );
       case CameraInstructionMarkType.fi:
       case CameraInstructionMarkType.fo:
-        // The fade wedge: full width where the screen is covered, a point
-        // where it is clear — FI narrows downward, FO mirrors.
+        // The fade wedge follows the light: FI opens narrow → wide (the
+        // picture grows in), FO wide → narrow (R4 orientation fix).
         final fadeIn = cell.markType == CameraInstructionMarkType.fi;
-        final wideY = fadeIn ? spanTop + 1 : spanBottom - 1;
-        final pointY = fadeIn ? spanBottom - 1 : spanTop + 1;
-        final wedge = Path()
-          ..addPolygon([
+        final wideY = fadeIn ? spanBottom - 1 : spanTop + 1;
+        final pointY = fadeIn ? spanTop + 1 : spanBottom - 1;
+        canvas.drawPath(
+          Path()..addPolygon([
             Offset(shaftX - halfWidth, wideY),
             Offset(shaftX, pointY),
             Offset(shaftX + halfWidth, wideY),
-          ], true);
-        canvas.save();
-        canvas.clipPath(wedge);
-        final hatch = Paint()
-          ..color = _ink.withValues(alpha: 0.55)
-          ..strokeWidth = 0.7;
-        final bounds = wedge.getBounds();
-        for (var x = bounds.left - bounds.height; x < bounds.right; x += 4.0) {
-          canvas.drawLine(
-            Offset(x, bounds.bottom),
-            Offset(x + bounds.height, bounds.top),
-            hatch,
-          );
-        }
-        canvas.restore();
-        canvas.drawPath(
-          wedge,
-          Paint()
-            ..color = _ink
-            ..strokeWidth = 1.0
-            ..style = PaintingStyle.stroke,
+          ], true),
+          fill,
         );
       case CameraInstructionMarkType.bar:
         // Dispatched to the straight-line path before reaching here.
@@ -1050,6 +1014,111 @@ class TimesheetDocumentPainter extends CustomPainter {
       ),
       Paint()..color = _playhead,
     );
+  }
+
+  /// An SE entry's start cell, the real Toei sheet way (R4, user-approved
+  /// mockup v3): a compact INVERTED name box hugging the block's start
+  /// boundary (ink fill, paper-light writing), the dialogue distributed
+  /// vertically over the REST of the span — no duration bar. Single-row
+  /// entries close with the red end underline right here; longer ones
+  /// close from their last held row.
+  void _paintSeEntryStart(
+    Canvas canvas, {
+    required TimesheetCell cell,
+    required int row,
+    required int rowCount,
+    required double columnLeft,
+    required double columnWidth,
+    required double centerX,
+    required double cellTop,
+  }) {
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    const nameBoxHeight = 12.0;
+    final spanLength = cell.spanLength ?? 1;
+    final rowsHere = spanLength.clamp(1, rowCount - row);
+    final spanBottom = cellTop + rowsHere * rowHeight;
+    final seName = cell.seName ?? '';
+
+    var dialogueTop = cellTop + 2;
+    if (seName.isNotEmpty) {
+      canvas.drawRect(
+        Rect.fromLTWH(columnLeft + 1, cellTop, columnWidth - 2, nameBoxHeight),
+        Paint()..color = _ink,
+      );
+      _text(
+        canvas,
+        seName,
+        Offset(centerX, cellTop + 2),
+        fontSize: 7,
+        bold: true,
+        color: _paper,
+        centeredAtX: true,
+        maxWidth: columnWidth - 4,
+      );
+      dialogueTop = cellTop + nameBoxHeight + 2;
+    }
+
+    final dialogueExtent = spanBottom - 2 - dialogueTop;
+    if (dialogueExtent > 4 && (cell.label ?? '').isNotEmpty) {
+      _fitVerticalText(
+        canvas,
+        cell.label!,
+        topCenter: Offset(centerX, dialogueTop),
+        fontSize: 9,
+        extent: dialogueExtent,
+      );
+    }
+
+    if (spanLength == 1) {
+      _paintSeEndUnderline(
+        canvas,
+        centerX: centerX,
+        columnWidth: columnWidth,
+        y: spanBottom - 1,
+      );
+    }
+  }
+
+  /// The short red underline closing an SE block (Toei notation).
+  void _paintSeEndUnderline(
+    Canvas canvas, {
+    required double centerX,
+    required double columnWidth,
+    required double y,
+  }) {
+    final halfWidth = columnWidth * 0.3;
+    canvas.drawLine(
+      Offset(centerX - halfWidth, y),
+      Offset(centerX + halfWidth, y),
+      Paint()
+        ..color = AppColors.danger
+        ..strokeWidth = 2,
+    );
+  }
+
+  /// An SE column's empty row: the light-gray "no SE here" wash (project
+  /// toggle) under a dotted center guide — the print-sheet convention; the
+  /// frame grid keeps printing through both.
+  void _paintSeEmptyRow(
+    Canvas canvas, {
+    required double columnLeft,
+    required double columnWidth,
+    required double centerX,
+    required double cellTop,
+  }) {
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    if (document.seEmptyFill) {
+      canvas.drawRect(
+        Rect.fromLTWH(columnLeft, cellTop, columnWidth, rowHeight),
+        Paint()..color = _ink.withValues(alpha: 0.05),
+      );
+    }
+    final dot = Paint()
+      ..color = _gridMedium
+      ..strokeWidth = 1.0;
+    for (var y = cellTop + 2.0; y < cellTop + rowHeight - 1; y += 5.0) {
+      canvas.drawLine(Offset(centerX, y), Offset(centerX, y + 2.0), dot);
+    }
   }
 
   /// An upright glyph stack centered on [center] (the instruction writing

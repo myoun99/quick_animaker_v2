@@ -10,6 +10,7 @@ import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
+import 'playback/canvas_scrub_preview.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -75,10 +76,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         return ValueListenableBuilder<bool>(
           valueListenable: session.playback.isActiveListenable,
           builder: (context, _, _) {
-            return _buildInteractiveCanvas(
-              session,
-              isCameraLayerActive: isCameraLayerActive,
-              showCameraOverlay: showCameraOverlay,
+            // Ruler scrubs swap the content the same way playback does
+            // (enter/leave only) — the per-move updates repaint just the
+            // preview painter through the cursor listenable.
+            return ValueListenableBuilder<bool>(
+              valueListenable: session.frameScrubActive,
+              builder: (context, _, _) {
+                return _buildInteractiveCanvas(
+                  session,
+                  isCameraLayerActive: isCameraLayerActive,
+                  showCameraOverlay: showCameraOverlay,
+                );
+              },
             );
           },
         );
@@ -92,8 +101,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required bool showCameraOverlay,
   }) {
     final isPlaybackActive = session.playback.isActive;
+    // A ruler scrub shows the composite-cache preview (playback display
+    // machinery) — the editing chrome (layer stacks, overlays, gizmo)
+    // holds off exactly like during playback.
+    final isScrubbing = !isPlaybackActive && session.frameScrubActive.value;
     final layerStack = session.editingCanvasStack;
-    final showAboveLayers = !isPlaybackActive && layerStack.above.isNotEmpty;
+    final showAboveLayers =
+        !isPlaybackActive && !isScrubbing && layerStack.above.isNotEmpty;
     final selection = isCameraLayerActive
         ? session.cameraBackdropSelection
         : session.activeBrushEditorSelection;
@@ -108,6 +122,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final activeLayer = session.activeLayer;
     final showPositionGizmo =
         !isPlaybackActive &&
+        !isScrubbing &&
         !isCameraLayerActive &&
         activeLayer != null &&
         layerKindShowsFxToggle(activeLayer.kind) &&
@@ -143,7 +158,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // interactive view from the layer image cache — this is what makes
           // the other layers (and their visibility/opacity) visible while
           // editing. During playback the composite covers everything.
-          viewportUnderlayBuilder: isPlaybackActive
+          viewportUnderlayBuilder: isPlaybackActive || isScrubbing
               ? null
               : (context, viewport) => CanvasLayerStackView(
                   layers: layerStack.below,
@@ -158,7 +173,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // overlay would show a stale playhead pose on top of it.
           viewportOverlayBuilder:
               (showCameraOverlay || showAboveLayers || showPositionGizmo) &&
-                  !isPlaybackActive
+                  !isPlaybackActive &&
+                  !isScrubbing
               ? (context, viewport) => Stack(
                   children: [
                     if (showAboveLayers)
@@ -217,6 +233,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   compositeCache: session.cutFrameCompositeCache,
                   qualityOf: () => session.playbackQuality,
                   prerenderProgress: session.prerenderScheduler.progress,
+                  cameraViewEnabled: widget.cameraViewEnabled.value,
+                  cameraFrameSize: session.cameraFrameSize,
+                  cameraPoseOf: session.cameraPoseForCut,
+                  viewport: viewport,
+                )
+              : isScrubbing
+              ? (context, viewport) => CanvasScrubPreview(
+                  frameCursor: session.editingFrameCursor,
+                  compositeCache: session.cutFrameCompositeCache,
+                  cut: session.activeCut,
+                  qualityOf: () => session.playbackQuality,
                   cameraViewEnabled: widget.cameraViewEnabled.value,
                   cameraFrameSize: session.cameraFrameSize,
                   cameraPoseOf: session.cameraPoseForCut,

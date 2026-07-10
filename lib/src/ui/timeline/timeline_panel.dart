@@ -30,11 +30,14 @@ class TimelinePanel extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.seEmptyFill = true,
     this.onSetAudioClipOffset,
     this.audioOffsetDrag,
     this.onSetAudioClipFades,
@@ -83,6 +86,13 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
+  /// Ruler-scrub path (both orientations): per-move frames go to
+  /// [onScrubFrame] (cursor-only, no commit) and the release fires
+  /// [onScrubEnd] to commit once. Null falls back to [onSelectFrame] per
+  /// move (immediate-commit behavior).
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
+
   /// Double-tap cell editor hook (SE label dialog), shared by both
   /// orientations.
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -100,6 +110,9 @@ class TimelinePanel extends StatefulWidget {
   /// orientations.
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Light wash over SE rows' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   /// Commits an audio-lane slide (the clip's offset trim), both
   /// orientations.
@@ -320,12 +333,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onScrubFrame: widget.onScrubFrame,
+                    onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
@@ -358,12 +374,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameNameForLayer: widget.frameNameForLayer,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onScrubFrame: widget.onScrubFrame,
+                    onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
+                    seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
                     audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,

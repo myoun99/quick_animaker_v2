@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -45,12 +45,15 @@ class LayerTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
+    this.seEmptyFill = true,
     this.onSetAudioClipOffset,
     this.audioOffsetDrag,
     this.onSetAudioClipFades,
@@ -94,6 +97,12 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
+  /// Ruler-scrub path: per-move frames go to [onScrubFrame] (cursor-only,
+  /// no commit) and the pointer's release fires [onScrubEnd] to commit
+  /// once. Null falls back to [onSelectFrame] per move.
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
+
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -110,6 +119,9 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Links a media-browser asset to an SE block (drag-drop).
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
+
+  /// Light wash over SE rows' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
@@ -321,7 +333,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
 
     _lastRulerScrubbedFrameIndex = clampedFrameIndex;
-    widget.onSelectFrame(clampedFrameIndex);
+    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+  }
+
+  /// The scrub gesture's release (raw pointer up/cancel — fires for taps
+  /// AND drags, wherever the pointer ends up). Tracking is NOT reset here
+  /// so the ruler InkWell's trailing onTap stays deduplicated.
+  void _endRulerScrub() {
+    widget.onScrubEnd?.call();
   }
 
   double? _rulerViewportLocalXFromGlobal(Offset globalPosition) {
@@ -454,6 +473,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           event.position,
                                         );
                                       },
+                                      onPointerUp: (_) => _endRulerScrub(),
+                                      onPointerCancel: (_) => _endRulerScrub(),
                                       child: GestureDetector(
                                         behavior: HitTestBehavior.translucent,
                                         onHorizontalDragStart: (details) {
@@ -799,6 +820,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       .onSetAudioClipFades,
                                                   onSetAudioClipGain:
                                                       widget.onSetAudioClipGain,
+                                                  seEmptyFill:
+                                                      widget.seEmptyFill,
                                                   commaDrag: widget.commaDrag,
                                                   laneEdit: widget.laneEdit,
                                                 ),

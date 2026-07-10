@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
+import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 
 TimesheetDocument _document({required List<Layer> layers}) {
   return TimesheetDocument.fromCut(
@@ -94,5 +95,45 @@ void main() {
       expect(instructionColumn.cells[row].spanLength, 5);
     }
     expect(instructionColumn.cells[7].label, isNull);
+  });
+
+  test('held cells carry their span geometry (R4: the exposure-bar option '
+      'gates on the comma offset) and the document mirrors the notation '
+      'settings', () {
+    final document = TimesheetDocument.fromCut(
+      cut: Cut(
+        id: const CutId('cut-holds'),
+        name: 'Cut Holds',
+        layers: [
+          Layer(
+            id: const LayerId('cel'),
+            name: 'A',
+            frames: [
+              Frame(id: const FrameId('a1'), duration: 5, strokes: const []),
+            ],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('a1'), length: 5),
+            },
+          ),
+        ],
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+      ),
+      projectName: 'P',
+      fps: 24,
+      info: const TimesheetInfo(exposureBarThreshold: 3, seEmptyFill: false),
+    );
+
+    expect(document.exposureBarThreshold, 3);
+    expect(document.seEmptyFill, isFalse);
+
+    final actionColumn = document.columns.firstWhere(
+      (column) => column.kind == TimesheetColumnKind.action,
+    );
+    for (var row = 1; row < 5; row += 1) {
+      expect(actionColumn.cells[row].kind, TimesheetCellKind.held);
+      expect(actionColumn.cells[row].spanOffset, row, reason: 'row $row');
+      expect(actionColumn.cells[row].spanLength, 5);
+    }
   });
 }

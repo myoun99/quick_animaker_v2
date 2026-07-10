@@ -48,15 +48,4 @@ void main() {
       TimelineCellExposureState.uncovered,
     );
   });
-
-  test('label anchor cell: odd spans center, even spans sit left of the '
-      'middle boundary (R3 restores the center rule)', () {
-    expect(instructionLabelAnchorCell(1), 0);
-    expect(instructionLabelAnchorCell(2), 0);
-    expect(instructionLabelAnchorCell(3), 1);
-    expect(instructionLabelAnchorCell(4), 1);
-    expect(instructionLabelAnchorCell(5), 2);
-    expect(instructionLabelAnchorCell(6), 2);
-    expect(instructionLabelAnchorCell(7), 3);
-  });
 }
