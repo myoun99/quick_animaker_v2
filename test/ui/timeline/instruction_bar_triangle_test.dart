@@ -14,10 +14,14 @@ import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
 
-/// R7-① pins: a NAMELESS bar endpoint carries the solid triangle mark
-/// (real Japanese sheets) with the duration line running through its cell
-/// to meet it; named endpoints keep their empty cells for the writing.
-/// Same rule on the row overlay (timeline/X-sheet) and the printed sheet.
+/// R7-①/R8-① pins: a NAMELESS bar endpoint carries the solid triangle
+/// mark (real Japanese sheets) with the duration line running through its
+/// cell to meet it; named endpoints keep their empty cells for the
+/// writing. The apex points INTO the span at both ends (sheet: start ▼ /
+/// end ▲ — R8 direction fix), bases flush on the span edges, and on the
+/// row overlay the cap fills half the cell along the time axis and half
+/// the row across it. Same rule on the row overlay (timeline/X-sheet) and
+/// the printed sheet.
 void main() {
   const cellExtent = 48.0;
   const crossExtent = 30.0;
@@ -115,6 +119,29 @@ void main() {
       isNot(0),
       reason: 'the line runs between the caps',
     );
+    // Direction (R8-①): the caps are WIDE on the span edge and taper to
+    // their apex inward — off-center ink near the edges, none near the
+    // apexes (cap length = half a cell = 24px here, cross half = 7.5).
+    expect(
+      alphaAt(nameless, 2, midCross - 5),
+      isNot(0),
+      reason: 'start cap: wide at the span edge',
+    );
+    expect(
+      alphaAt(nameless, 22, midCross - 5),
+      0,
+      reason: 'start cap: tapered near its apex',
+    );
+    expect(
+      alphaAt(nameless, width - 2, midCross - 5),
+      isNot(0),
+      reason: 'end cap: wide at the span edge',
+    );
+    expect(
+      alphaAt(nameless, width - 22, midCross - 5),
+      0,
+      reason: 'end cap: tapered near its apex',
+    );
 
     final named = await rasterize(
       await pumpMarkPainter(valueA: 'A', valueB: 'B'),
@@ -195,13 +222,15 @@ void main() {
       expect(
         darkAt(nameless, centerX, spanTop + 3),
         isTrue,
-        reason: 'start cap triangle in the first row',
+        reason: 'start cap ▼: wide right under the span top edge',
       );
       expect(
-        // Sampled near the cap's BASE (the apex tip antialiases to a blend).
-        darkAt(nameless, centerX, spanBottom - 8),
+        // R8-① direction pin: the END cap is ▲ — wide right ABOVE the
+        // span bottom edge (this very sample point was the thin apex tip
+        // under the old, wrong ▼ orientation).
+        darkAt(nameless, centerX, spanBottom - 3),
         isTrue,
-        reason: 'end cap triangle in the last row',
+        reason: 'end cap ▲: wide right above the span bottom edge',
       );
 
       final named = await paintSheet(document(valueA: 'A', valueB: 'B'));

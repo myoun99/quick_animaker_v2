@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -333,8 +331,9 @@ class _InstructionMarkPainter extends CustomPainter {
 
   /// Whether the A/B writing occupies the endpoint cells. A NAMELESS bar
   /// endpoint carries the sheet's solid triangle mark instead (real
-  /// Japanese timesheets, R7-①), pointing down the time axis at either
-  /// end, with the line running through the freed cell to meet it.
+  /// Japanese timesheets, R7-①), apex pointing INTO the span at either
+  /// end (start ▼ / end ▲ on the sheet — R8-①), with the line running
+  /// through the freed cell to meet it.
   final bool hasStartName;
   final bool hasEndName;
 
@@ -401,10 +400,14 @@ class _InstructionMarkPainter extends CustomPainter {
     canvas.drawLine(_at(start, crossCenter), _at(end, crossCenter), paint);
   }
 
-  /// The solid triangle capping a nameless bar endpoint, pointing down the
-  /// time axis at BOTH ends (the sheet convention: the start cap hangs the
-  /// line off its apex, the end cap closes it arrowhead-style). Returns the
-  /// main-axis coordinate the duration line meets it at.
+  /// The solid triangle capping a nameless bar endpoint, its APEX pointing
+  /// INTO the span at both ends (R8-① direction fix: on the sheet the
+  /// start cap reads ▼ and the end cap ▲ — the R7 both-point-downstream
+  /// reading was wrong). The base sits FLUSH on the span edge (compact —
+  /// no inset padding) and the cap fills half the cell each way: half a
+  /// frame cell along the time axis, half the row across it (user-sized).
+  /// Returns the main-axis coordinate the duration line meets it at (the
+  /// apex).
   double _paintEndpointTriangle(
     Canvas canvas, {
     required double mainExtent,
@@ -412,11 +415,10 @@ class _InstructionMarkPainter extends CustomPainter {
     required double crossExtent,
     required bool atStart,
   }) {
-    const inset = 1.5;
-    final length = math.min(7.0, math.max(3.0, frameCellExtent - 2));
-    final crossHalf = math.min(4.0, math.max(2.0, crossExtent / 2 - 2));
-    final baseMain = atStart ? inset : mainExtent - inset - length;
-    final apexMain = atStart ? inset + length : mainExtent - inset;
+    final length = frameCellExtent / 2;
+    final crossHalf = crossExtent / 4;
+    final baseMain = atStart ? 0.0 : mainExtent;
+    final apexMain = atStart ? length : mainExtent - length;
     canvas.drawPath(
       Path()..addPolygon([
         _at(baseMain, crossCenter - crossHalf),
@@ -425,7 +427,7 @@ class _InstructionMarkPainter extends CustomPainter {
       ], true),
       Paint()..color = color,
     );
-    return atStart ? apexMain : baseMain;
+    return apexMain;
   }
 
   /// The fade wedge, a plain light-gray fill following the light: FI opens
