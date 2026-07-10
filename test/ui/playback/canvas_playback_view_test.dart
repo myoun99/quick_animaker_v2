@@ -214,10 +214,13 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('the CUT pose (V track) reaches the painter — resolved over '
-      'the current display space — while fade-only cuts stay on the '
-      'pose-free path', (tester) async {
+  testWidgets('the CUT pose (V track) reaches the painter — resolved in '
+      'CAMERA space and remapped onto the canvas (R8-③) — while fade-only '
+      'cuts stay on the pose-free path', (tester) async {
     // A geometric key activates the pose; the opacity lane alone must not.
+    // Keys author in camera space (frame 4×2, center (2,1)); the canvas
+    // (8×8) preview shifts center AND anchor by d = canvasC − frameC =
+    // (2,3), so the camera-space delta replays 1:1 on the canvas.
     final posed = fixture(
       transformTrack: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>.empty().withKey(
@@ -234,15 +237,37 @@ void main() {
     );
     final canvasPose = painterOf(tester).cutPose;
     expect(canvasPose, isNotNull);
-    expect(canvasPose!.center, CanvasPoint(x: 6, y: 4));
-    // Unkeyed lanes resolve to the display space's identity — the canvas
-    // (8×8) in canvas mode.
+    expect(canvasPose!.center, CanvasPoint(x: 8, y: 7));
     expect(canvasPose.zoom, 1);
-    expect(painterOf(tester).cutAnchorPoint, isNull);
+    expect(painterOf(tester).cutAnchorPoint, CanvasPoint(x: 4, y: 4));
 
     posed.controller.stop();
     await tester.pump();
     posed.composites.dispose();
+
+    // The top-left snap regression: an UNTOUCHED key (= the camera-frame
+    // center) must read as identity motion on the canvas — center and
+    // anchor both land on the canvas center.
+    final untouched = fixture(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 2, y: 1),
+        ),
+      ),
+    );
+    untouched.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: untouched.controller,
+      composites: untouched.composites,
+    );
+    expect(painterOf(tester).cutPose!.center, CanvasPoint(x: 4, y: 4));
+    expect(painterOf(tester).cutAnchorPoint, CanvasPoint(x: 4, y: 4));
+
+    untouched.controller.stop();
+    await tester.pump();
+    untouched.composites.dispose();
 
     final fadeOnly = fixture(
       transformTrack: TransformTrack.empty().copyWith(

@@ -81,10 +81,11 @@ bool cutPoseIsActive(Cut cut) {
 }
 
 /// The cut-level pose at [frameIndex] over the DISPLAY space [displaySize]
-/// (the camera's output frame in camera mode and the MP4 bake, the cut
-/// canvas in canvas mode) — AE precomp semantics, user-confirmed: the
-/// cut's FINISHED picture moves on the screen, above the camera
-/// projection. Identity = display center / zoom 1 / rotation 0.
+/// (the camera's output frame — the space the lanes author in and the MP4
+/// bake renders in) — AE precomp semantics, user-confirmed: the cut's
+/// FINISHED picture moves on the screen, above the camera projection.
+/// Identity = display center / zoom 1 / rotation 0. The canvas-view
+/// preview must NOT pass the canvas here — see [cutPoseForCanvasPreview].
 TransformPose cutPoseAt(Cut cut, int frameIndex, CanvasSize displaySize) {
   return cut.transformTrack.resolveAt(
     frameIndex: frameIndex,
@@ -95,6 +96,38 @@ TransformPose cutPoseAt(Cut cut, int frameIndex, CanvasSize displaySize) {
 /// The cut pose's anchor at [frameIndex]; null = the display center.
 CanvasPoint? cutAnchorPointAt(Cut cut, int frameIndex) =>
     resolveAnchorTrackAt(cut.transformTrack.anchorPoint, frameIndex);
+
+/// The cut pose remapped for the CANVAS-VIEW preview (R8-③ fix): pose keys
+/// are AUTHORED over the camera's output frame (the lanes' display space),
+/// so the canvas route resolves them THERE and re-centers the motion on
+/// the canvas. Resolving over the canvas instead read every key in the
+/// wrong space — an untouched key (camera-frame center) sat up-left of the
+/// canvas center, snapping the picture into the top-left corner.
+///
+/// The remap is the translation conjugation T(d)·M·T(−d) with
+/// d = canvas center − frame center, which folds into a plain center +
+/// anchor shift (layerPoseMatrix = T(center)·R·S·T(−anchor)). Identity
+/// keys stay identity; position deltas match the camera view 1:1 in
+/// canvas pixels.
+({TransformPose pose, CanvasPoint anchorPoint}) cutPoseForCanvasPreview(
+  Cut cut,
+  int frameIndex, {
+  required CanvasSize cameraFrameSize,
+  required CanvasSize canvasSize,
+}) {
+  final pose = cutPoseAt(cut, frameIndex, cameraFrameSize);
+  final anchor =
+      cutAnchorPointAt(cut, frameIndex) ??
+      CanvasPoint(x: cameraFrameSize.width / 2, y: cameraFrameSize.height / 2);
+  final dx = (canvasSize.width - cameraFrameSize.width) / 2;
+  final dy = (canvasSize.height - cameraFrameSize.height) / 2;
+  return (
+    pose: pose.copyWith(
+      center: CanvasPoint(x: pose.center.x + dx, y: pose.center.y + dy),
+    ),
+    anchorPoint: CanvasPoint(x: anchor.x + dx, y: anchor.y + dy),
+  );
+}
 
 /// The cut's transform with its opacity lane rebuilt to the canonical fade
 /// shape (other lanes untouched). Zero lengths clear the lane.

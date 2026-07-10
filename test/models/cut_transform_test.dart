@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show Matrix4;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -5,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/layer_pose_paint.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_cut_fade_policy.dart';
 
 Cut _cut({int duration = 10, TransformTrack? transformTrack}) => Cut(
@@ -204,6 +206,104 @@ void main() {
         ),
       );
       expect(cutAnchorPointAt(anchored, 5), CanvasPoint(x: 10, y: 20));
+    });
+  });
+
+  group('cutPoseForCanvasPreview (R8-③ canvas-view space remap)', () {
+    const frame = CanvasSize(width: 1920, height: 1080);
+    const canvas = CanvasSize(width: 5000, height: 3000);
+
+    test('an UNTOUCHED key (camera-frame identity) stays identity on the '
+        'canvas — the top-left snap regression', () {
+      // Keying Position without touching the value stores the camera
+      // frame's center (the lanes author in camera space).
+      final posed = _cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 960, y: 540),
+          ),
+        ),
+      );
+      final preview = cutPoseForCanvasPreview(
+        posed,
+        0,
+        cameraFrameSize: frame,
+        canvasSize: canvas,
+      );
+      expect(preview.pose.center, CanvasPoint(x: 2500, y: 1500));
+      expect(preview.anchorPoint, CanvasPoint(x: 2500, y: 1500));
+      expect(
+        layerPoseMatrix(preview.pose, canvas, anchorPoint: preview.anchorPoint),
+        Matrix4.identity(),
+        reason: 'identity in camera space must stay identity on the canvas',
+      );
+    });
+
+    test('position deltas match the camera view 1:1 in canvas pixels', () {
+      final posed = _cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 960 + 100, y: 540 + 50),
+          ),
+        ),
+      );
+      final preview = cutPoseForCanvasPreview(
+        posed,
+        0,
+        cameraFrameSize: frame,
+        canvasSize: canvas,
+      );
+      expect(preview.pose.center, CanvasPoint(x: 2600, y: 1550));
+      expect(preview.anchorPoint, CanvasPoint(x: 2500, y: 1500));
+    });
+
+    test('the remap IS the translation conjugation T(d)·M·T(−d) — zoom, '
+        'rotation and a keyed anchor all survive exactly', () {
+      final posed = _cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 300, y: 400),
+          ),
+          scale: PropertyTrack<double>.empty().withKey(0, 2.0),
+          rotation: PropertyTrack<double>.empty().withKey(0, 90.0),
+          anchorPoint: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 100, y: 200),
+          ),
+        ),
+      );
+      final preview = cutPoseForCanvasPreview(
+        posed,
+        0,
+        cameraFrameSize: frame,
+        canvasSize: canvas,
+      );
+      final remapped = layerPoseMatrix(
+        preview.pose,
+        canvas,
+        anchorPoint: preview.anchorPoint,
+      );
+
+      const dx = (5000 - 1920) / 2;
+      const dy = (3000 - 1080) / 2;
+      final conjugated = Matrix4.translationValues(dx, dy, 0)
+        ..multiply(
+          layerPoseMatrix(
+            cutPoseAt(posed, 0, frame),
+            frame,
+            anchorPoint: cutAnchorPointAt(posed, 0),
+          ),
+        )
+        ..multiply(Matrix4.translationValues(-dx, -dy, 0));
+      for (var index = 0; index < 16; index += 1) {
+        expect(
+          remapped.storage[index],
+          closeTo(conjugated.storage[index], 1e-9),
+        );
+      }
     });
   });
 }
