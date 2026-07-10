@@ -730,4 +730,112 @@ void main() {
       expect(offsets.last.$3, greaterThan(0));
     });
   });
+
+  group('rail layout (R7-④⑤)', () {
+    Cut withSecondSeSlot(Cut cut) => cut.copyWith(
+      layers: [
+        ...cut.layers,
+        Layer(
+          id: const LayerId('lane-se-2'),
+          name: 'S2',
+          kind: LayerKind.se,
+          frames: const [],
+          timeline: const {},
+        ),
+      ],
+    );
+
+    testWidgets('SE slots count UP from the bottom like the timeline '
+        '(top-down S2, S1, V) and the rows stack FLUSH — no inter-row '
+        'padding', (tester) async {
+      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+
+      final s1 = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-1')),
+      );
+      final s2 = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-2')),
+      );
+      final vRow = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-label-row-lane-track'),
+        ),
+      );
+      expect(s2.top, lessThan(s1.top), reason: 'S2 above S1 (bottom-up)');
+      expect(s1.top, s2.bottom, reason: 'rows flush: no padding S2 → S1');
+      expect(vRow.top, s1.bottom, reason: 'rows flush: no padding S1 → V');
+
+      // The strips column mirrors the rail row for row.
+      final s1Strip = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-row-0-1')),
+      );
+      final s2Strip = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-row-0-2')),
+      );
+      expect(s2Strip.top, lessThan(s1Strip.top));
+      expect(s1Strip.top, s2Strip.bottom);
+    });
+
+    testWidgets('the section-bracket gutter leads the rail (timeline '
+        'parity): SE wraps the S rows exactly, V TRACK the track row', (
+      tester,
+    ) async {
+      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+
+      final seBracket = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-section-bracket-se-lane-track'),
+        ),
+      );
+      final vBracket = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-section-bracket-v-lane-track'),
+        ),
+      );
+      final s2 = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-2')),
+      );
+      final s1 = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-1')),
+      );
+      final vRow = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-label-row-lane-track'),
+        ),
+      );
+      expect(seBracket.top, s2.top);
+      expect(seBracket.bottom, s1.bottom);
+      expect(vBracket.top, vRow.top);
+      expect(vBracket.bottom, vRow.bottom);
+      expect(seBracket.right, s2.left, reason: 'gutter sits LEFT of the rail');
+    });
+
+    testWidgets('the SE bracket grows with a twirled-down audio lane and '
+        'keeps wrapping the S rows', (tester) async {
+      await _pumpPanel(tester, project: _project(mapCut: withSecondSeSlot));
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final seBracket = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-section-bracket-se-lane-track'),
+        ),
+      );
+      final vRow = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-label-row-lane-track'),
+        ),
+      );
+      expect(
+        seBracket.bottom,
+        vRow.top,
+        reason: 'the bracket must track the expanded S rows exactly',
+      );
+    });
+  });
 }

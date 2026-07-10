@@ -1,8 +1,9 @@
-/// The paper form's header boxes, in printing order. TITLE and the episode
-/// number (話数, printed '#' like the A-1 form) are separate boxes; SCENE is
-/// the user-requested addition. Any box can be hidden per project via
+/// The paper form's header boxes, in printing order — the episode number
+/// (話数 / Ep.no) leads like the real reference sheets (R7-⑥), then Title,
+/// Cut, Duration, Name and Page; SCENE is the user-requested addition
+/// slotted after the title. Any box can be hidden per project via
 /// [TimesheetInfo.hiddenFields].
-enum TimesheetHeaderField { title, episode, scene, cut, time, name, sheet }
+enum TimesheetHeaderField { episode, title, scene, cut, time, name, sheet }
 
 /// The sheet-header text the paper timesheet reads: production title
 /// (falls back to the project name when empty), episode label (話数),

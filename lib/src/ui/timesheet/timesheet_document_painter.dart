@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -48,11 +50,9 @@ class TimesheetDocumentLayout {
   static const double headerBandHeight = 64;
 
   /// The Direction handwriting space under the header band (real-sheet
-  /// reference ~140px), with a framed memo box at its top right. Printed on
+  /// reference ~140px) — completely open, no frames (R7-⑥). Printed on
   /// every page; page ink (S2) anchors on it.
   static const double memoBandHeight = 140;
-  static const double memoBoxWidthFraction = 0.28;
-  static const double memoBoxHeight = 56;
   static const double headerGap = 10;
   static const double pagePadding = 16;
   static const double halfGap = 24;
@@ -174,15 +174,17 @@ class TimesheetDocumentLayout {
       columnsHeaderHeight;
 
   /// Width fractions of the header boxes when all print; hiding boxes
-  /// renormalizes the rest over the band.
+  /// renormalizes the rest over the band. Proportions follow the user's
+  /// reference sheets (R7-⑥): a slim Ep.no box, the Title clearly widest,
+  /// then compact Cut/Duration/Name/Page boxes.
   static const Map<TimesheetHeaderField, double> _headerFieldFractions = {
-    TimesheetHeaderField.title: 0.26,
     TimesheetHeaderField.episode: 0.08,
+    TimesheetHeaderField.title: 0.32,
     TimesheetHeaderField.scene: 0.10,
-    TimesheetHeaderField.cut: 0.10,
+    TimesheetHeaderField.cut: 0.11,
     TimesheetHeaderField.time: 0.12,
-    TimesheetHeaderField.name: 0.20,
-    TimesheetHeaderField.sheet: 0.14,
+    TimesheetHeaderField.name: 0.17,
+    TimesheetHeaderField.sheet: 0.10,
   };
 
   /// The header band rect of a page — its LEFT edge sits on the grid's
@@ -378,7 +380,9 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// The header band: labeled boxes like the paper form —
-  /// TITLE | # | SCENE | CUT | TIME | NAME | SHEET, minus hidden boxes.
+  /// Ep.no | Title | Scene | Cut.no | Duration | Name | Page, minus hidden
+  /// boxes. Reference-sheet layout (R7-⑥): the small gray label centers at
+  /// the box top, the bold value centers underneath.
   void _paintHeaderBand(
     Canvas canvas,
     int pageIndex, {
@@ -399,77 +403,63 @@ class TimesheetDocumentPainter extends CustomPainter {
       _text(
         canvas,
         headerFieldLabel(box.field),
-        Offset(box.rect.left + 6, box.rect.top + 4),
+        Offset(box.rect.center.dx, box.rect.top + 5),
         fontSize: 8,
         color: _gridMedium,
+        centeredAtX: true,
       );
       _text(
         canvas,
         _headerFieldValue(box.field, pageIndex),
-        Offset(box.rect.left + 8, box.rect.top + 26),
+        Offset(box.rect.center.dx, box.rect.top + 26),
         fontSize: 14,
         bold: true,
-        maxWidth: box.rect.width - 16,
+        centeredAtX: true,
+        maxWidth: box.rect.width - 12,
       );
     }
   }
 
-  /// The printed box label — '#' is the paper form's episode (話数) box.
+  /// The printed box label, the reference forms' wording (R7-⑥).
   static String headerFieldLabel(TimesheetHeaderField field) {
     return switch (field) {
-      TimesheetHeaderField.title => 'TITLE',
-      TimesheetHeaderField.episode => '#',
-      TimesheetHeaderField.scene => 'SCENE',
-      TimesheetHeaderField.cut => 'CUT',
-      TimesheetHeaderField.time => 'TIME',
-      TimesheetHeaderField.name => 'NAME',
-      TimesheetHeaderField.sheet => 'SHEET',
+      TimesheetHeaderField.episode => 'Ep.no',
+      TimesheetHeaderField.title => 'Title',
+      TimesheetHeaderField.scene => 'Scene',
+      TimesheetHeaderField.cut => 'Cut.no',
+      TimesheetHeaderField.time => 'Duration',
+      TimesheetHeaderField.name => 'Name',
+      TimesheetHeaderField.sheet => 'Page',
     };
   }
 
   String _headerFieldValue(TimesheetHeaderField field, int pageIndex) {
     return switch (field) {
-      TimesheetHeaderField.title => document.title,
       TimesheetHeaderField.episode => document.episode,
+      TimesheetHeaderField.title => document.title,
       TimesheetHeaderField.scene => document.scene,
       TimesheetHeaderField.cut => document.cutName,
-      TimesheetHeaderField.time => document.durationLabel,
+      // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
+      // reference forms; the model label stays compact for row labels.
+      TimesheetHeaderField.time => document.durationLabel.replaceAll(
+        '+',
+        ' + ',
+      ),
       TimesheetHeaderField.name => document.artist,
       TimesheetHeaderField.sheet =>
         layout.continuous ? '1/1' : '${pageIndex + 1}/${document.pages.length}',
     };
   }
 
-  /// The Direction memo band under the header: open handwriting space with
-  /// a framed memo box at its top right — printed on every page. The cut's
-  /// Direction memo (cut note) types into its top left.
+  /// The Direction memo band under the header: COMPLETELY open handwriting
+  /// space, exactly like the reference forms (R7-⑥ — the band outline and
+  /// the top-right memo box frame are both retired). The cut's Direction
+  /// memo (cut note) types into its top left, spanning the full width.
   void _paintMemoBand(Canvas canvas, int pageIndex, {required bool drawTexts}) {
-    final band = layout.memoBandRect(pageIndex);
-    canvas.drawRect(
-      band,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1
-        ..color = _gridBold,
-    );
-    final boxWidth = band.width * TimesheetDocumentLayout.memoBoxWidthFraction;
-    canvas.drawRect(
-      Rect.fromLTWH(
-        band.right - boxWidth,
-        band.top,
-        boxWidth,
-        TimesheetDocumentLayout.memoBoxHeight,
-      ),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = _gridMedium,
-    );
     if (!drawTexts) {
       return;
     }
-    final textMaxWidth = band.width - boxWidth - 20;
-    var y = band.top + 6;
+    final band = layout.memoBandRect(pageIndex);
     if (document.memoText.isNotEmpty) {
       final painter = TextPainter(
         text: TextSpan(
@@ -479,9 +469,8 @@ class TimesheetDocumentPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         maxLines: 8,
         ellipsis: '…',
-      )..layout(maxWidth: textMaxWidth);
-      painter.paint(canvas, Offset(band.left + 8, y));
-      y += painter.height + 4;
+      )..layout(maxWidth: band.width - 16);
+      painter.paint(canvas, Offset(band.left + 8, band.top + 6));
     }
     // NO derived instruction lines here anymore (R5-⑥): the shorthand
     // ('A→B PAN …') writes itself INTO the cut note once when the
@@ -732,11 +721,11 @@ class TimesheetDocumentPainter extends CustomPainter {
           case TimesheetCellKind.held:
             if (seColumn) {
               // Toei SE notation: no hold line down the dialogue; the
-              // block's END closes with a short red underline instead.
+              // block's END closes with the full-width red bar instead.
               if ((cell.spanOffset ?? 0) == (cell.spanLength ?? 1) - 1) {
-                _paintSeEndUnderline(
+                _paintSeRedBar(
                   canvas,
-                  centerX: centerX,
+                  columnLeft: columnLeft,
                   columnWidth: columnWidth,
                   y: cellBottom - 1,
                 );
@@ -839,14 +828,60 @@ class TimesheetDocumentPainter extends CustomPainter {
         CameraInstructionMarkType.bar) {
       // R5-⑤: the endpoint cells carry NO line — the names own them. Each
       // row between draws edge to edge (R6-①a: the per-cell padding made
-      // the bar read as broken dashes), thin like a ruled sheet line.
-      if (spanLength > 2 && !isFirst && !isLast) {
+      // the bar read as broken dashes), thin like a ruled sheet line. A
+      // NAMELESS endpoint carries the solid triangle cap instead (real
+      // sheets, R7-①) and the line runs through its row to meet it.
+      final linePaint = Paint()
+        ..color = _ink
+        ..strokeWidth = 0.9;
+      final hasA = (cell.valueA ?? '').isNotEmpty;
+      final hasB = (cell.valueB ?? '').isNotEmpty;
+      final triangleLength = math.min(
+        7.0,
+        TimesheetDocumentLayout.rowHeight - 4,
+      );
+      if (!isFirst && !isLast) {
         canvas.drawLine(
           Offset(centerX, cellTop),
           Offset(centerX, cellBottom),
-          Paint()
-            ..color = _ink
-            ..strokeWidth = 0.9,
+          linePaint,
+        );
+      } else if (isFirst && isLast) {
+        if (!hasA && !hasB) {
+          _paintBarEndpointTriangle(
+            canvas,
+            centerX: centerX,
+            columnWidth: columnWidth,
+            baseY: cellTop + (rowHeight - triangleLength) / 2,
+          );
+        }
+      } else if (isFirst) {
+        if (!hasA) {
+          final baseY = cellTop + 1.5;
+          _paintBarEndpointTriangle(
+            canvas,
+            centerX: centerX,
+            columnWidth: columnWidth,
+            baseY: baseY,
+          );
+          canvas.drawLine(
+            Offset(centerX, baseY + triangleLength),
+            Offset(centerX, cellBottom),
+            linePaint,
+          );
+        }
+      } else if (!hasB) {
+        final baseY = cellBottom - 1.5 - triangleLength;
+        _paintBarEndpointTriangle(
+          canvas,
+          centerX: centerX,
+          columnWidth: columnWidth,
+          baseY: baseY,
+        );
+        canvas.drawLine(
+          Offset(centerX, cellTop),
+          Offset(centerX, baseY),
+          linePaint,
         );
       }
     } else {
@@ -926,6 +961,28 @@ class TimesheetDocumentPainter extends CustomPainter {
         ),
       );
     }
+  }
+
+  /// The solid triangle capping a NAMELESS bar endpoint (R7-①, real-sheet
+  /// convention): ▼ pointing down the page's time axis at both ends — the
+  /// start cap hangs the line off its apex, the end cap closes it
+  /// arrowhead-style. Mirrors the X-sheet overlay's mark exactly.
+  void _paintBarEndpointTriangle(
+    Canvas canvas, {
+    required double centerX,
+    required double columnWidth,
+    required double baseY,
+  }) {
+    final length = math.min(7.0, TimesheetDocumentLayout.rowHeight - 4);
+    final halfWidth = math.min(4.0, columnWidth / 2 - 2);
+    canvas.drawPath(
+      Path()..addPolygon([
+        Offset(centerX - halfWidth, baseY),
+        Offset(centerX, baseY + length),
+        Offset(centerX + halfWidth, baseY),
+      ], true),
+      Paint()..color = _ink,
+    );
   }
 
   /// One row's slice of an instruction span's FI/FO wedge or O.L bowtie:
@@ -1087,14 +1144,11 @@ class TimesheetDocumentPainter extends CustomPainter {
     var dialogueTop = cellTop + 3;
     if (seName.isNotEmpty) {
       // R6-②: a soft accent tint with dark ink writing — the full-strength
-      // accent read too loud against the paper.
+      // accent read too loud against the paper. FULL column width (R7-②:
+      // the name box, the red bars and the SE column must share ONE exact
+      // width — the old 1px inset read as a mismatched overlay).
       canvas.drawRect(
-        Rect.fromLTWH(
-          columnLeft + 1,
-          cellTop + 2,
-          columnWidth - 2,
-          nameBoxHeight,
-        ),
+        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, nameBoxHeight),
         Paint()..color = AppColors.accent.withValues(alpha: 0.3),
       );
       _text(
@@ -1122,9 +1176,9 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
 
     if (spanLength == 1) {
-      _paintSeEndUnderline(
+      _paintSeRedBar(
         canvas,
-        centerX: centerX,
+        columnLeft: columnLeft,
         columnWidth: columnWidth,
         y: spanBottom - 1,
       );
@@ -1132,21 +1186,8 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// The full-width thin red bar closing an SE block (and mirrored before
-  /// its start) — Toei notation, R5-⑦: frame-width, not a short tick.
-  void _paintSeEndUnderline(
-    Canvas canvas, {
-    required double centerX,
-    required double columnWidth,
-    required double y,
-  }) {
-    _paintSeRedBar(
-      canvas,
-      columnLeft: centerX - columnWidth / 2,
-      columnWidth: columnWidth,
-      y: y,
-    );
-  }
-
+  /// its start) — Toei notation, R5-⑦: frame-width, not a short tick. ONE
+  /// geometry with the name box and the SE column itself (R7-②).
   void _paintSeRedBar(
     Canvas canvas, {
     required double columnLeft,

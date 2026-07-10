@@ -508,9 +508,10 @@ void main() {
           },
         ),
       );
+      // R7-⑥: the episode box (Ep.no) leads, like the reference forms.
       expect(trimmed.visibleHeaderFields, const [
-        TimesheetHeaderField.title,
         TimesheetHeaderField.episode,
+        TimesheetHeaderField.title,
         TimesheetHeaderField.cut,
         TimesheetHeaderField.time,
         TimesheetHeaderField.name,

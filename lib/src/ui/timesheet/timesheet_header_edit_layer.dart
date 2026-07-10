@@ -7,7 +7,7 @@ import '../theme/app_theme.dart';
 import 'timesheet_document_painter.dart';
 
 /// Tap-to-edit for the sheet's typed header text: the TimesheetInfo-backed
-/// header boxes (TITLE / # / SCENE / NAME) and the Direction memo band
+/// header boxes (Ep.no / Title / Scene / Name) and the Direction memo band
 /// (the per-cut note) take a tap and swap in a TextField positioned right
 /// over the box under the panel viewport transform — editing in place on
 /// the paper.
@@ -202,10 +202,11 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
   }
 
   /// The in-place editor, split in two: an outline over the whole box (the
-  /// printed 'TITLE' label etc. stays visible through it) and the TextField
+  /// printed 'Title' label etc. stays visible through it) and the TextField
   /// positioned on the painter's EXACT text geometry — header values paint
-  /// top-left at (left+8, top+26) @14 w600, the memo at (left+8, top+6)
-  /// @11 — so editing happens literally on the printed glyphs (WYSIWYG).
+  /// CENTERED at y top+26 @14 w600 (R7-⑥ reference layout), the memo
+  /// top-left at (left+8, top+6) @11 over the full open band — so editing
+  /// happens literally on the printed glyphs (WYSIWYG).
   List<Widget> _buildEditor(_EditTarget target) {
     final zoom = widget.viewport.zoom;
     final boxRect = _screenRect(target.documentRect);
@@ -214,24 +215,22 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
 
     final Rect textRect;
     if (memo) {
-      // Left of the framed memo box, same inset as the painted cut note.
-      final memoBoxWidth =
-          target.documentRect.width *
-          TimesheetDocumentLayout.memoBoxWidthFraction;
+      // The full open band, same inset as the painted cut note (the framed
+      // memo box is retired — R7-⑥).
       textRect = _screenRect(
         Rect.fromLTRB(
           target.documentRect.left + 8,
           target.documentRect.top + 6,
-          target.documentRect.right - memoBoxWidth - 12,
+          target.documentRect.right - 8,
           target.documentRect.bottom - 6,
         ),
       );
     } else {
       textRect = _screenRect(
         Rect.fromLTRB(
-          target.documentRect.left + 8,
+          target.documentRect.left + 6,
           target.documentRect.top + 26,
-          target.documentRect.right - 8,
+          target.documentRect.right - 6,
           target.documentRect.bottom - 4,
         ),
       );
@@ -280,6 +279,9 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
               maxLines: memo ? null : 1,
               expands: memo,
               onSubmitted: memo ? null : (_) => _commit(),
+              // Header values print centered (R7-⑥); the memo stays
+              // top-left like handwriting.
+              textAlign: memo ? TextAlign.start : TextAlign.center,
               style: TextStyle(
                 color: const Color(0xFF33322F),
                 fontSize: fontSize,
