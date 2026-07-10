@@ -53,7 +53,7 @@ void main() {
     );
   });
 
-  testWidgets('File: export opens; the persistence slots wait disabled', (
+  testWidgets('File: export opens; the persistence entries are live (P3)', (
     tester,
   ) async {
     await pumpHome(tester);
@@ -63,7 +63,7 @@ void main() {
       final item = tester.widget<MenuItemButton>(
         find.byKey(ValueKey<String>('menu-$slot')),
       );
-      expect(item.onPressed, isNull, reason: '$slot ships disabled until P3');
+      expect(item.onPressed, isNotNull, reason: '$slot is live since P3');
     }
 
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-export')));

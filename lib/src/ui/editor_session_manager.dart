@@ -59,6 +59,8 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/persistence/project_autosave_service.dart';
+import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
@@ -97,6 +99,10 @@ class EditorSessionManager extends ChangeNotifier {
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
     audioPlaybackSync.attach();
     playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
+    // Dirty tracking (P3): every history change — commands, undo/redo and
+    // brush strokes, which execute here straight from the canvas — marks
+    // the project unsaved.
+    _historyManager.addListener(_markProjectDirty);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -457,6 +463,7 @@ class EditorSessionManager extends ChangeNotifier {
   void dispose() {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
+    _historyManager.removeListener(_markProjectDirty);
     audioPlaybackSync.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
@@ -3040,6 +3047,93 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.value = frameIndex;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
+  }
+
+  // --- Project persistence (P3: the .qap container) -------------------------
+
+  static const QapFileService _qapFileService = QapFileService();
+
+  String? _projectFilePath;
+
+  /// The open project's file path; null until first saved/opened (Save
+  /// falls back to Save As).
+  String? get projectFilePath => _projectFilePath;
+
+  bool _hasUnsavedChanges = false;
+
+  /// Whether edits exist since the last save/open (autosave + title dots).
+  bool get hasUnsavedChanges => _hasUnsavedChanges;
+
+  void _markProjectDirty() {
+    _hasUnsavedChanges = true;
+  }
+
+  /// The autosave sidecar for the CURRENT state: next to the saved file,
+  /// or in the app-data autosave folder while never saved.
+  String get autosaveSidecarPath {
+    final path = _projectFilePath;
+    if (path != null) {
+      return '$path.autosave';
+    }
+    final projectId = _repository.requireProject().id.value;
+    return '${ProjectAutosaveService.defaultUnsavedAutosaveDirectory()}/'
+        '$projectId.qap.autosave';
+  }
+
+  /// Writes the current state to [path] WITHOUT touching the dirty flag or
+  /// the project path — the autosave service's snapshot writer.
+  Future<void> writeAutosaveSnapshot(String path) {
+    return _qapFileService.save(
+      project: _repository.requireProject(),
+      brushFrameStore: brushFrameStore,
+      filePath: path,
+    );
+  }
+
+  /// Saves the project + every drawn frame into ONE .qap file (atomic
+  /// temp-then-rename write; media stays external with relative paths
+  /// recorded for Drive portability). A successful save retires the
+  /// autosave sidecar.
+  Future<void> saveProjectToFile(String filePath) async {
+    final previousSidecar = autosaveSidecarPath;
+    await _qapFileService.save(
+      project: _repository.requireProject(),
+      brushFrameStore: brushFrameStore,
+      filePath: filePath,
+    );
+    _projectFilePath = filePath;
+    _hasUnsavedChanges = false;
+    // Awaited: a still-in-flight delete could otherwise race a following
+    // autosave tick and eat its fresh sidecar.
+    await ProjectAutosaveService.deleteSidecar(previousSidecar);
+    await ProjectAutosaveService.deleteSidecar('$filePath.autosave');
+    notifyListeners();
+  }
+
+  /// Opens a .qap file, replacing the WHOLE session state: project,
+  /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
+  /// (loaded state has no history; the load→draw→undo path is pinned by
+  /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
+  /// real file as the project path (the recovery flow).
+  Future<void> openProjectFromFile(String filePath, {String? recoverAs}) async {
+    final result = await _qapFileService.open(filePath: filePath);
+    playback.stop();
+    _repository.replaceProject(result.project);
+    brushFrameStore.restoreDrawings({
+      for (final entry in result.drawings) entry.key: entry.commands,
+    });
+    _historyManager.clear();
+    _copiedFrame = null;
+    _layerClipboard = null;
+    _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
+    _rebuildActiveCutControllers();
+    _projectFilePath = recoverAs ?? filePath;
+    // A recovered session stays dirty: its content differs from the real
+    // file until the user saves.
+    _hasUnsavedChanges = recoverAs != null;
+    _warmActiveCut();
+    frameSeekCommitted.value += 1;
+    notifyListeners();
   }
 
   // --- Frame flipping (P1 shortcuts) ----------------------------------------

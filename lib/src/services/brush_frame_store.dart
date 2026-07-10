@@ -57,6 +57,34 @@ class BrushFrameStore {
     _displayCaches.clear();
   }
 
+  /// Every drawn frame's VISIBLE commands (source dabs included) — the
+  /// .qap save payload (P3). The same command list export replays
+  /// (allPaintCommandsInDisplayOrder), so a saved file reproduces exactly
+  /// the picture on screen; hidden-by-undo and bake bookkeeping stay
+  /// session-local.
+  Map<BrushFrameKey, List<BrushPaintCommand>> drawingsSnapshotForSave() {
+    return {
+      for (final entry in _frames.entries)
+        if (entry.value.allPaintCommandsInDisplayOrder.isNotEmpty)
+          entry.key: entry.value.allPaintCommandsInDisplayOrder,
+    };
+  }
+
+  /// Replaces the WHOLE store with loaded drawings (project open): every
+  /// frame reseeds live at sourceRevision 1, so pre-load display caches and
+  /// composite signatures can never match stale content.
+  void restoreDrawings(Map<BrushFrameKey, List<BrushPaintCommand>> drawings) {
+    _frames.clear();
+    _displayCaches.clear();
+    for (final entry in drawings.entries) {
+      _frames[entry.key] = BrushFrameDrawingState(
+        key: entry.key,
+        paintCommands: entry.value,
+        sourceRevision: 1,
+      );
+    }
+  }
+
   /// Shifts every stored stroke of [cutId]'s frames by ([dx], [dy]) in canvas
   /// space, for canvas resizes anchored anywhere but the top-left corner.
   /// Coordinates are doubles, so the inverse translation restores them

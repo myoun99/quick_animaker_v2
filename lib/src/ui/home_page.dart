@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
+import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'editor_session_manager.dart';
@@ -54,6 +55,10 @@ class _HomePageState extends State<HomePage> {
         : ShortcutSettingsStore(),
   );
 
+  /// Autosave (P3): periodic dirty-session snapshots into the sidecar.
+  /// Never runs under FLUTTER_TEST (tests drive the service directly).
+  ProjectAutosaveService? _autosave;
+
   // NO whole-page session setState: rebuilding the app bar and every dock
   // and panel on every session notify was the editing jank's biggest
   // multiplier. Each panel host subscribes to the session itself; the app
@@ -65,10 +70,18 @@ class _HomePageState extends State<HomePage> {
     _session = EditorSessionManager(initialProject: project);
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      _autosave = ProjectAutosaveService(
+        isDirty: () => _session.hasUnsavedChanges,
+        writeSnapshot: _session.writeAutosaveSnapshot,
+        autosavePath: () => _session.autosaveSidecarPath,
+      )..start();
+    }
   }
 
   @override
   void dispose() {
+    _autosave?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
