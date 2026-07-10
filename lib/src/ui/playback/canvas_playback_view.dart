@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
+import '../../models/transform_track.dart';
 import '../storyboard_cut_fade_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
@@ -108,6 +110,34 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
+    // The cut-level transform (V track, AE precomp semantics), display-time
+    // only — never baked into the composite cache. Camera mode resolves the
+    // pose over the camera frame (the space the lanes author in); CANVAS
+    // mode remaps that same camera-space pose onto the canvas
+    // (cutPoseForCanvasPreview) — resolving over the canvas instead read
+    // every key in the wrong space and snapped the picture top-left (R8-③).
+    TransformPose? cutPose;
+    CanvasPoint? cutAnchorPoint;
+    if (cut != null && position != null && cutPoseIsActive(cut)) {
+      if (widget.cameraViewEnabled) {
+        cutPose = cutPoseAt(
+          cut,
+          position.localFrameIndex,
+          widget.cameraFrameSize,
+        );
+        cutAnchorPoint = cutAnchorPointAt(cut, position.localFrameIndex);
+      } else {
+        final preview = cutPoseForCanvasPreview(
+          cut,
+          position.localFrameIndex,
+          cameraFrameSize: widget.cameraFrameSize,
+          canvasSize: canvasSize,
+        );
+        cutPose = preview.pose;
+        cutAnchorPoint = preview.anchorPoint;
+      }
+    }
+
     return GestureDetector(
       key: const ValueKey<String>('canvas-playback-view'),
       behavior: HitTestBehavior.opaque,
@@ -128,25 +158,8 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cameraFrameSize: widget.cameraViewEnabled
                   ? widget.cameraFrameSize
                   : null,
-              // The cut-level transform (V track, AE precomp semantics)
-              // and the cut fade: both applied at display time, never
-              // baked into the composite cache (it would shard entries
-              // per frame). The pose resolves over the same display space
-              // the painter draws — camera frame in camera mode, canvas
-              // otherwise.
-              cutPose: cut != null && position != null && cutPoseIsActive(cut)
-                  ? cutPoseAt(
-                      cut,
-                      position.localFrameIndex,
-                      widget.cameraViewEnabled
-                          ? widget.cameraFrameSize
-                          : canvasSize,
-                    )
-                  : null,
-              cutAnchorPoint:
-                  cut != null && position != null && cutPoseIsActive(cut)
-                  ? cutAnchorPointAt(cut, position.localFrameIndex)
-                  : null,
+              cutPose: cutPose,
+              cutAnchorPoint: cutAnchorPoint,
               fadeOpacity: cut != null && position != null
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
