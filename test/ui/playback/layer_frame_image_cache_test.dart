@@ -11,9 +11,12 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:quick_animaker_v2/src/ui/playback/layer_frame_image_cache.dart';
 
 void main() {
@@ -184,6 +187,62 @@ void main() {
       cache.invalidateFrame(key('frame-a'));
 
       expect(cache.estimatedBytes, 0);
+      cache.dispose();
+    });
+  });
+
+  testWidgets('prepareSyncOrNull composes synchronously from decoded tiles '
+      'and falls back to null on cold tiles (layer-switch handoff)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+
+      // Cold tiles: nothing decoded in the shared tile cache yet.
+      expect(
+        cache.prepareSyncOrNull(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+        ),
+        isNull,
+      );
+
+      // Decode the frame's tiles the way the on-screen editing canvas
+      // keeps them (the just-deactivated layer's tiles are always warm).
+      final preview = BrushFrameDisplayCacheService(
+        frameStore: store,
+        renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+      ).prepareFramePreview(key('frame-a')).previewSurface;
+      for (final tile in preview.tiles.values) {
+        BitmapTileImageCache.instance.ensureDecoded(tile);
+      }
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (!BitmapTileImageCache.instance.allDecoded(preview.tiles.values)) {
+        expect(DateTime.now().isBefore(deadline), isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      final synced = cache.prepareSyncOrNull(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+      );
+      expect(synced, isNotNull);
+      expect(synced!.width, 8);
+      expect(
+        identical(
+          cache.validImageOrNull(
+            key('frame-a'),
+            PlaybackQuality.full,
+            canvasSize: canvasSize,
+          ),
+          synced,
+        ),
+        isTrue,
+        reason: 'the sync compose lands in the cache like prepare does',
+      );
       cache.dispose();
     });
   });

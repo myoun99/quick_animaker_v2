@@ -30,25 +30,23 @@ class _HomePageState extends State<HomePage> {
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
 
+  // NO whole-page session setState: rebuilding the app bar and every dock
+  // and panel on every session notify was the editing jank's biggest
+  // multiplier. Each panel host subscribes to the session itself; the app
+  // bar's undo/redo buttons carry their own ListenableBuilder below.
   @override
   void initState() {
     super.initState();
     final project = widget.initialProject ?? createDefaultProject();
-    _session = EditorSessionManager(initialProject: project)
-      ..addListener(_onSessionChanged);
+    _session = EditorSessionManager(initialProject: project);
     widget.onRepositoryCreated?.call(_session.repository);
   }
 
   @override
   void dispose() {
-    _session.removeListener(_onSessionChanged);
     _session.dispose();
     _panelsMenu.dispose();
     super.dispose();
-  }
-
-  void _onSessionChanged() {
-    setState(() {});
   }
 
   @override
@@ -77,17 +75,25 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          IconButton(
-            key: const ValueKey<String>('undo-button'),
-            tooltip: 'Undo',
-            onPressed: _session.canUndo ? _session.undo : null,
-            icon: const Icon(Icons.undo),
-          ),
-          IconButton(
-            key: const ValueKey<String>('redo-button'),
-            tooltip: 'Redo',
-            onPressed: _session.canRedo ? _session.redo : null,
-            icon: const Icon(Icons.redo),
+          ListenableBuilder(
+            listenable: _session,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const ValueKey<String>('undo-button'),
+                  tooltip: 'Undo',
+                  onPressed: _session.canUndo ? _session.undo : null,
+                  icon: const Icon(Icons.undo),
+                ),
+                IconButton(
+                  key: const ValueKey<String>('redo-button'),
+                  tooltip: 'Redo',
+                  onPressed: _session.canRedo ? _session.redo : null,
+                  icon: const Icon(Icons.redo),
+                ),
+              ],
+            ),
           ),
           IconButton(
             key: const ValueKey<String>('export-png-button'),

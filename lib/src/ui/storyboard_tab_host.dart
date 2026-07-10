@@ -210,6 +210,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   playheadGlobalFrame: storyboardPlayheadFrame(_session),
                   onSeekGlobalFrame: (frame) =>
                       seekStoryboardGlobalFrame(_session, frame),
+                  // Ruler drags ride the cursor path (the host rebuilds
+                  // per cursor move — the same cost playback ticks pay);
+                  // the release commits the selection once.
+                  onScrubGlobalFrame: (frame) =>
+                      scrubStoryboardGlobalFrame(_session, frame),
+                  onScrubEnd: () => commitStoryboardScrub(_session),
                   isFrameCached: (frame) =>
                       storyboardFrameCached(_session, frame),
                   thumbnailFor: widget.thumbnailFor,

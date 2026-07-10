@@ -112,6 +112,47 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   }
 }
 
+/// Ruler drag moves: playback keeps seeking the clock per move; editing
+/// scrubs ride the session cursor path inside the ACTIVE cut (no notify,
+/// canvas preview follows) and fall back to the full seek only when the
+/// drag crosses into another cut — the cut switch is a real selection.
+void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
+  if (session.playback.isActive) {
+    seekStoryboardGlobalFrame(session, globalFrame);
+    return;
+  }
+  final layout = storyboardActiveTrackLayout(session);
+  if (layout.isEmpty) {
+    return;
+  }
+  for (final entry in layout) {
+    if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
+      if (entry.cutId == session.activeCutId) {
+        session.scrubFrameIndex(globalFrame - entry.startFrame);
+      } else {
+        seekStoryboardGlobalFrame(session, globalFrame);
+      }
+      return;
+    }
+  }
+  final last = layout.last;
+  if (globalFrame >= last.endFrame) {
+    if (last.cutId == session.activeCutId) {
+      session.scrubFrameIndex(globalFrame - last.startFrame);
+    } else {
+      seekStoryboardGlobalFrame(session, globalFrame);
+    }
+  }
+}
+
+/// The storyboard ruler drag's release: commits the scrubbed playhead once
+/// (playback drags have nothing to commit).
+void commitStoryboardScrub(EditorSessionManager session) {
+  if (!session.playback.isActive) {
+    session.commitFrameScrub();
+  }
+}
+
 /// Switching into the storyboard clamps an over-end playhead back onto the
 /// cut (except on the track's last cut, whose runway can show it) so the
 /// frame counter and the playhead line agree.

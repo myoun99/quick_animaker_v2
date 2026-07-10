@@ -87,6 +87,8 @@ class StoryboardPanel extends StatefulWidget {
     this.projectFps = 24,
     this.playheadGlobalFrame,
     this.onSeekGlobalFrame,
+    this.onScrubGlobalFrame,
+    this.onScrubEnd,
     this.isFrameCached,
     this.thumbnailFor,
     this.audioPeaksFor,
@@ -163,6 +165,12 @@ class StoryboardPanel extends StatefulWidget {
   /// Tapping or scrubbing the ruler reports the track-global frame under
   /// the pointer. Null makes the ruler display-only.
   final ValueChanged<int>? onSeekGlobalFrame;
+
+  /// Ruler-drag scrub path: per-move frames go here (cursor-only, no
+  /// commit) and the drag's release fires [onScrubEnd] to commit once.
+  /// Null falls back to [onSeekGlobalFrame] per move.
+  final ValueChanged<int>? onScrubGlobalFrame;
+  final VoidCallback? onScrubEnd;
 
   /// Cached-range resolver in track-global frames for the ruler's green
   /// strip (same look as the timeline header's).
@@ -431,6 +439,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   viewportWidth: viewportWidth,
                                   timelineScale: scale,
                                   onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                                  onScrubGlobalFrame: widget.onScrubGlobalFrame,
+                                  onScrubEnd: widget.onScrubEnd,
                                   isFrameCached: widget.isFrameCached,
                                 ),
                               ),
@@ -881,6 +891,8 @@ class _StoryboardRuler extends StatelessWidget {
     required this.viewportWidth,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
+    required this.onScrubGlobalFrame,
+    required this.onScrubEnd,
     required this.isFrameCached,
   });
 
@@ -900,18 +912,28 @@ class _StoryboardRuler extends StatelessWidget {
   final double viewportWidth;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
+
+  /// Drag-scrub path (cursor-only per move + one commit on release); null
+  /// falls back to per-move seeks.
+  final ValueChanged<int>? onScrubGlobalFrame;
+  final VoidCallback? onScrubEnd;
+
   final bool Function(int globalFrame)? isFrameCached;
 
-  void _seekFrame(int frame) {
-    final onSeek = onSeekGlobalFrame;
-    if (onSeek == null || contentFrames <= 0 || renderedFrames <= 0) {
+  void _reportFrame(ValueChanged<int>? sink, int frame) {
+    if (sink == null || contentFrames <= 0 || renderedFrames <= 0) {
       return;
     }
-    onSeek(frame.clamp(0, renderedFrames - 1));
+    sink(frame.clamp(0, renderedFrames - 1));
   }
 
-  void _seekAt(double dx) {
-    _seekFrame((dx / timelineScale.pixelsPerFrame).floor());
+  void _seekFrame(int frame) => _reportFrame(onSeekGlobalFrame, frame);
+
+  void _scrubAt(double dx) {
+    _reportFrame(
+      onScrubGlobalFrame ?? onSeekGlobalFrame,
+      (dx / timelineScale.pixelsPerFrame).floor(),
+    );
   }
 
   @override
@@ -940,9 +962,13 @@ class _StoryboardRuler extends StatelessWidget {
       // are the header cells' own InkWells.
       dragStartBehavior: DragStartBehavior.down,
       // Scrubbing claims horizontal drags on the ruler strip only; the
-      // track rows below still pan the panel.
-      onHorizontalDragStart: (details) => _seekAt(details.localPosition.dx),
-      onHorizontalDragUpdate: (details) => _seekAt(details.localPosition.dx),
+      // track rows below still pan the panel. Moves ride the cursor path
+      // (no commit); the release commits once. Header-cell taps stay full
+      // seeks through their own InkWells.
+      onHorizontalDragStart: (details) => _scrubAt(details.localPosition.dx),
+      onHorizontalDragUpdate: (details) => _scrubAt(details.localPosition.dx),
+      onHorizontalDragEnd: (_) => onScrubEnd?.call(),
+      onHorizontalDragCancel: () => onScrubEnd?.call(),
       child: SizedBox(
         width: width,
         height: StoryboardPanel._rulerHeight,

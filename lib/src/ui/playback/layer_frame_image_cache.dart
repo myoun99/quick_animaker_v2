@@ -108,6 +108,52 @@ class LayerFrameImageCache {
     return image;
   }
 
+  /// Synchronous fast path for the editing canvas's layer-switch handoff:
+  /// the valid cached image, or — full quality only — a sync compose from
+  /// tiles already decoded in the shared tile cache (the just-deactivated
+  /// on-screen frame's tiles always are). `null` means the caller must
+  /// fall back to [prepare].
+  ui.Image? prepareSyncOrNull({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+  }) {
+    final cached = validImageOrNull(key, quality, canvasSize: canvasSize);
+    if (cached != null) {
+      return cached;
+    }
+    if (quality != PlaybackQuality.full) {
+      return null;
+    }
+
+    final drawing = frameStore.frameOrNull(key);
+    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+      return null;
+    }
+    final revision = drawing.sourceRevision;
+
+    final preview = BrushFrameDisplayCacheService(
+      frameStore: frameStore,
+      renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+    ).prepareFramePreview(key).previewSurface;
+    final image = composeTiledSurfaceImageSyncOrNull(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+    );
+    if (image == null) {
+      return null;
+    }
+
+    _dropEntry((key, quality));
+    _entries[(key, quality)] = _LayerFrameImageEntry(
+      image: image,
+      sourceRevision: revision,
+      canvasSize: canvasSize,
+      lastUsed: ++_useCounter,
+    );
+    return image;
+  }
+
   /// Eagerly drops every quality of one layer frame (sink-event eviction).
   void invalidateFrame(BrushFrameKey key) {
     for (final quality in PlaybackQuality.values) {
