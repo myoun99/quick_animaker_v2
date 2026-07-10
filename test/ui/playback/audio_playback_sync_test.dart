@@ -374,6 +374,85 @@ void main() {
     expect(mutedLog, ['prepare c.wav', 'start c.wav @0ms']);
   });
 
+  test('track-owned SE sounds keep playing through played cut gaps; a '
+      'gap-starting sound fires on its exact frame (W3c)', () {
+    // Track: cut A [0,10), gap [10,15), cut B [15,25). Track SE rows on
+    // the global axis: g.wav spans [8,18) ACROSS the gap; h.wav starts
+    // INSIDE it at 12 (length 5 → [12,17)).
+    final gapLog = <String>[];
+    final project = Project(
+      id: const ProjectId('gap-project'),
+      name: 'Gap',
+      createdAt: DateTime.utc(2026, 7, 11),
+      tracks: [
+        Track(
+          id: const TrackId('gap-track'),
+          name: 'Video',
+          seLayers: [
+            _seLayer('se-g', file: 'g.wav', start: 8, length: 10),
+            _seLayer('se-h', file: 'h.wav', start: 12, length: 5),
+          ],
+          cuts: [
+            Cut(
+              id: const CutId('gap-a'),
+              name: 'A',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: const [],
+            ),
+            Cut(
+              id: const CutId('gap-b'),
+              name: 'B',
+              duration: 10,
+              leadingGapFrames: 5,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: const [],
+            ),
+          ],
+        ),
+      ],
+    );
+    final gapController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('gap-a'),
+      resolveActiveTrackId: () => const TrackId('gap-track'),
+      resolveFps: () => 10,
+    );
+    final sync = AudioPlaybackSync(
+      controller: gapController,
+      resolveFps: () => 10,
+      durationSecondsFor: (path) => const {'g.wav': 1.0, 'h.wav': 0.5}[path],
+      playerFactory: () => _FakeClipPlayer(gapLog),
+      resolveProject: () => project,
+    )..attach();
+    addTearDown(sync.dispose);
+    addTearDown(gapController.dispose);
+
+    gapController.play(scope: PlaybackScope.allCuts, startGlobalFrame: 8);
+    expect(gapLog, ['prepare g.wav', 'prepare h.wav', 'start g.wav @0ms']);
+
+    // Ticking into the gap does NOT stop g — audio lives on the global
+    // axis and the clock plays through the gap. (The regression: the run
+    // used to break at the gap, clipping g at frame 10.)
+    gapLog.clear();
+    gapController.seekToGlobalFrame(11);
+    expect(gapLog, isEmpty);
+
+    // The gap-starting sound fires exactly on its frame, mid-gap.
+    gapController.seekToGlobalFrame(12);
+    expect(gapLog, ['start h.wav @0ms']);
+
+    // Both true ends hold — the cut boundary at 15 stops nothing.
+    gapLog.clear();
+    gapController.seekToGlobalFrame(16);
+    expect(gapLog, isEmpty);
+    gapController.seekToGlobalFrame(17);
+    expect(gapLog, ['stop h.wav']);
+    gapLog.clear();
+    gapController.seekToGlobalFrame(18);
+    expect(gapLog, ['stop g.wav']);
+  });
+
   test('gain and fades ramp the volume per tick, clamped into 0..1', () {
     // One 10-frame cut: gain 2.0 (platform-clamped to 1), fade-in over 4
     // frames, fade-out over 5 anchored at the audible end (10).

@@ -121,6 +121,51 @@ void main() {
       expect(clamped.map((task) => task.frameIndex), [0, 1, 2, 3, 4]);
     });
 
+    test('includeGaps adds black-frame tasks (negative indexes) so video '
+        'matches all-cuts playback; the default and single-cut ranges skip '
+        'them', () {
+      final tracks = [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            cut('a', duration: 2),
+            cut('b', duration: 3).copyWith(leadingGapFrames: 2),
+          ],
+        ),
+      ];
+
+      final video = buildExportFramePlan(
+        project: project(tracks),
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+        includeGaps: true,
+      );
+      expect(video.map((task) => task.frameIndex), [0, 1, -2, -1, 0, 1, 2]);
+      expect(video.map((task) => task.cut.id.value), [
+        'a', 'a', 'b', 'b', 'b', 'b', 'b', //
+      ]);
+      expect(video.where((task) => task.isGap), hasLength(2));
+
+      // The default (PNG sequences) collapses the gap.
+      final png = buildExportFramePlan(
+        project: project(tracks),
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+      );
+      expect(png.map((task) => task.frameIndex), [0, 1, 0, 1, 2]);
+
+      // A single-cut range never plays its leading gap, so it never
+      // exports one either.
+      final single = buildExportFramePlan(
+        project: project(tracks),
+        activeCutId: const CutId('b'),
+        range: ExportRange.activeCut,
+        includeGaps: true,
+      );
+      expect(single.map((task) => task.frameIndex), [0, 1, 2]);
+    });
+
     test('a zero-duration cut still exports one frame (playback floor)', () {
       final plan = buildExportFramePlan(
         project: project([
@@ -523,6 +568,83 @@ void main() {
           durationSeconds: 0.4,
         ),
       ]);
+    });
+
+    test('track-owned SE sounds run THROUGH exported gap frames and '
+        're-clamp when the plan collapses the gap', () {
+      // Track: cut a (10 frames) + cut b (20 frames, 5-frame leading gap →
+      // gap = track frames 10..14). Track SE rows on the global axis:
+      // g.wav spans [8, 18) across the gap; h.wav starts INSIDE it at 12.
+      final proj = project([
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          seLayers: [
+            seLayer('se-g', file: 'g.wav', start: 8, length: 10),
+            seLayer('se-h', file: 'h.wav', start: 12, length: 5),
+          ],
+          cuts: [
+            cut('a', duration: 10),
+            cut('b', duration: 20).copyWith(leadingGapFrames: 5),
+          ],
+        ),
+      ]);
+
+      // Video plan (gaps exported as black): the track axis and the export
+      // axis stay in lockstep — sounds keep running through the gap, and a
+      // gap-starting sound lands on its exact frame.
+      final videoPlan = buildExportFramePlan(
+        project: proj,
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+        includeGaps: true,
+      );
+      expect(
+        buildExportAudioPlan(plan: videoPlan, fps: 10, project: proj),
+        const [
+          ExportAudioClip(
+            filePath: 'g.wav',
+            delaySeconds: 0.8,
+            durationSeconds: 1.0,
+          ),
+          ExportAudioClip(
+            filePath: 'h.wav',
+            delaySeconds: 1.2,
+            durationSeconds: 0.5,
+          ),
+        ],
+      );
+
+      // A gap-skipping plan collapses the timeline: the run breaks at the
+      // gap, sounds re-sync to the track axis on the far side (seek bumps)
+      // and the purely-in-gap stretch goes silent.
+      final collapsedPlan = buildExportFramePlan(
+        project: proj,
+        activeCutId: const CutId('a'),
+        range: ExportRange.allCuts,
+      );
+      expect(
+        buildExportAudioPlan(plan: collapsedPlan, fps: 10, project: proj),
+        const [
+          ExportAudioClip(
+            filePath: 'g.wav',
+            delaySeconds: 0.8,
+            durationSeconds: 0.2,
+          ),
+          ExportAudioClip(
+            filePath: 'g.wav',
+            seekSeconds: 0.7,
+            delaySeconds: 1.0,
+            durationSeconds: 0.3,
+          ),
+          ExportAudioClip(
+            filePath: 'h.wav',
+            seekSeconds: 0.3,
+            delaySeconds: 1.0,
+            durationSeconds: 0.2,
+          ),
+        ],
+      );
     });
 
     test('gain and fades land on the plan; a range starting mid-fade keeps '

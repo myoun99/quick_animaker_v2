@@ -126,6 +126,24 @@ class ExportFrameRenderer {
     ExportFrameTask task,
     ExportSizeMode mode,
   ) async {
+    if (task.isGap) {
+      // A leading-gap frame: nothing plays — solid black, exactly what
+      // playback shows in the gap.
+      final size = mode == ExportSizeMode.camera
+          ? session.cameraFrameSize
+          : task.cut.canvasSize;
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawRect(
+        ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+        ui.Paint()..color = const ui.Color(0xFF000000),
+      );
+      final picture = recorder.endRecording();
+      try {
+        return await picture.toImage(size.width, size.height);
+      } finally {
+        picture.dispose();
+      }
+    }
     final image = await renderComposite(task, mode);
     final fade = task.cut.fadeOpacityAt(task.frameIndex);
     final poseActive = cutPoseIsActive(task.cut);

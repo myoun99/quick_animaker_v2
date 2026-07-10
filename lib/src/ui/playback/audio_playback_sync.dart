@@ -364,7 +364,10 @@ class AudioPlaybackSync {
       }
 
       /// The playlist frame where the contiguous run starting at
-      /// [entryIndex] ends (both playlist- and track-contiguous).
+      /// [entryIndex] ends. Contiguous = the playlist and track axes
+      /// advance by the SAME amount between entries — back-to-back cuts,
+      /// or a leading gap the playlist plays through as black. Sounds keep
+      /// running through played gaps (audio lives on the global axis).
       int contiguousPlaylistEndFrom(int entryIndex) {
         var end = playlist[entryIndex].endFrame;
         var trackEnd =
@@ -375,8 +378,8 @@ class AudioPlaybackSync {
           final next = playlist[i];
           final nextTrackStart = trackStartByCutId[next.cutId];
           if (nextTrackStart == null ||
-              next.startFrame != end ||
-              nextTrackStart != trackEnd ||
+              next.startFrame < end ||
+              next.startFrame - end != nextTrackStart - trackEnd ||
               !identical(trackByCutId[next.cutId], track)) {
             break;
           }
@@ -393,21 +396,31 @@ class AudioPlaybackSync {
         if (track == null || cutTrackStart == null) {
           continue;
         }
-        final windowStart = cutTrackStart;
-        final windowEnd = cutTrackStart + entry.duration;
         // A run-start entry also carries sounds spilling in from before
         // the playlist window (offset-bumped); interior entries only emit
-        // spans STARTING in their window (no duplicates).
+        // spans STARTING in their window (no duplicates). The window
+        // extends back over the entry's PLAYED leading gap — playlist
+        // frames before the cut that map 1:1 onto the track frames before
+        // it — so sounds starting inside a gap are scheduled too.
         final previous = i == 0 ? null : playlist[i - 1];
         final previousTrackStart = previous == null
             ? null
             : trackStartByCutId[previous.cutId];
-        final isRunStart =
-            previous == null ||
-            previousTrackStart == null ||
-            previous.endFrame != entry.startFrame ||
-            previousTrackStart + previous.duration != windowStart ||
-            !identical(trackByCutId[previous.cutId], track);
+        final playlistLead = entry.startFrame - (previous?.endFrame ?? 0);
+        final axesAligned = previous == null
+            // The playlist head maps straight onto the track axis
+            // (all-cuts playlists ARE the track axis; a rebased
+            // single-cut playlist has no lead at all).
+            ? playlistLead >= 0
+            : previousTrackStart != null &&
+                  identical(trackByCutId[previous.cutId], track) &&
+                  playlistLead >= 0 &&
+                  cutTrackStart - (previousTrackStart + previous.duration) ==
+                      playlistLead;
+        final coveredLead = axesAligned ? playlistLead : 0;
+        final isRunStart = previous == null || !axesAligned;
+        final windowStart = cutTrackStart - coveredLead;
+        final windowEnd = cutTrackStart + entry.duration;
         final runEnd = contiguousPlaylistEndFrom(i);
 
         for (final layer in track.seLayers) {
@@ -428,8 +441,11 @@ class AudioPlaybackSync {
             final clippedLead = spillsIntoRunStart
                 ? windowStart - span.startFrame
                 : 0;
+            // entry.startFrame - coveredLead = the playlist frame the
+            // (gap-extended) window begins at.
             final startFrame =
-                entry.startFrame +
+                entry.startFrame -
+                coveredLead +
                 (spillsIntoRunStart ? 0 : span.startFrame - windowStart);
             var endFrameExclusive = math.min(
               runEnd,

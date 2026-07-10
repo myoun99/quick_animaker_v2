@@ -2740,23 +2740,24 @@ class _StoryboardTrackRow extends StatelessWidget {
               ),
             // Trim grips paint over the block edges (their 12px strips win
             // pointer contests there; block taps/reorder keep the middle).
+            // The start grip SLIDES the cut (gap authoring) — every cut has
+            // one, the first included.
             if (cutTrim != null)
               for (final entry in layoutEntries) ...[
-                if (entry.cutIndex > 0)
-                  _StoryboardCutEdgeGrip(
-                    cutId: entry.cutId,
-                    cutOrdinal: entry.cutIndex,
-                    edge: TimelineBlockEdge.start,
-                    blockStartOffset: timelineScale.leftForFrame(
-                      entry.startFrame,
-                    ),
-                    blockEndOffset:
-                        timelineScale.leftForFrame(entry.startFrame) +
-                        timelineScale.widthForDuration(entry.duration),
-                    frameCellExtent: timelineScale.pixelsPerFrame,
-                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
-                    callbacks: cutTrim!,
+                _StoryboardCutEdgeGrip(
+                  cutId: entry.cutId,
+                  cutOrdinal: entry.cutIndex,
+                  edge: TimelineBlockEdge.start,
+                  blockStartOffset: timelineScale.leftForFrame(
+                    entry.startFrame,
                   ),
+                  blockEndOffset:
+                      timelineScale.leftForFrame(entry.startFrame) +
+                      timelineScale.widthForDuration(entry.duration),
+                  frameCellExtent: timelineScale.pixelsPerFrame,
+                  crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                  callbacks: cutTrim!,
+                ),
                 _StoryboardCutEdgeGrip(
                   cutId: entry.cutId,
                   cutOrdinal: entry.cutIndex,

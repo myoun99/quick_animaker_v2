@@ -23,12 +23,18 @@ enum ExportSizeMode { camera, canvas }
 /// (one .xdts per cut — sheet data, no rendering).
 enum ExportFormat { pngSequence, mp4Video, xdtsTimesheet }
 
-/// One composited output frame: [cut]'s local [frameIndex].
+/// One composited output frame: [cut]'s local [frameIndex]. A negative
+/// [frameIndex] is a frame of [cut]'s LEADING GAP (empty space before the
+/// cut, played and exported as black): -1 is the gap frame right before
+/// local 0, -leadingGapFrames the gap's first.
 class ExportFrameTask {
   const ExportFrameTask({required this.cut, required this.frameIndex});
 
   final Cut cut;
   final int frameIndex;
+
+  /// Renders as a black frame instead of compositing [cut].
+  bool get isGap => frameIndex < 0;
 }
 
 /// One instance (cel) output: a unique authored [frame] of [layer], exported
@@ -139,12 +145,19 @@ List<Cut> resolveExportCuts({
 /// one frame (same floor playback uses). For [ExportRange.frameRange] the
 /// 0-based inclusive [rangeStartFrame]/[rangeEndFrame] are clamped to the
 /// active cut; a reversed range is empty.
+///
+/// [includeGaps] adds each cut's leading gap as black-frame tasks
+/// (negative frame indexes) so the output matches all-cuts playback
+/// frame for frame — video wants this, a PNG sequence skips the gaps.
+/// Single-cut ranges never include a gap (single-cut playback doesn't
+/// play one either).
 List<ExportFrameTask> buildExportFramePlan({
   required Project project,
   required CutId activeCutId,
   required ExportRange range,
   int? rangeStartFrame,
   int? rangeEndFrame,
+  bool includeGaps = false,
 }) {
   final cuts = resolveExportCuts(
     project: project,
@@ -160,6 +173,11 @@ List<ExportFrameTask> buildExportFramePlan({
     if (range == ExportRange.frameRange) {
       start = (rangeStartFrame ?? 0).clamp(0, duration - 1);
       end = (rangeEndFrame ?? duration - 1).clamp(0, duration - 1);
+    }
+    if (includeGaps && range == ExportRange.allCuts) {
+      for (var gap = -cut.leadingGapFrames; gap < 0; gap += 1) {
+        plan.add(ExportFrameTask(cut: cut, frameIndex: gap));
+      }
     }
     for (var frameIndex = start; frameIndex <= end; frameIndex += 1) {
       plan.add(ExportFrameTask(cut: cut, frameIndex: frameIndex));
@@ -275,6 +293,12 @@ List<ExportAudioClip> buildExportAudioPlan({
     if (track != null && cutTrackStart != null) {
       final windowTrackStart = cutTrackStart + firstFrameIndex;
 
+      // Contiguous = the next block's first exported frame sits exactly
+      // where the previous cut ended on the TRACK axis: back-to-back cuts,
+      // or a leading gap the plan exports as black frames (the next task's
+      // frameIndex is then the negative gap index, offsetting its cut's
+      // track start back to the gap's first frame). A gap the plan SKIPS
+      // breaks the run — the exported timeline collapsed it.
       bool blocksContiguous(int endIndex) {
         if (endIndex >= plan.length) {
           return false;
@@ -285,8 +309,7 @@ List<ExportAudioClip> buildExportAudioPlan({
         return nextTrackStart != null &&
             identical(trackByCutId[nextTask.cut.id], track) &&
             prevTask.frameIndex == prevTask.cut.duration - 1 &&
-            nextTask.frameIndex == 0 &&
-            nextTrackStart ==
+            nextTrackStart + nextTask.frameIndex ==
                 (trackStartByCutId[prevTask.cut.id] ?? 0) +
                     prevTask.cut.duration;
       }
@@ -302,11 +325,10 @@ List<ExportAudioClip> buildExportAudioPlan({
           blockStart == 0 ||
           !(plan[blockStart - 1].frameIndex ==
                   plan[blockStart - 1].cut.duration - 1 &&
-              firstFrameIndex == 0 &&
               identical(trackByCutId[plan[blockStart - 1].cut.id], track) &&
               (trackStartByCutId[plan[blockStart - 1].cut.id] ?? -1) +
                       plan[blockStart - 1].cut.duration ==
-                  cutTrackStart);
+                  cutTrackStart + firstFrameIndex);
 
       for (final layer in track.seLayers) {
         if (layer.muted) {

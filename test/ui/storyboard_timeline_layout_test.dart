@@ -84,6 +84,26 @@ void main() {
     expect(trackB.map((entry) => entry.trackIndex), [1, 1]);
   });
 
+  test('leading gaps push cut starts back without breaking accumulation', () {
+    final project = _project([
+      Track(
+        id: const TrackId('track-a'),
+        name: 'Track A',
+        cuts: [
+          _cut('cut-a', duration: 10, leadingGap: 3),
+          _cut('cut-b', duration: 5),
+          _cut('cut-c', duration: 4, leadingGap: 2),
+        ],
+      ),
+    ]);
+
+    final layout = buildStoryboardTimelineLayout(project);
+
+    // cut-a: 3 empty frames first; cut-b adjacent; cut-c after 2 more.
+    expect(layout.map((entry) => entry.startFrame), [3, 13, 20]);
+    expect(layout.map((entry) => entry.endFrame), [13, 18, 24]);
+  });
+
   test('zero duration follows cut duration without inventing extra rules', () {
     final project = _project([
       Track(
@@ -125,12 +145,13 @@ Project _project(List<Track> tracks) {
   );
 }
 
-Cut _cut(String id, {required int duration}) {
+Cut _cut(String id, {required int duration, int leadingGap = 0}) {
   return Cut(
     id: CutId(id),
     name: id,
     layers: const [],
     duration: duration,
+    leadingGapFrames: leadingGap,
     canvasSize: const CanvasSize(width: 1280, height: 720),
   );
 }

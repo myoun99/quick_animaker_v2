@@ -68,9 +68,36 @@ bool storyboardFrameCached(EditorSessionManager session, int globalFrame) {
   return false;
 }
 
+/// A GAP frame (empty space between cuts) snapped to the nearest cut edge
+/// — the editing playhead is cut-local and has no home in a gap. Returns
+/// [globalFrame] unchanged when it is not in a gap.
+int snapStoryboardGapToNearestEdge(
+  List<StoryboardTimelineLayoutEntry> layout,
+  int globalFrame,
+) {
+  StoryboardTimelineLayoutEntry? previous;
+  for (final entry in layout) {
+    if (globalFrame < entry.startFrame) {
+      final previousLast = previous == null ? null : previous.endFrame - 1;
+      if (previousLast == null) {
+        return entry.startFrame;
+      }
+      return (globalFrame - previousLast) <= (entry.startFrame - globalFrame)
+          ? previousLast
+          : entry.startFrame;
+    }
+    if (globalFrame < entry.endFrame) {
+      return globalFrame;
+    }
+    previous = entry;
+  }
+  return globalFrame;
+}
+
 /// Ruler seeks: playback seeks the clock, editing selects cut + frame;
 /// beyond the last cut = over-end selection on the last cut, exactly like
-/// clicking past the cut end in the timeline.
+/// clicking past the cut end in the timeline. Editing seeks into a GAP
+/// snap to the nearest cut edge (playback seeks land in the gap — black).
 void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   final layout = storyboardActiveTrackLayout(session);
   if (layout.isEmpty) {
@@ -94,21 +121,22 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     }
     return;
   }
+  final snapped = snapStoryboardGapToNearestEdge(layout, globalFrame);
   for (final entry in layout) {
-    if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
+    if (snapped >= entry.startFrame && snapped < entry.endFrame) {
       if (entry.cutId != session.activeCutId) {
         session.selectCut(entry.cutId);
       }
-      session.selectFrameIndex(globalFrame - entry.startFrame);
+      session.selectFrameIndex(snapped - entry.startFrame);
       return;
     }
   }
   final last = layout.last;
-  if (globalFrame >= last.endFrame) {
+  if (snapped >= last.endFrame) {
     if (last.cutId != session.activeCutId) {
       session.selectCut(last.cutId);
     }
-    session.selectFrameIndex(globalFrame - last.startFrame);
+    session.selectFrameIndex(snapped - last.startFrame);
   }
 }
 
@@ -125,22 +153,25 @@ void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   if (layout.isEmpty) {
     return;
   }
+  // Editing scrubs through a gap ride the nearest cut edge (the same snap
+  // the seek applies).
+  final snapped = snapStoryboardGapToNearestEdge(layout, globalFrame);
   for (final entry in layout) {
-    if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
+    if (snapped >= entry.startFrame && snapped < entry.endFrame) {
       if (entry.cutId == session.activeCutId) {
-        session.scrubFrameIndex(globalFrame - entry.startFrame);
+        session.scrubFrameIndex(snapped - entry.startFrame);
       } else {
-        seekStoryboardGlobalFrame(session, globalFrame);
+        seekStoryboardGlobalFrame(session, snapped);
       }
       return;
     }
   }
   final last = layout.last;
-  if (globalFrame >= last.endFrame) {
+  if (snapped >= last.endFrame) {
     if (last.cutId == session.activeCutId) {
-      session.scrubFrameIndex(globalFrame - last.startFrame);
+      session.scrubFrameIndex(snapped - last.startFrame);
     } else {
-      seekStoryboardGlobalFrame(session, globalFrame);
+      seekStoryboardGlobalFrame(session, snapped);
     }
   }
 }

@@ -121,6 +121,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
+    // A playlist GAP (empty frames between cuts): the picture is black —
+    // no held frame, and the fade wash at 0 blacks out the whole canvas
+    // rect through the painter's existing fade machinery.
+    final inGap =
+        widget.controller.isActive &&
+        widget.controller.globalFrameIndexListenable.value != null &&
+        position == null;
+
     // The storyboard V-row display gates (R9): fx off bypasses the whole
     // cut-level Transform group (pose + fade) in this display; the eye off
     // drops the picture (paper only).
@@ -170,7 +178,8 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         children: [
           CustomPaint(
             painter: PlaybackFramePainter(
-              image: cutPictureVisible && _heldCanvasSize == canvasSize
+              image:
+                  !inGap && cutPictureVisible && _heldCanvasSize == canvasSize
                   ? _heldFrame
                   : null,
               canvasSize: canvasSize,
@@ -184,7 +193,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               cutPose: cutPose,
               cutAnchorPoint: cutAnchorPoint,
-              fadeOpacity: cut != null && position != null && cutFxEnabled
+              fadeOpacity: inGap
+                  ? 0
+                  : cut != null && position != null && cutFxEnabled
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
               fadeColor: cut != null

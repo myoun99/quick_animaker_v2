@@ -74,4 +74,54 @@ void main() {
     expect(playlistTotalFrames(playlist()), 10);
     expect(playlistTotalFrames(const []), 0);
   });
+
+  test('gap frames resolve to null (black) but still count toward the '
+      'total', () {
+    final entries = buildStoryboardTimelineLayout(
+      Project(
+        id: const ProjectId('gap-project'),
+        name: 'Gaps',
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [
+              cut('cut-a', 4),
+              Cut(
+                id: const CutId('cut-b'),
+                name: 'cut-b',
+                layers: const [],
+                duration: 6,
+                leadingGapFrames: 3,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+              ),
+            ],
+          ),
+        ],
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+
+    // Frames 4..6 sit in the gap: no cut plays there.
+    expect(
+      resolvePlaybackPosition(playlist: entries, globalFrameIndex: 3),
+      isNotNull,
+    );
+    for (var frame = 4; frame < 7; frame += 1) {
+      expect(
+        resolvePlaybackPosition(playlist: entries, globalFrameIndex: frame),
+        isNull,
+        reason: 'frame $frame is in the gap',
+      );
+    }
+    final afterGap = resolvePlaybackPosition(
+      playlist: entries,
+      globalFrameIndex: 7,
+    )!;
+    expect(afterGap.cutId, const CutId('cut-b'));
+    expect(afterGap.localFrameIndex, 0);
+
+    // The playback clock runs THROUGH the gap: total = last end.
+    expect(playlistTotalFrames(entries), 13);
+  });
 }

@@ -4,6 +4,7 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 
 void main() {
@@ -24,6 +25,23 @@ void main() {
       return preview.previewDurations[cutId]!;
     }
     return s.cutById(cutId)!.duration;
+  }
+
+  /// The previewed leading gap for [cutId], falling back to the repository.
+  int previewedGap(EditorSessionManager s, CutId cutId) {
+    final preview = s.dragPreview.value;
+    if (preview is CutTrimDragPreview &&
+        preview.previewGaps.containsKey(cutId)) {
+      return preview.previewGaps[cutId]!;
+    }
+    return s.cutById(cutId)!.leadingGapFrames;
+  }
+
+  /// [cutId]'s committed global start frame on the track layout.
+  int layoutStart(EditorSessionManager s, CutId cutId) {
+    return buildStoryboardTimelineLayout(
+      s.repository.requireProject(),
+    ).firstWhere((entry) => entry.cutId == cutId).startFrame;
   }
 
   test('end-edge drag previews on the channel and commits one undo', () {
@@ -63,43 +81,104 @@ void main() {
     expect(s.cutById(first)!.duration, before + 6);
   });
 
-  test('start-edge drag rolls the boundary with the previous cut', () {
+  test('start-edge drag SLIDES the cut: rightward creates a leading gap, '
+      'leftward consumes it, clamped at contact', () {
     final (s, first, second) = twoCutSession();
-    final beforeFirst = s.cutById(first)!.duration;
-    final beforeSecond = s.cutById(second)!.duration;
+    final firstDuration = s.cutById(first)!.duration;
 
     expect(
       s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start),
       isTrue,
     );
 
-    // Boundary left: the previous cut shrinks, this one grows — the track's
-    // total length is conserved (in the preview; the repo commits on end).
-    s.updateCutEdgeDrag(-5);
-    expect(previewedDuration(s, first), beforeFirst - 5);
-    expect(previewedDuration(s, second), beforeSecond + 5);
+    // Rightward: the cut slides later — a gap opens before it; duration is
+    // untouched on BOTH cuts (slide, not roll).
+    s.updateCutEdgeDrag(5);
+    expect(previewedGap(s, second), 5);
+    expect(previewedDuration(s, first), firstDuration);
+    expect(previewedDuration(s, second), s.cutById(second)!.duration);
 
-    // Clamped so both cuts keep at least one frame.
-    s.updateCutEdgeDrag(beforeSecond + 40);
-    expect(previewedDuration(s, first), beforeFirst + beforeSecond - 1);
-    expect(previewedDuration(s, second), 1);
+    // Leftward past contact clamps at gap 0 (cuts never overlap).
+    s.updateCutEdgeDrag(-9);
+    expect(previewedGap(s, second), 0);
 
+    s.updateCutEdgeDrag(4);
     s.endCutEdgeDrag();
-    expect(s.cutById(first)!.duration, beforeFirst + beforeSecond - 1);
-    expect(s.cutById(second)!.duration, 1);
+    expect(s.cutById(second)!.leadingGapFrames, 4);
+    expect(layoutStart(s, second), firstDuration + 4);
 
+    // ONE undo step restores the gap.
     s.undo();
-    expect(s.cutById(first)!.duration, beforeFirst);
-    expect(s.cutById(second)!.duration, beforeSecond);
+    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(layoutStart(s, second), firstDuration);
+    s.redo();
+    expect(s.cutById(second)!.leadingGapFrames, 4);
   });
 
-  test('the first cut has no start-edge roll partner', () {
-    final (s, first, _) = twoCutSession();
+  test('the FIRST cut slides too — its gap is black lead-in before the '
+      'track begins', () {
+    final (s, first, second) = twoCutSession();
+    final firstDuration = s.cutById(first)!.duration;
 
     expect(
       s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start),
-      isFalse,
+      isTrue,
     );
+    s.updateCutEdgeDrag(3);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(first)!.leadingGapFrames, 3);
+    expect(layoutStart(s, first), 3);
+    // The whole track shifts with it (the second cut stays adjacent).
+    expect(layoutStart(s, second), 3 + firstDuration);
+  });
+
+  test('end-edge growth eats the following gap first — the next cut holds '
+      'still until the gap is spent, then gets pushed', () {
+    final (s, first, second) = twoCutSession();
+    final firstDuration = s.cutById(first)!.duration;
+
+    // Open a 4-frame gap before the second cut.
+    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(4);
+    s.endCutEdgeDrag();
+    expect(layoutStart(s, second), firstDuration + 4);
+
+    // Grow the first cut by 3: the gap absorbs it, the second cut's start
+    // does not move.
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(3);
+    expect(previewedDuration(s, first), firstDuration + 3);
+    expect(previewedGap(s, second), 1);
+    s.endCutEdgeDrag();
+    expect(s.cutById(second)!.leadingGapFrames, 1);
+    expect(layoutStart(s, second), firstDuration + 4);
+
+    // Grow past the remaining gap: gap 0, the excess pushes the second cut.
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(3);
+    s.endCutEdgeDrag();
+    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(layoutStart(s, second), firstDuration + 6);
+  });
+
+  test('end-edge shrink leaves the following gap alone (the rest slides '
+      'earlier with the boundary)', () {
+    final (s, first, second) = twoCutSession();
+    final firstDuration = s.cutById(first)!.duration;
+
+    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(4);
+    s.endCutEdgeDrag();
+
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(-2);
+    expect(previewedGap(s, second), 4);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(first)!.duration, firstDuration - 2);
+    expect(s.cutById(second)!.leadingGapFrames, 4);
+    expect(layoutStart(s, second), firstDuration - 2 + 4);
   });
 
   test('cancel drops the preview without touching history or the repo', () {

@@ -146,6 +146,9 @@ class ExportDialogState extends State<ExportDialog> {
       range: _range,
       rangeStartFrame: start,
       rangeEndFrame: end,
+      // Video matches all-cuts playback frame for frame, so cut gaps
+      // export as black frames; a PNG sequence skips them.
+      includeGaps: _format == ExportFormat.mp4Video,
     );
   }
 

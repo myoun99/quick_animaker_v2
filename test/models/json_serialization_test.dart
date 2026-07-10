@@ -81,6 +81,30 @@ void main() {
     expect(restored.toJson(), project.toJson());
   });
 
+  test('cut leadingGap serializes only when set; legacy JSON loads '
+      'gap-free', () {
+    final gapped = Cut(
+      id: const CutId('gapped'),
+      name: 'Gapped',
+      // Loading backfills the section fixtures — include them so the
+      // round-trip stays an identity.
+      layers: withEnsuredSectionLayers(const CutId('gapped'), const []),
+      duration: 12,
+      leadingGapFrames: 5,
+      canvasSize: const CanvasSize(width: 8, height: 8),
+    );
+    final json = gapped.toJson();
+    expect(json['leadingGap'], 5);
+    expect(Cut.fromJson(json), gapped);
+
+    // Gap 0 is the default and stays OUT of the JSON (shape-based
+    // migration: legacy files simply have no key).
+    final flush = gapped.copyWith(leadingGapFrames: 0);
+    final flushJson = flush.toJson();
+    expect(flushJson.containsKey('leadingGap'), isFalse);
+    expect(Cut.fromJson(flushJson).leadingGapFrames, 0);
+  });
+
   test('layer timeline map serializes and deserializes drawing and mark '
       'entries', () {
     final layer = Layer(
