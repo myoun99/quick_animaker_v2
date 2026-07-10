@@ -63,9 +63,8 @@ class _CameraKeyDialogState extends State<CameraKeyDialog> {
                     ),
                     value: _lanes[i].keyed,
                     onChanged: (value) => setState(
-                      () => _lanes[i] = _lanes[i].copyWith(
-                        keyed: value ?? false,
-                      ),
+                      () =>
+                          _lanes[i] = _lanes[i].copyWith(keyed: value ?? false),
                     ),
                   ),
                   SizedBox(

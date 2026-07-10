@@ -70,9 +70,7 @@ class InstanceEditPreview extends StatelessWidget {
             seName: _seName.isEmpty ? null : _seName,
           ),
         ],
-        timeline: {
-          0: TimelineExposure.drawing(frameId, length: komaCount),
-        },
+        timeline: {0: TimelineExposure.drawing(frameId, length: komaCount)},
       ),
       _ => Layer(
         id: const LayerId('instance-preview'),

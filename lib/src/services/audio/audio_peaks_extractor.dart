@@ -173,7 +173,9 @@ class AudioPeaksExtractor {
 
     final exitCode = await process.exitCode;
     await stderrDone;
-    final detail = stderrTail.isEmpty ? '' : ': ${stderrTail.toString().trim()}';
+    final detail = stderrTail.isEmpty
+        ? ''
+        : ': ${stderrTail.toString().trim()}';
     if (exitCode != 0) {
       return AudioPeaksExtraction.failure(
         'ffmpeg exited $exitCode for $filePath$detail',
