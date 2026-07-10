@@ -283,7 +283,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
       relay: _layout,
+      layoutReset: _resetWorkspaceLayout,
     );
+  }
+
+  /// Window > Reset Workspace Layout: back to the factory docks, extents
+  /// and locks (the debounced save persists the reset like any edit).
+  void _resetWorkspaceLayout() {
+    setState(() {
+      _lockedTabIds = {EditorWorkspace.canvasTabId};
+    });
+    _mutatingLayout(() {
+      _layout.restore(docks: _defaultDocks());
+    });
   }
 
   /// Every known panel in default-dock order, with its live visibility.
