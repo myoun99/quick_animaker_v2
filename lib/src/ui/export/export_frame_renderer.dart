@@ -13,6 +13,7 @@ import '../../models/layer_id.dart';
 import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../camera/camera_frame_render_service.dart';
+import '../canvas/layer_pose_paint.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_fade_policy.dart';
 import 'export_plan.dart';
@@ -110,20 +111,25 @@ class ExportFrameRenderer {
     );
   }
 
-  /// [renderComposite] with the cut fade baked in for VIDEO frames: the
-  /// frame draws at its fade opacity over the cut's fade TARGET color
-  /// (FO=black default, WO=white — cutFadeTargetColor, the same value
-  /// playback overlays) — MP4 carries no alpha (yuv420p drops the channel
-  /// without blending), so the fade must land in the RGB values. Unfaded
-  /// frames pass through untouched. PNG sequences deliberately stay
-  /// unfaded (they are compositing sources).
+  /// [renderComposite] with the cut-level pose and fade baked in for VIDEO
+  /// frames — MP4 carries no alpha (yuv420p drops the channel without
+  /// blending) and no display-time compositor, so both must land in the
+  /// RGB values. The bake mirrors playback exactly: the finished frame
+  /// posed over the output space (V track Transform, AE precomp
+  /// semantics), then the fade TARGET color (FO=black default, WO=white —
+  /// cutFadeTargetColor, the same value playback overlays) at
+  /// (1 − fade) on top; without a pose that reduces pixel-for-pixel to
+  /// the old frame-at-fade-over-target draw. Untouched frames pass
+  /// through. PNG sequences deliberately stay unposed and unfaded (they
+  /// are compositing sources).
   Future<ui.Image> renderCompositeForVideo(
     ExportFrameTask task,
     ExportSizeMode mode,
   ) async {
     final image = await renderComposite(task, mode);
     final fade = task.cut.fadeOpacityAt(task.frameIndex);
-    if (fade >= 1) {
+    final poseActive = cutPoseIsActive(task.cut);
+    if (fade >= 1 && !poseActive) {
       return image;
     }
     final recorder = ui.PictureRecorder();
@@ -134,12 +140,32 @@ class ExportFrameRenderer {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    canvas.drawRect(bounds, ui.Paint()..color = cutFadeTargetColor(task.cut));
-    canvas.drawImage(
-      image,
-      ui.Offset.zero,
-      ui.Paint()..color = ui.Color.fromRGBO(0, 0, 0, fade),
-    );
+    // Black ground: the pose can uncover the output edges; without a pose
+    // the frame covers everything and the ground never shows.
+    canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+    if (poseActive) {
+      final space = CanvasSize(width: image.width, height: image.height);
+      canvas.save();
+      applyLayerPoseTransform(
+        canvas,
+        cutPoseAt(task.cut, task.frameIndex, space),
+        space,
+        anchorPoint: cutAnchorPointAt(task.cut, task.frameIndex),
+      );
+    }
+    canvas.drawImage(image, ui.Offset.zero, ui.Paint());
+    if (poseActive) {
+      canvas.restore();
+    }
+    if (fade < 1) {
+      canvas.drawRect(
+        bounds,
+        ui.Paint()
+          ..color = cutFadeTargetColor(
+            task.cut,
+          ).withValues(alpha: (1 - fade).clamp(0.0, 1.0)),
+      );
+    }
     final picture = recorder.endRecording();
     try {
       return await picture.toImage(image.width, image.height);

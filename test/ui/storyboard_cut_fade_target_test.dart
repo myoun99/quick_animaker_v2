@@ -2,10 +2,13 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_frame_renderer.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
@@ -85,6 +88,72 @@ void main() {
 
       final white = await centerPixelOf(fadedOut(CutFadeTarget.white));
       expect(white, (255, 255, 255));
+    });
+  });
+
+  testWidgets('the MP4 bake applies the CUT pose (V track) over the output '
+      'space — uncovered ground black, the fade target still on top', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+
+      Future<(int, int, int)> pixelOf(Cut task, int frameIndex, int x) async {
+        final image = await ExportFrameRenderer(session: session)
+            .renderCompositeForVideo(
+              ExportFrameTask(cut: task, frameIndex: frameIndex),
+              ExportSizeMode.canvas,
+            );
+        final bytes = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        final offset = ((image.height ~/ 2) * image.width + x) * 4;
+        image.dispose();
+        return (
+          bytes!.getUint8(offset),
+          bytes.getUint8(offset + 1),
+          bytes.getUint8(offset + 2),
+        );
+      }
+
+      // Slide the finished 8×8 frame half a canvas right (center 4,4 →
+      // 8,4): the uncovered left half shows the black video ground, the
+      // right half the picture (the paper — compare against the unposed
+      // render rather than assuming its color).
+      final posed = cut().copyWith(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 8, y: 4),
+          ),
+        ),
+      );
+      final ground = await pixelOf(posed, 0, 1);
+      expect(ground, (0, 0, 0), reason: 'uncovered output = black ground');
+      final moved = await pixelOf(posed, 0, 6);
+      final original = await pixelOf(cut(), 0, 2);
+      expect(moved, original, reason: 'the picture shifted +4 px intact');
+
+      // Pose + full fade-out to WHITE: the target overlay covers the
+      // ground too (playback overlay parity).
+      final posedFaded = cut(target: CutFadeTarget.white).copyWith(
+        transformTrack:
+            cutTransformWithFade(
+              cut(),
+              fadeInFrames: 0,
+              fadeOutFrames: 11,
+            ).copyWith(
+              position: PropertyTrack<CanvasPoint>.empty().withKey(
+                0,
+                CanvasPoint(x: 8, y: 4),
+              ),
+            ),
+      );
+      expect(await pixelOf(posedFaded, 11, 1), (255, 255, 255));
+      expect(await pixelOf(posedFaded, 11, 6), (255, 255, 255));
     });
   });
 }

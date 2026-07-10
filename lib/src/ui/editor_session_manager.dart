@@ -892,6 +892,25 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replaces [cutId]'s cut-level transform track (the storyboard V
+  /// track's Transform lanes — the whole cut's finished picture moving on
+  /// the display space, applied at display time like the fade, never
+  /// baked into composites); one undo step, no-op when unchanged. The
+  /// fade handles keep writing the same track through [setCutFade].
+  void updateCutTransformTrack(
+    CutId cutId,
+    TransformTrack track, {
+    String description = 'Edit cut transform',
+  }) {
+    _cutCommandCoordinator.updateCutTransform(
+      cutId: cutId,
+      transformTrack: track,
+      description: description,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   /// Sets what [cutId]'s fade fades TO — black (FO) or white (WO); one
   /// undo step, no-op when unchanged. Playback and the MP4 bake share the
   /// value.

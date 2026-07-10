@@ -4,8 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/transform_track.dart';
+import '../canvas/layer_pose_paint.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
 ///
@@ -28,6 +31,8 @@ class PlaybackFramePainter extends CustomPainter {
     this.viewport,
     this.cameraPose,
     this.cameraFrameSize,
+    this.cutPose,
+    this.cutAnchorPoint,
     this.fadeOpacity = 1,
     this.fadeColor = const Color(0xFF000000),
     this.letterboxColor = const Color(0xFF15191C),
@@ -48,6 +53,17 @@ class PlaybackFramePainter extends CustomPainter {
   /// Non-null = look through the camera.
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
+
+  /// The CUT-level pose (the V track's Transform — AE precomp semantics):
+  /// the cut's finished picture moves on the DISPLAY space, above the
+  /// camera projection. Resolved by cutPoseAt over the same space this
+  /// painter draws (camera frame in camera mode, canvas otherwise); null =
+  /// identity, zero cost. Display-time only, never baked into composites
+  /// (the cut fade's rule).
+  final TransformPose? cutPose;
+
+  /// The cut pose's anchor; null = the display-space center.
+  final CanvasPoint? cutAnchorPoint;
 
   /// The cut fade (Cut.fadeOpacityAt): paper and composite fade together
   /// toward [fadeColor]. 1 costs nothing.
@@ -81,6 +97,13 @@ class PlaybackFramePainter extends CustomPainter {
       canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
       canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
     }
+    final canvasRect = Rect.fromLTWH(
+      0,
+      0,
+      canvasSize.width.toDouble(),
+      canvasSize.height.toDouble(),
+    );
+
     Rect? frameRect;
     if (pose != null) {
       // The camera's output frame takes the canvas's place in viewport
@@ -94,19 +117,28 @@ class PlaybackFramePainter extends CustomPainter {
         frameSize.height.toDouble(),
       );
       canvas.clipRect(frameRect);
+    }
+    // The cut pose (AE precomp semantics) transforms the cut's FINISHED
+    // picture over the display space — outermost, above the camera
+    // projection; the fade overlay below stays a screen dip on top.
+    final resolvedCutPose = cutPose;
+    if (resolvedCutPose != null) {
+      canvas.save();
+      applyLayerPoseTransform(
+        canvas,
+        resolvedCutPose,
+        pose != null ? cameraFrameSize! : canvasSize,
+        anchorPoint: cutAnchorPoint,
+      );
+    }
+    if (pose != null) {
+      final frameSize = cameraFrameSize!;
       canvas.save();
       canvas.translate(frameSize.width / 2, frameSize.height / 2);
       canvas.scale(pose.zoom);
       canvas.rotate(-pose.rotationDegrees * math.pi / 180);
       canvas.translate(-pose.center.x, -pose.center.y);
     }
-
-    final canvasRect = Rect.fromLTWH(
-      0,
-      0,
-      canvasSize.width.toDouble(),
-      canvasSize.height.toDouble(),
-    );
     canvas.drawRect(canvasRect, Paint()..color = paperColor);
     final composite = image;
     if (composite != null) {
@@ -124,6 +156,9 @@ class PlaybackFramePainter extends CustomPainter {
       );
     }
     if (pose != null) {
+      canvas.restore();
+    }
+    if (resolvedCutPose != null) {
       canvas.restore();
     }
     if (fadeOpacity < 1) {
@@ -149,6 +184,8 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.viewport != viewport ||
       oldDelegate.cameraPose != cameraPose ||
       oldDelegate.cameraFrameSize != cameraFrameSize ||
+      oldDelegate.cutPose != cutPose ||
+      oldDelegate.cutAnchorPoint != cutAnchorPoint ||
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.fadeColor != fadeColor ||
       oldDelegate.letterboxColor != letterboxColor ||
