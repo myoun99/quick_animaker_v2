@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -17,6 +19,7 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
+import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
@@ -66,6 +69,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
+    this.viewCommands,
+    this.allowViewRotation = true,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -145,6 +150,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// through the exact stroke funnel. Null disables the fill tool.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
 
+  /// The app-level rotate/flip shortcut channel (P8); the panel binds its
+  /// viewport-center handlers while mounted.
+  final CanvasViewCommands? viewCommands;
+
+  /// False hides the rotate/flip toolbar controls and disables the
+  /// rotation gestures — for hosts whose content layers speak zoom/pan
+  /// only (the timesheet's ink and header-edit overlays).
+  final bool allowViewRotation;
+
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
@@ -161,8 +175,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
   @override
+  void initState() {
+    super.initState();
+    _bindViewCommands();
+  }
+
+  @override
+  void dispose() {
+    widget.viewCommands?.unbind();
+    super.dispose();
+  }
+
+  void _bindViewCommands() {
+    widget.viewCommands?.bind(
+      rotateBy: _rotateAroundCenter,
+      toggleFlipHorizontal: _toggleFlipHorizontal,
+    );
+  }
+
+  @override
   void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
+      oldWidget.viewCommands?.unbind();
+      _bindViewCommands();
+    }
     final request = widget.autoFrame;
     if (request == null || request.token == oldWidget.autoFrame?.token) {
       return;
@@ -203,23 +240,40 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   /// The minimal zoom-preserving pan that brings [rect] (canvas space)
   /// into the viewport with a small margin; when the rect cannot fully
-  /// fit, its top-left edge wins.
+  /// fit, its top-left edge wins. Under rotation/flip the rect's mapped
+  /// AABB is what must land inside.
   CanvasViewport _viewportRevealing(Rect rect, Size viewportSize) {
     const margin = 24.0;
-    final zoom = _viewport.zoom;
     var panX = _viewport.panX;
     var panY = _viewport.panY;
-    if (rect.bottom * zoom + panY > viewportSize.height - margin) {
-      panY = viewportSize.height - margin - rect.bottom * zoom;
+    final unpanned = _viewport.copyWith(panX: 0, panY: 0);
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final corner in [
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
+    ]) {
+      final mapped = unpanned.canvasToViewport(
+        CanvasPoint(x: corner.dx, y: corner.dy),
+      );
+      minX = math.min(minX, mapped.x);
+      maxX = math.max(maxX, mapped.x);
+      minY = math.min(minY, mapped.y);
+      maxY = math.max(maxY, mapped.y);
     }
-    if (rect.top * zoom + panY < margin) {
-      panY = margin - rect.top * zoom;
+    if (maxY + panY > viewportSize.height - margin) {
+      panY = viewportSize.height - margin - maxY;
     }
-    if (rect.right * zoom + panX > viewportSize.width - margin) {
-      panX = viewportSize.width - margin - rect.right * zoom;
+    if (minY + panY < margin) {
+      panY = margin - minY;
     }
-    if (rect.left * zoom + panX < margin) {
-      panX = margin - rect.left * zoom;
+    if (maxX + panX > viewportSize.width - margin) {
+      panX = viewportSize.width - margin - maxX;
+    }
+    if (minX + panX < margin) {
+      panX = margin - minX;
     }
     return _viewport.copyWith(panX: panX, panY: panY);
   }
@@ -273,6 +327,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                 onZoomOut: () => _zoomAroundCenter(0.8),
                 onFit: _fitToView,
                 onReset: _resetView,
+                onRotateCcw: widget.allowViewRotation
+                    ? () => _rotateAroundCenter(-15)
+                    : null,
+                onRotateCw: widget.allowViewRotation
+                    ? () => _rotateAroundCenter(15)
+                    : null,
+                onFlipHorizontal: widget.allowViewRotation
+                    ? _toggleFlipHorizontal
+                    : null,
               ),
               child: LayoutBuilder(
                 builder: (context, viewportConstraints) {
@@ -291,6 +354,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                     return CanvasViewportGestureLayer(
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
+                      rotationEnabled: widget.allowViewRotation,
                       strokeActive: _strokeActive || contentStrokeIsActive,
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
@@ -500,6 +564,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _resetView() {
     _setViewport(CanvasViewport());
+  }
+
+  ViewportPoint get _viewportCenterAnchor {
+    final viewportSize = _resolvedEditorViewportSize();
+    return ViewportPoint(x: viewportSize.width / 2, y: viewportSize.height / 2);
+  }
+
+  /// Rotates the VIEW by [degrees] around the viewport center (P8). The
+  /// result snaps to 0° when within ±0.01° (float dust from gesture
+  /// accumulations must not leave the AABB slow path armed forever).
+  void _rotateAroundCenter(double degrees) {
+    var next = _viewport.rotationDegrees + degrees;
+    final normalized = ((next + 180) % 360) - 180;
+    if (normalized.abs() < 0.01) {
+      next = next - normalized;
+    }
+    _setViewport(
+      _viewport.rotatedAround(
+        nextRotationDegrees: next,
+        anchor: _viewportCenterAnchor,
+      ),
+    );
+  }
+
+  void _toggleFlipHorizontal() {
+    _setViewport(_viewport.flippedAround(anchor: _viewportCenterAnchor));
   }
 
   /// The tap action for the active NON-PAINTING tool; null while a
@@ -720,6 +810,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onZoomOut,
     required this.onFit,
     required this.onReset,
+    required this.onRotateCcw,
+    required this.onRotateCw,
+    required this.onFlipHorizontal,
   });
 
   final CanvasViewport viewport;
@@ -731,6 +824,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
   final VoidCallback onReset;
+
+  /// Null hides the rotate/flip controls (rotation-disabled hosts).
+  final VoidCallback? onRotateCcw;
+  final VoidCallback? onRotateCw;
+  final VoidCallback? onFlipHorizontal;
 
   @override
   Widget build(BuildContext context) {
@@ -744,6 +842,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
             onZoomOut: onZoomOut,
             onFit: onFit,
             onReset: onReset,
+            onRotateCcw: onRotateCcw,
+            onRotateCw: onRotateCw,
+            onFlipHorizontal: onFlipHorizontal,
           ),
           CanvasViewportHorizontalScrollbar(
             viewport: viewport,
@@ -767,6 +868,9 @@ class _CanvasViewportToolbar extends StatelessWidget {
     required this.onZoomOut,
     required this.onFit,
     required this.onReset,
+    required this.onRotateCcw,
+    required this.onRotateCw,
+    required this.onFlipHorizontal,
   });
 
   final CanvasViewport viewport;
@@ -774,10 +878,17 @@ class _CanvasViewportToolbar extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
   final VoidCallback onReset;
+  final VoidCallback? onRotateCcw;
+  final VoidCallback? onRotateCw;
+  final VoidCallback? onFlipHorizontal;
 
   @override
   Widget build(BuildContext context) {
     final zoomPercent = (viewport.zoom * 100).round();
+    // Normalized for display: multi-turn accumulation shows as its
+    // visible angle.
+    final rotationDegrees = (((viewport.rotationDegrees + 180) % 360) - 180)
+        .round();
     return SizedBox(
       height: height,
       child: SingleChildScrollView(
@@ -814,6 +925,44 @@ class _CanvasViewportToolbar extends StatelessWidget {
               onPressed: onReset,
               child: const Text('Reset'),
             ),
+            if (onRotateCcw != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                key: const ValueKey<String>('canvas-viewport-rotate-ccw'),
+                tooltip: 'Rotate View Left',
+                onPressed: onRotateCcw,
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.rotate_left),
+              ),
+            ],
+            if (onRotateCw != null)
+              IconButton(
+                key: const ValueKey<String>('canvas-viewport-rotate-cw'),
+                tooltip: 'Rotate View Right',
+                onPressed: onRotateCw,
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.rotate_right),
+              ),
+            if (onFlipHorizontal != null)
+              IconButton(
+                key: const ValueKey<String>('canvas-viewport-flip'),
+                tooltip: 'Flip View Horizontal',
+                onPressed: onFlipHorizontal,
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                isSelected: viewport.flipHorizontal,
+                icon: const Icon(Icons.flip),
+              ),
+            if (rotationDegrees != 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  '$rotationDegrees°',
+                  key: const ValueKey<String>('canvas-viewport-rotation-label'),
+                ),
+              ),
           ],
         ),
       ),

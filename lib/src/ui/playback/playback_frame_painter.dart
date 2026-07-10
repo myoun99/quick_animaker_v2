@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
 import '../canvas/layer_pose_paint.dart';
+import '../canvas/viewport_canvas_transform.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
 ///
@@ -97,8 +98,7 @@ class PlaybackFramePainter extends CustomPainter {
     }
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      applyViewportTransform(canvas, resolvedViewport);
     }
     final canvasRect = Rect.fromLTWH(
       0,

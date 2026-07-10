@@ -13,10 +13,8 @@ Offset cameraCenterInViewport({
   required CameraPose pose,
   required CanvasViewport viewport,
 }) {
-  return Offset(
-    pose.center.x * viewport.zoom + viewport.panX,
-    pose.center.y * viewport.zoom + viewport.panY,
-  );
+  final mapped = viewport.canvasToViewport(pose.center);
+  return Offset(mapped.x, mapped.y);
 }
 
 /// The camera frame's corners in canvas coordinates:
@@ -77,15 +75,19 @@ List<Offset> cameraFrameCornersInViewport({
   required CanvasSize cameraFrameSize,
   required CanvasViewport viewport,
 }) {
+  Offset toViewport(Offset corner) {
+    final mapped = viewport.canvasToViewport(
+      CanvasPoint(x: corner.dx, y: corner.dy),
+    );
+    return Offset(mapped.x, mapped.y);
+  }
+
   return [
     for (final corner in cameraFrameCornersInCanvas(
       pose: pose,
       cameraFrameSize: cameraFrameSize,
     ))
-      Offset(
-        corner.dx * viewport.zoom + viewport.panX,
-        corner.dy * viewport.zoom + viewport.panY,
-      ),
+      toViewport(corner),
   ];
 }
 
@@ -222,11 +224,15 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
     final pose = _displayPose;
     switch (_dragMode) {
       case _CameraDragMode.move:
+        final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
+          dx: details.delta.dx,
+          dy: details.delta.dy,
+        );
         setState(() {
           _dragPose = pose.copyWith(
             center: CanvasPoint(
-              x: pose.center.x + details.delta.dx / widget.viewport.zoom,
-              y: pose.center.y + details.delta.dy / widget.viewport.zoom,
+              x: pose.center.x + canvasDelta.x,
+              y: pose.center.y + canvasDelta.y,
             ),
           );
         });
@@ -255,6 +261,12 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
           delta += 360;
         }
         _lastPointerAngle = angle;
+        // A horizontally flipped VIEW mirrors on-screen angles: the same
+        // pointer sweep must still rotate the pose the way the user sees
+        // it turn.
+        if (widget.viewport.flipHorizontal) {
+          delta = -delta;
+        }
         setState(() {
           _dragPose = pose.copyWith(
             rotationDegrees: pose.rotationDegrees + delta,

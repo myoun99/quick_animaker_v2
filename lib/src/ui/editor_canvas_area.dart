@@ -7,6 +7,8 @@ import '../models/layer_id.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_view_commands.dart';
+import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
@@ -35,6 +37,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
+    this.canvasViewCommands,
     this.expandedLaneLayerIds,
   });
 
@@ -47,6 +50,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// Write-back to the workspace-owned tool state: eyedropper picks land
   /// the sampled color (and return to the painting tool) through here.
   final ValueChanged<BrushToolState>? onBrushToolStateChanged;
+
+  /// The app-level rotate/flip shortcut channel (P8), forwarded to the
+  /// canvas panel which binds the actual viewport handlers.
+  final CanvasViewCommands? canvasViewCommands;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -214,6 +221,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           selectionLabels: session.canvasSelectionLabels,
           brushToolState: widget.brushToolState.value,
           fitFocusRect: fitFocusRect,
+          viewCommands: widget.canvasViewCommands,
           // P5 eyedropper: sample the VISIBLE composite ("pick what you
           // see"); a committed pick also returns to the painting tool
           // (CSP behavior), an Alt-pick keeps the active tool.
@@ -449,16 +457,19 @@ class _CutFadeWashPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.save();
     canvas.clipRect(Offset.zero & size);
+    applyViewportTransform(canvas, viewport);
     canvas.drawRect(
       Rect.fromLTWH(
-        viewport.panX,
-        viewport.panY,
-        canvasSize.width * viewport.zoom,
-        canvasSize.height * viewport.zoom,
+        0,
+        0,
+        canvasSize.width.toDouble(),
+        canvasSize.height.toDouble(),
       ),
       Paint()..color = color,
     );
+    canvas.restore();
   }
 
   @override

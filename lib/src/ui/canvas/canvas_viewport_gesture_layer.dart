@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
@@ -28,6 +30,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     required this.viewport,
     required this.onViewportChanged,
     this.strokeActive = false,
+    this.rotationEnabled = true,
     required this.child,
   });
 
@@ -36,6 +39,11 @@ class CanvasViewportGestureLayer extends StatefulWidget {
 
   /// True while the user is drawing; blocks new viewport gestures.
   final bool strokeActive;
+
+  /// False disables the two-finger/trackpad ROTATION gestures (P8) while
+  /// pan/zoom keep working — for hosts whose content cannot rotate (the
+  /// timesheet).
+  final bool rotationEnabled;
 
   final Widget child;
 
@@ -46,10 +54,24 @@ class CanvasViewportGestureLayer extends StatefulWidget {
 
 class _CanvasViewportGestureLayerState
     extends State<CanvasViewportGestureLayer> {
+  /// Two-finger/trackpad rotation engages only past this angle (P8): a
+  /// plain pinch-zoom must not wobble the canvas.
+  static const double rotationDeadzoneDegrees = 5;
+
+  /// A resulting view angle inside this window snaps back to 0° — easy
+  /// return to straight.
+  static const double rotationZeroSnapDegrees = 5;
+
   int? _panPointer;
   Offset? _panStartLocalPosition;
   CanvasViewport? _panStartViewport;
   CanvasViewport? _panZoomStartViewport;
+
+  /// Non-null once the trackpad rotation crossed the deadzone: the fixed
+  /// compensation (±deadzone, the crossing side) subtracted from the raw
+  /// delta so the engagement is seamless AND stays continuous when the
+  /// gesture later swings back through zero.
+  double? _panZoomRotationCompensation;
 
   /// Live touch contacts (pointer id → local position). The first two form
   /// the two-finger navigation gesture.
@@ -57,7 +79,29 @@ class _CanvasViewportGestureLayerState
   List<int>? _touchNavPointers;
   Offset? _touchNavStartFocal;
   double? _touchNavStartDistance;
+  double? _touchNavStartAngle;
+  double? _touchNavRotationCompensation;
   CanvasViewport? _touchNavStartViewport;
+
+  static double _wrapDegrees(double degrees) {
+    var wrapped = degrees;
+    while (wrapped > 180) {
+      wrapped -= 360;
+    }
+    while (wrapped < -180) {
+      wrapped += 360;
+    }
+    return wrapped;
+  }
+
+  /// Snaps a candidate view angle to 0° when it lands near straight.
+  static double _snappedRotation(double degrees) {
+    final normalized = _wrapDegrees(degrees);
+    if (normalized.abs() <= rotationZeroSnapDegrees) {
+      return degrees - normalized;
+    }
+    return degrees;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +187,8 @@ class _CanvasViewportGestureLayerState
       _touchNavPointers = null;
       _touchNavStartFocal = null;
       _touchNavStartDistance = null;
+      _touchNavStartAngle = null;
+      _touchNavRotationCompensation = null;
       _touchNavStartViewport = null;
       return;
     }
@@ -156,7 +202,14 @@ class _CanvasViewportGestureLayerState
       (first.dy + second.dy) / 2,
     );
     _touchNavStartDistance = (second - first).distance;
+    _touchNavStartAngle = _touchAngleDegrees(first, second);
+    _touchNavRotationCompensation = null;
     _touchNavStartViewport = widget.viewport;
+  }
+
+  static double _touchAngleDegrees(Offset first, Offset second) {
+    final vector = second - first;
+    return math.atan2(vector.dy, vector.dx) * 180 / math.pi;
   }
 
   void _updateTouchNavigation() {
@@ -190,14 +243,37 @@ class _CanvasViewportGestureLayerState
       (first.dy + second.dy) / 2,
     );
     final distance = (second - first).distance;
+    final focalAnchor = ViewportPoint(x: startFocal.dx, y: startFocal.dy);
     // Scale around the START focal, then follow the fingers: the canvas
     // point that was under the initial focal stays under the current one.
     var next = startViewport;
     if (startDistance > 0 && distance > 0) {
       next = next.zoomedAround(
         nextZoom: startViewport.zoom * (distance / startDistance),
-        anchor: ViewportPoint(x: startFocal.dx, y: startFocal.dy),
+        anchor: focalAnchor,
       );
+    }
+    // Two-finger rotation (P8): the angle between the fingers turns the
+    // view around the same focal — past the deadzone, so a plain pinch
+    // stays level.
+    final startAngle = widget.rotationEnabled ? _touchNavStartAngle : null;
+    if (startAngle != null) {
+      final rawDelta = _wrapDegrees(
+        _touchAngleDegrees(first, second) - startAngle,
+      );
+      if (_touchNavRotationCompensation == null &&
+          rawDelta.abs() >= rotationDeadzoneDegrees) {
+        _touchNavRotationCompensation = rawDelta.sign * rotationDeadzoneDegrees;
+      }
+      final compensation = _touchNavRotationCompensation;
+      if (compensation != null) {
+        next = next.rotatedAround(
+          nextRotationDegrees: _snappedRotation(
+            startViewport.rotationDegrees + rawDelta - compensation,
+          ),
+          anchor: focalAnchor,
+        );
+      }
     }
     _emit(
       next.translated(
@@ -230,6 +306,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
     _panZoomStartViewport = widget.viewport;
+    _panZoomRotationCompensation = null;
   }
 
   void _handlePanZoomUpdate(PointerPanZoomUpdateEvent event) {
@@ -237,16 +314,35 @@ class _CanvasViewportGestureLayerState
     if (base == null) {
       return;
     }
-    // Pan and scale are both cumulative since the gesture start, so each
-    // update recomputes from the start viewport instead of accumulating.
+    final anchor = ViewportPoint(
+      x: event.localPosition.dx,
+      y: event.localPosition.dy,
+    );
+    // Pan, scale and rotation are all cumulative since the gesture start,
+    // so each update recomputes from the start viewport instead of
+    // accumulating.
     var next = base;
     if (event.scale != 1.0) {
       next = base.zoomedAround(
         nextZoom: base.zoom * event.scale,
-        anchor: ViewportPoint(
-          x: event.localPosition.dx,
-          y: event.localPosition.dy,
+        anchor: anchor,
+      );
+    }
+    // Trackpad rotation gesture (P8) — same deadzone/snap as two fingers.
+    final rawDelta = widget.rotationEnabled
+        ? event.rotation * 180 / math.pi
+        : 0.0;
+    if (_panZoomRotationCompensation == null &&
+        rawDelta.abs() >= rotationDeadzoneDegrees) {
+      _panZoomRotationCompensation = rawDelta.sign * rotationDeadzoneDegrees;
+    }
+    final compensation = _panZoomRotationCompensation;
+    if (compensation != null) {
+      next = next.rotatedAround(
+        nextRotationDegrees: _snappedRotation(
+          base.rotationDegrees + rawDelta - compensation,
         ),
+        anchor: anchor,
       );
     }
     _emit(next.translated(dx: event.pan.dx, dy: event.pan.dy));
@@ -254,6 +350,7 @@ class _CanvasViewportGestureLayerState
 
   void _handlePanZoomEnd(PointerPanZoomEndEvent event) {
     _panZoomStartViewport = null;
+    _panZoomRotationCompensation = null;
   }
 
   void _clearPan() {

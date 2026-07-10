@@ -319,6 +319,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                 // Fit frames the page the playhead is on.
                 fitFocusRect: layout.pageRect(playheadPage),
                 autoFrame: autoFrame,
+                // The sheet's ink/header overlays speak zoom/pan only —
+                // the paper never rotates (P8 is the drawing canvas's).
+                allowViewRotation: false,
                 contentStrokeActive: inkController == null || !widget.inkEnabled
                     ? null
                     : _inkStrokeActive,

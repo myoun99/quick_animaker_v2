@@ -44,6 +44,9 @@ abstract final class EditorActionIds {
   static const toolEyedropper = 'tool-eyedropper';
   static const toolFill = 'tool-fill';
   static const onionSkinToggle = 'onion-skin-toggle';
+  static const canvasRotateCcw = 'canvas-rotate-ccw';
+  static const canvasRotateCw = 'canvas-rotate-cw';
+  static const canvasFlipHorizontal = 'canvas-flip-horizontal';
 }
 
 /// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
@@ -136,5 +139,23 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Toggle Onion Skin',
     category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyO)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasRotateCcw,
+    label: 'Rotate Canvas View Left',
+    category: 'View',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyR)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasRotateCw,
+    label: 'Rotate Canvas View Right',
+    category: 'View',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyR, shift: true)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasFlipHorizontal,
+    label: 'Flip Canvas View Horizontal',
+    category: 'View',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
   ),
 ];

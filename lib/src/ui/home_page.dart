@@ -8,6 +8,7 @@ import '../models/project.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'export/export_dialog.dart';
@@ -45,6 +46,10 @@ class _HomePageState extends State<HomePage> {
   final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
     BrushToolState.defaults,
   );
+
+  /// The canvas rotate/flip channel (P8): the R/Shift+R/H shortcuts call
+  /// in here; the mounted canvas panel binds the viewport handlers.
+  final CanvasViewCommands _canvasViewCommands = CanvasViewCommands();
 
   /// The customizable shortcut bindings (P1): registry defaults + the
   /// user's persisted overrides. Persistence is disabled under
@@ -139,6 +144,12 @@ class _HomePageState extends State<HomePage> {
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
         _session.toggleOnionSkin();
+      case EditorActionIds.canvasRotateCcw:
+        _canvasViewCommands.rotateBy(-15);
+      case EditorActionIds.canvasRotateCw:
+        _canvasViewCommands.rotateBy(15);
+      case EditorActionIds.canvasFlipHorizontal:
+        _canvasViewCommands.toggleFlipHorizontal();
     }
   }
 
@@ -254,6 +265,7 @@ class _HomePageState extends State<HomePage> {
                       session: _session,
                       panelsMenu: _panelsMenu,
                       brushTool: _brushTool,
+                      canvasViewCommands: _canvasViewCommands,
                     ),
                   ),
                 ],
