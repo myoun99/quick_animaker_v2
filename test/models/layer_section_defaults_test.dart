@@ -6,8 +6,10 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
 
 const _cutId = CutId('cut-a');
+const _trackId = TrackId('track-a');
 
 Layer _layer(String id, LayerKind kind, {String? name}) {
   return Layer(
@@ -30,8 +32,9 @@ Cut _cut(List<Layer> layers) {
 }
 
 void main() {
-  group('withEnsuredSectionLayers', () {
-    test('backfills S1, S2 and CAM 1 before the camera layer', () {
+  group('withEnsuredSectionLayers (instruction fixture; SE moved to the '
+      'track)', () {
+    test('backfills CAM 1 before the camera layer', () {
       final layers = [
         _layer('cel', LayerKind.animation),
         _layer('cam', LayerKind.camera),
@@ -41,49 +44,16 @@ void main() {
 
       expect(ensured.map((layer) => layer.kind), [
         LayerKind.animation,
-        LayerKind.se,
-        LayerKind.se,
         LayerKind.instruction,
         LayerKind.camera,
       ]);
-      expect(ensured.map((layer) => layer.name), [
-        'cel',
-        'S1',
-        'S2',
-        'CAM 1',
-        'cam',
-      ]);
-      expect(ensured[1].id, seLayerIdForCut(_cutId, 1));
-      expect(ensured[3].id, instructionLayerIdForCut(_cutId));
+      expect(ensured.map((layer) => layer.name), ['cel', 'CAM 1', 'cam']);
+      expect(ensured[1].id, instructionLayerIdForCut(_cutId));
     });
 
-    test('tops up a single existing SE row to the floor of two', () {
+    test('returns the same list when the floor is already met', () {
       final layers = [
         _layer('cel', LayerKind.animation),
-        _layer('voice', LayerKind.se),
-        _layer('inst', LayerKind.instruction),
-        _layer('cam', LayerKind.camera),
-      ];
-
-      final ensured = withEnsuredSectionLayers(_cutId, layers);
-
-      expect(
-        ensured.where((layer) => layer.kind == LayerKind.se),
-        hasLength(2),
-      );
-      // Existing layers are untouched, in place.
-      expect(ensured[1].id, const LayerId('voice'));
-      expect(
-        ensured.where((layer) => layer.kind == LayerKind.instruction),
-        hasLength(1),
-      );
-    });
-
-    test('returns the same list when floors are already met', () {
-      final layers = [
-        _layer('cel', LayerKind.animation),
-        _layer('s1', LayerKind.se),
-        _layer('s2', LayerKind.se),
         _layer('inst', LayerKind.instruction),
         _layer('cam', LayerKind.camera),
       ];
@@ -91,47 +61,72 @@ void main() {
       expect(identical(withEnsuredSectionLayers(_cutId, layers), layers), true);
     });
 
-    test('skips derived ids already taken and appends without a camera', () {
-      final layers = [
-        // A hostile file using the derived SE id for a plain cel.
-        _layer('${_cutId.value}-se-1', LayerKind.animation),
-      ];
-
-      final ensured = withEnsuredSectionLayers(_cutId, layers);
+    test('never adds SE rows (they are track fixtures now)', () {
+      final ensured = withEnsuredSectionLayers(_cutId, [
+        _layer('cel', LayerKind.animation),
+      ]);
 
       expect(
         ensured.where((layer) => layer.kind == LayerKind.se),
-        hasLength(2),
+        isEmpty,
       );
       expect(
         ensured.where((layer) => layer.kind == LayerKind.instruction),
         hasLength(1),
       );
-      expect(ensured.map((layer) => layer.id).toSet(), hasLength(4));
+    });
+  });
+
+  group('withEnsuredTrackSeLayers', () {
+    test('backfills the S1/S2 floor on an empty track', () {
+      final ensured = withEnsuredTrackSeLayers(_trackId, const []);
+
+      expect(ensured.map((layer) => layer.name), ['S1', 'S2']);
+      expect(ensured[0].id, seLayerIdForTrack(_trackId, 1));
+      expect(ensured[1].id, seLayerIdForTrack(_trackId, 2));
+      expect(ensured.every((layer) => layer.kind == LayerKind.se), isTrue);
+    });
+
+    test('tops up a single row and skips names in use', () {
+      final ensured = withEnsuredTrackSeLayers(_trackId, [
+        _layer('voice', LayerKind.se, name: 'S1'),
+      ]);
+
+      expect(ensured, hasLength(2));
+      expect(ensured[0].id, const LayerId('voice'));
+      expect(ensured[1].name, 'S2');
+    });
+
+    test('returns the same list when the floor is met', () {
+      final seLayers = [
+        _layer('s1', LayerKind.se, name: 'S1'),
+        _layer('s2', LayerKind.se, name: 'S2'),
+      ];
+
+      expect(identical(withEnsuredTrackSeLayers(_trackId, seLayers), seLayers),
+          true);
     });
   });
 
   group('Cut.fromJson section fixtures', () {
-    test('backfills missing SE/instruction rows on load', () {
+    test('backfills the missing instruction row on load (SE stays off the '
+        'cut)', () {
       final legacy = _cut([
         _layer('cel', LayerKind.animation),
         _layer('cam', LayerKind.camera),
       ]);
-      // Simulate a pre-fixture file: strip what the constructor would keep.
       final json = legacy.toJson();
 
       final loaded = Cut.fromJson(json);
 
       expect(loaded.layers.map((layer) => layer.kind), [
         LayerKind.animation,
-        LayerKind.se,
-        LayerKind.se,
         LayerKind.instruction,
         LayerKind.camera,
       ]);
     });
 
-    test('round-trips unchanged once the fixtures exist', () {
+    test('round-trips unchanged once the fixture exists', () {
       final loaded = Cut.fromJson(
         _cut([
           _layer('cel', LayerKind.animation),

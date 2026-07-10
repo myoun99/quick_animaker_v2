@@ -27,6 +27,9 @@ void main() {
         Track(
           id: const TrackId('track-1'),
           name: 'Video',
+          // The track's SE floor, so loading's ensure keeps the round-trip
+          // an identity (SE rows are TRACK-owned).
+          seLayers: withEnsuredTrackSeLayers(const TrackId('track-1'), const []),
           cuts: [
             Cut(
               id: const CutId('cut-1'),
