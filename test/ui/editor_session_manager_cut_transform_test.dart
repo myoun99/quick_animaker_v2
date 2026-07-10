@@ -58,4 +58,47 @@ void main() {
     final refaded = s.cutById(cutId)!.transformTrack;
     expect(refaded.scale.isNotEmpty, isTrue, reason: 'pose keys survive');
   });
+
+  test('activeCutCanvasPoseSample (R9-B): the fx-gated canvas-space cut '
+      'pose the editing canvas and the scrub preview wrap with', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final cutId = s.activeCutId;
+
+    expect(s.activeCutCanvasPoseSample(), isNull, reason: 'no keys → null');
+
+    // An UNTOUCHED Position key stores the camera-frame center; the
+    // canvas-space sample must read as identity motion (R8-③ conjugation:
+    // center AND anchor land on the canvas center).
+    s.updateCutTransformTrack(
+      cutId,
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(
+            x: s.cameraFrameSize.width / 2,
+            y: s.cameraFrameSize.height / 2,
+          ),
+        ),
+      ),
+    );
+    final sample = s.activeCutCanvasPoseSample();
+    final canvas = s.activeCut.canvasSize;
+    expect(sample, isNotNull);
+    expect(
+      sample!.pose.center,
+      CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    );
+    expect(
+      sample.anchorPoint,
+      CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    );
+
+    // The V-row fx switch gates the sample off — the editing canvas drops
+    // its wrap exactly like the playback display drops the pose.
+    s.toggleCutFx(cutId);
+    expect(s.activeCutCanvasPoseSample(), isNull);
+    s.toggleCutFx(cutId);
+    expect(s.activeCutCanvasPoseSample(), isNotNull);
+  });
 }

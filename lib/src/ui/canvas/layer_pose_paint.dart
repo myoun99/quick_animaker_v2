@@ -62,6 +62,42 @@ void applyLayerPoseTransform(
   );
 }
 
+/// The composition (outer ∘ inner) of two pose samples as ONE sample
+/// anchored on the canvas center. Poses are similarities (translate ·
+/// rotate · uniform scale), so the product is exactly representable:
+/// zooms multiply, rotations add, and the composed center is wherever the
+/// combined map sends the canvas center. Lets the CUT-level pose (the
+/// storyboard V-row fx, R9-B) stack over a layer's own pose in the editing
+/// canvas's SINGLE draw-through wrap — one Transform, one hit-test inverse.
+LayerPoseSample composeLayerPoseSamples(
+  LayerPoseSample outer,
+  LayerPoseSample inner,
+  CanvasSize canvasSize,
+) {
+  final matrix =
+      layerPoseMatrix(
+        outer.pose,
+        canvasSize,
+        anchorPoint: outer.anchorPoint,
+      )..multiply(
+        layerPoseMatrix(inner.pose, canvasSize, anchorPoint: inner.anchorPoint),
+      );
+  final s = matrix.storage;
+  final cx = canvasSize.width / 2;
+  final cy = canvasSize.height / 2;
+  return (
+    pose: TransformPose(
+      center: CanvasPoint(
+        x: s[0] * cx + s[4] * cy + s[12],
+        y: s[1] * cx + s[5] * cy + s[13],
+      ),
+      zoom: outer.pose.zoom * inner.pose.zoom,
+      rotationDegrees: outer.pose.rotationDegrees + inner.pose.rotationDegrees,
+    ),
+    anchorPoint: null,
+  );
+}
+
 /// The SCREEN-space wrap matrix for a widget that already renders artwork
 /// under [viewport]: `V · P · V⁻¹` — wrapping the interactive brush view in
 /// `Transform(transform: ...)` with this matrix shows the active layer

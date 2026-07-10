@@ -143,4 +143,85 @@ void main() {
       _expectClose(_map(wrapInverse, posedOnScreen), viewportMap(artwork));
     });
   });
+
+  group('composeLayerPoseSamples (R9-B: cut ∘ layer in ONE wrap)', () {
+    test('composing with the identity preserves the other pose\'s exact '
+        'map', () {
+      final LayerPoseSample identity = (
+        pose: TransformPose(center: CanvasPoint(x: 640, y: 360)),
+        anchorPoint: null,
+      );
+      final LayerPoseSample posed = (
+        pose: _pose(),
+        anchorPoint: CanvasPoint(x: 100, y: 50),
+      );
+      final original = layerPoseMatrix(
+        posed.pose,
+        _canvasSize,
+        anchorPoint: posed.anchorPoint,
+      );
+      for (final composed in [
+        composeLayerPoseSamples(identity, posed, _canvasSize),
+        composeLayerPoseSamples(posed, identity, _canvasSize),
+      ]) {
+        final composedMatrix = layerPoseMatrix(
+          composed.pose,
+          _canvasSize,
+          anchorPoint: composed.anchorPoint,
+        );
+        for (final point in const [
+          Offset.zero,
+          Offset(1280, 720),
+          Offset(87.5, 12.25),
+        ]) {
+          _expectClose(_map(composedMatrix, point), _map(original, point));
+        }
+      }
+    });
+
+    test('the composed sample maps every point exactly like applying the '
+        'two matrices in sequence (similarities compose exactly)', () {
+      final LayerPoseSample outer = (
+        pose: TransformPose(
+          center: CanvasPoint(x: 500, y: 300),
+          zoom: 0.8,
+          rotationDegrees: -20,
+        ),
+        anchorPoint: CanvasPoint(x: 640, y: 360),
+      );
+      final LayerPoseSample inner = (
+        pose: _pose(),
+        anchorPoint: CanvasPoint(x: 100, y: 50),
+      );
+      final composed = composeLayerPoseSamples(outer, inner, _canvasSize);
+      expect(composed.pose.zoom, closeTo(0.8 * 1.7, 1e-9));
+      expect(composed.pose.rotationDegrees, closeTo(-20 + 33, 1e-9));
+
+      final composedMatrix = layerPoseMatrix(
+        composed.pose,
+        _canvasSize,
+        anchorPoint: composed.anchorPoint,
+      );
+      final product =
+          layerPoseMatrix(
+            outer.pose,
+            _canvasSize,
+            anchorPoint: outer.anchorPoint,
+          )..multiply(
+            layerPoseMatrix(
+              inner.pose,
+              _canvasSize,
+              anchorPoint: inner.anchorPoint,
+            ),
+          );
+      for (final point in const [
+        Offset.zero,
+        Offset(1280, 720),
+        Offset(640, 360),
+        Offset(87.5, 12.25),
+      ]) {
+        _expectClose(_map(composedMatrix, point), _map(product, point));
+      }
+    });
+  });
 }

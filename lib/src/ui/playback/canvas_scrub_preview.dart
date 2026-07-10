@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
+import '../canvas/layer_pose_paint.dart' show LayerPoseSample;
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 
@@ -13,7 +14,9 @@ import 'playback_frame_painter.dart';
 /// cursor straight from the composite cache, drawn IN CANVAS SPACE — the
 /// scrub shows the editing view's picture moving through time, not the
 /// playback presentation (no camera projection, no cut fade; the camera
-/// FRAME overlay stays visible on top exactly like normal editing).
+/// FRAME overlay stays visible on top exactly like normal editing). The
+/// CUT pose follows the editing canvas (R9-B): with the V-row fx on, the
+/// content rides the pose per cursor frame — paper static.
 ///
 /// Cache misses keep the last displayed frame on screen (the playback
 /// view's stale-frame policy); the release commit swaps back to the editing
@@ -25,6 +28,7 @@ class CanvasScrubPreview extends StatefulWidget {
     required this.compositeCache,
     required this.cut,
     required this.qualityOf,
+    this.cutPoseSampleAt,
     this.viewport,
   });
 
@@ -32,6 +36,10 @@ class CanvasScrubPreview extends StatefulWidget {
   final CutFrameCompositeCache compositeCache;
   final Cut cut;
   final PlaybackQuality Function() qualityOf;
+
+  /// The canvas-space cut pose per cursor frame (fx-gated by the caller —
+  /// the same sample the editing canvas wraps with, R9-B). Null = identity.
+  final LayerPoseSample? Function(int frameIndex)? cutPoseSampleAt;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -95,12 +103,15 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
       _heldFrame = composite.clone();
     }
 
+    final poseSample = widget.cutPoseSampleAt?.call(frameIndex);
     return SizedBox.expand(
       child: CustomPaint(
         painter: PlaybackFramePainter(
           image: _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
+          cutPose: poseSample?.pose,
+          cutAnchorPoint: poseSample?.anchorPoint,
         ),
       ),
     );
