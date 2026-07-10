@@ -219,19 +219,11 @@ class _InstructionSpan extends StatelessWidget {
     };
   }
 
-  /// Writing runs along the frame axis: plain text on horizontal rows, an
-  /// upright glyph stack (paper-style vertical writing, never rotated) on
-  /// X-sheet columns.
+  /// Instruction writing reads HORIZONTALLY in both orientations (R6-①c:
+  /// the X-sheet glyph stack retired — frame names already read
+  /// horizontally there, and the printed sheet writes these across too).
   Widget _writing(String text, TextStyle style) {
-    if (axis == Axis.horizontal) {
-      return Text(text, maxLines: 1, softWrap: false, style: style);
-    }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final glyph in text.characters) Text(glyph, style: style),
-      ],
-    );
+    return Text(text, maxLines: 1, softWrap: false, style: style);
   }
 
   @override
@@ -354,9 +346,11 @@ class _InstructionMarkPainter extends CustomPainter {
     }
   }
 
-  /// ONE unadorned continuous line between the endpoint cells' centers —
-  /// no end ticks and no gap for the writing (the name overlays it, R4
-  /// user rule); single-cell spans carry writing only, like on paper.
+  /// ONE unadorned continuous line BETWEEN the endpoint cells — the first
+  /// and last cells stay completely empty for their names (R6-①b: the
+  /// centers-to-centers line left half a stroke inside them; the sheet
+  /// matches this exactly). No ticks, no gap for the writing (the name
+  /// overlays it); spans of one or two cells carry writing only.
   void _paintDurationLine(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
@@ -366,8 +360,8 @@ class _InstructionMarkPainter extends CustomPainter {
     final crossCenter = axis == Axis.horizontal
         ? size.height / 2
         : size.width / 2;
-    final start = frameCellExtent / 2;
-    final end = mainExtent - frameCellExtent / 2;
+    final start = frameCellExtent;
+    final end = mainExtent - frameCellExtent;
     if (end - start < 2) {
       return;
     }

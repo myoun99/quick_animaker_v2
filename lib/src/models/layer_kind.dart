@@ -57,3 +57,15 @@ bool layerKindHoldsDrawings(LayerKind kind) {
     LayerKind.instruction || LayerKind.camera => false,
   };
 }
+
+/// Whether the brush may land on [kind]'s cels (R6-④): only the
+/// drawing-section kinds. SE cels exist for timing/dialogue data (the
+/// upcoming on-canvas dialogue display is driven by their transform, not
+/// strokes) and instruction/camera rows carry notation — the pen must
+/// never draw on any of them.
+bool layerKindAcceptsBrushInput(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
+    LayerKind.se || LayerKind.instruction || LayerKind.camera => false,
+  };
+}

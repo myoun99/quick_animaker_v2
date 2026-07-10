@@ -163,30 +163,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.animation:
       case LayerKind.art:
       case LayerKind.storyboard:
-        return _collapsibleTransformGroup(
-          layer,
-          transformPropertyLanes(
-            layer.transformTrack,
-            // The full AE Transform group on drawing layers: Anchor Point /
-            // Position / Scale / Rotation / Opacity (R3 ⑪).
-            includeAnchorAndOpacity: true,
-            poseAt: (frameIndex) =>
-                _session.layerPoseAtFrame(layer, frameIndex),
-            anchorAt: (frameIndex) =>
-                _session.layerAnchorPointAtFrame(layer, frameIndex),
-            opacityAt: (frameIndex) =>
-                _session.layerOpacityAtFrame(layer, frameIndex),
-          ),
-        );
       case LayerKind.instruction:
         return _collapsibleTransformGroup(layer, _layerTransformLanes(layer));
     }
   }
 
+  /// The full AE Transform group — Anchor Point / Position / Scale /
+  /// Rotation / Opacity — identical on EVERY layer-track kind (R6-④:
+  /// SE/instruction match the drawing layers exactly; unified feel is the
+  /// point, per user).
   List<PropertyLaneRow> _layerTransformLanes(Layer layer) {
     return transformPropertyLanes(
       layer.transformTrack,
+      includeAnchorAndOpacity: true,
       poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
+      anchorAt: (frameIndex) =>
+          _session.layerAnchorPointAtFrame(layer, frameIndex),
+      opacityAt: (frameIndex) =>
+          _session.layerOpacityAtFrame(layer, frameIndex),
     );
   }
 

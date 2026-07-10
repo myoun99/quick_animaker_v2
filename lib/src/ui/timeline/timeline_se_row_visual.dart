@@ -460,13 +460,13 @@ class _SeNameBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Accent chip (R5-⑦): the app's shared accent instead of the black
-    // inverted box — reads as a marker ON the block start instead of an
-    // extra cell pushing it. Writing follows the strip: upright glyph
-    // stack on the row strip, horizontal on the X-sheet band. Same accent
-    // on the printed sheet.
+    // Soft accent chip (R6-② tint over R5-⑦'s full accent): reads as a
+    // marker ON the block start instead of an extra cell pushing it, with
+    // dark ink writing carrying the contrast. Writing follows the strip:
+    // upright glyph stack on the row strip, horizontal on the X-sheet
+    // band. Same tint on the printed sheet.
     const style = TextStyle(
-      color: Color(0xFF002020),
+      color: timelineDrawingInkColor,
       fontSize: 9,
       fontWeight: FontWeight.bold,
       height: 1.05,
@@ -486,7 +486,9 @@ class _SeNameBox extends StatelessWidget {
       // preview) — tests and screen readers address the box directly.
       container: true,
       child: Container(
-        color: AppColors.accent,
+        // R6-②: soft accent tint (the full-strength accent read too loud);
+        // dark ink writing carries the contrast — matches the sheet.
+        color: AppColors.accent.withValues(alpha: 0.3),
         alignment: Alignment.center,
         // scaleDown: a LONG name shrinks to the box instead of overflowing
         // the row (the striped-error report — R4 improvement 2).
