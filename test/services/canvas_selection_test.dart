@@ -116,4 +116,68 @@ void main() {
     expect(moved.size, original.size);
     expect(moved.color, original.color);
   });
+
+  group('SelectionAffine (P9b)', () {
+    final pivot = CanvasPoint(x: 10, y: 10);
+
+    test('identity maps points to themselves', () {
+      final affine = SelectionAffine(pivot: pivot);
+      expect(affine.isIdentity, isTrue);
+      final mapped = affine.apply(CanvasPoint(x: 3, y: 7));
+      expect(mapped.x, closeTo(3, 1e-9));
+      expect(mapped.y, closeTo(7, 1e-9));
+    });
+
+    test('scales about the pivot, then translates', () {
+      final affine = SelectionAffine(pivot: pivot, sx: 2, sy: 3, tx: 1, ty: -1);
+      final mapped = affine.apply(CanvasPoint(x: 12, y: 11));
+      // local (2,1) → scaled (4,3) → +pivot+t = (15, 12).
+      expect(mapped.x, closeTo(15, 1e-9));
+      expect(mapped.y, closeTo(12, 1e-9));
+      // The pivot itself only translates.
+      final center = affine.apply(pivot);
+      expect(center.x, closeTo(11, 1e-9));
+      expect(center.y, closeTo(9, 1e-9));
+    });
+
+    test('rotates 90° clockwise (y-down) about the pivot', () {
+      final affine = SelectionAffine(pivot: pivot, rotationDegrees: 90);
+      final mapped = affine.apply(CanvasPoint(x: 15, y: 10));
+      // local (5,0) → (0,5) → canvas (10,15).
+      expect(mapped.x, closeTo(10, 1e-9));
+      expect(mapped.y, closeTo(15, 1e-9));
+    });
+
+    test('transformDabs maps centers, scales size by √|sx·sy|, turns the '
+        'tip angle', () {
+      final affine = SelectionAffine(
+        pivot: pivot,
+        sx: 2,
+        sy: 8,
+        rotationDegrees: 30,
+      );
+      final original = dab(12, 10).copyWith(angleDegrees: 5, size: 10);
+      final mapped = transformDabs([original], affine).single;
+      expect(mapped.size, closeTo(40, 1e-9)); // 10 · √16
+      expect(mapped.angleDegrees, closeTo(35, 1e-9));
+      expect(mapped.center.x, isNot(original.center.x));
+    });
+
+    test('transformShape maps every vertex', () {
+      final shape = CanvasSelectionShape.rect(
+        left: 0,
+        top: 0,
+        right: 20,
+        bottom: 20,
+      );
+      final doubled = transformShape(
+        shape,
+        SelectionAffine(pivot: pivot, sx: 2, sy: 2),
+      );
+      // (0,0) local (−10,−10) → (−20,−20) → (−10,−10).
+      expect(doubled.points.first.x, closeTo(-10, 1e-9));
+      expect(doubled.points.first.y, closeTo(-10, 1e-9));
+      expect(doubled.containsPoint(CanvasPoint(x: 25, y: 25)), isTrue);
+    });
+  });
 }

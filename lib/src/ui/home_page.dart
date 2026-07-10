@@ -178,6 +178,12 @@ class _HomePageState extends State<HomePage> {
         _canvasSelectionCommands.nudge(0, -1);
       case EditorActionIds.selectionNudgeDown:
         _canvasSelectionCommands.nudge(0, 1);
+      case EditorActionIds.selectionFreeTransform:
+        _canvasSelectionCommands.beginTransform();
+      case EditorActionIds.selectionTransformCommit:
+        _canvasSelectionCommands.commitTransform();
+      case EditorActionIds.selectionTransformCancel:
+        _canvasSelectionCommands.cancelTransform();
     }
   }
 
