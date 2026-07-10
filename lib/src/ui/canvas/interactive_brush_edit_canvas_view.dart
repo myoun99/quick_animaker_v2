@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
@@ -93,6 +94,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.segmentClipper = const CanvasSegmentClipper(),
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
+    this.onAltPick,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -105,6 +107,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushDabInterpolator dabInterpolator;
   final CanvasSegmentClipper segmentClipper;
   final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// Alt+pointer-down picks a color instead of starting a stroke (P5's
+  /// temporary eyedropper); null disables the shortcut.
+  final ValueChanged<CanvasPoint>? onAltPick;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -279,6 +285,15 @@ class _InteractiveBrushEditCanvasViewState
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
     final startsInsideSurface = _isInsideSurface(canvasPosition);
+
+    // Alt+click = temporary eyedropper (P5): pick, never stroke.
+    final onAltPick = widget.onAltPick;
+    if (onAltPick != null && HardwareKeyboard.instance.isAltPressed) {
+      if (startsInsideSurface) {
+        onAltPick(canvasPosition);
+      }
+      return;
+    }
 
     _activeDrawingPointer = event.pointer;
     _activeStrokeInputSettings = widget.inputSettings;

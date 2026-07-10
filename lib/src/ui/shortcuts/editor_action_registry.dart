@@ -41,6 +41,8 @@ abstract final class EditorActionIds {
   static const redo = 'edit-redo';
   static const toolBrush = 'tool-brush';
   static const toolEraser = 'tool-eraser';
+  static const toolEyedropper = 'tool-eyedropper';
+  static const toolFill = 'tool-fill';
   static const onionSkinToggle = 'onion-skin-toggle';
 }
 
@@ -116,6 +118,18 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Eraser Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyE)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolEyedropper,
+    label: 'Eyedropper Tool',
+    category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolFill,
+    label: 'Fill Tool',
+    category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.onionSkinToggle,

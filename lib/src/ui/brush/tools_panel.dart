@@ -49,6 +49,22 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.eraser,
             onPressed: () => onToolChanged(CanvasTool.eraser),
           ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-eyedropper-button',
+            tooltip: 'Eyedropper Tool',
+            icon: Icons.colorize_outlined,
+            selected: tool == CanvasTool.eyedropper,
+            onPressed: () => onToolChanged(CanvasTool.eyedropper),
+          ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-fill-button',
+            tooltip: 'Fill Tool',
+            icon: Icons.format_color_fill_outlined,
+            selected: tool == CanvasTool.fill,
+            onPressed: () => onToolChanged(CanvasTool.fill),
+          ),
         ],
       ),
     );

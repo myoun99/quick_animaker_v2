@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
+import '../services/canvas_color_sampler.dart';
+import '../services/canvas_flood_fill.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
@@ -32,6 +34,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.brushToolState,
     required this.cameraViewEnabled,
     required this.cameraDimOpacity,
+    this.onBrushToolStateChanged,
     this.expandedLaneLayerIds,
   });
 
@@ -40,6 +43,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).
   final ValueListenable<BrushToolState> brushToolState;
+
+  /// Write-back to the workspace-owned tool state: eyedropper picks land
+  /// the sampled color (and return to the painting tool) through here.
+  final ValueChanged<BrushToolState>? onBrushToolStateChanged;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -207,6 +214,35 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           selectionLabels: session.canvasSelectionLabels,
           brushToolState: widget.brushToolState.value,
           fitFocusRect: fitFocusRect,
+          // P5 eyedropper: sample the VISIBLE composite ("pick what you
+          // see"); a committed pick also returns to the painting tool
+          // (CSP behavior), an Alt-pick keeps the active tool.
+          sampleColorAt: (point) => sampleCompositeColor(
+            cut: session.activeCut,
+            frameIndex: session.currentFrameIndex,
+            surfaceResolver: session.brushSurfaceForLayerFrame,
+            point: point,
+            fxBypassedLayerIds: session.fxBypassedLayerIds,
+          ),
+          onEyedropperPick: (color) {
+            final state = widget.brushToolState.value;
+            widget.onBrushToolStateChanged?.call(
+              state.copyWith(color: color, tool: state.eyedropperReturnTool),
+            );
+          },
+          onAltColorPick: (color) => widget.onBrushToolStateChanged?.call(
+            widget.brushToolState.value.copyWith(color: color),
+          ),
+          // P6 fill: the flood region as ONE mask dab; the panel commits it
+          // through the stroke funnel onto the active layer's frame.
+          fillDabAt: (point, color) => buildFillDab(
+            cut: session.activeCut,
+            frameIndex: session.currentFrameIndex,
+            surfaceResolver: session.brushSurfaceForLayerFrame,
+            point: point,
+            color: color,
+            fxBypassedLayerIds: session.fxBypassedLayerIds,
+          ),
           // Layers below/above the active one composite around the
           // interactive view from the layer image cache — this is what makes
           // the other layers (and their visibility/opacity) visible while
