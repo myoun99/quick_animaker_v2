@@ -1016,12 +1016,12 @@ class TimesheetDocumentPainter extends CustomPainter {
     );
   }
 
-  /// An SE entry's start cell, the real Toei sheet way (R4, user-approved
-  /// mockup v3): a compact INVERTED name box hugging the block's start
-  /// boundary (ink fill, paper-light writing), the dialogue distributed
-  /// vertically over the REST of the span — no duration bar. Single-row
-  /// entries close with the red end underline right here; longer ones
-  /// close from their last held row.
+  /// An SE entry's start cell (R5-⑦, user-approved mockup v4): a full-width
+  /// thin red bar RIGHT BEFORE the block start, a compact ACCENT name box
+  /// (the app's shared accent — same chip as the timeline/X-sheet rows)
+  /// hugging the boundary, the dialogue distributed vertically over the
+  /// REST of the span — no duration bar. Single-row entries close with the
+  /// red end bar right here; longer ones close from their last held row.
   void _paintSeEntryStart(
     Canvas canvas, {
     required TimesheetCell cell,
@@ -1039,23 +1039,39 @@ class TimesheetDocumentPainter extends CustomPainter {
     final spanBottom = cellTop + rowsHere * rowHeight;
     final seName = cell.seName ?? '';
 
-    var dialogueTop = cellTop + 2;
+    // The opening red bar sits ON the start boundary only when this row
+    // really is the span's first (page-half continuations skip it).
+    if ((cell.spanOffset ?? 0) == 0) {
+      _paintSeRedBar(
+        canvas,
+        columnLeft: columnLeft,
+        columnWidth: columnWidth,
+        y: cellTop + 1,
+      );
+    }
+
+    var dialogueTop = cellTop + 3;
     if (seName.isNotEmpty) {
       canvas.drawRect(
-        Rect.fromLTWH(columnLeft + 1, cellTop, columnWidth - 2, nameBoxHeight),
-        Paint()..color = _ink,
+        Rect.fromLTWH(
+          columnLeft + 1,
+          cellTop + 2,
+          columnWidth - 2,
+          nameBoxHeight,
+        ),
+        Paint()..color = AppColors.accent,
       );
       _text(
         canvas,
         seName,
-        Offset(centerX, cellTop + 2),
+        Offset(centerX, cellTop + 4),
         fontSize: 7,
         bold: true,
-        color: _paper,
+        color: const Color(0xFF002020),
         centeredAtX: true,
         maxWidth: columnWidth - 4,
       );
-      dialogueTop = cellTop + nameBoxHeight + 2;
+      dialogueTop = cellTop + nameBoxHeight + 4;
     }
 
     final dialogueExtent = spanBottom - 2 - dialogueTop;
@@ -1079,17 +1095,31 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-  /// The short red underline closing an SE block (Toei notation).
+  /// The full-width thin red bar closing an SE block (and mirrored before
+  /// its start) — Toei notation, R5-⑦: frame-width, not a short tick.
   void _paintSeEndUnderline(
     Canvas canvas, {
     required double centerX,
     required double columnWidth,
     required double y,
   }) {
-    final halfWidth = columnWidth * 0.3;
+    _paintSeRedBar(
+      canvas,
+      columnLeft: centerX - columnWidth / 2,
+      columnWidth: columnWidth,
+      y: y,
+    );
+  }
+
+  void _paintSeRedBar(
+    Canvas canvas, {
+    required double columnLeft,
+    required double columnWidth,
+    required double y,
+  }) {
     canvas.drawLine(
-      Offset(centerX - halfWidth, y),
-      Offset(centerX + halfWidth, y),
+      Offset(columnLeft, y),
+      Offset(columnLeft + columnWidth, y),
       Paint()
         ..color = AppColors.danger
         ..strokeWidth = 2,
@@ -1097,8 +1127,9 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// An SE column's empty row: the light-gray "no SE here" wash (project
-  /// toggle) under a dotted center guide — the print-sheet convention; the
-  /// frame grid keeps printing through both.
+  /// toggle). Print-sheet only — the timeline/X-sheet's dark uncovered
+  /// cells already read as empty, and the dotted center guide is retired
+  /// everywhere (R5-②).
   void _paintSeEmptyRow(
     Canvas canvas, {
     required double columnLeft,
@@ -1112,12 +1143,6 @@ class TimesheetDocumentPainter extends CustomPainter {
         Rect.fromLTWH(columnLeft, cellTop, columnWidth, rowHeight),
         Paint()..color = _ink.withValues(alpha: 0.05),
       );
-    }
-    final dot = Paint()
-      ..color = _gridMedium
-      ..strokeWidth = 1.0;
-    for (var y = cellTop + 2.0; y < cellTop + rowHeight - 1; y += 5.0) {
-      canvas.drawLine(Offset(centerX, y), Offset(centerX, y + 2.0), dot);
     }
   }
 
