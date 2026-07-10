@@ -59,7 +59,10 @@ class PlaybackFramePainter extends CustomPainter {
   /// camera projection. Resolved by cutPoseAt over the same space this
   /// painter draws (camera frame in camera mode, canvas otherwise); null =
   /// identity, zero cost. Display-time only, never baked into composites
-  /// (the cut fade's rule).
+  /// (the cut fade's rule). Canvas mode keeps the PAPER static and moves
+  /// only the merged content, clipped to the canvas (R7-③: "the canvas
+  /// stays put, the contents move as one") — the paper is the panel's
+  /// stage, not part of the cut's picture there.
   final TransformPose? cutPose;
 
   /// The cut pose's anchor; null = the display-space center.
@@ -121,9 +124,21 @@ class PlaybackFramePainter extends CustomPainter {
     // The cut pose (AE precomp semantics) transforms the cut's FINISHED
     // picture over the display space — outermost, above the camera
     // projection; the fade overlay below stays a screen dip on top.
+    //
+    // Canvas mode: the paper draws BEFORE the pose and the moving content
+    // clips to it — the canvas is the panel's static stage, only the merged
+    // picture moves inside it (R7-③). Camera mode keeps the paper under the
+    // pose: there the cut's finished picture (paper included) moves within
+    // the output frame, matching the MP4 bake.
     final resolvedCutPose = cutPose;
+    if (pose == null) {
+      canvas.drawRect(canvasRect, Paint()..color = paperColor);
+    }
     if (resolvedCutPose != null) {
       canvas.save();
+      if (pose == null) {
+        canvas.clipRect(canvasRect);
+      }
       applyLayerPoseTransform(
         canvas,
         resolvedCutPose,
@@ -138,8 +153,8 @@ class PlaybackFramePainter extends CustomPainter {
       canvas.scale(pose.zoom);
       canvas.rotate(-pose.rotationDegrees * math.pi / 180);
       canvas.translate(-pose.center.x, -pose.center.y);
+      canvas.drawRect(canvasRect, Paint()..color = paperColor);
     }
-    canvas.drawRect(canvasRect, Paint()..color = paperColor);
     final composite = image;
     if (composite != null) {
       canvas.drawImageRect(

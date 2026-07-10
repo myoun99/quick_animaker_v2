@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -268,6 +270,8 @@ class _InstructionSpan extends StatelessWidget {
                   eventLength: event.length,
                   frameCellExtent: frameCellExtent,
                   color: markColor,
+                  hasStartName: valueA != null && valueA.isNotEmpty,
+                  hasEndName: valueB != null && valueB.isNotEmpty,
                 ),
               ),
             ),
@@ -305,10 +309,11 @@ class _InstructionSpan extends StatelessWidget {
 }
 
 /// The instruction mark background on the paper block: bar marks draw the
-/// sheet's completely straight duration line with a perpendicular tick at
-/// each end (A ⊢───⊣ B — no arrowheads, user-confirmed), FI/FO the hatched
-/// fade wedges (wide where the screen is covered), O.L the translucent
-/// bowtie (two triangles meeting at the span's center).
+/// sheet's completely straight duration line between the endpoint cells
+/// (names own them; a nameless endpoint gets the solid triangle cap
+/// instead — R7-①), FI/FO the light-gray fade wedges (wide where the
+/// screen is covered), O.L the translucent bowtie (two triangles meeting
+/// at the span's center).
 class _InstructionMarkPainter extends CustomPainter {
   _InstructionMarkPainter({
     required this.axis,
@@ -316,6 +321,8 @@ class _InstructionMarkPainter extends CustomPainter {
     required this.eventLength,
     required this.frameCellExtent,
     required this.color,
+    this.hasStartName = true,
+    this.hasEndName = true,
   });
 
   final Axis axis;
@@ -323,6 +330,13 @@ class _InstructionMarkPainter extends CustomPainter {
   final int eventLength;
   final double frameCellExtent;
   final Color color;
+
+  /// Whether the A/B writing occupies the endpoint cells. A NAMELESS bar
+  /// endpoint carries the sheet's solid triangle mark instead (real
+  /// Japanese timesheets, R7-①), pointing down the time axis at either
+  /// end, with the line running through the freed cell to meet it.
+  final bool hasStartName;
+  final bool hasEndName;
 
   /// Main/cross coordinates → canvas offset for the current [axis].
   Offset _at(double main, double cross) =>
@@ -350,22 +364,68 @@ class _InstructionMarkPainter extends CustomPainter {
   /// and last cells stay completely empty for their names (R6-①b: the
   /// centers-to-centers line left half a stroke inside them; the sheet
   /// matches this exactly). No ticks, no gap for the writing (the name
-  /// overlays it); spans of one or two cells carry writing only.
+  /// overlays it); spans of one or two cells carry writing only. A
+  /// NAMELESS endpoint carries the solid triangle mark instead and the
+  /// line extends through its cell to meet it (R7-①).
   void _paintDurationLine(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round;
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossCenter = axis == Axis.horizontal
-        ? size.height / 2
-        : size.width / 2;
-    final start = frameCellExtent;
-    final end = mainExtent - frameCellExtent;
+    final crossExtent = axis == Axis.horizontal ? size.height : size.width;
+    final crossCenter = crossExtent / 2;
+    var start = frameCellExtent;
+    var end = mainExtent - frameCellExtent;
+    if (!hasStartName) {
+      start = _paintEndpointTriangle(
+        canvas,
+        mainExtent: mainExtent,
+        crossCenter: crossCenter,
+        crossExtent: crossExtent,
+        atStart: true,
+      );
+    }
+    if (!hasEndName) {
+      end = _paintEndpointTriangle(
+        canvas,
+        mainExtent: mainExtent,
+        crossCenter: crossCenter,
+        crossExtent: crossExtent,
+        atStart: false,
+      );
+    }
     if (end - start < 2) {
       return;
     }
     canvas.drawLine(_at(start, crossCenter), _at(end, crossCenter), paint);
+  }
+
+  /// The solid triangle capping a nameless bar endpoint, pointing down the
+  /// time axis at BOTH ends (the sheet convention: the start cap hangs the
+  /// line off its apex, the end cap closes it arrowhead-style). Returns the
+  /// main-axis coordinate the duration line meets it at.
+  double _paintEndpointTriangle(
+    Canvas canvas, {
+    required double mainExtent,
+    required double crossCenter,
+    required double crossExtent,
+    required bool atStart,
+  }) {
+    const inset = 1.5;
+    final length = math.min(7.0, math.max(3.0, frameCellExtent - 2));
+    final crossHalf = math.min(4.0, math.max(2.0, crossExtent / 2 - 2));
+    final baseMain = atStart ? inset : mainExtent - inset - length;
+    final apexMain = atStart ? inset + length : mainExtent - inset;
+    canvas.drawPath(
+      Path()..addPolygon([
+        _at(baseMain, crossCenter - crossHalf),
+        _at(apexMain, crossCenter),
+        _at(baseMain, crossCenter + crossHalf),
+      ], true),
+      Paint()..color = color,
+    );
+    return atStart ? apexMain : baseMain;
   }
 
   /// The fade wedge, a plain light-gray fill following the light: FI opens
@@ -430,6 +490,8 @@ class _InstructionMarkPainter extends CustomPainter {
         markType != oldDelegate.markType ||
         eventLength != oldDelegate.eventLength ||
         frameCellExtent != oldDelegate.frameCellExtent ||
-        color != oldDelegate.color;
+        color != oldDelegate.color ||
+        hasStartName != oldDelegate.hasStartName ||
+        hasEndName != oldDelegate.hasEndName;
   }
 }
