@@ -5,6 +5,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/canvas_viewport.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'viewport_canvas_transform.dart';
 
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
 /// with the viewport transform applied INSIDE the picture.
@@ -60,8 +61,7 @@ class BitmapSurfacePainter extends CustomPainter {
     canvas.save();
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      applyViewportTransform(canvas, resolvedViewport);
     }
     canvas.clipRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
 

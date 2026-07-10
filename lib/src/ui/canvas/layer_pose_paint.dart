@@ -7,6 +7,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
+import 'viewport_canvas_transform.dart';
 
 /// A layer's resolved GEOMETRIC transform at one frame: the shared pose
 /// (position/scale/rotation) plus the optional anchor point (null = the
@@ -111,14 +112,7 @@ Matrix4 layerPoseViewportWrapMatrix(
   CanvasViewport viewport, {
   CanvasPoint? anchorPoint,
 }) {
-  final view = Matrix4.translationValues(viewport.panX, viewport.panY, 0)
-    ..multiply(Matrix4.diagonal3Values(viewport.zoom, viewport.zoom, 1));
-  final viewInverse = Matrix4.diagonal3Values(
-    1 / viewport.zoom,
-    1 / viewport.zoom,
-    1,
-  )..multiply(Matrix4.translationValues(-viewport.panX, -viewport.panY, 0));
-  return view.multiplied(
+  return viewportTransformMatrix(viewport).multiplied(
     layerPoseMatrix(pose, canvasSize, anchorPoint: anchorPoint),
-  )..multiply(viewInverse);
+  )..multiply(viewportInverseTransformMatrix(viewport));
 }

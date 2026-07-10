@@ -74,5 +74,55 @@ void main() {
       expect(next.panY, lessThan(-100));
       expect(next.panX, 0);
     });
+
+    test('a 90° rotated view tracks the rotated AABB (P8)', () {
+      // 300×100 canvas rotated 90°: the horizontal footprint becomes the
+      // canvas HEIGHT (100·zoom = 200), so a 150-wide viewport can still
+      // scroll it, just over the swapped extent.
+      final metrics = CanvasViewportPanMetrics(
+        axis: Axis.horizontal,
+        viewport: CanvasViewport(zoom: 2, rotationDegrees: 90),
+        editorViewportSize: const Size(150, 150),
+        canvasSize: const CanvasSize(width: 300, height: 100),
+        trackExtent: 100,
+      );
+
+      expect(metrics.scaledContentExtent, closeTo(200, 1e-6));
+      expect(metrics.maxScroll, closeTo(50, 1e-6));
+    });
+
+    test('panToThumb round-trips under rotation/flip', () {
+      final viewport = CanvasViewport(
+        zoom: 2,
+        panX: -40,
+        panY: 15,
+        rotationDegrees: 30,
+        flipHorizontal: true,
+      );
+      final metrics = CanvasViewportPanMetrics(
+        axis: Axis.horizontal,
+        viewport: viewport,
+        editorViewportSize: const Size(120, 120),
+        canvasSize: const CanvasSize(width: 300, height: 200),
+        trackExtent: 100,
+      );
+      expect(metrics.canScroll, isTrue);
+
+      // Panning to a thumb position and re-measuring reads the SAME thumb
+      // position back — the offset bookkeeping is consistent.
+      final target = metrics.thumbTravel / 2;
+      final panned = metrics.panToThumb(target);
+      final remeasured = CanvasViewportPanMetrics(
+        axis: Axis.horizontal,
+        viewport: panned,
+        editorViewportSize: const Size(120, 120),
+        canvasSize: const CanvasSize(width: 300, height: 200),
+        trackExtent: 100,
+      );
+      expect(remeasured.thumbStart, closeTo(target, 1e-6));
+      // Rotation and flip survive the panbar drag untouched.
+      expect(panned.rotationDegrees, viewport.rotationDegrees);
+      expect(panned.flipHorizontal, viewport.flipHorizontal);
+    });
   });
 }

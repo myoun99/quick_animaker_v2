@@ -15,6 +15,7 @@ import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_view_commands.dart';
 import 'color/color_wheel_panel.dart';
 import 'brush/tools_panel.dart';
 import 'camera/camera_panel.dart';
@@ -69,6 +70,7 @@ class EditorWorkspace extends StatefulWidget {
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
+    this.canvasViewCommands,
   });
 
   final EditorSessionManager session;
@@ -77,6 +79,10 @@ class EditorWorkspace extends StatefulWidget {
   /// shortcuts (B/E) and the workspace panels drive one state. Null keeps
   /// a workspace-local notifier (focused widget tests).
   final ValueNotifier<BrushToolState>? brushTool;
+
+  /// The shell-owned rotate/flip shortcut channel (P8, R/Shift+R/H),
+  /// forwarded to the canvas panel.
+  final CanvasViewCommands? canvasViewCommands;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -593,6 +599,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             session: widget.session,
             brushToolState: _brushTool,
             onBrushToolStateChanged: (state) => _brushTool.value = state,
+            canvasViewCommands: widget.canvasViewCommands,
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,

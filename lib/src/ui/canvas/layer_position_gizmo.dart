@@ -38,22 +38,26 @@ class _LayerPositionGizmoState extends State<LayerPositionGizmo> {
 
   static const double _handleSize = 22;
 
-  Offset get _screenCenter => Offset(
-    widget.viewport.panX + widget.viewport.zoom * widget.pose.center.x,
-    widget.viewport.panY + widget.viewport.zoom * widget.pose.center.y,
-  );
+  Offset get _screenCenter {
+    final mapped = widget.viewport.canvasToViewport(widget.pose.center);
+    return Offset(mapped.x, mapped.y);
+  }
 
   void _endDrag() {
-    final canvasDelta = _dragDelta / widget.viewport.zoom;
-    final committed = CanvasPoint(
-      x: widget.pose.center.x + canvasDelta.dx,
-      y: widget.pose.center.y + canvasDelta.dy,
+    final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
+      dx: _dragDelta.dx,
+      dy: _dragDelta.dy,
     );
+    final committed = CanvasPoint(
+      x: widget.pose.center.x + canvasDelta.x,
+      y: widget.pose.center.y + canvasDelta.y,
+    );
+    final moved = _dragDelta != Offset.zero;
     setState(() {
       _dragging = false;
       _dragDelta = Offset.zero;
     });
-    if (canvasDelta != Offset.zero) {
+    if (moved) {
       widget.onPositionCommitted(committed);
     }
   }

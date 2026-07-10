@@ -10,6 +10,7 @@ import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'layer_pose_paint.dart';
+import 'viewport_canvas_transform.dart';
 
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest {
@@ -248,8 +249,7 @@ class _LayerStackPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    canvas.translate(viewport.panX, viewport.panY);
-    canvas.scale(viewport.zoom, viewport.zoom);
+    applyViewportTransform(canvas, viewport);
 
     final canvasRect = Rect.fromLTWH(
       0,
