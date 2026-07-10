@@ -7,6 +7,7 @@ import '../models/layer_id.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
@@ -38,6 +39,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
     this.canvasViewCommands,
+    this.canvasSelectionCommands,
     this.expandedLaneLayerIds,
   });
 
@@ -54,6 +56,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level rotate/flip shortcut channel (P8), forwarded to the
   /// canvas panel which binds the actual viewport handlers.
   final CanvasViewCommands? canvasViewCommands;
+
+  /// The app-level selection shortcut channel (P9: Ctrl+D, nudges),
+  /// forwarded the same way.
+  final CanvasSelectionCommands? canvasSelectionCommands;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -222,6 +228,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           brushToolState: widget.brushToolState.value,
           fitFocusRect: fitFocusRect,
           viewCommands: widget.canvasViewCommands,
+          selectionCommands: widget.canvasSelectionCommands,
           // P5 eyedropper: sample the VISIBLE composite ("pick what you
           // see"); a committed pick also returns to the painting tool
           // (CSP behavior), an Alt-pick keeps the active tool.

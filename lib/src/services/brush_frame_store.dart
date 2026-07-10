@@ -1,4 +1,5 @@
 import '../models/bitmap_surface.dart';
+import '../models/brush_dab.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
@@ -120,6 +121,30 @@ class BrushFrameStore {
         return _markCacheDirty(state.copyWith(paintCommands: commands));
       });
     }
+  }
+
+  /// Rewrites the given commands' dabs IN PLACE (P9 selection transform):
+  /// same ids, same list positions, so the frame's stroke z-order is
+  /// untouched. Whole-frame cache dirty — an arbitrary rewrite has no
+  /// incremental tile delta.
+  BrushFrameDrawingState replacePaintCommandDabs(
+    BrushFrameKey key,
+    Map<BrushPaintCommandId, List<BrushDab>> dabsById,
+  ) {
+    return _update(key, (state) {
+      final commands = state.paintCommands
+          .map(
+            (command) => dabsById.containsKey(command.id)
+                ? command.copyWith(
+                    sourceDabs: List<BrushDab>.unmodifiable(
+                      dabsById[command.id]!,
+                    ),
+                  )
+                : command,
+          )
+          .toList();
+      return _markCacheDirty(state.copyWith(paintCommands: commands));
+    });
   }
 
   BrushFrameDisplayCache storeRebuiltDisplayCache({

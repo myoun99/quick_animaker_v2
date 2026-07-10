@@ -11,14 +11,17 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/commands/brush_selection_transform_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/canvas_selection_layer.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
+import 'canvas_selection_commands.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
 
@@ -70,6 +73,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onAltColorPick,
     this.fillDabAt,
     this.viewCommands,
+    this.selectionCommands,
     this.allowViewRotation = true,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -154,6 +158,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// viewport-center handlers while mounted.
   final CanvasViewCommands? viewCommands;
 
+  /// The app-level selection channel (P9: Ctrl+D, arrow nudges), bound by
+  /// the selection layer while a selection tool is active.
+  final CanvasSelectionCommands? selectionCommands;
+
   /// False hides the rotate/flip toolbar controls and disables the
   /// rotation gestures — for hosts whose content layers speak zoom/pan
   /// only (the timesheet's ink and header-edit overlays).
@@ -171,6 +179,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// True while a brush stroke is in progress; the viewport gesture layer
   /// ignores wheel zooms and new pans so they cannot disturb the stroke.
   bool _strokeActive = false;
+
+  /// True while a selection marquee/move drag is in progress (P9) — holds
+  /// viewport gestures exactly like a stroke.
+  bool _selectionDragActive = false;
 
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
@@ -350,19 +362,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final underlayBuilder = widget.viewportUnderlayBuilder;
                   final contentStrokeActive = widget.contentStrokeActive;
 
+                  final selectionLayerActive =
+                      canvasToolSelects(widget.brushToolState.tool) &&
+                      widget.coordinator != null;
+
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     return CanvasViewportGestureLayer(
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
                       rotationEnabled: widget.allowViewRotation,
-                      strokeActive: _strokeActive || contentStrokeIsActive,
+                      strokeActive:
+                          _strokeActive ||
+                          _selectionDragActive ||
+                          contentStrokeIsActive,
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
                         child:
                             overlayBuilder == null &&
                                 underlayBuilder == null &&
-                                _toolTapHandler() == null
+                                _toolTapHandler() == null &&
+                                !selectionLayerActive
                             ? canvasView
                             : Stack(
                                 children: [
@@ -397,6 +417,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                                 ),
                                               ),
                                             ),
+                                      ),
+                                    ),
+                                  // The P9 selection tools own the pointer
+                                  // while active (marquee/lasso/move) —
+                                  // strokes cannot start below the layer.
+                                  if (selectionLayerActive)
+                                    Positioned.fill(
+                                      child: CanvasSelectionLayer(
+                                        tool:
+                                            widget.brushToolState.tool ==
+                                                CanvasTool.lasso
+                                            ? CanvasSelectionTool.lasso
+                                            : CanvasSelectionTool.rect,
+                                        viewport: _viewport,
+                                        canvasSize: widget.canvasSize,
+                                        frameToken:
+                                            widget.coordinator!.activeFrameKey,
+                                        visibleCommands: () => widget
+                                            .coordinator!
+                                            .frameStore
+                                            .getOrCreateFrame(
+                                              widget
+                                                  .coordinator!
+                                                  .activeFrameKey,
+                                            )
+                                            .visibleActivePaintCommands,
+                                        selectionCommands:
+                                            widget.selectionCommands,
+                                        onDragActiveChanged: (active) =>
+                                            setState(
+                                              () =>
+                                                  _selectionDragActive = active,
+                                            ),
+                                        onTransformCommitted:
+                                            _handleSelectionTransform,
                                       ),
                                     ),
                                 ],
@@ -598,6 +653,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     switch (widget.brushToolState.tool) {
       case CanvasTool.brush:
       case CanvasTool.eraser:
+      // The selection tools mount their own drag layer, not the tap layer.
+      case CanvasTool.selectRect:
+      case CanvasTool.lasso:
         return null;
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;
@@ -652,6 +710,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),
       );
+    });
+  }
+
+  /// One finished selection move (P9): ONE app-level undo entry via the
+  /// in-place dab rewrite.
+  void _handleSelectionTransform(CanvasSelectionTransform transform) {
+    final coordinator = widget.coordinator!;
+    final command = BrushSelectionTransformHistoryCommand(
+      coordinator: coordinator,
+      frameKey: coordinator.activeFrameKey,
+      before: transform.before,
+      after: transform.after,
+      cacheInvalidationSink: widget.cacheInvalidationSink,
+    );
+    setState(() {
+      final historyManager = widget.historyManager;
+      if (historyManager == null) {
+        command.execute();
+        return;
+      }
+      historyManager.execute(command);
     });
   }
 }

@@ -8,6 +8,7 @@ import '../models/project.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
@@ -50,6 +51,11 @@ class _HomePageState extends State<HomePage> {
   /// The canvas rotate/flip channel (P8): the R/Shift+R/H shortcuts call
   /// in here; the mounted canvas panel binds the viewport handlers.
   final CanvasViewCommands _canvasViewCommands = CanvasViewCommands();
+
+  /// The selection channel (P9): Ctrl+D and the arrow nudges call in
+  /// here; without a live selection the arrows keep flipping frames.
+  final CanvasSelectionCommands _canvasSelectionCommands =
+      CanvasSelectionCommands();
 
   /// The customizable shortcut bindings (P1): registry defaults + the
   /// user's persisted overrides. Persistence is disabled under
@@ -99,9 +105,19 @@ class _HomePageState extends State<HomePage> {
   void _invokeAction(String actionId) {
     switch (actionId) {
       case EditorActionIds.framePrevious:
-        _session.selectPreviousFrame();
+        // A live selection claims the arrow keys as nudges (PS
+        // arbitration); the comma/period bindings always flip.
+        if (_canvasSelectionCommands.hasSelection) {
+          _canvasSelectionCommands.nudge(-1, 0);
+        } else {
+          _session.selectPreviousFrame();
+        }
       case EditorActionIds.frameNext:
-        _session.selectNextFrame();
+        if (_canvasSelectionCommands.hasSelection) {
+          _canvasSelectionCommands.nudge(1, 0);
+        } else {
+          _session.selectNextFrame();
+        }
       case EditorActionIds.drawingPrevious:
         _session.selectPreviousDrawing();
       case EditorActionIds.drawingNext:
@@ -150,6 +166,18 @@ class _HomePageState extends State<HomePage> {
         _canvasViewCommands.rotateBy(15);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
+      case EditorActionIds.toolSelectRect:
+        _brushTool.value = _brushTool.value.copyWith(
+          tool: CanvasTool.selectRect,
+        );
+      case EditorActionIds.toolLasso:
+        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.lasso);
+      case EditorActionIds.selectionDeselect:
+        _canvasSelectionCommands.deselect();
+      case EditorActionIds.selectionNudgeUp:
+        _canvasSelectionCommands.nudge(0, -1);
+      case EditorActionIds.selectionNudgeDown:
+        _canvasSelectionCommands.nudge(0, 1);
     }
   }
 
@@ -266,6 +294,7 @@ class _HomePageState extends State<HomePage> {
                       panelsMenu: _panelsMenu,
                       brushTool: _brushTool,
                       canvasViewCommands: _canvasViewCommands,
+                      canvasSelectionCommands: _canvasSelectionCommands,
                     ),
                   ),
                 ],

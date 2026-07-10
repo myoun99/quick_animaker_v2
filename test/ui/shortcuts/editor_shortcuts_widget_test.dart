@@ -126,6 +126,14 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.fill);
+
+    // P9: M = rectangle select, L = lasso.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.selectRect);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.lasso);
   });
 
   testWidgets('R/Shift+R rotate the canvas view; H flips it (P8)', (

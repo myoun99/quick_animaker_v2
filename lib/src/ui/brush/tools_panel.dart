@@ -65,6 +65,22 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.fill,
             onPressed: () => onToolChanged(CanvasTool.fill),
           ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-select-rect-button',
+            tooltip: 'Rectangle Select Tool',
+            icon: Icons.highlight_alt_outlined,
+            selected: tool == CanvasTool.selectRect,
+            onPressed: () => onToolChanged(CanvasTool.selectRect),
+          ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-lasso-button',
+            tooltip: 'Lasso Select Tool',
+            icon: Icons.gesture,
+            selected: tool == CanvasTool.lasso,
+            onPressed: () => onToolChanged(CanvasTool.lasso),
+          ),
         ],
       ),
     );
