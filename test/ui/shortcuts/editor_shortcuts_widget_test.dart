@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
+import 'package:quick_animaker_v2/src/ui/editor_canvas_area.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
@@ -92,6 +93,37 @@ void main() {
     // Close the dialog.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('I enters the eyedropper remembering the return tool; G fills', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    CanvasTool toolOf() =>
+        tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
+    BrushToolState stateOf() => tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .brushToolState
+        .value;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.eraser);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.eyedropper);
+    expect(stateOf().eyedropperReturnTool, CanvasTool.eraser);
+
+    // Pressing I again must not overwrite the memory with the eyedropper
+    // itself (a pick would then trap the tool).
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+    await tester.pumpAndSettle();
+    expect(stateOf().eyedropperReturnTool, CanvasTool.eraser);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.fill);
   });
 
   testWidgets('Ctrl+Z undoes; Space enters playback', (tester) async {

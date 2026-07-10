@@ -125,6 +125,18 @@ class _HomePageState extends State<HomePage> {
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.brush);
       case EditorActionIds.toolEraser:
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.eraser);
+      case EditorActionIds.toolEyedropper:
+        // Remember where to return after the pick (CSP behavior) — but
+        // never the eyedropper itself (repeated I must not trap it).
+        final state = _brushTool.value;
+        _brushTool.value = state.copyWith(
+          tool: CanvasTool.eyedropper,
+          eyedropperReturnTool: state.tool == CanvasTool.eyedropper
+              ? state.eyedropperReturnTool
+              : state.tool,
+        );
+      case EditorActionIds.toolFill:
+        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
         _session.toggleOnionSkin();
     }

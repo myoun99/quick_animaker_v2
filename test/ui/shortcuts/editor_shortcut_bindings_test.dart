@@ -94,8 +94,9 @@ void main() {
     bindings.setActivators(EditorActionIds.undo, const [
       SingleActivator(LogicalKeyboardKey.keyU, control: true, alt: true),
     ]);
-    // The persist is fire-and-forget; wait for the file.
-    await Future<void>.delayed(Duration.zero);
+    // The persist is fire-and-forget from the caller's view; the exposed
+    // chain says when it has actually hit disk.
+    await bindings.pendingPersist;
     expect(File(path).existsSync(), isTrue);
 
     final restored = EditorShortcutBindings(

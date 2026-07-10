@@ -33,6 +33,21 @@ void main() {
       expect(find.byTooltip('Eraser Tool'), findsOneWidget);
     });
 
+    testWidgets('exposes eyedropper and fill buttons (P5/P6)', (tester) async {
+      final selected = <CanvasTool>[];
+      await tester.pumpWidget(_panel(onToolChanged: selected.add));
+
+      expect(find.byTooltip('Eyedropper Tool'), findsOneWidget);
+      expect(find.byTooltip('Fill Tool'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('tool-eyedropper-button')),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+
+      expect(selected, [CanvasTool.eyedropper, CanvasTool.fill]);
+    });
+
     testWidgets('tapping the eraser reports the tool change', (tester) async {
       CanvasTool? selected;
       await tester.pumpWidget(_panel(onToolChanged: (tool) => selected = tool));

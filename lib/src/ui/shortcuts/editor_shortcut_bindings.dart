@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -142,22 +140,28 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _pendingPersist = Future<void>.value();
+
+  /// Resolves when every override write issued so far has hit disk —
+  /// awaited by tests and available for a shutdown flush. Writes chain,
+  /// so ordering (last writer wins) is preserved.
+  Future<void> get pendingPersist => _pendingPersist;
+
   void _persist() {
     final store = this.store;
     if (store == null) {
       return;
     }
-    unawaited(
-      store.save({
-        'overrides': {
-          for (final entry in _overrides.entries)
-            entry.key: [
-              for (final activator in entry.value)
-                singleActivatorToJson(activator),
-            ],
-        },
-      }),
-    );
+    final payload = {
+      'overrides': {
+        for (final entry in _overrides.entries)
+          entry.key: [
+            for (final activator in entry.value)
+              singleActivatorToJson(activator),
+          ],
+      },
+    };
+    _pendingPersist = _pendingPersist.then((_) => store.save(payload));
   }
 }
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../playback/playback_frame_painter.dart';
 import '../../models/brush_history_policy.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -42,6 +44,10 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
+    this.sampleColorAt,
+    this.onEyedropperPick,
+    this.onAltColorPick,
+    this.fillDabAt,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -89,6 +95,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: canvas-space rect the Fit button
   /// frames instead of the whole canvas.
   final Rect? fitFocusRect;
+
+  /// Forwarded to [BrushCanvasPanel]: the P5 eyedropper's composite sampler
+  /// and pick handlers, and the P6 fill dab builder.
+  final int? Function(CanvasPoint point)? sampleColorAt;
+  final ValueChanged<int>? onEyedropperPick;
+  final ValueChanged<int>? onAltColorPick;
+  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -152,6 +165,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       interactiveContentPose: widget.interactiveContentPose,
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
+      sampleColorAt: widget.sampleColorAt,
+      onEyedropperPick: widget.onEyedropperPick,
+      onAltColorPick: widget.onAltColorPick,
+      fillDabAt: widget.fillDabAt,
     );
   }
 

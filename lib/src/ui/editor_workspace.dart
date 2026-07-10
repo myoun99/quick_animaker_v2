@@ -567,7 +567,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             builder: (context, toolState, _) => ToolsPanel(
               tool: toolState.tool,
               onToolChanged: (tool) {
-                _brushTool.value = _brushTool.value.copyWith(tool: tool);
+                // Entering the eyedropper remembers the tool to return to
+                // after a pick (CSP behavior); never the eyedropper itself.
+                final state = _brushTool.value;
+                _brushTool.value = state.copyWith(
+                  tool: tool,
+                  eyedropperReturnTool:
+                      tool == CanvasTool.eyedropper &&
+                          state.tool != CanvasTool.eyedropper
+                      ? state.tool
+                      : state.eyedropperReturnTool,
+                );
               },
             ),
           ),
@@ -582,6 +592,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             key: _canvasAreaKey,
             session: widget.session,
             brushToolState: _brushTool,
+            onBrushToolStateChanged: (state) => _brushTool.value = state,
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,

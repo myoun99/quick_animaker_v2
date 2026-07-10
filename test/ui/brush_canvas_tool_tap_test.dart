@@ -1,0 +1,304 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+
+import '../helpers/brush_canvas_fixture.dart';
+import 'brush_canvas_test_helpers.dart';
+
+/// P5/P6 tool routing: the non-painting tools mount ONE tap layer above
+/// the canvas (no stroke may start), the eyedropper reports through the
+/// pick handlers and the fill commits its dab through the stroke funnel.
+void main() {
+  const tapLayerKey = ValueKey<String>('canvas-tool-tap-layer');
+
+  BrushDab fillDab(int color) => BrushDab(
+    center: CanvasPoint(x: 4, y: 4),
+    color: color,
+    size: 8,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: 0,
+  );
+
+  Widget app(Widget panel) => MaterialApp(home: Scaffold(body: panel));
+
+  testWidgets('painting tools mount no tap layer', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          sampleColorAt: (_) => 0xFF123456,
+          onEyedropperPick: (_) {},
+          fillDabAt: (_, color) => fillDab(color),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(tapLayerKey), findsNothing);
+  });
+
+  testWidgets('the eyedropper without handlers mounts no tap layer', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(tapLayerKey), findsNothing);
+  });
+
+  testWidgets('an eyedropper tap picks the sampled color, no stroke', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final sampledPoints = <CanvasPoint>[];
+    final picks = <int>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (point) {
+            sampledPoints.add(point);
+            return 0xFF123456;
+          },
+          onEyedropperPick: picks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(tapLayerKey));
+    await tester.pump();
+
+    expect(picks, [0xFF123456]);
+    expect(sampledPoints, hasLength(1));
+    expect(
+      coordinator.frameStore
+          .getOrCreateFrame(frameKeys.first)
+          .visibleActivePaintCommands,
+      isEmpty,
+    );
+  });
+
+  testWidgets('a null sample (off-canvas) does not pick', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final picks = <int>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (_) => null,
+          onEyedropperPick: picks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(tapLayerKey));
+    await tester.pump();
+
+    expect(picks, isEmpty);
+  });
+
+  testWidgets('a fill tap commits the dab through the stroke funnel', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final fillColors = <int>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+            color: 0xFF3366CC,
+          ),
+          fillDabAt: (point, color) {
+            fillColors.add(color);
+            return fillDab(color);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(tapLayerKey));
+    await tester.pump();
+
+    // The active tool color reached the fill and the dab landed as a
+    // normal paint command (undo/parity/serialization ride the funnel).
+    expect(fillColors, [0xFF3366CC]);
+    final commands = coordinator.frameStore
+        .getOrCreateFrame(frameKeys.first)
+        .visibleActivePaintCommands;
+    expect(commands, hasLength(1));
+    expect(commands.single.sourceDabs.single.color, 0xFF3366CC);
+    expect(coordinator.canUndo, isTrue);
+  });
+
+  testWidgets('a null fill region commits nothing', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+          ),
+          fillDabAt: (_, _) => null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(tapLayerKey));
+    await tester.pump();
+
+    expect(
+      coordinator.frameStore
+          .getOrCreateFrame(frameKeys.first)
+          .visibleActivePaintCommands,
+      isEmpty,
+    );
+  });
+
+  testWidgets('Alt+click picks the color and starts no stroke', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final altPicks = <int>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          sampleColorAt: (_) => 0xFFAABBCC,
+          onAltColorPick: altPicks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tapCanvas(tester, const Offset(30, 30));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+
+    expect(altPicks, [0xFFAABBCC]);
+    expect(
+      coordinator.frameStore
+          .getOrCreateFrame(frameKeys.first)
+          .visibleActivePaintCommands,
+      isEmpty,
+    );
+    // Without Alt the same tap draws — the gate is the modifier, not the
+    // handler wiring.
+    await tapCanvas(tester, const Offset(30, 30));
+    await tester.pumpAndSettle();
+    expect(
+      coordinator.frameStore
+          .getOrCreateFrame(frameKeys.first)
+          .visibleActivePaintCommands,
+      isNotEmpty,
+    );
+  });
+
+  testWidgets('tool taps convert through the live viewport', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final sampledPoints = <CanvasPoint>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (point) {
+            sampledPoints.add(point);
+            return null;
+          },
+          onEyedropperPick: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap a known offset INSIDE the interactive canvas: viewport identity
+    // maps the local offset straight to canvas coordinates.
+    final canvasTopLeft = tester.getTopLeft(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    await tester.tapAt(canvasTopLeft + const Offset(25, 35));
+    await tester.pump();
+
+    expect(sampledPoints, hasLength(1));
+    expect(sampledPoints.single.x, closeTo(25, 0.001));
+    expect(sampledPoints.single.y, closeTo(35, 0.001));
+  });
+}

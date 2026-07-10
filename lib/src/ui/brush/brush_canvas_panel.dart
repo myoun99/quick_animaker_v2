@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/brush_stroke_commit_data.dart';
+import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
@@ -60,6 +62,10 @@ class BrushCanvasPanel extends StatefulWidget {
     this.fitFocusRect,
     this.autoFrame,
     this.contentStrokeActive,
+    this.sampleColorAt,
+    this.onEyedropperPick,
+    this.onAltColorPick,
+    this.fillDabAt,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -123,6 +129,21 @@ class BrushCanvasPanel extends StatefulWidget {
   /// timesheet ink layer): while true, the panel's gesture layer holds
   /// navigation exactly as it does for the panel's own strokes.
   final ValueListenable<bool>? contentStrokeActive;
+
+  /// Samples the VISIBLE composite color at a canvas point (P5); null
+  /// disables the eyedropper tool and Alt-picks.
+  final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// A committed eyedropper pick (switches back to the painting tool).
+  final ValueChanged<int>? onEyedropperPick;
+
+  /// An Alt+click TEMPORARY pick while painting: color only, the active
+  /// tool stays (the CSP muscle-memory shortcut).
+  final ValueChanged<int>? onAltColorPick;
+
+  /// Builds the fill-region dab for a tap (P6); the panel commits it
+  /// through the exact stroke funnel. Null disables the fill tool.
+  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -274,7 +295,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
-                        child: overlayBuilder == null && underlayBuilder == null
+                        child:
+                            overlayBuilder == null &&
+                                underlayBuilder == null &&
+                                _toolTapHandler() == null
                             ? canvasView
                             : Stack(
                                 children: [
@@ -289,6 +313,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                   if (overlayBuilder != null)
                                     Positioned.fill(
                                       child: overlayBuilder(context, _viewport),
+                                    ),
+                                  // Non-painting tools (P5 eyedropper / P6
+                                  // fill): one tap layer ABOVE the canvas
+                                  // absorbs the pointer so no stroke starts.
+                                  if (_toolTapHandler() != null)
+                                    Positioned.fill(
+                                      child: Listener(
+                                        key: const ValueKey<String>(
+                                          'canvas-tool-tap-layer',
+                                        ),
+                                        behavior: HitTestBehavior.opaque,
+                                        onPointerDown: (event) =>
+                                            _toolTapHandler()!(
+                                              _viewport.viewportToCanvas(
+                                                ViewportPoint(
+                                                  x: event.localPosition.dx,
+                                                  y: event.localPosition.dy,
+                                                ),
+                                              ),
+                                            ),
+                                      ),
                                     ),
                                 ],
                               ),
@@ -333,6 +378,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       frameId: activeKey.frameId,
       inputSettings: widget.brushToolState.toInputSettings(),
       viewport: _viewport,
+      // Alt+click = temporary eyedropper (P5): color only, the active
+      // painting tool stays.
+      onAltPick: widget.sampleColorAt == null || widget.onAltColorPick == null
+          ? null
+          : (point) {
+              final color = widget.sampleColorAt!(point);
+              if (color != null) {
+                widget.onAltColorPick!(color);
+              }
+            },
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
@@ -445,6 +500,44 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _resetView() {
     _setViewport(CanvasViewport());
+  }
+
+  /// The tap action for the active NON-PAINTING tool; null while a
+  /// painting tool is active (no tap layer mounts then).
+  void Function(CanvasPoint point)? _toolTapHandler() {
+    switch (widget.brushToolState.tool) {
+      case CanvasTool.brush:
+      case CanvasTool.eraser:
+        return null;
+      case CanvasTool.eyedropper:
+        final sample = widget.sampleColorAt;
+        final pick = widget.onEyedropperPick;
+        if (sample == null || pick == null) {
+          return null;
+        }
+        return (point) {
+          final color = sample(point);
+          if (color != null) {
+            pick(color);
+          }
+        };
+      case CanvasTool.fill:
+        final fill = widget.fillDabAt;
+        if (fill == null || widget.coordinator == null) {
+          return null;
+        }
+        return (point) {
+          final dab = fill(point, widget.brushToolState.color);
+          if (dab != null) {
+            // The exact stroke funnel: history, parity and .qap
+            // serialization treat the fill like any stroke ("fill = one
+            // mask dab").
+            _handleSourceStrokeCommitted(
+              BrushStrokeCommitData(sourceDabs: [dab]),
+            );
+          }
+        };
+    }
   }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {

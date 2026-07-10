@@ -6,8 +6,14 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 
 /// Which canvas tool the pointer drives. The eraser reuses every brush
 /// option (size, hardness, tip) but its dabs remove alpha instead of
-/// painting color.
-enum CanvasTool { brush, eraser }
+/// painting color; the eyedropper samples the composite (P5) and the fill
+/// commits one region-mask dab (P6) — neither starts strokes.
+enum CanvasTool { brush, eraser, eyedropper, fill }
+
+/// Whether [tool] paints strokes through the interactive canvas (the
+/// non-painting tools mount a tap overlay instead).
+bool canvasToolPaints(CanvasTool tool) =>
+    tool == CanvasTool.brush || tool == CanvasTool.eraser;
 
 /// Editor-session state for the active brush tool options.
 ///
@@ -43,6 +49,7 @@ class BrushToolState {
     double textureDensity = 1.0,
     CanvasTool tool = CanvasTool.brush,
     double stabilizerStrength = 0.0,
+    CanvasTool eyedropperReturnTool = CanvasTool.brush,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -72,6 +79,7 @@ class BrushToolState {
       textureDensity: textureDensity,
       tool: tool,
       stabilizerStrength: stabilizerStrength,
+      eyedropperReturnTool: eyedropperReturnTool,
     );
   }
 
@@ -103,6 +111,7 @@ class BrushToolState {
     this.textureDensity = 1.0,
     this.tool = CanvasTool.brush,
     this.stabilizerStrength = 0.0,
+    this.eyedropperReturnTool = CanvasTool.brush,
   });
 
   factory BrushToolState.clamped({
@@ -133,6 +142,7 @@ class BrushToolState {
     double? textureDensity,
     CanvasTool? tool,
     double? stabilizerStrength,
+    CanvasTool? eyedropperReturnTool,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -162,6 +172,7 @@ class BrushToolState {
       textureDensity: clampZeroToOne(textureDensity ?? 1.0),
       tool: tool ?? CanvasTool.brush,
       stabilizerStrength: clampStabilizerStrength(stabilizerStrength ?? 0.0),
+      eyedropperReturnTool: eyedropperReturnTool ?? CanvasTool.brush,
     );
   }
 
@@ -259,6 +270,10 @@ class BrushToolState {
   /// A HAND-FEEL setting, deliberately outside brush presets — preset
   /// application carries it over unchanged.
   final double stabilizerStrength;
+
+  /// The PAINTING tool to return to after an eyedropper pick (P5, the
+  /// CSP behavior); recorded when the eyedropper is entered.
+  final CanvasTool eyedropperReturnTool;
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -384,6 +399,7 @@ class BrushToolState {
     double? textureDensity,
     CanvasTool? tool,
     double? stabilizerStrength,
+    CanvasTool? eyedropperReturnTool,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -413,6 +429,7 @@ class BrushToolState {
       textureDensity: textureDensity ?? this.textureDensity,
       tool: tool ?? this.tool,
       stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
+      eyedropperReturnTool: eyedropperReturnTool ?? this.eyedropperReturnTool,
     );
   }
 
@@ -527,7 +544,8 @@ class BrushToolState {
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
           other.tool == tool &&
-          other.stabilizerStrength == stabilizerStrength;
+          other.stabilizerStrength == stabilizerStrength &&
+          other.eyedropperReturnTool == eyedropperReturnTool;
 
   @override
   int get hashCode => Object.hashAll([
@@ -558,5 +576,6 @@ class BrushToolState {
     textureDensity,
     tool,
     stabilizerStrength,
+    eyedropperReturnTool,
   ]);
 }
