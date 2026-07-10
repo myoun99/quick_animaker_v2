@@ -210,6 +210,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (next == null) {
       return;
     }
+    // Track-owned SE rows: their display clones strip the transform track
+    // (global keys cannot render at cut-local lane positions), so a
+    // clone-based commit would plant LOCAL-frame keys on the GLOBAL
+    // layer. SE transform-lane editing stands down until the lane path
+    // converts through the cut window.
+    if (_session.isTrackSeLayerId(layer.id)) {
+      return;
+    }
     if (layer.kind == LayerKind.camera) {
       _session.updateActiveCutCameraTrack(next, description: description);
       return;

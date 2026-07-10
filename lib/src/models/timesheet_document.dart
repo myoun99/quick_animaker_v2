@@ -4,6 +4,7 @@ import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_kind.dart';
 import 'timesheet_info.dart';
+import 'track_se_window.dart';
 
 /// What a timesheet column represents on the paper form.
 enum TimesheetColumnKind {
@@ -183,6 +184,10 @@ class TimesheetDocument {
     int seColumnCount = 2,
     int cameraColumnCount = 2,
     CameraInstructionDef? Function(String instructionId)? instructionDefById,
+    // TRACK-owned SE rows (global-frame timelines) shown windowed to this
+    // cut; [cutStartFrame] is the cut's global start on its track.
+    List<Layer> trackSeLayers = const [],
+    int cutStartFrame = 0,
   }) {
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
@@ -213,9 +218,19 @@ class TimesheetDocument {
             layer.onTimesheet)
           layer,
     ];
+    // SE rows are track-owned: window their global timelines to this cut
+    // (spill-in synthesizes a display block; cut-crossing blocks clip at
+    // the sheet's frame rows naturally). Cut-owned SE layers remain for
+    // legacy fixtures.
+    final seWindow = TrackSeWindow(
+      cutStartFrame: cutStartFrame,
+      cutDurationFrames: cut.duration,
+    );
     final seLayers = [
       for (final layer in cut.layers)
         if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
+      for (final layer in trackSeLayers)
+        if (layer.onTimesheet) seWindow.displayLayer(layer),
     ];
     final instructionLayers = [
       for (final layer in cut.layers)
@@ -259,7 +274,9 @@ class TimesheetDocument {
       for (var slot = 0; slot < _slotCount(seColumnCount, seLayers); slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.se,
-          label: 'S${slot + 1}',
+          // The layer's stored name — the same label the timeline and
+          // storyboard rows show (W3 ordering unification).
+          label: slot < seLayers.length ? seLayers[slot].name : 'S${slot + 1}',
           layerName: slot < seLayers.length ? seLayers[slot].name : null,
           cells: slot < seLayers.length
               ? _layerCells(

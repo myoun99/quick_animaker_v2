@@ -78,6 +78,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   Object? _documentCut;
   Object? _documentInfo;
   Object? _documentInstructionSet;
+  Object? _documentTrackSe;
+  int? _documentCutStartFrame;
   String? _documentProjectName;
   int? _documentFps;
   bool? _layoutContinuous;
@@ -87,15 +89,23 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     final info = session.timesheetInfo;
     final projectName = session.repository.requireProject().name;
     final instructionSet = session.cameraInstructionSet;
+    // Track-owned SE rows join the memo key: their edits change the track
+    // list identity, not the cut's.
+    final trackSeLayers = session.activeTrack.seLayers;
+    final cutStartFrame = session.activeCutGlobalStartFrame;
     if (_document == null ||
         !identical(_documentCut, cut) ||
         !identical(_documentInfo, info) ||
         !identical(_documentInstructionSet, instructionSet) ||
+        !identical(_documentTrackSe, trackSeLayers) ||
+        _documentCutStartFrame != cutStartFrame ||
         _documentProjectName != projectName ||
         _documentFps != session.projectFps) {
       _documentCut = cut;
       _documentInfo = info;
       _documentInstructionSet = instructionSet;
+      _documentTrackSe = trackSeLayers;
+      _documentCutStartFrame = cutStartFrame;
       _documentProjectName = projectName;
       _documentFps = session.projectFps;
       _document = TimesheetDocument.fromCut(
@@ -104,6 +114,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         fps: session.projectFps,
         info: info,
         instructionDefById: instructionSet.defById,
+        trackSeLayers: trackSeLayers,
+        cutStartFrame: cutStartFrame,
       );
       _layout = null;
       _pagedLayout = null;
