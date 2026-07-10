@@ -17,10 +17,12 @@ class LayerController {
     required CutId cutId,
     required FrameId frameId,
     LayerId? initialActiveLayerId,
+    List<Layer> Function()? trackSeDisplayLayers,
   }) : _repository = repository,
        _historyManager = historyManager,
        _cutId = cutId,
        _defaultFrameId = frameId,
+       _trackSeDisplayLayers = trackSeDisplayLayers,
        _activeLayerId = initialActiveLayerId {
     if (_activeLayerId != null && !_hasLayer(_activeLayerId!)) {
       throw StateError('Layer not found: $_activeLayerId');
@@ -33,9 +35,22 @@ class LayerController {
   final CutId _cutId;
   final FrameId _defaultFrameId;
 
+  /// The track's SE rows as cut-local DISPLAY clones (the session windows
+  /// them per active cut). They join [layers] so selection, row rendering
+  /// and every read path see one composed list; mutations detect SE ids
+  /// and edit the track's GLOBAL layers instead (never these clones).
+  final List<Layer> Function()? _trackSeDisplayLayers;
+
   LayerId? _activeLayerId;
 
-  List<Layer> get layers => _findCut().layers;
+  List<Layer> get layers {
+    final cutLayers = _findCut().layers;
+    final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
+    if (trackSe.isEmpty) {
+      return cutLayers;
+    }
+    return [...cutLayers, ...trackSe];
+  }
 
   LayerId? get activeLayerId {
     _ensureActiveLayerExists();
@@ -148,13 +163,16 @@ class LayerController {
   }
 
   int _insertionIndexAboveActiveLayer() {
+    // Insertion is into the CUT's layer list; a track-SE active layer is
+    // not in it and appends like no-selection does.
+    final cutLayers = _findCut().layers;
     final id = _activeLayerId;
     if (id == null) {
-      return layers.length;
+      return cutLayers.length;
     }
 
-    final index = layers.indexWhere((layer) => layer.id == id);
-    return index < 0 ? layers.length : index + 1;
+    final index = cutLayers.indexWhere((layer) => layer.id == id);
+    return index < 0 ? cutLayers.length : index + 1;
   }
 
   void _ensureActiveLayerExists() {

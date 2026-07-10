@@ -117,6 +117,9 @@ Track _sampleTrack() {
     id: const TrackId('track-1'),
     name: 'Video Track',
     cuts: [_sampleCut()],
+    // The track's SE floor, so save → load stays an identity round-trip
+    // (SE rows are TRACK-owned).
+    seLayers: withEnsuredTrackSeLayers(const TrackId('track-1'), const []),
   );
 }
 

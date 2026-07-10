@@ -409,6 +409,8 @@ class ExportDialogState extends State<ExportDialog> {
           audioClips: buildExportAudioPlan(
             plan: videoPlan,
             fps: widget.session.projectFps,
+            // Track-owned SE rows lay in from the tracks' global axes.
+            project: widget.session.repository.requireProject(),
           ),
           isCancelled: () => _cancelRequested,
           onProgress: reportProgress,

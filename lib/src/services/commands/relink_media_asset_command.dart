@@ -45,37 +45,43 @@ class RelinkMediaAssetCommand implements Command {
     repository.replaceProject(previousProject);
   }
 
+  Layer _relinkedLayer(Layer layer, {required bool Function() markChanged}) {
+    if (!layer.audioClips.any((clip) => clip.filePath == oldPath)) {
+      return layer;
+    }
+    markChanged();
+    return layer.copyWith(
+      audioClips: [
+        for (final clip in layer.audioClips)
+          clip.filePath == oldPath ? clip.copyWith(filePath: newPath) : clip,
+      ],
+    );
+  }
+
   Project _relinked(Project project) {
     var tracksChanged = false;
     final tracks = <Track>[];
     for (final track in project.tracks) {
-      var cutsChanged = false;
+      var trackChanged = false;
+      bool mark() => trackChanged = true;
+      final seLayers = [
+        for (final layer in track.seLayers)
+          _relinkedLayer(layer, markChanged: mark),
+      ];
       final cuts = <Cut>[];
       for (final cut in track.cuts) {
         var layersChanged = false;
-        final layers = <Layer>[];
-        for (final layer in cut.layers) {
-          if (layer.audioClips.any((clip) => clip.filePath == oldPath)) {
-            layersChanged = true;
-            layers.add(
-              layer.copyWith(
-                audioClips: [
-                  for (final clip in layer.audioClips)
-                    clip.filePath == oldPath
-                        ? clip.copyWith(filePath: newPath)
-                        : clip,
-                ],
-              ),
-            );
-          } else {
-            layers.add(layer);
-          }
-        }
+        final layers = [
+          for (final layer in cut.layers)
+            _relinkedLayer(layer, markChanged: () => layersChanged = true),
+        ];
         cuts.add(layersChanged ? cut.copyWith(layers: layers) : cut);
-        cutsChanged = cutsChanged || layersChanged;
+        trackChanged = trackChanged || layersChanged;
       }
-      tracks.add(cutsChanged ? track.copyWith(cuts: cuts) : track);
-      tracksChanged = tracksChanged || cutsChanged;
+      tracks.add(
+        trackChanged ? track.copyWith(cuts: cuts, seLayers: seLayers) : track,
+      );
+      tracksChanged = tracksChanged || trackChanged;
     }
     return project.copyWith(
       mediaAssets: [

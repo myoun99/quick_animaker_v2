@@ -94,8 +94,8 @@ void main() {
     expect(removed, [(const LayerId('wave-se'), 0)]);
   });
 
-  testWidgets('the storyboard SE row paints the waveform clamped at the cut '
-      'end', (tester) async {
+  testWidgets('the storyboard SE row paints the TRACK layer\'s waveform '
+      'clamped at the block (cut ends no longer clip)', (tester) async {
     final project = Project(
       id: const ProjectId('wave-project'),
       name: 'Wave',
@@ -104,14 +104,16 @@ void main() {
         Track(
           id: const TrackId('wave-track'),
           name: 'Video',
+          // SE rows are TRACK-owned: the 12-frame block windows the
+          // 24-frame file regardless of the cut's 12-frame duration.
+          seLayers: [_seLayer()],
           cuts: [
             Cut(
               id: const CutId('wave-cut'),
               name: 'Wave Cut',
-              // Shorter than the 24-frame clip → clamps at 12 - 2 = 10.
               duration: 12,
               canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: [_seLayer()],
+              layers: const [],
             ),
           ],
         ),
@@ -135,7 +137,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final strip = find.byKey(
-      const ValueKey<String>('storyboard-audio-clip-wave-cut-0-b0'),
+      const ValueKey<String>('storyboard-audio-clip-wave-se-0-b0'),
     );
     expect(strip, findsOneWidget);
     expect(tester.getSize(strip).width, moreOrLessEquals(12 * 8));

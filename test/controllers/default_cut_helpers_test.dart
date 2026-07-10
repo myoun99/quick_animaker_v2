@@ -23,9 +23,9 @@ void main() {
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
       expect(cut.canvasSize, defaultCutCanvasSize);
-      // One drawing layer, the S1·S2 + CAM 1 sheet fixtures, and the
-      // always-present camera layer.
-      expect(cut.layers, hasLength(5));
+      // One drawing layer, the CAM 1 sheet fixture, and the always-present
+      // camera layer (the S1·S2 SE rows are TRACK fixtures now).
+      expect(cut.layers, hasLength(3));
 
       final layer = cut.layers.first;
       expect(layer.id, const LayerId('layer-new'));
@@ -38,18 +38,10 @@ void main() {
 
       expect(cut.layers.map((layer) => layer.kind), [
         LayerKind.animation,
-        LayerKind.se,
-        LayerKind.se,
         LayerKind.instruction,
         LayerKind.camera,
       ]);
-      expect(cut.layers.map((layer) => layer.name), [
-        'A',
-        'S1',
-        'S2',
-        'CAM 1',
-        'Camera',
-      ]);
+      expect(cut.layers.map((layer) => layer.name), ['A', 'CAM 1', 'Camera']);
 
       final cameraLayer = cut.layers.last;
       expect(cameraLayer.id, cameraLayerIdForCut(const CutId('cut-new')));

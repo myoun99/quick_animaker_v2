@@ -1,4 +1,5 @@
 import '../models/cut_id.dart';
+import '../models/layer_section_defaults.dart';
 import '../models/project.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
@@ -28,6 +29,11 @@ Track createDefaultTrack({
         name: 'Cut 1',
         layerId: defaultLayerIdForSequence(1),
       ),
+    ],
+    // The timesheet's SE rows are TRACK fixtures (global frame axis).
+    seLayers: [
+      createTrackSeLayer(trackId: trackId, slot: 1),
+      createTrackSeLayer(trackId: trackId, slot: 2),
     ],
   );
 }

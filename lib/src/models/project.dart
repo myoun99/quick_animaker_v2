@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
+import 'layer.dart';
 import 'media_asset.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
@@ -164,19 +165,26 @@ List<MediaAsset> reconciledMediaAssets(
 ) {
   final known = {for (final asset in stored) asset.path};
   final synthesized = <MediaAsset>[];
+  void addFromLayer(Layer layer) {
+    for (final clip in layer.audioClips) {
+      if (known.add(clip.filePath)) {
+        synthesized.add(
+          MediaAsset(
+            path: clip.filePath,
+            name: mediaAssetDefaultName(clip.filePath),
+          ),
+        );
+      }
+    }
+  }
+
   for (final track in tracks) {
+    for (final layer in track.seLayers) {
+      addFromLayer(layer);
+    }
     for (final cut in track.cuts) {
       for (final layer in cut.layers) {
-        for (final clip in layer.audioClips) {
-          if (known.add(clip.filePath)) {
-            synthesized.add(
-              MediaAsset(
-                path: clip.filePath,
-                name: mediaAssetDefaultName(clip.filePath),
-              ),
-            );
-          }
-        }
+        addFromLayer(layer);
       }
     }
   }

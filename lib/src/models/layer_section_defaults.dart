@@ -2,15 +2,56 @@ import 'cut_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'track_id.dart';
 
-/// Fixture layers every cut carries alongside the camera: the timesheet's
-/// two SE columns (S1·S2) and one camera-work instruction row (CAM 1).
-/// New cuts create them; [withEnsuredSectionLayers] backfills older files
-/// on load. Deletion floors (SE ≥ 2, instruction ≥ 1) live in the session
-/// and command guards.
+/// Fixture layers: the timesheet's two SE rows (S1·S2) live on the TRACK
+/// (global frame axis — sounds may cross cut boundaries), the camera-work
+/// instruction row (CAM 1) on each cut. New tracks/cuts create them;
+/// [withEnsuredTrackSeLayers] / [withEnsuredSectionLayers] backfill older
+/// files on load. Deletion floors (SE ≥ 2, instruction ≥ 1) live in the
+/// session and command guards.
 
+/// The legacy cut-scoped SE id (pre-track files); kept for the migration
+/// and its fixtures.
 LayerId seLayerIdForCut(CutId cutId, int slot) =>
     LayerId('${cutId.value}-se-$slot');
+
+LayerId seLayerIdForTrack(TrackId trackId, int slot) =>
+    LayerId('${trackId.value}-se-$slot');
+
+Layer createTrackSeLayer({required TrackId trackId, required int slot}) {
+  return Layer(
+    id: seLayerIdForTrack(trackId, slot),
+    name: 'S$slot',
+    frames: const [],
+    timeline: const {},
+    kind: LayerKind.se,
+  );
+}
+
+/// Backfills the track's SE floor: at least two SE rows. Existing layers
+/// are never touched; missing rows append with the first free S-name.
+List<Layer> withEnsuredTrackSeLayers(TrackId trackId, List<Layer> seLayers) {
+  if (seLayers.length >= 2) {
+    return seLayers;
+  }
+  final usedIds = seLayers.map((layer) => layer.id).toSet();
+  final result = List<Layer>.of(seLayers);
+  var slot = 1;
+  while (result.length < 2) {
+    while (usedIds.contains(seLayerIdForTrack(trackId, slot))) {
+      slot += 1;
+    }
+    result.add(
+      createTrackSeLayer(
+        trackId: trackId,
+        slot: slot,
+      ).copyWith(name: nextSeLayerName(result)),
+    );
+    usedIds.add(seLayerIdForTrack(trackId, slot));
+  }
+  return result;
+}
 
 LayerId instructionLayerIdForCut(CutId cutId) =>
     LayerId('${cutId.value}-instructions');
@@ -63,31 +104,22 @@ String nextSeLayerName(List<Layer> layers) {
   }
 }
 
-/// Backfills the SE/instruction fixtures a cut is expected to carry: at
-/// least two SE rows and one instruction row. Existing layers are never
-/// touched; missing fixtures are inserted before the camera layer (display
-/// order is section-sorted anyway). Idempotent — a cut that already meets
-/// the floors comes back unchanged (same list instance).
+/// Backfills the instruction fixture a cut is expected to carry: at least
+/// one instruction row. (SE rows moved to the track — see
+/// [withEnsuredTrackSeLayers]; the track migration lifts legacy per-cut SE
+/// layers.) Existing layers are never touched; the missing fixture is
+/// inserted before the camera layer. Idempotent — a cut that already meets
+/// the floor comes back unchanged (same list instance).
 List<Layer> withEnsuredSectionLayers(CutId cutId, List<Layer> layers) {
-  final seCount = layers.where((layer) => layer.kind == LayerKind.se).length;
   final hasInstruction = layers.any(
     (layer) => layer.kind == LayerKind.instruction,
   );
-  if (seCount >= 2 && hasInstruction) {
+  if (hasInstruction) {
     return layers;
   }
 
   final usedIds = layers.map((layer) => layer.id).toSet();
   final additions = <Layer>[];
-
-  var slot = 1;
-  for (var missing = 2 - seCount; missing > 0; missing -= 1) {
-    while (usedIds.contains(seLayerIdForCut(cutId, slot))) {
-      slot += 1;
-    }
-    additions.add(createSeLayer(cutId: cutId, slot: slot));
-    usedIds.add(seLayerIdForCut(cutId, slot));
-  }
 
   if (!hasInstruction) {
     var id = instructionLayerIdForCut(cutId);
