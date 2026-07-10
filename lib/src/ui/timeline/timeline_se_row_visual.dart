@@ -25,6 +25,117 @@ import 'timeline_frame_coordinate_policy.dart';
 /// span overlay instead.
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
+/// Print-sheet furniture over an SE row's EMPTY stretches inside the
+/// playback range (R4, Toei convention): a dotted center guide along the
+/// flow, washed light while [seEmptyFill] is on (project toggle) — the
+/// frame grid keeps showing through both. One overlay per uncovered run
+/// intersecting the visible window; list these UNDER the label overlays.
+List<Widget> timelineRowSeEmptyOverlays({
+  required Layer layer,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required int playbackFrameCount,
+  required double leadingFrameSpacerWidth,
+  required double frameCellExtent,
+  required double crossAxisExtent,
+  required Axis axis,
+  required bool seEmptyFill,
+  String keyPrefix = 'timeline',
+}) {
+  // Uncovered runs between blocks, clamped to the playback range.
+  final runs = <(int, int)>[];
+  var runStart = 0;
+  for (final block in drawingBlocks(layer.timeline)) {
+    if (block.startIndex > runStart) {
+      runs.add((runStart, block.startIndex));
+    }
+    runStart = math.max(runStart, block.endIndexExclusive);
+  }
+  if (runStart < playbackFrameCount) {
+    runs.add((runStart, playbackFrameCount));
+  }
+
+  final overlays = <Widget>[];
+  for (final (start, endRaw) in runs) {
+    final end = math.min(
+      math.min(endRaw, playbackFrameCount),
+      frameEndIndexExclusive,
+    );
+    final visibleStart = math.max(start, frameStartIndex);
+    if (end <= visibleStart) {
+      continue;
+    }
+    final startOffset = frameVisibleX(
+      frameIndex: visibleStart,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final mainExtent = (end - visibleStart) * frameCellExtent;
+    final content = IgnorePointer(
+      key: ValueKey<String>('$keyPrefix-se-empty-${layer.id}-$start'),
+      child: CustomPaint(
+        painter: _SeEmptyStretchPainter(axis: axis, fill: seEmptyFill),
+      ),
+    );
+    overlays.add(switch (axis) {
+      Axis.horizontal => Positioned(
+        left: startOffset,
+        top: 0,
+        width: mainExtent,
+        height: crossAxisExtent,
+        child: content,
+      ),
+      Axis.vertical => Positioned(
+        top: startOffset,
+        left: 0,
+        height: mainExtent,
+        width: crossAxisExtent,
+        child: content,
+      ),
+    });
+  }
+  return overlays;
+}
+
+/// The empty-stretch furniture: optional light wash + a dotted guide down
+/// the stretch's center (light on the dark uncovered cells, mirroring the
+/// sheet's gray-on-paper language).
+class _SeEmptyStretchPainter extends CustomPainter {
+  _SeEmptyStretchPainter({required this.axis, required this.fill});
+
+  final Axis axis;
+  final bool fill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fill) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = timelineDrawingHeldColor.withValues(alpha: 0.08),
+      );
+    }
+    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    final crossCenter = axis == Axis.horizontal
+        ? size.height / 2
+        : size.width / 2;
+    final dot = Paint()
+      ..color = timelineDrawingHeldColor.withValues(alpha: 0.35)
+      ..strokeWidth = 1.0;
+    for (var main = 2.0; main < mainExtent - 1; main += 5.0) {
+      final (from, to) = axis == Axis.horizontal
+          ? (Offset(main, crossCenter), Offset(main + 2, crossCenter))
+          : (Offset(crossCenter, main), Offset(crossCenter, main + 2));
+      canvas.drawLine(from, to, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SeEmptyStretchPainter oldDelegate) {
+    return axis != oldDelegate.axis || fill != oldDelegate.fill;
+  }
+}
+
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
 List<Widget> timelineRowSeLabelOverlays({
@@ -375,15 +486,17 @@ class _AudioClipStrip extends StatelessWidget {
   }
 }
 
-/// Main-axis extent of the SE name box (the accent strip at a block's
-/// start, horizontal orientation).
+/// Main-axis extent of the SE name box (the inverted chip hugging a
+/// block's start boundary).
 const double seNameBoxExtent = 16;
 
-/// The sheet's SE-entry writing — speaker name box (accent background,
-/// only when the entry carries a name) + dialogue fitted across the span —
-/// shared by the timeline rows, the X-sheet columns and the storyboard's
-/// synced SE track. Paper comes from the cells underneath (or from
-/// [SePaperSpan] where there are none); text is always ink on paper.
+/// The sheet's SE-entry writing, the real Toei way (R4, user-approved
+/// mockup v3): a compact INVERTED name chip flush against the block's
+/// start boundary (ink fill, paper-light writing), the dialogue fitted
+/// over the rest of the span and a short red underline closing the
+/// block's end — no duration bar. Shared by the timeline rows, the
+/// X-sheet columns and the storyboard's synced SE track; paper comes from
+/// the cells underneath (or from [SePaperSpan] where there are none).
 class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
@@ -408,16 +521,39 @@ class SeSpanVisual extends StatelessWidget {
             ? constraints.maxWidth
             : constraints.maxHeight;
         final showName = seName.isNotEmpty && mainExtent >= seNameBoxExtent * 2;
-        return Flex(
-          direction: axis,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return Stack(
           children: [
-            if (showName) _SeNameBox(axis: axis, name: seName),
-            Expanded(
-              child: DialogueFitText(
-                text: dialogue,
-                axis: axis,
-                color: timelineDrawingInkColor,
+            Flex(
+              direction: axis,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showName) _SeNameBox(axis: axis, name: seName),
+                Expanded(
+                  child: DialogueFitText(
+                    text: dialogue,
+                    axis: axis,
+                    color: timelineDrawingInkColor,
+                  ),
+                ),
+              ],
+            ),
+            // The block's end closes with a short red underline (Toei
+            // notation) — perpendicular to the flow, hugging the end edge.
+            Positioned(
+              right: axis == Axis.horizontal ? 1 : 0,
+              bottom: axis == Axis.horizontal ? 0 : 1,
+              top: axis == Axis.horizontal ? 0 : null,
+              left: axis == Axis.horizontal ? null : 0,
+              width: axis == Axis.horizontal ? 2 : null,
+              height: axis == Axis.horizontal ? null : 2,
+              child: IgnorePointer(
+                child: Center(
+                  child: FractionallySizedBox(
+                    widthFactor: axis == Axis.horizontal ? null : 0.6,
+                    heightFactor: axis == Axis.horizontal ? 0.6 : null,
+                    child: const ColoredBox(color: AppColors.danger),
+                  ),
+                ),
               ),
             ),
           ],
@@ -435,17 +571,16 @@ class _SeNameBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Inverted chip (R4): dark fill, paper-light writing — reads as a
+    // marker ON the block start instead of an extra cell pushing it
+    // (SKK03 sheet look). Writing follows the strip: upright glyph stack
+    // on the row strip, horizontal on the X-sheet band.
     const style = TextStyle(
-      color: timelineDrawingInkColor,
+      color: timelineDrawingHeldColor,
       fontSize: 9,
       fontWeight: FontWeight.bold,
       height: 1.05,
     );
-    // The name always reads horizontally; only the box's main-axis slot
-    // follows the orientation. On rows the slim strip stands at the block
-    // start (glyphs stacked upright, paper-style); on X-sheet columns the
-    // strip is a slim BAND at the block top with the name written across —
-    // never two frame cells tall (user fix).
     final writing = axis == Axis.horizontal
         ? Column(
             mainAxisSize: MainAxisSize.min,
@@ -461,7 +596,7 @@ class _SeNameBox extends StatelessWidget {
       // preview) — tests and screen readers address the box directly.
       container: true,
       child: Container(
-        color: AppColors.accent.withValues(alpha: 0.6),
+        color: timelineDrawingInkColor,
         alignment: Alignment.center,
         // scaleDown: a LONG name shrinks to the box instead of overflowing
         // the row (the striped-error report — R4 improvement 2).

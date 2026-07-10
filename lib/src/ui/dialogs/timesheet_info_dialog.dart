@@ -30,6 +30,14 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   late final Set<TimesheetHeaderField> _hiddenFields = {
     ...widget.initialInfo.hiddenFields,
   };
+  late bool _exposureBarEnabled =
+      widget.initialInfo.exposureBarThreshold != null;
+  late final TextEditingController
+  _exposureBarThresholdController = TextEditingController(
+    text:
+        '${widget.initialInfo.exposureBarThreshold ?? TimesheetInfo.defaultExposureBarThreshold}',
+  );
+  late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
 
   static const Map<TimesheetHeaderField, String> _fieldLabels = {
     TimesheetHeaderField.title: 'Title',
@@ -47,10 +55,12 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
     _episodeController.dispose();
     _sceneController.dispose();
     _artistController.dispose();
+    _exposureBarThresholdController.dispose();
     super.dispose();
   }
 
   void _submit() {
+    final threshold = int.tryParse(_exposureBarThresholdController.text.trim());
     Navigator.of(context).pop(
       TimesheetInfo(
         title: _titleController.text.trim(),
@@ -58,6 +68,12 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
         scene: _sceneController.text.trim(),
         artist: _artistController.text.trim(),
         hiddenFields: {..._hiddenFields},
+        exposureBarThreshold: _exposureBarEnabled && threshold != null
+            ? threshold.clamp(1, 999)
+            : _exposureBarEnabled
+            ? TimesheetInfo.defaultExposureBarThreshold
+            : null,
+        seEmptyFill: _seEmptyFill,
       ),
     );
   }
@@ -127,6 +143,40 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                       }),
                     ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              Text('Notation', style: Theme.of(context).textTheme.labelMedium),
+              SwitchListTile(
+                key: const ValueKey<String>('timesheet-info-exposure-bar'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Exposure hold bar'),
+                subtitle: const Text(
+                  'Draw the hold bar from the (N+1)th comma of N+ holds',
+                ),
+                value: _exposureBarEnabled,
+                onChanged: (value) =>
+                    setState(() => _exposureBarEnabled = value),
+              ),
+              if (_exposureBarEnabled)
+                TextField(
+                  key: const ValueKey<String>(
+                    'timesheet-info-exposure-bar-threshold',
+                  ),
+                  controller: _exposureBarThresholdController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'N (industry standard 3)',
+                    isDense: true,
+                  ),
+                ),
+              SwitchListTile(
+                key: const ValueKey<String>('timesheet-info-se-empty-fill'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Gray out empty SE stretches'),
+                value: _seEmptyFill,
+                onChanged: (value) => setState(() => _seEmptyFill = value),
               ),
             ],
           ),

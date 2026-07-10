@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
@@ -94,6 +95,68 @@ void main() {
     // undrawn layer resolves to nothing.
     expect(find.byType(IgnorePointer), findsWidgets);
     expect(tester.takeException(), isNull);
+    cache.dispose();
+  });
+
+  testWidgets('a layer entering the stack with a warm cache image paints '
+      'in the SAME frame (layer-switch flicker regression)', (tester) async {
+    final cache = cacheWithStroke();
+    const quality = PlaybackQuality.full;
+    // Warm the cache the way the prerender does after every stroke.
+    await tester.runAsync(
+      () => cache.prepare(
+        key: key('layer-below'),
+        canvasSize: canvasSize,
+        quality: quality,
+      ),
+    );
+
+    Widget stack(List<CanvasLayerImageRequest> layers) => MaterialApp(
+      home: Scaffold(
+        body: CanvasLayerStackView(
+          layers: layers,
+          imageCache: cache,
+          canvasSize: canvasSize,
+          viewport: CanvasViewport(),
+        ),
+      ),
+    );
+
+    int paintedImages() {
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(
+          of: find.byType(CanvasLayerStackView),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      final images = (paint.painter as dynamic).images as List<Object?>;
+      return images.length;
+    }
+
+    // The layer starts OUTSIDE the stack (it is the active layer, drawn by
+    // the interactive view).
+    await tester.pumpWidget(stack(const []));
+    expect(paintedImages(), 0);
+
+    // The layer switch: it enters the stack. The warm image must paint on
+    // this very pump — the async-only path painted it a frame late and the
+    // artwork visibly vanished and reappeared.
+    await tester.pumpWidget(
+      stack([
+        CanvasLayerImageRequest(frameKey: key('layer-below'), opacity: 1),
+      ]),
+    );
+    expect(
+      paintedImages(),
+      1,
+      reason: 'warm images must adopt synchronously on layer switch',
+    );
+
+    // Switching back removes it the same frame (no double-draw under the
+    // interactive view).
+    await tester.pumpWidget(stack(const []));
+    expect(paintedImages(), 0);
+
     cache.dispose();
   });
 }

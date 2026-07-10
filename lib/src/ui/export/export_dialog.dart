@@ -85,6 +85,11 @@ class ExportDialogState extends State<ExportDialog> {
   ExportSizeMode _sizeMode = ExportSizeMode.camera;
   ExportFormat _format = ExportFormat.pngSequence;
   bool _instanceOnly = false;
+
+  /// R4 new-feature 1: false bypasses EVERY layer's FX in the rendered
+  /// output (MP4 and PNG alike); true (default) exports WYSIWYG with
+  /// playback. Cels never carry FX either way.
+  bool _applyLayerFx = true;
   bool _celTransparent = true;
   bool _celTimesheetOnly = false;
   bool _celIncludeProject = false;
@@ -369,7 +374,10 @@ class ExportDialogState extends State<ExportDialog> {
       }
     }
 
-    final renderer = ExportFrameRenderer(session: widget.session);
+    final renderer = ExportFrameRenderer(
+      session: widget.session,
+      applyLayerFx: _applyLayerFx,
+    );
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -650,6 +658,33 @@ class ExportDialogState extends State<ExportDialog> {
                   ),
                 ],
               ),
+              if (!_isXdts) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Switch(
+                      key: const ValueKey<String>('export-apply-fx-toggle'),
+                      // Cels never carry FX (raw artwork rule) — the toggle
+                      // only gates composite renders.
+                      value: _applyLayerFx,
+                      onChanged: _isExporting || _instanceOnly
+                          ? null
+                          : (value) => setState(() => _applyLayerFx = value),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _instanceOnly
+                            ? 'Cels export as raw artwork — layer FX never '
+                                  'apply.'
+                            : 'Apply layer FX (transforms and animated '
+                                  'opacity); off exports the raw layers.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [

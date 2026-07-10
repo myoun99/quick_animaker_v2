@@ -270,10 +270,33 @@ void main() {
     expect(_seDialogueAt(tester, 'xsheet-se-label-se-voice-1'), 'Hello!');
   });
 
-  testWidgets('double-tap on an empty SE cell creates a labeled entry with '
-      'the entered length in one undo; the length is remembered', (
-    tester,
-  ) async {
+  testWidgets('SE empty stretches carry the print-sheet furniture overlay '
+      'inside the playback range, both orientations (R4)', (tester) async {
+    await _pumpHome(tester, _project());
+    await _ensureRowVisible(tester, _seLayerId);
+
+    // Block covers [1, 4): empty runs open at 0 and at 4 (to the cut end).
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-4')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-se-empty-se-voice-4')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('double-tap on an empty SE cell creates a ONE-frame labeled '
+      'entry in one undo (the grips own the length)', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -287,6 +310,11 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
     );
     expect(find.text('New SE'), findsOneWidget);
+    // The R3 length input is retired — creation is one frame, like cels.
+    expect(
+      find.byKey(const ValueKey<String>('instance-length-field')),
+      findsNothing,
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
@@ -295,12 +323,6 @@ void main() {
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-name-field')),
       '앨리스',
-    );
-    // The creation dialog asks for the block length now (no more auto-fill
-    // to the cut end): 0 seconds + 6 komas.
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('instance-length-field')),
-      '0+6',
     );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
@@ -311,7 +333,7 @@ void main() {
     final entry = layer.timeline[4]!;
     expect(layer.frames.single.name, '와아!');
     expect(layer.frames.single.seName, '앨리스');
-    expect(entry.length, 6, reason: 'the dialog length owns the block');
+    expect(entry.length, 1, reason: 'new instances are one frame long');
     expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-4'), '와아!');
     expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
 
@@ -320,21 +342,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(_seLayer(repository).timeline, isEmpty);
     expect(_seLayer(repository).frames, isEmpty);
-
-    // The value and notation persist: the next creation dialog prefills
-    // the committed '0+6'.
-    await _doubleTapCell(
-      tester,
-      find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
-    );
-    final lengthField = tester.widget<TextField>(
-      find.byKey(const ValueKey<String>('instance-length-field')),
-    );
-    expect(lengthField.controller!.text, '0+6');
-    await tester.tap(
-      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
-    );
-    await tester.pumpAndSettle();
   });
 
   testWidgets('double-tap on an existing SE entry edits its label; duplicate '

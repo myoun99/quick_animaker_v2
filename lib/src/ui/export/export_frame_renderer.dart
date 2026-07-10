@@ -26,10 +26,17 @@ class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
     this.renderService = const CameraFrameRenderService(),
+    this.applyLayerFx = true,
   });
 
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
+
+  /// The export dialog's 'Apply layer FX' toggle: true (default) exports
+  /// WYSIWYG with playback (per-layer fx switches respected); false
+  /// bypasses EVERY layer's FX — raw cels at their static opacity, no
+  /// transforms. The cut fade and the camera work are cut-level and stay.
+  final bool applyLayerFx;
 
   final Map<(LayerId, FrameId), BitmapSurface?> _surfaces = {};
   CutId? _surfacesCutId;
@@ -85,12 +92,15 @@ class ExportFrameRenderer {
           );
     return renderService.renderThroughCamera(
       // The fx-bypass switches apply here too (AE semantics: the layer fx
-      // switch affects the render) — WYSIWYG with playback.
+      // switch affects the render) — WYSIWYG with playback. The dialog's
+      // 'Apply layer FX' master toggle bypasses every layer at once.
       layers: planCutFrameComposite(
         cut: cut,
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-        fxBypassedLayerIds: session.fxBypassedLayerIds,
+        fxBypassedLayerIds: applyLayerFx
+            ? session.fxBypassedLayerIds
+            : {for (final layer in cut.layers) layer.id},
       ),
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera

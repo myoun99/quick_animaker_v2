@@ -77,51 +77,120 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
     return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
   }
 
+  Widget _wheel(double square) {
+    return SizedBox(
+      width: square,
+      height: square,
+      child: ColorWheel(
+        key: const ValueKey<String>('color-wheel'),
+        hsv: _hsv,
+        onChanged: _setHsv,
+      ),
+    );
+  }
+
+  Widget _slotPair() {
+    return _ColorSlotPair(
+      foreground: _hsv.toColor(),
+      background: Color(widget.backgroundColor),
+      onBackgroundTap: _swapColors,
+    );
+  }
+
+  Widget _swapButton() {
+    return IconButton(
+      key: const ValueKey<String>('color-wheel-swap-button'),
+      tooltip: 'Swap Colors',
+      iconSize: 16,
+      visualDensity: VisualDensity.compact,
+      icon: const Icon(Icons.swap_horiz),
+      onPressed: _swapColors,
+    );
+  }
+
+  Widget _hexText(BuildContext context) {
+    return Text(
+      _hexLabel,
+      key: const ValueKey<String>('color-wheel-hex-label'),
+      style: Theme.of(context).textTheme.labelMedium,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Adaptive layout maximizing the wheel's square: the controls sit
+    // BELOW the wheel while the panel is portrait-ish, and BESIDE it when
+    // the panel is wide and short (the bottom strip wasted the height).
+    // Tiny panels drop the controls entirely instead of overflowing.
+    const gap = 10.0;
+    const controlsHeight = 42.0;
+    const controlsWidth = 78.0;
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Flexible(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: ColorWheel(
-                  key: const ValueKey<String>('color-wheel'),
-                  hsv: _hsv,
-                  onChanged: _setHsv,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          final belowSquare = math.min(width, height - controlsHeight - gap);
+          final besideSquare = math.min(height, width - controlsWidth - gap);
+
+          if (belowSquare >= besideSquare) {
+            if (belowSquare <= 40) {
+              // No room for controls — the wheel alone, never an overflow.
+              return Center(
+                child: _wheel(math.max(0, math.min(width, height)).toDouble()),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: Center(child: _wheel(belowSquare))),
+                const SizedBox(height: gap),
+                // FittedBox: very narrow panels scale the strip down
+                // instead of overflowing horizontally.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: math.max(width, 150),
+                    child: Row(
+                      children: [
+                        _slotPair(),
+                        _swapButton(),
+                        const Spacer(),
+                        _hexText(context),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          if (besideSquare <= 40) {
+            return Center(
+              child: _wheel(math.max(0, math.min(width, height)).toDouble()),
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: Center(child: _wheel(besideSquare))),
+              const SizedBox(width: gap),
+              SizedBox(
+                width: controlsWidth,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _slotPair(),
+                    _swapButton(),
+                    const SizedBox(height: 4),
+                    _hexText(context),
+                  ],
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _ColorSlotPair(
-                foreground: _hsv.toColor(),
-                background: Color(widget.backgroundColor),
-                onBackgroundTap: _swapColors,
-              ),
-              IconButton(
-                key: const ValueKey<String>('color-wheel-swap-button'),
-                tooltip: 'Swap Colors',
-                iconSize: 16,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.swap_horiz),
-                onPressed: _swapColors,
-              ),
-              const Spacer(),
-              Text(
-                _hexLabel,
-                key: const ValueKey<String>('color-wheel-hex-label'),
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -172,10 +241,7 @@ class _ColorSlotPair extends StatelessWidget {
               message: 'Background Color (Tap to Swap)',
               child: GestureDetector(
                 onTap: onBackgroundTap,
-                child: swatch(
-                  'color-wheel-background-swatch',
-                  background,
-                ),
+                child: swatch('color-wheel-background-swatch', background),
               ),
             ),
           ),
@@ -317,9 +383,7 @@ class ColorWheelGeometry {
   (double saturation, double value) svAt(Offset position) {
     final (hueW, _, blackW) = _barycentric(clampToTriangle(position));
     final value = (1 - blackW).clamp(0.0, 1.0);
-    final saturation = value <= 1e-9
-        ? 0.0
-        : (hueW / value).clamp(0.0, 1.0);
+    final saturation = value <= 1e-9 ? 0.0 : (hueW / value).clamp(0.0, 1.0);
     return (saturation, value);
   }
 
@@ -436,11 +500,7 @@ class _ColorWheelPainter extends CustomPainter {
         center + Offset(math.cos(hueAngle), math.sin(hueAngle)) * ringRadius;
     _paintIndicator(canvas, hueDot, geometry.ringWidth * 0.34);
 
-    _paintIndicator(
-      canvas,
-      geometry.svPosition(hsv.saturation, hsv.value),
-      5,
-    );
+    _paintIndicator(canvas, geometry.svPosition(hsv.saturation, hsv.value), 5);
   }
 
   void _paintIndicator(Canvas canvas, Offset at, double radius) {

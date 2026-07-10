@@ -58,6 +58,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.frameNameForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onScrubFrame,
+    this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -65,6 +67,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     required this.onAddLayer,
@@ -77,11 +80,13 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerMuted,
     this.commaDrag,
     this.isFrameCached,
+    this.seEmptyFill = true,
     this.metrics = defaultMetrics,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.onToggleLaneGroup,
     this.hiddenSections = const {},
   });
 
@@ -106,6 +111,12 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
+  /// Frame-rail scrub path: per-move frames go to [onScrubFrame]
+  /// (cursor-only, no commit) and the pointer's release fires [onScrubEnd]
+  /// to commit once. Null falls back to [onSelectFrame] per move.
+  final ValueChanged<int>? onScrubFrame;
+  final VoidCallback? onScrubEnd;
+
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -123,9 +134,16 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
 
+  /// Light wash over SE columns' empty stretches (project toggle mirrored
+  /// from TimesheetInfo.seEmptyFill).
+  final bool seEmptyFill;
+
   /// Commits an audio-lane slide (the clip's offset trim).
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview + one undo).
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
 
   /// Commits an audio-lane fade-handle drag.
   final void Function(
@@ -172,6 +190,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Group headers: tapping twirls the group's member lanes (AE collapse).
+  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// Sections hidden from the grid entirely (toolbar visibility toggles;
   /// the section axis runs horizontally here, so hiding drops columns).
@@ -345,7 +366,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     _lastRailScrubbedFrameIndex = clampedFrameIndex;
-    widget.onSelectFrame(clampedFrameIndex);
+    (widget.onScrubFrame ?? widget.onSelectFrame)(clampedFrameIndex);
+  }
+
+  /// The scrub gesture's release (raw pointer up/cancel — fires for taps
+  /// AND drags). Tracking is NOT reset here so trailing tap handlers stay
+  /// deduplicated.
+  void _endRailScrub() {
+    widget.onScrubEnd?.call();
   }
 
   void _selectFrameFromRailGlobalPosition(Offset globalPosition) {
@@ -455,6 +483,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 event.position,
                               );
                             },
+                            onPointerUp: (_) => _endRailScrub(),
+                            onPointerCancel: (_) => _endRailScrub(),
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onVerticalDragStart: (details) {
@@ -629,6 +659,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       onSelectFrame:
                                                           widget.onSelectFrame,
                                                       laneEdit: widget.laneEdit,
+                                                      onToggleLaneGroup: widget
+                                                          .onToggleLaneGroup,
                                                     ),
                                               )
                                             : _LayerHeader(
@@ -745,6 +777,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                           clipIndex,
                                                                           offsetFrames,
                                                                         ),
+                                                                  offsetDrag: widget
+                                                                      .audioOffsetDrag,
                                                                   onSetClipFades:
                                                                       widget.onSetAudioClipFades ==
                                                                           null
@@ -817,6 +851,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                     .onRemoveAudioClip,
                                                             onDropMediaAsset: widget
                                                                 .onDropMediaAsset,
+                                                            seEmptyFill: widget
+                                                                .seEmptyFill,
                                                             layer:
                                                                 entries[index]
                                                                     .layer,
@@ -1117,6 +1153,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.onDropMediaAsset,
     this.commaDrag,
     this.sectionStart = false,
+    this.seEmptyFill = true,
   });
 
   final Layer layer;
@@ -1149,6 +1186,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   onDropMediaAsset;
 
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Light wash over SE columns' empty stretches (project toggle).
+  final bool seEmptyFill;
 
   @override
   Widget build(BuildContext context) {
@@ -1232,6 +1272,21 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.outline,
                 ),
               ),
+            ),
+          // SE empty stretches: dotted guide + optional light wash (Toei
+          // print convention), under the audio and writing overlays.
+          if (layerKindUsesSeSheetCells(layer.kind))
+            ...timelineRowSeEmptyOverlays(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              playbackFrameCount: playbackFrameCount,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              seEmptyFill: seEmptyFill,
+              keyPrefix: 'xsheet',
             ),
           // SE audio clips paint over the paper cells, under the writing —
           // clipped to the column's drawing blocks (no block, no waveform).

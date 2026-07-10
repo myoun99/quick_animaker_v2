@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -77,6 +79,29 @@ void main() {
 
       session.toggleLayerFx(layer.id);
       expect(session.editingCanvasStack.activeLayerOpacity, closeTo(0.8, 1e-9));
+    });
+
+    test('camera fx bypass: cameraPoseForCut returns the identity pose on '
+        'the render routes while the camera row is bypassed', () {
+      final cut = session.activeCut;
+      final cameraLayer = cut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.camera,
+      );
+      session.setCameraKeyframeAtCurrentFrame(
+        CameraPose(center: CanvasPoint(x: 100, y: 80), zoom: 2),
+      );
+
+      expect(session.cameraPoseForCut(session.activeCut, 0).zoom, 2);
+
+      session.toggleLayerFx(cameraLayer.id);
+      final bypassed = session.cameraPoseForCut(session.activeCut, 0);
+      expect(bypassed.zoom, 1);
+      expect(bypassed.rotationDegrees, 0);
+      expect(bypassed.center.x, session.activeCut.canvasSize.width / 2);
+      expect(bypassed.center.y, session.activeCut.canvasSize.height / 2);
+
+      session.toggleLayerFx(cameraLayer.id);
+      expect(session.cameraPoseForCut(session.activeCut, 0).zoom, 2);
     });
 
     test('lane value resolvers: anchor defaults to the canvas center and '

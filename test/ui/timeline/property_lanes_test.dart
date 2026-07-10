@@ -85,6 +85,26 @@ Future<void> _pump(WidgetTester tester, Project project) async {
 Finder _laneLabel(String laneId) =>
     find.byKey(ValueKey<String>('timeline-lane-label-lane-cam-layer-$laneId'));
 
+/// Twirls a layer's Transform GROUP open (R4: default collapsed — member
+/// lanes only render after the group header toggle). No-op while the
+/// header is absent (layer twirl-down closed).
+Future<void> _expandTransformGroup(
+  WidgetTester tester,
+  String layerId, {
+  String keyPrefix = 'timeline',
+}) async {
+  final toggle = find.byKey(
+    ValueKey<String>('$keyPrefix-lane-group-toggle-$layerId-transform-group'),
+  );
+  if (toggle.evaluate().isEmpty) {
+    return;
+  }
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
 Finder _laneKey(String laneId, int frame) => find.byKey(
   ValueKey<String>('timeline-lane-key-lane-cam-layer-$laneId-$frame'),
 );
@@ -210,6 +230,13 @@ void main() {
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
 
+      // The twirl-down opens onto the Transform GROUP HEADER; its member
+      // lanes stay collapsed until the header toggle (R4 AE collapse).
+      expect(_laneLabel('transform-group'), findsOneWidget);
+      expect(_laneLabel('position'), findsNothing);
+
+      await _expandTransformGroup(tester, 'lane-cam-layer');
+
       // The whole AE Transform group twirls down.
       expect(_laneLabel('position'), findsOneWidget);
       expect(_laneLabel('scale'), findsOneWidget);
@@ -220,9 +247,14 @@ void main() {
         expect(_laneKey(laneId, 8), findsOneWidget);
       }
 
+      // The header collapses the group again; the layer twirl hides all.
+      await _expandTransformGroup(tester, 'lane-cam-layer');
+      expect(_laneLabel('position'), findsNothing);
+      expect(_laneLabel('transform-group'), findsOneWidget);
+
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
-      expect(_laneLabel('position'), findsNothing);
+      expect(_laneLabel('transform-group'), findsNothing);
     });
 
     testWidgets('independently keyed properties diamond only their own '
@@ -244,6 +276,7 @@ void main() {
 
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
+      await _expandTransformGroup(tester, 'lane-cam-layer');
 
       expect(_laneKey('position', 4), findsOneWidget);
       expect(_laneKey('scale', 4), findsNothing);
@@ -288,6 +321,7 @@ void main() {
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
+      await _expandTransformGroup(tester, 'lane-draw-layer');
       expect(
         find.byKey(
           const ValueKey<String>(
@@ -411,18 +445,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final positionLabel = find.byKey(
-        const ValueKey<String>('timeline-lane-label-lane-se-layer-position'),
+      final groupHeader = find.byKey(
+        const ValueKey<String>(
+          'timeline-lane-label-lane-se-layer-transform-group',
+        ),
       );
       final audioLabel = find.byKey(
         const ValueKey<String>('timeline-lane-label-lane-se-layer-se-audio'),
       );
-      expect(positionLabel, findsOneWidget);
+      expect(groupHeader, findsOneWidget);
       expect(audioLabel, findsOneWidget);
-      // Transform group first, the audio strip below it (AE ordering).
+      // R4 ordering: the Audio controls lead the SE twirl-down, the
+      // Transform group sits BELOW them (collapsed by default).
       expect(
-        tester.getTopLeft(positionLabel).dy,
-        lessThan(tester.getTopLeft(audioLabel).dy),
+        tester.getTopLeft(audioLabel).dy,
+        lessThan(tester.getTopLeft(groupHeader).dy),
+      );
+
+      await _expandTransformGroup(tester, 'lane-se-layer');
+      final positionLabel = find.byKey(
+        const ValueKey<String>('timeline-lane-label-lane-se-layer-position'),
+      );
+      expect(positionLabel, findsOneWidget);
+      expect(
+        tester.getTopLeft(audioLabel).dy,
+        lessThan(tester.getTopLeft(positionLabel).dy),
       );
 
       // The navigator diamond keys the SE layer's OWN transform track.
@@ -474,6 +521,7 @@ void main() {
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
+      await _expandTransformGroup(tester, 'lane-instr-layer');
 
       expect(
         find.byKey(
@@ -740,6 +788,7 @@ void main() {
     Future<void> expand(WidgetTester tester) async {
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
+      await _expandTransformGroup(tester, 'lane-cam-layer');
     }
 
     testWidgets('the navigator diamond toggles a key at the playhead on '
@@ -1016,6 +1065,11 @@ void main() {
     Future<void> expand(WidgetTester tester) async {
       await tester.tap(find.byKey(laneToggleKey));
       await tester.pumpAndSettle();
+      await _expandTransformGroup(
+        tester,
+        'lane-cam-layer',
+        keyPrefix: 'xsheet',
+      );
     }
 
     testWidgets('twirl-down opens the transform lanes as COLUMNS with key '

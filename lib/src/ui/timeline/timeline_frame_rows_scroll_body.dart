@@ -37,10 +37,12 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     this.commaDrag,
     this.laneEdit,
+    this.seEmptyFill = true,
   });
 
   /// Display layers (section-divider positions key off layer indexes).
@@ -70,10 +72,17 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
 
+  /// Light wash over SE rows' empty stretches (project toggle).
+  final bool seEmptyFill;
+
   /// Commits an audio-lane slide (the clip's offset trim); null makes the
   /// audio lane display-only.
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview + one undo on
+  /// release); falls back to the local preview + [onSetAudioClipOffset].
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
 
   /// Commits an audio-lane fade-handle drag; null hides the handles.
   final void Function(
@@ -122,6 +131,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                                         clipIndex,
                                         offsetFrames,
                                       ),
+                            offsetDrag: audioOffsetDrag,
                             onSetClipFades: onSetAudioClipFades == null
                                 ? null
                                 : (clipIndex, fadeIn, fadeOut) =>
@@ -173,6 +183,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                       onRemoveAudioClip: onRemoveAudioClip,
                       onDropMediaAsset: onDropMediaAsset,
                       commaDrag: commaDrag,
+                      seEmptyFill: seEmptyFill,
                     ),
             ),
           if (rows.isEmpty)

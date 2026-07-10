@@ -15,9 +15,14 @@ class TimesheetInfo {
     this.scene = '',
     this.artist = '',
     this.hiddenFields = const {},
+    this.exposureBarThreshold,
+    this.seEmptyFill = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
+
+  /// The industry-standard hold length the exposure bar option suggests.
+  static const int defaultExposureBarThreshold = 3;
 
   final String title;
   final String episode;
@@ -26,6 +31,15 @@ class TimesheetInfo {
 
   /// Header boxes the form does NOT print; everything else stays visible.
   final Set<TimesheetHeaderField> hiddenFields;
+
+  /// The ACTION columns' hold bar ('1 ─ ─ ─' down held rows): null = never
+  /// drawn (the default — most sheets leave holds blank); N = drawn only
+  /// for exposures held N+ commas, starting from the (N+1)th comma.
+  final int? exposureBarThreshold;
+
+  /// Light-gray fill over SE columns' empty stretches (the "no SE here"
+  /// wash) — default on, toggleable per project.
+  final bool seEmptyFill;
 
   /// The header boxes the form prints, in printing order.
   List<TimesheetHeaderField> get visibleFields => [
@@ -39,6 +53,8 @@ class TimesheetInfo {
     String? scene,
     String? artist,
     Set<TimesheetHeaderField>? hiddenFields,
+    int? Function()? exposureBarThreshold,
+    bool? seEmptyFill,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -46,6 +62,10 @@ class TimesheetInfo {
       scene: scene ?? this.scene,
       artist: artist ?? this.artist,
       hiddenFields: hiddenFields ?? this.hiddenFields,
+      exposureBarThreshold: exposureBarThreshold == null
+          ? this.exposureBarThreshold
+          : exposureBarThreshold(),
+      seEmptyFill: seEmptyFill ?? this.seEmptyFill,
     );
   }
 
@@ -55,6 +75,9 @@ class TimesheetInfo {
     'scene': scene,
     'artist': artist,
     'hiddenFields': [for (final field in hiddenFields) field.name],
+    if (exposureBarThreshold != null)
+      'exposureBarThreshold': exposureBarThreshold,
+    if (!seEmptyFill) 'seEmptyFill': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -69,6 +92,8 @@ class TimesheetInfo {
           for (final field in TimesheetHeaderField.values)
             if (field.name == name) field,
       },
+      exposureBarThreshold: json['exposureBarThreshold'] as int?,
+      seEmptyFill: json['seEmptyFill'] as bool? ?? true,
     );
   }
 
@@ -80,6 +105,8 @@ class TimesheetInfo {
           other.episode == episode &&
           other.scene == scene &&
           other.artist == artist &&
+          other.exposureBarThreshold == exposureBarThreshold &&
+          other.seEmptyFill == seEmptyFill &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
 
@@ -89,11 +116,15 @@ class TimesheetInfo {
     episode,
     scene,
     artist,
+    exposureBarThreshold,
+    seEmptyFill,
     Object.hashAllUnordered(hiddenFields),
   );
 
   @override
   String toString() =>
       'TimesheetInfo(title: $title, episode: $episode, scene: $scene, '
-      'artist: $artist, hiddenFields: $hiddenFields)';
+      'artist: $artist, hiddenFields: $hiddenFields, '
+      'exposureBarThreshold: $exposureBarThreshold, '
+      'seEmptyFill: $seEmptyFill)';
 }
