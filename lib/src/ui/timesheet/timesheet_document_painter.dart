@@ -800,7 +800,6 @@ class TimesheetDocumentPainter extends CustomPainter {
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
     final cellBottom = cellTop + rowHeight;
-    final cellCenterY = cellTop + rowHeight / 2;
     final spanLength = cell.spanLength ?? 1;
     final offset = cell.spanOffset ?? 0;
     final isFirst = offset == 0;
@@ -808,11 +807,13 @@ class TimesheetDocumentPainter extends CustomPainter {
 
     if ((cell.markType ?? CameraInstructionMarkType.bar) ==
         CameraInstructionMarkType.bar) {
-      // Single-row spans carry writing only, exactly like the row overlay.
-      if (spanLength > 1) {
+      // R5-⑤: the endpoint cells carry NO line — the names own them; each
+      // row BETWEEN draws its own short stroke (a bar per cell, the
+      // hand-drawn sheet feel), so the line never touches the endpoints.
+      if (spanLength > 2 && !isFirst && !isLast) {
         canvas.drawLine(
-          Offset(centerX, isFirst ? cellCenterY : cellTop),
-          Offset(centerX, isLast ? cellCenterY : cellBottom),
+          Offset(centerX, cellTop + 2),
+          Offset(centerX, cellBottom - 2),
           Paint()
             ..color = _ink
             ..strokeWidth = 1.4,
@@ -866,15 +867,24 @@ class TimesheetDocumentPainter extends CustomPainter {
       );
     }
     if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
-      // The writing sits on the SPAN's true center (derived span-globally
-      // like the mark geometry), overlaid on the line/wedge — never
-      // breaking them (R4 rule).
+      // The writing sits on the SPAN's true center, HORIZONTAL (R5-⑤ —
+      // the vertical glyph stack retired), overlaid on the mark and
+      // spilling over neighbouring columns freely like handwriting.
       final spanTop = cellTop - offset * rowHeight;
-      _centeredVerticalText(
+      final painter = TextPainter(
+        text: TextSpan(
+          text: cell.label!,
+          style: const TextStyle(color: _ink, fontSize: 9),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      painter.paint(
         canvas,
-        cell.label!,
-        center: Offset(centerX, spanTop + spanLength * rowHeight / 2),
-        fontSize: 9,
+        Offset(
+          centerX - painter.width / 2,
+          spanTop + spanLength * rowHeight / 2 - painter.height / 2,
+        ),
       );
     }
   }
@@ -1132,40 +1142,6 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   /// An upright glyph stack centered on [center] (the instruction writing
-  /// on its span's middle row) — spills over neighbouring rows freely,
-  /// like handwriting on the paper form and the X-sheet overlay.
-  void _centeredVerticalText(
-    Canvas canvas,
-    String text, {
-    required Offset center,
-    required double fontSize,
-    Color color = _ink,
-  }) {
-    final glyphs = text.characters.toList(growable: false);
-    if (glyphs.isEmpty) {
-      return;
-    }
-    final painters = [
-      for (final glyph in glyphs)
-        TextPainter(
-          text: TextSpan(
-            text: glyph,
-            style: TextStyle(color: color, fontSize: fontSize),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout(),
-    ];
-    var totalHeight = -2.0 * (painters.length - 1);
-    for (final painter in painters) {
-      totalHeight += painter.height;
-    }
-    var y = center.dy - totalHeight / 2;
-    for (final painter in painters) {
-      painter.paint(canvas, Offset(center.dx - painter.width / 2, y));
-      y += painter.height - 2;
-    }
-  }
-
   /// SE dialogue distributed evenly over the covered rows — the sheet's
   /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
   /// so screen and print place glyphs identically. Never truncates: the
