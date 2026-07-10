@@ -1,14 +1,17 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/attached_placement.dart';
+import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/export_dialog.dart';
+import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../shortcuts/editor_action_registry.dart';
@@ -31,10 +34,16 @@ class EditorMenuBar extends StatelessWidget {
     required this.session,
     required this.panelsMenu,
     this.shortcuts,
+    this.qapOpenFilePicker,
+    this.qapSaveFilePicker,
   });
 
   final EditorSessionManager session;
   final WorkspacePanelsMenuController panelsMenu;
+
+  /// Injectable for tests; default to the platform file dialogs.
+  final Future<String?> Function()? qapOpenFilePicker;
+  final Future<String?> Function(String suggestedName)? qapSaveFilePicker;
 
   /// The customizable shortcut bindings (P1); null hides the shortcut
   /// labels and disables the settings entry (focused widget tests).
@@ -64,12 +73,133 @@ class EditorMenuBar extends StatelessWidget {
 
   // --- File -----------------------------------------------------------------
 
+  static Future<String?> _defaultOpenPicker() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+      ],
+    );
+    return file?.path;
+  }
+
+  static Future<String?> _defaultSavePicker(String suggestedName) async {
+    final location = await getSaveLocation(
+      suggestedName: suggestedName,
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+      ],
+    );
+    return location?.path;
+  }
+
+  void _showFileError(BuildContext context, Object error) {
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text('$error')));
+  }
+
+  Future<void> _openProject(BuildContext context) async {
+    final path = await (qapOpenFilePicker ?? _defaultOpenPicker)();
+    if (path == null || !context.mounted) {
+      return;
+    }
+    // A newer autosave sidecar offers recovery (crash / sync loss).
+    var openPath = path;
+    String? recoverAs;
+    final sidecar = '$path.autosave';
+    if (ProjectAutosaveService.sidecarIsNewer(
+      filePath: path,
+      sidecarPath: sidecar,
+    )) {
+      final recover = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Recover autosaved changes?'),
+          content: const Text(
+            'A newer autosave exists for this project. Recover it, or open '
+            'the file as last saved?',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey<String>('recover-open-saved-button'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Open Saved'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('recover-autosave-button'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Recover'),
+            ),
+          ],
+        ),
+      );
+      if (recover == null || !context.mounted) {
+        return;
+      }
+      if (recover) {
+        openPath = sidecar;
+        recoverAs = path;
+      }
+    }
+    try {
+      await session.openProjectFromFile(openPath, recoverAs: recoverAs);
+    } catch (error) {
+      if (context.mounted) {
+        _showFileError(context, error);
+      }
+    }
+  }
+
+  Future<void> _saveProjectAs(BuildContext context) async {
+    final suggested =
+        '${sanitizeExportFileComponent(session.repository.requireProject().name)}.qap';
+    var path = await (qapSaveFilePicker ?? _defaultSavePicker)(suggested);
+    if (path == null || !context.mounted) {
+      return;
+    }
+    if (!path.toLowerCase().endsWith('.qap')) {
+      path = '$path.qap';
+    }
+    try {
+      await session.saveProjectToFile(path);
+    } catch (error) {
+      if (context.mounted) {
+        _showFileError(context, error);
+      }
+    }
+  }
+
+  Future<void> _saveProject(BuildContext context) async {
+    final path = session.projectFilePath;
+    if (path == null) {
+      await _saveProjectAs(context);
+      return;
+    }
+    try {
+      await session.saveProjectToFile(path);
+    } catch (error) {
+      if (context.mounted) {
+        _showFileError(context, error);
+      }
+    }
+  }
+
   List<Widget> _fileItems(BuildContext context) => [
-    // Project persistence lands with the save/open roadmap phase; the
-    // slots sit here (disabled) so the File menu's shape is stable.
-    _item(id: 'file-open', label: 'Open…'),
-    _item(id: 'file-save', label: 'Save'),
-    _item(id: 'file-save-as', label: 'Save As…'),
+    _item(
+      id: 'file-open',
+      label: 'Open…',
+      onPressed: () => unawaited(_openProject(context)),
+    ),
+    _item(
+      id: 'file-save',
+      label: 'Save',
+      onPressed: () => unawaited(_saveProject(context)),
+    ),
+    _item(
+      id: 'file-save-as',
+      label: 'Save As…',
+      onPressed: () => unawaited(_saveProjectAs(context)),
+    ),
     const Divider(height: 8),
     _item(
       id: 'file-export',
