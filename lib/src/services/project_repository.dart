@@ -282,6 +282,46 @@ class ProjectRepository {
     return deletedLayer!;
   }
 
+  /// Inserts an SE row into [trackId]'s track-owned SE list (S-rows live
+  /// on the track's global frame axis).
+  void insertTrackSeLayer({
+    required TrackId trackId,
+    required Layer layer,
+    int? index,
+  }) {
+    updateProject((project) {
+      final next = updateTrackById(project, trackId, (track) {
+        final seLayers = [...track.seLayers];
+        if (index == null) {
+          seLayers.add(layer);
+        } else {
+          seLayers.insert(index.clamp(0, seLayers.length).toInt(), layer);
+        }
+        return track.copyWith(seLayers: seLayers);
+      });
+      if (next == null) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
+  void removeTrackSeLayer({required TrackId trackId, required LayerId layerId}) {
+    updateProject((project) {
+      final next = updateTrackById(project, trackId, (track) {
+        return track.copyWith(
+          seLayers: track.seLayers
+              .where((layer) => layer.id != layerId)
+              .toList(growable: false),
+        );
+      });
+      if (next == null) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
     updateProject((project) {
       final next = updateCutAnywhere(project, cutId, (cut) {
@@ -317,28 +357,20 @@ class ProjectRepository {
     });
   }
 
+  // The layer-flag updates below route through the ANYWHERE lookup (cut
+  // layers + the tracks' SE rows): layer ids are globally unique, and
+  // track-owned SE layers must reach the same commands. The cutId
+  // parameter stays for API stability but no longer scopes the search.
+
   void updateLayerName({
     required CutId cutId,
     required LayerId layerId,
     required String name,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(name: name),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(name: name),
+    );
   }
 
   void updateLayerTimesheet({
@@ -346,23 +378,10 @@ class ProjectRepository {
     required LayerId layerId,
     required bool onTimesheet,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(onTimesheet: onTimesheet),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(onTimesheet: onTimesheet),
+    );
   }
 
   void updateLayerMark({
@@ -370,23 +389,10 @@ class ProjectRepository {
     required LayerId layerId,
     required LayerMark mark,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(mark: mark),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(mark: mark),
+    );
   }
 
   void updateLayerInstructions({
@@ -428,23 +434,10 @@ class ProjectRepository {
     required LayerId layerId,
     required TransformTrack transformTrack,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(transformTrack: transformTrack),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(transformTrack: transformTrack),
+    );
   }
 
   void updateLayerAudioClips({
@@ -452,23 +445,10 @@ class ProjectRepository {
     required LayerId layerId,
     required List<AudioClip> audioClips,
   }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(project, cutId, (cut) {
-        final updatedCut = updateLayerInCut(
-          cut,
-          layerId,
-          (layer) => layer.copyWith(audioClips: audioClips),
-        );
-        if (updatedCut == null) {
-          throw StateError('Layer not found in cut $cutId: $layerId');
-        }
-        return updatedCut;
-      });
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(audioClips: audioClips),
+    );
   }
 
   void updateLayerKind({

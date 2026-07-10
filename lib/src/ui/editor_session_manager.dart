@@ -32,7 +32,9 @@ import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
+import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/track_se_window.dart';
 import '../services/brush_frame_display_cache_renderer.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
@@ -55,6 +57,7 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/cut_reorder_planner.dart';
+import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_peaks_store.dart';
@@ -282,6 +285,7 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: activeCutId,
       frameId: _frameId,
       initialActiveLayerId: initialActiveLayerId,
+      trackSeDisplayLayers: () => trackSeDisplayLayers,
     );
     _timelineController = TimelineController(
       repository: _repository,
@@ -310,6 +314,61 @@ class EditorSessionManager extends ChangeNotifier {
       throw StateError('Cannot resolve active Cut track in an empty project.');
     }
     return project.tracks.first.id;
+  }
+
+  // --- Track-owned SE rows --------------------------------------------------
+  //
+  // SE rows live on the TRACK (global frame axis — sounds may cross cut
+  // boundaries). Reads go through cut-local DISPLAY clones composed into
+  // [layers]; mutations detect track-SE ids, convert local→global through
+  // the window, and edit the track's GLOBAL layer (the clones are never
+  // written back).
+
+  Track get activeTrack {
+    final trackId = activeCutTrackId;
+    return _repository.requireProject().tracks.firstWhere(
+      (track) => track.id == trackId,
+    );
+  }
+
+  /// The active cut's global start frame on its track (cumulative cut
+  /// durations — the storyboard layout's number for this cut).
+  int get activeCutGlobalStartFrame {
+    final activeCutId = _editingSession.activeCutId;
+    var start = 0;
+    for (final cut in activeTrack.cuts) {
+      if (cut.id == activeCutId) {
+        return start;
+      }
+      start += cut.duration;
+    }
+    return 0;
+  }
+
+  TrackSeWindow get trackSeWindow => TrackSeWindow(
+    cutStartFrame: activeCutGlobalStartFrame,
+    cutDurationFrames: activeCutOrNull?.duration ?? 0,
+  );
+
+  bool isTrackSeLayerId(LayerId layerId) =>
+      activeTrack.seLayers.any((layer) => layer.id == layerId);
+
+  /// The GLOBAL track layer for [layerId] (never a display clone).
+  Layer? trackSeGlobalLayerById(LayerId layerId) {
+    for (final layer in activeTrack.seLayers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+    return null;
+  }
+
+  /// The track's SE rows as cut-local display clones for the active cut.
+  List<Layer> get trackSeDisplayLayers {
+    final window = trackSeWindow;
+    return [
+      for (final layer in activeTrack.seLayers) window.displayLayer(layer),
+    ];
   }
 
   void _refreshAfterCutCommand({
@@ -1141,10 +1200,9 @@ class EditorSessionManager extends ChangeNotifier {
     final layers = activeCut.layers;
     return switch (activeLayer.kind) {
       LayerKind.camera => false,
-      // The sheet's fixture floors: at least two SE rows (S1·S2) and one
-      // instruction row survive.
-      LayerKind.se =>
-        layers.where((layer) => layer.kind == LayerKind.se).length > 2,
+      // The sheet's fixture floors: at least two SE rows (S1·S2, now
+      // track-owned) and one instruction row survive.
+      LayerKind.se => activeTrack.seLayers.length > 2,
       LayerKind.instruction =>
         layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
       // Keep at least one drawing-section layer in the cut.
@@ -1243,7 +1301,12 @@ class EditorSessionManager extends ChangeNotifier {
 
   void copyActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
+    // SE rows are track-owned (global frame axis) — copying a cut-local
+    // window onto the cut-layer clipboard would recreate the retired
+    // cut-owned SE shape; stands down for now.
+    if (activeLayer == null ||
+        activeLayer.kind == LayerKind.camera ||
+        activeLayer.kind == LayerKind.se) {
       return;
     }
 
@@ -1277,7 +1340,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   void duplicateActiveLayer() {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null || activeLayer.kind == LayerKind.camera) {
+    // Track-owned SE rows: duplication stands down (same clipboard-shape
+    // reason as copyActiveLayer).
+    if (activeLayer == null ||
+        activeLayer.kind == LayerKind.camera ||
+        activeLayer.kind == LayerKind.se) {
       return;
     }
 
@@ -1294,6 +1361,24 @@ class EditorSessionManager extends ChangeNotifier {
   void deleteActiveLayer() {
     final activeLayer = this.activeLayer;
     if (activeLayer == null || !canDeleteActiveLayer) {
+      return;
+    }
+
+    if (activeLayer.kind == LayerKind.se) {
+      final beforeSe = activeTrack.seLayers;
+      final nextActiveLayerId = _stableLayerIdAfterDeleting(
+        beforeLayers: beforeSe,
+        deletedLayerId: activeLayer.id,
+      );
+      _historyManager.execute(
+        RemoveTrackSeLayerCommand(
+          repository: _repository,
+          trackId: activeCutTrackId,
+          layerId: activeLayer.id,
+        ),
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+      notifyListeners();
       return;
     }
 
@@ -1337,15 +1422,29 @@ class EditorSessionManager extends ChangeNotifier {
     final kind = activeLayer?.kind ?? LayerKind.animation;
     switch (kind) {
       case LayerKind.se:
-        _layerController.addLayer(
-          layer: Layer(
-            id: layerId,
-            name: nextSeLayerName(_layerController.layers),
-            frames: const [],
-            timeline: const {},
-            kind: LayerKind.se,
+        // SE rows are track-owned: insert directly above the active SE row
+        // in the TRACK list (the same S1,S3,S2 insertion order the
+        // timeline shows — the single ordering every panel renders).
+        final seLayers = activeTrack.seLayers;
+        final activeIndex = seLayers.indexWhere(
+          (layer) => layer.id == activeLayerId,
+        );
+        final newLayer = Layer(
+          id: layerId,
+          name: nextSeLayerName(seLayers),
+          frames: const [],
+          timeline: const {},
+          kind: LayerKind.se,
+        );
+        _historyManager.execute(
+          AddTrackSeLayerCommand(
+            repository: _repository,
+            trackId: activeCutTrackId,
+            layer: newLayer,
+            insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
           ),
         );
+        _layerController.selectLayer(layerId);
       case LayerKind.instruction:
         _layerController.addLayer(
           layer: Layer(
