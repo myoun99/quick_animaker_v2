@@ -3,19 +3,17 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/camera_pose.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
-import '../storyboard_cut_fade_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 
 /// The canvas content while a ruler scrub is in flight: the frame under the
-/// cursor straight from the composite cache — the SAME display machinery
-/// playback uses, so a scrub move costs one texture paint instead of
-/// retargeting the interactive brush surface per crossed frame.
+/// cursor straight from the composite cache, drawn IN CANVAS SPACE — the
+/// scrub shows the editing view's picture moving through time, not the
+/// playback presentation (no camera projection, no cut fade; the camera
+/// FRAME overlay stays visible on top exactly like normal editing).
 ///
 /// Cache misses keep the last displayed frame on screen (the playback
 /// view's stale-frame policy); the release commit swaps back to the editing
@@ -27,9 +25,6 @@ class CanvasScrubPreview extends StatefulWidget {
     required this.compositeCache,
     required this.cut,
     required this.qualityOf,
-    required this.cameraViewEnabled,
-    required this.cameraFrameSize,
-    required this.cameraPoseOf,
     this.viewport,
   });
 
@@ -37,9 +32,6 @@ class CanvasScrubPreview extends StatefulWidget {
   final CutFrameCompositeCache compositeCache;
   final Cut cut;
   final PlaybackQuality Function() qualityOf;
-  final bool cameraViewEnabled;
-  final CanvasSize cameraFrameSize;
-  final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -109,15 +101,6 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
           image: _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
-          cameraPose: widget.cameraViewEnabled
-              ? widget.cameraPoseOf(cut, frameIndex)
-              : null,
-          cameraFrameSize: widget.cameraViewEnabled
-              ? widget.cameraFrameSize
-              : null,
-          // The cut fade: applied at display time, exactly like playback.
-          fadeOpacity: cut.fadeOpacityAt(frameIndex),
-          fadeColor: cutFadeTargetColor(cut),
         ),
       ),
     );
