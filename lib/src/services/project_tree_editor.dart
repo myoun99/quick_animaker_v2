@@ -84,8 +84,11 @@ Cut? updateLayerInCut(
   return found ? cut.copyWith(layers: layers) : null;
 }
 
-/// Replaces the first layer matching [layerId] (searching every cut) via
-/// [update]. Returns `null` if no layer matched.
+/// Replaces the first layer matching [layerId] — searching every cut AND
+/// every track's SE rows — via [update]. Returns `null` if no layer
+/// matched. Track-owned SE layers resolve through this same seam, so
+/// every layer command (timeline edits, flags, audio clips, renames)
+/// reaches them without knowing where the layer lives.
 Project? updateLayerAnywhere(
   Project project,
   LayerId layerId,
@@ -108,7 +111,16 @@ Project? updateLayerAnywhere(
               return cut.copyWith(layers: layers);
             })
             .toList(growable: false);
-        return track.copyWith(cuts: cuts);
+        final seLayers = track.seLayers
+            .map((layer) {
+              if (layer.id != layerId) {
+                return layer;
+              }
+              found = true;
+              return update(layer);
+            })
+            .toList(growable: false);
+        return track.copyWith(cuts: cuts, seLayers: seLayers);
       })
       .toList(growable: false);
   return found ? project.copyWith(tracks: tracks) : null;
@@ -134,36 +146,42 @@ Layer? updateFrameInLayer(
   return found ? layer.copyWith(frames: frames) : null;
 }
 
-/// Replaces the first frame matching [frameId] (searching every layer) via
-/// [update]. Returns `null` if no frame matched.
+/// Replaces the first frame matching [frameId] — searching every layer,
+/// the tracks' SE rows included — via [update]. Returns `null` if no
+/// frame matched.
 Project? updateFrameAnywhere(
   Project project,
   FrameId frameId,
   Frame Function(Frame frame) update,
 ) {
   var found = false;
+  Layer updateFrames(Layer layer) {
+    final frames = layer.frames
+        .map((frame) {
+          if (frame.id != frameId) {
+            return frame;
+          }
+          found = true;
+          return update(frame);
+        })
+        .toList(growable: false);
+    return layer.copyWith(frames: frames);
+  }
+
   final tracks = project.tracks
       .map((track) {
         final cuts = track.cuts
             .map((cut) {
               final layers = cut.layers
-                  .map((layer) {
-                    final frames = layer.frames
-                        .map((frame) {
-                          if (frame.id != frameId) {
-                            return frame;
-                          }
-                          found = true;
-                          return update(frame);
-                        })
-                        .toList(growable: false);
-                    return layer.copyWith(frames: frames);
-                  })
+                  .map(updateFrames)
                   .toList(growable: false);
               return cut.copyWith(layers: layers);
             })
             .toList(growable: false);
-        return track.copyWith(cuts: cuts);
+        final seLayers = track.seLayers
+            .map(updateFrames)
+            .toList(growable: false);
+        return track.copyWith(cuts: cuts, seLayers: seLayers);
       })
       .toList(growable: false);
   return found ? project.copyWith(tracks: tracks) : null;

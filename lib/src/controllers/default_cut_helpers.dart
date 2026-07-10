@@ -48,9 +48,8 @@ Cut createDefaultCut({
           canvasSize: canvasSize,
         ),
       ),
-      // The timesheet fixture rows every cut carries: S1·S2 + CAM 1.
-      createSeLayer(cutId: cutId, slot: 1),
-      createSeLayer(cutId: cutId, slot: 2),
+      // The timesheet fixture row every cut carries: CAM 1. (The SE rows
+      // S1·S2 are TRACK fixtures — see createDefaultTrack.)
       createInstructionLayer(cutId: cutId),
       // Last = bottom timeline row, and keeps the drawing layer as the
       // default active layer (selection falls back to layers.first).
