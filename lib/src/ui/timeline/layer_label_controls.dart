@@ -26,15 +26,13 @@ bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
 /// carry the same control for entrance parity.
 bool layerKindShowsOpacityControl(LayerKind kind) => true;
 
-/// Which layer kinds show the fx switch: kinds whose transform/FX apply at
-/// composite time. Grows with the kinds that gain transform lanes (SE and
-/// instruction join with the all-kind transform work).
-bool layerKindShowsFxToggle(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation || LayerKind.art || LayerKind.storyboard => true,
-    LayerKind.se || LayerKind.instruction || LayerKind.camera => false,
-  };
-}
+/// Every layer kind shows the fx switch (unified layer controls): drawing
+/// cels and SE rows bypass their composite-time transform/opacity (SE fx
+/// move the canvas dialogue), the CAMERA row bypasses the camera work on
+/// the render routes (playback/export/thumbnails — authoring overlays
+/// keep the real pose), and instruction rows carry the switch as authored
+/// state for entrance parity.
+bool layerKindShowsFxToggle(LayerKind kind) => true;
 
 /// The AE-style layer fx switch: bypasses the layer's FX (transform +
 /// animated opacity) on EVERY composite route while off — session view

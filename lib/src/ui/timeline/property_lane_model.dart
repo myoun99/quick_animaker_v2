@@ -17,6 +17,7 @@ class PropertyLaneRow {
     this.scrubValue,
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
+    this.groupExpanded = false,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -50,6 +51,11 @@ class PropertyLaneRow {
   /// label leading its member lanes — no keys, no value, no navigator; the
   /// frame band stays a quiet strip.
   final bool isGroupHeader;
+
+  /// Group headers only: whether the group's member lanes are twirled open
+  /// (AE-style header collapse — drives the header's chevron; default
+  /// collapsed).
+  final bool groupExpanded;
 }
 
 /// One display row of the timeline grids: a layer row or one of its

@@ -37,6 +37,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     this.commaDrag,
@@ -78,6 +79,10 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
   /// audio lane display-only.
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview + one undo on
+  /// release); falls back to the local preview + [onSetAudioClipOffset].
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
 
   /// Commits an audio-lane fade-handle drag; null hides the handles.
   final void Function(
@@ -126,6 +131,7 @@ class TimelineFrameRowsScrollBody extends StatelessWidget {
                                         clipIndex,
                                         offsetFrames,
                                       ),
+                            offsetDrag: audioOffsetDrag,
                             onSetClipFades: onSetAudioClipFades == null
                                 ? null
                                 : (clipIndex, fadeIn, fadeOut) =>

@@ -15,6 +15,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
@@ -118,6 +119,41 @@ void main() {
     final json = layer.copyWith(muted: false).toJson();
     expect(json.containsKey('muted'), isFalse);
     expect(Layer.fromJson(json).muted, isFalse);
+  });
+
+  test('the offset drag session previews repo-direct and commits ONE undo '
+      'on release (R4 live slide)', () {
+    final session = EditorSessionManager(initialProject: _project());
+    addTearDown(session.dispose);
+
+    Layer seLayer() => _seLayer(session.repository);
+    expect(
+      session.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
+      isTrue,
+    );
+
+    // Live preview: the MODEL carries the dragged offset (waveforms
+    // everywhere repaint from it), history untouched.
+    session.updateAudioClipOffsetDrag(5);
+    expect(seLayer().audioClips.single.offsetFrames, 5);
+    expect(session.canUndo, isFalse);
+
+    session.updateAudioClipOffsetDrag(9);
+    expect(seLayer().audioClips.single.offsetFrames, 9);
+
+    // Release: ONE undo step back to the untouched clip.
+    session.endAudioClipOffsetDrag();
+    expect(seLayer().audioClips.single.offsetFrames, 9);
+    expect(session.canUndo, isTrue);
+    session.undo();
+    expect(seLayer().audioClips.single.offsetFrames, 0);
+
+    // Cancel reverts silently.
+    session.beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
+    session.updateAudioClipOffsetDrag(7);
+    expect(seLayer().audioClips.single.offsetFrames, 7);
+    session.cancelAudioClipOffsetDrag();
+    expect(seLayer().audioClips.single.offsetFrames, 0);
   });
 
   testWidgets('the SE mute speaker silences the layer in both orientations '

@@ -627,11 +627,34 @@ class EditorSessionManager extends ChangeNotifier {
   );
 
   /// Resolved camera pose for any cut (play-all renders other cuts too).
-  CameraPose cameraPoseForCut(Cut cut, int frameIndex) => resolveCameraPoseAt(
-    camera: cut.camera,
-    canvasSize: cut.canvasSize,
-    frameIndex: frameIndex,
-  );
+  /// The camera ROW's fx switch bypasses the camera work on this render
+  /// route (playback, export, storyboard thumbnails all resolve through
+  /// here) — the authoring overlays keep reading the real pose.
+  CameraPose cameraPoseForCut(Cut cut, int frameIndex) {
+    if (_cameraFxBypassedFor(cut)) {
+      return CameraPose(
+        center: CanvasPoint(
+          x: cut.canvasSize.width / 2,
+          y: cut.canvasSize.height / 2,
+        ),
+      );
+    }
+    return resolveCameraPoseAt(
+      camera: cut.camera,
+      canvasSize: cut.canvasSize,
+      frameIndex: frameIndex,
+    );
+  }
+
+  /// Whether [cut]'s camera layer sits in the fx-bypass set.
+  bool _cameraFxBypassedFor(Cut cut) {
+    for (final layer in cut.layers) {
+      if (layer.kind == LayerKind.camera) {
+        return _fxBypassedLayerIds.contains(layer.id);
+      }
+    }
+    return false;
+  }
 
   /// The editing canvas's layer stack at the playhead: which non-active
   /// layers composite below/above the interactive layer (bottom → top,
@@ -1473,6 +1496,114 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       audioClips: next,
       description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
+  // --- Audio offset live drags (comma-drag idiom) --------------------------
+
+  List<AudioClip>? _audioOffsetDragBefore;
+  LayerId? _audioOffsetDragLayerId;
+  int? _audioOffsetDragClipIndex;
+
+  /// Starts a live slide of [layerId]'s [clipIndex]th sound: the drag
+  /// previews repo-direct (every waveform view repaints from the model in
+  /// real time) and [endAudioClipOffsetDrag] commits ONE undo step.
+  bool beginAudioClipOffsetDrag({
+    required LayerId layerId,
+    required int clipIndex,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return false;
+    }
+    _audioOffsetDragBefore = layer.audioClips;
+    _audioOffsetDragLayerId = layerId;
+    _audioOffsetDragClipIndex = clipIndex;
+    return true;
+  }
+
+  /// Applies the dragged ABSOLUTE offset as a live preview (clamped ≥ 0);
+  /// no-op while no drag is in flight or the value is unchanged.
+  void updateAudioClipOffsetDrag(int offsetFrames) {
+    final layerId = _audioOffsetDragLayerId;
+    final clipIndex = _audioOffsetDragClipIndex;
+    if (layerId == null || clipIndex == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null || clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final clamped = offsetFrames < 0 ? 0 : offsetFrames;
+    if (layer.audioClips[clipIndex].offsetFrames == clamped) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: next,
+    );
+    notifyListeners();
+  }
+
+  /// Commits the slide as a single undo step: the preview reverts
+  /// silently, then the normal clip command applies the final list (its
+  /// before-snapshot stays correct).
+  void endAudioClipOffsetDrag() {
+    final before = _audioOffsetDragBefore;
+    final layerId = _audioOffsetDragLayerId;
+    _audioOffsetDragBefore = null;
+    _audioOffsetDragLayerId = null;
+    _audioOffsetDragClipIndex = null;
+    if (before == null || layerId == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    final after = layer.audioClips;
+    if (listEquals(after, before)) {
+      return;
+    }
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: before,
+    );
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: after,
+      description: 'Slide sound',
+    );
+    notifyListeners();
+  }
+
+  /// Reverts an in-flight slide preview without touching history.
+  void cancelAudioClipOffsetDrag() {
+    final before = _audioOffsetDragBefore;
+    final layerId = _audioOffsetDragLayerId;
+    _audioOffsetDragBefore = null;
+    _audioOffsetDragLayerId = null;
+    _audioOffsetDragClipIndex = null;
+    if (before == null || layerId == null) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null || listEquals(layer.audioClips, before)) {
+      return;
+    }
+    _repository.updateLayerAudioClips(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      audioClips: before,
     );
     notifyListeners();
   }

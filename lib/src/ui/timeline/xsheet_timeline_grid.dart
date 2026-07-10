@@ -67,6 +67,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     required this.onAddLayer,
@@ -85,6 +86,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.onToggleLaneGroup,
     this.hiddenSections = const {},
   });
 
@@ -140,6 +142,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Live drag session for the slide (repo-direct preview + one undo).
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
+
   /// Commits an audio-lane fade-handle drag.
   final void Function(
     LayerId layerId,
@@ -185,6 +190,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Group headers: tapping twirls the group's member lanes (AE collapse).
+  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// Sections hidden from the grid entirely (toolbar visibility toggles;
   /// the section axis runs horizontally here, so hiding drops columns).
@@ -651,6 +659,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       onSelectFrame:
                                                           widget.onSelectFrame,
                                                       laneEdit: widget.laneEdit,
+                                                      onToggleLaneGroup: widget
+                                                          .onToggleLaneGroup,
                                                     ),
                                               )
                                             : _LayerHeader(
@@ -767,6 +777,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                           clipIndex,
                                                                           offsetFrames,
                                                                         ),
+                                                                  offsetDrag: widget
+                                                                      .audioOffsetDrag,
                                                                   onSetClipFades:
                                                                       widget.onSetAudioClipFades ==
                                                                           null

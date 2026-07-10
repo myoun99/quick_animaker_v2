@@ -21,6 +21,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
+import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
@@ -54,6 +55,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onDropMediaAsset,
     this.seEmptyFill = true,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     required this.onAddLayer,
@@ -71,6 +73,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.onToggleLaneGroup,
     this.hiddenSections = const {},
   });
 
@@ -124,6 +127,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
 
+  /// Live drag session for the slide (repo-direct preview + one undo).
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
+
   /// Commits an audio-lane fade-handle drag.
   final void Function(
     LayerId layerId,
@@ -168,6 +174,9 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Lane key editing hooks (navigator toggle, marker drags, hold/delete).
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Group headers: tapping twirls the group's member lanes (AE collapse).
+  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// Sections folded to one stub row (SE/camera; drawing never folds) and
   /// the gutter-label toggle.
@@ -625,6 +634,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                         .onSelectFrame,
                                                                 laneEdit: widget
                                                                     .laneEdit,
+                                                                onToggleLaneGroup:
+                                                                    widget
+                                                                        .onToggleLaneGroup,
                                                               ),
                                                         )
                                                       : TimelineLayerControlsRow(
@@ -802,6 +814,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.onDropMediaAsset,
                                                   onSetAudioClipOffset: widget
                                                       .onSetAudioClipOffset,
+                                                  audioOffsetDrag:
+                                                      widget.audioOffsetDrag,
                                                   onSetAudioClipFades: widget
                                                       .onSetAudioClipFades,
                                                   onSetAudioClipGain:

@@ -219,6 +219,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.value = next;
   }
 
+  /// Layers whose Transform GROUP is twirled open inside the twirl-down
+  /// (AE group collapse — default collapsed; view state, survives tab
+  /// switches, session-only).
+  final ValueNotifier<Set<LayerId>> _expandedTransformGroupLayerIds =
+      ValueNotifier(const <LayerId>{});
+
+  void _toggleTransformGroup(LayerId layerId) {
+    final next = Set<LayerId>.of(_expandedTransformGroupLayerIds.value);
+    if (!next.remove(layerId)) {
+      next.add(layerId);
+    }
+    _expandedTransformGroupLayerIds.value = next;
+  }
+
   /// SE/camera timeline sections hidden from the grids (view state —
   /// survives tab switches, session-only; toggled from the timeline
   /// toolbar, the retired fold/collapse UI's replacement).
@@ -371,6 +385,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
+    _expandedTransformGroupLayerIds.dispose();
     _hiddenTimelineSections.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
@@ -631,6 +646,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timelinePixelsPerFrame,
               _showSecondsDisplay,
               _expandedLaneLayerIds,
+              _expandedTransformGroupLayerIds,
               _hiddenTimelineSections,
             ]),
             builder: (context, _) => TimelineTabHost(
@@ -649,6 +665,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
+              expandedTransformGroupLayerIds:
+                  _expandedTransformGroupLayerIds.value,
+              onToggleTransformGroup: _toggleTransformGroup,
               hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
               // Unified layer controls: the camera row's visibility/opacity

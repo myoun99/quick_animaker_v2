@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -94,6 +95,42 @@ List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
   ];
 }
 
+/// Live drag-session hooks for the audio lane's slide — the comma-drag
+/// idiom: [onBegin] snapshots the clip list, [onUpdate] applies the
+/// absolute offset as a repo-direct preview (every waveform view repaints
+/// from the model in real time), [onEnd] commits ONE undo step and
+/// [onCancel] reverts. When absent the span falls back to its local
+/// preview + [SeAudioLaneFrameRow.onSetClipOffset] commit.
+class AudioOffsetDragCallbacks {
+  const AudioOffsetDragCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  final bool Function(LayerId layerId, int clipIndex) onBegin;
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
+/// [AudioOffsetDragCallbacks] bound to one span (the row closes over the
+/// layer/clip ids).
+class _SpanLiveOffsetDrag {
+  const _SpanLiveOffsetDrag({
+    required this.begin,
+    required this.update,
+    required this.end,
+    required this.cancel,
+  });
+
+  final bool Function() begin;
+  final ValueChanged<int> update;
+  final VoidCallback end;
+  final VoidCallback cancel;
+}
+
 /// The audio lane's frame band: one editable waveform window per audible
 /// span, same geometry contract as TimelineLaneFrameRow (leading spacer +
 /// band + trailing spacer, both orientations).
@@ -109,6 +146,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
     required this.fps,
     this.audioPeaksFor,
     this.onSetClipOffset,
+    this.offsetDrag,
     this.onSetClipFades,
     this.onSetClipGain,
     this.axis = Axis.horizontal,
@@ -127,6 +165,11 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   /// Commits a span's dragged offset (one undo); null makes the slide
   /// display-only.
   final void Function(int clipIndex, int offsetFrames)? onSetClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview — the SE row's
+  /// waveform and the block visuals follow in real time); falls back to
+  /// the local preview + [onSetClipOffset] when null.
+  final AudioOffsetDragCallbacks? offsetDrag;
 
   /// Commits a span's dragged fade lengths (one undo per handle drag);
   /// null hides the fade handles.
@@ -175,6 +218,14 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         onSetOffset: onSetClipOffset == null
             ? null
             : (offsetFrames) => onSetClipOffset!(span.clipIndex, offsetFrames),
+        liveOffsetDrag: offsetDrag == null
+            ? null
+            : _SpanLiveOffsetDrag(
+                begin: () => offsetDrag!.onBegin(layer.id, span.clipIndex),
+                update: offsetDrag!.onUpdate,
+                end: offsetDrag!.onEnd,
+                cancel: offsetDrag!.onCancel,
+              ),
         onSetFades: onSetClipFades == null
             ? null
             : (fadeIn, fadeOut) =>
@@ -262,6 +313,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
     required this.frameCellExtent,
     required this.axis,
     required this.onSetOffset,
+    this.liveOffsetDrag,
     this.onSetFades,
     this.onSetGain,
   });
@@ -272,6 +324,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
   final double frameCellExtent;
   final Axis axis;
   final ValueChanged<int>? onSetOffset;
+  final _SpanLiveOffsetDrag? liveOffsetDrag;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFades;
   final ValueChanged<double>? onSetGain;
 
@@ -288,6 +341,14 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   bool _dragging = false;
   _SpanDragMode _mode = _SpanDragMode.slide;
 
+  /// The offset at pointer-down: the live drag path updates the MODEL per
+  /// move, so the preview math must not re-read the drifting clip value.
+  int _dragBaseOffset = 0;
+
+  /// Whether the current slide rides the session drag (repo-direct live
+  /// preview, one undo on release).
+  bool _liveActive = false;
+
   int get _fileFrames => widget.peaks?.durationFrames(widget.fps) ?? (1 << 20);
 
   int get _deltaFrames => (_dragDelta / widget.frameCellExtent).round();
@@ -295,7 +356,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   /// The offset the current drag previews: dragging the waveform toward
   /// the span start (negative pixels) skips further into the file.
   int get _previewOffset {
-    final base = widget.span.clip.offsetFrames;
+    final base = _dragging ? _dragBaseOffset : widget.span.clip.offsetFrames;
     return (base - _deltaFrames).clamp(0, math.max(0, _fileFrames - 1));
   }
 
@@ -316,7 +377,9 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   }
 
   bool get _editable =>
-      (widget.onSetOffset != null || widget.onSetFades != null) &&
+      (widget.onSetOffset != null ||
+          widget.liveOffsetDrag != null ||
+          widget.onSetFades != null) &&
       widget.peaks != null;
 
   _SpanDragMode _zoneAt(Offset localPosition) {
@@ -348,11 +411,23 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       _mode = _zoneAt(localPosition);
       _dragging = true;
       _dragDelta = 0;
+      _dragBaseOffset = widget.span.clip.offsetFrames;
     });
+    if (_mode == _SpanDragMode.slide && widget.liveOffsetDrag != null) {
+      _liveActive = widget.liveOffsetDrag!.begin();
+    }
+  }
+
+  void _updateDrag(double delta) {
+    setState(() => _dragDelta += delta);
+    if (_liveActive && _mode == _SpanDragMode.slide) {
+      widget.liveOffsetDrag!.update(_previewOffset);
+    }
   }
 
   void _endDrag() {
     final mode = _mode;
+    final live = _liveActive;
     final offset = _previewOffset;
     final fadeIn = _previewFadeIn;
     final fadeOut = _previewFadeOut;
@@ -360,10 +435,13 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       _dragging = false;
       _dragDelta = 0;
       _mode = _SpanDragMode.slide;
+      _liveActive = false;
     });
     switch (mode) {
       case _SpanDragMode.slide:
-        if (offset != widget.span.clip.offsetFrames) {
+        if (live) {
+          widget.liveOffsetDrag!.end();
+        } else if (offset != widget.span.clip.offsetFrames) {
           widget.onSetOffset?.call(offset);
         }
       case _SpanDragMode.fadeIn:
@@ -376,11 +454,16 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   }
 
   void _cancelDrag() {
+    final live = _liveActive;
     setState(() {
       _dragging = false;
       _dragDelta = 0;
       _mode = _SpanDragMode.slide;
+      _liveActive = false;
     });
+    if (live) {
+      widget.liveOffsetDrag!.cancel();
+    }
   }
 
   Future<void> _showSpanMenu(Offset globalPosition) async {
@@ -544,7 +627,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
           ? (details) => _startDrag(details.localPosition)
           : null,
       onHorizontalDragUpdate: editable && horizontal
-          ? (details) => setState(() => _dragDelta += details.delta.dx)
+          ? (details) => _updateDrag(details.delta.dx)
           : null,
       onHorizontalDragEnd: editable && horizontal ? (_) => _endDrag() : null,
       onHorizontalDragCancel: editable && horizontal ? _cancelDrag : null,
@@ -552,7 +635,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
           ? (details) => _startDrag(details.localPosition)
           : null,
       onVerticalDragUpdate: editable && !horizontal
-          ? (details) => setState(() => _dragDelta += details.delta.dy)
+          ? (details) => _updateDrag(details.delta.dy)
           : null,
       onVerticalDragEnd: editable && !horizontal ? (_) => _endDrag() : null,
       onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,

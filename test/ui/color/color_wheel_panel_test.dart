@@ -108,6 +108,65 @@ void main() {
       return tester.getRect(find.byKey(const ValueKey<String>('color-wheel')));
     }
 
+    testWidgets('a wide-short panel moves the controls BESIDE the wheel so '
+        'the wheel takes the full height (R4 space use)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 420,
+                height: 180,
+                child: ColorWheelPanel(
+                  color: 0xFFFF0000,
+                  backgroundColor: 0xFFFFFFFF,
+                  onColorChanged: (_) {},
+                  onBackgroundColorChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+
+      final wheelRect = tester.getRect(
+        find.byKey(const ValueKey<String>('color-wheel')),
+      );
+      // The wheel square fills the panel height (minus the 12px padding)
+      // instead of shrinking behind a full-width bottom strip.
+      expect(wheelRect.height, closeTo(180 - 24, 1));
+      // The controls sit to the wheel's right.
+      final hex = tester.getTopLeft(
+        find.byKey(const ValueKey<String>('color-wheel-hex-label')),
+      );
+      expect(hex.dx, greaterThan(wheelRect.right));
+    });
+
+    testWidgets('tiny and narrow panels never overflow', (tester) async {
+      for (final size in const [Size(80, 60), Size(60, 220), Size(220, 46)]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: size.width,
+                  height: size.height,
+                  child: ColorWheelPanel(
+                    color: 0xFF00FF00,
+                    backgroundColor: 0xFFFFFFFF,
+                    onColorChanged: (_) {},
+                    onBackgroundColorChanged: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'no overflow at $size');
+      }
+    });
+
     testWidgets('tapping the ring spins the hue (red → green stays pure)', (
       tester,
     ) async {

@@ -9,6 +9,7 @@ import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
+import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
@@ -38,6 +39,7 @@ class TimelinePanel extends StatefulWidget {
     this.onDropMediaAsset,
     this.seEmptyFill = true,
     this.onSetAudioClipOffset,
+    this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     required this.onAddLayer,
@@ -62,6 +64,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.laneEdit,
+    this.onToggleLaneGroup,
     this.hiddenSections = const {},
   });
 
@@ -115,6 +118,10 @@ class TimelinePanel extends StatefulWidget {
   /// orientations.
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview + one undo),
+  /// both orientations.
+  final AudioOffsetDragCallbacks? audioOffsetDrag;
 
   /// Commits an audio-lane fade-handle drag, both orientations.
   final void Function(
@@ -181,6 +188,10 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Group headers: tapping twirls the group's member lanes (AE collapse),
+  /// both orientations.
+  final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
@@ -332,6 +343,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onDropMediaAsset: widget.onDropMediaAsset,
                     seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
@@ -349,6 +361,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
+                    onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
                   )
                 : XSheetTimelineGrid(
@@ -371,6 +384,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onDropMediaAsset: widget.onDropMediaAsset,
                     seEmptyFill: widget.seEmptyFill,
                     onSetAudioClipOffset: widget.onSetAudioClipOffset,
+                    audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
@@ -388,6 +402,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
+                    onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
                   ),
           ),

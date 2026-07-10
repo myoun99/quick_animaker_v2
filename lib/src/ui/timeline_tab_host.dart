@@ -45,6 +45,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
+    this.expandedTransformGroupLayerIds = const {},
+    this.onToggleTransformGroup,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.audioFilePicker,
@@ -64,6 +66,12 @@ class TimelineTabHost extends StatefulWidget {
   /// tab switches).
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
+
+  /// Layers whose Transform GROUP is twirled open (AE group collapse —
+  /// default collapsed; host-owned so the per-layer state survives tab
+  /// switches).
+  final Set<LayerId> expandedTransformGroupLayerIds;
+  final ValueChanged<LayerId>? onToggleTransformGroup;
 
   /// SE/camera section visibility (host-owned, survives tab switches):
   /// hidden sections render no rows; the toolbar buttons toggle them.
@@ -134,32 +142,44 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     switch (layer.kind) {
       case LayerKind.camera:
         final cut = _session.activeCut;
-        return transformPropertyLanes(
-          cut.camera.track,
-          poseAt: (frameIndex) => resolveCameraPoseAt(
-            camera: cut.camera,
-            canvasSize: cut.canvasSize,
-            frameIndex: frameIndex,
+        return _collapsibleTransformGroup(
+          layer,
+          transformPropertyLanes(
+            cut.camera.track,
+            poseAt: (frameIndex) => resolveCameraPoseAt(
+              camera: cut.camera,
+              canvasSize: cut.canvasSize,
+              frameIndex: frameIndex,
+            ),
           ),
         );
       case LayerKind.se:
-        return [..._layerTransformLanes(layer), ...seAudioLanesFor(layer)];
+        // Audio controls lead the SE twirl-down (the row's main tool); the
+        // Transform group sits below, collapsed by default.
+        return [
+          ...seAudioLanesFor(layer),
+          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
+        ];
       case LayerKind.animation:
       case LayerKind.art:
       case LayerKind.storyboard:
-        return transformPropertyLanes(
-          layer.transformTrack,
-          // The full AE Transform group on drawing layers: Anchor Point /
-          // Position / Scale / Rotation / Opacity (R3 ⑪).
-          includeAnchorAndOpacity: true,
-          poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
-          anchorAt: (frameIndex) =>
-              _session.layerAnchorPointAtFrame(layer, frameIndex),
-          opacityAt: (frameIndex) =>
-              _session.layerOpacityAtFrame(layer, frameIndex),
+        return _collapsibleTransformGroup(
+          layer,
+          transformPropertyLanes(
+            layer.transformTrack,
+            // The full AE Transform group on drawing layers: Anchor Point /
+            // Position / Scale / Rotation / Opacity (R3 ⑪).
+            includeAnchorAndOpacity: true,
+            poseAt: (frameIndex) =>
+                _session.layerPoseAtFrame(layer, frameIndex),
+            anchorAt: (frameIndex) =>
+                _session.layerAnchorPointAtFrame(layer, frameIndex),
+            opacityAt: (frameIndex) =>
+                _session.layerOpacityAtFrame(layer, frameIndex),
+          ),
         );
       case LayerKind.instruction:
-        return _layerTransformLanes(layer);
+        return _collapsibleTransformGroup(layer, _layerTransformLanes(layer));
     }
   }
 
@@ -168,6 +188,20 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       layer.transformTrack,
       poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
     );
+  }
+
+  /// AE group collapse: the Transform group header always shows; its
+  /// member lanes only while the layer's group is twirled open (default
+  /// collapsed, host-owned per layer so it survives tab switches).
+  List<PropertyLaneRow> _collapsibleTransformGroup(
+    Layer layer,
+    List<PropertyLaneRow> group,
+  ) {
+    final expanded = widget.expandedTransformGroupLayerIds.contains(layer.id);
+    return [
+      transformGroupHeader(expanded: expanded),
+      if (expanded) ...group.where((lane) => !lane.isGroupHeader),
+    ];
   }
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
@@ -409,8 +443,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       : Axis.vertical;
 
   /// SE cells: covered cells edit the covering entry's name/dialogue,
-  /// empty cells create an entry holding to the next one / cut end,
-  /// carrying the entered texts (one undo each way).
+  /// empty cells create a ONE-frame entry carrying the entered texts (the
+  /// comma grips own the length afterwards, like drawing cels); one undo
+  /// each way.
   Future<void> _editSeLabel() async {
     final creating = _session.selectedFrame == null;
     if (creating && !_session.canCreateDrawingAtCurrentFrame) {
@@ -424,7 +459,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
         initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
         previewAxis: _previewAxis,
-        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -436,7 +470,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       _session.createSeEntryAtCurrentFrame(
         name: result.dialogue,
         seName: seName,
-        lengthFrames: result.lengthFrames,
+        lengthFrames: 1,
       );
     } else {
       // SE edits never hit the link-conflict flow (duplicates allowed).
@@ -445,8 +479,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   }
 
   /// Instruction cells: covered cells edit/delete the covering event, empty
-  /// cells add one holding to the next event / cut end (one undo each). The
-  /// vocabulary editor is reachable from inside the picker.
+  /// cells add a ONE-frame event (the grips own the length afterwards);
+  /// one undo each. The vocabulary editor is reachable from inside the
+  /// picker.
   Future<void> _editInstructionEvent(LayerId layerId, int frameIndex) async {
     final covering = _session.instructionSpanAt(layerId, frameIndex);
 
@@ -462,7 +497,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         editing: covering != null,
         onEditInstructionSet: () => _editInstructionSet(context),
         previewAxis: _previewAxis,
-        fps: _session.projectFps,
       ),
     );
     if (!mounted || result == null) {
@@ -488,7 +522,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         valueB: result.valueB,
         memo: result.memo,
       ),
-      createLengthFrames: result.lengthFrames,
+      createLengthFrames: 1,
     );
   }
 
@@ -674,8 +708,20 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // (3-surface rule: sheet, X-sheet and timeline read the same).
         seEmptyFill: _session.timesheetInfo.seEmptyFill,
         // The audio lane's slide edit (the clip's offset trim), edge
-        // fade handles and gain dialog.
+        // fade handles and gain dialog. The slide DRAG rides the live
+        // session (repo-direct preview — waveforms and blocks follow in
+        // real time, one undo on release); the value field keeps the
+        // one-shot commit.
         onSetAudioClipOffset: _session.setAudioClipOffset,
+        audioOffsetDrag: AudioOffsetDragCallbacks(
+          onBegin: (layerId, clipIndex) => _session.beginAudioClipOffsetDrag(
+            layerId: layerId,
+            clipIndex: clipIndex,
+          ),
+          onUpdate: _session.updateAudioClipOffsetDrag,
+          onEnd: _session.endAudioClipOffsetDrag,
+          onCancel: _session.cancelAudioClipOffsetDrag,
+        ),
         onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
             _session.setAudioClipFades(
               layerId,
@@ -721,6 +767,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         hiddenSections: widget.hiddenSections,
         lanesForLayer: _lanesForLayer,
         laneEdit: _laneEdit,
+        // The Transform group header's twirl (AE collapse).
+        onToggleLaneGroup: widget.onToggleTransformGroup == null
+            ? null
+            : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
         timelineActionToolbar: Row(
           children: [
             PlaybackTransportControls(
