@@ -394,6 +394,7 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
+    _historyManager.dispose();
     super.dispose();
   }
 
