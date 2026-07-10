@@ -27,6 +27,7 @@ import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';
+import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/property_track.dart';
@@ -1397,11 +1398,29 @@ class EditorSessionManager extends ChangeNotifier {
     if (next == null) {
       return;
     }
-    updateLayerInstructions(
-      layerId,
-      next,
+    // The sheet's memo shorthand ('A→B PAN memo') writes itself ONCE at
+    // creation and stays user-editable note text from then on (R5-⑥ — the
+    // derived always-printed line could not be edited). Edits and removals
+    // never rewrite the note; the user owns it. Event + note = ONE undo.
+    String? appendedNote;
+    if (covering == null) {
+      final line = timesheetMemoInstructionLine(
+        event,
+        cameraInstructionSet.defById(event.instructionId),
+      );
+      if (line.isNotEmpty) {
+        final note = activeCutNote ?? '';
+        appendedNote = note.isEmpty ? line : '$note\n$line';
+      }
+    }
+    _cutCommandCoordinator.updateLayerInstructions(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      instructions: next,
       description: covering == null ? 'Add instruction' : 'Edit instruction',
+      note: appendedNote,
     );
+    notifyListeners();
   }
 
   /// Removes the instruction span covering [frameIndex]; one undo step.

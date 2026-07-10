@@ -270,19 +270,19 @@ void main() {
     expect(_seDialogueAt(tester, 'xsheet-se-label-se-voice-1'), 'Hello!');
   });
 
-  testWidgets('SE empty stretches carry the print-sheet furniture overlay '
-      'inside the playback range, both orientations (R4)', (tester) async {
+  testWidgets('SE empty stretches carry NO furniture on the editing grids '
+      '(R5-② — dark uncovered cells already read as empty; the gray wash '
+      'is print-sheet only)', (tester) async {
     await _pumpHome(tester, _project());
     await _ensureRowVisible(tester, _seLayerId);
 
-    // Block covers [1, 4): empty runs open at 0 and at 4 (to the cut end).
     expect(
       find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-0')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-se-empty-se-voice-4')),
-      findsOneWidget,
+      findsNothing,
     );
 
     await tester.tap(
@@ -291,7 +291,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('xsheet-se-empty-se-voice-4')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 

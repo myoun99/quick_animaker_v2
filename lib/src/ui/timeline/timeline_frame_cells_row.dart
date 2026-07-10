@@ -46,7 +46,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onDropMediaAsset,
     this.commaDrag,
     this.sectionStart = false,
-    this.seEmptyFill = true,
   });
 
   /// Whether this row opens a new timesheet section (drawing/SE/camera);
@@ -91,10 +90,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
-
-  /// Light wash over SE rows' empty stretches (project toggle mirrored
-  /// from TimesheetInfo.seEmptyFill; the dotted guide always draws).
-  final bool seEmptyFill;
 
   @override
   Widget build(BuildContext context) {
@@ -174,20 +169,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               ),
             ),
           ),
-        // SE empty stretches: dotted guide + optional light wash (Toei
-        // print convention), under the audio and writing overlays.
-        if (layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowSeEmptyOverlays(
-            layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            playbackFrameCount: playbackFrameCount,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
-            axis: Axis.horizontal,
-            seEmptyFill: seEmptyFill,
-          ),
+        // NO empty-stretch furniture here (R5-②): uncovered timeline cells
+        // are already dark — the gray wash is print-sheet-only.
         // SE audio clips paint over the paper cells, under the writing —
         // clipped to the row's drawing blocks (no block, no waveform).
         if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)

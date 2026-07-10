@@ -704,9 +704,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               blockStartFrame: blockStartFrame,
               path: path,
             ),
-        // SE empty-stretch wash follows the sheet's project toggle
-        // (3-surface rule: sheet, X-sheet and timeline read the same).
-        seEmptyFill: _session.timesheetInfo.seEmptyFill,
         // The audio lane's slide edit (the clip's offset trim), edge
         // fade handles and gain dialog. The slide previews LOCALLY in the
         // lane span (its own painter, no session traffic per move) and

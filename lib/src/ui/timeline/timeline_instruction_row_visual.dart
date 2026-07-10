@@ -190,6 +190,13 @@ class _InstructionSpan extends StatelessWidget {
     final start = cellIndex * frameCellExtent;
     final overflowing = OverflowBox(
       alignment: alignment,
+      // BOTH bounds must open up: OverflowBox only replaces what is set,
+      // and the Positioned slot's TIGHT mins otherwise force the writing
+      // to fill the slot — glyphs then paint from the start edge and the
+      // labels LOOK top/left-aligned instead of centered (R5-⑤ root
+      // cause, all three misalignment reports).
+      minWidth: 0,
+      minHeight: 0,
       maxWidth: double.infinity,
       maxHeight: double.infinity,
       child: child,
@@ -289,6 +296,11 @@ class _InstructionSpan extends StatelessWidget {
           if (name.isNotEmpty)
             Positioned.fill(
               child: OverflowBox(
+                // Open mins too (see _cellSlot) — otherwise the name fills
+                // the span and its glyphs paint from the FIRST frame
+                // instead of sitting on the span's center.
+                minWidth: 0,
+                minHeight: 0,
                 maxWidth: double.infinity,
                 maxHeight: double.infinity,
                 child: ExcludeSemantics(child: _writing(name, nameStyle)),

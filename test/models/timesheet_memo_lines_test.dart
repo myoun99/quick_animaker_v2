@@ -75,8 +75,8 @@ void main() {
     });
   });
 
-  test('fromCut collects one line per instruction event, layer order then '
-      'start frame', () {
+  test('fromCut derives NO instruction lines — the shorthand writes itself '
+      'into the (editable) cut note at creation instead (R5-⑥)', () {
     final cut = Cut(
       id: const CutId('memo-cut'),
       name: 'Memo Cut',
@@ -96,12 +96,6 @@ void main() {
           frames: const [],
           timeline: const {},
           instructions: {
-            12: const InstructionEvent(
-              instructionId: 'pan',
-              length: 6,
-              valueA: 'A',
-              valueB: 'B',
-            ),
             0: const InstructionEvent(
               instructionId: 'ol',
               length: 6,
@@ -121,6 +115,8 @@ void main() {
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
-    expect(document.memoInstructionLines, ['C⋈D O.L カットO.L', 'A→B PAN']);
+    // The memo band prints only the cut note; the instruction event alone
+    // contributes nothing derived.
+    expect(document.memoText, cut.metadata.note);
   });
 }

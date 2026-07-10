@@ -24,6 +24,7 @@ import '../../models/track_id.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
+import '../command.dart' show CompositeCommand;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -471,12 +472,14 @@ class CutCommandCoordinator {
   }
 
   /// Replaces an instruction row's span map; one undo step, no-op when
-  /// unchanged.
+  /// unchanged. An optional [note] rewrites the cut note in the SAME undo
+  /// step (the creation flow auto-writes the memo shorthand — R5-⑥).
   void updateLayerInstructions({
     required CutId cutId,
     required LayerId layerId,
     required Map<int, InstructionEvent> instructions,
     String description = 'Edit instructions',
+    String? note,
   }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (layer.kind != LayerKind.instruction) {
@@ -486,13 +489,28 @@ class CutCommandCoordinator {
       return;
     }
 
+    final instructionsCommand = UpdateLayerInstructionsCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: layerId,
+      instructions: instructions,
+      description: description,
+    );
+    if (note == null || _requireCut(cutId).metadata.note == note) {
+      historyManager.execute(instructionsCommand);
+      return;
+    }
     historyManager.execute(
-      UpdateLayerInstructionsCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        instructions: instructions,
+      CompositeCommand(
         description: description,
+        commands: [
+          instructionsCommand,
+          UpdateCutNoteCommand(
+            repository: repository,
+            cutId: cutId,
+            note: note,
+          ),
+        ],
       ),
     );
   }

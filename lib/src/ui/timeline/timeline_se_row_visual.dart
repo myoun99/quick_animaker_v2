@@ -25,117 +25,6 @@ import 'timeline_frame_coordinate_policy.dart';
 /// span overlay instead.
 bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
-/// Print-sheet furniture over an SE row's EMPTY stretches inside the
-/// playback range (R4, Toei convention): a dotted center guide along the
-/// flow, washed light while [seEmptyFill] is on (project toggle) — the
-/// frame grid keeps showing through both. One overlay per uncovered run
-/// intersecting the visible window; list these UNDER the label overlays.
-List<Widget> timelineRowSeEmptyOverlays({
-  required Layer layer,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required int playbackFrameCount,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
-  required Axis axis,
-  required bool seEmptyFill,
-  String keyPrefix = 'timeline',
-}) {
-  // Uncovered runs between blocks, clamped to the playback range.
-  final runs = <(int, int)>[];
-  var runStart = 0;
-  for (final block in drawingBlocks(layer.timeline)) {
-    if (block.startIndex > runStart) {
-      runs.add((runStart, block.startIndex));
-    }
-    runStart = math.max(runStart, block.endIndexExclusive);
-  }
-  if (runStart < playbackFrameCount) {
-    runs.add((runStart, playbackFrameCount));
-  }
-
-  final overlays = <Widget>[];
-  for (final (start, endRaw) in runs) {
-    final end = math.min(
-      math.min(endRaw, playbackFrameCount),
-      frameEndIndexExclusive,
-    );
-    final visibleStart = math.max(start, frameStartIndex);
-    if (end <= visibleStart) {
-      continue;
-    }
-    final startOffset = frameVisibleX(
-      frameIndex: visibleStart,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final mainExtent = (end - visibleStart) * frameCellExtent;
-    final content = IgnorePointer(
-      key: ValueKey<String>('$keyPrefix-se-empty-${layer.id}-$start'),
-      child: CustomPaint(
-        painter: _SeEmptyStretchPainter(axis: axis, fill: seEmptyFill),
-      ),
-    );
-    overlays.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: startOffset,
-        top: 0,
-        width: mainExtent,
-        height: crossAxisExtent,
-        child: content,
-      ),
-      Axis.vertical => Positioned(
-        top: startOffset,
-        left: 0,
-        height: mainExtent,
-        width: crossAxisExtent,
-        child: content,
-      ),
-    });
-  }
-  return overlays;
-}
-
-/// The empty-stretch furniture: optional light wash + a dotted guide down
-/// the stretch's center (light on the dark uncovered cells, mirroring the
-/// sheet's gray-on-paper language).
-class _SeEmptyStretchPainter extends CustomPainter {
-  _SeEmptyStretchPainter({required this.axis, required this.fill});
-
-  final Axis axis;
-  final bool fill;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (fill) {
-      canvas.drawRect(
-        Offset.zero & size,
-        Paint()..color = timelineDrawingHeldColor.withValues(alpha: 0.08),
-      );
-    }
-    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
-    final crossCenter = axis == Axis.horizontal
-        ? size.height / 2
-        : size.width / 2;
-    final dot = Paint()
-      ..color = timelineDrawingHeldColor.withValues(alpha: 0.35)
-      ..strokeWidth = 1.0;
-    for (var main = 2.0; main < mainExtent - 1; main += 5.0) {
-      final (from, to) = axis == Axis.horizontal
-          ? (Offset(main, crossCenter), Offset(main + 2, crossCenter))
-          : (Offset(crossCenter, main), Offset(crossCenter, main + 2));
-      canvas.drawLine(from, to, dot);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SeEmptyStretchPainter oldDelegate) {
-    return axis != oldDelegate.axis || fill != oldDelegate.fill;
-  }
-}
-
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
 List<Widget> timelineRowSeLabelOverlays({
@@ -571,12 +460,13 @@ class _SeNameBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Inverted chip (R4): dark fill, paper-light writing — reads as a
-    // marker ON the block start instead of an extra cell pushing it
-    // (SKK03 sheet look). Writing follows the strip: upright glyph stack
-    // on the row strip, horizontal on the X-sheet band.
+    // Accent chip (R5-⑦): the app's shared accent instead of the black
+    // inverted box — reads as a marker ON the block start instead of an
+    // extra cell pushing it. Writing follows the strip: upright glyph
+    // stack on the row strip, horizontal on the X-sheet band. Same accent
+    // on the printed sheet.
     const style = TextStyle(
-      color: timelineDrawingHeldColor,
+      color: Color(0xFF002020),
       fontSize: 9,
       fontWeight: FontWeight.bold,
       height: 1.05,
@@ -596,7 +486,7 @@ class _SeNameBox extends StatelessWidget {
       // preview) — tests and screen readers address the box directly.
       container: true,
       child: Container(
-        color: timelineDrawingInkColor,
+        color: AppColors.accent,
         alignment: Alignment.center,
         // scaleDown: a LONG name shrinks to the box instead of overflowing
         // the row (the striped-error report — R4 improvement 2).

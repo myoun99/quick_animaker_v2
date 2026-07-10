@@ -208,7 +208,8 @@ void main() {
   });
 
   group('TimesheetDocument cells', () {
-    test('drawing starts carry cel numbers with position fallback', () {
+    test('drawing starts write the frame NAME verbatim; unnamed cels print '
+        'the in-between division mark (R5-④ — no invented numbers)', () {
       final document = _document(
         _cut(
           layers: [
@@ -239,7 +240,7 @@ void main() {
       expect(cells[1].kind, TimesheetCellKind.held);
       expect(cells[2].kind, TimesheetCellKind.held);
       expect(cells[4].kind, TimesheetCellKind.drawing);
-      expect(cells[4].label, '2', reason: '1-based position fallback');
+      expect(cells[4].label, '○', reason: 'unnamed = in-between mark glyph');
       expect(cells[5].kind, TimesheetCellKind.held);
     });
 
