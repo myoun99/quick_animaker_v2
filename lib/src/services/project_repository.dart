@@ -190,6 +190,23 @@ class ProjectRepository {
     });
   }
 
+  void updateCutLeadingGap({
+    required CutId cutId,
+    required int leadingGapFrames,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(leadingGapFrames: leadingGapFrames),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
   void updateCutDuration({required CutId cutId, required int duration}) {
     updateProject((project) {
       final next = updateCutAnywhere(

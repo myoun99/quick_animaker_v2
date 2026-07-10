@@ -36,7 +36,10 @@ List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(
 
     for (var cutIndex = 0; cutIndex < track.cuts.length; cutIndex++) {
       final cut = track.cuts[cutIndex];
-      final startFrame = nextStartFrame;
+      // A cut's leading gap = empty (black) frames before it; list order
+      // stays the sequence authority, the layout stays one cumulative
+      // pass.
+      final startFrame = nextStartFrame + cut.leadingGapFrames;
       final endFrame = startFrame + cut.duration;
 
       entries.add(

@@ -344,6 +344,58 @@ void main() {
     hidden.composites.dispose();
   });
 
+  testWidgets('a playlist GAP frame renders black (W3c): the picture is '
+      'withheld and the fade wash covers at 0', (tester) async {
+    // The single cut preceded by 3 empty frames: all-cuts playback spends
+    // global frames 0..2 in the gap.
+    final gapCut = cut().copyWith(leadingGapFrames: 3);
+    final store = BrushFrameStore();
+    final composites = CutFrameCompositeCache(
+      layerImages: LayerFrameImageCache(frameStore: store),
+      frameStore: store,
+      frameKeyOf: frameKey,
+    );
+    final controller = CanvasPlaybackController(
+      resolveProject: () => Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        fps: 10,
+        cameraSize: const CanvasSize(width: 4, height: 2),
+        tracks: [
+          Track(id: const TrackId('track'), name: 'Track', cuts: [gapCut]),
+        ],
+        createdAt: DateTime.utc(2026),
+      ),
+      resolveActiveCutId: () => const CutId('cut'),
+      resolveActiveTrackId: () => const TrackId('track'),
+      resolveFps: () => 10,
+    );
+    await tester.runAsync(() async {
+      await composites.prepareComposite(
+        cut: gapCut,
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+    });
+
+    controller.play(scope: PlaybackScope.allCuts); // global 0 = in the gap
+    await pumpView(tester, controller: controller, composites: composites);
+    expect(controller.position, isNull);
+    expect(painterOf(tester).image, isNull, reason: 'gap shows no picture');
+    expect(painterOf(tester).fadeOpacity, 0, reason: 'black wash covers all');
+
+    // Crossing into the cut restores the picture and lifts the wash.
+    controller.seekToGlobalFrame(3);
+    await tester.pump();
+    expect(painterOf(tester).image, isNotNull);
+    expect(painterOf(tester).fadeOpacity, 1);
+
+    controller.stop();
+    await tester.pump();
+    controller.dispose();
+    composites.dispose();
+  });
+
   testWidgets('cache misses keep the last displayed frame on screen', (
     tester,
   ) async {

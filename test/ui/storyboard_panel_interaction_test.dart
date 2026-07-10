@@ -636,10 +636,11 @@ void main() {
         ),
       );
 
-      // The first cut has no roll partner: no start grip; the second does.
+      // The start grip SLIDES the cut (gap authoring, W3c) — every cut has
+      // one, the FIRST included (its gap = black lead-in before the track).
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-0')),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-1')),

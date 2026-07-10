@@ -344,6 +344,7 @@ class EditorSessionManager extends ChangeNotifier {
     final activeCutId = _editingSession.activeCutId;
     var start = 0;
     for (final cut in activeTrack.cuts) {
+      start += cut.leadingGapFrames;
       if (cut.id == activeCutId) {
         return start;
       }
@@ -2447,13 +2448,16 @@ class EditorSessionManager extends ChangeNotifier {
   // --- Storyboard cut-trim edge drags --------------------------------------
 
   Map<CutId, int>? _cutTrimBeforeDurations;
+  Map<CutId, int>? _cutTrimBeforeGaps;
   CutId? _cutTrimCutId;
-  CutId? _cutTrimPreviousCutId;
+  CutId? _cutTrimNextCutId;
   TimelineBlockEdge? _cutTrimEdge;
 
-  /// Starts a storyboard trim drag on [cutId]'s [edge]. The first cut's
-  /// start is fixed at frame 0, so a start-edge drag needs a previous cut
-  /// in the same track (its roll partner).
+  /// Starts a storyboard edge drag on [cutId]'s [edge]. The END edge trims
+  /// the duration (growth eats the following gap first); the START edge
+  /// SLIDES the cut by adjusting its leading gap — the way empty space
+  /// between cuts is created and consumed. Any cut's start may slide,
+  /// the first one included.
   bool beginCutEdgeDrag({
     required CutId cutId,
     required TimelineBlockEdge edge,
@@ -2469,102 +2473,117 @@ class EditorSessionManager extends ChangeNotifier {
     if (entry == null) {
       return false;
     }
-    StoryboardTimelineLayoutEntry? previous;
-    if (edge == TimelineBlockEdge.start) {
+    StoryboardTimelineLayoutEntry? next;
+    if (edge == TimelineBlockEdge.end) {
       for (final candidate in layout) {
         if (candidate.trackId == entry.trackId &&
-            candidate.cutIndex == entry.cutIndex - 1) {
-          previous = candidate;
+            candidate.cutIndex == entry.cutIndex + 1) {
+          next = candidate;
           break;
         }
       }
-      if (previous == null) {
-        return false;
-      }
     }
 
-    _cutTrimBeforeDurations = {
-      entry.cutId: entry.cut.duration,
-      if (previous != null) previous.cutId: previous.cut.duration,
+    _cutTrimBeforeDurations = {entry.cutId: entry.cut.duration};
+    _cutTrimBeforeGaps = {
+      entry.cutId: entry.cut.leadingGapFrames,
+      if (next != null) next.cutId: next.cut.leadingGapFrames,
     };
     _cutTrimCutId = cutId;
-    _cutTrimPreviousCutId = previous?.cutId;
+    _cutTrimNextCutId = next?.cutId;
     _cutTrimEdge = edge;
     return true;
   }
 
-  /// Applies the trim drag's cumulative frame delta as a live preview on
-  /// [dragPreview] (the repository is NOT touched): the END edge changes
-  /// this cut's own duration (later cuts ripple through the cumulative
-  /// layout), the START edge rolls the boundary with the previous cut.
-  /// Both cuts stay at least one frame long.
+  /// Applies the drag's cumulative frame delta as a live preview on
+  /// [dragPreview] (the repository is NOT touched).
+  ///
+  /// END edge: the duration changes; growth consumes the FOLLOWING cut's
+  /// leading gap first (that cut holds still until the gap is spent, then
+  /// ripples), shrinking leaves the gap alone (the rest slides earlier
+  /// with the boundary). START edge: the cut SLIDES — its leading gap
+  /// grows rightward and shrinks leftward, clamped at contact with the
+  /// previous cut.
   void updateCutEdgeDrag(int cumulativeDelta) {
-    final before = _cutTrimBeforeDurations;
+    final beforeDurations = _cutTrimBeforeDurations;
+    final beforeGaps = _cutTrimBeforeGaps;
     final cutId = _cutTrimCutId;
     final edge = _cutTrimEdge;
-    if (before == null || cutId == null || edge == null) {
+    if (beforeDurations == null ||
+        beforeGaps == null ||
+        cutId == null ||
+        edge == null) {
       return;
     }
 
-    final Map<CutId, int> target;
+    final durations = <CutId, int>{};
+    final gaps = <CutId, int>{};
     if (edge == TimelineBlockEdge.end) {
-      target = {cutId: math.max(1, before[cutId]! + cumulativeDelta)};
+      final newDuration = math.max(1, beforeDurations[cutId]! + cumulativeDelta);
+      durations[cutId] = newDuration;
+      final nextId = _cutTrimNextCutId;
+      if (nextId != null) {
+        final growth = newDuration - beforeDurations[cutId]!;
+        gaps[nextId] = growth > 0
+            ? math.max(0, beforeGaps[nextId]! - growth)
+            : beforeGaps[nextId]!;
+      }
     } else {
-      final previousCutId = _cutTrimPreviousCutId!;
-      final delta = cumulativeDelta.clamp(
-        1 - before[previousCutId]!,
-        before[cutId]! - 1,
-      );
-      target = {
-        previousCutId: before[previousCutId]! + delta,
-        cutId: before[cutId]! - delta,
-      };
+      durations[cutId] = beforeDurations[cutId]!;
+      gaps[cutId] = math.max(0, beforeGaps[cutId]! + cumulativeDelta);
     }
 
-    var changed = false;
-    for (final entry in target.entries) {
-      if (before[entry.key] != entry.value) {
-        changed = true;
-        break;
-      }
-    }
+    final changed =
+        durations[cutId] != beforeDurations[cutId] ||
+        gaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
     dragPreview.value = changed
-        ? CutTrimDragPreview(previewDurations: target)
+        ? CutTrimDragPreview(previewDurations: durations, previewGaps: gaps)
         : null;
   }
 
-  /// Commits the trim drag as a single undo step (no-op when nothing
-  /// changed): the command's execute applies the final preview durations
-  /// to the repository.
+  /// Commits the drag as a single undo step (no-op when nothing changed):
+  /// the command's execute applies the final durations AND gaps.
   void endCutEdgeDrag() {
-    final before = _cutTrimBeforeDurations;
+    final beforeDurations = _cutTrimBeforeDurations;
+    final beforeGaps = _cutTrimBeforeGaps;
     final preview = dragPreview.value;
     _cutTrimBeforeDurations = null;
+    _cutTrimBeforeGaps = null;
     _cutTrimCutId = null;
-    _cutTrimPreviousCutId = null;
+    _cutTrimNextCutId = null;
     _cutTrimEdge = null;
     dragPreview.value = null;
-    if (before == null) {
+    if (beforeDurations == null || beforeGaps == null) {
       return;
     }
 
     final previewDurations = preview is CutTrimDragPreview
         ? preview.previewDurations
         : const <CutId, int>{};
-    final after = {
-      for (final id in before.keys) id: previewDurations[id] ?? before[id]!,
+    final previewGaps = preview is CutTrimDragPreview
+        ? preview.previewGaps
+        : const <CutId, int>{};
+    final afterDurations = {
+      for (final id in beforeDurations.keys)
+        id: previewDurations[id] ?? beforeDurations[id]!,
     };
-    var changed = false;
-    for (final id in before.keys) {
-      if (after[id] != before[id]) {
-        changed = true;
-        break;
-      }
-    }
+    final afterGaps = {
+      for (final id in beforeGaps.keys) id: previewGaps[id] ?? beforeGaps[id]!,
+    };
+    final changed =
+        afterDurations.entries.any(
+          (entry) => beforeDurations[entry.key] != entry.value,
+        ) ||
+        afterGaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
     if (!changed) {
       return;
     }
-    _cutCommandCoordinator.commitCutDurationDrag(before: before, after: after);
+    _cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+      beforeGaps: beforeGaps,
+      afterGaps: afterGaps,
+    );
     _refreshAfterCutCommand();
     notifyListeners();
   }
@@ -2573,8 +2592,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// repository was never written during the drag).
   void cancelCutEdgeDrag() {
     _cutTrimBeforeDurations = null;
+    _cutTrimBeforeGaps = null;
     _cutTrimCutId = null;
-    _cutTrimPreviousCutId = null;
+    _cutTrimNextCutId = null;
     _cutTrimEdge = null;
     dragPreview.value = null;
   }
