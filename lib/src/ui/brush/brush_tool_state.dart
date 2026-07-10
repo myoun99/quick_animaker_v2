@@ -6,14 +6,21 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 
 /// Which canvas tool the pointer drives. The eraser reuses every brush
 /// option (size, hardness, tip) but its dabs remove alpha instead of
-/// painting color; the eyedropper samples the composite (P5) and the fill
-/// commits one region-mask dab (P6) — neither starts strokes.
-enum CanvasTool { brush, eraser, eyedropper, fill }
+/// painting color; the eyedropper samples the composite (P5), the fill
+/// commits one region-mask dab (P6), and the selection tools (P9: rect
+/// marquee / freehand lasso) drag out a region — none of them start
+/// strokes.
+enum CanvasTool { brush, eraser, eyedropper, fill, selectRect, lasso }
 
 /// Whether [tool] paints strokes through the interactive canvas (the
-/// non-painting tools mount a tap overlay instead).
+/// non-painting tools mount a tool overlay instead).
 bool canvasToolPaints(CanvasTool tool) =>
     tool == CanvasTool.brush || tool == CanvasTool.eraser;
+
+/// Whether [tool] is one of the P9 selection tools (marquee/lasso drag +
+/// selection interaction instead of taps).
+bool canvasToolSelects(CanvasTool tool) =>
+    tool == CanvasTool.selectRect || tool == CanvasTool.lasso;
 
 /// Editor-session state for the active brush tool options.
 ///

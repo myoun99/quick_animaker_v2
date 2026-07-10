@@ -214,6 +214,32 @@ class BrushFrameEditingCoordinator {
     return command;
   }
 
+  /// Rewrites the given commands' dabs in place on the ACTIVE frame (P9
+  /// selection move/transform) and rebuilds the session from the command
+  /// replay — the same fallback path undo uses, so what displays equals
+  /// what every composite route replays, by construction.
+  ///
+  /// The bitmap materialization history resets with the rebuild (an
+  /// arbitrary rewrite has no incremental entry): undo of OLDER strokes
+  /// falls back to the replay path, exactly like after a canvas resize.
+  /// This operation itself creates no coordinator undo entry — the
+  /// app-level BrushSelectionTransformHistoryCommand owns before/after.
+  void rewritePaintCommandDabs(
+    Map<BrushPaintCommandId, List<BrushDab>> dabsById, {
+    BrushFrameKey? frameKey,
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) {
+    if (dabsById.isEmpty) {
+      return;
+    }
+    // Undo/redo may fire after the playhead moved on: the command targets
+    // the frame it was recorded on, not whatever is active now.
+    final key = frameKey ?? _activeFrameKey;
+    frameStore.replacePaintCommandDabs(key, dabsById);
+    _rebuildSessionFromCommands(key);
+    _invalidateBrushFrame(cacheInvalidationSink, key);
+  }
+
   UndoHistoryEntry? undo({CacheInvalidationSink? cacheInvalidationSink}) {
     final take = _undoHistory.takeUndo();
     _undoHistory = take.history;

@@ -43,6 +43,11 @@ abstract final class EditorActionIds {
   static const toolEraser = 'tool-eraser';
   static const toolEyedropper = 'tool-eyedropper';
   static const toolFill = 'tool-fill';
+  static const toolSelectRect = 'tool-select-rect';
+  static const toolLasso = 'tool-lasso';
+  static const selectionDeselect = 'selection-deselect';
+  static const selectionNudgeUp = 'selection-nudge-up';
+  static const selectionNudgeDown = 'selection-nudge-down';
   static const onionSkinToggle = 'onion-skin-toggle';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
@@ -133,6 +138,41 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Fill Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolSelectRect,
+    label: 'Rectangle Select Tool',
+    category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyM)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolLasso,
+    label: 'Lasso Select Tool',
+    category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyL)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionDeselect,
+    label: 'Deselect',
+    category: 'Selection',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyD, control: true),
+    ],
+  ),
+  // Left/right nudges share the arrow keys with frame flipping: with a
+  // live selection the arrows NUDGE, otherwise they flip (dispatch-level
+  // arbitration — Photoshop behavior). Up/down are selection-only.
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionNudgeUp,
+    label: 'Nudge Selection Up',
+    category: 'Selection',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.selectionNudgeDown,
+    label: 'Nudge Selection Down',
+    category: 'Selection',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.onionSkinToggle,

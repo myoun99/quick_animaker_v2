@@ -15,6 +15,7 @@ import '../../services/history_manager.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
+import 'canvas_selection_commands.dart';
 import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
@@ -50,6 +51,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onAltColorPick,
     this.fillDabAt,
     this.viewCommands,
+    this.selectionCommands,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -107,6 +109,9 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;
+
+  /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
+  final CanvasSelectionCommands? selectionCommands;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -175,6 +180,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
       viewCommands: widget.viewCommands,
+      selectionCommands: widget.selectionCommands,
     );
   }
 
