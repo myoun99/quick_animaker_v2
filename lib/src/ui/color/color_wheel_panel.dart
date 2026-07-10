@@ -176,16 +176,27 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
             children: [
               Expanded(child: Center(child: _wheel(besideSquare))),
               const SizedBox(width: gap),
+              // FittedBox: short panels scale the swatch/hex column down
+              // instead of overflowing vertically (R5-⑨ — the strip was
+              // taller than a squat panel).
               SizedBox(
                 width: controlsWidth,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _slotPair(),
-                    _swapButton(),
-                    const SizedBox(height: 4),
-                    _hexText(context),
-                  ],
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: SizedBox(
+                      width: controlsWidth,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _slotPair(),
+                          _swapButton(),
+                          const SizedBox(height: 4),
+                          _hexText(context),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

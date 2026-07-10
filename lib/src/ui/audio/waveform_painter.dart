@@ -89,16 +89,25 @@ class WaveformPainter extends CustomPainter {
     final top = <Offset>[];
     final bottom = <Offset>[];
     for (var bucket = startBucket; bucket < peaks.peaks.length; bucket += 1) {
-      final main = bucket * pixelsPerBucket - leadingPixels;
+      var main = bucket * pixelsPerBucket - leadingPixels;
+      var lastSample = false;
+      // The offset usually lands MID-bucket: clamp the edge samples onto
+      // the window instead of dropping them, or the band opens/closes up
+      // to a bucket short — a gap that shifts with every dragged frame
+      // (the "ends flicker while sliding" artifact).
       if (main < 0) {
-        continue;
+        main = 0;
       }
-      if (main > mainExtent) {
-        break;
+      if (main >= mainExtent) {
+        main = mainExtent;
+        lastSample = true;
       }
       final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeAt(main);
       top.add(at(main, center - amplitude));
       bottom.add(at(main, center + amplitude));
+      if (lastSample) {
+        break;
+      }
     }
     if (top.isEmpty) {
       return;
