@@ -483,25 +483,10 @@ class TimesheetDocumentPainter extends CustomPainter {
       painter.paint(canvas, Offset(band.left + 8, y));
       y += painter.height + 4;
     }
-    // The camera-instruction shorthand lines ('C⋈D O.L(カットO.L)' …) stack
-    // under the cut note; whatever exceeds the band stays unprinted (the
-    // band is fixed paper space).
-    for (final line in document.memoInstructionLines) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: line,
-          style: const TextStyle(color: _ink, fontSize: 10),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: textMaxWidth);
-      if (y + painter.height > band.bottom - 4) {
-        break;
-      }
-      painter.paint(canvas, Offset(band.left + 8, y));
-      y += painter.height + 2;
-    }
+    // NO derived instruction lines here anymore (R5-⑥): the shorthand
+    // ('A→B PAN …') writes itself INTO the cut note once when the
+    // instruction is created, so it prints above as ordinary — editable —
+    // note text.
   }
 
   /// The cut-end strikethrough at the bottom edge of the last playback

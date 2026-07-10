@@ -161,7 +161,6 @@ class TimesheetDocument {
     required this.scene,
     required this.artist,
     required this.memoText,
-    required this.memoInstructionLines,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.seEmptyFill,
@@ -312,14 +311,6 @@ class TimesheetDocument {
       scene: info.scene,
       artist: info.artist,
       memoText: cut.metadata.note,
-      memoInstructionLines: List.unmodifiable([
-        for (final layer in instructionLayers)
-          for (final entry in layer.instructions.entries)
-            timesheetMemoInstructionLine(
-              entry.value,
-              instructionDefById?.call(entry.value.instructionId),
-            ),
-      ]),
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
@@ -347,13 +338,10 @@ class TimesheetDocument {
   final String artist;
 
   /// The cut's Direction memo (the cut note) printed in the memo band —
-  /// per-cut data, editable in place on the sheet.
+  /// per-cut data, editable in place on the sheet. Instruction shorthand
+  /// lines land HERE (auto-written once at creation, R5-⑥) instead of a
+  /// derived read-only list.
   final String memoText;
-
-  /// One shorthand line per instruction event, printed into the memo band
-  /// under the cut note — the sheet notation the user writes by hand
-  /// ('A⋈ O.L', 'C⋈D O.L カットO.L'), in layer order then start frame.
-  final List<String> memoInstructionLines;
 
   /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
   /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
@@ -412,8 +400,10 @@ class TimesheetDocument {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
 
     final labelsByFrameId = <FrameId, String>{
-      for (var index = 0; index < layer.frames.length; index += 1)
-        layer.frames[index].id: layer.frames[index].name ?? '${index + 1}',
+      // The sheet writes the frame NAME verbatim; unnamed cels print the
+      // in-between division mark — never an invented number (R5-④, same
+      // glyph the mark rows use).
+      for (final frame in layer.frames) frame.id: frame.name ?? '○',
     };
     final seNamesByFrameId = <FrameId, String?>{
       if (includeSeNames)
