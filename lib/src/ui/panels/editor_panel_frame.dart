@@ -42,7 +42,10 @@ class EditorPanelFrame extends StatelessWidget {
                 final headerHeight = hasBoundedHeight
                     ? EditorPanelHeader.height.clamp(0.0, maxHeight).toDouble()
                     : EditorPanelHeader.height;
-                final body = EditorPanelBody(padding: bodyPadding, child: child);
+                final body = EditorPanelBody(
+                  padding: bodyPadding,
+                  child: child,
+                );
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,

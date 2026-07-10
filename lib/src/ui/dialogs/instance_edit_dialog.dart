@@ -105,7 +105,9 @@ class InstanceEditDialogShell extends StatelessWidget {
                 children: [
                   if (onDelete != null)
                     TextButton(
-                      key: const ValueKey<String>('instance-edit-delete-button'),
+                      key: const ValueKey<String>(
+                        'instance-edit-delete-button',
+                      ),
                       onPressed: onDelete,
                       child: const Text('Delete'),
                     ),
