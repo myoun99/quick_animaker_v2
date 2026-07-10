@@ -292,6 +292,11 @@ class EditorSessionManager extends ChangeNotifier {
       historyManager: _historyManager,
       cutId: activeCutId,
       initialFrameIndex: _clampedFrameIndex(preferredFrameIndex),
+      // Track-SE mutations shift to the global axis inside the controller;
+      // reads keep flowing through the cut-local display clones.
+      frameOffsetForLayer: (layerId) =>
+          isTrackSeLayerId(layerId) ? activeCutGlobalStartFrame : 0,
+      trackSeLayers: () => activeTrack.seLayers,
     );
     editingFrameCursor.value = _timelineController.currentFrameIndex;
   }
@@ -1905,6 +1910,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// the browser's usage badge).
   bool isMediaAssetReferenced(String path) {
     for (final track in _repository.requireProject().tracks) {
+      for (final layer in track.seLayers) {
+        for (final clip in layer.audioClips) {
+          if (clip.filePath == path) {
+            return true;
+          }
+        }
+      }
       for (final cut in track.cuts) {
         for (final layer in cut.layers) {
           for (final clip in layer.audioClips) {
@@ -2288,17 +2300,48 @@ class EditorSessionManager extends ChangeNotifier {
   TimelineBlockEdge? _edgeDragEdge;
   int? _edgeDragBlockStart;
 
+  /// The drag's current result (GLOBAL layer for track SE): [dragPreview]
+  /// carries the DISPLAY form, so the commit reads this instead.
+  Layer? _edgeDragAfter;
+
+  /// Non-null while a track-SE drag is in flight — previews window through
+  /// it before publishing.
+  TrackSeWindow? _edgeDragWindow;
+
   bool get isExposureEdgeDragActive => _edgeDragBefore != null;
 
   /// Starts a comma drag on [edge] of the block starting at
-  /// [blockStartIndex]; returns false when there is no such block.
-  /// Instruction rows join the same pipeline — their spans live on
-  /// Layer.instructions and shift without ripple.
+  /// [blockStartIndex] (as DISPLAYED — cut-local); returns false when
+  /// there is no such block. Instruction rows join the same pipeline —
+  /// their spans live on Layer.instructions and shift without ripple.
+  /// Track-SE rows convert to the global axis here; a spill-in block's
+  /// start edge is rejected (its real start lives in an earlier cut).
   bool beginExposureEdgeDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required TimelineBlockEdge edge,
   }) {
+    if (isTrackSeLayerId(layerId)) {
+      final global = trackSeGlobalLayerById(layerId);
+      if (global == null) {
+        return false;
+      }
+      final window = trackSeWindow;
+      if (edge == TimelineBlockEdge.start &&
+          window.isSpillInStart(global, blockStartIndex)) {
+        return false;
+      }
+      final globalStart = window.globalBlockStartFor(global, blockStartIndex);
+      if (!(global.timeline[globalStart]?.isDrawing ?? false)) {
+        return false;
+      }
+      _edgeDragBefore = global;
+      _edgeDragEdge = edge;
+      _edgeDragBlockStart = globalStart;
+      _edgeDragWindow = window;
+      return true;
+    }
+
     final layer = _layerById(layerId);
     if (layer == null) {
       return false;
@@ -2363,28 +2406,32 @@ class EditorSessionManager extends ChangeNotifier {
     // committed edit, the drag-end warm request re-renders what changed,
     // and the idle gate's REAL-time delay would leave timers pending under
     // the fake test clock.
+    _edgeDragAfter = after == before ? null : after;
+    // Track-SE drags: the preview channel carries the DISPLAY form (the
+    // row gates render cut-local clones); the commit uses _edgeDragAfter.
+    final window = _edgeDragWindow;
     dragPreview.value = after == before
         ? null
-        : ExposureEdgeDragPreview(previewLayer: after);
+        : ExposureEdgeDragPreview(
+            previewLayer: window == null ? after : window.displayLayer(after),
+          );
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
-  /// the command's execute applies the final preview to the repository.
+  /// the command's execute applies the final result to the repository.
   void endExposureEdgeDrag() {
     final before = _edgeDragBefore;
-    final preview = dragPreview.value;
+    final after = _edgeDragAfter;
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragAfter = null;
+    _edgeDragWindow = null;
     dragPreview.value = null;
     if (before == null) {
       return;
     }
 
-    final after =
-        preview is ExposureEdgeDragPreview && preview.layerId == before.id
-        ? preview.previewLayer
-        : null;
     if (after == null || after == before) {
       return;
     }
@@ -2534,6 +2581,8 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragAfter = null;
+    _edgeDragWindow = null;
     dragPreview.value = null;
   }
 

@@ -25,9 +25,13 @@ class TimelineController {
     required CutId cutId,
     HistoryManager? historyManager,
     int initialFrameIndex = 0,
+    int Function(LayerId layerId)? frameOffsetForLayer,
+    List<Layer> Function()? trackSeLayers,
   }) : _repository = repository,
        _historyManager = historyManager,
-       _cutId = cutId {
+       _cutId = cutId,
+       _frameOffsetForLayer = frameOffsetForLayer,
+       _trackSeLayers = trackSeLayers {
     selectFrameIndex(initialFrameIndex);
   }
 
@@ -35,7 +39,19 @@ class TimelineController {
   final HistoryManager? _historyManager;
   final CutId _cutId;
 
+  /// Track-owned SE support: SE timelines live on the track's GLOBAL frame
+  /// axis while this controller's playhead is cut-local. [_requireLayer]
+  /// falls back to these GLOBAL layers, and every index-based mutation
+  /// shifts by [_frameOffsetForLayer] (the active cut's global start for
+  /// track-SE ids, 0 otherwise). Read-side `can*` gates keep taking the
+  /// cut-local DISPLAY clones + local indexes — the same coverage answer.
+  final int Function(LayerId layerId)? _frameOffsetForLayer;
+  final List<Layer> Function()? _trackSeLayers;
+
   int _currentFrameIndex = 0;
+
+  int _editFrameIndexFor(LayerId layerId) =>
+      _currentFrameIndex + (_frameOffsetForLayer?.call(layerId) ?? 0);
 
   int get currentFrameIndex => _currentFrameIndex;
 
@@ -200,25 +216,23 @@ class TimelineController {
     }
 
     final before = _requireLayer(layerId);
-    if (!canCreateDrawingAt(layer: before, frameIndex: _currentFrameIndex)) {
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canCreateDrawingAt(layer: before, frameIndex: frameIndex)) {
       throw StateError(
-        'Timeline cell is already covered at index $_currentFrameIndex.',
+        'Timeline cell is already covered at index $frameIndex.',
       );
     }
 
-    final nextBlock = nextDrawingBlockAfter(
-      before.timeline,
-      _currentFrameIndex,
-    );
+    final nextBlock = nextDrawingBlockAfter(before.timeline, frameIndex);
     final maxLength = nextBlock == null
         ? length
-        : nextBlock.startIndex - _currentFrameIndex;
+        : nextBlock.startIndex - frameIndex;
     final clampedLength = length > maxLength ? maxLength : length;
 
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    nextTimeline[_currentFrameIndex] = TimelineExposure.drawing(
+    nextTimeline[frameIndex] = TimelineExposure.drawing(
       frameId,
       length: clampedLength,
     );
@@ -253,16 +267,17 @@ class TimelineController {
 
   void cutExposureForLayer({required LayerId layerId}) {
     final before = _requireLayer(layerId);
-    if (!canCutExposureAt(layer: before, frameIndex: _currentFrameIndex)) {
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canCutExposureAt(layer: before, frameIndex: frameIndex)) {
       return;
     }
 
-    final block = coveringDrawingBlockAt(before.timeline, _currentFrameIndex)!;
+    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
     nextTimeline[block.startIndex] = block.entry.copyWith(
-      length: _currentFrameIndex - block.startIndex,
+      length: frameIndex - block.startIndex,
     );
     _applyLayerEdit(
       before: before,
@@ -283,17 +298,18 @@ class TimelineController {
 
   void toggleMarkForLayer({required LayerId layerId}) {
     final before = _requireLayer(layerId);
-    if (!canToggleMarkAt(layer: before, frameIndex: _currentFrameIndex)) {
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canToggleMarkAt(layer: before, frameIndex: frameIndex)) {
       return;
     }
 
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    if (nextTimeline[_currentFrameIndex]?.isMark ?? false) {
-      nextTimeline.remove(_currentFrameIndex);
+    if (nextTimeline[frameIndex]?.isMark ?? false) {
+      nextTimeline.remove(frameIndex);
     } else {
-      nextTimeline[_currentFrameIndex] = const TimelineExposure.mark();
+      nextTimeline[frameIndex] = const TimelineExposure.mark();
     }
     _applyLayerEdit(
       before: before,
@@ -309,14 +325,15 @@ class TimelineController {
 
   void deleteCellForLayer({required LayerId layerId}) {
     final before = _requireLayer(layerId);
-    if (!canDeleteCellAt(layer: before, frameIndex: _currentFrameIndex)) {
+    final frameIndex = _editFrameIndexFor(layerId);
+    if (!canDeleteCellAt(layer: before, frameIndex: frameIndex)) {
       return;
     }
 
-    final entry = before.timeline[_currentFrameIndex]!;
+    final entry = before.timeline[frameIndex]!;
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
-    )..remove(_currentFrameIndex);
+    )..remove(frameIndex);
     var nextFrames = before.frames;
     final frameId = entry.frameId;
     if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
@@ -349,9 +366,10 @@ class TimelineController {
     required FrameId frameId,
   }) {
     final before = _requireLayer(layerId);
+    final index = _editFrameIndexFor(layerId);
     if (!canPasteLinkedFrameAt(
       layer: before,
-      frameIndex: _currentFrameIndex,
+      frameIndex: index,
       copiedFrameId: frameId,
     )) {
       return;
@@ -360,7 +378,6 @@ class TimelineController {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    final index = _currentFrameIndex;
     final covering = coveringDrawingBlockAt(before.timeline, index);
     FrameId? replacedFrameId;
 
@@ -605,9 +622,12 @@ class TimelineController {
     required int delta,
   }) {
     final before = _requireLayer(layerId);
+    // Callers pass the block start as DISPLAYED (cut-local); track-SE
+    // layers store it at the global offset.
     final after = shiftedLayerForEdge(
       layer: before,
-      blockStartIndex: blockStartIndex,
+      blockStartIndex:
+          blockStartIndex + (_frameOffsetForLayer?.call(layerId) ?? 0),
       edge: edge,
       delta: delta,
     );
@@ -800,6 +820,14 @@ class TimelineController {
     }
 
     for (final layer in cut.layers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+
+    // Track-owned SE rows: mutations edit the GLOBAL layer (never the
+    // cut-local display clone) — indexes shift via _editFrameIndexFor.
+    for (final layer in _trackSeLayers?.call() ?? const <Layer>[]) {
       if (layer.id == layerId) {
         return layer;
       }
