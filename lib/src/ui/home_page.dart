@@ -75,8 +75,11 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+          // The history manager is merged in because brush strokes execute
+          // into it straight from the canvas — no session notify ever fires
+          // for a pen-up, and the buttons must still enable.
           ListenableBuilder(
-            listenable: _session,
+            listenable: Listenable.merge([_session, _session.historyManager]),
             builder: (context, _) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [

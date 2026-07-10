@@ -68,6 +68,59 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
+  // Memoized sheet document + layouts: building them is the expensive part
+  // of this host's rebuild, and most session notifies (fx toggles, waveform
+  // loads, selections, committed seeks) change none of their inputs — the
+  // model objects are immutable, so identity is the staleness check.
+  TimesheetDocument? _document;
+  TimesheetDocumentLayout? _layout;
+  TimesheetDocumentLayout? _pagedLayout;
+  Object? _documentCut;
+  Object? _documentInfo;
+  Object? _documentInstructionSet;
+  String? _documentProjectName;
+  int? _documentFps;
+  bool? _layoutContinuous;
+
+  TimesheetDocumentLayout _resolveLayouts(EditorSessionManager session) {
+    final cut = session.activeCut;
+    final info = session.timesheetInfo;
+    final projectName = session.repository.requireProject().name;
+    final instructionSet = session.cameraInstructionSet;
+    if (_document == null ||
+        !identical(_documentCut, cut) ||
+        !identical(_documentInfo, info) ||
+        !identical(_documentInstructionSet, instructionSet) ||
+        _documentProjectName != projectName ||
+        _documentFps != session.projectFps) {
+      _documentCut = cut;
+      _documentInfo = info;
+      _documentInstructionSet = instructionSet;
+      _documentProjectName = projectName;
+      _documentFps = session.projectFps;
+      _document = TimesheetDocument.fromCut(
+        cut: cut,
+        projectName: projectName,
+        fps: session.projectFps,
+        info: info,
+        instructionDefById: instructionSet.defById,
+      );
+      _layout = null;
+      _pagedLayout = null;
+    }
+    if (_layout == null || _layoutContinuous != widget.continuous) {
+      _layoutContinuous = widget.continuous;
+      _layout = TimesheetDocumentLayout(
+        document: _document!,
+        continuous: widget.continuous,
+      );
+      _pagedLayout = widget.continuous
+          ? TimesheetDocumentLayout(document: _document!)
+          : _layout;
+    }
+    return _layout!;
+  }
+
   /// Raised while an ink stroke is in progress so the panel gesture layer
   /// holds navigation.
   final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
@@ -136,20 +189,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       builder: (context, _) {
         final playbackGlobalFrame =
             session.playback.globalFrameIndexListenable.value;
-        final document = TimesheetDocument.fromCut(
-          cut: session.activeCut,
-          projectName: session.repository.requireProject().name,
-          fps: session.projectFps,
-          info: session.timesheetInfo,
-          instructionDefById: session.cameraInstructionSet.defById,
-        );
-        final layout = TimesheetDocumentLayout(
-          document: document,
-          continuous: widget.continuous,
-        );
-        final pagedLayout = widget.continuous
-            ? TimesheetDocumentLayout(document: document)
-            : layout;
+        final layout = _resolveLayouts(session);
+        final document = _document!;
+        final pagedLayout = _pagedLayout!;
         inkController?.syncGeometry(pagedLayout);
         final documentSize = layout.documentSize;
         final playheadFrame = playbackGlobalFrame == null

@@ -1,6 +1,12 @@
+import 'package:flutter/foundation.dart';
+
 import 'command.dart';
 
-class HistoryManager {
+/// The undo/redo stacks. A [ChangeNotifier] so stack-state consumers (the
+/// app bar's undo/redo buttons) can subscribe directly: brush strokes
+/// execute here from the canvas WITHOUT a session notify, so nothing else
+/// would ever tell them a stroke landed.
+class HistoryManager extends ChangeNotifier {
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
 
@@ -16,6 +22,7 @@ class HistoryManager {
     command.execute();
     _undoStack.add(command);
     _redoStack.clear();
+    notifyListeners();
   }
 
   void undo() {
@@ -26,6 +33,7 @@ class HistoryManager {
     final command = _undoStack.removeLast();
     command.undo();
     _redoStack.add(command);
+    notifyListeners();
   }
 
   void redo() {
@@ -36,10 +44,12 @@ class HistoryManager {
     final command = _redoStack.removeLast();
     command.execute();
     _undoStack.add(command);
+    notifyListeners();
   }
 
   void clear() {
     _undoStack.clear();
     _redoStack.clear();
+    notifyListeners();
   }
 }

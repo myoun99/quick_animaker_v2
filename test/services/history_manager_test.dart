@@ -101,6 +101,22 @@ void main() {
       expect(historyManager.undoCount, 0);
       expect(historyManager.redoCount, 0);
     });
+
+    test('notifies on every stack change (brush strokes execute here with '
+        'no session notify — the undo buttons subscribe directly)', () {
+      final historyManager = HistoryManager();
+      var notifies = 0;
+      historyManager.addListener(() => notifies += 1);
+
+      historyManager.execute(_FakeCommand());
+      expect(notifies, 1);
+      historyManager.undo();
+      expect(notifies, 2);
+      historyManager.redo();
+      expect(notifies, 3);
+      historyManager.clear();
+      expect(notifies, 4);
+    });
   });
 }
 
