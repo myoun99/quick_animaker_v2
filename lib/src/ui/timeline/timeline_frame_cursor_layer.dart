@@ -8,6 +8,7 @@ import 'property_lane_model.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -37,12 +38,18 @@ class TimelineCursorLayer extends StatelessWidget {
     required this.exposureStateForLayer,
     required this.crossAxisExtent,
     this.axis = Axis.horizontal,
+    this.dragPreview,
     this.selectedSemanticsKey = const ValueKey<String>(
       'timeline-selected-cell',
     ),
   });
 
   final ValueListenable<int> frameCursor;
+
+  /// The session's edit-drag preview channel: while a comma drag targets
+  /// the active layer, the selection visuals (the selected-exposure
+  /// outline) follow the PREVIEW layer so they ride the drag live.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The grid's display rows (layer rows + expanded lanes), for the active
   /// layer's cross-axis position.
@@ -67,9 +74,10 @@ class TimelineCursorLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final horizontal = axis == Axis.horizontal;
-    return ValueListenableBuilder<int>(
-      valueListenable: frameCursor,
-      builder: (context, frame, _) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([frameCursor, ?dragPreview]),
+      builder: (context, _) {
+        final frame = frameCursor.value;
         final cursorVisible =
             frame >= frameStartIndex && frame < frameEndIndexExclusive;
         final children = <Widget>[
@@ -103,7 +111,9 @@ class TimelineCursorLayer extends StatelessWidget {
           }
         }
         if (activeLayer != null && activeRowIndex != null) {
-          final layer = activeLayer;
+          final layer =
+              timelineDragPreviewLayerFor(dragPreview?.value, activeLayer.id) ??
+              activeLayer;
           // Display rows are uniformly tall (timelineDisplayRowExtent).
           final rowOffset = activeRowIndex * metrics.layerRowHeight;
           TimelineCellExposureState stateAt(int frameIndex) =>

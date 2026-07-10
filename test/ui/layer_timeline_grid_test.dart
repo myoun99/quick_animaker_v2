@@ -355,9 +355,11 @@ void main() {
     final initialLayerRowTop = tester.getTopLeft(firstLayerRow).dy;
     final initialFrameRowTop = tester.getTopLeft(firstFrameRow).dy;
 
+    // Layer-1's row must stay inside the virtualization window's overscan
+    // for the position assertions below, so scroll less than two rows.
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
-      const Offset(0, -180),
+      const Offset(0, -100),
     );
     await tester.pumpAndSettle();
 
@@ -396,6 +398,21 @@ void main() {
       );
       final frameRow = find.byKey(
         const ValueKey<String>('timeline-frame-row-area-layer-24'),
+      );
+
+      // The layer axis is virtualized: scroll until layer-24's rows enter
+      // the window (rail and grid share the same slice).
+      await tester.scrollUntilVisible(
+        layerRow,
+        52,
+        scrollable: find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-vertical-scroll-viewport'),
+              ),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
 
       expect(layerRow, findsOneWidget);

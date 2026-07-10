@@ -11,6 +11,7 @@ import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
@@ -65,10 +66,15 @@ class TimelinePanel extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
+    this.dragPreview,
   });
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
+
+  /// The session's edit-drag preview channel (comma/trim drags), consumed
+  /// by both grids' row gates and cursor overlays.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -322,6 +328,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 ? LayerTimelineGrid(
                     layers: horizontalLayers,
                     activeLayerId: widget.activeLayerId,
+                    dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
                     cacheProgress: widget.cacheProgress,
                     playbackFrameCount: widget.playbackFrameCount,
@@ -362,6 +369,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
                     activeLayerId: widget.activeLayerId,
+                    dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
                     cacheProgress: widget.cacheProgress,
                     frameCount: widget.playbackFrameCount,
