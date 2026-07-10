@@ -125,6 +125,8 @@ class _HomePageState extends State<HomePage> {
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.brush);
       case EditorActionIds.toolEraser:
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.eraser);
+      case EditorActionIds.onionSkinToggle:
+        _session.toggleOnionSkin();
     }
   }
 

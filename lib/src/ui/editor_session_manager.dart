@@ -29,6 +29,7 @@ import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';
+import '../models/onion_skin_settings.dart';
 import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
@@ -59,6 +60,7 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
@@ -474,6 +476,7 @@ class EditorSessionManager extends ChangeNotifier {
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
     dragPreview.dispose();
+    onionSkinSettings.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -3047,6 +3050,48 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.value = frameIndex;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
+  }
+
+  // --- Onion skin (P2: Callipeg peg model) -----------------------------------
+
+  /// Session view state — a ValueNotifier so the canvas underlay and the
+  /// onion panel subscribe without whole-session notifies.
+  final ValueNotifier<OnionSkinSettings> onionSkinSettings =
+      ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
+
+  /// The `O` shortcut / toolbar toggle.
+  void toggleOnionSkin() {
+    onionSkinSettings.value = onionSkinSettings.value.copyWith(
+      enabled: !onionSkinSettings.value.enabled,
+    );
+  }
+
+  /// The ghost frames to composite under the ACTIVE layer at the playhead:
+  /// the onion plan (unique drawings, peg opacities, side tints) as canvas
+  /// stack requests. Empty while disabled, on brush-banned rows, or with
+  /// no active layer.
+  List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
+    final settings = onionSkinSettings.value;
+    final layer = activeLayer;
+    final cut = activeCutOrNull;
+    if (!settings.enabled ||
+        layer == null ||
+        cut == null ||
+        !layerKindAcceptsBrushInput(layer.kind)) {
+      return const [];
+    }
+    return [
+      for (final plan in planOnionSkin(
+        layer: layer,
+        frameIndex: _timelineController.currentFrameIndex,
+        settings: settings,
+      ))
+        CanvasLayerImageRequest(
+          frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
+          opacity: plan.opacity,
+          tint: plan.tint,
+        ),
+    ];
   }
 
   // --- Project persistence (P3: the .qap container) -------------------------
