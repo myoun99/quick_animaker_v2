@@ -129,12 +129,16 @@ class CutCommandCoordinator {
   }
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
-  /// trims) AND leading gaps (start slides / gap consumption) together.
+  /// trims), leading gaps (start slides / gap consumption) AND the fade
+  /// re-anchor rewrites (canonical fade envelopes recomputed for the new
+  /// duration — W4 fade durability) together.
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
+    Map<CutId, TransformTrack> beforeTransforms = const {},
+    Map<CutId, TransformTrack> afterTransforms = const {},
   }) {
     historyManager.execute(
       UpdateCutDurationsCommand(
@@ -143,6 +147,8 @@ class CutCommandCoordinator {
         after: afterDurations,
         beforeGaps: beforeGaps,
         afterGaps: afterGaps,
+        beforeTransforms: beforeTransforms,
+        afterTransforms: afterTransforms,
       ),
     );
   }

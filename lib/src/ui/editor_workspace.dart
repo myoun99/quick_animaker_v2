@@ -709,13 +709,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
           builder: (context) => ListenableBuilder(
-            // Session subscription (see the timeline tab) + the editing
-            // frame cursor: the storyboard playhead follows scrubs and
-            // committed seeks live — this whole-panel rebuild is the same
-            // one playback ticks already pay, measured cheap on device.
+            // Session subscription (see the timeline tab) + COMMITTED
+            // seeks only (W4 perf pass): scrub moves and playback ticks
+            // ride the host's playhead notifier straight into the panel's
+            // playhead overlay + ruler — the panel never rebuilds per
+            // tick anymore.
             listenable: Listenable.merge([
               widget.session,
-              widget.session.editingFrameCursor,
+              widget.session.frameSeekCommitted,
               _storyboardPixelsPerFrame,
               _showSecondsDisplay,
               _storyboardThumbnails,

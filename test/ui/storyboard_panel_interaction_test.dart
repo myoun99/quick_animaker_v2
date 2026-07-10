@@ -853,7 +853,9 @@ Future<void> _pumpStoryboardPanel(
           onCutSelected: onCutSelected,
           onCutReordered: onCutReordered,
           cutTrim: cutTrim,
-          playheadGlobalFrame: playheadGlobalFrame,
+          playheadFrame: playheadGlobalFrame == null
+              ? null
+              : ValueNotifier<int?>(playheadGlobalFrame),
           onSeekGlobalFrame: onSeekGlobalFrame,
           thumbnailFor: thumbnailFor,
           pixelsPerFrame: pixelsPerFrame,
