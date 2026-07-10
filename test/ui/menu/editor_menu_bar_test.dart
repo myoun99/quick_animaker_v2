@@ -96,8 +96,8 @@ void main() {
             find.byKey(const ValueKey<String>('menu-edit-keyboard-shortcuts')),
           )
           .onPressed,
-      isNull,
-      reason: 'the shortcuts editor ships disabled until P1b',
+      isNotNull,
+      reason: 'the shortcuts editor is live (P1)',
     );
     // Close the menu, make an undoable edit through the Cut menu.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
