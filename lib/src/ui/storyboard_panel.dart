@@ -1088,13 +1088,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
     final contentWidth = _contentWidthFor(layoutEntries, scale);
     // The playhead + green bar repaint through their own listenables (the
-    // cursor-layer pattern) — the ruler and the overlay subscribe below,
-    // nothing else in this build does.
+    // cursor-layer pattern) — the ruler's overlay PAINTER and the playhead
+    // overlay subscribe below, nothing else in this build does.
     final playheadListenable = widget.playheadFrame;
-    final rulerRefresh = Listenable.merge([
-      ?playheadListenable,
-      ?widget.cacheProgress,
-    ]);
 
     return DecoratedBox(
       key: const ValueKey<String>('storyboard-panel'),
@@ -1140,22 +1136,19 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               maxHeight: StoryboardPanel._rulerHeight,
                               child: Transform.translate(
                                 offset: Offset(-_horizontalScrollOffset, 0),
-                                child: ListenableBuilder(
-                                  listenable: rulerRefresh,
-                                  builder: (context, _) => _StoryboardRuler(
-                                    width: contentWidth,
-                                    renderedFrames: renderedFrames,
-                                    contentFrames: totalFrames,
-                                    playheadFrame: playheadListenable?.value,
-                                    scrollOffset: _horizontalScrollOffset,
-                                    viewportWidth: viewportWidth,
-                                    timelineScale: scale,
-                                    onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                                    onScrubGlobalFrame:
-                                        widget.onScrubGlobalFrame,
-                                    onScrubEnd: widget.onScrubEnd,
-                                    isFrameCached: widget.isFrameCached,
-                                  ),
+                                child: _StoryboardRuler(
+                                  width: contentWidth,
+                                  renderedFrames: renderedFrames,
+                                  contentFrames: totalFrames,
+                                  playhead: playheadListenable,
+                                  cacheProgress: widget.cacheProgress,
+                                  scrollOffset: _horizontalScrollOffset,
+                                  viewportWidth: viewportWidth,
+                                  timelineScale: scale,
+                                  onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                                  onScrubGlobalFrame: widget.onScrubGlobalFrame,
+                                  onScrubEnd: widget.onScrubEnd,
+                                  isFrameCached: widget.isFrameCached,
                                 ),
                               ),
                             ),
@@ -1464,7 +1457,8 @@ class _StoryboardRuler extends StatelessWidget {
     required this.width,
     required this.renderedFrames,
     required this.contentFrames,
-    required this.playheadFrame,
+    required this.playhead,
+    required this.cacheProgress,
     required this.scrollOffset,
     required this.viewportWidth,
     required this.timelineScale,
@@ -1485,7 +1479,13 @@ class _StoryboardRuler extends StatelessWidget {
   /// The cuts' actual end (runway dimming + the cut-end boundary line).
   final int contentFrames;
 
-  final int? playheadFrame;
+  /// The playhead + cache-warm signals, consumed by the cursor overlay
+  /// PAINTER only (R12-B): a playback tick or a warming frame repaints
+  /// one thin layer — the header cells never rebuild. At storyboard zoom
+  /// there are far more of them than in the timeline, which is exactly
+  /// why the old rebuild-per-tick ruler showed up as fixed frame drops.
+  final ValueListenable<int?>? playhead;
+  final Listenable? cacheProgress;
   final double scrollOffset;
   final double viewportWidth;
   final TimelineScale timelineScale;
@@ -1550,25 +1550,131 @@ class _StoryboardRuler extends StatelessWidget {
       child: SizedBox(
         width: width,
         height: StoryboardPanel._rulerHeight,
-        child: TimelineFrameRuler(
-          key: const ValueKey<String>('storyboard-frame-ruler'),
-          frameStartIndex: startIndex,
-          frameEndIndexExclusive: math.max(startIndex, endIndexExclusive),
-          currentFrameIndex: playheadFrame ?? -1,
-          playbackFrameCount: contentFrames,
-          leadingFrameSpacerWidth: startIndex * cellWidth,
-          trailingFrameSpacerWidth: math.max(
-            0,
-            (renderedFrames - math.max(startIndex, endIndexExclusive)) *
-                cellWidth,
-          ),
-          metrics: metrics,
-          onSelectFrame: _seekFrame,
-          isFrameCached: isFrameCached,
+        child: Stack(
+          children: [
+            // STATIC header cells: cursor- and cache-independent — ticks
+            // and warming frames never rebuild them.
+            TimelineFrameRuler(
+              key: const ValueKey<String>('storyboard-frame-ruler'),
+              frameStartIndex: startIndex,
+              frameEndIndexExclusive: math.max(startIndex, endIndexExclusive),
+              currentFrameIndex: -1,
+              playbackFrameCount: contentFrames,
+              leadingFrameSpacerWidth: startIndex * cellWidth,
+              trailingFrameSpacerWidth: math.max(
+                0,
+                (renderedFrames - math.max(startIndex, endIndexExclusive)) *
+                    cellWidth,
+              ),
+              metrics: metrics,
+              onSelectFrame: _seekFrame,
+            ),
+            // The moving parts REPAINT only: current-frame tint + green
+            // cached bar, one thin isolated layer.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    key: const ValueKey<String>(
+                      'storyboard-ruler-cursor-overlay',
+                    ),
+                    painter: _StoryboardRulerCursorPainter(
+                      playhead: playhead,
+                      cacheProgress: cacheProgress,
+                      frameStartIndex: startIndex,
+                      frameEndIndexExclusive: math.max(
+                        startIndex,
+                        endIndexExclusive,
+                      ),
+                      contentFrames: contentFrames,
+                      cellWidth: cellWidth,
+                      isFrameCached: isFrameCached,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// The storyboard ruler's per-tick layer: the current-frame tint and the
+/// green cached-range bar painted OVER the static header cells, driven by
+/// [CustomPainter.repaint] — no widget rebuilds on ticks or cache warms.
+class _StoryboardRulerCursorPainter extends CustomPainter {
+  _StoryboardRulerCursorPainter({
+    required this.playhead,
+    required Listenable? cacheProgress,
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.contentFrames,
+    required this.cellWidth,
+    required this.isFrameCached,
+  }) : super(repaint: Listenable.merge([?playhead, ?cacheProgress]));
+
+  final ValueListenable<int?>? playhead;
+  final int frameStartIndex;
+  final int frameEndIndexExclusive;
+  final int contentFrames;
+  final double cellWidth;
+  final bool Function(int globalFrame)? isFrameCached;
+
+  /// The AE-style cached-range green (the header cells' own strip color).
+  static const Color _cachedBarColor = Color(0xFF54B435);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cached = isFrameCached;
+    if (cached != null) {
+      final barPaint = Paint()..color = _cachedBarColor;
+      final end = math.min(frameEndIndexExclusive, contentFrames);
+      var runStart = -1;
+      // Consecutive cached frames coalesce into one rect per run.
+      for (var frame = frameStartIndex; frame <= end; frame += 1) {
+        if (frame < end && cached(frame)) {
+          runStart = runStart < 0 ? frame : runStart;
+          continue;
+        }
+        if (runStart >= 0) {
+          canvas.drawRect(
+            Rect.fromLTWH(
+              runStart * cellWidth,
+              size.height - 3,
+              (frame - runStart) * cellWidth,
+              3,
+            ),
+            barPaint,
+          );
+          runStart = -1;
+        }
+      }
+    }
+
+    final frame = playhead?.value;
+    if (frame != null &&
+        frame >= frameStartIndex &&
+        frame < frameEndIndexExclusive) {
+      // Matches the header cell's selected fill: the same tint over the
+      // same surface the cell would have blended it onto.
+      canvas.drawRect(
+        Rect.fromLTWH(frame * cellWidth, 0, cellWidth, size.height),
+        Paint()
+          ..color = timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StoryboardRulerCursorPainter oldDelegate) =>
+      oldDelegate.frameStartIndex != frameStartIndex ||
+      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
+      oldDelegate.contentFrames != contentFrames ||
+      oldDelegate.cellWidth != cellWidth ||
+      !identical(oldDelegate.playhead, playhead) ||
+      !identical(oldDelegate.isFrameCached, isFrameCached);
 }
 
 /// SE rows under a track: one per SE slot, S1ﾂｷS2窶ｦ like the sheet columns.

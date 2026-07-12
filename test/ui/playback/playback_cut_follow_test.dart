@@ -17,30 +17,41 @@ void main() {
     return (s, track.cuts[0].id, track.cuts[1].id);
   }
 
-  testWidgets('crossing a cut boundary switches the active cut and never '
-      'touches undo', (tester) async {
+  testWidgets('crossing a cut boundary switches the active cut QUIETLY and '
+      'never touches undo — the stop notify catches the UI up', (
+    tester,
+  ) async {
     final (s, first, second) = twoCutSession();
     addTearDown(s.dispose);
     final firstDuration = s.cutById(first)!.duration;
+    var notifies = 0;
+    s.addListener(() => notifies += 1);
 
     s.playback.play(scope: PlaybackScope.allCuts);
     expect(s.activeCutId, first);
+    notifies = 0;
 
     // Forward across the boundary → the second cut becomes active and the
-    // playhead lands on the playing local frame.
+    // playhead lands on the playing local frame. NO session notify: a
+    // boundary tick must not rebuild the visible panels mid-playback
+    // (R12-B — that stutter was the cut-transition lag).
     s.playback.seekToGlobalFrame(firstDuration + 2);
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 2);
+    expect(notifies, 0, reason: 'the mid-playback follow is quiet');
 
     // Backward across the boundary follows too (loop wrap, ruler seeks).
     s.playback.seekToGlobalFrame(0);
     expect(s.activeCutId, first);
+    expect(notifies, 0);
 
-    // Stopping stays on the cut playback reached (Premiere behavior).
+    // Stopping stays on the cut playback reached (Premiere behavior) and
+    // fires the ONE notify that catches every activeCut consumer up.
     s.playback.seekToGlobalFrame(firstDuration + 3);
     s.playback.stop();
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 3);
+    expect(notifies, greaterThan(0), reason: 'stop catches the UI up');
 
     // The whole ride left history untouched: the next undo is still the
     // fixture's createCut, nothing selection-shaped sits on top of it.

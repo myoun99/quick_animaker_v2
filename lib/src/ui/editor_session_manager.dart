@@ -225,14 +225,20 @@ class EditorSessionManager extends ChangeNotifier {
       selectCut(lastPosition.cutId);
     }
     selectFrameIndex(_clampedFrameIndex(lastPosition.localFrameIndex));
+    // The mid-playback cut follow is QUIET (R12-B) — this is the one
+    // session notify that catches every activeCut consumer up with where
+    // playback landed.
+    notifyListeners();
   }
 
   /// Premiere-style follow: while playback crosses cut boundaries the
-  /// ACTIVE cut tracks the playing cut (the timesheet and timeline hosts
-  /// show the playing cut's data live) and stays there when playback
+  /// ACTIVE cut tracks the playing cut and stays there when playback
   /// stops. Playback-only selection state — no command runs, the undo
-  /// stack never sees it. Warming is skipped too: the playlist was warmed
-  /// at play start and a boundary tick must stay cheap.
+  /// stack never sees it. QUIET by design (R12-B): no session notify and
+  /// no warming — a boundary tick must not rebuild the visible panels
+  /// mid-playback (that stutter was audible as the cut-transition lag).
+  /// Live position display rides the playback listenables; activeCut
+  /// consumers catch up on the stop notify.
   void _followPlaybackCut() {
     if (playback.globalFrameIndexListenable.value == null) {
       return;
@@ -244,7 +250,6 @@ class EditorSessionManager extends ChangeNotifier {
     _editingSession.setActiveCutId(position.cutId);
     _copiedFrame = null;
     _rebuildActiveCutControllers(preferredFrameIndex: position.localFrameIndex);
-    notifyListeners();
   }
 
   void _onPlaybackPlaylistWarmRequested(
@@ -2675,9 +2680,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Starts a storyboard edge drag on [cutId]'s [edge]. The END edge trims
   /// the duration (growth eats the following gap first); the START edge
-  /// SLIDES the cut by adjusting its leading gap — the way empty space
-  /// between cuts is created and consumed. Any cut's start may slide,
-  /// the first one included.
+  /// TRIMS from the front (R12-B, timeline start-comma parity): the end
+  /// stays put, the length changes, and the start's movement adjusts the
+  /// leading gaps. Any cut's start may trim, the first one included.
   bool beginCutEdgeDrag({
     required CutId cutId,
     required TimelineBlockEdge edge,
@@ -2706,9 +2711,9 @@ class EditorSessionManager extends ChangeNotifier {
 
     _cutTrimBeforeDurations = {entry.cutId: entry.cut.duration};
     if (edge == TimelineBlockEdge.start) {
-      // The start grip slides like the block body (R12-⑦): a leftward
-      // slide cascades through the PREDECESSORS' gaps, so the whole
-      // track's order and gaps join the drag snapshot.
+      // The start TRIM's leftward growth cascades through the
+      // PREDECESSORS' gaps, so the whole track's order and gaps join the
+      // drag snapshot.
       final trackEntries = [
         for (final candidate in layout)
           if (candidate.trackId == entry.trackId) candidate,
@@ -2738,10 +2743,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// leading gap first (that cut holds still until the gap is spent, then
   /// ripples). Shrinking follows the timeline's block language (R10-⑦):
   /// only an ATTACHED next cut rides the boundary — a detached one holds
-  /// its global position (its gap grows by the shrink). START edge: the
-  /// cut SLIDES exactly like the block body (R12-⑦) — rightward opens its
-  /// gap, leftward consumes it and then pushes the predecessors' gaps in
-  /// cascade, clamped only at frame 0.
+  /// its global position (its gap grows by the shrink). START edge: a
+  /// TRIM (R12-B, timeline start-comma parity) — the END stays put and
+  /// the LENGTH changes; leftward growth consumes its own gap then pushes
+  /// the predecessors (cascade, frame-0 clamp), rightward shrink opens
+  /// its gap (length clamps at 1).
   void updateCutEdgeDrag(int cumulativeDelta) {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
@@ -2774,20 +2780,32 @@ class EditorSessionManager extends ChangeNotifier {
             : (baseGap > 0 ? baseGap - growth : 0);
       }
     } else {
-      durations[cutId] = beforeDurations[cutId]!;
-      // The start grip slides the cut exactly like the block body slide
-      // (R12-⑦, timeline push language): rightward opens its gap (the
-      // follower's gap absorbs — attached followers ride), leftward
-      // consumes its own gap and then PUSHES the predecessors' gaps in
-      // cascade, clamped only at frame 0 — no wall at contact.
-      gaps.addAll(
-        _cutMoveGaps(
-          order: _cutTrimOrder!,
-          beforeGaps: beforeGaps,
-          index: _cutTrimIndex!,
-          delta: cumulativeDelta,
-        ),
-      );
+      // START edge = a TRIM (R12-B, timeline start-comma parity): the
+      // cut's END stays put and its LENGTH changes. Rightward movement
+      // shrinks the cut (its own gap grows; length clamps at 1 frame);
+      // leftward movement grows it — its own gap absorbs first, then the
+      // predecessors get pushed left through theirs (cascade, frame-0
+      // clamp). Followers never move: the start's movement and the length
+      // change cancel exactly at the end boundary.
+      final beforeDuration = beforeDurations[cutId]!;
+      if (cumulativeDelta >= 0) {
+        final moved = math.min(cumulativeDelta, beforeDuration - 1);
+        durations[cutId] = beforeDuration - moved;
+        gaps[cutId] = beforeGaps[cutId]! + moved;
+      } else {
+        final order = _cutTrimOrder!;
+        var remaining = -cumulativeDelta;
+        for (var i = _cutTrimIndex!; i >= 0 && remaining > 0; i -= 1) {
+          final id = order[i];
+          final take = math.min(remaining, beforeGaps[id]!);
+          if (take > 0) {
+            gaps[id] = beforeGaps[id]! - take;
+            remaining -= take;
+          }
+        }
+        final moved = (-cumulativeDelta) - remaining;
+        durations[cutId] = beforeDuration + moved;
+      }
     }
 
     final changed =
