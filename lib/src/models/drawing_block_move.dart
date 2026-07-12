@@ -108,6 +108,10 @@ DrawingBlockMovePlan? planDrawingBlockMove({
     // ends up RIGHT of where it started on its own layer (a leftward drag
     // must not teleport it forward).
     leftwardCap: sameLayer ? blockStartIndex : math.max(0, blockStartIndex),
+    // Same-layer slides BULLDOZE (R12-B): the moved block may never pass
+    // a neighbour — everything in its path gets shoved along, order
+    // preserved. Cross-layer landings keep the plain overlap rules.
+    sameLayerStart: sameLayer ? blockStartIndex : null,
   );
   if (resolved == null) {
     return null;
@@ -181,10 +185,16 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
 
 /// Where the moved block lands and which blocks it shoves aside.
 ///
-/// Rightward ([pushRight]): the landing is exactly [requestedStart]; every
-/// block ahead that the landing (or a pushed neighbour) touches shifts to
-/// later frames, gaps between them absorbing first — the frame axis is
-/// endless, so this always succeeds.
+/// Same-layer slides ([sameLayerStart] non-null) BULLDOZE: the moved block
+/// never passes a neighbour — every block originally on its travel side
+/// that its span reaches (directly or through the chain) is shoved along,
+/// relative order preserved. Cross-layer landings ([sameLayerStart] null)
+/// keep the plain overlap rules: only blocks the landing actually touches
+/// move.
+///
+/// Rightward ([pushRight]): the landing is exactly [requestedStart]; the
+/// shoved blocks shift to later frames, gaps between them absorbing first
+/// — the frame axis is endless, so this always succeeds.
 ///
 /// Leftward: blocks ahead are pushed toward frame 0, each one's own gap
 /// absorbing before the wave reaches the next. When the chain hits the
@@ -198,13 +208,20 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
   required int movedLength,
   required bool pushRight,
   required int leftwardCap,
+  required int? sameLayerStart,
 }) {
   if (pushRight) {
     final destStart = math.max(0, requestedStart);
     final pushes = <_Push>[];
     var frontier = destStart + movedLength;
     for (final block in others) {
-      if (block.endIndexExclusive <= destStart) {
+      // No-passing rule (same layer): every block originally BEHIND the
+      // moved one rides the frontier — a passed block would otherwise be
+      // left sitting before the landing. Cross-layer: touch-only.
+      final participates = sameLayerStart != null
+          ? block.startIndex > sameLayerStart
+          : block.endIndexExclusive > destStart;
+      if (!participates) {
         continue;
       }
       final newStart = math.max(block.startIndex, frontier);
@@ -225,7 +242,14 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
     final pushes = <_Push>[];
     var frontier = destStart;
     for (final block in others.reversed) {
-      if (block.startIndex >= destStart + movedLength) {
+      if (sameLayerStart != null) {
+        // No-passing rule (same layer): blocks originally AHEAD of the
+        // moved one never move on a leftward slide; everything originally
+        // before it may be bulldozed toward the wall.
+        if (block.startIndex > sameLayerStart) {
+          continue;
+        }
+      } else if (block.startIndex >= destStart + movedLength) {
         continue;
       }
       final newStart = math.min(block.startIndex, frontier - block.length);

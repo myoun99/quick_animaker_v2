@@ -147,6 +147,58 @@ void main() {
       expect(clamped.sourceAfter.timeline[2]!.frameId, const FrameId('a-f2'));
     });
 
+    test('a slide never PASSES another block — the moved block bulldozes, '
+        'it does not slot into gaps beyond (R12-B)', () {
+      // Rightward: dragging far right does NOT jump over the neighbour
+      // into the empty space beyond — the neighbour rides the frontier.
+      final rightward = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          5: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+      final right = planDrawingBlockMove(
+        source: rightward,
+        target: rightward,
+        blockStartIndex: 0,
+        frameDelta: 8,
+      );
+      expect(right, isNotNull);
+      expect(right!.destinationStartIndex, 8);
+      expect(right.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
+      expect(
+        right.sourceAfter.timeline[10]!.frameId,
+        const FrameId('a-f2'),
+        reason: 'the passed neighbour is carried BEHIND the moved block',
+      );
+      expect(right.sourceAfter.timeline.length, 2);
+
+      // Leftward: dragging far left does NOT slot into the space before
+      // the leading block — the leading block is bulldozed to the wall
+      // and the moved block rests flush behind it.
+      final leftward = layerWith(
+        'a',
+        {
+          4: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          8: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+      final left = planDrawingBlockMove(
+        source: leftward,
+        target: leftward,
+        blockStartIndex: 8,
+        frameDelta: -7,
+      );
+      expect(left, isNotNull);
+      expect(left!.destinationStartIndex, 2);
+      expect(left.sourceAfter.timeline[0]!.frameId, const FrameId('a-f1'));
+      expect(left.sourceAfter.timeline[2]!.frameId, const FrameId('a-f2'));
+      expect(left.sourceAfter.timeline.length, 2);
+    });
+
     test('a linked cel may slide (frames stay put), but a mark blocks the '
         'landing start only', () {
       final layer = layerWith(
