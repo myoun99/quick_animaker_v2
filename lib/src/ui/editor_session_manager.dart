@@ -2836,6 +2836,140 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
   }
 
+  // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
+
+  List<CutId>? _cutMoveOrder;
+  Map<CutId, int>? _cutMoveBeforeGaps;
+  int? _cutMoveIndex;
+
+  /// Starts a whole-block move drag on [cutId]: the cut SLIDES along the
+  /// frame axis by adjusting gaps, and pushes neighbors edge-style on
+  /// contact — rightward pushes the followers (their gap absorbs first),
+  /// leftward pushes the predecessors (each one's own gap absorbs before
+  /// the wave reaches the next), clamped when the chain hits frame 0.
+  bool beginCutMoveDrag(CutId cutId) {
+    final project = _repository.requireProject();
+    for (final track in project.tracks) {
+      final index = track.cuts.indexWhere((cut) => cut.id == cutId);
+      if (index < 0) {
+        continue;
+      }
+      _cutMoveOrder = [for (final cut in track.cuts) cut.id];
+      _cutMoveBeforeGaps = {
+        for (final cut in track.cuts) cut.id: cut.leadingGapFrames,
+      };
+      _cutMoveIndex = index;
+      return true;
+    }
+    return false;
+  }
+
+  /// Applies the move's cumulative frame delta as a live preview on
+  /// [dragPreview] (the repository is NOT touched).
+  void updateCutMoveDrag(int cumulativeDelta) {
+    final order = _cutMoveOrder;
+    final beforeGaps = _cutMoveBeforeGaps;
+    final index = _cutMoveIndex;
+    if (order == null || beforeGaps == null || index == null) {
+      return;
+    }
+    final gaps = _cutMoveGaps(
+      order: order,
+      beforeGaps: beforeGaps,
+      index: index,
+      delta: cumulativeDelta,
+    );
+    final changed = gaps.entries.any(
+      (entry) => beforeGaps[entry.key] != entry.value,
+    );
+    dragPreview.value = changed
+        ? CutTrimDragPreview(previewDurations: const {}, previewGaps: gaps)
+        : null;
+  }
+
+  /// The previewed gap map for a move by [delta] (pure — shared by update
+  /// and tests). Rightward: the moved cut's gap grows, the follower's gap
+  /// absorbs (followers hold still) until spent, then the rest pushes.
+  /// Leftward: the moved cut's own gap absorbs first, then each
+  /// predecessor's in turn (pushing them left), clamped at the chain's
+  /// total slack; the follower's gap grows by the applied movement so
+  /// everything after holds still.
+  static Map<CutId, int> _cutMoveGaps({
+    required List<CutId> order,
+    required Map<CutId, int> beforeGaps,
+    required int index,
+    required int delta,
+  }) {
+    final gaps = <CutId, int>{};
+    if (delta > 0) {
+      gaps[order[index]] = beforeGaps[order[index]]! + delta;
+      if (index + 1 < order.length) {
+        final nextId = order[index + 1];
+        gaps[nextId] = math.max(0, beforeGaps[nextId]! - delta);
+      }
+    } else if (delta < 0) {
+      var remaining = -delta;
+      for (var i = index; i >= 0 && remaining > 0; i -= 1) {
+        final id = order[i];
+        final take = math.min(remaining, beforeGaps[id]!);
+        if (take > 0) {
+          gaps[id] = beforeGaps[id]! - take;
+          remaining -= take;
+        }
+      }
+      final applied = (-delta) - remaining;
+      if (index + 1 < order.length && applied > 0) {
+        final nextId = order[index + 1];
+        gaps[nextId] = beforeGaps[nextId]! + applied;
+      }
+    }
+    return gaps;
+  }
+
+  /// Commits the move as a single undo step (no-op when nothing changed).
+  /// Durations are untouched, so no fade re-anchor is needed.
+  void endCutMoveDrag() {
+    final beforeGaps = _cutMoveBeforeGaps;
+    final preview = dragPreview.value;
+    _cutMoveOrder = null;
+    _cutMoveBeforeGaps = null;
+    _cutMoveIndex = null;
+    dragPreview.value = null;
+    if (beforeGaps == null) {
+      return;
+    }
+    final previewGaps = preview is CutTrimDragPreview
+        ? preview.previewGaps
+        : const <CutId, int>{};
+    final afterGaps = {
+      for (final id in beforeGaps.keys) id: previewGaps[id] ?? beforeGaps[id]!,
+    };
+    final changed = afterGaps.entries.any(
+      (entry) => beforeGaps[entry.key] != entry.value,
+    );
+    if (!changed) {
+      return;
+    }
+    _cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: const {},
+      afterDurations: const {},
+      beforeGaps: beforeGaps,
+      afterGaps: afterGaps,
+      beforeTransforms: const {},
+      afterTransforms: const {},
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Drops an in-flight move preview without touching history.
+  void cancelCutMoveDrag() {
+    _cutMoveOrder = null;
+    _cutMoveBeforeGaps = null;
+    _cutMoveIndex = null;
+    dragPreview.value = null;
+  }
+
   /// Drops an in-flight drag preview without touching history (the
   /// repository was never written during the drag).
   void cancelExposureEdgeDrag() {
