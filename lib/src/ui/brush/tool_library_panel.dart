@@ -51,6 +51,13 @@ class ToolLibraryPanel extends StatelessWidget {
             ),
           ],
         );
+      case CanvasTool.move:
+        return const _ToolNote(
+          keyValue: 'tool-library-move',
+          note:
+              'Move drags the selected region\'s content.\n'
+              'Make a selection with the marquee or lasso first.',
+        );
       case CanvasTool.eyedropper:
         return const _ToolNote(
           keyValue: 'tool-library-eyedropper',

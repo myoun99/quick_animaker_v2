@@ -37,6 +37,7 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       HistoryManager history,
       CanvasSelectionCommands commands,
+      Future<void> Function(CanvasTool tool) setTool,
     })
   >
   pumpSelectionPanel(
@@ -54,22 +55,31 @@ void main() {
       sourceDabs: [dab(30, 30), dab(45, 45), dab(60, 60)],
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            historyManager: history,
-            brushToolState: BrushToolState.defaults.copyWith(tool: tool),
-            selectionCommands: commands,
+    Future<void> pumpWith(CanvasTool tool) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              historyManager: history,
+              brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+              selectionCommands: commands,
+            ),
           ),
         ),
-      ),
+      );
+      await tester.pump();
+    }
+
+    await pumpWith(tool);
+    return (
+      coordinator: coordinator,
+      history: history,
+      commands: commands,
+      setTool: pumpWith,
     );
-    await tester.pump();
-    return (coordinator: coordinator, history: history, commands: commands);
   }
 
   List<BrushDab> strokeDabs(BrushFrameEditingCoordinator coordinator) =>
@@ -98,9 +108,8 @@ void main() {
     expect(find.byType(CanvasSelectionLayer), findsOneWidget);
   });
 
-  testWidgets('marquee selects, move commits one undoable rewrite', (
-    tester,
-  ) async {
+  testWidgets('marquee selects; the MOVE tool commits one undoable rewrite '
+      '(R11-⑧: selection ≠ move)', (tester) async {
     final env = await pumpSelectionPanel(tester);
 
     // Marquee around the whole stroke (viewport is identity: local ==
@@ -108,7 +117,15 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
 
-    // Drag INSIDE the selection: move by (+10, +5).
+    // A MARQUEE-tool drag inside the region draws a NEW region — content
+    // never moves on the selection tools.
+    await dragOnLayer(tester, const Offset(25, 25), const Offset(68, 68));
+    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
+    expect(env.commands.hasSelection, isTrue);
+
+    // The MOVE tool drags the content (the selection survives the tool
+    // switch); drag by (+10, +5).
+    await env.setTool(CanvasTool.move);
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
 
     expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
@@ -121,6 +138,36 @@ void main() {
     env.history.redo();
     await tester.pump();
     expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
+
+    // Outside the region the move tool does nothing.
+    await dragOnLayer(tester, const Offset(150, 150), const Offset(170, 170));
+    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
+  });
+
+  testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    expect(env.commands.hasSelection, isTrue);
+    expect(env.history.canUndo, isTrue);
+
+    env.history.undo();
+    await tester.pump();
+    expect(env.commands.hasSelection, isFalse);
+
+    env.history.redo();
+    await tester.pump();
+    expect(env.commands.hasSelection, isTrue);
+
+    // Ctrl+D is undoable too.
+    env.commands.deselect();
+    await tester.pump();
+    expect(env.commands.hasSelection, isFalse);
+    env.history.undo();
+    await tester.pump();
+    expect(env.commands.hasSelection, isTrue);
   });
 
   testWidgets('a marquee missing the stroke selects nothing movable', (
@@ -131,10 +178,9 @@ void main() {
     await dragOnLayer(tester, const Offset(100, 100), const Offset(140, 140));
     expect(env.commands.hasSelection, isTrue);
 
-    // Dragging from inside the empty region starts a NEW marquee (nothing
-    // selected there), never a move.
+    // The move tool grabs nothing there (no commands joined the region).
+    await env.setTool(CanvasTool.move);
     await dragOnLayer(tester, const Offset(110, 110), const Offset(120, 120));
-    expect(env.history.canUndo, isFalse);
     expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
   });
 
@@ -180,9 +226,11 @@ void main() {
       await tester.pump();
       expect(env.commands.transformActive, isTrue);
 
-      // Drag inside the box: rides the session (nothing committed yet).
+      // Drag inside the box: rides the session (nothing committed yet —
+      // the history holds only the marquee's Select entry).
+      final undoDepthBefore = env.history.undoCount;
       await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 48));
-      expect(env.history.canUndo, isFalse);
+      expect(env.history.undoCount, undoDepthBefore);
       expect(
         strokeDabs(env.coordinator).first.center,
         CanvasPoint(x: 30, y: 30),

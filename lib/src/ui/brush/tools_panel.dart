@@ -81,6 +81,14 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.lasso,
             onPressed: () => onToolChanged(CanvasTool.lasso),
           ),
+          const SizedBox(height: 4),
+          _ToolButton(
+            keyValue: 'tool-move-button',
+            tooltip: 'Move Tool',
+            icon: Icons.open_with,
+            selected: tool == CanvasTool.move,
+            onPressed: () => onToolChanged(CanvasTool.move),
+          ),
         ],
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../services/canvas_selection.dart';
+
 /// The imperative selection channel (P9): the app-level shortcuts
 /// (Ctrl+D deselect, arrow nudges) call in; the mounted selection layer
 /// binds the handlers. Unbound calls are no-ops and [hasSelection] is
@@ -12,6 +14,7 @@ class CanvasSelectionCommands {
   VoidCallback? _beginTransform;
   VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
+  void Function(CanvasSelectionShape? shape)? _applyShape;
 
   void bind({
     required bool Function() hasSelection,
@@ -21,6 +24,7 @@ class CanvasSelectionCommands {
     VoidCallback? beginTransform,
     VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
+    void Function(CanvasSelectionShape? shape)? applyShape,
   }) {
     _hasSelection = hasSelection;
     _nudge = nudge;
@@ -29,6 +33,7 @@ class CanvasSelectionCommands {
     _beginTransform = beginTransform;
     _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
+    _applyShape = applyShape;
   }
 
   void unbind() {
@@ -39,7 +44,13 @@ class CanvasSelectionCommands {
     _beginTransform = null;
     _commitTransform = null;
     _cancelTransform = null;
+    _applyShape = null;
   }
+
+  /// Pushes a committed region into the mounted layer — the
+  /// selection-shape history command's execute/undo path (R11-⑧). A no-op
+  /// while no selection layer is mounted (view state simply skips).
+  void applyShape(CanvasSelectionShape? shape) => _applyShape?.call(shape);
 
   /// Whether a live selection exists — arrow keys NUDGE instead of
   /// flipping frames while true (Photoshop arbitration).

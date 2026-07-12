@@ -46,6 +46,11 @@ class ToolSettingsPanel extends StatelessWidget {
               'Selection modes (add / subtract) arrive with the selection '
               'tool rework.',
         );
+      case CanvasTool.move:
+        return const _SettingsNote(
+          keyValue: 'tool-settings-move',
+          note: 'Move drags the selected content; arrows nudge it.',
+        );
     }
   }
 }
