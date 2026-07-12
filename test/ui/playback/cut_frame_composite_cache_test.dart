@@ -122,6 +122,48 @@ void main() {
     });
   });
 
+  testWidgets('an interrupted composite caches nothing and a quiet retry '
+      'completes (R13-3)', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+
+      final aborted = await cache.prepareCompositeInterruptible(
+        cut: cut(),
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+        shouldAbort: () => true,
+      );
+      expect(aborted, isNull);
+      expect(
+        cache.validCompositeOrNull(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.full,
+        ),
+        isNull,
+        reason: 'an abandoned build must leave no cache entry behind',
+      );
+
+      final completed = await cache.prepareCompositeInterruptible(
+        cut: cut(),
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+        shouldAbort: () => false,
+      );
+      expect(completed, isNotNull);
+      expect(
+        cache.validCompositeOrNull(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.full,
+        ),
+        isNotNull,
+      );
+      cache.dispose();
+    });
+  });
+
   testWidgets('layer opacity change invalidates without any sink event', (
     tester,
   ) async {

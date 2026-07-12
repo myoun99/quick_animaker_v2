@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -151,6 +152,14 @@ class EditorSessionManager extends ChangeNotifier {
       PlaybackPrerenderScheduler(
         composites: cutFrameCompositeCache,
         resolveCut: cutById,
+        // Widget tests: zero idle delay, like before R13-3 — the 400ms
+        // quiet-window polls otherwise leave a pending gate timer at
+        // teardown (the session's tearDown dispose runs AFTER the
+        // binding's timer invariant). The debounce/hold semantics have
+        // their own scheduler unit tests with injected delays.
+        idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
+            ? Duration.zero
+            : const Duration(milliseconds: 400),
         afterFrameCached: () => _playbackCacheBudgetEnforcer.enforce(
           protect: _playbackProtectedRanges(),
         ),
@@ -3422,9 +3431,31 @@ class EditorSessionManager extends ChangeNotifier {
     labProbe('selectFrameIndex(sync)', () {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
+      // A seek is activity (R13-3): rapid frame flipping keeps pushing the
+      // warm window, so composite warming never lands a full-canvas build
+      // in the middle of a flip run.
+      prerenderScheduler.notifyEditActivity();
       _warmActiveCut();
       frameSeekCommitted.value += 1;
     });
+  }
+
+  /// Pen-down → warm stand-down (R13-3): while a stroke is live the
+  /// prerender warmer must not touch the UI/raster threads at all — the
+  /// idle debounce alone resumed warming MID-stroke after 400ms. Latched:
+  /// unbalanced end calls (view resets without an active stroke) are no-ops.
+  bool _brushInputHoldOpen = false;
+
+  void setBrushInputActive(bool active) {
+    if (active == _brushInputHoldOpen) {
+      return;
+    }
+    _brushInputHoldOpen = active;
+    if (active) {
+      prerenderScheduler.beginInputHold();
+    } else {
+      prerenderScheduler.endInputHold();
+    }
   }
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------

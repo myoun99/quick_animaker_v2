@@ -33,7 +33,7 @@ void main() {
       );
       expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
       expect(
-        find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
+        find.byKey(const ValueKey<String>('brush-canvas-view')),
         findsNothing,
       );
     },
@@ -97,11 +97,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-real')),
-      findsOneWidget,
+    // R13-2: the view's key is STABLE ('brush-canvas-view'); the edited cel
+    // is the widget's frameId, not the key.
+    final view = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
     );
+    expect(view.frameId, const FrameId('frame-real'));
     expect(
       find.byKey(const ValueKey<String>('main-canvas-brush-host-blank-canvas')),
       findsNothing,
@@ -132,8 +133,12 @@ void main() {
       expect(find.byType(BrushCanvasPanel), findsOneWidget);
       expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
-        findsOneWidget,
+        tester
+            .widget<InteractiveBrushEditCanvasView>(
+              find.byType(InteractiveBrushEditCanvasView),
+            )
+            .frameId,
+        frameKeys.first.frameId,
       );
       expect(
         find.byKey(const ValueKey<String>('brush-frame-1-button')),
@@ -177,12 +182,12 @@ void main() {
 
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-real')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
-      findsNothing,
+      tester
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .frameId,
+      const FrameId('frame-real'),
     );
   });
 
@@ -264,9 +269,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
-      findsOneWidget,
+    InteractiveBrushEditCanvasView view() =>
+        tester.widget<InteractiveBrushEditCanvasView>(
+          find.byType(InteractiveBrushEditCanvasView),
+        );
+    expect(view().frameId, const FrameId('frame-a'));
+    final elementBefore = tester.element(
+      find.byType(InteractiveBrushEditCanvasView),
     );
 
     await tester.pumpWidget(
@@ -280,13 +289,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(view().frameId, const FrameId('frame-b'));
+    // R13-2: the stable key keeps the ELEMENT alive across cel flips — the
+    // view resets in place instead of remounting (the flip hitch).
     expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-b')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
-      findsNothing,
+      identical(
+        tester.element(find.byType(InteractiveBrushEditCanvasView)),
+        elementBefore,
+      ),
+      isTrue,
+      reason: 'cel changes must not remount the interactive view',
     );
 
     await tester.pumpWidget(
@@ -300,9 +312,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('brush-canvas-frame-a')),
-      findsOneWidget,
-    );
+    expect(view().frameId, const FrameId('frame-a'));
   });
 }

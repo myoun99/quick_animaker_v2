@@ -89,11 +89,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return ListenableBuilder(
       // The session subscription lives HERE now (HomePage no longer
       // setStates the world). Committed seeks retarget the editing stack
-      // through frameSeekCommitted — deliberately NOT the frame cursor,
-      // whose per-move scrub firehose must never rebuild the brush host.
+      // through the _FrameRetargetScope below — deliberately NOT the frame
+      // cursor, whose per-move scrub firehose must never rebuild the brush
+      // host — and only when the playhead actually changed frames (R13-3).
       listenable: Listenable.merge([
         session,
-        session.frameSeekCommitted,
         // Onion-skin toggles/pegs re-plan the underlay ghosts (P2).
         session.onionSkinSettings,
         widget.brushToolState,
@@ -102,9 +102,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         ?widget.expandedLaneLayerIds,
       ]),
       builder: (context, _) {
-        final isCameraLayerActive = session.isCameraLayerActive;
-        final showCameraOverlay =
-            widget.cameraViewEnabled.value || isCameraLayerActive;
         // Playback swaps only the viewport CONTENT (via the panel's
         // contentOverride), so the panel shell — zoom buttons, panbars —
         // keeps working while playing. Listen to enter/leave ONLY:
@@ -119,13 +116,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             return ValueListenableBuilder<bool>(
               valueListenable: session.frameScrubActive,
               builder: (context, _, _) {
-                return labProbe(
-                  'canvasAreaBuild',
-                  () => _buildInteractiveCanvas(
-                    session,
-                    isCameraLayerActive: isCameraLayerActive,
-                    showCameraOverlay: showCameraOverlay,
-                  ),
+                return _FrameRetargetScope(
+                  session: session,
+                  builder: (context) {
+                    // Derived HERE (not captured above) so a seek-driven
+                    // rebuild re-reads them at the new playhead.
+                    final isCameraLayerActive = session.isCameraLayerActive;
+                    final showCameraOverlay =
+                        widget.cameraViewEnabled.value || isCameraLayerActive;
+                    return labProbe(
+                      'canvasAreaBuild',
+                      () => _buildInteractiveCanvas(
+                        session,
+                        isCameraLayerActive: isCameraLayerActive,
+                        showCameraOverlay: showCameraOverlay,
+                      ),
+                    );
+                  },
                 );
               },
             );
@@ -238,6 +245,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           fitFocusRect: fitFocusRect,
           viewCommands: widget.canvasViewCommands,
           selectionCommands: widget.canvasSelectionCommands,
+          // R13-3: a live stroke holds the prerender warmer — composite
+          // warming never shares the UI/raster threads with drawing.
+          onStrokeInputActiveChanged: session.setBrushInputActive,
           // P5 eyedropper: sample the VISIBLE composite ("pick what you
           // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
           // armed until the user changes tools, Alt-picks keep the
@@ -498,4 +508,58 @@ class _CutFadeWashPainter extends CustomPainter {
       oldDelegate.viewport != viewport ||
       oldDelegate.canvasSize != canvasSize ||
       oldDelegate.color != color;
+}
+
+/// R13-3: committed seeks retarget the editing stack ONLY when the
+/// playhead actually landed on a different frame. The seek signal alone
+/// (same-frame commits, scrub releases in place) measured 30–45ms of pure
+/// widget churn across the panel subtree — swallowed here. Frame content
+/// edits never ride the seek signal (they notify the session/stores), so
+/// an equal frame index proves the canvas inputs did not change.
+class _FrameRetargetScope extends StatefulWidget {
+  const _FrameRetargetScope({required this.session, required this.builder});
+
+  final EditorSessionManager session;
+  final WidgetBuilder builder;
+
+  @override
+  State<_FrameRetargetScope> createState() => _FrameRetargetScopeState();
+}
+
+class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
+  int _builtFrameIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FrameRetargetScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.session, widget.session)) {
+      oldWidget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+      widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+    super.dispose();
+  }
+
+  void _onSeekCommitted() {
+    if (widget.session.currentFrameIndex == _builtFrameIndex) {
+      return;
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _builtFrameIndex = widget.session.currentFrameIndex;
+    return widget.builder(context);
+  }
 }

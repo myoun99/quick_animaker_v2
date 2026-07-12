@@ -137,6 +137,18 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// holds navigation.
   final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
 
+  /// Ink strokes hold the prerender warmer exactly like canvas strokes
+  /// (R13-3) — the sheet's drawing plane commits through the same funnel.
+  void _syncInkWarmHold() {
+    widget.session.setBrushInputActive(_inkStrokeActive.value);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _inkStrokeActive.addListener(_syncInkWarmHold);
+  }
+
   @override
   void didUpdateWidget(covariant TimesheetTabHost oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -149,6 +161,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
   @override
   void dispose() {
+    // Never leak an open warm hold through a mid-stroke teardown.
+    if (_inkStrokeActive.value) {
+      widget.session.setBrushInputActive(false);
+    }
     _inkStrokeActive.dispose();
     super.dispose();
   }

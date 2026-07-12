@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/playback_quality.dart';
+import '../dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
 /// How much of the requested warm range is composited already.
@@ -106,14 +108,67 @@ class PlaybackPrerenderScheduler {
     _lastActivity = DateTime.now();
   }
 
+  /// Open input holds (pen down, drag in flight). While any hold is open
+  /// warming stands down HARD: the idle gate stays closed regardless of
+  /// elapsed time, and an in-flight composite aborts between layers — a
+  /// live stroke never shares the UI/raster threads with opportunistic
+  /// cache warming (R13-3: the commit-timing stutter).
+  int _inputHolds = 0;
+
+  void beginInputHold() {
+    _inputHolds += 1;
+  }
+
+  void endInputHold() {
+    if (_inputHolds > 0) {
+      _inputHolds -= 1;
+    }
+    // The release opens a fresh quiet window: warming resumes idleDelay
+    // after the pen lifts, not the instant it lifts.
+    notifyEditActivity();
+  }
+
+  /// True when warming may touch the UI thread right now.
+  bool _isQuietNow() =>
+      _inputHolds == 0 &&
+      DateTime.now().difference(_lastActivity) >= idleDelay;
+
+  /// Outstanding gate/yield waits, cancellable as a group: [cancel] and
+  /// [dispose] flush them so a parked warm run resumes at once, sees its
+  /// stale generation and exits — no timer outlives the scheduler (widget
+  /// tests assert exactly that at teardown).
+  final Map<Timer, Completer<void>> _pendingWaits = {};
+
+  Future<void> _wait(Duration duration) {
+    final completer = Completer<void>();
+    late final Timer timer;
+    timer = Timer(duration, () {
+      _pendingWaits.remove(timer);
+      completer.complete();
+    });
+    _pendingWaits[timer] = completer;
+    return completer.future;
+  }
+
+  void _flushPendingWaits() {
+    final waits = Map.of(_pendingWaits);
+    _pendingWaits.clear();
+    for (final entry in waits.entries) {
+      entry.key.cancel();
+      entry.value.complete();
+    }
+  }
+
   void cancel() {
     _generation += 1;
     _progress.value = PrerenderProgress.none;
+    _flushPendingWaits();
   }
 
   void dispose() {
     _disposed = true;
     _generation += 1;
+    _flushPendingWaits();
     _progress.dispose();
   }
 
@@ -130,12 +185,17 @@ class PlaybackPrerenderScheduler {
   ) async {
     var cached = 0;
     for (final (cutId, frameIndex) in queue) {
-      await _idleGate(generation);
-      if (_isStale(generation)) {
-        return;
-      }
-      final cut = resolveCut(cutId);
-      if (cut != null) {
+      // Retry loop: an input-interrupted composite is NOT skipped — the
+      // frame waits behind the idle gate and warms when quiet returns.
+      while (true) {
+        await _idleGate(generation);
+        if (_isStale(generation)) {
+          return;
+        }
+        final cut = resolveCut(cutId);
+        if (cut == null) {
+          break;
+        }
         final alreadyValid =
             composites.validCompositeOrNull(
               cut: cut,
@@ -143,22 +203,36 @@ class PlaybackPrerenderScheduler {
               quality: quality,
             ) !=
             null;
-        if (!alreadyValid) {
-          await composites.prepareComposite(
-            cut: cut,
-            frameIndex: frameIndex,
-            quality: quality,
-          );
-          if (_isStale(generation)) {
-            return;
-          }
-          afterFrameCached?.call();
+        if (alreadyValid) {
+          break;
         }
+        final watch = brushLabProfile ? (Stopwatch()..start()) : null;
+        final image = await composites.prepareCompositeInterruptible(
+          cut: cut,
+          frameIndex: frameIndex,
+          quality: quality,
+          shouldAbort: () => _isStale(generation) || !_isQuietNow(),
+        );
+        if (watch != null) {
+          // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
+          print(
+            '[lab-warm] f=$frameIndex ${watch.elapsedMilliseconds}ms'
+            '${image == null ? ' INTERRUPTED' : ''}',
+          );
+        }
+        if (_isStale(generation)) {
+          return;
+        }
+        if (image == null) {
+          continue;
+        }
+        afterFrameCached?.call();
+        break;
       }
       cached += 1;
       _progress.value = PrerenderProgress(cached: cached, total: queue.length);
       // Yield so interactive work interleaves between frames.
-      await Future<void>.delayed(Duration.zero);
+      await _wait(Duration.zero);
       if (_isStale(generation)) {
         return;
       }
@@ -169,13 +243,16 @@ class PlaybackPrerenderScheduler {
 
   Future<void> _idleGate(int generation) async {
     while (!_isStale(generation)) {
-      final sinceActivity = DateTime.now().difference(_lastActivity);
-      if (sinceActivity >= idleDelay) {
+      if (_isQuietNow()) {
         return;
       }
-      final remaining = idleDelay - sinceActivity;
-      await Future<void>.delayed(
-        remaining < const Duration(milliseconds: 50)
+      final remaining =
+          idleDelay - DateTime.now().difference(_lastActivity);
+      // With a hold open (or the window already elapsed but held) poll on
+      // the 50ms heartbeat; otherwise sleep out the remaining window.
+      await _wait(
+        remaining > Duration.zero &&
+                remaining < const Duration(milliseconds: 50)
             ? remaining
             : const Duration(milliseconds: 50),
       );
