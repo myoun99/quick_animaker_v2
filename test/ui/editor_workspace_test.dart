@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_panel.dart';
+import 'package:quick_animaker_v2/src/ui/media/media_browser_panel.dart';
 import 'package:quick_animaker_v2/src/ui/editor_canvas_area.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
@@ -16,7 +16,7 @@ const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
 const _brushesTabKey = ValueKey<String>('panel-tab-brushes');
 const _brushSettingsTabKey = ValueKey<String>('panel-tab-brush-settings');
-const _cameraTabKey = ValueKey<String>('panel-tab-camera');
+const _mediaTabKey = ValueKey<String>('panel-tab-media');
 const _timelineTabKey = ValueKey<String>('timeline-mode-timeline-button');
 const _storyboardTabKey = ValueKey<String>('timeline-mode-storyboard-button');
 const _timesheetTabKey = ValueKey<String>('panel-tab-timesheet');
@@ -27,11 +27,11 @@ Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
   await tester.pumpAndSettle();
   // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
-  // every glyph 12px wide — the three palette tabs need ~480px, far past
+  // every glyph 12px wide 窶・the three palette tabs need ~480px, far past
   // the default 260px dock. Widen the dock so every tab (and its drop
   // target) is hittable.
-  // The R10-⑩ drag grips widen every tab a little further still (but
-  // stay below the dock's max-width clamp — the splitter test measures
+  // The R10-竭ｩ drag grips widen every tab a little further still (but
+  // stay below the dock's max-width clamp 窶・the splitter test measures
   // relative shrink from here).
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-left')),
@@ -40,7 +40,7 @@ Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Drags a tab to a target by its GRIP handle (R10-⑩: only the grip
+/// Drags a tab to a target by its GRIP handle (R10-竭ｩ: only the grip
 /// lifts a tab; the rest of the button is a plain tap target). The target
 /// is a CLOSURE evaluated after the lift, because lifting reveals the
 /// section split zones and shifts the strips down.
@@ -52,6 +52,9 @@ Future<void> _dragTab(
   Finder tab,
   Offset Function() target,
 ) async {
+  // Tail tabs (media, onion) can sit past the strip's scroll edge.
+  await tester.ensureVisible(tab);
+  await tester.pumpAndSettle();
   final gesture = await tester.startGesture(tester.getCenter(_tabGrip(tab)));
   await tester.pump(const Duration(milliseconds: 20));
   // Clear the touch slop so the immediate drag wins the gesture arena.
@@ -123,8 +126,10 @@ void main() {
 
       // Lift a palette tab by its grip: the tool edge rails stay hidden
       // (ineligible), while the normal right dock's rail IS revealed.
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
-        tester.getCenter(_tabGrip(find.byKey(_cameraTabKey))),
+        tester.getCenter(_tabGrip(find.byKey(_mediaTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(0, 30));
@@ -146,26 +151,28 @@ void main() {
 
       expect(find.byKey(_brushesTabKey), findsOneWidget);
       expect(find.byKey(_brushSettingsTabKey), findsOneWidget);
-      expect(find.byKey(_cameraTabKey), findsOneWidget);
+      expect(find.byKey(_mediaTabKey), findsOneWidget);
 
       // Only the active tab's panel is built.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(BrushSettingsPanel), findsNothing);
-      expect(find.byType(CameraPanel), findsNothing);
+      expect(find.byType(MediaBrowserPanel), findsNothing);
     });
 
     testWidgets('switching tabs swaps the visible panel', (tester) async {
       await _pumpHome(tester);
 
-      await tester.tap(find.byKey(_cameraTabKey));
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
       await tester.pumpAndSettle();
-      expect(find.byType(CameraPanel), findsOneWidget);
+      await tester.tap(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
 
       await tester.tap(find.byKey(_brushSettingsTabKey));
       await tester.pumpAndSettle();
       expect(find.byType(BrushSettingsPanel), findsOneWidget);
-      expect(find.byType(CameraPanel), findsNothing);
+      expect(find.byType(MediaBrowserPanel), findsNothing);
     });
   });
 
@@ -178,7 +185,7 @@ void main() {
       expect(find.byKey(_canvasTabKey), findsOneWidget);
       expect(find.byType(EditorCanvasArea), findsOneWidget);
 
-      // Locked by default: no drag grip at all (R10-⑩ — only grips
+      // Locked by default: no drag grip at all (R10-竭ｩ 窶・only grips
       // lift), and dragging the tab body does nothing.
       expect(_tabGrip(find.byKey(_canvasTabKey)), findsNothing);
       final gesture = await tester.startGesture(
@@ -219,7 +226,7 @@ void main() {
   });
 
   group('EditorWorkspace tab drag-docking', () {
-    testWidgets('camera tab re-docks into the bottom strip and back', (
+    testWidgets('media tab re-docks into the bottom strip and back', (
       tester,
     ) async {
       await _pumpHome(tester);
@@ -227,15 +234,15 @@ void main() {
       // Drop on the bottom strip's tail (right of the storyboard tab).
       await _dragTab(
         tester,
-        find.byKey(_cameraTabKey),
+        find.byKey(_mediaTabKey),
         () =>
             tester.getCenter(find.byKey(_storyboardTabKey)) +
             const Offset(150, 0),
       );
 
-      // The camera panel now renders in the bottom region as its active
+      // The media panel now renders in the bottom region as its active
       // tab; the left dock keeps Brushes active.
-      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(TimelinePanel), findsNothing);
       expect(find.byType(BrushPresetPanel), findsOneWidget);
 
@@ -243,18 +250,18 @@ void main() {
       await tester.tap(find.byKey(_timelineTabKey));
       await tester.pumpAndSettle();
       expect(find.byType(TimelinePanel), findsOneWidget);
-      expect(find.byType(CameraPanel), findsNothing);
+      expect(find.byType(MediaBrowserPanel), findsNothing);
 
-      // Drag the camera tab back to the left strip (tail after Settings).
+      // Drag the media tab back to the left strip (tail after Settings).
       await _dragTab(
         tester,
-        find.byKey(_cameraTabKey),
+        find.byKey(_mediaTabKey),
         () =>
             tester.getCenter(find.byKey(_brushSettingsTabKey)) +
             const Offset(60, 0),
       );
 
-      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
@@ -263,11 +270,11 @@ void main() {
     ) async {
       await _pumpHome(tester);
 
-      // Lift the camera tab; the overlay drop zones appear while it is in
+      // Lift the media tab; the overlay drop zones appear while it is in
       // flight. Drop on the left section's lower band.
       await _dragTab(
         tester,
-        find.byKey(_cameraTabKey),
+        find.byKey(_mediaTabKey),
         () => tester.getCenter(
           find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
         ),
@@ -276,7 +283,7 @@ void main() {
       // Panel below panel: Brushes AND Camera visible at once, separated
       // by a draggable section splitter.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('dock-splitter-left-1')),
         findsOneWidget,
@@ -287,7 +294,7 @@ void main() {
       await _pumpHome(tester);
       await _dragTab(
         tester,
-        find.byKey(_cameraTabKey),
+        find.byKey(_mediaTabKey),
         () => tester.getCenter(
           find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
         ),
@@ -322,12 +329,12 @@ void main() {
     testWidgets('frame-axis tabs may dock into the side dock', (tester) async {
       await _pumpHome(tester);
 
-      // Timeline into the left strip: allowed — the shell hosts it at its
+      // Timeline into the left strip: allowed 窶・the shell hosts it at its
       // minimum content size inside scrollers.
       await _dragTab(
         tester,
         find.byKey(_timelineTabKey),
-        () => tester.getCenter(find.byKey(_cameraTabKey)) + const Offset(60, 0),
+        () => tester.getCenter(find.byKey(_mediaTabKey)) + const Offset(60, 0),
       );
 
       // Timeline renders in the side dock while the bottom region falls
@@ -343,24 +350,26 @@ void main() {
       await _pumpHome(tester);
       expect(find.byKey(_rightDropRailKey), findsNothing);
 
-      // Lift the camera tab by its grip: the collapsed right dock shows
+      // Lift the media tab by its grip: the collapsed right dock shows
       // its rail.
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
-        tester.getCenter(_tabGrip(find.byKey(_cameraTabKey))),
+        tester.getCenter(_tabGrip(find.byKey(_mediaTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(0, 30));
       await tester.pump();
       expect(find.byKey(_rightDropRailKey), findsOneWidget);
 
-      // Dropping there docks the camera panel on the right.
+      // Dropping there docks the media panel on the right.
       await gesture.moveTo(tester.getCenter(find.byKey(_rightDropRailKey)));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
       expect(find.byKey(_rightDropRailKey), findsNothing);
-      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('editor-panel-dock-right')),
         findsOneWidget,
@@ -370,20 +379,22 @@ void main() {
     testWidgets('left strip tabs can be drag-reordered', (tester) async {
       await _pumpHome(tester);
 
-      // Drop Brushes on the right half of the Camera tab: order becomes
-      // Settings, Camera, Brushes.
+      // Drop Brushes on the right half of the Media tab: order becomes
+      // Settings, Media, Brushes.
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
       await _dragTab(
         tester,
         find.byKey(_brushesTabKey),
         () => Offset(
-          tester.getTopRight(find.byKey(_cameraTabKey)).dx - 3,
-          tester.getCenter(find.byKey(_cameraTabKey)).dy,
+          tester.getTopRight(find.byKey(_mediaTabKey)).dx - 3,
+          tester.getCenter(find.byKey(_mediaTabKey)).dy,
         ),
       );
 
       expect(
         tester.getCenter(find.byKey(_brushesTabKey)).dx,
-        greaterThan(tester.getCenter(find.byKey(_cameraTabKey)).dx),
+        greaterThan(tester.getCenter(find.byKey(_mediaTabKey)).dx),
       );
       // Selection is untouched by reordering.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
@@ -409,7 +420,7 @@ void main() {
 
       // Reopen from the menu bar's Window menu (the retired Panels menu's
       // keys). Ahem-wide labels can push the button past the strip's
-      // scroll clip in tests — bring it into view first.
+      // scroll clip in tests 窶・bring it into view first.
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('panels-menu-button')),
       );
@@ -497,7 +508,7 @@ void main() {
     ) async {
       await openTimesheet(tester);
 
-      // Paged by default — the toggle offers the continuous view.
+      // Paged by default 窶・the toggle offers the continuous view.
       expect(find.byTooltip('Continuous View'), findsOneWidget);
 
       await tester.tap(

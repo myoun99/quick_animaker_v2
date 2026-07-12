@@ -41,6 +41,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasSelectionCommands,
     this.expandedLaneLayerIds,
+    this.fillOptions,
   });
 
   final EditorSessionManager session;
@@ -69,6 +70,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// drag gizmo shows only while the active layer's Transform lanes are
   /// open, so the handle never blocks ordinary drawing.
   final ValueListenable<Set<LayerId>>? expandedLaneLayerIds;
+
+  /// The fill tool's flood options (Tool Settings knobs, R11-④); null
+  /// keeps the defaults.
+  final ValueListenable<FloodFillOptions>? fillOptions;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -256,6 +261,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             point: point,
             color: color,
             fxBypassedLayerIds: session.fxBypassedLayerIds,
+            options: widget.fillOptions?.value ?? const FloodFillOptions(),
             paperColor: session.projectBackground.argb,
           ),
           // Layers below/above the active one composite around the

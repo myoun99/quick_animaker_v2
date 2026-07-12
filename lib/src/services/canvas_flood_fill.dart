@@ -14,7 +14,7 @@ import '../models/tile_coord.dart';
 import 'canvas_color_sampler.dart';
 import 'cut_frame_composite_plan.dart';
 
-/// P6 fill options (the tool's panel knobs later; sane defaults now).
+/// P6 fill options — the Tool Settings panel's knobs (R11-④).
 class FloodFillOptions {
   const FloodFillOptions({
     this.tolerance = 32,
@@ -31,6 +31,24 @@ class FloodFillOptions {
 
   /// One soft pass over the mask edge.
   final bool antiAlias;
+
+  FloodFillOptions copyWith({int? tolerance, int? expandPx, bool? antiAlias}) {
+    return FloodFillOptions(
+      tolerance: tolerance ?? this.tolerance,
+      expandPx: expandPx ?? this.expandPx,
+      antiAlias: antiAlias ?? this.antiAlias,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is FloodFillOptions &&
+      other.tolerance == tolerance &&
+      other.expandPx == expandPx &&
+      other.antiAlias == antiAlias;
+
+  @override
+  int get hashCode => Object.hash(tolerance, expandPx, antiAlias);
 }
 
 /// The filled region as a coverage mask in canvas coordinates.
