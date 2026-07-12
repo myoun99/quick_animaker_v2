@@ -7,8 +7,10 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../canvas/layer_pose_paint.dart';
+import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
@@ -38,6 +40,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.fadeColor = const Color(0xFF000000),
     this.letterboxColor = const Color(0xFF15191C),
     this.paperColor = const Color(0xFFEDEDED),
+    this.paperBackground,
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
          'Camera mode needs the camera frame size.',
@@ -80,6 +83,19 @@ class PlaybackFramePainter extends CustomPainter {
 
   final Color letterboxColor;
   final Color paperColor;
+
+  /// The project background (R10-⑥); when set it wins over [paperColor]
+  /// and may render the transparent checkerboard.
+  final ProjectBackground? paperBackground;
+
+  void _paintPaper(Canvas canvas, Rect rect) {
+    final background = paperBackground;
+    if (background != null) {
+      paintProjectPaper(canvas, rect, background);
+    } else {
+      canvas.drawRect(rect, Paint()..color = paperColor);
+    }
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -132,7 +148,7 @@ class PlaybackFramePainter extends CustomPainter {
     // the output frame, matching the MP4 bake.
     final resolvedCutPose = cutPose;
     if (pose == null) {
-      canvas.drawRect(canvasRect, Paint()..color = paperColor);
+      _paintPaper(canvas, canvasRect);
     }
     if (resolvedCutPose != null) {
       canvas.save();
@@ -153,7 +169,7 @@ class PlaybackFramePainter extends CustomPainter {
       canvas.scale(pose.zoom);
       canvas.rotate(-pose.rotationDegrees * math.pi / 180);
       canvas.translate(-pose.center.x, -pose.center.y);
-      canvas.drawRect(canvasRect, Paint()..color = paperColor);
+      _paintPaper(canvas, canvasRect);
     }
     final composite = image;
     if (composite != null) {
@@ -204,5 +220,6 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.fadeColor != fadeColor ||
       oldDelegate.letterboxColor != letterboxColor ||
-      oldDelegate.paperColor != paperColor;
+      oldDelegate.paperColor != paperColor ||
+      oldDelegate.paperBackground != paperBackground;
 }

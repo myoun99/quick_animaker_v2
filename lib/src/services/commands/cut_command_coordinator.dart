@@ -19,6 +19,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
 import '../../models/project.dart';
+import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/storyboard_frame_metadata.dart';
 import '../../models/track_id.dart';
@@ -54,6 +55,7 @@ import 'update_layer_name_command.dart';
 import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
+import 'update_project_background_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_storyboard_frame_metadata_command.dart';
 
@@ -466,6 +468,19 @@ class CutCommandCoordinator {
     }
     historyManager.execute(
       UpdateTimesheetInfoCommand(repository: repository, info: info),
+    );
+  }
+
+  /// One undo step; no-op when unchanged (R10-⑥).
+  void setProjectBackground(ProjectBackground background) {
+    if (repository.requireProject().background == background) {
+      return;
+    }
+    historyManager.execute(
+      UpdateProjectBackgroundCommand(
+        repository: repository,
+        background: background,
+      ),
     );
   }
 

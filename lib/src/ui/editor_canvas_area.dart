@@ -238,6 +238,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             surfaceResolver: session.brushSurfaceForLayerFrame,
             point: point,
             fxBypassedLayerIds: session.fxBypassedLayerIds,
+            paperColor: session.projectBackground.argb,
           ),
           onEyedropperPick: (color) {
             final state = widget.brushToolState.value;
@@ -257,6 +258,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             point: point,
             color: color,
             fxBypassedLayerIds: session.fxBypassedLayerIds,
+            paperColor: session.projectBackground.argb,
           ),
           // Layers below/above the active one composite around the
           // interactive view from the layer image cache — this is what makes
@@ -279,6 +281,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     canvasSize: canvasSize,
                     viewport: viewport,
                     paintPaper: cutPoseSample == null,
+                    paperBackground: session.projectBackground,
                   );
                   if (cutPoseSample == null) {
                     return below;
@@ -292,6 +295,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           canvasSize: canvasSize,
                           viewport: viewport,
                           paintPaper: true,
+                          paperBackground: session.projectBackground,
                         ),
                       ),
                       Positioned.fill(
@@ -424,6 +428,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   cutFxEnabledOf: session.isCutFxEnabled,
                   cutPictureVisibleOf: session.isCutPictureVisible,
                   viewport: viewport,
+                  background: session.projectBackground,
                 )
               : isScrubbing
               ? (context, viewport) => CanvasScrubPreview(
@@ -439,6 +444,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       session.activeCutEditingFadeOpacity(frameIndex: frame),
                   fadeColor: cutFadeTargetColor(session.activeCut),
                   viewport: viewport,
+                  paperBackground: session.projectBackground,
                 )
               : null,
         ),

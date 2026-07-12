@@ -59,13 +59,14 @@ Uint8List composeCanvasRasterRgb({
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   Set<LayerId> fxBypassedLayerIds = const {},
+  int paperColor = canvasPaperColor,
 }) {
   final width = cut.canvasSize.width;
   final height = cut.canvasSize.height;
   final raster = Uint8List(width * height * 3);
-  final paperR = (canvasPaperColor >> 16) & 0xFF;
-  final paperG = (canvasPaperColor >> 8) & 0xFF;
-  final paperB = canvasPaperColor & 0xFF;
+  final paperR = (paperColor >> 16) & 0xFF;
+  final paperG = (paperColor >> 8) & 0xFF;
+  final paperB = paperColor & 0xFF;
   for (var i = 0; i < raster.length; i += 3) {
     raster[i] = paperR;
     raster[i + 1] = paperG;
@@ -269,6 +270,7 @@ BrushDab? buildFillDab({
   required int color,
   Set<LayerId> fxBypassedLayerIds = const {},
   FloodFillOptions options = const FloodFillOptions(),
+  int paperColor = canvasPaperColor,
 }) {
   final CanvasSize canvasSize = cut.canvasSize;
   final raster = composeCanvasRasterRgb(
@@ -276,6 +278,7 @@ BrushDab? buildFillDab({
     frameIndex: frameIndex,
     surfaceResolver: surfaceResolver,
     fxBypassedLayerIds: fxBypassedLayerIds,
+    paperColor: paperColor,
   );
   final region = floodFillRegion(
     rgb: raster,

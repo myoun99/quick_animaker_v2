@@ -127,15 +127,16 @@ class ExportFrameRenderer {
     ExportSizeMode mode,
   ) async {
     if (task.isGap) {
-      // A leading-gap frame: nothing plays — solid black, exactly what
-      // playback shows in the gap.
+      // A leading-gap frame: nothing plays — the project background,
+      // exactly what playback shows in the gap (R10-⑥). Transparent
+      // backgrounds bake their opaque fallback (MP4 carries no alpha).
       final size = mode == ExportSizeMode.camera
           ? session.cameraFrameSize
           : task.cut.canvasSize;
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder).drawRect(
         ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
-        ui.Paint()..color = const ui.Color(0xFF000000),
+        ui.Paint()..color = ui.Color(session.projectBackground.argb),
       );
       final picture = recorder.endRecording();
       try {

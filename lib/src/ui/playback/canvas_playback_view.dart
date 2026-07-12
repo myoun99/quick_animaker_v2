@@ -10,6 +10,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/playback_quality.dart';
+import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../storyboard_cut_fade_policy.dart';
 import 'canvas_playback_controller.dart';
@@ -39,6 +40,7 @@ class CanvasPlaybackView extends StatefulWidget {
     this.cutFxEnabledOf,
     this.cutPictureVisibleOf,
     this.viewport,
+    this.background = ProjectBackground.defaultBackground,
   });
 
   final CanvasPlaybackController controller;
@@ -59,6 +61,10 @@ class CanvasPlaybackView extends StatefulWidget {
 
   /// The panel's live pan/zoom (canvas mode); identity when null.
   final CanvasViewport? viewport;
+
+  /// The project background (R10-⑥): the paper AND what playlist gaps
+  /// show (a gap frame is background-only — no picture, no fade).
+  final ProjectBackground background;
 
   @override
   State<CanvasPlaybackView> createState() => _CanvasPlaybackViewState();
@@ -121,9 +127,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
-    // A playlist GAP (empty frames between cuts): the picture is black —
-    // no held frame, and the fade wash at 0 blacks out the whole canvas
-    // rect through the painter's existing fade machinery.
+    // A playlist GAP (empty frames between cuts): background only —
+    // no held frame, no fade wash; the paper paints the project
+    // background (R10-⑥: gaps show it, black by choice not default).
     final inGap =
         widget.controller.isActive &&
         widget.controller.globalFrameIndexListenable.value != null &&
@@ -193,9 +199,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               cutPose: cutPose,
               cutAnchorPoint: cutAnchorPoint,
-              fadeOpacity: inGap
-                  ? 0
-                  : cut != null && position != null && cutFxEnabled
+              paperBackground: widget.background,
+              fadeOpacity:
+                  !inGap && cut != null && position != null && cutFxEnabled
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
               fadeColor: cut != null

@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_background.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
@@ -344,8 +345,10 @@ void main() {
     hidden.composites.dispose();
   });
 
-  testWidgets('a playlist GAP frame renders black (W3c): the picture is '
-      'withheld and the fade wash covers at 0', (tester) async {
+  testWidgets('a playlist GAP frame shows the project background (R10-⑥ '
+      'superseded W3c black): the picture is withheld, no fade wash', (
+    tester,
+  ) async {
     // The single cut preceded by 3 empty frames: all-cuts playback spends
     // global frames 0..2 in the gap.
     final gapCut = cut().copyWith(leadingGapFrames: 3);
@@ -382,7 +385,15 @@ void main() {
     await pumpView(tester, controller: controller, composites: composites);
     expect(controller.position, isNull);
     expect(painterOf(tester).image, isNull, reason: 'gap shows no picture');
-    expect(painterOf(tester).fadeOpacity, 0, reason: 'black wash covers all');
+    expect(
+      painterOf(tester).fadeOpacity,
+      1,
+      reason: 'no wash — the paper (project background) shows through',
+    );
+    expect(
+      painterOf(tester).paperBackground,
+      ProjectBackground.defaultBackground,
+    );
 
     // Crossing into the cut restores the picture and lifts the wash.
     controller.seekToGlobalFrame(3);
