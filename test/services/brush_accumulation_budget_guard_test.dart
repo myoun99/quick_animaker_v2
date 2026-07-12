@@ -1,0 +1,205 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
+import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_command.dart';
+import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
+
+/// R13 accumulation-budget guards: a drawing session must not grow the
+/// heap per cel forever. Three budgets pin that:
+///
+/// 1. the edit-session store retains at most
+///    [BrushHistoryPolicy.retainedSessionLimit] live sessions (LRU);
+/// 2. undo of an EVICTED cel's stroke still lands exactly (the command
+///    replay fallback);
+/// 3. the frame store's preview surfaces stay under their byte budget;
+/// 4. the tile-image cache pins stale-fallback tiles for at most
+///    [BitmapTileImageCache.retainedScopeLimit] scopes.
+void main() {
+  const canvasSize = CanvasSize(width: 512, height: 512);
+
+  BrushFrameKey celKey(int index) => BrushFrameKey(
+    projectId: const ProjectId('guard-project'),
+    trackId: const TrackId('guard-track'),
+    cutId: const CutId('guard-cut'),
+    layerId: const LayerId('guard-layer'),
+    frameId: FrameId('guard-frame-$index'),
+  );
+
+  List<BrushDab> strokeDabs() => [
+    for (var index = 0; index < 6; index += 1)
+      BrushDab(
+        center: CanvasPoint(x: 60.0 + index * 12.0, y: 80),
+        color: 0xFF224488,
+        size: 24,
+        opacity: 1,
+        flow: 1,
+        hardness: 0.8,
+        tipShape: BrushTipShape.round,
+        pressure: 1,
+        sequence: index,
+      ),
+  ];
+
+  (BrushFrameEditingCoordinator, BrushFrameEditSessionStore, HistoryManager)
+  coordinatorFixture() {
+    final sessionStore = BrushFrameEditSessionStore(canvasSize: canvasSize);
+    final coordinator = BrushFrameEditingCoordinator(
+      initialFrameKey: celKey(0),
+      frameStore: BrushFrameStore(),
+      sessionStore: sessionStore,
+      historyPolicy: const BrushHistoryPolicy(
+        userUndoLimit: 24,
+        deferredBakeRatio: 0,
+      ),
+    );
+    return (coordinator, sessionStore, HistoryManager());
+  }
+
+  void commitStroke(
+    BrushFrameEditingCoordinator coordinator,
+    HistoryManager history,
+  ) {
+    history.execute(
+      BrushStrokeHistoryCommand(
+        coordinator: coordinator,
+        strokeData: BrushStrokeCommitData(sourceDabs: strokeDabs()),
+      ),
+    );
+  }
+
+  test('the session store retains at most retainedSessionLimit sessions '
+      '(LRU, active always kept)', () {
+    final (coordinator, sessionStore, history) = coordinatorFixture();
+
+    for (var cel = 0; cel < 10; cel += 1) {
+      coordinator.selectFrame(celKey(cel));
+      commitStroke(coordinator, history);
+    }
+
+    expect(
+      sessionStore.sessionCount,
+      BrushHistoryPolicy.defaultRetainedSessionLimit,
+    );
+    expect(sessionStore.sessionOrNull(celKey(9)), isNotNull);
+    expect(
+      sessionStore.sessionOrNull(celKey(0)),
+      isNull,
+      reason: 'the oldest cel evicted',
+    );
+  });
+
+  test('undo and redo of an EVICTED cel still land: the replay fallback '
+      'rebuilds the exact pixels', () {
+    final (coordinator, sessionStore, history) = coordinatorFixture();
+
+    coordinator.selectFrame(celKey(0));
+    commitStroke(coordinator, history);
+    expect(coordinator.liveCommandCount(celKey(0)), 1);
+
+    // Draw across enough cels to evict cel 0's session.
+    for (var cel = 1; cel < 7; cel += 1) {
+      coordinator.selectFrame(celKey(cel));
+      commitStroke(coordinator, history);
+    }
+    expect(sessionStore.sessionOrNull(celKey(0)), isNull);
+
+    // Undo everything back through cel 0's stroke (its session is gone —
+    // the command-replay fallback must cover it).
+    for (var i = 0; i < 7; i += 1) {
+      history.undo();
+    }
+    int visibleCommands() => coordinator.frameStore
+        .frameOrNull(celKey(0))!
+        .visibleActivePaintCommands
+        .length;
+    expect(visibleCommands(), 0);
+    coordinator.selectFrame(celKey(0));
+    expect(
+      coordinator.activeSessionState.canvasState.currentSurface.tiles,
+      isEmpty,
+      reason: 'the replay fallback restored the blank pre-stroke surface',
+    );
+
+    // Redo lands the stroke back through the same fallback.
+    history.redo();
+    expect(visibleCommands(), 1);
+    coordinator.selectFrame(celKey(0));
+    expect(
+      coordinator.activeSessionState.canvasState.currentSurface.tiles,
+      isNotEmpty,
+      reason: 'redo repainted the stroke',
+    );
+  });
+
+  test('display caches stay under their byte budget (LRU eviction, the '
+      'newest donation always kept)', () {
+    const tileBytes = 256 * 256 * 4;
+    // Room for two single-tile caches; the third donation evicts the LRU.
+    final store = BrushFrameStore(displayCacheByteBudget: tileBytes * 2);
+
+    BitmapSurface surfaceWithTile() =>
+        BitmapSurface(canvasSize: canvasSize).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
+        );
+
+    for (var cel = 0; cel < 3; cel += 1) {
+      store.storeRebuiltDisplayCache(
+        key: celKey(cel),
+        previewSurface: surfaceWithTile(),
+      );
+    }
+
+    expect(store.displayCacheBytes, lessThanOrEqualTo(tileBytes * 2));
+    expect(store.displayCacheOrNull(celKey(2)), isNotNull);
+    expect(
+      store.displayCacheOrNull(celKey(0)),
+      isNull,
+      reason: 'the least-recent cel evicted',
+    );
+  });
+
+  test('the tile-image cache pins at most retainedScopeLimit scopes', () async {
+    final cache = BitmapTileImageCache();
+    final coord = TileCoord(x: 0, y: 0);
+
+    Future<void> decodeInScope(Object scope) async {
+      final tile = BitmapTile.blank(coord: coord, size: 8);
+      cache.ensureDecoded(tile, staleScope: scope);
+      while (cache.imageFor(tile) == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    }
+
+    final scopeCount = BitmapTileImageCache.retainedScopeLimit + 3;
+    for (var scope = 0; scope < scopeCount; scope += 1) {
+      await decodeInScope('scope-$scope');
+    }
+
+    expect(
+      cache.latestImageForCoord(coord, scope: 'scope-${scopeCount - 1}'),
+      isNotNull,
+    );
+    expect(
+      cache.latestImageForCoord(coord, scope: 'scope-0'),
+      isNull,
+      reason: 'the least-recent scope evicted',
+    );
+  });
+}

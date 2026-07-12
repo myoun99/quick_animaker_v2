@@ -30,10 +30,30 @@ class BrushLayerFlushPlan {
 }
 
 class BrushFrameStore {
-  BrushFrameStore();
+  BrushFrameStore({this.displayCacheByteBudget = defaultDisplayCacheByteBudget})
+    : assert(displayCacheByteBudget > 0);
+
+  /// Default byte cap for the derived preview surfaces (R13): they are
+  /// replay-avoidance caches, one full-resolution tile map PER CEL ever
+  /// drawn, and without a cap a long animation session accumulated them
+  /// forever — the third "the more I draw, the slower everything gets"
+  /// term (after the session store and the stale-tile pins). ≈ 20 fully
+  /// painted default-size cels; light sketch cels fit hundreds.
+  static const int defaultDisplayCacheByteBudget = 320 * 1024 * 1024;
+
+  final int displayCacheByteBudget;
+  int _displayCacheBytes = 0;
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
+
+  /// Insertion order doubles as recency (reads re-insert): eviction beyond
+  /// [displayCacheByteBudget] drops from the least-recent end. An evicted
+  /// cel rebuilds on demand through the command replay — correct, just
+  /// slower, and only for cels colder than the whole retained set.
   final Map<BrushFrameKey, BrushFrameDisplayCache> _displayCaches = {};
+
+  /// Retained preview-surface bytes (eviction-guard oracle).
+  int get displayCacheBytes => _displayCacheBytes;
 
   BrushFrameDrawingState getOrCreateFrame(BrushFrameKey key) {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
@@ -41,21 +61,59 @@ class BrushFrameStore {
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
 
-  BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
-      _displayCaches[key];
+  BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) {
+    final cache = _displayCaches.remove(key);
+    if (cache == null) {
+      return null;
+    }
+    // Re-insert: reads count as uses for the LRU order.
+    _displayCaches[key] = cache;
+    return cache;
+  }
 
   bool hasValidDisplayCache(BrushFrameKey key) =>
-      _displayCaches[key]?.isValid ?? false;
+      displayCacheOrNull(key)?.isValid ?? false;
 
   BitmapSurface? validPreviewSurfaceOrNull(BrushFrameKey key) {
-    final cache = _displayCaches[key];
+    final cache = displayCacheOrNull(key);
     return cache != null && cache.isValid ? cache.previewSurface : null;
+  }
+
+  static int _displayCacheBytesOf(BrushFrameDisplayCache cache) {
+    final surface = cache.previewSurface;
+    return surface.tiles.length * surface.tileSize * surface.tileSize * 4;
+  }
+
+  void _putDisplayCache(BrushFrameKey key, BrushFrameDisplayCache cache) {
+    final previous = _displayCaches.remove(key);
+    if (previous != null) {
+      _displayCacheBytes -= _displayCacheBytesOf(previous);
+    }
+    _displayCaches[key] = cache;
+    _displayCacheBytes += _displayCacheBytesOf(cache);
+    if (_displayCacheBytes <= displayCacheByteBudget) {
+      return;
+    }
+    for (final candidate in _displayCaches.keys.toList()) {
+      if (_displayCacheBytes <= displayCacheByteBudget) {
+        break;
+      }
+      if (candidate == key) {
+        // The just-stored cache is never its own eviction victim, even
+        // when it alone exceeds the budget (a giant single cel must still
+        // display without replaying every stroke per consumer).
+        continue;
+      }
+      final removed = _displayCaches.remove(candidate)!;
+      _displayCacheBytes -= _displayCacheBytesOf(removed);
+    }
   }
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.
   void clearDisplayCaches() {
     _displayCaches.clear();
+    _displayCacheBytes = 0;
   }
 
   /// Every drawn frame's VISIBLE commands (source dabs included) — the
@@ -76,7 +134,7 @@ class BrushFrameStore {
   /// composite signatures can never match stale content.
   void restoreDrawings(Map<BrushFrameKey, List<BrushPaintCommand>> drawings) {
     _frames.clear();
-    _displayCaches.clear();
+    clearDisplayCaches();
     for (final entry in drawings.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
@@ -175,7 +233,7 @@ class BrushFrameStore {
       sourceRevision: state.sourceRevision,
       dirty: false,
     );
-    _displayCaches[key] = cache;
+    _putDisplayCache(key, cache);
     _frames[key] = state.copyWith(
       inactivePreviewDirty: false,
       cacheDirtyTiles: DirtyTileSet.empty(),

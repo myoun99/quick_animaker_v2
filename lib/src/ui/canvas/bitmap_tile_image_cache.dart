@@ -50,8 +50,20 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// animation frames both have a tile at (0, 0), and without scoping the
   /// previous frame's artwork would briefly show through while the current
   /// frame's tile decodes.
+  ///
+  /// SCOPE-BUDGETED (R13): scopes are per-cel, and without a cap every cel
+  /// ever edited pinned its last-decoded tile generation (pixel bytes AND
+  /// gpu images, tens of MB per painted cel) for the rest of the run —
+  /// another "the more I draw, the slower everything gets" term. Insertion
+  /// order doubles as recency; scopes beyond [retainedScopeLimit] drop from
+  /// the least-recent end (their stale-fallback simply degrades to a
+  /// one-frame decode wait on revisit).
   final Map<Object?, Map<TileCoord, BitmapTile>> _latestDecodedByScope =
       <Object?, Map<TileCoord, BitmapTile>>{};
+
+  /// Maximum scopes (≈ recently edited cels) whose stale-fallback tiles
+  /// stay pinned.
+  static const int retainedScopeLimit = 8;
 
   /// The decoded image for [tile], or `null` while the decode is pending.
   ui.Image? imageFor(BitmapTile tile) => _images[tile];
@@ -83,13 +95,20 @@ class BitmapTileImageCache extends ChangeNotifier {
       (image) {
         _images[tile] = image;
         _imageFinalizer.attach(tile, image);
-        _latestDecodedByScope.putIfAbsent(
-          staleScope,
-          () => <TileCoord, BitmapTile>{},
-        )[tile.coord] = tile;
+        final scoped = _latestDecodedByScope.remove(staleScope);
+        // Re-insert: this scope becomes the most recently used.
+        (_latestDecodedByScope[staleScope] =
+            scoped ?? <TileCoord, BitmapTile>{})[tile.coord] = tile;
+        _evictScopesBeyondBudget();
         _scheduleNotify();
       },
     );
+  }
+
+  void _evictScopesBeyondBudget() {
+    while (_latestDecodedByScope.length > retainedScopeLimit) {
+      _latestDecodedByScope.remove(_latestDecodedByScope.keys.first);
+    }
   }
 
   bool _notifyScheduled = false;
