@@ -8,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
+import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -46,6 +47,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     this.commaDrag,
+    this.blockMove,
     this.laneEdit,
     this.dragPreview,
   });
@@ -108,6 +110,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   onSetAudioClipGain;
 
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Whole-block move hooks (R10-④b), row-geometry form (the grid resolves
+  /// row deltas to layers); null hides the block body handles.
+  final TimelineBlockMoveHandleCallbacks? blockMove;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// The session's edit-drag preview channel: a drag step rebuilds ONLY the
@@ -142,6 +148,7 @@ typedef _RowMemoInputs = ({
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   bool hasCommaDrag,
+  bool hasBlockMove,
   bool hasActivateCell,
   ValueListenable<TimelineDragPreview?>? dragPreview,
 });
@@ -194,6 +201,7 @@ class _TimelineFrameRowsScrollBodyState
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
         a.hasCommaDrag == b.hasCommaDrag &&
+        a.hasBlockMove == b.hasBlockMove &&
         a.hasActivateCell == b.hasActivateCell &&
         identical(a.dragPreview, b.dragPreview);
   }
@@ -220,6 +228,7 @@ class _TimelineFrameRowsScrollBodyState
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,
+      blockMove: widget.blockMove,
     );
   }
 
@@ -307,6 +316,7 @@ class _TimelineFrameRowsScrollBodyState
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       hasCommaDrag: widget.commaDrag != null,
+      hasBlockMove: widget.blockMove != null,
       hasActivateCell: widget.onActivateCell != null,
       dragPreview: widget.dragPreview,
     );

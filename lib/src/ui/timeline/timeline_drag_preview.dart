@@ -37,6 +37,27 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   int get hashCode => previewLayer.hashCode;
 }
 
+/// A whole-block move drag in flight (R10-④b): the affected layers with
+/// the block relocated — one entry for a same-layer slide, two when the
+/// block is crossing onto another layer. Published only while the current
+/// pointer position resolves to a LEGAL landing (otherwise the channel
+/// clears and the block shows at its committed spot).
+class BlockMoveDragPreview extends TimelineDragPreview {
+  const BlockMoveDragPreview({required this.previewLayers});
+
+  final Map<LayerId, Layer> previewLayers;
+
+  @override
+  bool operator ==(Object other) =>
+      other is BlockMoveDragPreview &&
+      mapEquals(other.previewLayers, previewLayers);
+
+  @override
+  int get hashCode => Object.hashAllUnordered(
+    previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
+  );
+}
+
 /// A storyboard cut edge drag in flight: the involved cuts' previewed
 /// durations (end trims) and leading gaps (start slides / gap
 /// consumption).
@@ -75,6 +96,9 @@ Layer? timelineDragPreviewLayerFor(
   if (preview is ExposureEdgeDragPreview && preview.layerId == layerId) {
     return preview.previewLayer;
   }
+  if (preview is BlockMoveDragPreview) {
+    return preview.previewLayers[layerId];
+  }
   return null;
 }
 
@@ -108,27 +132,36 @@ Project projectWithTimelineDragPreview(
         ],
       );
     case ExposureEdgeDragPreview(:final previewLayer):
-      return project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            track.copyWith(
-              cuts: [
-                for (final cut in track.cuts)
-                  cut.layers.any((layer) => layer.id == previewLayer.id)
-                      ? cut.copyWith(
-                          layers: [
-                            for (final layer in cut.layers)
-                              layer.id == previewLayer.id
-                                  ? previewLayer
-                                  : layer,
-                          ],
-                        )
-                      : cut,
-              ],
-            ),
-        ],
-      );
+      return _projectWithLayersSubstituted(project, {
+        previewLayer.id: previewLayer,
+      });
+    case BlockMoveDragPreview(:final previewLayers):
+      return _projectWithLayersSubstituted(project, previewLayers);
   }
+}
+
+Project _projectWithLayersSubstituted(
+  Project project,
+  Map<LayerId, Layer> previewLayers,
+) {
+  return project.copyWith(
+    tracks: [
+      for (final track in project.tracks)
+        track.copyWith(
+          cuts: [
+            for (final cut in track.cuts)
+              cut.layers.any((layer) => previewLayers.containsKey(layer.id))
+                  ? cut.copyWith(
+                      layers: [
+                        for (final layer in cut.layers)
+                          previewLayers[layer.id] ?? layer,
+                      ],
+                    )
+                  : cut,
+          ],
+        ),
+    ],
+  );
 }
 
 /// Wraps one grid row (or X-sheet column) so an edge drag rebuilds ONLY

@@ -59,8 +59,12 @@ import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_timeline_layout.dart';
+import '../models/drawing_block_move.dart';
+import '../services/command.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/commands/rekey_brush_frames_command.dart';
+import '../services/commands/update_layer_timeline_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
@@ -2992,6 +2996,153 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBlockStart = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
+    dragPreview.value = null;
+  }
+
+  // --- Whole-block move drags (R10-④b) --------------------------------------
+  //
+  // Grabbing a drawing block's BODY moves the block whole: along the frame
+  // axis (slide) and across drawing layers (the cel travels, its brush
+  // drawings re-keyed to the new layer). Landing requires empty space —
+  // a block move never retimes other blocks. Same channel discipline as
+  // the edge drags: repo untouched until release, one undo per drag.
+
+  Layer? _blockMoveSourceBefore;
+  int? _blockMoveBlockStart;
+  DrawingBlockMovePlan? _blockMovePlan;
+
+  bool get isBlockMoveDragActive => _blockMoveSourceBefore != null;
+
+  /// Whether [layerId] can take part in a block move (source or target):
+  /// a plain drawing-section layer. Track-SE rows live on the global axis
+  /// with audio attached and attach rows own no timing — both stand down.
+  bool _blockMoveEligible(LayerId layerId) {
+    if (_isAttachedLayerId(layerId) || isTrackSeLayerId(layerId)) {
+      return false;
+    }
+    final layer = _layerById(layerId);
+    return layer != null &&
+        layerKindHoldsDrawings(layer.kind) &&
+        layer.kind != LayerKind.se;
+  }
+
+  /// Starts a whole-block move on the block starting at [blockStartIndex];
+  /// returns false when there is no such block or the row stands down.
+  bool beginDrawingBlockMoveDrag({
+    required LayerId layerId,
+    required int blockStartIndex,
+  }) {
+    if (!_blockMoveEligible(layerId)) {
+      return false;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
+      return false;
+    }
+    _blockMoveSourceBefore = layer;
+    _blockMoveBlockStart = blockStartIndex;
+    return true;
+  }
+
+  /// Applies the drag's cumulative deltas as a live preview on
+  /// [dragPreview] (repository untouched). [targetLayerId] is the layer row
+  /// currently under the pointer (null or the source id = plain slide); an
+  /// illegal landing clears the preview — the block shows at its committed
+  /// spot until the pointer reaches a legal one.
+  void updateDrawingBlockMoveDrag({
+    required int frameDelta,
+    LayerId? targetLayerId,
+  }) {
+    final source = _blockMoveSourceBefore;
+    final blockStart = _blockMoveBlockStart;
+    if (source == null || blockStart == null) {
+      return;
+    }
+    Layer? target = source;
+    if (targetLayerId != null && targetLayerId != source.id) {
+      target = _blockMoveEligible(targetLayerId)
+          ? _layerById(targetLayerId)
+          : null;
+    }
+    final plan = target == null
+        ? null
+        : planDrawingBlockMove(
+            source: source,
+            target: target,
+            blockStartIndex: blockStart,
+            frameDelta: frameDelta,
+          );
+    _blockMovePlan = plan;
+    dragPreview.value = plan == null
+        ? null
+        : BlockMoveDragPreview(
+            previewLayers: {
+              plan.sourceAfter.id: plan.sourceAfter,
+              if (plan.targetAfter != null)
+                plan.targetAfter!.id: plan.targetAfter!,
+            },
+          );
+  }
+
+  /// Commits the move as a single undo step (no-op when the drag ends on
+  /// an illegal or unchanged landing). Cross-layer moves compose the two
+  /// layer updates with the brush-store rekey so undo restores everything.
+  void endDrawingBlockMoveDrag() {
+    final source = _blockMoveSourceBefore;
+    final plan = _blockMovePlan;
+    _blockMoveSourceBefore = null;
+    _blockMoveBlockStart = null;
+    _blockMovePlan = null;
+    dragPreview.value = null;
+    if (source == null || plan == null) {
+      return;
+    }
+    final commands = <Command>[
+      UpdateLayerTimelineCommand(
+        repository: _repository,
+        before: source,
+        after: plan.sourceAfter,
+      ),
+      if (plan.targetBefore != null)
+        UpdateLayerTimelineCommand(
+          repository: _repository,
+          before: plan.targetBefore!,
+          after: plan.targetAfter!,
+        ),
+    ];
+    if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
+      final cut = activeCut;
+      commands.add(
+        RekeyBrushFramesCommand(
+          store: brushFrameStore,
+          pairs: [
+            for (final frameId in plan.movedFrameIds)
+              (
+                brushFrameKeyForCut(cut, source.id, frameId),
+                brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
+              ),
+          ],
+        ),
+      );
+    }
+    _historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: 'Move drawing block',
+              commands: commands,
+            ),
+    );
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Drops an in-flight move preview without touching history.
+  void cancelDrawingBlockMoveDrag() {
+    _blockMoveSourceBefore = null;
+    _blockMoveBlockStart = null;
+    _blockMovePlan = null;
     dragPreview.value = null;
   }
 

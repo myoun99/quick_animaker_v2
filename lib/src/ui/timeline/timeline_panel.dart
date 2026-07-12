@@ -10,6 +10,7 @@ import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
+import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -51,6 +52,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFx,
     this.onToggleLayerMuted,
     this.commaDrag,
+    this.blockMove,
     this.isFrameCached,
     required this.orientation,
     required this.onOrientationChanged,
@@ -155,6 +157,10 @@ class TimelinePanel extends StatefulWidget {
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Whole-block move hooks (R10-④b), shared by both orientations; null
+  /// hides the block body handles.
+  final TimelineBlockMoveCallbacks? blockMove;
 
   /// Cached-range resolver for the green strip (horizontal ruler and the
   /// X-sheet frame rail).
@@ -357,6 +363,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
+                    blockMove: widget.blockMove,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
@@ -398,6 +405,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
+                    blockMove: widget.blockMove,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,

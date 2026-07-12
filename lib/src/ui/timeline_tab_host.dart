@@ -22,6 +22,7 @@ import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/se_audio_lane.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/timeline_block_move_handle.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
@@ -755,6 +756,23 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onUpdate: _session.updateExposureEdgeDrag,
           onEnd: _session.endExposureEdgeDrag,
           onCancel: _session.cancelExposureEdgeDrag,
+        ),
+        // Whole-block moves (R10-④b): grab the block's body to slide it
+        // along the frame axis or carry it onto another drawing layer —
+        // same live-preview + one-undo discipline as the edge grips.
+        blockMove: TimelineBlockMoveCallbacks(
+          onBegin: (layerId, blockStartIndex) =>
+              _session.beginDrawingBlockMoveDrag(
+                layerId: layerId,
+                blockStartIndex: blockStartIndex,
+              ),
+          onUpdate: ({required frameDelta, targetLayerId}) =>
+              _session.updateDrawingBlockMoveDrag(
+                frameDelta: frameDelta,
+                targetLayerId: targetLayerId,
+              ),
+          onEnd: _session.endDrawingBlockMoveDrag,
+          onCancel: _session.cancelDrawingBlockMoveDrag,
         ),
         orientation: widget.orientation,
         onOrientationChanged: widget.onOrientationChanged,

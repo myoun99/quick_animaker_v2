@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -68,6 +69,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.onToggleLayerMuted,
     this.commaDrag,
+    this.blockMove,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
     this.expandedLaneLayerIds = const {},
@@ -163,6 +165,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
+
+  /// Whole-block move hooks (R10-④b): the grid resolves the pointer's row
+  /// onto display rows and forwards frame delta + target layer to the
+  /// session. Null hides the block body handles.
+  final TimelineBlockMoveCallbacks? blockMove;
 
   /// Cached-range resolver for the ruler's green strip.
   final bool Function(int frameIndex)? isFrameCached;
@@ -438,6 +445,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
+  /// Resolves block-move row deltas against the rows built this pass.
+  final TimelineBlockMoveRowResolver _blockMoveResolver =
+      TimelineBlockMoveRowResolver();
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -448,6 +459,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       lanesForLayer: _lanesFor,
       hiddenSections: widget.hiddenSections,
     );
+    _blockMoveResolver
+      ..rows = rows
+      ..session = widget.blockMove;
+    final blockMoveHandleCallbacks = widget.blockMove == null
+        ? null
+        : _blockMoveResolver.handleCallbacks;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -842,6 +859,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   onSetAudioClipGain:
                                                       widget.onSetAudioClipGain,
                                                   commaDrag: widget.commaDrag,
+                                                  blockMove:
+                                                      blockMoveHandleCallbacks,
                                                   laneEdit: widget.laneEdit,
                                                 ),
                                                 cutEndBoundaryLeft:

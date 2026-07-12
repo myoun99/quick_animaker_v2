@@ -6,6 +6,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
+import 'timeline_block_move_handle.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -45,6 +46,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
+    this.blockMove,
     this.sectionStart = false,
   });
 
@@ -91,6 +93,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
+  /// Whole-block move hooks (R10-④b); null hides the block body handles.
+  final TimelineBlockMoveHandleCallbacks? blockMove;
+
   @override
   Widget build(BuildContext context) {
     // Instruction rows have no timeline entries — adapt their events onto
@@ -100,6 +105,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ? instructionCellExposureState(layer, frameIndex)
         : exposureStateForLayer(layer, frameIndex);
     final commaDrag = this.commaDrag;
+    final blockMove = this.blockMove;
 
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
@@ -226,6 +232,22 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
             defById: instructionDefById!,
+          ),
+        // Body handles mount UNDER the grips: the edges keep comma-drag
+        // priority, the body between them moves the block whole.
+        if (blockMove != null &&
+            layerKindHoldsDrawings(layer.kind) &&
+            !layerKindUsesSeSheetCells(layer.kind))
+          ...timelineRowBlockMoveHandles(
+            layerId: layer.id,
+            blocks: drawingBlocks(layer.timeline),
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            callbacks: blockMove,
+            axis: Axis.horizontal,
           ),
         if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
           ...timelineRowBlockEdgeGrips(
