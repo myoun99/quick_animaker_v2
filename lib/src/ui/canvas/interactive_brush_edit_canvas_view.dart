@@ -208,6 +208,23 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   @override
+  void didUpdateWidget(covariant InteractiveBrushEditCanvasView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The view no longer REMOUNTS per cel (R13-2): the old frameId-keyed
+    // remount tore down and re-inflated this whole subtree on every frame
+    // flip, and that element + render-tree rebuild summed to a 40-80ms
+    // UI-thread hitch — the constant flip lag. A cel identity change now
+    // resets the per-stroke state in place; everything else (session
+    // state, stale scope) flows through the ordinary rebuild.
+    if (oldWidget.layerId != widget.layerId ||
+        oldWidget.frameId != widget.frameId) {
+      _endStrokeInput();
+      _resetOverlay();
+      _liveRasterizer = null;
+    }
+  }
+
+  @override
   void dispose() {
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingFallbackTimer?.cancel();

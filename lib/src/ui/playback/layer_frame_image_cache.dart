@@ -7,6 +7,7 @@ import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/tiled_surface_compose.dart';
 import 'playback_cache_budget.dart';
@@ -132,10 +133,14 @@ class LayerFrameImageCache {
     }
     final revision = drawing.sourceRevision;
 
-    final preview = BrushFrameDisplayCacheService(
-      frameStore: frameStore,
-      renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
-    ).prepareFramePreview(key).previewSurface;
+    final preview = labProbe(
+      'prepareFramePreview(${key.frameId.value} '
+      '${drawing.allPaintCommandsInDisplayOrder.length}cmd)',
+      () => BrushFrameDisplayCacheService(
+        frameStore: frameStore,
+        renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+      ).prepareFramePreview(key).previewSurface,
+    );
     final image = composeTiledSurfaceImageSyncOrNull(
       preview,
       reuse: BitmapTileImageCache.instance,

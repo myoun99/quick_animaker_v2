@@ -50,6 +50,7 @@ import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
+import 'dev_profile.dart';
 import 'playback/audio_playback_sync.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -3418,10 +3419,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// camera pose panel, timesheet playhead) subscribe to
   /// [frameSeekCommitted] and rebuild once per committed seek.
   void selectFrameIndex(int frameIndex) {
-    _timelineController.selectFrameIndex(frameIndex);
-    editingFrameCursor.value = frameIndex;
-    _warmActiveCut();
-    frameSeekCommitted.value += 1;
+    labProbe('selectFrameIndex(sync)', () {
+      _timelineController.selectFrameIndex(frameIndex);
+      editingFrameCursor.value = frameIndex;
+      _warmActiveCut();
+      frameSeekCommitted.value += 1;
+    });
   }
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------

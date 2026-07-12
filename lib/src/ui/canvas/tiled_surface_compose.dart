@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../dev_profile.dart';
 import 'bitmap_tile_image_cache.dart';
 
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by
@@ -73,6 +74,17 @@ Future<ui.Image> composeTiledSurfaceImage(
 /// matches [composeTiledSurfaceImage] (same tile images, same 1:1
 /// integer-offset draws). The caller owns the returned image.
 ui.Image? composeTiledSurfaceImageSyncOrNull(
+  BitmapSurface surface, {
+  required BitmapTileImageCache reuse,
+}) {
+  return labProbe(
+    'composeSync(${surface.tiles.length}t '
+    '${surface.canvasSize.width}x${surface.canvasSize.height})',
+    () => _composeTiledSurfaceImageSyncOrNull(surface, reuse: reuse),
+  );
+}
+
+ui.Image? _composeTiledSurfaceImageSyncOrNull(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
 }) {

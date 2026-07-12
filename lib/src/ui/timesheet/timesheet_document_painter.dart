@@ -296,22 +296,17 @@ class TimesheetDocumentPainter extends CustomPainter {
     required this.document,
     required this.layout,
     this.viewport,
-    this.playheadFrame,
   });
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
   final CanvasViewport? viewport;
 
-  /// Current frame (0-based) highlighted as the sheet's playhead row.
-  final int? playheadFrame;
-
   static const Color _paper = Color(0xFFF6F4F0);
   static const Color _ink = Color(0xFF33322F);
   static const Color _gridLight = Color(0xFFCFC9BF);
   static const Color _gridMedium = Color(0xFFA9A296);
   static const Color _gridBold = Color(0xFF6E6759);
-  static const Color _playhead = Color(0x334FA8A0);
 
   /// Below this zoom the per-cell texts stop painting (paper overview).
   static const double _textZoomThreshold = 0.35;
@@ -362,7 +357,6 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
     _paintCutEndLine(canvas);
-    _paintPlayhead(canvas);
 
     canvas.restore();
   }
@@ -1102,23 +1096,6 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-  void _paintPlayhead(Canvas canvas) {
-    final frame = playheadFrame;
-    if (frame == null || frame < 0 || frame >= document.rowCount) {
-      return;
-    }
-    final position = layout.positionOfFrame(frame);
-    final left = layout.halfLeft(position.page, position.half);
-    canvas.drawRect(
-      Rect.fromLTWH(
-        left,
-        layout.frameRowTop(frame),
-        layout.halfWidth,
-        TimesheetDocumentLayout.rowHeight,
-      ),
-      Paint()..color = _playhead,
-    );
-  }
 
   /// An SE entry's start cell (R5-⑦, user-approved mockup v4): a full-width
   /// thin red bar RIGHT BEFORE the block start, a compact ACCENT name box
@@ -1308,7 +1285,68 @@ class TimesheetDocumentPainter extends CustomPainter {
   bool shouldRepaint(covariant TimesheetDocumentPainter oldDelegate) {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.viewport != viewport ||
-        oldDelegate.playheadFrame != playheadFrame;
+        oldDelegate.viewport != viewport;
+  }
+}
+
+/// The sheet's PLAYHEAD row highlight as its own repaint-only layer
+/// (R13-2: the cursor-layer discipline, timesheet edition). The playhead
+/// used to be a parameter of [TimesheetDocumentPainter], so every cursor
+/// move, committed seek and playback tick re-recorded the ENTIRE B4 sheet
+/// — with the timesheet docked visible that repaint was the biggest
+/// single share of the frame-flip hitch. This painter repaints one rect
+/// through [CustomPainter.repaint]; the sheet above never hears about the
+/// playhead at all.
+class TimesheetPlayheadPainter extends CustomPainter {
+  TimesheetPlayheadPainter({
+    required this.document,
+    required this.layout,
+    required this.resolvePlayheadFrame,
+    this.viewport,
+    super.repaint,
+  });
+
+  final TimesheetDocument document;
+  final TimesheetDocumentLayout layout;
+
+  /// Reads the CURRENT playhead frame at paint time (the repaint
+  /// listenable drives when that happens).
+  final int? Function() resolvePlayheadFrame;
+  final CanvasViewport? viewport;
+
+  static const Color _playhead = Color(0x334FA8A0);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = resolvePlayheadFrame();
+    if (frame == null || frame < 0 || frame >= document.rowCount) {
+      return;
+    }
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    final resolvedViewport = viewport;
+    if (resolvedViewport != null) {
+      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
+      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+    }
+    final position = layout.positionOfFrame(frame);
+    final left = layout.halfLeft(position.page, position.half);
+    canvas.drawRect(
+      Rect.fromLTWH(
+        left,
+        layout.frameRowTop(frame),
+        layout.halfWidth,
+        TimesheetDocumentLayout.rowHeight,
+      ),
+      Paint()..color = _playhead,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant TimesheetPlayheadPainter oldDelegate) {
+    return !identical(oldDelegate.document, document) ||
+        oldDelegate.layout.continuous != layout.continuous ||
+        oldDelegate.viewport != viewport;
   }
 }
