@@ -165,23 +165,43 @@ void main() {
     expect(layoutStart(s, second), firstDuration + 6);
   });
 
-  test('end-edge shrink leaves the following gap alone (the rest slides '
-      'earlier with the boundary)', () {
+  test('end-edge shrink with a DETACHED next cut leaves it in place — the '
+      'gap absorbs the shrink (R10-⑦: the timeline block language)', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
 
     s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     s.updateCutEdgeDrag(4);
     s.endCutEdgeDrag();
+    final secondStart = layoutStart(s, second);
 
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(-2);
-    expect(previewedGap(s, second), 4);
+    expect(previewedGap(s, second), 6);
     s.endCutEdgeDrag();
 
     expect(s.cutById(first)!.duration, firstDuration - 2);
-    expect(s.cutById(second)!.leadingGapFrames, 4);
-    expect(layoutStart(s, second), firstDuration - 2 + 4);
+    expect(s.cutById(second)!.leadingGapFrames, 6);
+    expect(
+      layoutStart(s, second),
+      secondStart,
+      reason: 'a detached cut never rides a neighbor\'s trim',
+    );
+  });
+
+  test('end-edge shrink with an ATTACHED next cut ripples it along (gap '
+      'stays 0 — attachment is preserved)', () {
+    final (s, first, second) = twoCutSession();
+    final firstDuration = s.cutById(first)!.duration;
+
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
+    s.updateCutEdgeDrag(-3);
+    expect(previewedGap(s, second), 0);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(first)!.duration, firstDuration - 3);
+    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(layoutStart(s, second), firstDuration - 3);
   });
 
   test('a trim re-anchors the CANONICAL fade to the new duration — the '

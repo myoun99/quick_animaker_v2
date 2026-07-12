@@ -13,6 +13,7 @@ class EditorPanelTab {
     this.minContentWidth,
     this.minContentHeight,
     this.locked = false,
+    this.keepAlive = false,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -22,8 +23,16 @@ class EditorPanelTab {
   final IconData icon;
 
   /// Builds the tab's content; only the ACTIVE tab is built (panel state
-  /// that must survive switches lives above the tab group).
+  /// that must survive switches lives above the tab group) — unless
+  /// [keepAlive] retains it offstage after its first activation.
   final WidgetBuilder builder;
+
+  /// Once built, keep this tab's subtree mounted OFFSTAGE while another
+  /// tab is active (R10-②): heavy panels (timeline, storyboard,
+  /// timesheet, canvas) then switch back instantly instead of rebuilding
+  /// from scratch. Offstage subtrees still rebuild on their listenables —
+  /// keep this off for cheap panels.
+  final bool keepAlive;
 
   /// Key for the tab strip button. Groups replacing older toggle buttons
   /// keep the legacy keys here so existing flows and tests keep working.
@@ -64,7 +73,7 @@ class EditorPanelTabDragData {
 /// hovered tab inserts before/after it; the empty strip tail appends).
 /// LOCKED tabs ([EditorPanelTab.locked]) refuse to lift; [onToggleLock]
 /// puts a lock toggle for the active tab at the strip's end.
-class EditorPanelTabs extends StatelessWidget {
+class EditorPanelTabs extends StatefulWidget {
   const EditorPanelTabs({
     super.key,
     required this.tabs,
@@ -117,18 +126,37 @@ class EditorPanelTabs extends StatelessWidget {
 
   static const double stripHeight = 30;
 
-  bool get _dragEnabled => groupId != null && onTabMoved != null;
+  @override
+  State<EditorPanelTabs> createState() => _EditorPanelTabsState();
+}
+
+class _EditorPanelTabsState extends State<EditorPanelTabs> {
+  /// Keep-alive tabs that have been activated at least once: they stay
+  /// mounted offstage so switching back is instant (R10-②).
+  final Set<String> _builtTabIds = <String>{};
+
+  bool get _dragEnabled => widget.groupId != null && widget.onTabMoved != null;
 
   bool _willAccept(EditorPanelTabDragData data) =>
-      canAcceptTab?.call(data) ?? true;
+      widget.canAcceptTab?.call(data) ?? true;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final tabs = widget.tabs;
     final active = tabs.firstWhere(
-      (tab) => tab.id == activeTabId,
+      (tab) => tab.id == widget.activeTabId,
       orElse: () => tabs.first,
     );
+    // Retention bookkeeping inline with build (no setState needed — the
+    // set only ever matters to THIS build): the active keep-alive tab
+    // joins, tabs that left the group drop out.
+    _builtTabIds.removeWhere(
+      (id) => !tabs.any((tab) => tab.id == id && tab.keepAlive),
+    );
+    if (active.keepAlive) {
+      _builtTabIds.add(active.id);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -145,7 +173,7 @@ class EditorPanelTabs extends StatelessWidget {
                 Positioned.fill(
                   child: _TabStripTailDropRegion(
                     willAccept: _willAccept,
-                    onDropped: (data) => onTabMoved!(data, tabs.length),
+                    onDropped: (data) => widget.onTabMoved!(data, tabs.length),
                   ),
                 ),
               // Tabs keep their natural width (name always visible) and
@@ -167,40 +195,53 @@ class EditorPanelTabs extends StatelessWidget {
           ),
         ),
         // The content area shares the selected tab's background so the tab
-        // reads as part of the panel, not a floating chip above it.
+        // reads as part of the panel, not a floating chip above it. Built
+        // keep-alive tabs stay in the stack offstage (state, scroll
+        // positions and caches survive the switch).
         Expanded(
           child: ColoredBox(
             color: colorScheme.surface,
-            child: _buildActiveContent(active),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                for (final tab in tabs)
+                  if (tab.id == active.id || _builtTabIds.contains(tab.id))
+                    Offstage(
+                      key: ValueKey<String>('panel-content-${tab.id}'),
+                      offstage: tab.id != active.id,
+                      child: TickerMode(
+                        enabled: tab.id == active.id,
+                        child: _buildTabContent(tab),
+                      ),
+                    ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  /// The active tab's content; panels with a minimum content size larger
-  /// than the dock render at that size inside scrollers.
-  Widget _buildActiveContent(EditorPanelTab active) {
-    if (active.minContentWidth == null && active.minContentHeight == null) {
-      return Builder(builder: active.builder);
+  /// One tab's content; panels with a minimum content size larger than
+  /// the dock render at that size inside scrollers.
+  Widget _buildTabContent(EditorPanelTab tab) {
+    if (tab.minContentWidth == null && tab.minContentHeight == null) {
+      return Builder(builder: tab.builder);
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = math.max(
-          active.minContentWidth ?? 0,
-          constraints.maxWidth,
-        );
+        final width = math.max(tab.minContentWidth ?? 0, constraints.maxWidth);
         final height = math.max(
-          active.minContentHeight ?? 0,
+          tab.minContentHeight ?? 0,
           constraints.maxHeight,
         );
         if (width <= constraints.maxWidth && height <= constraints.maxHeight) {
-          return Builder(builder: active.builder);
+          return Builder(builder: tab.builder);
         }
         Widget content = SizedBox(
           width: width,
           height: height,
-          child: Builder(builder: active.builder),
+          child: Builder(builder: tab.builder),
         );
         if (height > constraints.maxHeight) {
           content = SingleChildScrollView(child: content);
@@ -217,55 +258,76 @@ class EditorPanelTabs extends StatelessWidget {
   }
 
   Widget _buildTabButton(int index) {
-    final tab = tabs[index];
-    final selected = tab.id == activeTabId;
+    final tab = widget.tabs[index];
+    final selected = tab.id == widget.activeTabId;
+    // The grip is the ONLY drag surface (R10-⑩): the rest of the tab is
+    // a plain tap target, so selection never waits on the drag arena and
+    // a stray drag can't tear a tab off mid-click.
+    final grip = _dragEnabled && !tab.locked ? _buildDragGrip(tab) : null;
     final button = _PanelTabButton(
       key: tab.buttonKey ?? ValueKey<String>('panel-tab-${tab.id}'),
       label: tab.label,
       icon: tab.icon,
-      compact: compact,
+      compact: widget.compact,
       selected: selected,
       locked: tab.locked,
       lockKey: ValueKey<String>('panel-lock-${tab.id}'),
       closeKey: ValueKey<String>('panel-close-${tab.id}'),
+      dragGrip: grip,
       // Every tab carries its controls — selecting a tab must never
       // reshape its button.
-      onToggleLock: onToggleLock != null ? () => onToggleLock!(tab.id) : null,
-      // Locked tabs are pinned: no close button.
-      onClose: onCloseTab != null && !tab.locked
-          ? () => onCloseTab!(tab.id)
+      onToggleLock: widget.onToggleLock != null
+          ? () => widget.onToggleLock!(tab.id)
           : null,
-      onPressed: () => onTabSelected(tab.id),
+      // Locked tabs are pinned: no close button.
+      onClose: widget.onCloseTab != null && !tab.locked
+          ? () => widget.onCloseTab!(tab.id)
+          : null,
+      onPressed: () => widget.onTabSelected(tab.id),
     );
     if (!_dragEnabled) {
       return button;
     }
-    final data = EditorPanelTabDragData(tabId: tab.id, fromGroupId: groupId!);
     return _TabDropRegion(
       willAccept: _willAccept,
       // Left half inserts before this tab, right half after it.
       onDropped: (dropped, after) =>
-          onTabMoved!(dropped, after ? index + 1 : index),
-      // Locked tabs stay drop targets but refuse to lift.
-      child: tab.locked
-          ? button
-          : Draggable<EditorPanelTabDragData>(
-              data: data,
-              maxSimultaneousDrags: 1,
-              // The avatar origin IS the pointer, so drop regions can split
-              // themselves into exact before/after halves from the drag
-              // offset.
-              dragAnchorStrategy: pointerDragAnchorStrategy,
-              feedback: FractionalTranslation(
-                translation: const Offset(-0.5, -0.5),
-                child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
-              ),
-              childWhenDragging: Opacity(opacity: 0.35, child: button),
-              onDragStarted: () => onTabDragChanged?.call(data),
-              // onDragEnd covers completion AND cancellation.
-              onDragEnd: (_) => onTabDragChanged?.call(null),
-              child: button,
-            ),
+          widget.onTabMoved!(dropped, after ? index + 1 : index),
+      child: button,
+    );
+  }
+
+  /// The drag handle at the tab's left edge — the three-line grip icon.
+  Widget _buildDragGrip(EditorPanelTab tab) {
+    final data = EditorPanelTabDragData(
+      tabId: tab.id,
+      fromGroupId: widget.groupId!,
+    );
+    return Draggable<EditorPanelTabDragData>(
+      data: data,
+      maxSimultaneousDrags: 1,
+      // The avatar origin IS the pointer, so drop regions can split
+      // themselves into exact before/after halves from the drag offset.
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5),
+        child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
+      ),
+      onDragStarted: () => widget.onTabDragChanged?.call(data),
+      // onDragEnd covers completion AND cancellation.
+      onDragEnd: (_) => widget.onTabDragChanged?.call(null),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        child: Padding(
+          key: ValueKey<String>('panel-grip-${tab.id}'),
+          padding: const EdgeInsets.only(right: 2),
+          child: Icon(
+            Icons.drag_indicator,
+            size: 12,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -418,6 +480,7 @@ class _PanelTabButton extends StatelessWidget {
     required this.lockKey,
     required this.closeKey,
     required this.onPressed,
+    this.dragGrip,
     this.onToggleLock,
     this.onClose,
   });
@@ -430,6 +493,10 @@ class _PanelTabButton extends StatelessWidget {
   final Key lockKey;
   final Key closeKey;
   final VoidCallback onPressed;
+
+  /// The drag handle at the tab's left edge (R10-⑩) — the only surface
+  /// that lifts the tab; null for locked tabs and non-draggable groups.
+  final Widget? dragGrip;
 
   /// Taps on the lock glyph toggle the drag lock instead of selecting.
   final VoidCallback? onToggleLock;
@@ -469,6 +536,7 @@ class _PanelTabButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ?dragGrip,
               if (compact)
                 Icon(icon, size: 14, color: foreground)
               else

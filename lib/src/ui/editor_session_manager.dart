@@ -2692,10 +2692,11 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// END edge: the duration changes; growth consumes the FOLLOWING cut's
   /// leading gap first (that cut holds still until the gap is spent, then
-  /// ripples), shrinking leaves the gap alone (the rest slides earlier
-  /// with the boundary). START edge: the cut SLIDES — its leading gap
-  /// grows rightward and shrinks leftward, clamped at contact with the
-  /// previous cut.
+  /// ripples). Shrinking follows the timeline's block language (R10-⑦):
+  /// only an ATTACHED next cut rides the boundary — a detached one holds
+  /// its global position (its gap grows by the shrink). START edge: the
+  /// cut SLIDES — its leading gap grows rightward and shrinks leftward,
+  /// clamped at contact with the previous cut.
   void updateCutEdgeDrag(int cumulativeDelta) {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
@@ -2719,9 +2720,13 @@ class EditorSessionManager extends ChangeNotifier {
       final nextId = _cutTrimNextCutId;
       if (nextId != null) {
         final growth = newDuration - beforeDurations[cutId]!;
+        final baseGap = beforeGaps[nextId]!;
+        // Growth: consume the gap, then push. Shrink: an attached next
+        // cut (gap 0 at drag start) ripples with the boundary; a DETACHED
+        // one holds its global position — the gap absorbs the shrink.
         gaps[nextId] = growth > 0
-            ? math.max(0, beforeGaps[nextId]! - growth)
-            : beforeGaps[nextId]!;
+            ? math.max(0, baseGap - growth)
+            : (baseGap > 0 ? baseGap - growth : 0);
       }
     } else {
       durations[cutId] = beforeDurations[cutId]!;

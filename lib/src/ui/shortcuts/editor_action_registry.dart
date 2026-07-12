@@ -61,13 +61,15 @@ abstract final class EditorActionIds {
 /// and drawing jumps on Ctrl+`,`/`.` are the animation-desk core; tools
 /// and transport follow PS/CSP convention.
 final List<EditorActionDefinition> editorActionDefinitions = [
+  // Arrows are the PRIMARY flip keys (R10-⑧ — the primary shows as the
+  // menu shortcut label); comma/period stay as the desk-muscle aliases.
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.comma),
       SingleActivator(LogicalKeyboardKey.arrowLeft),
+      SingleActivator(LogicalKeyboardKey.comma),
     ],
   ),
   const EditorActionDefinition(
@@ -75,8 +77,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Next Frame',
     category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.period),
       SingleActivator(LogicalKeyboardKey.arrowRight),
+      SingleActivator(LogicalKeyboardKey.period),
     ],
   ),
   const EditorActionDefinition(

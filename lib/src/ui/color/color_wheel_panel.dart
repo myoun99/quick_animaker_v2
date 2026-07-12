@@ -147,12 +147,15 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
                 Expanded(child: Center(child: _wheel(belowSquare))),
                 const SizedBox(height: gap),
                 // FittedBox: very narrow panels scale the strip down
-                // instead of overflowing horizontally.
+                // instead of overflowing horizontally. The floor must be
+                // at least the strip's intrinsic width (swatch pair +
+                // swap button + hex) or the Row overflows INSIDE the
+                // FittedBox (R10-①: 150 was ~20px short).
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: SizedBox(
-                    width: math.max(width, 150),
+                    width: math.max(width, 180),
                     child: Row(
                       children: [
                         _slotPair(),

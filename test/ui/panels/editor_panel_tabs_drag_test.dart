@@ -95,10 +95,12 @@ List<String> _tabsIn(EditorPanelLayoutModel model, String dockId) {
 
 Finder _tab(String id) => find.byKey(ValueKey<String>('panel-tab-$id'));
 
-/// Drags a tab to [target] with a plain pointer drag (drags start
-/// immediately on movement).
+Finder _grip(String id) =>
+    find.descendant(of: _tab(id), matching: find.byIcon(Icons.drag_indicator));
+
+/// Drags a tab to [target] by its GRIP (R10-⑩: only the grip lifts).
 Future<void> _dragTab(WidgetTester tester, String id, Offset target) async {
-  final gesture = await tester.startGesture(tester.getCenter(_tab(id)));
+  final gesture = await tester.startGesture(tester.getCenter(_grip(id)));
   await tester.pump(const Duration(milliseconds: 20));
   // Two hops so DragTarget onMove sees the final hover position.
   await gesture.moveTo(target + const Offset(0, -10));
@@ -219,7 +221,15 @@ void main() {
     final model = _twoGroups();
     await tester.pumpWidget(_Harness(model: model, lockedTabIds: const {'a'}));
 
-    await _dragTab(tester, 'a', _tabHalf(tester, 'y', right: false));
+    // A locked tab has no grip at all (R10-⑩: only grips lift), and a
+    // body drag moves nothing.
+    expect(_grip('a'), findsNothing);
+    final gesture = await tester.startGesture(tester.getCenter(_tab('a')));
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveTo(_tabHalf(tester, 'y', right: false));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
 
     expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
     expect(_tabsIn(model, 'two'), ['x', 'y']);

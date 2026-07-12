@@ -20,7 +20,16 @@ class EditorPanelHeader extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
-      child: Row(children: [const Spacer(), trailing]),
+      // Right-aligned controls that CLIP on squeezed panels (drop-zone
+      // previews shrink panels to ~100px — a bare Row overflowed there).
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          child: trailing,
+        ),
+      ),
     );
   }
 }

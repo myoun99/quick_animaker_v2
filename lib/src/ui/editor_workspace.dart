@@ -599,6 +599,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Canvas',
           icon: Icons.image_outlined,
           locked: locked,
+          keepAlive: true,
           builder: (context) => EditorCanvasArea(
             key: _canvasAreaKey,
             session: widget.session,
@@ -659,37 +660,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             valueListenable: _brushTool,
             builder: (context, toolState, _) => ValueListenableBuilder<int>(
               valueListenable: _colorWheelBackground,
-              builder: (context, background, _) => Column(
-                children: [
-                  Expanded(
-                    child: ColorWheelPanel(
-                      color: toolState.color,
-                      backgroundColor: background,
-                      onColorChanged: (color) =>
-                          _brushTool.value = toolState.copyWith(color: color),
-                      onBackgroundColorChanged: (color) =>
-                          _colorWheelBackground.value = color,
-                    ),
-                  ),
-                  // The palette rows (P4) sit under the wheel; squat
-                  // panels scroll them instead of overflowing.
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 140),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      child: ValueListenableBuilder<ColorPaletteState>(
-                        valueListenable: _colorPalette,
-                        builder: (context, palette, _) => ColorPaletteStrip(
-                          palette: palette,
-                          currentColor: toolState.color,
-                          onColorSelected: (color) => _brushTool.value =
+              builder: (context, background, _) => LayoutBuilder(
+                // The palette strip yields to the wheel on squat panels
+                // (R10-①): its cap shrinks to zero before the Column can
+                // overflow — the wheel keeps ~120px whenever possible.
+                builder: (context, constraints) {
+                  final paletteCap = math.min(
+                    140.0,
+                    math.max(0.0, constraints.maxHeight - 120),
+                  );
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: ColorWheelPanel(
+                          color: toolState.color,
+                          backgroundColor: background,
+                          onColorChanged: (color) => _brushTool.value =
                               toolState.copyWith(color: color),
-                          onPaletteChanged: _setColorPalette,
+                          onBackgroundColorChanged: (color) =>
+                              _colorWheelBackground.value = color,
                         ),
                       ),
-                    ),
-                  ),
-                ],
+                      // The palette rows (P4) sit under the wheel; squat
+                      // panels scroll them instead of overflowing.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: paletteCap),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                          child: ValueListenableBuilder<ColorPaletteState>(
+                            valueListenable: _colorPalette,
+                            builder: (context, palette, _) => ColorPaletteStrip(
+                              palette: palette,
+                              currentColor: toolState.color,
+                              onColorSelected: (color) => _brushTool.value =
+                                  toolState.copyWith(color: color),
+                              onPaletteChanged: _setColorPalette,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -774,6 +786,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
+          // The heavy frame-axis panels keep their subtree offstage
+          // across switches (R10-②) — switching back is instant.
+          keepAlive: true,
           builder: (context) => ListenableBuilder(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
@@ -825,6 +840,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
+          keepAlive: true,
           builder: (context) => ListenableBuilder(
             // Session subscription (see the timeline tab) + COMMITTED
             // seeks only (W4 perf pass): scrub moves and playback ticks
@@ -858,6 +874,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Timesheet',
           icon: Icons.table_chart_outlined,
           locked: locked,
+          keepAlive: true,
           builder: (context) => ListenableBuilder(
             listenable: Listenable.merge([
               _timesheetContinuous,

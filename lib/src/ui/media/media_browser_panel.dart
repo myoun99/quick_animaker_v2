@@ -95,8 +95,32 @@ class MediaBrowserPanel extends StatelessWidget {
     );
   }
 
+  /// Below this width the asset rows' FIXED parts (status icon, link
+  /// badge, actions menu) no longer fit — the panel then scrolls
+  /// horizontally at this width instead of overflowing (R10-①).
+  static const double _minBodyWidth = 132;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= _minBodyWidth ||
+            !constraints.hasBoundedWidth) {
+          return _body(context);
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: _minBodyWidth,
+            height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
+            child: _body(context),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
       key: const ValueKey<String>('media-browser-panel'),
