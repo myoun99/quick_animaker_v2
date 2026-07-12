@@ -206,9 +206,14 @@ class _TimelineFrameRowsScrollBodyState
         identical(a.dragPreview, b.dragPreview);
   }
 
-  Widget _buildCellsRow(Layer layer, {required bool sectionStart}) {
+  Widget _buildCellsRow(
+    Layer layer, {
+    required Layer baseLayer,
+    required bool sectionStart,
+  }) {
     return TimelineFrameCellsRow(
       layer: layer,
+      baseLayer: baseLayer,
       active: layer.id == widget.activeLayerId,
       sectionStart: sectionStart,
       playbackFrameCount: widget.playbackFrameCount,
@@ -294,7 +299,11 @@ class _TimelineFrameRowsScrollBodyState
         layer: row.layer,
         rowBuilder: (context, layer) => row.isLane
             ? _buildLaneRow(row, layer)
-            : _buildCellsRow(layer, sectionStart: sectionStart),
+            : _buildCellsRow(
+                layer,
+                baseLayer: row.layer,
+                sectionStart: sectionStart,
+              ),
       ),
     );
 

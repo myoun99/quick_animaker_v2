@@ -47,6 +47,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onDropMediaAsset,
     this.commaDrag,
     this.blockMove,
+    this.baseLayer,
     this.sectionStart = false,
   });
 
@@ -95,6 +96,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   /// Whole-block move hooks (R10-④b); null hides the block body handles.
   final TimelineBlockMoveHandleCallbacks? blockMove;
+
+  /// The row's COMMITTED repository layer while [layer] carries a drag
+  /// preview. The block-move handles mount from THIS one so a preview step
+  /// (the block leaving for another row) never unmounts the handle that
+  /// owns the live gesture (R12-③); null falls back to [layer].
+  final Layer? baseLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -240,7 +247,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             !layerKindUsesSeSheetCells(layer.kind))
           ...timelineRowBlockMoveHandles(
             layerId: layer.id,
-            blocks: drawingBlocks(layer.timeline),
+            blocks: drawingBlocks((baseLayer ?? layer).timeline),
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,

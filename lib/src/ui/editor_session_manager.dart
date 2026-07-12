@@ -3052,9 +3052,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Applies the drag's cumulative deltas as a live preview on
   /// [dragPreview] (repository untouched). [targetLayerId] is the layer row
-  /// currently under the pointer (null or the source id = plain slide); an
-  /// illegal landing clears the preview — the block shows at its committed
-  /// spot until the pointer reaches a legal one.
+  /// currently under the pointer (null or the source id = plain slide).
+  /// Blocks in the way are pushed in the direction of travel (R12-②) and
+  /// ride the preview live; the rare still-illegal landing (mark collision,
+  /// ineligible row, linked cel) clears the preview — the block shows at
+  /// its committed spot until the pointer reaches a legal one.
   void updateDrawingBlockMoveDrag({
     required int frameDelta,
     LayerId? targetLayerId,
@@ -3139,6 +3141,11 @@ class EditorSessionManager extends ChangeNotifier {
               commands: commands,
             ),
     );
+    // The selection follows the block onto its new layer (R12-④): the
+    // user grabbed THAT drawing — keep working on it where it landed.
+    if (plan.isCrossLayer) {
+      _layerController.selectLayer(plan.targetAfter!.id);
+    }
     _warmActiveCut();
     notifyListeners();
   }
