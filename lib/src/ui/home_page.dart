@@ -9,6 +9,7 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/paint_tool_state_notifier.dart';
+import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
@@ -206,101 +207,112 @@ class _HomePageState extends State<HomePage> {
             },
             child: FocusScope(
               autofocus: true,
-              child: Column(
-                children: [
-                  // The top strip: title, the menu bar, and the quick actions
-                  // (undo/redo/export keep their long-standing keys).
-                  Material(
-                    color: colorScheme.surfaceContainerHigh,
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 12),
-                        Text(
-                          'QuickAnimaker',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          // Narrow windows scroll the menu bar instead of
-                          // overflowing the strip.
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            // The menu re-reads its enablement per notify: the
-                            // history manager is merged in because brush strokes
-                            // execute into it straight from the canvas (no session
-                            // notify fires for a pen-up), the playback controller
-                            // for the Playback menu's state, the panels bridge for
-                            // the Window checkboxes.
-                            child: ListenableBuilder(
-                              listenable: Listenable.merge([
-                                _session,
-                                _session.historyManager,
-                                _session.playback,
-                                _panelsMenu,
-                              ]),
-                              builder: (context, _) => EditorMenuBar(
-                                session: _session,
-                                panelsMenu: _panelsMenu,
-                                shortcuts: _shortcuts,
+              // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
+              // action funnel as key bindings; the layer only observes raw
+              // touches, so drawing and pinch navigation are untouched.
+              child: TouchShortcutLayer(
+                onGesture: (gesture) {
+                  final actionId = _shortcuts.actionIdForTouchGesture(gesture);
+                  if (actionId != null) {
+                    _invokeAction(actionId);
+                  }
+                },
+                child: Column(
+                  children: [
+                    // The top strip: title, the menu bar, and the quick actions
+                    // (undo/redo/export keep their long-standing keys).
+                    Material(
+                      color: colorScheme.surfaceContainerHigh,
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 12),
+                          Text(
+                            'QuickAnimaker',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            // Narrow windows scroll the menu bar instead of
+                            // overflowing the strip.
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              // The menu re-reads its enablement per notify: the
+                              // history manager is merged in because brush strokes
+                              // execute into it straight from the canvas (no session
+                              // notify fires for a pen-up), the playback controller
+                              // for the Playback menu's state, the panels bridge for
+                              // the Window checkboxes.
+                              child: ListenableBuilder(
+                                listenable: Listenable.merge([
+                                  _session,
+                                  _session.historyManager,
+                                  _session.playback,
+                                  _panelsMenu,
+                                ]),
+                                builder: (context, _) => EditorMenuBar(
+                                  session: _session,
+                                  panelsMenu: _panelsMenu,
+                                  shortcuts: _shortcuts,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        ListenableBuilder(
-                          listenable: Listenable.merge([
-                            _session,
-                            _session.historyManager,
-                          ]),
-                          builder: (context, _) => Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                key: const ValueKey<String>('undo-button'),
-                                tooltip: 'Undo',
-                                onPressed: _session.canUndo
-                                    ? _session.undo
-                                    : null,
-                                icon: const Icon(Icons.undo),
-                              ),
-                              IconButton(
-                                key: const ValueKey<String>('redo-button'),
-                                tooltip: 'Redo',
-                                onPressed: _session.canRedo
-                                    ? _session.redo
-                                    : null,
-                                icon: const Icon(Icons.redo),
-                              ),
-                            ],
+                          ListenableBuilder(
+                            listenable: Listenable.merge([
+                              _session,
+                              _session.historyManager,
+                            ]),
+                            builder: (context, _) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  key: const ValueKey<String>('undo-button'),
+                                  tooltip: 'Undo',
+                                  onPressed: _session.canUndo
+                                      ? _session.undo
+                                      : null,
+                                  icon: const Icon(Icons.undo),
+                                ),
+                                IconButton(
+                                  key: const ValueKey<String>('redo-button'),
+                                  tooltip: 'Redo',
+                                  onPressed: _session.canRedo
+                                      ? _session.redo
+                                      : null,
+                                  icon: const Icon(Icons.redo),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          key: const ValueKey<String>('export-png-button'),
-                          tooltip: 'Export',
-                          onPressed: () {
-                            unawaited(
-                              showDialog<void>(
-                                context: context,
-                                builder: (context) =>
-                                    ExportDialog(session: _session),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.save_alt),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
+                          IconButton(
+                            key: const ValueKey<String>('export-png-button'),
+                            tooltip: 'Export',
+                            onPressed: () {
+                              unawaited(
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (context) =>
+                                      ExportDialog(session: _session),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.save_alt),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: EditorWorkspace(
-                      session: _session,
-                      panelsMenu: _panelsMenu,
-                      brushTool: _brushTool,
-                      canvasViewCommands: _canvasViewCommands,
-                      canvasSelectionCommands: _canvasSelectionCommands,
+                    Expanded(
+                      child: EditorWorkspace(
+                        session: _session,
+                        panelsMenu: _panelsMenu,
+                        brushTool: _brushTool,
+                        canvasViewCommands: _canvasViewCommands,
+                        canvasSelectionCommands: _canvasSelectionCommands,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
