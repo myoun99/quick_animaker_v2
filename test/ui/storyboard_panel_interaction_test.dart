@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -223,15 +224,62 @@ void main() {
       final target = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-c'),
       );
-      await tester.dragFrom(
-        tester.getCenter(source),
-        tester.getCenter(target) - tester.getCenter(source),
-      );
+      // Reordering lifts on LONG-PRESS (R10-④ gave the plain horizontal
+      // drag to the whole-block slide).
+      final gesture = await tester.startGesture(tester.getCenter(source));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.moveTo(tester.getCenter(target));
+      await tester.pump();
+      await gesture.up();
       await tester.pumpAndSettle();
 
       expect(reorderedCutId, const CutId('cut-a'));
       expect(capturedTargetTrackId, const TrackId('track-a'));
       expect(capturedTargetCutIndex, 2);
+    });
+
+    testWidgets('a horizontal drag on a block body SLIDES the cut '
+        '(R10-④): begin → whole-frame updates → end', (tester) async {
+      final began = <CutId>[];
+      final updates = <int>[];
+      var ended = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutMove: StoryboardCutMoveCallbacks(
+          onBegin: (cutId) {
+            began.add(cutId);
+            return true;
+          },
+          onUpdate: updates.add,
+          onEnd: () => ended += 1,
+          onCancel: () {},
+        ),
+      );
+
+      // Drag the SECOND block 40px right at 8 px/frame = +5 frames.
+      final block = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-b'),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(block));
+      await tester.pump();
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(began, [const CutId('cut-b')]);
+      expect(updates, isNotEmpty);
+      expect(updates.last, 5);
+      expect(ended, 1);
     });
 
     testWidgets('dropping a block onto itself does not reorder', (
@@ -837,6 +885,7 @@ Future<void> _pumpStoryboardPanel(
   required ValueChanged<CutId> onCutSelected,
   CutReorderedCallback? onCutReordered,
   StoryboardCutTrimCallbacks? cutTrim,
+  StoryboardCutMoveCallbacks? cutMove,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
   ui.Image? Function(Cut cut)? thumbnailFor,
@@ -853,6 +902,7 @@ Future<void> _pumpStoryboardPanel(
           onCutSelected: onCutSelected,
           onCutReordered: onCutReordered,
           cutTrim: cutTrim,
+          cutMove: cutMove,
           playheadFrame: playheadGlobalFrame == null
               ? null
               : ValueNotifier<int?>(playheadGlobalFrame),

@@ -36,6 +36,7 @@ import 'timeline/timeline_lane_rows.dart'
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeader, transformGroupHeaderLane, transformPropertyLanes;
 import 'timeline/timeline_block.dart';
+import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
@@ -85,6 +86,26 @@ class StoryboardCutTrimCallbacks {
   final VoidCallback onCancel;
 }
 
+/// Whole-block MOVE hooks (R10-④): dragging a cut block horizontally
+/// SLIDES the cut along the frame axis (session
+/// begin/update/end/cancelCutMoveDrag — live preview, ONE undo per drag).
+/// Reordering moved to a long-press lift.
+class StoryboardCutMoveCallbacks {
+  const StoryboardCutMoveCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  final bool Function(CutId cutId) onBegin;
+
+  /// Reports the cumulative whole-frame delta since drag start.
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -95,6 +116,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSelectLayer,
     this.onCutReordered,
     this.cutTrim,
+    this.cutMove,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.projectFps = 24,
@@ -144,6 +166,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onDeleteActiveCut,
     this.onToggleActiveCutThumbnail,
     this.isThumbnailPinnedHere = false,
+    this.dragPreview,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -167,6 +190,14 @@ class StoryboardPanel extends StatefulWidget {
   static const double _timelineTrailingPadding = 12;
 
   final Project project;
+
+  /// The session's scoped edit-drag channel (R10-③). The panel substitutes
+  /// cut-trim previews into [project] INTERNALLY, so a drag step rebuilds
+  /// only the cut-layout-dependent pieces (blocks, lanes, ruler width) —
+  /// the SE rows (waveforms) and the label rails hold their built
+  /// subtrees. Null renders [project] as-is.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
+
   final CutId activeCutId;
   final ValueChanged<CutId> onCutSelected;
 
@@ -187,6 +218,11 @@ class StoryboardPanel extends StatefulWidget {
   /// cuts ripple), the START grip rolls the boundary with the previous cut.
   /// Null hides the grips.
   final StoryboardCutTrimCallbacks? cutTrim;
+
+  /// Whole-block move hooks (R10-④): a horizontal drag on a block's body
+  /// slides the cut (gap authoring + edge-style pushes). Null disables
+  /// the slide (blocks then only tap-select / long-press reorder).
+  final StoryboardCutMoveCallbacks? cutMove;
 
   /// Frame-axis zoom, owned by the host (the panel header's shared zoom
   /// slider drives it).
@@ -803,6 +839,38 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
+    List<Widget> seRows,
+  ) {
+    return [
+      // Prebuilt from the RAW project outside the drag-preview builder
+      // (R10-③): identical instances per step = subtree rebuilds skipped.
+      ...seRows,
+      _StoryboardTrackRow(
+        track: track,
+        layoutEntries: entries,
+        activeCutId: widget.activeCutId,
+        onCutSelected: widget.onCutSelected,
+        onCutReordered: widget.onCutReordered,
+        cutTrim: widget.cutTrim,
+        cutMove: widget.cutMove,
+        thumbnailFor: widget.thumbnailFor,
+        timelineScale: scale,
+        showSeconds: widget.showSeconds,
+        projectFps: widget.projectFps,
+      ),
+      if (widget.expandedTransformTracks.contains(track.id.value))
+        ..._cutTransformLaneStrips(track, index, entries, width, scale),
+    ];
+  }
+
+  /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
+  /// track-global content, built from the base layout.
+  List<Widget> _seStripRowsForTrack(
+    Track track,
+    int index,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
   ) {
     return [
       for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
@@ -842,20 +910,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           ..._seTransformLaneStrips(track, index, slot, entries, width, scale),
         ],
       ],
-      _StoryboardTrackRow(
-        track: track,
-        layoutEntries: entries,
-        activeCutId: widget.activeCutId,
-        onCutSelected: widget.onCutSelected,
-        onCutReordered: widget.onCutReordered,
-        cutTrim: widget.cutTrim,
-        thumbnailFor: widget.thumbnailFor,
-        timelineScale: scale,
-        showSeconds: widget.showSeconds,
-        projectFps: widget.projectFps,
-      ),
-      if (widget.expandedTransformTracks.contains(track.id.value))
-        ..._cutTransformLaneStrips(track, index, entries, width, scale),
     ];
   }
 
@@ -956,8 +1010,73 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    // SE rows are built OUTSIDE the drag-preview builder from the RAW
+    // project (R10-③): their content is track-global, so a cut trim never
+    // changes them — handing the per-step rebuild IDENTICAL row instances
+    // lets Flutter skip their whole subtrees (waveform painters included).
+    // The trade: an in-flight trim doesn't slide their cut-boundary marks
+    // until release. SE comma drags edit the ACTIVE layer through the
+    // timeline gates, unaffected here.
+    final seStripRowsByTrack = _seStripRowsByTrack();
+    final dragPreview = widget.dragPreview;
+    if (dragPreview == null) {
+      return _buildBody(context, widget.project, seStripRowsByTrack);
+    }
+    return ValueListenableBuilder<TimelineDragPreview?>(
+      valueListenable: dragPreview,
+      builder: (context, preview, _) => _buildBody(
+        context,
+        projectWithTimelineDragPreview(widget.project, preview),
+        seStripRowsByTrack,
+      ),
+    );
+  }
+
+  /// The base-layout SE strip rows (+ their twirled-down lanes) per track
+  /// index — computed once per PANEL build and reused across drag-preview
+  /// steps.
+  List<List<Widget>> _seStripRowsByTrack() {
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
+    final scale = _scale;
+    final contentWidth = _contentWidthFor(layoutEntries, scale);
+    return [
+      for (var index = 0; index < widget.project.tracks.length; index++)
+        _seStripRowsForTrack(
+          widget.project.tracks[index],
+          index,
+          layoutEntries
+              .where((entry) => entry.trackIndex == index)
+              .toList(growable: false),
+          contentWidth,
+          scale,
+        ),
+    ];
+  }
+
+  /// The scroll content's full width for [layoutEntries] (cuts + the
+  /// endless runway).
+  double _contentWidthFor(
+    List<StoryboardTimelineLayoutEntry> layoutEntries,
+    TimelineScale scale,
+  ) {
+    final totalFrames = _totalFrames(layoutEntries);
+    final renderedFrames =
+        totalFrames +
+        math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
+    return math.max(
+      _timelineContentWidth(layoutEntries, scale),
+      scale.leftForFrame(renderedFrames) +
+          StoryboardPanel._timelineTrailingPadding,
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context,
+    Project project,
+    List<List<Widget>> seStripRowsByTrack,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final layoutEntries = buildStoryboardTimelineLayout(project);
     final scale = _scale;
     final totalFrames = _totalFrames(layoutEntries);
     // Endless frame axis: the ruler (and scrollable area) always shows a
@@ -967,11 +1086,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final renderedFrames =
         totalFrames +
         math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
-    final contentWidth = math.max(
-      _timelineContentWidth(layoutEntries, scale),
-      scale.leftForFrame(renderedFrames) +
-          StoryboardPanel._timelineTrailingPadding,
-    );
+    final contentWidth = _contentWidthFor(layoutEntries, scale);
     // The playhead + green bar repaint through their own listenables (the
     // cursor-layer pattern) — the ruler and the overlay subscribe below,
     // nothing else in this build does.
@@ -1071,7 +1186,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         width: StoryboardPanel._sectionGutterWidth,
                         child: Column(
                           children: [
-                            for (final track in widget.project.tracks)
+                            for (final track in project.tracks)
                               ..._sectionBracketsForTrack(track),
                           ],
                         ),
@@ -1090,11 +1205,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             // S2, S1, V 窶・R7-竭｣).
                             for (
                               var index = 0;
-                              index < widget.project.tracks.length;
+                              index < project.tracks.length;
                               index++
                             )
                               ..._railRowsForTrack(
-                                widget.project.tracks[index],
+                                project.tracks[index],
                                 index,
                               ),
                           ],
@@ -1148,11 +1263,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     // row for row, height for height.
                                     for (
                                       var index = 0;
-                                      index < widget.project.tracks.length;
+                                      index < project.tracks.length;
                                       index++
                                     )
                                       ..._stripRowsForTrack(
-                                        widget.project.tracks[index],
+                                        project.tracks[index],
                                         index,
                                         layoutEntries
                                             .where(
@@ -1162,6 +1277,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             .toList(growable: false),
                                         contentWidth,
                                         scale,
+                                        index < seStripRowsByTrack.length
+                                            ? seStripRowsByTrack[index]
+                                            : const [],
                                       ),
                                   ],
                                 ),
@@ -2768,6 +2886,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.onCutSelected,
     required this.onCutReordered,
     required this.cutTrim,
+    required this.cutMove,
     required this.thumbnailFor,
     required this.timelineScale,
     required this.showSeconds,
@@ -2780,6 +2899,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   final ValueChanged<CutId> onCutSelected;
   final CutReorderedCallback? onCutReordered;
   final StoryboardCutTrimCallbacks? cutTrim;
+  final StoryboardCutMoveCallbacks? cutMove;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
   final bool showSeconds;
@@ -2822,6 +2942,8 @@ class _StoryboardTrackRow extends StatelessWidget {
                   canReorder:
                       onCutReordered != null && layoutEntries.length > 1,
                   onCutReordered: onCutReordered,
+                  cutMove: cutMove,
+                  pixelsPerFrame: timelineScale.pixelsPerFrame,
                   totalLabel: _totalLabelFor(entry),
                   thumbnail: thumbnailFor?.call(entry.cut),
                   showThumbnail: thumbnailFor != null,
@@ -3080,7 +3202,7 @@ class _StoryboardCutEdgeGripState extends State<_StoryboardCutEdgeGrip> {
 /// The drag layer around a cut block: mirrors the top-bar chips' semantics
 /// (drop on a target block = same-track reorder to its index) so both
 /// surfaces stay interchangeable.
-class _ReorderableStoryboardCutBlock extends StatelessWidget {
+class _ReorderableStoryboardCutBlock extends StatefulWidget {
   const _ReorderableStoryboardCutBlock({
     required this.layoutEntry,
     required this.width,
@@ -3088,6 +3210,8 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
     required this.onSelected,
     required this.canReorder,
     required this.onCutReordered,
+    required this.cutMove,
+    required this.pixelsPerFrame,
     required this.totalLabel,
     required this.thumbnail,
     required this.showThumbnail,
@@ -3099,22 +3223,88 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
   final ValueChanged<CutId> onSelected;
   final bool canReorder;
   final CutReorderedCallback? onCutReordered;
+  final StoryboardCutMoveCallbacks? cutMove;
+  final double pixelsPerFrame;
   final String totalLabel;
   final ui.Image? thumbnail;
   final bool showThumbnail;
 
   @override
+  State<_ReorderableStoryboardCutBlock> createState() =>
+      _ReorderableStoryboardCutBlockState();
+}
+
+class _ReorderableStoryboardCutBlockState
+    extends State<_ReorderableStoryboardCutBlock> {
+  // Whole-block slide (R10-④): cumulative pointer dx → whole frames.
+  double _moveDx = 0;
+  bool _moving = false;
+
+  StoryboardTimelineLayoutEntry get layoutEntry => widget.layoutEntry;
+
+  void _handleMoveStart(DragStartDetails details) {
+    final cutMove = widget.cutMove;
+    if (cutMove == null || !cutMove.onBegin(layoutEntry.cutId)) {
+      return;
+    }
+    _moving = true;
+    _moveDx = 0;
+  }
+
+  void _handleMoveUpdate(DragUpdateDetails details) {
+    if (!_moving) {
+      return;
+    }
+    _moveDx += details.delta.dx;
+    widget.cutMove!.onUpdate((_moveDx / widget.pixelsPerFrame).round());
+  }
+
+  void _handleMoveEnd(DragEndDetails details) {
+    if (!_moving) {
+      return;
+    }
+    _moving = false;
+    widget.cutMove!.onEnd();
+  }
+
+  void _handleMoveCancel() {
+    if (!_moving) {
+      return;
+    }
+    _moving = false;
+    widget.cutMove!.onCancel();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final block = _StoryboardCutBlock(
+    Widget block = _StoryboardCutBlock(
       layoutEntry: layoutEntry,
-      width: width,
-      isActive: isActive,
-      onSelected: onSelected,
-      totalLabel: totalLabel,
-      thumbnail: thumbnail,
-      showThumbnail: showThumbnail,
+      width: widget.width,
+      isActive: widget.isActive,
+      onSelected: widget.onSelected,
+      totalLabel: widget.totalLabel,
+      thumbnail: widget.thumbnail,
+      showThumbnail: widget.showThumbnail,
     );
-    if (!canReorder) {
+    // A horizontal drag on the block's BODY slides the cut along the
+    // frame axis (timeline block language, R10-④): live preview through
+    // the session channel, one undo on release. Taps still select; the
+    // long-press lift below owns reordering.
+    if (widget.cutMove != null) {
+      block = GestureDetector(
+        key: ValueKey<String>('storyboard-cut-move-${layoutEntry.cutId.value}'),
+        behavior: HitTestBehavior.translucent,
+        // Pixel-exact deltas from the true pointer-down (the camera
+        // overlay's rule) — touch slop must not eat the first frames.
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: _handleMoveStart,
+        onHorizontalDragUpdate: _handleMoveUpdate,
+        onHorizontalDragEnd: _handleMoveEnd,
+        onHorizontalDragCancel: _handleMoveCancel,
+        child: block,
+      );
+    }
+    if (!widget.canReorder) {
       return block;
     }
 
@@ -3125,7 +3315,7 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
           return;
         }
 
-        onCutReordered?.call(
+        widget.onCutReordered?.call(
           draggedCutId: details.data,
           targetTrackId: layoutEntry.trackId,
           targetCutIndex: layoutEntry.cutIndex,
@@ -3133,27 +3323,29 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
       },
       builder: (context, candidateData, rejectedData) {
         final isDropTarget = candidateData.isNotEmpty;
-        return Draggable<CutId>(
+        // Long-press LIFTS the block for reordering (R10-④ moved the
+        // plain horizontal drag to the slide); works with mouse-hold and
+        // touch alike.
+        return LongPressDraggable<CutId>(
           key: ValueKey<String>(
             'storyboard-cut-draggable-${layoutEntry.cutId.value}',
           ),
           data: layoutEntry.cutId,
-          axis: Axis.horizontal,
           feedback: Material(
             color: Colors.transparent,
             child: Opacity(
               opacity: 0.85,
               child: SizedBox(
-                width: width,
+                width: widget.width,
                 height: StoryboardPanel._trackLaneHeight,
                 child: _StoryboardCutBlock(
                   layoutEntry: layoutEntry,
-                  width: width,
-                  isActive: isActive,
+                  width: widget.width,
+                  isActive: widget.isActive,
                   onSelected: (_) {},
-                  totalLabel: totalLabel,
-                  thumbnail: thumbnail,
-                  showThumbnail: showThumbnail,
+                  totalLabel: widget.totalLabel,
+                  thumbnail: widget.thumbnail,
+                  showThumbnail: widget.showThumbnail,
                 ),
               ),
             ),

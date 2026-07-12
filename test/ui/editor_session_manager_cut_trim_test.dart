@@ -301,4 +301,101 @@ void main() {
     expect(s.repository.requireProject().tracks.first.cuts, hasLength(1));
     expect(s.canUndo, isFalse);
   });
+
+  group('whole-block move drags (R10-④)', () {
+    test('a rightward move grows the gap; the follower holds still until '
+        'its gap is spent, then pushes', () {
+      final (s, first, second) = twoCutSession();
+      final firstStart = layoutStart(s, first);
+      final secondStart = layoutStart(s, second);
+
+      // Open a 3-frame gap before the second cut, then move the FIRST cut
+      // right by 5: its own gap grows 5, the second cut's gap absorbs 3
+      // and the remaining 2 push it.
+      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(3);
+      s.endCutEdgeDrag();
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(5);
+      expect(previewedGap(s, first), 5);
+      expect(previewedGap(s, second), 0);
+      s.endCutMoveDrag();
+
+      expect(layoutStart(s, first), firstStart + 5);
+      expect(layoutStart(s, second), secondStart + 3 + 2);
+
+      // ONE undo restores both gaps.
+      s.undo();
+      expect(layoutStart(s, first), firstStart);
+      expect(layoutStart(s, second), secondStart + 3);
+    });
+
+    test('a leftward move consumes its own gap, then pushes the '
+        'predecessor left; followers hold still', () {
+      final (s, first, second) = twoCutSession();
+
+      // first: gap 4, second: gap 2.
+      s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(4);
+      s.endCutEdgeDrag();
+      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(2);
+      s.endCutEdgeDrag();
+      final secondStart = layoutStart(s, second);
+      final firstStart = layoutStart(s, first);
+
+      // Move the SECOND cut left by 5: its own gap (2) absorbs first,
+      // then the first cut's gap (4) absorbs 3 more — the first cut is
+      // PUSHED left by 3.
+      expect(s.beginCutMoveDrag(second), isTrue);
+      s.updateCutMoveDrag(-5);
+      expect(previewedGap(s, second), 0);
+      expect(previewedGap(s, first), 1);
+      s.endCutMoveDrag();
+
+      expect(layoutStart(s, second), secondStart - 5);
+      expect(layoutStart(s, first), firstStart - 3);
+    });
+
+    test('a leftward move clamps at the chain\'s total slack (frame 0)', () {
+      final (s, first, second) = twoCutSession();
+      // No gaps anywhere: the first cut cannot move left at all.
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(-10);
+      expect(s.dragPreview.value, isNull, reason: 'nothing can change');
+      s.endCutMoveDrag();
+      expect(layoutStart(s, first), 0);
+      expect(layoutStart(s, second), s.cutById(first)!.duration);
+    });
+
+    test('moving a MIDDLE cut left keeps its follower in place (the gap '
+        'behind it grows)', () {
+      final (s, first, second) = twoCutSession();
+      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(4);
+      s.endCutEdgeDrag();
+      final firstDuration = s.cutById(first)!.duration;
+
+      // Move the SECOND (last) cut left by 3 into its own gap.
+      s.beginCutMoveDrag(second);
+      s.updateCutMoveDrag(-3);
+      s.endCutMoveDrag();
+      expect(layoutStart(s, second), firstDuration + 1);
+    });
+
+    test('cancel leaves no trace', () {
+      final (s, first, _) = twoCutSession();
+      final undoDepthProbe = s.canUndo;
+
+      s.beginCutMoveDrag(first);
+      s.updateCutMoveDrag(7);
+      expect(previewedGap(s, first), 7);
+      s.cancelCutMoveDrag();
+
+      expect(s.dragPreview.value, isNull);
+      expect(s.cutById(first)!.leadingGapFrames, 0);
+      expect(s.canUndo, undoDepthProbe);
+    });
+  });
 }
