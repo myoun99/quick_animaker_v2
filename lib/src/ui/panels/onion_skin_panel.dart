@@ -115,6 +115,9 @@ class OnionSkinPanel extends StatelessWidget {
                 key: ValueKey<String>('onion-peg-$keyPrefix-${index + 1}'),
                 label: Text('${index + 1}'),
                 selected: pegs[index].enabled,
+                // Selection reads from the chip color alone — the M3
+                // checkmark widens the chip and the strip jumps (R11-①).
+                showCheckmark: false,
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 onSelected: (enabled) => onPegsChanged([

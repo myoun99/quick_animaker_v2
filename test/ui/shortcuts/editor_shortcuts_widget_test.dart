@@ -5,7 +5,6 @@ import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
-import 'package:quick_animaker_v2/src/ui/editor_canvas_area.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
@@ -97,16 +96,12 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('I enters the eyedropper remembering the return tool; G fills', (
+  testWidgets('I enters the eyedropper (it stays armed, R11-②); G fills', (
     tester,
   ) async {
     await pumpHome(tester);
     CanvasTool toolOf() =>
         tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
-    BrushToolState stateOf() => tester
-        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
-        .brushToolState
-        .value;
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
     await tester.pumpAndSettle();
@@ -115,13 +110,12 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.eyedropper);
-    expect(stateOf().eyedropperReturnTool, CanvasTool.eraser);
 
-    // Pressing I again must not overwrite the memory with the eyedropper
-    // itself (a pick would then trap the tool).
+    // Repeated I keeps the eyedropper (no return-tool machinery — picks
+    // never switch tools).
     await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
     await tester.pumpAndSettle();
-    expect(stateOf().eyedropperReturnTool, CanvasTool.eraser);
+    expect(toolOf(), CanvasTool.eyedropper);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
     await tester.pumpAndSettle();
