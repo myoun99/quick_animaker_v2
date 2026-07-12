@@ -84,72 +84,86 @@ void main() {
     expect(s.cutById(first)!.duration, before + 6);
   });
 
-  test('start-edge drag SLIDES the cut: rightward creates a leading gap, '
-      'leftward consumes it, clamped at contact', () {
+  test('start-edge drag TRIMS from the front (R12-B): the end stays put, '
+      'rightward shrinks the length and opens the gap', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
+    final secondDuration = s.cutById(second)!.duration;
+    final secondEnd = firstDuration + secondDuration;
 
     expect(
       s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start),
       isTrue,
     );
 
-    // Rightward: the cut slides later — a gap opens before it; duration is
-    // untouched on BOTH cuts (slide, not roll).
+    // Rightward: the start moves later — the gap opens, the LENGTH
+    // shrinks, and the end (with everything after it) never moves.
     s.updateCutEdgeDrag(5);
     expect(previewedGap(s, second), 5);
+    expect(previewedDuration(s, second), secondDuration - 5);
     expect(previewedDuration(s, first), firstDuration);
-    expect(previewedDuration(s, second), s.cutById(second)!.duration);
 
-    // Leftward past contact clamps at gap 0 (cuts never overlap).
+    // Rightward movement clamps at length 1.
+    s.updateCutEdgeDrag(secondDuration + 40);
+    expect(previewedDuration(s, second), 1);
+
+    // Leftward past the wall (no gap, no predecessor slack) clamps back
+    // to the original start — nothing changes.
     s.updateCutEdgeDrag(-9);
-    expect(previewedGap(s, second), 0);
+    expect(s.dragPreview.value, isNull);
 
     s.updateCutEdgeDrag(4);
     s.endCutEdgeDrag();
     expect(s.cutById(second)!.leadingGapFrames, 4);
+    expect(s.cutById(second)!.duration, secondDuration - 4);
     expect(layoutStart(s, second), firstDuration + 4);
+    // The cut's END is pinned.
+    expect(layoutStart(s, second) + s.cutById(second)!.duration, secondEnd);
 
-    // ONE undo step restores the gap.
+    // ONE undo step restores the gap AND the length.
     s.undo();
     expect(s.cutById(second)!.leadingGapFrames, 0);
-    expect(layoutStart(s, second), firstDuration);
+    expect(s.cutById(second)!.duration, secondDuration);
     s.redo();
-    expect(s.cutById(second)!.leadingGapFrames, 4);
+    expect(s.cutById(second)!.duration, secondDuration - 4);
   });
 
-  test('start-edge leftward slide PUSHES predecessors through their gaps '
-      '(R12-⑦: the block-body push language, no wall at contact)', () {
+  test('start-edge leftward GROWTH pushes predecessors through their gaps '
+      '(block-body push language) and adds the movement to the length', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
+    final secondDuration = s.cutById(second)!.duration;
 
-    // Give the FIRST cut a 4-frame lead-in gap.
-    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
-    s.updateCutEdgeDrag(4);
-    s.endCutEdgeDrag();
+    // Give the FIRST cut a 4-frame lead-in gap (a pure slide: cut move).
+    expect(s.beginCutMoveDrag(first), isTrue);
+    s.updateCutMoveDrag(4);
+    s.endCutMoveDrag();
     expect(layoutStart(s, first), 4);
-    expect(layoutStart(s, second), 4 + firstDuration);
+    final secondEnd = layoutStart(s, second) + secondDuration;
 
-    // Slide the SECOND cut's start left by 6: its own gap is 0, so the
+    // Grow the SECOND cut's start left by 6: its own gap is 0, so the
     // cascade pushes the first cut left through ITS gap (4 frames of
-    // slack) and clamps there.
+    // slack) and clamps there — the length grows by the achieved 4.
     s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     s.updateCutEdgeDrag(-6);
     expect(previewedGap(s, first), 0);
+    expect(previewedDuration(s, second), secondDuration + 4);
     s.endCutEdgeDrag();
 
     expect(s.cutById(first)!.leadingGapFrames, 0);
-    expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(layoutStart(s, first), 0);
+    expect(s.cutById(second)!.duration, secondDuration + 4);
     expect(layoutStart(s, second), firstDuration);
-    // Durations never change on a slide.
+    // The END is pinned; the predecessor's length never changes.
+    expect(layoutStart(s, second) + s.cutById(second)!.duration, secondEnd);
     expect(s.cutById(first)!.duration, firstDuration);
   });
 
-  test('the FIRST cut slides too — its gap is black lead-in before the '
-      'track begins', () {
+  test('the FIRST cut start-trims too — its gap is black lead-in and the '
+      'rest of the track never moves (end pinned)', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
+    final secondStart = layoutStart(s, second);
 
     expect(
       s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start),
@@ -159,9 +173,10 @@ void main() {
     s.endCutEdgeDrag();
 
     expect(s.cutById(first)!.leadingGapFrames, 3);
+    expect(s.cutById(first)!.duration, firstDuration - 3);
     expect(layoutStart(s, first), 3);
-    // The whole track shifts with it (the second cut stays adjacent).
-    expect(layoutStart(s, second), 3 + firstDuration);
+    // The follower NEVER moves on a start trim.
+    expect(layoutStart(s, second), secondStart);
   });
 
   test('end-edge growth eats the following gap first — the next cut holds '
@@ -283,18 +298,20 @@ void main() {
     expect(s.cutById(first)!.transformTrack.opacity, custom.opacity);
   });
 
-  test('a start-edge SLIDE never touches the fade (gap only — keys are '
-      'cut-local)', () {
+  test('a start-edge TRIM re-anchors the canonical fade to the new length '
+      '(the fade-out keeps riding the end — same durability as end trims)',
+      () {
     final (s, _, second) = twoCutSession();
     s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
-    final before = s.cutById(second)!.transformTrack;
 
     s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     s.updateCutEdgeDrag(5);
     s.endCutEdgeDrag();
 
     expect(s.cutById(second)!.leadingGapFrames, 5);
-    expect(s.cutById(second)!.transformTrack, before);
+    final lengths = cutFadeLengths(s.cutById(second)!);
+    expect(lengths.fadeInFrames, 2);
+    expect(lengths.fadeOutFrames, 3);
   });
 
   test('cancel drops the preview without touching history or the repo', () {
