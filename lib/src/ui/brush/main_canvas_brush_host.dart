@@ -52,6 +52,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.fillDabAt,
     this.viewCommands,
     this.selectionCommands,
+    this.onStrokeInputActiveChanged,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -112,6 +113,9 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
+  final ValueChanged<bool>? onStrokeInputActiveChanged;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -181,6 +185,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       fillDabAt: widget.fillDabAt,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
+      onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
     );
   }
 

@@ -195,6 +195,55 @@ void main() {
     });
   });
 
+  testWidgets('an open input hold gates warming even past the idle delay '
+      '(R13-3: pen-down stand-down)', (tester) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      final scheduler = PlaybackPrerenderScheduler(
+        composites: f.composites,
+        resolveCut: (_) => cut(),
+        idleDelay: Duration.zero,
+      );
+
+      scheduler.beginInputHold();
+      scheduler.requestWarmCut(
+        cutId: const CutId('cut'),
+        quality: PlaybackQuality.quarter,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(
+        scheduler.progress.value.cached,
+        0,
+        reason: 'a live stroke must fully stand warming down',
+      );
+      expect(
+        f.composites.validCompositeOrNull(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.quarter,
+        ),
+        isNull,
+      );
+
+      scheduler.endInputHold();
+      await scheduler.idle;
+
+      expect(scheduler.progress.value.isComplete, isTrue);
+      expect(
+        f.composites.validCompositeOrNull(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.quarter,
+        ),
+        isNotNull,
+        reason: 'released holds resume the SAME queue to completion',
+      );
+      scheduler.dispose();
+      f.composites.dispose();
+    });
+  });
+
   testWidgets('an invalidated frame re-warms with fresh content', (
     tester,
   ) async {

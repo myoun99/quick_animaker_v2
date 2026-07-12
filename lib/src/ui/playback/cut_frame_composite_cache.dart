@@ -133,20 +133,57 @@ class CutFrameCompositeCache {
     }
 
     final image = await _composeImage(cut, signature);
+    final entry = _CompositeEntry(image: image!)..lastUsed = ++_useCounter;
+    _images[signature] = entry;
+    _pointIndexAt(indexKey, signature);
+    return image;
+  }
+
+  /// [prepareComposite] that can stand down mid-build: [shouldAbort] is
+  /// checked between per-layer prepares; an abort returns null with nothing
+  /// cached, and the warm loop retries once the editor is quiet again. The
+  /// on-demand display path keeps [prepareComposite] — only the
+  /// opportunistic warmer may abandon work (R13-3).
+  Future<ui.Image?> prepareCompositeInterruptible({
+    required Cut cut,
+    required int frameIndex,
+    required PlaybackQuality quality,
+    required bool Function() shouldAbort,
+  }) async {
+    final signature = _signatureFor(cut, frameIndex, quality);
+    final indexKey = (cut.id, frameIndex, quality);
+
+    final existing = _images[signature];
+    if (existing != null) {
+      _pointIndexAt(indexKey, signature);
+      existing.lastUsed = ++_useCounter;
+      return existing.image;
+    }
+
+    final image = await _composeImage(cut, signature, shouldAbort: shouldAbort);
+    if (image == null) {
+      return null;
+    }
     final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
     _images[signature] = entry;
     _pointIndexAt(indexKey, signature);
     return image;
   }
 
-  Future<ui.Image> _composeImage(
+  /// Null only when [shouldAbort] fired (never without one).
+  Future<ui.Image?> _composeImage(
     Cut cut,
-    CutFrameCompositeSignature signature,
-  ) async {
+    CutFrameCompositeSignature signature, {
+    bool Function()? shouldAbort,
+  }) async {
     final raster = scaledCanvasSize(cut.canvasSize, signature.quality);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     for (final layer in signature.layers) {
+      if (shouldAbort?.call() ?? false) {
+        recorder.endRecording().dispose();
+        return null;
+      }
       final layerImage = await layerImages.prepare(
         key: frameKeyOf(cut, layer.layerId, layer.frameId),
         canvasSize: cut.canvasSize,
@@ -181,6 +218,11 @@ class CutFrameCompositeCache {
     }
     final picture = recorder.endRecording();
     try {
+      // Last check before the big slice: the full-canvas rasterization is
+      // the composite's dominant cost (raster-thread contention included).
+      if (shouldAbort?.call() ?? false) {
+        return null;
+      }
       return await picture.toImage(raster.width, raster.height);
     } finally {
       picture.dispose();

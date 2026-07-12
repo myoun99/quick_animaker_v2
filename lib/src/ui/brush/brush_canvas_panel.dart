@@ -77,6 +77,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.fillDabAt,
     this.viewCommands,
     this.selectionCommands,
+    this.onStrokeInputActiveChanged,
     this.allowViewRotation = true,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -165,6 +166,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the selection layer while a selection tool is active.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
+  /// stroke end/cancel — the session holds prerender warming while a
+  /// stroke is live.
+  final ValueChanged<bool>? onStrokeInputActiveChanged;
+
   /// False hides the rotate/flip toolbar controls and disables the
   /// rotation gestures — for hosts whose content layers speak zoom/pan
   /// only (the timesheet's ink and header-edit overlays).
@@ -208,6 +214,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   @override
   void dispose() {
+    // A mid-stroke teardown must release the session's warm hold — a
+    // leaked hold would gate prerendering forever.
+    if (_strokeActive) {
+      widget.onStrokeInputActiveChanged?.call(false);
+    }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _eyedropperHover.dispose();
     widget.viewCommands?.unbind();
@@ -345,6 +356,71 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     return _viewport.copyWith(panX: panX, panY: panY);
   }
 
+  /// R13-3 shell memo: the panbars/zoom-rotate bar are a Material button
+  /// forest that used to reconstruct on EVERY panel rebuild (each committed
+  /// seek, tool switch, drag-preview notify). Their inputs are only the
+  /// viewport geometry — memo by token, reuse the identical instances so
+  /// the element tree prunes the whole subtree.
+  ({CanvasViewport viewport, Size viewportSize, CanvasSize canvasSize,
+      bool rotation, String title})? _shellBarsToken;
+  Widget? _memoRightStripBar;
+  Widget? _memoBottomBar;
+
+  void _ensureShellBars() {
+    final token = (
+      viewport: _viewport,
+      viewportSize: _resolvedEditorViewportSize(),
+      canvasSize: widget.canvasSize,
+      rotation: widget.allowViewRotation,
+      title: widget.selectionLabels.title,
+    );
+    if (token == _shellBarsToken &&
+        _memoRightStripBar != null &&
+        _memoBottomBar != null) {
+      return;
+    }
+    _shellBarsToken = token;
+    _memoRightStripBar = CanvasViewportVerticalScrollbar(
+      viewport: _viewport,
+      editorViewportSize: _resolvedEditorViewportSize(),
+      canvasSize: widget.canvasSize,
+      onViewportChanged: _setViewportDuringPanbarDrag,
+      onViewportChangeEnd: _syncViewportParent,
+    );
+    _memoBottomBar = _CanvasViewportBottomBar(
+      viewport: _viewport,
+      editorViewportSize: _resolvedEditorViewportSize(),
+      canvasSize: widget.canvasSize,
+      onViewportChanged: _setViewportDuringPanbarDrag,
+      onViewportChangeEnd: _syncViewportParent,
+      onZoomIn: _zoomInFromBar,
+      onZoomOut: _zoomOutFromBar,
+      onFit: _fitToView,
+      onReset: _resetView,
+      onRotateCcw: widget.allowViewRotation ? _rotateCcwFromBar : null,
+      onRotateCw: widget.allowViewRotation ? _rotateCwFromBar : null,
+      onFlipHorizontal: widget.allowViewRotation ? _toggleFlipHorizontal : null,
+    );
+  }
+
+  Widget _memoizedRightStripBar() {
+    _ensureShellBars();
+    return _memoRightStripBar!;
+  }
+
+  Widget _memoizedBottomBar() {
+    _ensureShellBars();
+    return _memoBottomBar!;
+  }
+
+  // Named handlers (not closures) so the memoized bars capture stable
+  // callbacks — a fresh closure per build would defeat nothing here, but
+  // stale-capture bugs are impossible with tear-offs.
+  void _zoomInFromBar() => _zoomAroundCenter(1.25);
+  void _zoomOutFromBar() => _zoomAroundCenter(0.8);
+  void _rotateCcwFromBar() => _rotateAroundCenter(-15);
+  void _rotateCwFromBar() => _rotateAroundCenter(15);
+
   @override
   Widget build(BuildContext context) {
     if (widget.viewport != null && widget.viewport != _lastWidgetViewport) {
@@ -377,33 +453,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
               title: widget.selectionLabels.title,
-              rightStripBar: CanvasViewportVerticalScrollbar(
-                viewport: _viewport,
-                editorViewportSize: _resolvedEditorViewportSize(),
-                canvasSize: widget.canvasSize,
-                onViewportChanged: _setViewportDuringPanbarDrag,
-                onViewportChangeEnd: _syncViewportParent,
-              ),
-              bottomBar: _CanvasViewportBottomBar(
-                viewport: _viewport,
-                editorViewportSize: _resolvedEditorViewportSize(),
-                canvasSize: widget.canvasSize,
-                onViewportChanged: _setViewportDuringPanbarDrag,
-                onViewportChangeEnd: _syncViewportParent,
-                onZoomIn: () => _zoomAroundCenter(1.25),
-                onZoomOut: () => _zoomAroundCenter(0.8),
-                onFit: _fitToView,
-                onReset: _resetView,
-                onRotateCcw: widget.allowViewRotation
-                    ? () => _rotateAroundCenter(-15)
-                    : null,
-                onRotateCw: widget.allowViewRotation
-                    ? () => _rotateAroundCenter(15)
-                    : null,
-                onFlipHorizontal: widget.allowViewRotation
-                    ? _toggleFlipHorizontal
-                    : null,
-              ),
+              rightStripBar: _memoizedRightStripBar(),
+              bottomBar: _memoizedBottomBar(),
               child: LayoutBuilder(
                 builder: (context, viewportConstraints) {
                   final viewportSize = Size(
@@ -660,6 +711,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
+          widget.onStrokeInputActiveChanged?.call(active);
           setState(() => _strokeActive = active);
         }
       },

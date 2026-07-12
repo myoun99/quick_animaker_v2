@@ -59,6 +59,7 @@ class _LabPhase {
     required this.onion,
     required this.alternateTools,
     this.hopDissect = 0,
+    this.bigBrush = false,
   });
 
   final String label;
@@ -70,6 +71,11 @@ class _LabPhase {
   /// frameSeekCommitted WITHOUT changing the frame (the seek fan-out
   /// rebuild alone, same cel).
   final int hopDissect;
+
+  /// R13-3: the user's reported worst case — a LARGE brush while flipping.
+  /// Big strokes dirty many tiles, so every commit invalidates wide and the
+  /// prerender warmer has maximal work to collide with.
+  final bool bigBrush;
 }
 
 class _BrushLabDriverState extends State<_BrushLabDriver> {
@@ -89,6 +95,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _LabPhase('hop-full', hopFrames: true, onion: false, alternateTools: false),
     _LabPhase('+onion', hopFrames: true, onion: true, alternateTools: false),
     _LabPhase('+tools(full)', hopFrames: true, onion: true, alternateTools: true),
+    _LabPhase('+bigbrush-flipdraw', hopFrames: true, onion: true, alternateTools: false, bigBrush: true),
   ];
 
   final List<int> _buildMicros = <int>[];
@@ -146,8 +153,13 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     for (final phase in phases) {
       session.onionSkinSettings.value = session.onionSkinSettings.value
           .copyWith(enabled: phase.onion);
-      if (brushTool != null && brushTool.value.tool != CanvasTool.brush) {
-        brushTool.value = brushTool.value.copyWith(tool: CanvasTool.brush);
+      if (brushTool != null) {
+        brushTool.value = brushTool.value.copyWith(
+          tool: CanvasTool.brush,
+          size: phase.bigBrush
+              ? BrushToolState.maxSize
+              : BrushToolState.defaultSize,
+        );
       }
       session.selectFrameIndex(0);
       await _settleFrames(4);

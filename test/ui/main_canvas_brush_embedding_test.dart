@@ -95,19 +95,13 @@ void main() {
 
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
       expect(find.byType(BrushCanvasPanel), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey<String>('brush-canvas-editor-frame-1')),
-        findsOneWidget,
-      );
+      // R13-2: the interactive view's key is stable; the edited cel is the
+      // widget's layer/frame params.
       final brushView = tester.widget<InteractiveBrushEditCanvasView>(
         find.byType(InteractiveBrushEditCanvasView),
       );
       expect(brushView.layerId, const LayerId('editor-layer'));
       expect(brushView.frameId, const FrameId('editor-frame-1'));
-      expect(
-        find.byKey(const ValueKey<String>('brush-canvas-frame-1')),
-        findsNothing,
-      );
       expect(find.text('Active Frame: Frame 1 (frame-1)'), findsNothing);
       expect(find.text('Debug Reset Session'), findsNothing);
     },
