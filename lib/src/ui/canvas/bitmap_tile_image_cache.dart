@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
@@ -86,9 +87,44 @@ class BitmapTileImageCache extends ChangeNotifier {
           staleScope,
           () => <TileCoord, BitmapTile>{},
         )[tile.coord] = tile;
-        notifyListeners();
+        _scheduleNotify();
       },
     );
+  }
+
+  bool _notifyScheduled = false;
+
+  /// Coalesces decode-completion notifications to at most ONE per frame: a
+  /// big stroke's commit decodes dozens of tiles whose completions land
+  /// back to back, and notifying per tile forced a full repaint of every
+  /// listening painter per tile — a burst that hitched the START of the
+  /// next stroke (R11-⑥). The settling overlay keeps the stroke on screen
+  /// through the extra frame of latency. Without a scheduler binding
+  /// (headless painter tests) completions notify directly, as before.
+  void _scheduleNotify() {
+    if (_notifyScheduled) {
+      return;
+    }
+    final binding = _schedulerBindingOrNull();
+    if (binding == null) {
+      notifyListeners();
+      return;
+    }
+    _notifyScheduled = true;
+    binding.addPostFrameCallback((_) {
+      _notifyScheduled = false;
+      notifyListeners();
+    });
+    // A completion between frames must still get a frame to notify on.
+    binding.ensureVisualUpdate();
+  }
+
+  static SchedulerBinding? _schedulerBindingOrNull() {
+    try {
+      return SchedulerBinding.instance;
+    } on FlutterError {
+      return null;
+    }
   }
 
   /// Whether every tile of [tiles] has a decoded image ready.

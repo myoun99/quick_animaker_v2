@@ -77,9 +77,15 @@ class BrushFrameEditingCoordinator {
     return sessionStore.sessionOrNull(key) ?? _rebuildSessionFromCommands(key);
   }
 
-  /// Replays the frame's visible paint commands into a fresh session surface
-  /// at the store's current canvas size. The bitmap materialization history
-  /// starts empty; undo/redo of older strokes falls back to a full replay.
+  /// Rebuilds the frame's session surface at the store's current canvas
+  /// size. A VALID display cache seeds it directly (byte-identical to a
+  /// replay — donations come FROM session surfaces and rebuilt caches ride
+  /// the parity-pinned renderer), so opening a frame costs O(1) instead of
+  /// replaying its whole stroke history (R11-⑦: the first edit of every
+  /// frame after a project load replayed thousands of commands). The
+  /// command replay stays the cold fallback. The bitmap materialization
+  /// history starts empty either way; undo/redo of older strokes falls
+  /// back to a full replay.
   BrushEditSessionState _rebuildSessionFromCommands(BrushFrameKey key) {
     final blank = sessionStore.reset(key);
     final commands =
@@ -87,6 +93,16 @@ class BrushFrameEditingCoordinator {
         const <BrushPaintCommand>[];
     if (commands.isEmpty) {
       return blank;
+    }
+    final cachedSurface = frameStore.validPreviewSurfaceOrNull(key);
+    if (cachedSurface != null &&
+        cachedSurface.canvasSize == sessionStore.canvasSize) {
+      return sessionStore.update(
+        key,
+        blank.copyWith(
+          canvasState: CanvasSurfaceState(currentSurface: cachedSurface),
+        ),
+      );
     }
     var surface = blank.canvasState.currentSurface;
     for (final command in commands) {

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../../models/project.dart';
@@ -33,10 +34,19 @@ class QapFileService {
       for (final entry in brushFrameStore.drawingsSnapshotForSave().entries)
         QapDrawingEntry(key: entry.key, commands: entry.value),
     ];
-    final bytes = buildQapArchiveBytes(
-      project: project,
-      drawings: drawings,
-      saveDirectory: _parentDirectory(filePath),
+    final saveDirectory = _parentDirectory(filePath);
+    // Encode + deflate OFF the UI isolate: the archive build cost grows
+    // with every stroke in the project, and running it inline froze the
+    // editor for the whole encode on autosave ticks and manual saves
+    // (R11-⑦). The snapshot is immutable model data, so the isolate send
+    // is a plain graph copy; the result bytes return via Isolate.exit
+    // (zero-copy).
+    final bytes = await Isolate.run(
+      () => buildQapArchiveBytes(
+        project: project,
+        drawings: drawings,
+        saveDirectory: saveDirectory,
+      ),
     );
 
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
@@ -47,7 +57,8 @@ class QapFileService {
 
   Future<QapOpenResult> open({required String filePath}) async {
     final bytes = Uint8List.fromList(await File(filePath).readAsBytes());
-    final contents = parseQapArchiveBytes(bytes);
+    // Inflate + decode off the UI isolate (the mirror of save's encode).
+    final contents = await Isolate.run(() => parseQapArchiveBytes(bytes));
 
     // Relative media resolution: an entry whose relative path exists next
     // to the .qap wins (the folder traveled whole); otherwise the stored
