@@ -7,9 +7,11 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/playback_quality.dart';
+import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'layer_pose_paint.dart';
+import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 
 /// One non-active layer to composite around the interactive canvas.
@@ -56,6 +58,7 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.canvasSize,
     required this.viewport,
     this.paintPaper = false,
+    this.paperBackground = ProjectBackground.defaultBackground,
   });
 
   /// Bottom → top.
@@ -68,6 +71,10 @@ class CanvasLayerStackView extends StatefulWidget {
   /// The below-stack paints the paper so the interactive view can skip its
   /// own opaque background.
   final bool paintPaper;
+
+  /// The project background the paper paints with (R10-⑥) — solid color
+  /// or the transparent checkerboard.
+  final ProjectBackground paperBackground;
 
   @override
   State<CanvasLayerStackView> createState() => _CanvasLayerStackViewState();
@@ -216,6 +223,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
+          paperBackground: widget.paperBackground,
         ),
         child: const SizedBox.expand(),
       ),
@@ -229,6 +237,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.canvasSize,
     required this.viewport,
     required this.paintPaper,
+    required this.paperBackground,
   });
 
   final List<
@@ -244,6 +253,7 @@ class _LayerStackPainter extends CustomPainter {
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
+  final ProjectBackground paperBackground;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -258,7 +268,7 @@ class _LayerStackPainter extends CustomPainter {
       canvasSize.height.toDouble(),
     );
     if (paintPaper) {
-      canvas.drawRect(canvasRect, Paint()..color = const Color(0xFFEDEDED));
+      paintProjectPaper(canvas, canvasRect, paperBackground);
     }
     for (final layer in images) {
       // Layer transforms apply at composite time — the stack shows the

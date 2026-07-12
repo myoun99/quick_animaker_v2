@@ -3,6 +3,7 @@ import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'layer.dart';
 import 'media_asset.dart';
+import 'project_background.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
 import 'track.dart';
@@ -17,6 +18,7 @@ class Project {
     required this.createdAt,
     this.fps = 24,
     this.cameraSize = defaultProjectCameraSize,
+    this.background = ProjectBackground.defaultBackground,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
@@ -30,6 +32,10 @@ class Project {
   final DateTime createdAt;
   final int fps;
   final CanvasSize cameraSize;
+
+  /// The paper/background color (R10-⑥): canvas paper, playback gap fill
+  /// and export backing. Transparent = display-only checkerboard.
+  final ProjectBackground background;
 
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
@@ -59,6 +65,7 @@ class Project {
     DateTime? createdAt,
     int? fps,
     CanvasSize? cameraSize,
+    ProjectBackground? background,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
@@ -70,6 +77,7 @@ class Project {
       createdAt: createdAt ?? this.createdAt,
       fps: fps ?? this.fps,
       cameraSize: cameraSize ?? this.cameraSize,
+      background: background ?? this.background,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
@@ -83,6 +91,8 @@ class Project {
     'createdAt': createdAt.toIso8601String(),
     'fps': fps,
     'cameraSize': cameraSize.toJson(),
+    if (background != ProjectBackground.defaultBackground)
+      'background': background.toJson(),
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
@@ -108,6 +118,11 @@ class Project {
       cameraSize: json['cameraSize'] == null
           ? defaultProjectCameraSize
           : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),
+      background: json['background'] == null
+          ? ProjectBackground.defaultBackground
+          : ProjectBackground.fromJson(
+              json['background'] as Map<String, dynamic>,
+            ),
       timesheetInfo: json['timesheetInfo'] == null
           ? TimesheetInfo.empty
           : TimesheetInfo.fromJson(
@@ -132,6 +147,7 @@ class Project {
           other.createdAt == createdAt &&
           other.fps == fps &&
           other.cameraSize == cameraSize &&
+          other.background == background &&
           other.timesheetInfo == timesheetInfo &&
           other.cameraInstructions == cameraInstructions &&
           listEquals(other.mediaAssets, mediaAssets);
@@ -144,6 +160,7 @@ class Project {
     createdAt,
     fps,
     cameraSize,
+    background,
     timesheetInfo,
     cameraInstructions,
     Object.hashAll(mediaAssets),

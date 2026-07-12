@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
+import '../../models/project_background.dart';
 import '../canvas/layer_pose_paint.dart' show LayerPoseSample;
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
@@ -32,6 +33,7 @@ class CanvasScrubPreview extends StatefulWidget {
     this.cutFadeOpacityAt,
     this.fadeColor = const Color(0xFF000000),
     this.viewport,
+    this.paperBackground = ProjectBackground.defaultBackground,
   });
 
   final ValueListenable<int> frameCursor;
@@ -50,6 +52,9 @@ class CanvasScrubPreview extends StatefulWidget {
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
+
+  /// The project paper (R10-⑥) — mirrors the editing canvas.
+  final ProjectBackground paperBackground;
 
   @override
   State<CanvasScrubPreview> createState() => _CanvasScrubPreviewState();
@@ -119,6 +124,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
           viewport: widget.viewport,
           cutPose: poseSample?.pose,
           cutAnchorPoint: poseSample?.anchorPoint,
+          paperBackground: widget.paperBackground,
           fadeOpacity: widget.cutFadeOpacityAt?.call(frameIndex) ?? 1,
           fadeColor: widget.fadeColor,
         ),

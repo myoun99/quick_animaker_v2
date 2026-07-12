@@ -31,6 +31,7 @@ import '../models/layer_section_defaults.dart';
 import '../models/media_asset.dart';
 import '../models/onion_skin_settings.dart';
 import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
+import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/property_track.dart';
@@ -1654,6 +1655,19 @@ class EditorSessionManager extends ChangeNotifier {
   /// One undo step; no-op when unchanged.
   void updateTimesheetInfo(TimesheetInfo info) {
     _cutCommandCoordinator.setTimesheetInfo(info);
+    notifyListeners();
+  }
+
+  /// The project's paper/background (R10-⑥): canvas paper, playback gap
+  /// fill and export backing.
+  ProjectBackground get projectBackground =>
+      _repository.requireProject().background;
+
+  /// One undo step; no-op when unchanged. Composites are untouched — the
+  /// background paints at display/export time, never baked (the camera
+  /// rule).
+  void setProjectBackground(ProjectBackground background) {
+    _cutCommandCoordinator.setProjectBackground(background);
     notifyListeners();
   }
 

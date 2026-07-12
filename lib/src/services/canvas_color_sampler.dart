@@ -5,8 +5,10 @@ import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
 import 'cut_frame_composite_plan.dart';
 
-/// The paper color the editing canvas paints (canvas_layer_stack_view) —
-/// what an eyedropper pick over blank canvas returns.
+/// The classic paper color — the default blend base when the caller does
+/// not thread the project background (R10-⑥: production passes the
+/// project's paper; a transparent background blends over its opaque
+/// export-fallback color).
 const int canvasPaperColor = 0xFFEDEDED;
 
 /// The straight-alpha RGBA of [surface] at integer canvas coords, or null
@@ -42,13 +44,14 @@ int sampleCompositeColor({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   Set<LayerId> fxBypassedLayerIds = const {},
+  int paperColor = canvasPaperColor,
 }) {
   final x = point.x.floor();
   final y = point.y.floor();
 
-  var r = ((canvasPaperColor >> 16) & 0xFF).toDouble();
-  var g = ((canvasPaperColor >> 8) & 0xFF).toDouble();
-  var b = (canvasPaperColor & 0xFF).toDouble();
+  var r = ((paperColor >> 16) & 0xFF).toDouble();
+  var g = ((paperColor >> 8) & 0xFF).toDouble();
+  var b = (paperColor & 0xFF).toDouble();
 
   for (final entry in resolveCutFrameCompositeEntries(
     cut: cut,

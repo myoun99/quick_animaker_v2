@@ -15,6 +15,7 @@ import '../models/media_asset.dart';
 import '../models/storyboard_frame_metadata.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/project_background.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
@@ -53,6 +54,10 @@ class ProjectRepository {
 
   void updateTimesheetInfo(TimesheetInfo info) {
     updateProject((project) => project.copyWith(timesheetInfo: info));
+  }
+
+  void updateProjectBackground(ProjectBackground background) {
+    updateProject((project) => project.copyWith(background: background));
   }
 
   void addTrack(Track track) {
