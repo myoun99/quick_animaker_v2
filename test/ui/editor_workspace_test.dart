@@ -30,23 +30,29 @@ Future<void> _pumpHome(WidgetTester tester) async {
   // every glyph 12px wide — the three palette tabs need ~480px, far past
   // the default 260px dock. Widen the dock so every tab (and its drop
   // target) is hittable.
+  // The R10-⑩ drag grips widen every tab a little further still (but
+  // stay below the dock's max-width clamp — the splitter test measures
+  // relative shrink from here).
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-left')),
-    const Offset(320, 0),
+    const Offset(370, 0),
   );
   await tester.pumpAndSettle();
 }
 
-/// Drags a tab to a target (drags start immediately once the pointer
-/// clears the touch slop). The target is a CLOSURE evaluated after the
-/// lift, because lifting reveals the section split zones and shifts the
-/// strips down.
+/// Drags a tab to a target by its GRIP handle (R10-⑩: only the grip
+/// lifts a tab; the rest of the button is a plain tap target). The target
+/// is a CLOSURE evaluated after the lift, because lifting reveals the
+/// section split zones and shifts the strips down.
+Finder _tabGrip(Finder tab) =>
+    find.descendant(of: tab, matching: find.byIcon(Icons.drag_indicator));
+
 Future<void> _dragTab(
   WidgetTester tester,
   Finder tab,
   Offset Function() target,
 ) async {
-  final gesture = await tester.startGesture(tester.getCenter(tab));
+  final gesture = await tester.startGesture(tester.getCenter(_tabGrip(tab)));
   await tester.pump(const Duration(milliseconds: 20));
   // Clear the touch slop so the immediate drag wins the gesture arena.
   await gesture.moveBy(const Offset(0, 30));
@@ -115,10 +121,10 @@ void main() {
     ) async {
       await _pumpHome(tester);
 
-      // Lift a palette tab: the tool edge rails stay hidden (ineligible),
-      // while the normal right dock's rail IS revealed.
+      // Lift a palette tab by its grip: the tool edge rails stay hidden
+      // (ineligible), while the normal right dock's rail IS revealed.
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(_cameraTabKey)),
+        tester.getCenter(_tabGrip(find.byKey(_cameraTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(0, 30));
@@ -172,14 +178,19 @@ void main() {
       expect(find.byKey(_canvasTabKey), findsOneWidget);
       expect(find.byType(EditorCanvasArea), findsOneWidget);
 
-      // Locked by default: a drag toward the bottom strip does nothing.
-      await _dragTab(
-        tester,
-        find.byKey(_canvasTabKey),
-        () =>
-            tester.getCenter(find.byKey(_storyboardTabKey)) +
-            const Offset(150, 0),
+      // Locked by default: no drag grip at all (R10-⑩ — only grips
+      // lift), and dragging the tab body does nothing.
+      expect(_tabGrip(find.byKey(_canvasTabKey)), findsNothing);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(_canvasTabKey)),
       );
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(_storyboardTabKey)) + const Offset(150, 0),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
 
       expect(find.byType(EditorCanvasArea), findsOneWidget);
       expect(find.byType(TimelinePanel), findsOneWidget);
@@ -300,7 +311,9 @@ void main() {
       final dock = find.byKey(const ValueKey<String>('editor-panel-dock-left'));
       final beforeWidth = tester.getSize(dock).width;
 
-      await tester.drag(splitter, const Offset(-60, 0));
+      // A comfortable margin over the drag recognizer's touch slop: the
+      // assertion is "the splitter shrinks the dock", not an exact delta.
+      await tester.drag(splitter, const Offset(-100, 0));
       await tester.pumpAndSettle();
 
       expect(tester.getSize(dock).width, lessThan(beforeWidth - 40));
@@ -330,9 +343,10 @@ void main() {
       await _pumpHome(tester);
       expect(find.byKey(_rightDropRailKey), findsNothing);
 
-      // Lift the camera tab: the collapsed right dock shows its rail.
+      // Lift the camera tab by its grip: the collapsed right dock shows
+      // its rail.
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(_cameraTabKey)),
+        tester.getCenter(_tabGrip(find.byKey(_cameraTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(0, 30));
