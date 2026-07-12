@@ -49,6 +49,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     required this.frameToken,
     required this.visibleCommands,
     required this.onTransformCommitted,
+    this.onShapeCommitted,
     this.selectionCommands,
     this.onDragActiveChanged,
   });
@@ -70,6 +71,16 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// the app-level history command.
   final void Function(CanvasSelectionTransform transform) onTransformCommitted;
 
+  /// A committed region change — marquee release, click-away, Ctrl+D —
+  /// as (before, after); the host wraps it into the selection-shape
+  /// history command (R11-⑧: selecting is undoable). Null applies changes
+  /// directly with no history (focused tests).
+  final void Function(
+    CanvasSelectionShape? before,
+    CanvasSelectionShape? after,
+  )?
+  onShapeCommitted;
+
   final CanvasSelectionCommands? selectionCommands;
 
   /// Raised while a selection drag is in progress (the panel holds
@@ -80,7 +91,10 @@ class CanvasSelectionLayer extends StatefulWidget {
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
 }
 
-enum CanvasSelectionTool { rect, lasso }
+/// The layer's interaction mode: the marquee tools DRAW regions, the MOVE
+/// tool drags the selected content (R11-⑧: selection and move are
+/// separate tools — a marquee drag never moves strokes anymore).
+enum CanvasSelectionTool { rect, lasso, move }
 
 enum _DragMode { none, marquee, move, transform }
 
@@ -128,6 +142,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin {
   CanvasSelectionShape? _shape;
   Set<BrushPaintCommandId> _selectedIds = const {};
+
+  /// The committed region as it stood when a marquee drag started — the
+  /// undo record's BEFORE (a cancelled drag restores it).
+  CanvasSelectionShape? _shapeBeforeMarquee;
 
   _DragMode _dragMode = _DragMode.none;
   int? _activePointer;
@@ -203,6 +221,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       beginTransform: _beginTransform,
       commitTransform: _commitTransform,
       cancelTransform: _cancelTransform,
+      applyShape: applyCommittedShape,
     );
   }
 
@@ -300,7 +319,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!_hasSelection && _dragMode == _DragMode.none) {
       return;
     }
+    final before = _shape;
     _resetAll();
+    // Deselecting a real region is undoable, symmetric with selecting.
+    if (before != null) {
+      final commit = widget.onShapeCommitted;
+      if (commit != null) {
+        commit(before, null);
+      }
+    }
   }
 
   /// Arrow nudge: one canvas pixel per call, one undo entry per call.
@@ -364,19 +391,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.onDragActiveChanged?.call(true);
       return;
     }
-    _activePointer = event.pointer;
     final shape = _shape;
-    if (shape != null &&
-        _selectedIds.isNotEmpty &&
-        shape.containsPoint(canvasPoint)) {
+    if (widget.tool == CanvasSelectionTool.move) {
+      // The MOVE tool only drags the selected content; outside the
+      // region (or without one) it does nothing (R11-⑧).
+      if (shape == null ||
+          _selectedIds.isEmpty ||
+          !shape.containsPoint(canvasPoint)) {
+        return;
+      }
+      _activePointer = event.pointer;
       setState(() {
         _dragMode = _DragMode.move;
         _moveScreenDelta = Offset.zero;
         _floatSurface = _buildFloatSurface();
       });
     } else {
+      // The marquee tools ALWAYS draw a new region — even starting inside
+      // the current one (moving lives on the Move tool). The old region
+      // hides during the drag; the RELEASE records the change as one
+      // undoable step (a cancelled drag restores it).
+      _activePointer = event.pointer;
       setState(() {
         _dragMode = _DragMode.marquee;
+        _shapeBeforeMarquee = _shape;
         _shape = null;
         _selectedIds = const {};
         _marqueeStart = canvasPoint;
@@ -556,6 +594,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
+    // A CANCELLED marquee restores the region it hid at drag start (a
+    // finished one consumed the stash in _finishMarquee).
+    if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
+      _shape = _shapeBeforeMarquee;
+      _selectedIds = selectCommandIdsInShape(
+        commands: widget.visibleCommands(),
+        shape: _shapeBeforeMarquee!,
+      );
+    }
+    _shapeBeforeMarquee = null;
     _dragMode = _DragMode.none;
     _activePointer = null;
     _marqueeStart = null;
@@ -574,18 +622,43 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _finishMarquee() {
-    final shape = _marqueeShape();
-    if (shape == null) {
-      // A click (degenerate region) deselects — Photoshop's click-away.
-      _shape = null;
-      _selectedIds = const {};
+    final before = _shapeBeforeMarquee;
+    _shapeBeforeMarquee = null;
+    // A click (degenerate region) deselects — Photoshop's click-away.
+    final after = _marqueeShape();
+    if (before == null && after == null) {
       return;
     }
-    _shape = shape;
-    _selectedIds = selectCommandIdsInShape(
-      commands: widget.visibleCommands(),
-      shape: shape,
-    );
+    // The change routes through ONE undoable step (R11-⑧: selecting is
+    // an undoable action); without a history host it applies directly.
+    final commit = widget.onShapeCommitted;
+    if (commit != null) {
+      commit(before, after);
+    } else {
+      applyCommittedShape(after);
+    }
+  }
+
+  /// Adopts a committed region — called by the selection-shape history
+  /// command on execute/undo/redo (and directly without a history host).
+  /// The joined command set re-derives from the shape.
+  void applyCommittedShape(CanvasSelectionShape? shape) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _shape = shape;
+      _selectedIds = shape == null
+          ? const {}
+          : selectCommandIdsInShape(
+              commands: widget.visibleCommands(),
+              shape: shape,
+            );
+      if (shape == null) {
+        _clearTransform();
+      }
+    });
+    _syncAnts();
   }
 
   /// The in-progress or final marquee polygon; null while degenerate.

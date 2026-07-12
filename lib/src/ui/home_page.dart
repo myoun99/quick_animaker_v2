@@ -170,6 +170,8 @@ class _HomePageState extends State<HomePage> {
         );
       case EditorActionIds.toolLasso:
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.lasso);
+      case EditorActionIds.toolMove:
+        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       case EditorActionIds.selectionNudgeUp:

@@ -23,6 +23,7 @@ import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
+import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
 
@@ -552,11 +553,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                   if (selectionLayerActive)
                                     Positioned.fill(
                                       child: CanvasSelectionLayer(
-                                        tool:
-                                            widget.brushToolState.tool ==
-                                                CanvasTool.lasso
-                                            ? CanvasSelectionTool.lasso
-                                            : CanvasSelectionTool.rect,
+                                        tool: switch (widget
+                                            .brushToolState
+                                            .tool) {
+                                          CanvasTool.lasso =>
+                                            CanvasSelectionTool.lasso,
+                                          CanvasTool.move =>
+                                            CanvasSelectionTool.move,
+                                          _ => CanvasSelectionTool.rect,
+                                        },
+                                        onShapeCommitted:
+                                            widget.historyManager == null ||
+                                                widget.selectionCommands == null
+                                            ? null
+                                            : (before, after) => widget
+                                                  .historyManager!
+                                                  .execute(
+                                                    SelectionShapeHistoryCommand(
+                                                      channel: widget
+                                                          .selectionCommands!,
+                                                      before: before,
+                                                      after: after,
+                                                    ),
+                                                  ),
                                         viewport: _viewport,
                                         canvasSize: widget.canvasSize,
                                         frameToken:
@@ -780,9 +799,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     switch (widget.brushToolState.tool) {
       case CanvasTool.brush:
       case CanvasTool.eraser:
-      // The selection tools mount their own drag layer, not the tap layer.
+      // The selection/move tools mount their own drag layer, not the tap
+      // layer.
       case CanvasTool.selectRect:
       case CanvasTool.lasso:
+      case CanvasTool.move:
         return null;
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;

@@ -52,6 +52,7 @@ abstract final class EditorActionIds {
   static const toolFill = 'tool-fill';
   static const toolSelectRect = 'tool-select-rect';
   static const toolLasso = 'tool-lasso';
+  static const toolMove = 'tool-move';
   static const selectionDeselect = 'selection-deselect';
   static const selectionNudgeUp = 'selection-nudge-up';
   static const selectionNudgeDown = 'selection-nudge-down';
@@ -166,6 +167,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Lasso Select Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyL)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolMove,
+    label: 'Move Tool',
+    category: 'Tools',
+    // PS/CSP muscle memory: V = the move tool.
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.selectionDeselect,
