@@ -1,4 +1,5 @@
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
@@ -236,10 +237,14 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
 
   @override
   void dispose() {
-    // The handle can unmount mid-drag (row scrolled out / preview rebuilt
-    // the row subtree); commit rather than leak an open drag session.
+    // The handle can unmount mid-drag (row scrolled out of the layer
+    // window); commit rather than leak an open drag session — but AFTER
+    // the frame. Unmounts happen during build, and the commit's session
+    // notify must never mark widgets dirty mid-build (R12-③: the lost
+    // rebuilds left stale selection outlines and canvas stacks behind).
     if (_dragging) {
-      widget.callbacks.onEnd();
+      final callbacks = widget.callbacks;
+      WidgetsBinding.instance.addPostFrameCallback((_) => callbacks.onEnd());
     }
     super.dispose();
   }
@@ -262,6 +267,14 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
         // Translucent: taps have no handler here and fall through to the
         // cells; only the pan recognizer competes in the arena.
         behavior: HitTestBehavior.translucent,
+        // PEN (and mouse) only (R12-⑤): a finger on a block body must
+        // scroll the grid, never grab the block — touch stays out of the
+        // pan arena entirely.
+        supportedDevices: const {
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.invertedStylus,
+        },
         // Pixel-exact deltas from the pointer-down point (the camera
         // overlay rule) — no slop swallowed out of the frame/row math.
         dragStartBehavior: DragStartBehavior.down,

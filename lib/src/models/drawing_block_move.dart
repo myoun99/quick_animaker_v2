@@ -1,8 +1,10 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
@@ -39,10 +41,15 @@ class DrawingBlockMovePlan {
 /// by [frameDelta] frames onto [target] ([target] == [source] for a plain
 /// slide). Returns null when the move is impossible or a no-op:
 ///
-/// - the destination must be fully EMPTY on the target timeline (no push —
-///   a block move never silently retimes other blocks), and its start must
-///   not collide with a mark entry;
-/// - the destination cannot start before frame 0;
+/// - blocks in the way get PUSHED in the direction of travel (R12-②):
+///   rightward (and pure cross-layer drops) push the blocks ahead to later
+///   frames, cascading; leftward pushes the blocks ahead toward frame 0,
+///   consuming the gaps between them, and the move CLAMPS when the chain
+///   hits the wall (cut-move precedent) — the block rests at the nearest
+///   spot the chain allows;
+/// - a landing (moved or pushed) whose start would overwrite a mark entry
+///   sharing that exact index is rejected (marks may sit INSIDE holds,
+///   never under a block start);
 /// - cross-layer moves take the block's cel along, so a cel that other
 ///   timeline entries still reference (linked cels) stays put — the move
 ///   is rejected rather than splitting the link.
@@ -60,69 +67,98 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   if (sameLayer && frameDelta == 0) {
     return null;
   }
-  final destStart = blockStartIndex + frameDelta;
-  if (destStart < 0) {
-    return null;
-  }
   final length = entry.length!;
-  final destEnd = destStart + length;
 
-  // Destination emptiness on the target timeline (the block's own entry is
-  // ignored when sliding within the source layer).
-  for (final candidate in target.timeline.entries) {
-    if (sameLayer && candidate.key == blockStartIndex) {
-      continue;
-    }
-    if (candidate.value.isDrawing) {
-      final start = candidate.key;
-      final end = start + candidate.value.length!;
-      if (start < destEnd && destStart < end) {
+  // Cross-layer: the cel travels with the block. Linked cels (the same
+  // frame exposed by another entry) stay: rejecting keeps the link intact.
+  Frame? movedFrame;
+  if (!sameLayer) {
+    final frameId = entry.frameId!;
+    for (final candidate in source.timeline.entries) {
+      if (candidate.key != blockStartIndex &&
+          candidate.value.isDrawing &&
+          candidate.value.frameId == frameId) {
         return null;
       }
-    } else if (candidate.key == destStart) {
-      // A mark may sit INSIDE the moved block's hold, but the block start
-      // would overwrite a mark sharing its exact index.
+    }
+    for (final frame in source.frames) {
+      if (frame.id == frameId) {
+        movedFrame = frame;
+        break;
+      }
+    }
+    if (movedFrame == null) {
       return null;
     }
   }
 
-  if (sameLayer) {
-    final timeline = SplayTreeMap<int, TimelineExposure>.of(source.timeline)
-      ..remove(blockStartIndex);
+  // Every other drawing block on the target timeline (the moved block's own
+  // entry is ignored when sliding within the source layer).
+  final others = [
+    for (final block in drawingBlocks(target.timeline))
+      if (!(sameLayer && block.startIndex == blockStartIndex)) block,
+  ];
+
+  final resolved = _resolvePushedLanding(
+    others: others,
+    requestedStart: blockStartIndex + frameDelta,
+    movedLength: length,
+    pushRight: frameDelta >= 0,
+    // Leftward moves clamp against the frame-0 wall; the moved block never
+    // ends up RIGHT of where it started on its own layer (a leftward drag
+    // must not teleport it forward).
+    leftwardCap: sameLayer ? blockStartIndex : math.max(0, blockStartIndex),
+  );
+  if (resolved == null) {
+    return null;
+  }
+  final (:destStart, :pushes) = resolved;
+  if (sameLayer && destStart == blockStartIndex && pushes.isEmpty) {
+    return null;
+  }
+
+  // Mark protection: no landing (moved or pushed) may overwrite a mark
+  // entry sharing its exact start index.
+  bool startsOnMark(SplayTreeMap<int, TimelineExposure> timeline, int start) {
+    final atStart = timeline[start];
+    return atStart != null && atStart.isMark;
+  }
+
+  if (startsOnMark(target.timeline, destStart)) {
+    return null;
+  }
+  for (final push in pushes) {
+    if (push.newStart != push.block.startIndex &&
+        startsOnMark(target.timeline, push.newStart)) {
+      return null;
+    }
+  }
+
+  SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
+    final timeline = SplayTreeMap<int, TimelineExposure>.of(target.timeline);
+    if (sameLayer) {
+      timeline.remove(blockStartIndex);
+    }
+    for (final push in pushes) {
+      timeline.remove(push.block.startIndex);
+    }
+    for (final push in pushes) {
+      timeline[push.newStart] = push.block.entry;
+    }
     timeline[destStart] = entry;
+    return timeline;
+  }
+
+  if (sameLayer) {
     return DrawingBlockMovePlan(
-      sourceAfter: source.copyWith(timeline: timeline),
+      sourceAfter: source.copyWith(timeline: targetTimelineAfter()),
       destinationStartIndex: destStart,
     );
   }
 
-  // Cross-layer: the cel travels with the block. Linked cels (the same
-  // frame exposed by another entry) stay: rejecting keeps the link intact.
   final frameId = entry.frameId!;
-  for (final candidate in source.timeline.entries) {
-    if (candidate.key != blockStartIndex &&
-        candidate.value.isDrawing &&
-        candidate.value.frameId == frameId) {
-      return null;
-    }
-  }
-  Frame? movedFrame;
-  for (final frame in source.frames) {
-    if (frame.id == frameId) {
-      movedFrame = frame;
-      break;
-    }
-  }
-  if (movedFrame == null) {
-    return null;
-  }
-
   final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(source.timeline)
     ..remove(blockStartIndex);
-  final targetTimeline = SplayTreeMap<int, TimelineExposure>.of(
-    target.timeline,
-  );
-  targetTimeline[destStart] = entry;
   return DrawingBlockMovePlan(
     sourceAfter: source.copyWith(
       timeline: sourceTimeline,
@@ -133,10 +169,87 @@ DrawingBlockMovePlan? planDrawingBlockMove({
     ),
     targetBefore: target,
     targetAfter: target.copyWith(
-      timeline: targetTimeline,
-      frames: [...target.frames, movedFrame],
+      timeline: targetTimelineAfter(),
+      frames: [...target.frames, movedFrame!],
     ),
     movedFrameIds: [frameId],
     destinationStartIndex: destStart,
   );
+}
+
+typedef _Push = ({TimelineDrawingBlock block, int newStart});
+
+/// Where the moved block lands and which blocks it shoves aside.
+///
+/// Rightward ([pushRight]): the landing is exactly [requestedStart]; every
+/// block ahead that the landing (or a pushed neighbour) touches shifts to
+/// later frames, gaps between them absorbing first — the frame axis is
+/// endless, so this always succeeds.
+///
+/// Leftward: blocks ahead are pushed toward frame 0, each one's own gap
+/// absorbing before the wave reaches the next. When the chain hits the
+/// wall the landing CLAMPS to the nearest feasible start at or above
+/// [requestedStart] (never above [leftwardCap]); null when even the cap
+/// cannot host the block leftward-style — the caller treats that as an
+/// unchanged landing.
+({int destStart, List<_Push> pushes})? _resolvePushedLanding({
+  required List<TimelineDrawingBlock> others,
+  required int requestedStart,
+  required int movedLength,
+  required bool pushRight,
+  required int leftwardCap,
+}) {
+  if (pushRight) {
+    final destStart = math.max(0, requestedStart);
+    final pushes = <_Push>[];
+    var frontier = destStart + movedLength;
+    for (final block in others) {
+      if (block.endIndexExclusive <= destStart) {
+        continue;
+      }
+      final newStart = math.max(block.startIndex, frontier);
+      frontier = newStart + block.length;
+      if (newStart != block.startIndex) {
+        pushes.add((block: block, newStart: newStart));
+      }
+    }
+    return (destStart: destStart, pushes: pushes);
+  }
+
+  // One leftward attempt: the pushes when the chain fits, or the deficit
+  // (how far below frame 0 the deepest pushed block lands). Raising the
+  // landing by d raises every chained position by AT MOST d, so the
+  // deficit is an exact lower bound on the required raise — jumping by it
+  // never skips a feasible landing.
+  (List<_Push>?, int) tryLeftward(int destStart) {
+    final pushes = <_Push>[];
+    var frontier = destStart;
+    for (final block in others.reversed) {
+      if (block.startIndex >= destStart + movedLength) {
+        continue;
+      }
+      final newStart = math.min(block.startIndex, frontier - block.length);
+      if (newStart < 0) {
+        return (null, -newStart);
+      }
+      if (newStart != block.startIndex) {
+        pushes.add((block: block, newStart: newStart));
+        frontier = newStart;
+      } else {
+        // Untouched — everything further left is even further away.
+        break;
+      }
+    }
+    return (pushes, 0);
+  }
+
+  var destStart = math.max(0, requestedStart);
+  while (destStart <= leftwardCap) {
+    final (pushes, deficit) = tryLeftward(destStart);
+    if (pushes != null) {
+      return (destStart: destStart, pushes: pushes);
+    }
+    destStart += deficit;
+  }
+  return null;
 }

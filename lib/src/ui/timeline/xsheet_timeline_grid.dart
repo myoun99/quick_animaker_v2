@@ -499,6 +499,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       layer: layer,
+      baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
       sectionStart: timelineSectionStartsAt(widget.layers, entry.layerIndex),
       playbackFrameCount: widget.frameCount,
@@ -1121,10 +1122,16 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.onDropMediaAsset,
     this.commaDrag,
     this.blockMove,
+    this.baseLayer,
     this.sectionStart = false,
   });
 
   final Layer layer;
+
+  /// The column's COMMITTED repository layer while [layer] carries a drag
+  /// preview — the block-move handles mount from THIS one so a preview
+  /// step never unmounts the handle that owns the live gesture (R12-③).
+  final Layer? baseLayer;
   final bool active;
 
   /// Whether this column opens a new timesheet section; draws a heavier
@@ -1311,7 +1318,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               !layerKindUsesSeSheetCells(layer.kind))
             ...timelineRowBlockMoveHandles(
               layerId: layer.id,
-              blocks: drawingBlocks(layer.timeline),
+              blocks: drawingBlocks((baseLayer ?? layer).timeline),
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,

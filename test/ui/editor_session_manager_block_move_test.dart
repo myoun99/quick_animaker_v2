@@ -86,6 +86,8 @@ void main() {
     expect(preview.previewLayers[b.id]!.timeline[1]!.frameId, frameId);
 
     s.endDrawingBlockMoveDrag();
+    // The selection follows the block onto its new layer (R12-④).
+    expect(s.activeLayer!.id, b.id);
     final movedA = s.layers.firstWhere((l) => l.id == a.id);
     final movedB = s.layers.firstWhere((l) => l.id == b.id);
     expect(movedA.timeline[0], isNull);
@@ -95,6 +97,13 @@ void main() {
     expect(s.brushFrameStore.frameOrNull(fromKey), isNull);
     expect(s.brushFrameStore.frameOrNull(toKey), isNotNull);
     expect(s.brushFrameStore.frameOrNull(toKey)!.key, toKey);
+    // The canvas targets the moved drawing where it landed (R12-⑪): the
+    // brush editor selection resolves the cel on the NEW layer.
+    s.selectFrameIndex(1);
+    final selection = s.activeBrushEditorSelection;
+    expect(selection, isNotNull);
+    expect(selection!.layerId, b.id);
+    expect(selection.frameId, frameId);
 
     // ONE undo restores both layers AND the store keys.
     s.undo();
@@ -108,15 +117,46 @@ void main() {
     expect(s.brushFrameStore.frameOrNull(toKey), isNull);
   });
 
-  test('an illegal landing clears the preview and the release is a no-op', () {
+  test('an occupied landing PUSHES the block in the way (R12-②)', () {
     final (s, a, b) = twoLayerSession();
+
+    s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
+    // Layer B's block sits at frame 6 — landing on it pushes it behind.
+    s.updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    final previewB = preview.previewLayers[b.id]!;
+    expect(previewB.timeline[6], isNotNull, reason: 'moved block lands at 6');
+    expect(
+      previewB.timeline[7],
+      isNotNull,
+      reason: 'the resident block pushed from 6 to 7',
+    );
+
+    s.endDrawingBlockMoveDrag();
+    final movedB = s.layers.firstWhere((l) => l.id == b.id);
+    expect(movedB.timeline[6], isNotNull);
+    expect(movedB.timeline[7], isNotNull);
+
+    // ONE undo restores both blocks and the source layer.
+    s.undo();
+    expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
+    expect(s.layers.firstWhere((l) => l.id == b.id).timeline[6], isNotNull);
+    expect(s.layers.firstWhere((l) => l.id == b.id).timeline[7], isNull);
+  });
+
+  test('a mark landing stays illegal: preview clears, release is a no-op',
+      () {
+    final (s, a, _) = twoLayerSession();
+    // Drop a mark at frame 4 on layer A (empty space there).
+    s.selectFrameIndex(4);
+    s.toggleMarkAtCurrentFrame();
+    s.selectFrameIndex(0);
     final undoProbe = s.canUndo;
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
     s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
-    // Layer B's block sits at frame 6 — landing on it is illegal.
-    s.updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
+    s.updateDrawingBlockMoveDrag(frameDelta: 4);
     expect(s.dragPreview.value, isNull);
 
     s.endDrawingBlockMoveDrag();
