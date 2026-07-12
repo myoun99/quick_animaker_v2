@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/panels/editor_panel_tabs.dart';
+import 'package:quick_animaker_v2/src/ui/panels/panel_visibility_scope.dart';
 
 /// R10-②: keep-alive tabs stay mounted offstage across switches (instant
 /// switch-back, state preserved); plain tabs unmount as before.
@@ -71,6 +72,133 @@ void main() {
 
     // The plain tab unmounted when it lost the stage.
     expect(find.text('light-content', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('a keep-alive tab builder runs ONCE: switches and strip '
+      'rebuilds reuse the cached content instance (R12-①)', (tester) async {
+    var heavyBuilds = 0;
+    var active = 'heavy';
+    Future<void> pump() async {
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) => MaterialApp(
+            home: Scaffold(
+              body: EditorPanelTabs(
+                tabs: [
+                  EditorPanelTab(
+                    id: 'heavy',
+                    label: 'Heavy',
+                    icon: Icons.timeline,
+                    keepAlive: true,
+                    builder: (context) {
+                      heavyBuilds += 1;
+                      return const _CounterBox(key: ValueKey('heavy'));
+                    },
+                  ),
+                  EditorPanelTab(
+                    id: 'light',
+                    label: 'Light',
+                    icon: Icons.palette,
+                    builder: (context) => const Text('light-content'),
+                  ),
+                ],
+                activeTabId: active,
+                onTabSelected: (id) => setState(() => active = id),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pump();
+    expect(heavyBuilds, 1);
+
+    // Switch away and back: the cached instance short-circuits the
+    // subtree diff — the heavy builder never runs again.
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-light')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-heavy')));
+    await tester.pumpAndSettle();
+    expect(heavyBuilds, 1);
+  });
+
+  testWidgets('PanelAwareListenableBuilder stands down offstage and '
+      'catches up ON re-activation (R12-①)', (tester) async {
+    final signal = ChangeNotifier();
+    addTearDown(signal.dispose);
+    var value = 0;
+    var builds = <int>[];
+    var active = 'gated';
+    Future<void> pump() async {
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) => MaterialApp(
+            home: Scaffold(
+              body: EditorPanelTabs(
+                tabs: [
+                  EditorPanelTab(
+                    id: 'gated',
+                    label: 'Gated',
+                    icon: Icons.timeline,
+                    keepAlive: true,
+                    builder: (context) => PanelAwareListenableBuilder(
+                      listenable: signal,
+                      builder: (context) {
+                        builds.add(value);
+                        return Text('value: $value');
+                      },
+                    ),
+                  ),
+                  EditorPanelTab(
+                    id: 'other',
+                    label: 'Other',
+                    icon: Icons.palette,
+                    builder: (context) => const Text('other-content'),
+                  ),
+                ],
+                activeTabId: active,
+                onTabSelected: (id) => setState(() => active = id),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pump();
+    expect(builds, [0]);
+
+    // Visible: notifies rebuild as usual.
+    value = 1;
+    signal.notifyListeners();
+    await tester.pump();
+    expect(builds, [0, 1]);
+    expect(find.text('value: 1'), findsOneWidget);
+
+    // Hidden: notifies are swallowed — no rebuild back there.
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-other')));
+    await tester.pumpAndSettle();
+    builds = [];
+    value = 2;
+    signal.notifyListeners();
+    await tester.pump();
+    expect(builds, isEmpty, reason: 'offstage panels never rebuild');
+
+    // Re-activation flushes ONE catch-up rebuild with the fresh value.
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-gated')));
+    await tester.pumpAndSettle();
+    expect(builds, [2]);
+    expect(find.text('value: 2'), findsOneWidget);
+
+    // Nothing changed while hidden → switching back is rebuild-free.
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-other')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-gated')));
+    await tester.pumpAndSettle();
+    expect(builds, [2], reason: 'clean re-activation skips the catch-up');
   });
 }
 

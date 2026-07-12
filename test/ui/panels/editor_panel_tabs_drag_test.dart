@@ -221,10 +221,10 @@ void main() {
     final model = _twoGroups();
     await tester.pumpWidget(_Harness(model: model, lockedTabIds: const {'a'}));
 
-    // A locked tab has no grip at all (R10-⑩: only grips lift), and a
-    // body drag moves nothing.
-    expect(_grip('a'), findsNothing);
-    final gesture = await tester.startGesture(tester.getCenter(_tab('a')));
+    // A locked tab keeps its grip VISIBLE but inert (R12-⑨: locking must
+    // never reshape the tab); dragging it moves nothing.
+    expect(_grip('a'), findsOneWidget);
+    final gesture = await tester.startGesture(tester.getCenter(_grip('a')));
     await tester.pump(const Duration(milliseconds: 20));
     await gesture.moveTo(_tabHalf(tester, 'y', right: false));
     await tester.pump();

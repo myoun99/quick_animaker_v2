@@ -30,6 +30,7 @@ import 'media/media_browser_panel.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
+import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
@@ -763,10 +764,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The heavy frame-axis panels keep their subtree offstage
           // across switches (R10-②) — switching back is instant.
           keepAlive: true,
-          builder: (context) => ListenableBuilder(
+          builder: (context) => PanelAwareListenableBuilder(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
             // grids ride the frame cursor and never rebuild for them.
+            // Panel-aware (R12-①): notifies arriving while the tab sits
+            // offstage are deferred to one catch-up on re-activation.
             listenable: Listenable.merge([
               widget.session,
               _timelineOrientation,
@@ -776,7 +779,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _expandedTransformGroupLayerIds,
               _hiddenTimelineSections,
             ]),
-            builder: (context, _) => TimelineTabHost(
+            builder: (context) => TimelineTabHost(
               session: widget.session,
               orientation: _timelineOrientation.value,
               onOrientationChanged: (orientation) {
@@ -815,12 +818,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
           locked: locked,
           keepAlive: true,
-          builder: (context) => ListenableBuilder(
+          builder: (context) => PanelAwareListenableBuilder(
             // Session subscription (see the timeline tab) + COMMITTED
             // seeks only (W4 perf pass): scrub moves and playback ticks
             // ride the host's playhead notifier straight into the panel's
             // playhead overlay + ruler — the panel never rebuilds per
-            // tick anymore.
+            // tick anymore. Panel-aware (R12-①): offstage notifies defer
+            // to one catch-up on re-activation.
             listenable: Listenable.merge([
               widget.session,
               widget.session.frameSeekCommitted,
@@ -828,7 +832,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _showSecondsDisplay,
               _storyboardThumbnails,
             ]),
-            builder: (context, _) => StoryboardTabHost(
+            builder: (context) => StoryboardTabHost(
               session: widget.session,
               pixelsPerFrame: _storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: (value) {
@@ -849,14 +853,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.table_chart_outlined,
           locked: locked,
           keepAlive: true,
-          builder: (context) => ListenableBuilder(
+          builder: (context) => PanelAwareListenableBuilder(
             listenable: Listenable.merge([
               _timesheetContinuous,
               _timesheetViewport,
               _timesheetInkEnabled,
               _brushTool,
             ]),
-            builder: (context, _) => TimesheetTabHost(
+            builder: (context) => TimesheetTabHost(
               session: widget.session,
               continuous: _timesheetContinuous.value,
               onContinuousChanged: (continuous) {

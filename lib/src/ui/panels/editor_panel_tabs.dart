@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'panel_visibility_scope.dart';
+
 /// One tab in an [EditorPanelTabs] group.
 class EditorPanelTab {
   const EditorPanelTab({
@@ -135,6 +137,22 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// mounted offstage so switching back is instant (R10-②).
   final Set<String> _builtTabIds = <String>{};
 
+  /// Keep-alive tabs' built content, cached by tab id (R12-①): a strip
+  /// rebuild (tab switch, lock toggle, any layout notify) hands Flutter
+  /// the IDENTICAL widget instance, so the heavy panel subtree is skipped
+  /// wholesale and a switch costs an Offstage flag flip. CONTRACT: a
+  /// keep-alive tab's builder must close over stable objects only (the
+  /// session, long-lived notifiers) and subscribe internally — the cache
+  /// never re-runs it.
+  final Map<String, Widget> _contentCache = <String, Widget>{};
+
+  /// Stable per-tab visibility feeds for [PanelVisibilityScope] (heavy
+  /// hosts pause their rebuilds while offstage). Never disposed eagerly:
+  /// a pruned tab's subtree unmounts in the same build and detaches its
+  /// own listeners; the plain notifier then just gets collected.
+  final Map<String, ValueNotifier<bool>> _tabVisibility =
+      <String, ValueNotifier<bool>>{};
+
   bool get _dragEnabled => widget.groupId != null && widget.onTabMoved != null;
 
   bool _willAccept(EditorPanelTabDragData data) =>
@@ -153,6 +171,10 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     // joins, tabs that left the group drop out.
     _builtTabIds.removeWhere(
       (id) => !tabs.any((tab) => tab.id == id && tab.keepAlive),
+    );
+    _contentCache.removeWhere((id, _) => !_builtTabIds.contains(id));
+    _tabVisibility.removeWhere(
+      (id, _) => !tabs.any((tab) => tab.id == id),
     );
     if (active.keepAlive) {
       _builtTabIds.add(active.id);
@@ -211,7 +233,16 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                       offstage: tab.id != active.id,
                       child: TickerMode(
                         enabled: tab.id == active.id,
-                        child: _buildTabContent(tab),
+                        child: PanelVisibilityScope(
+                          visible: _visibilityFor(
+                            tab.id,
+                            visible: tab.id == active.id,
+                          ),
+                          child: tab.keepAlive
+                              ? (_contentCache[tab.id] ??=
+                                    _buildTabContent(tab))
+                              : _buildTabContent(tab),
+                        ),
                       ),
                     ),
               ],
@@ -220,6 +251,18 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         ),
       ],
     );
+  }
+
+  /// The stable visibility feed for [tabId], its value refreshed inline
+  /// with this build. Setting the value here fires descendant listeners
+  /// mid-build — legal, they are below this widget and rebuild this frame.
+  ValueNotifier<bool> _visibilityFor(String tabId, {required bool visible}) {
+    final notifier = _tabVisibility.putIfAbsent(
+      tabId,
+      () => ValueNotifier<bool>(visible),
+    );
+    notifier.value = visible;
+    return notifier;
   }
 
   /// One tab's content; panels with a minimum content size larger than
@@ -262,8 +305,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     final selected = tab.id == widget.activeTabId;
     // The grip is the ONLY drag surface (R10-⑩): the rest of the tab is
     // a plain tap target, so selection never waits on the drag arena and
-    // a stray drag can't tear a tab off mid-click.
-    final grip = _dragEnabled && !tab.locked ? _buildDragGrip(tab) : null;
+    // a stray drag can't tear a tab off mid-click. Locked tabs keep the
+    // grip VISIBLE but inert (R12-⑨: locking must never reshape the tab).
+    final grip = _dragEnabled ? _buildDragGrip(tab) : null;
     final button = _PanelTabButton(
       key: tab.buttonKey ?? ValueKey<String>('panel-tab-${tab.id}'),
       label: tab.label,
@@ -279,8 +323,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       onToggleLock: widget.onToggleLock != null
           ? () => widget.onToggleLock!(tab.id)
           : null,
-      // Locked tabs are pinned: no close button.
-      onClose: widget.onCloseTab != null && !tab.locked
+      // Locked tabs keep the X visible but inert (pinned = it does
+      // nothing, the tab's shape never changes).
+      onClose: widget.onCloseTab != null
           ? () => widget.onCloseTab!(tab.id)
           : null,
       onPressed: () => widget.onTabSelected(tab.id),
@@ -298,7 +343,22 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   }
 
   /// The drag handle at the tab's left edge — the three-line grip icon.
+  /// Locked tabs render the SAME icon dimmed and inert: the tab's footprint
+  /// never changes with the lock state (R12-⑨).
   Widget _buildDragGrip(EditorPanelTab tab) {
+    if (tab.locked) {
+      return Padding(
+        key: ValueKey<String>('panel-grip-${tab.id}'),
+        padding: const EdgeInsets.only(right: 2),
+        child: Icon(
+          Icons.drag_indicator,
+          size: 12,
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+        ),
+      );
+    }
     final data = EditorPanelTabDragData(
       tabId: tab.id,
       fromGroupId: widget.groupId!,
@@ -568,10 +628,14 @@ class _PanelTabButton extends StatelessWidget {
               if (onClose != null)
                 _TabGlyphButton(
                   glyphKey: closeKey,
-                  tooltip: 'Close $label',
+                  tooltip: locked ? '$label is locked' : 'Close $label',
                   icon: Icons.close,
-                  color: colorScheme.onSurfaceVariant,
-                  onTap: onClose!,
+                  // Locked: same footprint, dimmed and inert — the dead X
+                  // still absorbs its tap so it never selects the tab.
+                  color: locked
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.35)
+                      : colorScheme.onSurfaceVariant,
+                  onTap: locked ? () {} : onClose!,
                 ),
             ],
           ),
