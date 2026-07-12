@@ -516,6 +516,12 @@ class _CutFadeWashPainter extends CustomPainter {
 /// widget churn across the panel subtree — swallowed here. Frame content
 /// edits never ride the seek signal (they notify the session/stores), so
 /// an equal frame index proves the canvas inputs did not change.
+///
+/// R13-4 stroke pinning: while the pen is DOWN, seek retargets are
+/// DEFERRED — the in-progress stroke keeps drawing on (and commits to)
+/// its original cel, and the canvas swaps to the new frame the moment the
+/// stroke ends. Retargeting mid-stroke used to tear the stroke down inside
+/// the build phase (red-screen) and could land the commit on the wrong cel.
 class _FrameRetargetScope extends StatefulWidget {
   const _FrameRetargetScope({required this.session, required this.builder});
 
@@ -528,11 +534,13 @@ class _FrameRetargetScope extends StatefulWidget {
 
 class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   int _builtFrameIndex = -1;
+  bool _seekDeferredByStroke = false;
 
   @override
   void initState() {
     super.initState();
     widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+    widget.session.brushInputActive.addListener(_onBrushInputChanged);
   }
 
   @override
@@ -540,17 +548,43 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+      oldWidget.session.brushInputActive.removeListener(_onBrushInputChanged);
       widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+      widget.session.brushInputActive.addListener(_onBrushInputChanged);
     }
   }
 
   @override
   void dispose() {
     widget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+    widget.session.brushInputActive.removeListener(_onBrushInputChanged);
     super.dispose();
   }
 
   void _onSeekCommitted() {
+    if (widget.session.brushInputActive.value) {
+      _seekDeferredByStroke = true;
+      return;
+    }
+    _retargetIfFrameChanged();
+  }
+
+  void _onBrushInputChanged() {
+    if (widget.session.brushInputActive.value || !_seekDeferredByStroke) {
+      return;
+    }
+    _seekDeferredByStroke = false;
+    // Post-frame: the stroke-end signal can arrive from the view's
+    // deferred teardown callback — never retarget from inside a frame's
+    // build/callback phases.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _retargetIfFrameChanged();
+      }
+    });
+  }
+
+  void _retargetIfFrameChanged() {
     if (widget.session.currentFrameIndex == _builtFrameIndex) {
       return;
     }

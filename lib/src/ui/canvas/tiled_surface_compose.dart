@@ -25,9 +25,17 @@ import 'bitmap_tile_image_cache.dart';
 /// srcOver passes the premultiplied bytes through unchanged.
 ///
 /// The caller owns (and must dispose) the returned image.
-Future<ui.Image> composeTiledSurfaceImage(
+///
+/// [shouldAbort] (R13-4, the warm path only): checked before every tile
+/// decode and before the final full-canvas raster — the two cost centers —
+/// so an interactive input stops an opportunistic compose within ~one tile
+/// (1–2ms), not one canvas. Aborts return null with nothing cached and the
+/// transient decodes disposed; without [shouldAbort] the result is never
+/// null.
+Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
+  bool Function()? shouldAbort,
 }) async {
   final width = surface.canvasSize.width;
   final height = surface.canvasSize.height;
@@ -35,11 +43,17 @@ Future<ui.Image> composeTiledSurfaceImage(
   final canvas = ui.Canvas(recorder);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final transient = <ui.Image>[];
+  var recorderClosed = false;
 
   try {
     for (final tile in surface.tiles.values) {
       var image = reuse?.imageFor(tile);
       if (image == null) {
+        if (shouldAbort?.call() ?? false) {
+          recorder.endRecording().dispose();
+          recorderClosed = true;
+          return null;
+        }
         image = await _decodeTile(tile);
         transient.add(image);
       }
@@ -54,12 +68,19 @@ Future<ui.Image> composeTiledSurfaceImage(
     }
 
     final picture = recorder.endRecording();
+    recorderClosed = true;
     try {
+      if (shouldAbort?.call() ?? false) {
+        return null;
+      }
       return await picture.toImage(width, height);
     } finally {
       picture.dispose();
     }
   } finally {
+    if (!recorderClosed) {
+      recorder.endRecording().dispose();
+    }
     for (final image in transient) {
       image.dispose();
     }

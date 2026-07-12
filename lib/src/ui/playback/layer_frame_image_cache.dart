@@ -61,11 +61,15 @@ class LayerFrameImageCache {
   }
 
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
-  /// the frame has no drawn content.
+  /// the frame has no drawn content — or, with [shouldAbort] (the warm path,
+  /// R13-4), when the build was abandoned mid-way: aborts cache nothing and
+  /// the abort checks bracket the two big slices (the display-cache replay
+  /// and each tile decode via [composeTiledSurfaceImage]).
   Future<ui.Image?> prepare({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    bool Function()? shouldAbort,
   }) async {
     final cached = validImageOrNull(key, quality, canvasSize: canvasSize);
     if (cached != null) {
@@ -79,6 +83,12 @@ class LayerFrameImageCache {
     }
     final revision = drawing.sourceRevision;
 
+    // The display-cache replay is the one monolithic CPU slice on this
+    // path (it grows with the cel's stroke count) — never START it when
+    // the editor just went hot.
+    if (shouldAbort?.call() ?? false) {
+      return null;
+    }
     final preview = BrushFrameDisplayCacheService(
       frameStore: frameStore,
       renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
@@ -91,7 +101,11 @@ class LayerFrameImageCache {
     var image = await composeTiledSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
+      shouldAbort: shouldAbort,
     );
+    if (image == null) {
+      return null;
+    }
     if (quality != PlaybackQuality.full) {
       final scaled = scaledCanvasSize(canvasSize, quality);
       final downscaled = await _downscale(image, scaled);

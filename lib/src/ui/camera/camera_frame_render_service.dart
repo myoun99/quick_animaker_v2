@@ -145,10 +145,11 @@ class CameraFrameRenderService {
       // canvas's tiles); the camera transform then samples the composed
       // full-res image exactly as before.
       layerImages.add(
-        await composeTiledSurfaceImage(
+        // Non-null without shouldAbort (on-demand render, never abandoned).
+        (await composeTiledSurfaceImage(
           layer.surface,
           reuse: BitmapTileImageCache.instance,
-        ),
+        ))!,
       );
     }
 

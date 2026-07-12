@@ -188,8 +188,15 @@ class CutFrameCompositeCache {
         key: frameKeyOf(cut, layer.layerId, layer.frameId),
         canvasSize: cut.canvasSize,
         quality: signature.quality,
+        shouldAbort: shouldAbort,
       );
       if (layerImage == null) {
+        // Null is EITHER an empty frame (skip the layer) or an abort from
+        // inside the layer build — disambiguate and bail on abort.
+        if (shouldAbort?.call() ?? false) {
+          recorder.endRecording().dispose();
+          return null;
+        }
         continue;
       }
       // Layer transforms apply at composite time; the pose is canvas-space,

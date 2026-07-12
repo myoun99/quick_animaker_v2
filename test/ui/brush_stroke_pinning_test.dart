@@ -1,0 +1,193 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/track.dart';
+import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/editor_workspace.dart';
+import 'package:quick_animaker_v2/src/ui/home_page.dart';
+
+/// R13-4: flipping frames WHILE a stroke is in progress used to throw
+/// "setState during build" (the mid-stroke red screen) and could land the
+/// stroke on the wrong cel. The stroke now PINS to its original cel — the
+/// canvas retargets the moment the pen lifts, and the commit goes to the
+/// frame the stroke started on.
+void main() {
+  const frameA = FrameId('pin-frame-a');
+  const frameB = FrameId('pin-frame-b');
+  const layerId = LayerId('pin-layer');
+
+  Project twoFrameProject() {
+    return Project(
+      id: const ProjectId('pin-project'),
+      name: 'Pin Project',
+      createdAt: DateTime.utc(2026),
+      tracks: [
+        Track(
+          id: const TrackId('pin-track'),
+          name: 'Video Track',
+          cuts: [
+            Cut(
+              id: const CutId('pin-cut'),
+              name: 'Pin Cut',
+              duration: defaultCutDuration,
+              canvasSize: defaultCutCanvasSize,
+              layers: [
+                Layer(
+                  id: layerId,
+                  name: 'Pin Layer',
+                  frames: [
+                    Frame(id: frameA, name: 'A', duration: 1, strokes: const []),
+                    Frame(id: frameB, name: 'B', duration: 1, strokes: const []),
+                  ],
+                  timeline: {
+                    0: TimelineExposure.drawing(frameA, length: 1),
+                    1: TimelineExposure.drawing(frameB, length: 1),
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  BrushFrameKey keyFor(FrameId frameId) => BrushFrameKey(
+    projectId: const ProjectId('pin-project'),
+    trackId: const TrackId('pin-track'),
+    cutId: const CutId('pin-cut'),
+    layerId: layerId,
+    frameId: frameId,
+  );
+
+  InteractiveBrushEditCanvasView viewOf(WidgetTester tester) =>
+      tester.widget<InteractiveBrushEditCanvasView>(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
+
+  testWidgets('a committed seek during a stroke defers the canvas retarget '
+      'and the stroke commits to its ORIGINAL cel', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: twoFrameProject())),
+    );
+    await tester.pumpAndSettle();
+
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    final session = workspace.session;
+    expect(viewOf(tester).frameId, frameA);
+
+    final center = tester.getCenter(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    final gesture = await tester.startGesture(
+      center,
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(24, 12));
+    await tester.pump();
+
+    // Mid-stroke frame flip: the canvas must NOT retarget under the pen.
+    session.selectFrameIndex(1);
+    await tester.pump();
+    expect(
+      viewOf(tester).frameId,
+      frameA,
+      reason: 'a live stroke pins the canvas to its cel',
+    );
+
+    await gesture.moveBy(const Offset(24, 12));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // Pen-up: commit landed on the ORIGINAL cel, then the deferred
+    // retarget swapped the canvas to the seeked frame.
+    expect(viewOf(tester).frameId, frameB);
+    expect(
+      session.brushFrameStore
+              .frameOrNull(keyFor(frameA))
+              ?.allPaintCommandsInDisplayOrder ??
+          const [],
+      isNotEmpty,
+      reason: 'the stroke belongs to the frame it STARTED on',
+    );
+    expect(
+      session.brushFrameStore
+              .frameOrNull(keyFor(frameB))
+              ?.allPaintCommandsInDisplayOrder ??
+          const [],
+      isEmpty,
+      reason: 'nothing may leak onto the frame the seek landed on',
+    );
+
+    // Drain the prerender scheduler's debounced warming.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a direct host retarget during a stroke never throws — the '
+      'stroke tears down silently outside the build phase', (tester) async {
+    // The host-level path (no session pinning in front of it): the view's
+    // didUpdateWidget reset used to fire the stroke-end callback into an
+    // ancestor setState DURING the build — the red screen.
+    final keys = [keyFor(frameA), keyFor(frameB)];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: keys.first,
+            availableFrameKeys: keys,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(viewOf(tester).frameId, frameA);
+
+    final center = tester.getCenter(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    final gesture = await tester.startGesture(
+      center,
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, 10));
+    await tester.pump();
+
+    // Retarget WITH the pen down: must not throw, stroke resets in place.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MainCanvasBrushHost(
+            activeFrameKey: keys.last,
+            availableFrameKeys: keys,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(viewOf(tester).frameId, frameB);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+}
