@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -262,6 +263,72 @@ void main() {
           .visibleActivePaintCommands,
       isNotEmpty,
     );
+  });
+
+  testWidgets('the eyedropper shows a hover swatch of the color under the '
+      'pointer (R11-②)', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (_) => 0xFF123456,
+          onEyedropperPick: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.byKey(tapLayerKey)));
+    await tester.pump();
+
+    final swatch = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('eyedropper-hover-swatch')),
+    );
+    expect(
+      (swatch.decoration! as BoxDecoration).color,
+      const Color(0xFF123456),
+    );
+  });
+
+  testWidgets('holding Alt arms the eyedropper cursor on a painting tool '
+      '(R11-②)', (tester) async {
+    const trackerKey = ValueKey<String>('eyedropper-hover-tracker');
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          sampleColorAt: (_) => 0xFFAABBCC,
+          onAltColorPick: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(trackerKey), findsNothing);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(find.byKey(trackerKey), findsOneWidget);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(find.byKey(trackerKey), findsNothing);
   });
 
   testWidgets('tool taps convert through the live viewport', (tester) async {

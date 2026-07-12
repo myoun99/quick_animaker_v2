@@ -950,10 +950,12 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The drawable artwork of one layer frame in the active cut; `null` when
   /// nothing is drawn. This is the production [LayerFrameSurfaceResolver]
-  /// for camera preview/export compositing. The store's display cache is
-  /// consumed READ-ONLY when valid (the editing coordinator donates the
-  /// session surface on every commit/undo/redo); replaying the frame's
-  /// paint commands is the cold fallback.
+  /// for camera preview/export compositing and the canvas tools (eyedropper
+  /// sample, fill compose). The store's display cache is consumed when
+  /// valid (the editing coordinator donates the session surface on every
+  /// commit/undo/redo); a cold rebuild replays the frame's paint commands
+  /// ONCE and stores the result back as the new display cache — repeated
+  /// tool taps must not replay the whole stroke history per tap (R11-②③).
   BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
     final frameKey = BrushFrameKey(
       projectId: _repository.requireProject().id,
@@ -972,9 +974,12 @@ class EditorSessionManager extends ChangeNotifier {
         cached.previewSurface.canvasSize == activeCut.canvasSize) {
       return cached.previewSurface;
     }
-    return BrushFrameDisplayCacheRenderer(
+    final rebuilt = BrushFrameDisplayCacheRenderer(
       canvasSize: activeCut.canvasSize,
     ).rebuildPreview(drawing);
+    return brushFrameStore
+        .storeRebuiltDisplayCache(key: frameKey, previewSurface: rebuilt)
+        .previewSurface;
   }
 
   /// The resolved camera pose at the current playhead frame (keyframe,

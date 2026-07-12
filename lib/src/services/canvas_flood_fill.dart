@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
@@ -9,6 +10,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
+import '../models/tile_coord.dart';
 import 'canvas_color_sampler.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -50,72 +52,138 @@ class FloodFillRegion {
   final Uint8List mask;
 }
 
-/// Composites the VISIBLE picture into one straight-RGB raster (the fill's
-/// sampling target — "fill what you see"). Posed layers are skipped (v1,
-/// same rule as the eyedropper). Returns `width*height*3` bytes (RGB; the
-/// fill compares colors, alpha already blended over the paper).
-Uint8List composeCanvasRasterRgb({
-  required Cut cut,
-  required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-  Set<LayerId> fxBypassedLayerIds = const {},
-  int paperColor = canvasPaperColor,
-}) {
-  final width = cut.canvasSize.width;
-  final height = cut.canvasSize.height;
-  final raster = Uint8List(width * height * 3);
-  final paperR = (paperColor >> 16) & 0xFF;
-  final paperG = (paperColor >> 8) & 0xFF;
-  final paperB = paperColor & 0xFF;
-  for (var i = 0; i < raster.length; i += 3) {
-    raster[i] = paperR;
-    raster[i + 1] = paperG;
-    raster[i + 2] = paperB;
+/// The fill's sampling target ("fill what you see"): the visible picture
+/// as a straight-RGB raster, composited LAZILY tile by tile as the flood
+/// visits pixels — a fill only pays for the region it actually floods,
+/// never the whole canvas (R11-③: the eager full-canvas compose froze the
+/// tap for seconds on big canvases). Posed layers are skipped (v1, same
+/// rule as the eyedropper).
+class LazyCanvasRasterRgb {
+  LazyCanvasRasterRgb({
+    required Cut cut,
+    required int frameIndex,
+    required LayerFrameSurfaceResolver surfaceResolver,
+    Set<LayerId> fxBypassedLayerIds = const {},
+    int paperColor = canvasPaperColor,
+  }) : width = cut.canvasSize.width,
+       height = cut.canvasSize.height,
+       rgb = Uint8List(cut.canvasSize.width * cut.canvasSize.height * 3),
+       _paperR = (paperColor >> 16) & 0xFF,
+       _paperG = (paperColor >> 8) & 0xFF,
+       _paperB = paperColor & 0xFF,
+       _tilesX = (cut.canvasSize.width + _tileSize - 1) ~/ _tileSize,
+       _composed = Uint8List(
+         ((cut.canvasSize.width + _tileSize - 1) ~/ _tileSize) *
+             ((cut.canvasSize.height + _tileSize - 1) ~/ _tileSize),
+       ) {
+    // Surfaces resolve ONCE (a cold resolve may replay paint commands).
+    for (final entry in resolveCutFrameCompositeEntries(
+      cut: cut,
+      frameIndex: frameIndex,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+    )) {
+      if (entry.pose != null) {
+        continue;
+      }
+      final surface = surfaceResolver(entry.layer, entry.frame);
+      if (surface != null) {
+        _layers.add((surface: surface, opacity: entry.opacity));
+      }
+    }
   }
 
-  for (final entry in resolveCutFrameCompositeEntries(
-    cut: cut,
-    frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
-  )) {
-    if (entry.pose != null) {
-      continue;
+  static const int _tileSize = 256;
+
+  final int width;
+  final int height;
+
+  /// `width*height*3` bytes; only composed tiles hold real pixels — read
+  /// through [ensureComposedAt].
+  final Uint8List rgb;
+
+  final int _paperR;
+  final int _paperG;
+  final int _paperB;
+  final int _tilesX;
+  final Uint8List _composed;
+  final List<({BitmapSurface surface, double opacity})> _layers = [];
+
+  /// Guarantees the tile containing pixel [index] (row-major) is composed.
+  void ensureComposedAt(int index) {
+    final x = index % width;
+    final y = index ~/ width;
+    final tileIndex = (y ~/ _tileSize) * _tilesX + (x ~/ _tileSize);
+    if (_composed[tileIndex] != 0) {
+      return;
     }
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
-      continue;
+    _composed[tileIndex] = 1;
+    _composeTile((x ~/ _tileSize) * _tileSize, (y ~/ _tileSize) * _tileSize);
+  }
+
+  void _composeTile(int left, int top) {
+    final right = math.min(left + _tileSize, width);
+    final bottom = math.min(top + _tileSize, height);
+    for (var y = top; y < bottom; y += 1) {
+      var target = (y * width + left) * 3;
+      for (var x = left; x < right; x += 1) {
+        rgb[target] = _paperR;
+        rgb[target + 1] = _paperG;
+        rgb[target + 2] = _paperB;
+        target += 3;
+      }
     }
-    final tileSize = surface.tileSize;
-    // Snapshot each tile's buffer ONCE (the tile getter copies).
-    for (final tile in surface.tiles.values) {
-      final pixels = tile.pixels;
-      final baseX = tile.coord.x * tileSize;
-      final baseY = tile.coord.y * tileSize;
-      final maxY = math.min(tileSize, height - baseY);
-      final maxX = math.min(tileSize, width - baseX);
-      for (var ty = 0; ty < maxY; ty += 1) {
-        var source = ty * tileSize * 4;
-        var target = ((baseY + ty) * width + baseX) * 3;
-        for (var tx = 0; tx < maxX; tx += 1) {
-          final alphaByte = pixels[source + 3];
-          if (alphaByte != 0) {
-            final alpha = alphaByte / 255.0 * entry.opacity;
-            raster[target] =
-                (pixels[source] * alpha + raster[target] * (1 - alpha)).round();
-            raster[target + 1] =
-                (pixels[source + 1] * alpha + raster[target + 1] * (1 - alpha))
-                    .round();
-            raster[target + 2] =
-                (pixels[source + 2] * alpha + raster[target + 2] * (1 - alpha))
-                    .round();
+    for (final layer in _layers) {
+      final surface = layer.surface;
+      final opacity = layer.opacity;
+      final surfaceTileSize = surface.tileSize;
+      for (
+        var ty = top ~/ surfaceTileSize;
+        ty <= (bottom - 1) ~/ surfaceTileSize;
+        ty += 1
+      ) {
+        for (
+          var tx = left ~/ surfaceTileSize;
+          tx <= (right - 1) ~/ surfaceTileSize;
+          tx += 1
+        ) {
+          final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+          if (tile == null) {
+            continue;
           }
-          source += 4;
-          target += 3;
+          // Snapshot the tile's buffer ONCE (the getter copies).
+          final pixels = tile.pixels;
+          final baseX = tx * surfaceTileSize;
+          final baseY = ty * surfaceTileSize;
+          final clipLeft = math.max(left, baseX);
+          final clipRight = math.min(right, baseX + surfaceTileSize);
+          final clipTop = math.max(top, baseY);
+          final clipBottom = math.min(bottom, baseY + surfaceTileSize);
+          for (var y = clipTop; y < clipBottom; y += 1) {
+            var source =
+                ((y - baseY) * surfaceTileSize + (clipLeft - baseX)) * 4;
+            var target = (y * width + clipLeft) * 3;
+            for (var x = clipLeft; x < clipRight; x += 1) {
+              final alphaByte = pixels[source + 3];
+              if (alphaByte != 0) {
+                final alpha = alphaByte / 255.0 * opacity;
+                rgb[target] =
+                    (pixels[source] * alpha + rgb[target] * (1 - alpha))
+                        .round();
+                rgb[target + 1] =
+                    (pixels[source + 1] * alpha + rgb[target + 1] * (1 - alpha))
+                        .round();
+                rgb[target + 2] =
+                    (pixels[source + 2] * alpha + rgb[target + 2] * (1 - alpha))
+                        .round();
+              }
+              source += 4;
+              target += 3;
+            }
+          }
         }
       }
     }
   }
-  return raster;
 }
 
 /// Scanline flood fill over an RGB raster from the seed, within
@@ -128,10 +196,12 @@ FloodFillRegion? floodFillRegion({
   required int seedX,
   required int seedY,
   FloodFillOptions options = const FloodFillOptions(),
+  void Function(int index)? ensureComposed,
 }) {
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) {
     return null;
   }
+  ensureComposed?.call(seedY * width + seedX);
   final seedIndex = (seedY * width + seedX) * 3;
   final seedR = rgb[seedIndex];
   final seedG = rgb[seedIndex + 1];
@@ -139,6 +209,7 @@ FloodFillRegion? floodFillRegion({
   final tolerance = options.tolerance;
 
   bool matches(int index) {
+    ensureComposed?.call(index);
     final base = index * 3;
     return (rgb[base] - seedR).abs() <= tolerance &&
         (rgb[base + 1] - seedG).abs() <= tolerance &&
@@ -273,7 +344,7 @@ BrushDab? buildFillDab({
   int paperColor = canvasPaperColor,
 }) {
   final CanvasSize canvasSize = cut.canvasSize;
-  final raster = composeCanvasRasterRgb(
+  final raster = LazyCanvasRasterRgb(
     cut: cut,
     frameIndex: frameIndex,
     surfaceResolver: surfaceResolver,
@@ -281,12 +352,13 @@ BrushDab? buildFillDab({
     paperColor: paperColor,
   );
   final region = floodFillRegion(
-    rgb: raster,
+    rgb: raster.rgb,
     width: canvasSize.width,
     height: canvasSize.height,
     seedX: point.x.floor(),
     seedY: point.y.floor(),
     options: options,
+    ensureComposed: raster.ensureComposedAt,
   );
   if (region == null) {
     return null;

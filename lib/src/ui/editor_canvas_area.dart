@@ -230,8 +230,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           viewCommands: widget.canvasViewCommands,
           selectionCommands: widget.canvasSelectionCommands,
           // P5 eyedropper: sample the VISIBLE composite ("pick what you
-          // see"); a committed pick also returns to the painting tool
-          // (CSP behavior), an Alt-pick keeps the active tool.
+          // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
+          // armed until the user changes tools, Alt-picks keep the
+          // painting tool.
           sampleColorAt: (point) => sampleCompositeColor(
             cut: session.activeCut,
             frameIndex: session.currentFrameIndex,
@@ -240,12 +241,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             fxBypassedLayerIds: session.fxBypassedLayerIds,
             paperColor: session.projectBackground.argb,
           ),
-          onEyedropperPick: (color) {
-            final state = widget.brushToolState.value;
-            widget.onBrushToolStateChanged?.call(
-              state.copyWith(color: color, tool: state.eyedropperReturnTool),
-            );
-          },
+          onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
+            widget.brushToolState.value.copyWith(color: color),
+          ),
           onAltColorPick: (color) => widget.onBrushToolStateChanged?.call(
             widget.brushToolState.value.copyWith(color: color),
           ),

@@ -286,12 +286,13 @@ class _LayerStackPainter extends CustomPainter {
       final paint = Paint()
         ..filterQuality = FilterQuality.low
         ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0));
-      // Onion-skin Colors mode: the tint MULTIPLIES the artwork's colors
-      // (ink lines go red/green, white stays white-ish) — the Callipeg
-      // look; the paint alpha above still fades the whole ghost.
+      // Onion-skin Colors mode: the ghost CONVERTS fully to the tint —
+      // every drawn pixel takes the tint's RGB, only alpha survives
+      // (TVPaint's look, R11-①; modulate kept light artwork un-tinted).
+      // The paint alpha above still fades the whole ghost.
       final tint = layer.tint;
       if (tint != null) {
-        paint.colorFilter = ColorFilter.mode(Color(tint), BlendMode.modulate);
+        paint.colorFilter = ColorFilter.mode(Color(tint), BlendMode.srcIn);
       }
       canvas.drawImageRect(
         layer.image,

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/brush_dab.dart';
@@ -186,16 +187,68 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
+  /// True while Alt is held — the temporary eyedropper (R11-②): the cursor
+  /// and hover swatch arm without switching tools.
+  bool _altHeld = false;
+
+  /// The pointer's viewport position + the composite color under it while
+  /// the eyedropper cursor is armed; drives the hover swatch only.
+  final ValueNotifier<({Offset position, int color})?> _eyedropperHover =
+      ValueNotifier<({Offset position, int color})?>(null);
+
   @override
   void initState() {
     super.initState();
     _bindViewCommands();
+    _altHeld = HardwareKeyboard.instance.isAltPressed;
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _eyedropperHover.dispose();
     widget.viewCommands?.unbind();
     super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    final alt = HardwareKeyboard.instance.isAltPressed;
+    if (alt != _altHeld && mounted) {
+      setState(() => _altHeld = alt);
+      if (!alt) {
+        _eyedropperHover.value = null;
+      }
+    }
+    return false;
+  }
+
+  /// Whether the eyedropper cursor + hover swatch are armed: the tool
+  /// itself, or Alt held over a painting tool (the temporary pick).
+  bool get _eyedropperCursorActive {
+    if (widget.sampleColorAt == null) {
+      return false;
+    }
+    final tool = widget.brushToolState.tool;
+    if (tool == CanvasTool.eyedropper) {
+      return widget.onEyedropperPick != null;
+    }
+    return _altHeld && canvasToolPaints(tool) && widget.onAltColorPick != null;
+  }
+
+  void _updateEyedropperHover(Offset localPosition) {
+    final sample = widget.sampleColorAt;
+    if (sample == null) {
+      return;
+    }
+    final color = sample(
+      _viewport.viewportToCanvas(
+        ViewportPoint(x: localPosition.dx, y: localPosition.dy),
+      ),
+    );
+    _eyedropperHover.value = color == null
+        ? null
+        : (position: localPosition, color: color);
   }
 
   void _bindViewCommands() {
@@ -382,7 +435,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                             overlayBuilder == null &&
                                 underlayBuilder == null &&
                                 _toolTapHandler() == null &&
-                                !selectionLayerActive
+                                !selectionLayerActive &&
+                                !_eyedropperCursorActive
                             ? canvasView
                             : Stack(
                                 children: [
@@ -419,6 +473,79 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             ),
                                       ),
                                     ),
+                                  // Eyedropper cursor (R11-②): crosshair +
+                                  // a hover swatch of the color under the
+                                  // pointer — for the tool AND the Alt-held
+                                  // temporary pick. Translucent: picks fall
+                                  // through to the tap layer / canvas below.
+                                  if (_eyedropperCursorActive) ...[
+                                    Positioned.fill(
+                                      child: MouseRegion(
+                                        cursor: SystemMouseCursors.precise,
+                                        opaque: false,
+                                        hitTestBehavior:
+                                            HitTestBehavior.translucent,
+                                        onExit: (_) =>
+                                            _eyedropperHover.value = null,
+                                        child: Listener(
+                                          key: const ValueKey<String>(
+                                            'eyedropper-hover-tracker',
+                                          ),
+                                          behavior: HitTestBehavior.translucent,
+                                          // Hover + move only: sampling on
+                                          // pointer DOWN would double the
+                                          // pick tap's composite sample.
+                                          onPointerHover: (event) =>
+                                              _updateEyedropperHover(
+                                                event.localPosition,
+                                              ),
+                                          onPointerMove: (event) =>
+                                              _updateEyedropperHover(
+                                                event.localPosition,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                    ValueListenableBuilder<
+                                      ({Offset position, int color})?
+                                    >(
+                                      valueListenable: _eyedropperHover,
+                                      builder: (context, hover, _) {
+                                        if (hover == null) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Positioned(
+                                          left: hover.position.dx + 14,
+                                          top: hover.position.dy - 34,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              key: const ValueKey<String>(
+                                                'eyedropper-hover-swatch',
+                                              ),
+                                              width: 26,
+                                              height: 26,
+                                              decoration: BoxDecoration(
+                                                color: Color(
+                                                  0xFF000000 | hover.color,
+                                                ),
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 2,
+                                                ),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Colors.black38,
+                                                    blurRadius: 3,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                   // The P9 selection tools own the pointer
                                   // while active (marquee/lasso/move) —
                                   // strokes cannot start below the layer.
