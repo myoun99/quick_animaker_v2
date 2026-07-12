@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/transform_track.dart';
 import 'cut/cut_note_dialog.dart';
@@ -18,6 +19,7 @@ import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
+import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline/transform_lane_editing.dart';
@@ -70,8 +72,33 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// rails, waveforms) never rebuilds on a tick.
   final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
 
+  /// Identity-memoized active-track layout (R12-⑥): the playhead refresh
+  /// fires per playback tick and the ruler's green bar asks per visible
+  /// frame column per repaint — none of them may rebuild the layout list
+  /// each time. Cuts are immutable, so the project + active cut identity
+  /// pair decides staleness.
+  List<StoryboardTimelineLayoutEntry>? _trackLayoutCache;
+  Object? _trackLayoutProject;
+  CutId? _trackLayoutActiveCutId;
+
+  List<StoryboardTimelineLayoutEntry> _activeTrackLayout() {
+    final project = _session.repository.requireProject();
+    final activeCutId = _session.activeCutId;
+    if (_trackLayoutCache == null ||
+        !identical(project, _trackLayoutProject) ||
+        activeCutId != _trackLayoutActiveCutId) {
+      _trackLayoutProject = project;
+      _trackLayoutActiveCutId = activeCutId;
+      _trackLayoutCache = storyboardActiveTrackLayout(_session);
+    }
+    return _trackLayoutCache!;
+  }
+
   void _refreshPlayheadGlobalFrame() {
-    _playheadGlobalFrame.value = storyboardPlayheadFrame(_session);
+    _playheadGlobalFrame.value = storyboardPlayheadFrame(
+      _session,
+      layout: _activeTrackLayout(),
+    );
   }
 
   @override
@@ -417,7 +444,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               onScrubGlobalFrame: (frame) =>
                   scrubStoryboardGlobalFrame(_session, frame),
               onScrubEnd: () => commitStoryboardScrub(_session),
-              isFrameCached: (frame) => storyboardFrameCached(_session, frame),
+              isFrameCached: (frame) => storyboardFrameCached(
+                _session,
+                frame,
+                layout: _activeTrackLayout(),
+              ),
               thumbnailFor: widget.thumbnailFor,
               audioPeaksFor: _session.audioPeaksStore.peaksFor,
               // Rail parity with the timeline rows: waveform eyes,

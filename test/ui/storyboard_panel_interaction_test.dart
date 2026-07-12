@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -280,6 +282,63 @@ void main() {
       expect(updates, isNotEmpty);
       expect(updates.last, 5);
       expect(ended, 1);
+    });
+
+    testWidgets('the slide still works when the cut carries fx transform '
+        'keys (R12-⑧)', (tester) async {
+      final began = <CutId>[];
+      final updates = <int>[];
+
+      final keyed = Cut(
+        id: const CutId('cut-b'),
+        name: 'Cut B',
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+        layers: [_animationLayer('animation-cut-b')],
+        transformTrack: TransformTrack(
+          keyframes: {
+            0: TransformPose(
+              center: CanvasPoint(x: 640, y: 360),
+              zoom: 1.2,
+              rotationDegrees: 0,
+            ),
+            12: TransformPose(
+              center: CanvasPoint(x: 700, y: 360),
+              zoom: 1.0,
+              rotationDegrees: 5,
+            ),
+          },
+        ),
+      );
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([_cut('cut-a', name: 'Cut A'), keyed]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutMove: StoryboardCutMoveCallbacks(
+          onBegin: (cutId) {
+            began.add(cutId);
+            return true;
+          },
+          onUpdate: updates.add,
+          onEnd: () {},
+          onCancel: () {},
+        ),
+      );
+
+      final block = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-b'),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(block));
+      await tester.pump();
+      await gesture.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(began, [const CutId('cut-b')]);
+      expect(updates, isNotEmpty);
+      expect(updates.last, 5);
     });
 
     testWidgets('dropping a block onto itself does not reorder', (

@@ -118,6 +118,34 @@ void main() {
     expect(s.cutById(second)!.leadingGapFrames, 4);
   });
 
+  test('start-edge leftward slide PUSHES predecessors through their gaps '
+      '(R12-⑦: the block-body push language, no wall at contact)', () {
+    final (s, first, second) = twoCutSession();
+    final firstDuration = s.cutById(first)!.duration;
+
+    // Give the FIRST cut a 4-frame lead-in gap.
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(4);
+    s.endCutEdgeDrag();
+    expect(layoutStart(s, first), 4);
+    expect(layoutStart(s, second), 4 + firstDuration);
+
+    // Slide the SECOND cut's start left by 6: its own gap is 0, so the
+    // cascade pushes the first cut left through ITS gap (4 frames of
+    // slack) and clamps there.
+    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(-6);
+    expect(previewedGap(s, first), 0);
+    s.endCutEdgeDrag();
+
+    expect(s.cutById(first)!.leadingGapFrames, 0);
+    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(layoutStart(s, first), 0);
+    expect(layoutStart(s, second), firstDuration);
+    // Durations never change on a slide.
+    expect(s.cutById(first)!.duration, firstDuration);
+  });
+
   test('the FIRST cut slides too — its gap is black lead-in before the '
       'track begins', () {
     final (s, first, second) = twoCutSession();

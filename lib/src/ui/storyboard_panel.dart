@@ -1235,24 +1235,33 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 // (painted 窶・costs nothing per frame).
                                 Positioned.fill(
                                   child: IgnorePointer(
-                                    child: CustomPaint(
-                                      key: const ValueKey<String>(
-                                        'storyboard-frame-lines',
-                                      ),
-                                      painter: _StoryboardFrameLinesPainter(
-                                        pixelsPerFrame: scale.pixelsPerFrame,
-                                        color: colorScheme.outlineVariant
-                                            .withValues(alpha: 0.35),
+                                    child: RepaintBoundary(
+                                      child: CustomPaint(
+                                        key: const ValueKey<String>(
+                                          'storyboard-frame-lines',
+                                        ),
+                                        painter: _StoryboardFrameLinesPainter(
+                                          pixelsPerFrame: scale.pixelsPerFrame,
+                                          color: colorScheme.outlineVariant
+                                              .withValues(alpha: 0.35),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Column(
-                                  key: const ValueKey<String>(
-                                    'storyboard-timeline-scroll-content',
-                                  ),
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+                                // RepaintBoundary (R12-⑥): the playhead
+                                // overlay above moves every playback tick;
+                                // without the boundary each move re-
+                                // rasterizes every strip, thumbnail and
+                                // waveform in this column.
+                                RepaintBoundary(
+                                  child: Column(
+                                    key: const ValueKey<String>(
+                                      'storyboard-timeline-scroll-content',
+                                    ),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                     // Width driver: the scroll content spans
                                     // the full frame runway even when every
                                     // row is narrower (the pinned ruler used
@@ -1281,7 +1290,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             ? seStripRowsByTrack[index]
                                             : const [],
                                       ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 if (playheadListenable != null)
                                   // Frame-wide accent tint only 窶・no solid

@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
+
+/// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
+/// the cut carries fx transform keys — with the Transform strips twirled
+/// open too (the state the keys get authored in).
+void main() {
+  Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
+    final manager = EditorSessionManager(initialProject: createDefaultProject());
+    manager.createCut();
+    addTearDown(manager.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: Listenable.merge([
+              manager,
+              manager.frameSeekCommitted,
+            ]),
+            builder: (context, _) => StoryboardTabHost(
+              session: manager,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return manager;
+  }
+
+  Future<void> dragSecondCut(
+    WidgetTester tester,
+    EditorSessionManager manager,
+  ) async {
+    final secondCut = manager.activeTrack.cuts[1];
+    final block = find.byKey(
+      ValueKey<String>('storyboard-cut-block-${secondCut.id.value}'),
+    );
+    expect(block, findsOneWidget);
+    final gesture = await tester.startGesture(tester.getCenter(block));
+    await tester.pump();
+    await gesture.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('slide works with fx transform keys on the cut', (tester) async {
+    final manager = await pumpHost(tester);
+    final secondCut = manager.activeTrack.cuts[1];
+    manager.updateCutTransformTrack(
+      secondCut.id,
+      TransformTrack(
+        keyframes: {
+          0: TransformPose(
+            center: CanvasPoint(x: 100, y: 100),
+            zoom: 1.2,
+            rotationDegrees: 0,
+          ),
+          8: TransformPose(
+            center: CanvasPoint(x: 200, y: 100),
+            zoom: 1.0,
+            rotationDegrees: 10,
+          ),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await dragSecondCut(tester, manager);
+
+    // 48px at 12 px/frame = the cut slid 4 frames: its leading gap opened.
+    expect(manager.activeTrack.cuts[1].leadingGapFrames, 4);
+  });
+
+  testWidgets('slide works with the Transform strips twirled open', (
+    tester,
+  ) async {
+    final manager = await pumpHost(tester);
+    final secondCut = manager.activeTrack.cuts[1];
+    manager.updateCutTransformTrack(
+      secondCut.id,
+      TransformTrack(
+        keyframes: {
+          0: TransformPose(
+            center: CanvasPoint(x: 100, y: 100),
+            zoom: 1.2,
+            rotationDegrees: 0,
+          ),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Twirl the V track's lane strips open (the chevron), then the
+    // Transform group header — the state keys get authored in.
+    final trackId = manager.activeTrack.id.value;
+    await tester.tap(
+      find.byKey(ValueKey<String>('storyboard-track-lane-toggle-$trackId')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>(
+          'storyboard-lane-group-toggle-v-$trackId-transform-group',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await dragSecondCut(tester, manager);
+
+    expect(manager.activeTrack.cuts[1].leadingGapFrames, 4);
+  });
+}

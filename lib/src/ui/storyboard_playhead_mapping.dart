@@ -33,7 +33,14 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// through the cut's track slot), the editing playhead otherwise. An
 /// over-end playhead on the track's LAST cut stays unclamped — it lives in
 /// the endless runway, exactly like the timeline shows it.
-int? storyboardPlayheadFrame(EditorSessionManager session) {
+///
+/// [layout] takes a prebuilt active-track layout so per-tick callers
+/// (the storyboard host's playhead refresh) don't rebuild it every frame
+/// (R12-⑥); omitted, it is derived here.
+int? storyboardPlayheadFrame(
+  EditorSessionManager session, {
+  List<StoryboardTimelineLayoutEntry>? layout,
+}) {
   final playback = session.playback;
   // All-cuts playback speaks TRACK-GLOBAL frames directly — including the
   // GAP frames between cuts, where there is no cut position to map
@@ -44,7 +51,7 @@ int? storyboardPlayheadFrame(EditorSessionManager session) {
       return global;
     }
   }
-  final layout = storyboardActiveTrackLayout(session);
+  layout ??= storyboardActiveTrackLayout(session);
   final playbackPosition = session.playback.isActive
       ? session.playback.position
       : null;
@@ -65,9 +72,15 @@ int? storyboardPlayheadFrame(EditorSessionManager session) {
 }
 
 /// Whether the track-global [globalFrame]'s playback composite is warmed —
-/// the storyboard ruler's green bar.
-bool storyboardFrameCached(EditorSessionManager session, int globalFrame) {
-  for (final entry in storyboardActiveTrackLayout(session)) {
+/// the storyboard ruler's green bar. [layout] takes a prebuilt layout: the
+/// ruler asks PER VISIBLE FRAME per repaint, and rebuilding the whole
+/// track layout for each column was a fixed per-tick tax (R12-⑥).
+bool storyboardFrameCached(
+  EditorSessionManager session,
+  int globalFrame, {
+  List<StoryboardTimelineLayoutEntry>? layout,
+}) {
+  for (final entry in layout ?? storyboardActiveTrackLayout(session)) {
     if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
       return session.isPlaybackFrameCachedForCut(
         entry.cut,

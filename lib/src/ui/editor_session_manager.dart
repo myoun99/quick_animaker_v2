@@ -2668,6 +2668,11 @@ class EditorSessionManager extends ChangeNotifier {
   CutId? _cutTrimNextCutId;
   TimelineBlockEdge? _cutTrimEdge;
 
+  /// Track cut order + the dragged cut's slot, snapshotted for START-edge
+  /// slides (the leftward cascade pushes predecessor gaps, R12-⑦).
+  List<CutId>? _cutTrimOrder;
+  int? _cutTrimIndex;
+
   /// Starts a storyboard edge drag on [cutId]'s [edge]. The END edge trims
   /// the duration (growth eats the following gap first); the START edge
   /// SLIDES the cut by adjusting its leading gap — the way empty space
@@ -2700,10 +2705,26 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _cutTrimBeforeDurations = {entry.cutId: entry.cut.duration};
-    _cutTrimBeforeGaps = {
-      entry.cutId: entry.cut.leadingGapFrames,
-      if (next != null) next.cutId: next.cut.leadingGapFrames,
-    };
+    if (edge == TimelineBlockEdge.start) {
+      // The start grip slides like the block body (R12-⑦): a leftward
+      // slide cascades through the PREDECESSORS' gaps, so the whole
+      // track's order and gaps join the drag snapshot.
+      final trackEntries = [
+        for (final candidate in layout)
+          if (candidate.trackId == entry.trackId) candidate,
+      ];
+      _cutTrimOrder = [for (final candidate in trackEntries) candidate.cutId];
+      _cutTrimIndex = entry.cutIndex;
+      _cutTrimBeforeGaps = {
+        for (final candidate in trackEntries)
+          candidate.cutId: candidate.cut.leadingGapFrames,
+      };
+    } else {
+      _cutTrimBeforeGaps = {
+        entry.cutId: entry.cut.leadingGapFrames,
+        if (next != null) next.cutId: next.cut.leadingGapFrames,
+      };
+    }
     _cutTrimCutId = cutId;
     _cutTrimNextCutId = next?.cutId;
     _cutTrimEdge = edge;
@@ -2718,8 +2739,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// ripples). Shrinking follows the timeline's block language (R10-⑦):
   /// only an ATTACHED next cut rides the boundary — a detached one holds
   /// its global position (its gap grows by the shrink). START edge: the
-  /// cut SLIDES — its leading gap grows rightward and shrinks leftward,
-  /// clamped at contact with the previous cut.
+  /// cut SLIDES exactly like the block body (R12-⑦) — rightward opens its
+  /// gap, leftward consumes it and then pushes the predecessors' gaps in
+  /// cascade, clamped only at frame 0.
   void updateCutEdgeDrag(int cumulativeDelta) {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
@@ -2753,7 +2775,19 @@ class EditorSessionManager extends ChangeNotifier {
       }
     } else {
       durations[cutId] = beforeDurations[cutId]!;
-      gaps[cutId] = math.max(0, beforeGaps[cutId]! + cumulativeDelta);
+      // The start grip slides the cut exactly like the block body slide
+      // (R12-⑦, timeline push language): rightward opens its gap (the
+      // follower's gap absorbs — attached followers ride), leftward
+      // consumes its own gap and then PUSHES the predecessors' gaps in
+      // cascade, clamped only at frame 0 — no wall at contact.
+      gaps.addAll(
+        _cutMoveGaps(
+          order: _cutTrimOrder!,
+          beforeGaps: beforeGaps,
+          index: _cutTrimIndex!,
+          delta: cumulativeDelta,
+        ),
+      );
     }
 
     final changed =
@@ -2780,6 +2814,8 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimCutId = null;
     _cutTrimNextCutId = null;
     _cutTrimEdge = null;
+    _cutTrimOrder = null;
+    _cutTrimIndex = null;
     dragPreview.value = null;
     if (beforeDurations == null || beforeGaps == null) {
       return;
@@ -2856,6 +2892,8 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimCutId = null;
     _cutTrimNextCutId = null;
     _cutTrimEdge = null;
+    _cutTrimOrder = null;
+    _cutTrimIndex = null;
     dragPreview.value = null;
   }
 
