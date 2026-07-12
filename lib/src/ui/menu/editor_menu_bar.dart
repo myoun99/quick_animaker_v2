@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../models/attached_placement.dart';
 import '../../services/persistence/project_autosave_service.dart';
@@ -11,6 +12,7 @@ import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
+import '../export/ae_keyframe_data.dart';
 import '../export/export_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
@@ -364,12 +366,43 @@ class EditorMenuBar extends StatelessWidget {
           : null,
     ),
     const Divider(height: 8),
+    // Relocated from the retired camera panel (R11-⑤): bakes the active
+    // cut's camera work as AE keyframe data on the clipboard.
+    _item(
+      id: 'cut-copy-ae-camera',
+      label: 'Copy Camera AE Keyframes',
+      onPressed: () => _copyCameraAeKeyframes(context),
+    ),
+    const Divider(height: 8),
     _item(
       id: 'cut-delete',
       label: 'Delete Cut',
       onPressed: session.deleteActiveCut,
     ),
   ];
+
+  /// Bakes per frame; paste onto the canvas-sequence layer in a
+  /// camera-frame-sized comp.
+  void _copyCameraAeKeyframes(BuildContext context) {
+    final cut = session.activeCut;
+    final cameraSize = session.cameraFrameSize;
+    final text = buildAeTransformKeyframeData(
+      framesPerSecond: session.projectFps,
+      sourceWidth: cameraSize.width,
+      sourceHeight: cameraSize.height,
+      samples: bakeCameraAeSamples(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameCount: session.activeCutPlaybackFrameCount,
+      ),
+    );
+    unawaited(Clipboard.setData(ClipboardData(text: text)));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(
+        content: Text('Camera keyframes copied for After Effects.'),
+      ),
+    );
+  }
 
   // --- Layer ----------------------------------------------------------------
 

@@ -8,6 +8,7 @@ import '../models/project.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/paint_tool_state_notifier.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
@@ -43,8 +44,10 @@ class _HomePageState extends State<HomePage> {
       WorkspacePanelsMenuController();
 
   /// The active canvas tool, hoisted here so the tool shortcuts (B/E) and
-  /// the workspace's tool/brush panels drive one notifier.
-  final ValueNotifier<BrushToolState> _brushTool = ValueNotifier(
+  /// the workspace's tool/brush panels drive one notifier. Paint tools
+  /// keep per-tool settings memory (R11-④: the brush and the eraser each
+  /// remember their own preset/settings).
+  final ValueNotifier<BrushToolState> _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
   );
 

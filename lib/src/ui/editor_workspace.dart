@@ -4,25 +4,26 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../models/brush_preset.dart';
+import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
+import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
-import 'brush/brush_settings_panel.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
+import 'brush/paint_tool_state_notifier.dart';
+import 'brush/tool_library_panel.dart';
+import 'brush/tool_settings_panel.dart';
 import 'color/color_wheel_panel.dart';
 import 'brush/tools_panel.dart';
-import 'camera/camera_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
-import 'export/ae_keyframe_data.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'media/media_browser_panel.dart';
@@ -153,7 +154,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           EditorWorkspace.brushesTabId,
           EditorWorkspace.brushSettingsTabId,
           EditorWorkspace.colorWheelTabId,
-          EditorWorkspace.cameraTabId,
+          // The camera PANEL retired (R11-⑤): the canvas overlay handles
+          // pose editing, the timeline camera row its eye/opacity, and the
+          // AE clipboard copy moved to the Cut menu.
           EditorWorkspace.mediaTabId,
           // Trailing so the long-standing tab positions (and every test
           // tapping them) stay put; the strip scrolls to reach it.
@@ -204,7 +207,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final GlobalKey _canvasAreaKey = GlobalKey();
 
   late final ValueNotifier<BrushToolState> _brushTool =
-      widget.brushTool ?? ValueNotifier(BrushToolState.defaults);
+      widget.brushTool ?? PaintToolStateNotifier(BrushToolState.defaults);
+
+  /// Which preset is highlighted PER painting tool (R11-④: the brush and
+  /// the eraser keep separate selections; their settings live in
+  /// [PaintToolStateNotifier]'s bank).
+  final Map<CanvasTool, BrushPresetId?> _activePresetByTool = {};
+
+  /// The fill tool's flood options (Tool Settings knobs).
+  final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
+    const FloodFillOptions(),
+  );
 
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
@@ -450,6 +463,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     if (widget.brushTool == null) {
       _brushTool.dispose();
     }
+    _fillOptions.dispose();
     _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
@@ -495,37 +509,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
-  /// Copies the active cut's camera work to the clipboard as AE keyframe
-  /// data (baked per frame; paste onto the canvas-sequence layer in a
-  /// camera-frame-sized comp).
-  void _copyCameraAeKeyframes() {
-    final session = widget.session;
-    final cut = session.activeCut;
-    final cameraSize = session.cameraFrameSize;
-    final text = buildAeTransformKeyframeData(
-      framesPerSecond: session.projectFps,
-      sourceWidth: cameraSize.width,
-      sourceHeight: cameraSize.height,
-      samples: bakeCameraAeSamples(
-        camera: cut.camera,
-        canvasSize: cut.canvasSize,
-        frameCount: session.activeCutPlaybackFrameCount,
-      ),
-    );
-    unawaited(Clipboard.setData(ClipboardData(text: text)));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Camera keyframes copied for After Effects.'),
-      ),
-    );
-  }
-
   void _applyPreset(BrushPreset preset) {
     // The stabilizer is a hand-feel setting, not preset payload (P7): it
-    // carries over unchanged when a preset applies.
-    _brushTool.value = BrushToolState.fromBrushSettings(
-      preset.settings,
-    ).copyWith(stabilizerStrength: _brushTool.value.stabilizerStrength);
+    // carries over unchanged when a preset applies. Applying a preset
+    // KEEPS the active painting tool (R11-④: the eraser owns its own
+    // preset choice); from a non-painting tool it arms the brush.
+    final current = _brushTool.value;
+    final targetTool = canvasToolPaints(current.tool)
+        ? current.tool
+        : CanvasTool.brush;
+    _brushTool.value = BrushToolState.fromBrushSettings(preset.settings)
+        .copyWith(
+          tool: targetTool,
+          stabilizerStrength: current.stabilizerStrength,
+        );
+    _activePresetByTool[targetTool] = preset.id;
     _presetLibrary.markActive(preset.id);
   }
 
@@ -599,44 +597,67 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,
+            fillOptions: _fillOptions,
           ),
         );
       case EditorWorkspace.brushesTabId:
+        // The TOOL LIBRARY (R11-④, CSP sub-tool palette): content follows
+        // the active tool — painting tools get the preset library (each
+        // remembers its own selection), selection tools their variants.
         return EditorPanelTab(
           id: tabId,
-          label: 'Brushes',
+          label: 'Tool Library',
           icon: Icons.brush_outlined,
           locked: locked,
-          builder: (context) => ListenableBuilder(
-            listenable: _presetLibrary,
-            builder: (context, _) => BrushPresetPanel(
-              presets: _presetLibrary.presets,
-              selectedPresetId: _presetLibrary.activePresetId,
-              onPresetApplied: _applyPreset,
-              onPresetSaveRequested: () {
-                _presetLibrary.saveCurrent(_brushTool.value.toBrushSettings());
-              },
-              onPresetDeleted: _presetLibrary.delete,
-              onPresetRenamed: _presetLibrary.rename,
-              onPresetsReordered: _presetLibrary.reorder,
-              onPresetImportRequested: () {
-                unawaited(_importBrushFile());
-              },
+          builder: (context) => ValueListenableBuilder<BrushToolState>(
+            valueListenable: _brushTool,
+            builder: (context, toolState, _) => ToolLibraryPanel(
+              tool: toolState.tool,
+              onToolChanged: (tool) =>
+                  _brushTool.value = _brushTool.value.copyWith(tool: tool),
+              brushLibrary: ListenableBuilder(
+                listenable: _presetLibrary,
+                builder: (context, _) => BrushPresetPanel(
+                  presets: _presetLibrary.presets,
+                  selectedPresetId: _activePresetByTool[toolState.tool],
+                  onPresetApplied: _applyPreset,
+                  onPresetSaveRequested: () {
+                    _presetLibrary.saveCurrent(
+                      _brushTool.value.toBrushSettings(),
+                    );
+                  },
+                  onPresetDeleted: _presetLibrary.delete,
+                  onPresetRenamed: _presetLibrary.rename,
+                  onPresetsReordered: _presetLibrary.reorder,
+                  onPresetImportRequested: () {
+                    unawaited(_importBrushFile());
+                  },
+                ),
+              ),
             ),
           ),
         );
       case EditorWorkspace.brushSettingsTabId:
+        // TOOL SETTINGS (R11-④, CSP tool property palette): the active
+        // tool's detailed knobs.
         return EditorPanelTab(
           id: tabId,
-          label: 'Brush Settings',
+          label: 'Tool Settings',
           icon: Icons.tune,
           locked: locked,
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _brushTool,
-            builder: (context, toolState, _) => BrushSettingsPanel(
-              state: toolState,
-              onChanged: (state) => _brushTool.value = state,
-            ),
+            builder: (context, toolState, _) =>
+                ValueListenableBuilder<FloodFillOptions>(
+                  valueListenable: _fillOptions,
+                  builder: (context, fillOptions, _) => ToolSettingsPanel(
+                    state: toolState,
+                    onChanged: (state) => _brushTool.value = state,
+                    fillOptions: fillOptions,
+                    onFillOptionsChanged: (options) =>
+                        _fillOptions.value = options,
+                  ),
+                ),
           ),
         );
       case EditorWorkspace.colorWheelTabId:
@@ -707,42 +728,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               settings: settings,
               onChanged: (next) =>
                   widget.session.onionSkinSettings.value = next,
-            ),
-          ),
-        );
-      case EditorWorkspace.cameraTabId:
-        return EditorPanelTab(
-          id: tabId,
-          label: 'Camera',
-          icon: Icons.videocam_outlined,
-          locked: locked,
-          builder: (context) => ListenableBuilder(
-            // The session subscription lives HERE now (HomePage no longer
-            // setStates the world); the pose readout additionally tracks
-            // committed seeks, which are no longer session notifies.
-            listenable: Listenable.merge([
-              widget.session,
-              widget.session.frameSeekCommitted,
-              _cameraViewEnabled,
-              _cameraDimOpacity,
-            ]),
-            builder: (context, _) => CameraPanel(
-              cameraViewEnabled: _cameraViewEnabled.value,
-              onCameraViewChanged: (enabled) {
-                _cameraViewEnabled.value = enabled;
-              },
-              dimOpacity: _cameraDimOpacity.value,
-              onDimOpacityChanged: (opacity) {
-                _cameraDimOpacity.value = opacity;
-              },
-              isCameraLayerActive: widget.session.isCameraLayerActive,
-              pose: widget.session.cameraPoseAtCurrentFrame,
-              hasKeyframeAtCurrentFrame:
-                  widget.session.hasCameraKeyframeAtCurrentFrame,
-              onPoseCommitted: widget.session.setCameraKeyframeAtCurrentFrame,
-              onRemoveKeyframe:
-                  widget.session.removeCameraKeyframeAtCurrentFrame,
-              onCopyAeKeyframes: _copyCameraAeKeyframes,
             ),
           ),
         );
