@@ -22,12 +22,19 @@ class EditorActionDefinition {
     required this.label,
     required this.category,
     required this.defaultActivators,
+    this.defaultTouchGesture,
   });
 
   final String id;
   final String label;
   final String category;
   final List<SingleActivator> defaultActivators;
+
+  /// The multi-finger touch gesture bound by default (R11-⑨); most
+  /// actions ship unbound — every action is ASSIGNABLE in the settings
+  /// dialog either way. Stored as the [TouchGesture] enum NAME to keep
+  /// this file free of UI imports.
+  final String? defaultTouchGesture;
 }
 
 /// Registry ids (referenced from dispatch and menu labels).
@@ -107,6 +114,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.undo,
     label: 'Undo',
     category: 'Edit',
+    // Procreate's muscle memory: two-finger tap = undo.
+    defaultTouchGesture: 'twoFingerTap',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true),
     ],
@@ -115,6 +124,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.redo,
     label: 'Redo',
     category: 'Edit',
+    // Procreate's muscle memory: three-finger tap = redo.
+    defaultTouchGesture: 'threeFingerTap',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
       SingleActivator(LogicalKeyboardKey.keyY, control: true),

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_activator_codec.dart';
+import 'touch_shortcuts.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// grouped by category, click-to-record capture, conflict highlighting
@@ -106,6 +107,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
+    final touchConflicted = bindings.touchConflictedActionIds;
     final definitions = _filtered;
 
     final rows = <Widget>[];
@@ -125,7 +127,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           ),
         );
       }
-      rows.add(_actionRow(definition, conflicted.contains(definition.id)));
+      rows.add(
+        _actionRow(
+          definition,
+          conflicted.contains(definition.id),
+          touchConflicted.contains(definition.id),
+        ),
+      );
     }
 
     return AlertDialog(
@@ -186,11 +194,16 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
-  Widget _actionRow(EditorActionDefinition definition, bool conflicted) {
+  Widget _actionRow(
+    EditorActionDefinition definition,
+    bool conflicted,
+    bool touchConflicted,
+  ) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final recording = _recordingActionId == definition.id;
     final activators = bindings.activatorsFor(definition.id);
+    final touchGesture = bindings.touchGestureFor(definition.id);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -226,6 +239,57 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                       : null,
                 ),
               ),
+          // The TOUCH binding (R11-⑨): one multi-finger gesture per
+          // action, picked from the fixed vocabulary — same custom feel
+          // as the key bindings, same conflict highlighting.
+          PopupMenuButton<Object>(
+            key: ValueKey<String>('shortcut-touch-${definition.id}'),
+            tooltip: 'Touch shortcut',
+            // A popup item cannot carry a null VALUE (indistinguishable
+            // from dismissal), so 'None' rides a sentinel string.
+            onSelected: (value) => widget.bindings.setTouchGesture(
+              definition.id,
+              value is TouchGesture ? value : null,
+            ),
+            itemBuilder: (context) => [
+              PopupMenuItem<Object>(
+                key: ValueKey<String>('shortcut-touch-${definition.id}-none'),
+                value: 'none',
+                child: const Text('None'),
+              ),
+              for (final gesture in TouchGesture.values)
+                PopupMenuItem<Object>(
+                  key: ValueKey<String>(
+                    'shortcut-touch-${definition.id}-${gesture.name}',
+                  ),
+                  value: gesture,
+                  child: Text(gesture.label),
+                ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: touchGesture == null
+                  ? Icon(
+                      Icons.touch_app_outlined,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    )
+                  : Chip(
+                      label: Text(
+                        touchGesture.label,
+                        style: theme.textTheme.labelSmall,
+                      ),
+                      avatar: const Icon(Icons.touch_app_outlined, size: 14),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      backgroundColor: touchConflicted
+                          ? theme.colorScheme.errorContainer
+                          : null,
+                    ),
+            ),
+          ),
           IconButton(
             key: ValueKey<String>('shortcut-record-${definition.id}'),
             tooltip: 'Record new shortcut',
@@ -238,7 +302,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             tooltip: 'Reset to default',
             icon: const Icon(Icons.restart_alt, size: 18),
             visualDensity: VisualDensity.compact,
-            onPressed: bindings.isOverridden(definition.id)
+            onPressed:
+                bindings.isOverridden(definition.id) ||
+                    bindings.isTouchOverridden(definition.id)
                 ? () => bindings.resetAction(definition.id)
                 : null,
           ),

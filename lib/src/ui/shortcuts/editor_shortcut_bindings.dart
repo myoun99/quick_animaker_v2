@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'editor_action_registry.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_settings_store.dart';
+import 'touch_shortcuts.dart';
 
 /// The LIVE shortcut bindings: registry defaults merged with the user's
 /// persisted overrides. Notifies on every change so the app-level
@@ -47,6 +48,9 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   bool isOverridden(String actionId) => _overrides.containsKey(actionId);
+
+  bool isTouchOverridden(String actionId) =>
+      _touchOverrides.containsKey(actionId);
 
   /// The app-level Shortcuts map: every live activator → the action's
   /// intent. On a conflict (one activator bound to several actions) the
@@ -99,17 +103,79 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   void resetAction(String actionId) {
-    if (_overrides.remove(actionId) != null) {
+    final removedKeys = _overrides.remove(actionId) != null;
+    final removedTouch = _touchOverrides.remove(actionId) != null;
+    if (removedKeys || removedTouch) {
       _persist();
       notifyListeners();
     }
   }
 
   void resetAll() {
-    if (_overrides.isEmpty) {
+    if (_overrides.isEmpty && _touchOverrides.isEmpty) {
       return;
     }
     _overrides.clear();
+    _touchOverrides.clear();
+    _persist();
+    notifyListeners();
+  }
+
+  // --- Touch gestures (R11-⑨) ----------------------------------------------
+  //
+  // Every registry action may bind ONE multi-finger gesture, mirroring the
+  // key overrides: registry default + persisted user override, an explicit
+  // null override = deliberately unbound.
+
+  final Map<String, TouchGesture?> _touchOverrides = {};
+
+  /// The action's LIVE touch gesture (override or registry default).
+  TouchGesture? touchGestureFor(String actionId) {
+    if (_touchOverrides.containsKey(actionId)) {
+      return _touchOverrides[actionId];
+    }
+    return TouchGesture.fromName(definitionFor(actionId)?.defaultTouchGesture);
+  }
+
+  /// The dispatch lookup for a fired gesture; null while unbound. On a
+  /// conflict the LAST registry entry wins (keyboard parity);
+  /// [touchConflictedActionIds] surfaces the clash to the dialog.
+  String? actionIdForTouchGesture(TouchGesture gesture) {
+    String? actionId;
+    for (final definition in definitions) {
+      if (touchGestureFor(definition.id) == gesture) {
+        actionId = definition.id;
+      }
+    }
+    return actionId;
+  }
+
+  /// Action ids whose touch gesture collides with another action's.
+  Set<String> get touchConflictedActionIds {
+    final byGesture = <TouchGesture, List<String>>{};
+    for (final definition in definitions) {
+      final gesture = touchGestureFor(definition.id);
+      if (gesture != null) {
+        byGesture.putIfAbsent(gesture, () => []).add(definition.id);
+      }
+    }
+    return {
+      for (final ids in byGesture.values)
+        if (ids.length > 1) ...ids,
+    };
+  }
+
+  /// Binds (or with null, unbinds) [actionId]'s touch gesture; a value
+  /// equal to the registry default clears the override.
+  void setTouchGesture(String actionId, TouchGesture? gesture) {
+    final defaultGesture = TouchGesture.fromName(
+      definitionFor(actionId)?.defaultTouchGesture,
+    );
+    if (gesture == defaultGesture) {
+      _touchOverrides.remove(actionId);
+    } else {
+      _touchOverrides[actionId] = gesture;
+    }
     _persist();
     notifyListeners();
   }
@@ -137,6 +203,25 @@ class EditorShortcutBindings extends ChangeNotifier {
           ?singleActivatorFromJson(activatorJson),
       ]);
     }
+    _touchOverrides.clear();
+    final touchJson = payload?['touch'];
+    if (touchJson is Map) {
+      for (final entry in touchJson.entries) {
+        final actionId = entry.key;
+        if (actionId is! String || definitionFor(actionId) == null) {
+          continue;
+        }
+        final name = entry.value;
+        if (name == null) {
+          _touchOverrides[actionId] = null;
+        } else if (name is String) {
+          final gesture = TouchGesture.fromName(name);
+          if (gesture != null) {
+            _touchOverrides[actionId] = gesture;
+          }
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -159,6 +244,10 @@ class EditorShortcutBindings extends ChangeNotifier {
             for (final activator in entry.value)
               singleActivatorToJson(activator),
           ],
+      },
+      'touch': {
+        for (final entry in _touchOverrides.entries)
+          entry.key: entry.value?.name,
       },
     };
     _pendingPersist = _pendingPersist.then((_) => store.save(payload));
