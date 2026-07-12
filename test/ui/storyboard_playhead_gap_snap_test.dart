@@ -89,7 +89,7 @@ void main() {
     expect(notifies, 0);
   });
 
-  testWidgets('a playback seek lands IN the gap: black frame, no snap', (
+  testWidgets('a playback seek lands IN the gap: background frame, no snap', (
     tester,
   ) async {
     final (s, first, _, aEnd) = gappedSession();
@@ -105,6 +105,28 @@ void main() {
     expect(s.activeCutId, first);
     s.playback.stop();
     // Drain the prerender scheduler's zero-delay warming loop.
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the storyboard playhead keeps MOVING through gaps during '
+      'all-cuts playback (R10-⑤)', (tester) async {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectFrameIndex(0);
+
+    s.playback.play(scope: PlaybackScope.allCuts);
+    // Inside cut-a: the mapped position and the global agree.
+    seekStoryboardGlobalFrame(s, 1);
+    expect(storyboardPlayheadFrame(s), 1);
+
+    // IN the gap: the ruler playhead reads the playback clock's global
+    // frame instead of freezing on the stale editing playhead.
+    seekStoryboardGlobalFrame(s, aEnd + 2);
+    expect(s.playback.position, isNull);
+    expect(storyboardPlayheadFrame(s), aEnd + 2);
+
+    s.playback.stop();
     await tester.pumpAndSettle();
   });
 }
