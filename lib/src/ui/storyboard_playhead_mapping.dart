@@ -34,6 +34,16 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// over-end playhead on the track's LAST cut stays unclamped — it lives in
 /// the endless runway, exactly like the timeline shows it.
 int? storyboardPlayheadFrame(EditorSessionManager session) {
+  final playback = session.playback;
+  // All-cuts playback speaks TRACK-GLOBAL frames directly — including the
+  // GAP frames between cuts, where there is no cut position to map
+  // through (R10-⑤: the ruler must keep moving through gaps).
+  if (playback.isActive && playback.scope == PlaybackScope.allCuts) {
+    final global = playback.globalFrameIndexListenable.value;
+    if (global != null) {
+      return global;
+    }
+  }
   final layout = storyboardActiveTrackLayout(session);
   final playbackPosition = session.playback.isActive
       ? session.playback.position
