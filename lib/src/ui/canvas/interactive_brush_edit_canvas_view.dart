@@ -218,9 +218,20 @@ class _InteractiveBrushEditCanvasViewState
     // state, stale scope) flows through the ordinary rebuild.
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      _endStrokeInput();
+      // R13-4: this runs inside the build/update phase. The stroke-end
+      // callback reaches ancestor setState (the panel's _strokeActive) —
+      // firing it synchronously here threw "setState during build" (the
+      // mid-stroke flip red screen). Reset silently, notify post-frame.
+      final hadActiveStroke = _activeDrawingPointer != null;
+      _clearStrokeInputState();
       _resetOverlay();
       _liveRasterizer = null;
+      if (hadActiveStroke) {
+        final notify = widget.onActiveStrokeChanged;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          notify?.call(false);
+        });
+      }
     }
   }
 
@@ -654,6 +665,13 @@ class _InteractiveBrushEditCanvasViewState
 
   void _endStrokeInput() {
     widget.onActiveStrokeChanged?.call(false);
+    _clearStrokeInputState();
+  }
+
+  /// State-only stroke teardown — safe inside the build phase (no
+  /// callbacks). [_endStrokeInput] is the pointer-event variant that also
+  /// notifies synchronously.
+  void _clearStrokeInputState() {
     _activeDrawingPointer = null;
     _nextSequence = 0;
     _breakCurrentVisibleSegment = false;

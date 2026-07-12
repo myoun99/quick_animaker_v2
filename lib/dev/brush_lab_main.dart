@@ -60,6 +60,7 @@ class _LabPhase {
     required this.alternateTools,
     this.hopDissect = 0,
     this.bigBrush = false,
+    this.flipMidStroke = false,
   });
 
   final String label;
@@ -76,6 +77,10 @@ class _LabPhase {
   /// Big strokes dirty many tiles, so every commit invalidates wide and the
   /// prerender warmer has maximal work to collide with.
   final bool bigBrush;
+
+  /// R13-4: flip the frame WHILE the pen is down (the red-screen repro).
+  /// The stroke must pin to its original cel and nothing may throw.
+  final bool flipMidStroke;
 }
 
 class _BrushLabDriverState extends State<_BrushLabDriver> {
@@ -96,12 +101,14 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _LabPhase('+onion', hopFrames: true, onion: true, alternateTools: false),
     _LabPhase('+tools(full)', hopFrames: true, onion: true, alternateTools: true),
     _LabPhase('+bigbrush-flipdraw', hopFrames: true, onion: true, alternateTools: false, bigBrush: true),
+    _LabPhase('+flip-mid-stroke', hopFrames: true, onion: true, alternateTools: false, flipMidStroke: true),
   ];
 
   final List<int> _buildMicros = <int>[];
   final List<int> _rasterMicros = <int>[];
   late final TimingsCallback _timingsCallback;
   int _pointerId = 100;
+  int _flutterErrors = 0;
 
   @override
   void initState() {
@@ -113,6 +120,14 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       }
     };
     SchedulerBinding.instance.addTimingsCallback(_timingsCallback);
+    // Framework errors (the mid-stroke-flip red screen class) must be
+    // COUNTED, not just splashed on screen — the bucket line reports them.
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      _flutterErrors += 1;
+      _log('FLUTTER ERROR ${details.exception}');
+      previousOnError?.call(details);
+    };
     unawaited(_run());
   }
 
@@ -207,7 +222,16 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
             rect.left + (strokeIndex * 17.0) % (rect.width - 120),
             rect.top + (strokeIndex * 11.0) % (rect.height - 80),
           );
-          await _stroke(start);
+          await _stroke(
+            start,
+            // R13-4 repro: flip the frame at the stroke's midpoint with
+            // the pen still down — the stroke must pin to its cel.
+            midStrokeAction: phase.flipMidStroke
+                ? () => session.selectFrameIndex(
+                    (strokeIndex + 1) % frameCount,
+                  )
+                : null,
+          );
         }
         watch.stop();
         _logBucket(phase.label, bucket, watch.elapsedMilliseconds);
@@ -239,7 +263,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     return result;
   }
 
-  Future<void> _stroke(Offset start) async {
+  Future<void> _stroke(Offset start, {VoidCallback? midStrokeAction}) async {
     final pointer = _pointerId++;
     _event(
       PointerDownEvent(
@@ -252,6 +276,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     var position = start;
     for (var move = 0; move < movesPerStroke; move += 1) {
       await _nextFrame();
+      if (midStrokeAction != null && move == movesPerStroke ~/ 2) {
+        midStrokeAction();
+      }
       // Two samples per frame, like real pen input outpacing vsync.
       for (var sample = 0; sample < 2; sample += 1) {
         final previous = position;
@@ -319,6 +346,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       'raster p50 ${pct(raster, 0.5)} p95 ${pct(raster, 0.95)} '
       'worst ${pct(raster, 1.0)}ms | '
       'jank>16ms $jank | '
+      'errors $_flutterErrors | '
       'rss ${(ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(0)}MB',
     );
   }

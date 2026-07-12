@@ -152,14 +152,18 @@ class EditorSessionManager extends ChangeNotifier {
       PlaybackPrerenderScheduler(
         composites: cutFrameCompositeCache,
         resolveCut: cutById,
-        // Widget tests: zero idle delay, like before R13-3 — the 400ms
+        // Widget tests: zero idle delay, like before R13-3 — the
         // quiet-window polls otherwise leave a pending gate timer at
         // teardown (the session's tearDown dispose runs AFTER the
         // binding's timer invariant). The debounce/hold semantics have
         // their own scheduler unit tests with injected delays.
+        //
+        // Production: 1200ms (R13-4) — during an active work session the
+        // warmer resumes only in REAL pauses; per-tile abort granularity
+        // covers whatever still collides at the resume boundary.
         idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
             ? Duration.zero
-            : const Duration(milliseconds: 400),
+            : const Duration(milliseconds: 1200),
         afterFrameCached: () => _playbackCacheBudgetEnforcer.enforce(
           protect: _playbackProtectedRanges(),
         ),
@@ -495,6 +499,7 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
+    brushInputActive.dispose();
     dragPreview.dispose();
     onionSkinSettings.dispose();
     _historyManager.dispose();
@@ -3442,15 +3447,19 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Pen-down → warm stand-down (R13-3): while a stroke is live the
   /// prerender warmer must not touch the UI/raster threads at all — the
-  /// idle debounce alone resumed warming MID-stroke after 400ms. Latched:
-  /// unbalanced end calls (view resets without an active stroke) are no-ops.
-  bool _brushInputHoldOpen = false;
+  /// idle debounce alone resumed warming MID-stroke. Latched: unbalanced
+  /// end calls (view resets without an active stroke) are no-ops.
+  ///
+  /// Exposed as a listenable (R13-4) so the canvas retarget scope can PIN
+  /// an in-progress stroke to its cel: a committed seek that lands while
+  /// the pen is down defers the canvas retarget until the stroke ends.
+  final ValueNotifier<bool> brushInputActive = ValueNotifier<bool>(false);
 
   void setBrushInputActive(bool active) {
-    if (active == _brushInputHoldOpen) {
+    if (active == brushInputActive.value) {
       return;
     }
-    _brushInputHoldOpen = active;
+    brushInputActive.value = active;
     if (active) {
       prerenderScheduler.beginInputHold();
     } else {

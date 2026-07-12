@@ -73,15 +73,49 @@ void main() {
       debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
       final reference = await bytesOf(await bitmapSurfaceToImage(surface));
 
-      final cold = await bytesOf(await composeTiledSurfaceImage(surface));
+      final cold = await bytesOf((await composeTiledSurfaceImage(surface))!);
       expect(cold, reference, reason: 'transient-decode path');
 
       final cache = BitmapTileImageCache();
       await seedCache(cache, surface);
       final warm = await bytesOf(
-        await composeTiledSurfaceImage(surface, reuse: cache),
+        (await composeTiledSurfaceImage(surface, reuse: cache))!,
       );
       expect(warm, reference, reason: 'cache-reuse path');
+    });
+  });
+
+  testWidgets('shouldAbort stops the compose at tile granularity and '
+      'before the final raster (R13-4)', (tester) async {
+    await tester.runAsync(() async {
+      final surface = patternedSurface(
+        const CanvasSize(width: 300, height: 200),
+      );
+
+      // Abort immediately: no tile decodes, no raster, null out.
+      expect(
+        await composeTiledSurfaceImage(surface, shouldAbort: () => true),
+        isNull,
+      );
+
+      // Abort partway: the check runs before EVERY transient decode.
+      var checks = 0;
+      expect(
+        await composeTiledSurfaceImage(
+          surface,
+          shouldAbort: () => ++checks > 1,
+        ),
+        isNull,
+      );
+      expect(checks, greaterThan(1));
+
+      // Never aborted: byte-identical to the plain path.
+      final aborted = await composeTiledSurfaceImage(
+        surface,
+        shouldAbort: () => false,
+      );
+      final plain = await composeTiledSurfaceImage(surface);
+      expect(await bytesOf(aborted!), await bytesOf(plain!));
     });
   });
 
@@ -103,7 +137,7 @@ void main() {
       final cache = BitmapTileImageCache();
       await seedCache(cache, surface);
       final warmWatch = Stopwatch()..start();
-      (await composeTiledSurfaceImage(surface, reuse: cache)).dispose();
+      (await composeTiledSurfaceImage(surface, reuse: cache))!.dispose();
       warmWatch.stop();
 
       // ignore: avoid_print
