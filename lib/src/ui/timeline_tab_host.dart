@@ -792,10 +792,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
         // Button enablement reads the playhead, and committed seeks are no
         // longer session notifies — the toolbar re-reads them here without
-        // the panel (or its grids) rebuilding.
-        timelineActionToolbar: ListenableBuilder(
-          listenable: _session.frameSeekCommitted,
-          builder: (context, _) => Row(
+        // the panel (or its grids) rebuilding. TOKEN-GATED (R13-2): the
+        // naive per-seek rebuild reconstructed the whole transport + ~25
+        // Material buttons on every frame flip — measured on device as
+        // the flip hitch. Seeks that land in the same enablement state
+        // (almost all of them) now rebuild nothing.
+        timelineActionToolbar: _SeekGatedTimelineToolbar(
+          session: _session,
+          builder: (context) => Row(
             children: [
               PlaybackTransportControls(
                 controller: _session.playback,
@@ -822,4 +826,83 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       ),
     );
   }
+}
+
+/// Rebuilds the timeline's transport + action toolbar on a committed seek
+/// ONLY when the seek changed what the buttons can do (R13-2). The toolbar
+/// reads ~a dozen playhead-sensitive `can*` getters; deriving them into a
+/// comparison token per seek costs microseconds, while the rebuild it
+/// replaces reconstructed every Material button — the frame-flip hitch's
+/// toolbar share. Session notifies still refresh the toolbar through the
+/// host's ordinary rebuild (this widget re-derives on didUpdateWidget).
+class _SeekGatedTimelineToolbar extends StatefulWidget {
+  const _SeekGatedTimelineToolbar({
+    required this.session,
+    required this.builder,
+  });
+
+  final EditorSessionManager session;
+  final WidgetBuilder builder;
+
+  @override
+  State<_SeekGatedTimelineToolbar> createState() =>
+      _SeekGatedTimelineToolbarState();
+}
+
+class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
+  late Object _token = _deriveToken();
+
+  /// Every playhead-sensitive enablement the toolbar's buttons consume.
+  /// A new playhead-reading button must join this record — the guard test
+  /// pins the gate against the real toolbar.
+  Object _deriveToken() {
+    final session = widget.session;
+    return (
+      session.selectedFrame != null,
+      session.canCreateDrawingAtCurrentFrame,
+      session.canRenameFrameAtCurrentFrame,
+      session.canCutExposureAtCurrentFrame,
+      session.canToggleMarkAtCurrentFrame,
+      session.canCopyFrameAtCurrentFrame,
+      session.canPasteLinkedFrameAtCurrentFrame,
+      session.canDeleteCellAtCurrentFrame,
+      session.canDecreaseSelectedExposure,
+      session.canIncreaseSelectedExposure,
+    );
+  }
+
+  void _handleSeekCommitted() {
+    final next = _deriveToken();
+    if (next == _token) {
+      return;
+    }
+    setState(() => _token = next);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.session, widget.session)) {
+      oldWidget.session.frameSeekCommitted.removeListener(
+        _handleSeekCommitted,
+      );
+      widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
+    }
+    _token = _deriveToken();
+  }
+
+  @override
+  void dispose() {
+    widget.session.frameSeekCommitted.removeListener(_handleSeekCommitted);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
 }

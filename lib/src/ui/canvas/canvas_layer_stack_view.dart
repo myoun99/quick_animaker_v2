@@ -9,6 +9,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'layer_pose_paint.dart';
 import 'paper_background.dart';
@@ -122,6 +123,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// just-activated layer leaves the same frame, so it never double-draws
   /// under the interactive view.
   void _syncImagesWithCache() {
+    labProbe('layerStackSyncSweep(${widget.layers.length})', _syncSweepBody);
+  }
+
+  void _syncSweepBody() {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
     };

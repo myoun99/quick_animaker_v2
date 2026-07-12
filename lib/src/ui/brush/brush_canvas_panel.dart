@@ -22,6 +22,7 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
+import '../dev_profile.dart';
 import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
@@ -637,7 +638,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     final coordinator = widget.coordinator!;
     final activeKey = coordinator.activeFrameKey;
     final interactiveView = InteractiveBrushEditCanvasView(
-      key: ValueKey<String>('brush-canvas-${activeKey.frameId.value}'),
+      // STABLE key (R13-2): keying by frameId remounted the whole
+      // interactive subtree on every frame flip — the constant flip
+      // hitch. Cel changes reset in place via didUpdateWidget.
+      key: const ValueKey<String>('brush-canvas-view'),
       sessionState: coordinator.activeSessionState,
       layerId: activeKey.layerId,
       frameId: activeKey.frameId,
@@ -837,6 +841,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
+    labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
+  }
+
+  void _commitSourceStroke(BrushStrokeCommitData strokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget.coordinator!;

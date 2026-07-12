@@ -187,61 +187,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
     // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
     // data and hand the windows fresh ink session surfaces; ink commits
-    // notify through the controller. The editing frame cursor keeps the
-    // sheet playhead glued to ruler scrubs LIVE (user-requested) —
-    // affordable because the document/layout memo turns a cursor-only
-    // rebuild into a repaint, not a recompute.
-    final listenable = Listenable.merge([
-      session,
-      session.editingFrameCursor,
-      session.frameSeekCommitted,
-      session.playback.globalFrameIndexListenable,
-      ?inkController,
-    ]);
+    // notify through the controller. The playhead deliberately does NOT
+    // live here (R13-2): cursor moves, committed seeks and playback ticks
+    // repaint the thin playhead overlay only — repainting the whole B4
+    // sheet per playhead move was the timesheet's share of the frame-flip
+    // hitch. Page-granular playhead facts (auto page turn, Fit target,
+    // the frame label) rebuild through the token-gated scope below.
+    final listenable = Listenable.merge([session, ?inkController]);
 
     return ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
-        final playbackGlobalFrame =
-            session.playback.globalFrameIndexListenable.value;
         final layout = _resolveLayouts(session);
         final document = _document!;
         final pagedLayout = _pagedLayout!;
         inkController?.syncGeometry(pagedLayout);
         final documentSize = layout.documentSize;
-        final playheadFrame = playbackGlobalFrame == null
-            ? session.currentFrameIndex
-            : session.playback.position?.localFrameIndex ??
-                  session.currentFrameIndex;
-        final playheadPage = (playheadFrame ~/ document.pageFrameCount).clamp(
-          0,
-          document.pages.length - 1,
-        );
-        // Playback follows the sheet (③): page view turns to the playhead's
-        // page like flipping paper; continuous view scrolls the playhead
-        // row into view without touching the zoom. Idle keeps the viewport
-        // fully user-owned.
-        final autoFrame = playbackGlobalFrame == null
-            ? null
-            : widget.continuous
-            ? CanvasAutoFrameRequest(
-                token: (
-                  'timesheet-reveal',
-                  session.activeCut.id,
-                  playheadFrame,
-                ),
-                rect: Rect.fromLTWH(
-                  layout.paperLeft,
-                  layout.frameRowTop(playheadFrame),
-                  layout.paperWidth,
-                  TimesheetDocumentLayout.rowHeight,
-                ),
-                panOnly: true,
-              )
-            : CanvasAutoFrameRequest(
-                token: ('timesheet-page', session.activeCut.id, playheadPage),
-                rect: layout.pageRect(playheadPage),
-              );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -300,7 +261,47 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
               ),
             ),
             Expanded(
-              child: BrushCanvasPanel(
+              child: _TimesheetPlayheadScope(
+                session: session,
+                continuous: widget.continuous,
+                pageFrameCount: document.pageFrameCount,
+                pageCount: document.pages.length,
+                builder: (context, playheadFrame, playbackGlobalFrame) {
+                  final playheadPage =
+                      (playheadFrame ~/ document.pageFrameCount).clamp(
+                        0,
+                        document.pages.length - 1,
+                      );
+                  // Playback follows the sheet (③): page view turns to the
+                  // playhead's page like flipping paper; continuous view
+                  // scrolls the playhead row into view without touching
+                  // the zoom. Idle keeps the viewport fully user-owned.
+                  final autoFrame = playbackGlobalFrame == null
+                      ? null
+                      : widget.continuous
+                      ? CanvasAutoFrameRequest(
+                          token: (
+                            'timesheet-reveal',
+                            session.activeCut.id,
+                            playheadFrame,
+                          ),
+                          rect: Rect.fromLTWH(
+                            layout.paperLeft,
+                            layout.frameRowTop(playheadFrame),
+                            layout.paperWidth,
+                            TimesheetDocumentLayout.rowHeight,
+                          ),
+                          panOnly: true,
+                        )
+                      : CanvasAutoFrameRequest(
+                          token: (
+                            'timesheet-page',
+                            session.activeCut.id,
+                            playheadPage,
+                          ),
+                          rect: layout.pageRect(playheadPage),
+                        );
+                  return BrushCanvasPanel(
                 coordinator: null,
                 availableFrameKeys: const [],
                 cacheInvalidationSink: _cacheInvalidationSink,
@@ -334,9 +335,36 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           document: document,
                           layout: layout,
                           viewport: viewport,
-                          playheadFrame: playheadFrame,
                         ),
                         child: const SizedBox.expand(),
+                      ),
+                    ),
+                    // The playhead row highlight repaints ALONE (R13-2):
+                    // cursor moves, seeks and playback ticks drive this
+                    // thin layer through its repaint listenable — the
+                    // sheet painter above never rebuilds for them.
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            key: const ValueKey<String>(
+                              'timesheet-playhead-overlay',
+                            ),
+                            painter: TimesheetPlayheadPainter(
+                              document: document,
+                              layout: layout,
+                              viewport: viewport,
+                              resolvePlayheadFrame: () =>
+                                  _resolvePlayheadFrame(session),
+                              repaint: Listenable.merge([
+                                session.editingFrameCursor,
+                                session.frameSeekCommitted,
+                                session.playback.globalFrameIndexListenable,
+                              ]),
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
                       ),
                     ),
                     // Under the ink windows: reachable exactly when ink is
@@ -371,11 +399,123 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       ),
                   ],
                 ),
+                  );
+                },
               ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// The current sheet playhead frame: the playing local frame during
+/// playback, the editing playhead otherwise.
+int _resolvePlayheadFrame(EditorSessionManager session) {
+  final playbackGlobalFrame = session.playback.globalFrameIndexListenable.value;
+  return playbackGlobalFrame == null
+      ? session.currentFrameIndex
+      : session.playback.position?.localFrameIndex ??
+            session.currentFrameIndex;
+}
+
+/// Token-gated host for the sheet panel's PLAYHEAD-derived facts (R13-2):
+/// the auto page turn, the Fit target page and the frame label need the
+/// playhead, but rebuilding the whole panel per cursor move was the
+/// timesheet's share of the frame-flip hitch. This scope listens to the
+/// playhead signals and rebuilds ONLY when its derived token changes —
+/// page-granular while editing and in paged playback, per-frame only for
+/// the continuous-mode playback reveal (which pans every frame by
+/// design).
+class _TimesheetPlayheadScope extends StatefulWidget {
+  const _TimesheetPlayheadScope({
+    required this.session,
+    required this.continuous,
+    required this.pageFrameCount,
+    required this.pageCount,
+    required this.builder,
+  });
+
+  final EditorSessionManager session;
+  final bool continuous;
+  final int pageFrameCount;
+  final int pageCount;
+
+  /// Builds the panel subtree; [playbackGlobalFrame] is null while not
+  /// playing (the auto-frame gate).
+  final Widget Function(
+    BuildContext context,
+    int playheadFrame,
+    int? playbackGlobalFrame,
+  )
+  builder;
+
+  @override
+  State<_TimesheetPlayheadScope> createState() =>
+      _TimesheetPlayheadScopeState();
+}
+
+class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
+  late Object _token = _deriveToken();
+
+  Object _deriveToken() {
+    final session = widget.session;
+    final playbackGlobalFrame =
+        session.playback.globalFrameIndexListenable.value;
+    final playheadFrame = _resolvePlayheadFrame(session);
+    final page = widget.pageFrameCount <= 0
+        ? 0
+        : (playheadFrame ~/ widget.pageFrameCount).clamp(
+            0,
+            widget.pageCount - 1,
+          );
+    // Continuous-mode playback reveals the playhead row per frame; every
+    // other mode only cares which PAGE the playhead is on.
+    return (
+      page,
+      playbackGlobalFrame != null,
+      playbackGlobalFrame != null && widget.continuous ? playheadFrame : null,
+    );
+  }
+
+  void _handlePlayheadSignal() {
+    final next = _deriveToken();
+    if (next == _token) {
+      return;
+    }
+    setState(() => _token = next);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final session = widget.session;
+    session.editingFrameCursor.addListener(_handlePlayheadSignal);
+    session.frameSeekCommitted.addListener(_handlePlayheadSignal);
+    session.playback.globalFrameIndexListenable.addListener(
+      _handlePlayheadSignal,
+    );
+  }
+
+  @override
+  void dispose() {
+    final session = widget.session;
+    session.editingFrameCursor.removeListener(_handlePlayheadSignal);
+    session.frameSeekCommitted.removeListener(_handlePlayheadSignal);
+    session.playback.globalFrameIndexListenable.removeListener(
+      _handlePlayheadSignal,
+    );
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = widget.session;
+    return widget.builder(
+      context,
+      _resolvePlayheadFrame(session),
+      session.playback.globalFrameIndexListenable.value,
     );
   }
 }

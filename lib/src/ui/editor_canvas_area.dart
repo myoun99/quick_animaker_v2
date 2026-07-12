@@ -7,6 +7,7 @@ import '../models/layer_id.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import 'brush/brush_tool_state.dart';
+import 'dev_profile.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
@@ -118,10 +119,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             return ValueListenableBuilder<bool>(
               valueListenable: session.frameScrubActive,
               builder: (context, _, _) {
-                return _buildInteractiveCanvas(
-                  session,
-                  isCameraLayerActive: isCameraLayerActive,
-                  showCameraOverlay: showCameraOverlay,
+                return labProbe(
+                  'canvasAreaBuild',
+                  () => _buildInteractiveCanvas(
+                    session,
+                    isCameraLayerActive: isCameraLayerActive,
+                    showCameraOverlay: showCameraOverlay,
+                  ),
                 );
               },
             );
