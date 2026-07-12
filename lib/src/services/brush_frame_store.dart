@@ -86,6 +86,23 @@ class BrushFrameStore {
     }
   }
 
+  /// Re-homes stored drawings under new keys (a cross-layer block move,
+  /// R10-④b): content is untouched, so the display cache travels along and
+  /// stays valid. Missing sources are skipped (an empty cel moved). The
+  /// inverse pair list undoes the move exactly.
+  void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
+    for (final (from, to) in pairs) {
+      final state = _frames.remove(from);
+      if (state != null) {
+        _frames[to] = state.copyWithKey(to);
+      }
+      final cache = _displayCaches.remove(from);
+      if (cache != null) {
+        _displayCaches[to] = cache;
+      }
+    }
+  }
+
   /// Shifts every stored stroke of [cutId]'s frames by ([dx], [dy]) in canvas
   /// space, for canvas resizes anchored anywhere but the top-left corner.
   /// Coordinates are doubles, so the inverse translation restores them

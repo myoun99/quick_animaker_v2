@@ -67,6 +67,20 @@ class BrushFrameDrawingState {
 
   BrushPaintCommand? commandById(BrushPaintCommandId id) => _commandIndex[id];
 
+  /// The same drawing under a different store key (a cross-layer block
+  /// move re-homing the cel, R10-④b) — content and bookkeeping unchanged.
+  BrushFrameDrawingState copyWithKey(BrushFrameKey key) {
+    return BrushFrameDrawingState(
+      key: key,
+      paintCommands: _paintCommands,
+      hiddenCommandIds: hiddenCommandIds,
+      bakedPaintCommandIds: bakedPaintCommandIds,
+      inactivePreviewDirty: inactivePreviewDirty,
+      sourceRevision: sourceRevision,
+      cacheDirtyTiles: cacheDirtyTiles,
+    );
+  }
+
   BrushFrameDrawingState copyWith({
     List<BrushPaintCommand>? paintCommands,
     Set<BrushPaintCommandId>? hiddenCommandIds,
