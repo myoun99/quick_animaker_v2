@@ -55,6 +55,15 @@ class BrushFrameEditingCoordinator {
     frameStore.getOrCreateFrame(key);
     _sessionFor(key);
     _activeFrameKey = key;
+    // Session-count budget (R13): without it every cel ever drawn on kept
+    // its session (undo snapshots included) for the rest of the run, and
+    // the swelling heap's GC pauses slowed the WHOLE app the longer a
+    // drawing session went. Evicted cels reseed from the donated display
+    // cache in O(1); their undos take the command-replay fallback.
+    sessionStore.evictBeyondRetainLimit(
+      retainLimit: historyPolicy.retainedSessionLimit,
+      protect: key,
+    );
   }
 
   /// Adopts a new editing canvas size.
