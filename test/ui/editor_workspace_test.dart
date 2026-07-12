@@ -185,11 +185,11 @@ void main() {
       expect(find.byKey(_canvasTabKey), findsOneWidget);
       expect(find.byType(EditorCanvasArea), findsOneWidget);
 
-      // Locked by default: no drag grip at all (R10-竭ｩ 窶・only grips
-      // lift), and dragging the tab body does nothing.
-      expect(_tabGrip(find.byKey(_canvasTabKey)), findsNothing);
+      // Locked by default: the grip stays VISIBLE but inert (R12-⑨ —
+      // locking never reshapes the tab); dragging it does nothing.
+      expect(_tabGrip(find.byKey(_canvasTabKey)), findsOneWidget);
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(_canvasTabKey)),
+        tester.getCenter(_tabGrip(find.byKey(_canvasTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveTo(
@@ -437,21 +437,39 @@ void main() {
       expect(find.byKey(_brushesTabKey), findsOneWidget);
     });
 
-    testWidgets('locked tabs show no close button', (tester) async {
+    testWidgets('locked tabs keep the X visible but INERT — locking never '
+        'reshapes the tab (R12-⑨)', (tester) async {
       await _pumpHome(tester);
 
-      // The canvas ships locked: no X.
-      expect(
-        find.byKey(const ValueKey<String>('panel-close-canvas')),
-        findsNothing,
+      // The canvas ships locked: the X is there…
+      final closeCanvas = find.byKey(
+        const ValueKey<String>('panel-close-canvas'),
       );
-      // Unlocking reveals it.
-      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
-      await tester.pumpAndSettle();
+      expect(closeCanvas, findsOneWidget);
+      // …and the grip too (visible, inert).
       expect(
-        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        find.byKey(const ValueKey<String>('panel-grip-canvas')),
         findsOneWidget,
       );
+
+      // Ahem-wide labels push the X past the strip's scroll clip in
+      // tests — bring it into view before tapping.
+      await tester.ensureVisible(closeCanvas);
+      await tester.pumpAndSettle();
+
+      // Tapping the dead X does nothing (and doesn't select-toggle).
+      await tester.tap(closeCanvas);
+      await tester.pumpAndSettle();
+      expect(find.byKey(_canvasTabKey), findsOneWidget);
+
+      // Unlocking arms it: now the X closes the panel.
+      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(closeCanvas);
+      await tester.pumpAndSettle();
+      await tester.tap(closeCanvas);
+      await tester.pumpAndSettle();
+      expect(find.byKey(_canvasTabKey), findsNothing);
     });
   });
 
