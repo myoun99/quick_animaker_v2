@@ -83,6 +83,10 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     final project = widget.initialProject ?? createDefaultProject();
     _session = EditorSessionManager(initialProject: project);
+    // R16-①: undo/redo over a PENDING move session adopts it into history
+    // first — an undo never pops out from under the unadopted lift.
+    _session.historyManager.onBeforeUndoRedo =
+        _canvasSelectionCommands.confirmPendingMove;
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -110,15 +114,21 @@ class _HomePageState extends State<HomePage> {
     switch (actionId) {
       case EditorActionIds.framePrevious:
         // A live selection claims the arrow keys as nudges (PS
-        // arbitration); the comma/period bindings always flip.
+        // arbitration); the comma/period bindings always flip. Nudges
+        // stand down while a stroke is live (R16-③: rewriting the lift
+        // under the pen froze both).
         if (_canvasSelectionCommands.hasSelection) {
-          _canvasSelectionCommands.nudge(-1, 0);
+          if (!_session.brushInputActive.value) {
+            _canvasSelectionCommands.nudge(-1, 0);
+          }
         } else {
           _session.selectPreviousFrame();
         }
       case EditorActionIds.frameNext:
         if (_canvasSelectionCommands.hasSelection) {
-          _canvasSelectionCommands.nudge(1, 0);
+          if (!_session.brushInputActive.value) {
+            _canvasSelectionCommands.nudge(1, 0);
+          }
         } else {
           _session.selectNextFrame();
         }
@@ -175,9 +185,13 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       case EditorActionIds.selectionNudgeUp:
-        _canvasSelectionCommands.nudge(0, -1);
+        if (!_session.brushInputActive.value) {
+          _canvasSelectionCommands.nudge(0, -1);
+        }
       case EditorActionIds.selectionNudgeDown:
-        _canvasSelectionCommands.nudge(0, 1);
+        if (!_session.brushInputActive.value) {
+          _canvasSelectionCommands.nudge(0, 1);
+        }
       case EditorActionIds.selectionFreeTransform:
         _canvasSelectionCommands.beginTransform();
       case EditorActionIds.selectionTransformCommit:

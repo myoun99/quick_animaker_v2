@@ -54,6 +54,8 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onDragActiveChanged,
     this.onLiftRequested,
     this.onLiftDabsRewritten,
+    this.onLiftConfirmed,
+    this.onMoveSessionPendingChanged,
   });
 
   /// Which selection tool draws new regions (selectRect or lasso).
@@ -107,6 +109,18 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// lifecycle uses it to suppress/restore the stamp while floating.
   final void Function(BrushPaintCommandId commandId, List<BrushDab> dabs)?
   onLiftDabsRewritten;
+
+  /// CONFIRM of a FRESH move session (R16-①): the host adopts the raw
+  /// lift + the landed stamp as ONE history entry
+  /// (BrushLiftMoveHistoryCommand). Re-opened sessions confirm through
+  /// [onTransformCommitted] instead.
+  final void Function(BrushPaintCommandId commandId, List<BrushDab> dabs)?
+  onLiftConfirmed;
+
+  /// True while a move session awaits its confirm — the host holds the
+  /// session's edit-interaction lock (seeks refused, warmer down) without
+  /// locking viewport navigation.
+  final ValueChanged<bool>? onMoveSessionPendingChanged;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -170,13 +184,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool _shapeNeedsLift = false;
 
   /// The lift command owning this selection's pixels (R15-④), the stamp
-  /// dab currently FLOATING (removed from the command while dragging so
-  /// the base never shows it — no double image), and the command's dabs
-  /// as they stood before the gesture (the history command's `before`,
-  /// and the cancel restore target).
+  /// dab currently FLOATING (removed from the command so the base never
+  /// shows it — no double image), and the command's dabs as they stood
+  /// before the session opened (the transform `before` for re-opened
+  /// sessions).
+  ///
+  /// R16-① (TVP-style): the stamp stays floating through EVERY drag and
+  /// nudge — nothing lands and nothing is undoable until the user
+  /// CONFIRMS (button, Enter, tool switch, deselect, undo/redo hook),
+  /// which adopts the whole session as ONE history entry.
   BrushPaintCommandId? _liftCommandId;
   BrushDab? _pendingLiftStamp;
   List<BrushDab>? _liftBeforeDabs;
+
+  /// Fresh lift (confirm = adopt the raw-committed lift as one entry) vs
+  /// a re-opened session on an already-confirmed lift (confirm = ordinary
+  /// before/after transform entry).
+  bool _moveSessionFresh = false;
+
+  /// True once the session actually MOVED — the ants turn red until the
+  /// confirm (green = confirmed / untouched).
+  bool _moveSessionDirty = false;
+
+  bool get _movePending => _pendingLiftStamp != null;
 
   BrushPaintCommand? _liftCommand() {
     final id = _liftCommandId;
@@ -192,9 +222,69 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _clearLiftState() {
+    final wasPending = _movePending;
     _liftCommandId = null;
     _pendingLiftStamp = null;
     _liftBeforeDabs = null;
+    _moveSessionFresh = false;
+    _moveSessionDirty = false;
+    if (wasPending) {
+      widget.onMoveSessionPendingChanged?.call(false);
+    }
+  }
+
+  /// CONFIRM (R16-①): lands the floating stamp into the lift command and
+  /// adopts the whole session as ONE history entry. Safe to call from any
+  /// event context; never called inside a build phase (the tool-switch
+  /// and dispose triggers defer post-frame).
+  void _confirmMoveSession() {
+    final id = _liftCommandId;
+    final pending = _pendingLiftStamp;
+    if (id == null || pending == null) {
+      return;
+    }
+    final command = _liftCommand();
+    if (command == null) {
+      _clearLiftState();
+      return;
+    }
+    final dabs = [
+      for (final dab in command.sourceDabs)
+        if (dab.erase || dab.stamp == null) dab,
+      pending,
+    ];
+    if (_moveSessionFresh) {
+      final confirm = widget.onLiftConfirmed;
+      if (confirm != null) {
+        confirm(id, dabs);
+      } else {
+        // Headless hosts (focused tests): apply without history.
+        widget.onLiftDabsRewritten?.call(id, dabs);
+      }
+    } else {
+      widget.onTransformCommitted((
+        before: {id: _liftBeforeDabs ?? command.sourceDabs},
+        after: {id: dabs},
+      ));
+    }
+    if (mounted) {
+      setState(() {
+        _pendingLiftStamp = null;
+        _liftBeforeDabs = null;
+        _moveSessionFresh = false;
+        _moveSessionDirty = false;
+        if (_transform == null) {
+          _floatSurface = null;
+        }
+      });
+    } else {
+      _pendingLiftStamp = null;
+      _liftBeforeDabs = null;
+      _moveSessionFresh = false;
+      _moveSessionDirty = false;
+    }
+    widget.onMoveSessionPendingChanged?.call(false);
+    _syncAnts();
   }
 
   /// The committed region as it stood when a marquee drag started — the
@@ -256,6 +346,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the drag-end notify reaches ancestor setState and must defer.
       _resetAll(deferDragNotify: true);
     }
+    // R16-①: switching tools with a pending move CONFIRMS it (the user's
+    // explicit choice over TVP's revert). Deferred: confirming executes a
+    // history command, which must never run inside the build phase.
+    if (oldWidget.tool != widget.tool && _movePending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _movePending) {
+          _confirmMoveSession();
+        }
+      });
+    }
   }
 
   @override
@@ -263,6 +363,49 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     widget.selectionCommands?.unbind();
     if (_dragMode != _DragMode.none) {
       widget.onDragActiveChanged?.call(false);
+    }
+    // R16-①: unmounting with a pending move (tool switched to a
+    // non-selection tool) CONFIRMS it. The history execute defers
+    // post-frame (dispose can run inside a build); the interaction hold
+    // releases NOW so a leak can never lock seeks.
+    final pendingStamp = _pendingLiftStamp;
+    final liftId = _liftCommandId;
+    if (pendingStamp != null && liftId != null) {
+      widget.onMoveSessionPendingChanged?.call(false);
+      final fresh = _moveSessionFresh;
+      final beforeDabs = _liftBeforeDabs;
+      final commands = widget.visibleCommands;
+      final onConfirmed = widget.onLiftConfirmed;
+      final onRewritten = widget.onLiftDabsRewritten;
+      final onTransform = widget.onTransformCommitted;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        BrushPaintCommand? command;
+        for (final candidate in commands()) {
+          if (candidate.id == liftId) {
+            command = candidate;
+          }
+        }
+        if (command == null) {
+          return;
+        }
+        final dabs = [
+          for (final dab in command.sourceDabs)
+            if (dab.erase || dab.stamp == null) dab,
+          pendingStamp,
+        ];
+        if (fresh) {
+          if (onConfirmed != null) {
+            onConfirmed(liftId, dabs);
+          } else {
+            onRewritten?.call(liftId, dabs);
+          }
+        } else {
+          onTransform((
+            before: {liftId: beforeDabs ?? command.sourceDabs},
+            after: {liftId: dabs},
+          ));
+        }
+      });
     }
     _ants.dispose();
     super.dispose();
@@ -275,17 +418,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       deselect: _deselect,
       transformActive: () => _transform != null,
       beginTransform: _beginTransform,
-      commitTransform: _commitTransform,
+      // Enter: an open Ctrl+T commits; otherwise a pending move confirms
+      // (R16-①'s keyboard confirm).
+      commitTransform: () {
+        if (_transform != null) {
+          _commitTransform();
+        } else {
+          _confirmMoveSession();
+        }
+      },
       cancelTransform: _cancelTransform,
       applyShape: applyCommittedShape,
+      movePending: () => _movePending,
+      confirmPendingMove: _confirmMoveSession,
     );
   }
 
   void _resetAll({bool deferDragNotify = false}) {
     final wasDragging = _dragMode != _DragMode.none;
     setState(() {
-      // Cancel FIRST: a floating lift stamp must land back into its
-      // command before the lift bookkeeping clears.
+      // A pending float must not lose its pixels: land it back into the
+      // command (raw, no history) before the bookkeeping clears. Pending
+      // resets are rare by construction — the session holds the seek lock.
+      _restoreSuppressedLiftStamp();
       _cancelDrag(notify: wasDragging && !deferDragNotify);
       _shape = null;
       _selectedIds = const {};
@@ -418,6 +573,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (!_ensureLifted(shape)) {
         return;
       }
+      // A confirmed lift reopens its session for the nudge.
+      _suppressLiftStampForDrag();
     } else if (_selectedIds.isEmpty) {
       return;
     }
@@ -443,12 +600,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _liftCommandId = lift.commandId;
     _pendingLiftStamp = lift.stampDab;
-    // Undo of the upcoming move must show the pixels back at the ORIGIN
-    // (visually the pre-lift picture), so the history `before` is the
-    // erase command WITH the stamp at its lift position.
-    final command = _liftCommand();
-    _liftBeforeDabs = [...?command?.sourceDabs, lift.stampDab];
+    _liftBeforeDabs = null;
+    _moveSessionFresh = true;
+    _moveSessionDirty = false;
     setState(() => _selectedIds = {lift.commandId});
+    widget.onMoveSessionPendingChanged?.call(true);
     return true;
   }
 
@@ -475,21 +631,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _liftBeforeDabs = command.sourceDabs;
     _pendingLiftStamp = stamp;
+    _moveSessionFresh = false;
+    _moveSessionDirty = false;
     widget.onLiftDabsRewritten!(command.id, [
       for (final dab in command.sourceDabs)
         if (dab.erase || dab.stamp == null) dab,
     ]);
+    widget.onMoveSessionPendingChanged?.call(true);
   }
 
-  /// Cancel / zero-move release: the floating stamp lands back exactly
-  /// where the gesture found it (raw rewrite, no history entry).
+  /// Abandon fallback: land the floating stamp back into its command at
+  /// its CURRENT pending position (raw rewrite, no history) so the pixels
+  /// are never lost. Ordinary session ends go through the confirm.
   void _restoreSuppressedLiftStamp() {
     final id = _liftCommandId;
-    final before = _liftBeforeDabs;
-    if (id == null || _pendingLiftStamp == null || before == null) {
+    final pending = _pendingLiftStamp;
+    if (id == null || pending == null) {
       return;
     }
-    widget.onLiftDabsRewritten?.call(id, before);
+    final command = _liftCommand();
+    if (command != null) {
+      widget.onLiftDabsRewritten?.call(id, [
+        for (final dab in command.sourceDabs)
+          if (dab.erase || dab.stamp == null) dab,
+        pending,
+      ]);
+    }
     _pendingLiftStamp = null;
     _liftBeforeDabs = null;
   }
@@ -563,7 +730,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // The marquee tools ALWAYS draw a new region — even starting inside
       // the current one (moving lives on the Move tool). The old region
       // hides during the drag; the RELEASE records the change as one
-      // undoable step (a cancelled drag restores it).
+      // undoable step (a cancelled drag restores it). A pending move
+      // session confirms first (R16-①: never revert, always confirm).
+      _confirmMoveSession();
       _activePointer = event.pointer;
       setState(() {
         _dragMode = _DragMode.marquee;
@@ -747,11 +916,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
-    // A cancelled (or zero-move) lift gesture lands the floating stamp
-    // back exactly where the gesture found it.
-    if (_dragMode == _DragMode.move) {
-      _restoreSuppressedLiftStamp();
-    }
+    // R16-①: the move SESSION survives the gesture — the float keeps
+    // rendering at its pending position until the user confirms.
     // A CANCELLED marquee restores the region it hid at drag start (a
     // finished one consumed the stash in _finishMarquee).
     if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
@@ -772,7 +938,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _transformDragHandle = null;
     _transformDragStart = null;
     _transformDragStartPointer = null;
-    if (_transform == null) {
+    if (_transform == null && !_movePending) {
       _floatSurface = null;
     }
     if (notify && wasDragging) {
@@ -805,6 +971,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!mounted) {
       return;
     }
+    // A committed region change over a pending move confirms it first
+    // (deselect, Ctrl+D, a new shape from undo/redo — R16-①).
+    _confirmMoveSession();
     setState(() {
       _shape = shape;
       _shapeNeedsLift = shape != null;
@@ -862,49 +1031,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (shape == null || (dx == 0 && dy == 0)) {
       return;
     }
-    // R15-④ lift move: the ERASE stays at the origin forever; only the
-    // stamp translates. A floating (suppressed) stamp lands directly at
-    // the destination in the same rewrite.
+    // R16-① TVP move session: a drag/nudge only moves the FLOAT — nothing
+    // lands and nothing is undoable until the confirm. The ants go red.
     final liftId = _liftCommandId;
     if (liftId != null && _selectedIds.contains(liftId)) {
-      final command = _liftCommand();
-      if (command == null) {
-        _clearLiftState();
+      final pending = _pendingLiftStamp;
+      if (pending == null) {
+        // Session not open (confirmed lift without a reopen — shouldn't
+        // happen: drags reopen via suppression, nudges via _ensureLifted).
         return;
       }
-      final pending = _pendingLiftStamp;
-      final beforeDabs = _liftBeforeDabs ?? command.sourceDabs;
-      final List<BrushDab> afterDabs;
-      if (pending != null) {
-        afterDabs = [
-          ...command.sourceDabs,
-          pending.copyWith(
-            center: CanvasPoint(
-              x: pending.center.x + dx,
-              y: pending.center.y + dy,
-            ),
+      setState(() {
+        _pendingLiftStamp = pending.copyWith(
+          center: CanvasPoint(
+            x: pending.center.x + dx,
+            y: pending.center.y + dy,
           ),
-        ];
-      } else {
-        afterDabs = [
-          for (final dab in command.sourceDabs)
-            dab.stamp != null && !dab.erase
-                ? dab.copyWith(
-                    center: CanvasPoint(
-                      x: dab.center.x + dx,
-                      y: dab.center.y + dy,
-                    ),
-                  )
-                : dab,
-        ];
-      }
-      _pendingLiftStamp = null;
-      _liftBeforeDabs = null;
-      widget.onTransformCommitted((
-        before: {liftId: beforeDabs},
-        after: {liftId: afterDabs},
-      ));
-      setState(() => _shape = shape.translated(dx: dx, dy: dy));
+        );
+        _moveSessionDirty = true;
+        _floatSurface = _buildFloatSurface();
+        _shape = shape.translated(dx: dx, dy: dy);
+      });
+      _syncAnts();
       return;
     }
     final before = <BrushPaintCommandId, List<BrushDab>>{};
@@ -1079,7 +1227,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       child: Stack(
         children: [
           if (floatSurface != null &&
-              (_dragMode == _DragMode.move || transform != null))
+              (_dragMode == _DragMode.move ||
+                  transform != null ||
+                  _movePending))
             Positioned.fill(
               child: IgnorePointer(
                 child: Transform(
@@ -1120,14 +1270,54 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       ? _lassoPoints
                       : const [],
                   transformChrome: chrome,
+                  movePendingDirty: _movePending && _moveSessionDirty,
                 ),
                 child: const SizedBox.expand(),
               ),
             ),
           ),
+          // R16-①: the CONFIRM button — floats at the selection's top
+          // right while a move session is pending.
+          if (_movePending && displayShape != null)
+            Positioned(
+              left: _confirmButtonOffset(displayShape).dx,
+              top: _confirmButtonOffset(displayShape).dy,
+              child: Material(
+                key: const ValueKey<String>('selection-move-confirm'),
+                color: _moveSessionDirty
+                    ? const Color(0xFFFF4444)
+                    : const Color(0xFF2ECC71),
+                shape: const CircleBorder(),
+                elevation: 2,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _confirmMoveSession,
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.check, size: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// Confirm button anchor: just outside the selection bbox's top-right,
+  /// following the live drag offset.
+  Offset _confirmButtonOffset(CanvasSelectionShape shape) {
+    var maxX = shape.points.first.x;
+    var minY = shape.points.first.y;
+    for (final point in shape.points.skip(1)) {
+      maxX = math.max(maxX, point.x);
+      minY = math.min(minY, point.y);
+    }
+    final mapped = _mapCanvasToViewportOffset(CanvasPoint(x: maxX, y: minY));
+    final dragOffset = _dragMode == _DragMode.move
+        ? _moveScreenDelta
+        : Offset.zero;
+    return mapped + dragOffset + const Offset(8, -34);
   }
 
   Offset _mapCanvasToViewportOffset(CanvasPoint point) {
@@ -1154,6 +1344,7 @@ class _SelectionAntsPainter extends CustomPainter {
     required this.marqueeShape,
     required this.lassoTrail,
     this.transformChrome,
+    this.movePendingDirty = false,
   }) : _phase = repaint,
        super(repaint: repaint);
 
@@ -1165,7 +1356,13 @@ class _SelectionAntsPainter extends CustomPainter {
   final List<CanvasPoint> lassoTrail;
   final _TransformChrome? transformChrome;
 
+  /// R16-① TVP grammar: RED silhouette while the move session holds
+  /// unconfirmed changes, GREEN when confirmed/untouched.
+  final bool movePendingDirty;
+
   static const Color _chromeColor = Color(0xFF40C4FF);
+  static const Color _confirmedAntsColor = Color(0xFF2ECC71);
+  static const Color _pendingAntsColor = Color(0xFFFF4444);
 
   static const double _dashOn = 5;
   static const double _dashOff = 4;
@@ -1246,19 +1443,20 @@ class _SelectionAntsPainter extends CustomPainter {
     canvas.drawCircle(chrome.knob, 5, fill);
   }
 
-  /// White under-stroke + phase-offset black dashes = ants readable on any
-  /// artwork.
+  /// White under-stroke + phase-offset colored dashes: GREEN for a
+  /// confirmed/untouched selection, RED while a move session holds
+  /// unconfirmed changes (R16-①, TVP grammar) — readable on any artwork.
   void _paintAnts(Canvas canvas, Path path, double phase) {
     final white = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = Colors.white;
-    final black = Paint()
+    final dashes = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = Colors.black;
+      ..color = movePendingDirty ? _pendingAntsColor : _confirmedAntsColor;
     canvas.drawPath(path, white);
-    canvas.drawPath(_dashPath(path, phase), black);
+    canvas.drawPath(_dashPath(path, phase), dashes);
   }
 
   Path _dashPath(Path source, double phase) {
@@ -1284,5 +1482,6 @@ class _SelectionAntsPainter extends CustomPainter {
       oldDelegate.screenOffset != screenOffset ||
       oldDelegate.marqueeShape != marqueeShape ||
       oldDelegate.lassoTrail != lassoTrail ||
-      oldDelegate.transformChrome != transformChrome;
+      oldDelegate.transformChrome != transformChrome ||
+      oldDelegate.movePendingDirty != movePendingDirty;
 }

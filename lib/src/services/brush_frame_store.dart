@@ -84,6 +84,17 @@ class BrushFrameStore {
     return surface.tiles.length * surface.tileSize * surface.tileSize * 4;
   }
 
+  /// Cut whose cels the byte-budget eviction must NEVER touch (R16-⑤,
+  /// measured): flipping inside the working cut after an eviction forced
+  /// a cold full-history replay ON the UI thread — multi-second freezes
+  /// with heavy brushes. The session updates this on every cut switch;
+  /// the working set stays warm and eviction spends the budget on other
+  /// cuts' cels.
+  CutId? protectedCutId;
+
+  bool _isProtected(BrushFrameKey key) =>
+      protectedCutId != null && key.cutId == protectedCutId;
+
   void _putDisplayCache(BrushFrameKey key, BrushFrameDisplayCache cache) {
     final previous = _displayCaches.remove(key);
     if (previous != null) {
@@ -98,10 +109,10 @@ class BrushFrameStore {
       if (_displayCacheBytes <= displayCacheByteBudget) {
         break;
       }
-      if (candidate == key) {
-        // The just-stored cache is never its own eviction victim, even
-        // when it alone exceeds the budget (a giant single cel must still
-        // display without replaying every stroke per consumer).
+      if (candidate == key || _isProtected(candidate)) {
+        // The just-stored cache is never its own eviction victim (a giant
+        // single cel must still display without replaying every stroke),
+        // and the active cut's cels are pinned — see [protectedCutId].
         continue;
       }
       final removed = _displayCaches.remove(candidate)!;

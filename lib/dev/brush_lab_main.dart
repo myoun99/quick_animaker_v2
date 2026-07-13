@@ -65,6 +65,9 @@ class _LabPhase {
     this.flipMidStroke = false,
     this.heavyBrush = false,
     this.rapidRestrokes = false,
+    this.collideSeekOnUp = false,
+    this.collideRestroke = false,
+    this.fillTaps = false,
   });
 
   final String label;
@@ -93,6 +96,17 @@ class _LabPhase {
   /// R15-③: pen-up → next pen-down with barely a frame between — the
   /// commit-moment restroke the user reports as the remaining hitch.
   final bool rapidRestrokes;
+
+  /// R16-⑤: input in the SAME frame the commit fires — a seek issued in
+  /// the same event turn as pen-up (the "정확히 커밋 타이밍" collision).
+  final bool collideSeekOnUp;
+
+  /// R16-⑤: the next pen-down with ZERO settle frames after pen-up.
+  final bool collideRestroke;
+
+  /// R16-④: FILL tool taps (empty full-canvas cel + painted cel) with the
+  /// tap's wall time and the buildFillDab probe decomposition logged.
+  final bool fillTaps;
 }
 
 class _BrushLabDriverState extends State<_BrushLabDriver> {
@@ -116,6 +130,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _LabPhase('+flip-mid-stroke', hopFrames: true, onion: true, alternateTools: false, flipMidStroke: true),
     _LabPhase('+HEAVY-brush-flipdraw', hopFrames: true, onion: true, alternateTools: false, heavyBrush: true),
     _LabPhase('+HEAVY-rapid-restrokes', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true),
+    _LabPhase('+HEAVY-collide-seek', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, collideSeekOnUp: true),
+    _LabPhase('+HEAVY-collide-restroke', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true, collideRestroke: true),
+    _LabPhase('+fill-taps', hopFrames: false, onion: false, alternateTools: false, fillTaps: true),
   ];
 
   final List<int> _buildMicros = <int>[];
@@ -182,6 +199,10 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     for (final phase in phases) {
       session.onionSkinSettings.value = session.onionSkinSettings.value
           .copyWith(enabled: phase.onion);
+      if (phase.fillTaps) {
+        await _runFillTaps(session, brushTool);
+        continue;
+      }
       if (brushTool != null) {
         // HEAVY preset (R15-③): max size + sampled tip + dual + texture —
         // the worst realistic brush, per the user's testing directive.
@@ -254,9 +275,19 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
                     (strokeIndex + 1) % frameCount,
                   )
                 : null,
-            // R15-③: the commit-moment restroke — barely a frame between
-            // pen-up and the next pen-down.
-            settleAfter: phase.rapidRestrokes ? 1 : 6,
+            // R15-③/R16-⑤: the commit-moment restroke — one frame (rapid)
+            // or ZERO frames (collide) between pen-up and next pen-down.
+            settleAfter: phase.collideRestroke
+                ? 0
+                : phase.rapidRestrokes
+                ? 1
+                : 6,
+            // R16-⑤: a seek in the SAME event turn as the pen-up commit.
+            onUpSameTurn: phase.collideSeekOnUp
+                ? () => session.selectFrameIndex(
+                    (strokeIndex + 1) % frameCount,
+                  )
+                : null,
           );
         }
         watch.stop();
@@ -289,10 +320,77 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     return result;
   }
 
+  /// R16-④: measured fill taps — an EMPTY full-canvas cel (the user's
+  /// exact repro: "빈 프레임에 그냥 칠하기") alternating with a painted
+  /// one, undone between taps so every tap floods the full region. The
+  /// wall time prints per tap; the [labProbe]s inside buildFillDab print
+  /// the decomposition.
+  Future<void> _runFillTaps(
+    dynamic session,
+    ValueNotifier<BrushToolState>? brushTool,
+  ) async {
+    session.selectFrameIndex(7);
+    await _settleFrames(2);
+    if (session.activeBrushEditorSelection == null) {
+      session.createDrawingAtCurrentFrame();
+      await _settleFrames(4);
+    }
+    if (brushTool != null) {
+      brushTool.value = BrushToolState.defaults.copyWith(
+        tool: CanvasTool.fill,
+      );
+      await _settleFrames(2);
+    }
+    for (var tap = 0; tap < 6; tap += 1) {
+      final frame = tap.isOdd ? 0 : 7;
+      session.selectFrameIndex(frame);
+      await _settleFrames(4);
+      final canvas = _canvasView();
+      if (canvas == null) {
+        _log('fill-taps ABORT: canvas lost');
+        return;
+      }
+      final position = _rectOf(canvas).center + Offset(6.0 * tap, 0);
+      final watch = Stopwatch()..start();
+      final pointer = _pointerId++;
+      _event(
+        PointerDownEvent(
+          pointer: pointer,
+          kind: PointerDeviceKind.stylus,
+          position: position,
+          pressure: 0.8,
+        ),
+      );
+      _event(
+        PointerUpEvent(
+          pointer: pointer,
+          kind: PointerDeviceKind.stylus,
+          position: position,
+        ),
+      );
+      await _settleFrames(3);
+      watch.stop();
+      _log(
+        'FILL tap#$tap frame=$frame '
+        '(${frame == 7 ? 'EMPTY full-canvas' : 'painted'}) '
+        '${watch.elapsedMilliseconds}ms wall',
+      );
+      session.historyManager.undo();
+      await _settleFrames(4);
+    }
+    if (brushTool != null) {
+      brushTool.value = BrushToolState.defaults.copyWith(
+        tool: CanvasTool.brush,
+      );
+      await _settleFrames(2);
+    }
+  }
+
   Future<void> _stroke(
     Offset start, {
     VoidCallback? midStrokeAction,
     int settleAfter = 6,
+    VoidCallback? onUpSameTurn,
   }) async {
     final pointer = _pointerId++;
     _event(
@@ -331,6 +429,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
         position: position,
       ),
     );
+    // R16-⑤: the collision — more work injected in the SAME event turn
+    // the pen-up commit just ran in.
+    onUpSameTurn?.call();
     // Let the pen-up fan-out (commit, decode burst, settle) land inside
     // the bucket's timings.
     await _settleFrames(settleAfter);

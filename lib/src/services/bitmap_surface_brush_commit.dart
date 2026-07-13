@@ -499,10 +499,40 @@ void _blendStampDab({
         if (stampA == 0) {
           continue;
         }
-        final sourceAlpha = (stampA / 255.0) * dabOpacity;
-
         final offset =
             (localRowOffset + (x - tileLeft)) * BitmapTile.bytesPerPixel;
+
+        // Opaque full-coverage fast paths (R16-④ measured: full-canvas
+        // fill/lift stamps spent ~0.5s in the per-pixel double math) —
+        // a fully covering stamp pixel at opacity 1 is a byte copy
+        // (srcOver) or a byte zero (erase).
+        if (stampA == 255 && dabOpacity == 1.0) {
+          if (dab.erase) {
+            if (buffer[offset] != 0 ||
+                buffer[offset + 1] != 0 ||
+                buffer[offset + 2] != 0 ||
+                buffer[offset + 3] != 0) {
+              buffer[offset] = 0;
+              buffer[offset + 1] = 0;
+              buffer[offset + 2] = 0;
+              buffer[offset + 3] = 0;
+              changedCoords.add(coord);
+            }
+          } else {
+            if (buffer[offset] != rgba[sourceOffset] ||
+                buffer[offset + 1] != rgba[sourceOffset + 1] ||
+                buffer[offset + 2] != rgba[sourceOffset + 2] ||
+                buffer[offset + 3] != 255) {
+              buffer[offset] = rgba[sourceOffset];
+              buffer[offset + 1] = rgba[sourceOffset + 1];
+              buffer[offset + 2] = rgba[sourceOffset + 2];
+              buffer[offset + 3] = 255;
+              changedCoords.add(coord);
+            }
+          }
+          continue;
+        }
+        final sourceAlpha = (stampA / 255.0) * dabOpacity;
         final destR = buffer[offset];
         final destG = buffer[offset + 1];
         final destB = buffer[offset + 2];

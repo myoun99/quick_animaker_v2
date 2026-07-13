@@ -14,6 +14,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/commands/brush_lift_move_history_command.dart';
 import '../../services/commands/brush_selection_transform_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -672,6 +673,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         onLiftRequested: _handleSelectionLift,
                                         onLiftDabsRewritten:
                                             _handleLiftDabsRewritten,
+                                        onLiftConfirmed: _handleLiftConfirmed,
+                                        // Pending move sessions hold the
+                                        // session's edit lock (seeks
+                                        // refused) WITHOUT locking
+                                        // viewport navigation.
+                                        onMoveSessionPendingChanged:
+                                            widget.onSelectionInteractionChanged,
                                       ),
                                     ),
                                 ],
@@ -918,10 +926,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
   }
 
-  /// R14-④/R15-④ bitmap lift: commits [shape]'s ERASE through the stroke
-  /// funnel — the origin's pixels vanish the moment the move starts — and
-  /// returns the command's id plus the lifted stamp dab, which the layer
-  /// floats and lands at release. Null when the shape covers no pixels.
+  /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
+  /// history (the origin must vanish instantly, but nothing is undoable
+  /// until the session CONFIRMS) — and returns the command's id plus the
+  /// lifted stamp dab, which floats until the confirm. Null when the
+  /// shape covers no pixels.
   ({BrushPaintCommandId commandId, BrushDab stampDab})? _handleSelectionLift(
     CanvasSelectionShape shape,
   ) {
@@ -937,16 +946,43 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     if (lift == null) {
       return null;
     }
-    _handleSourceStrokeCommitted(
-      BrushStrokeCommitData(sourceDabs: [lift.eraseDab]),
+    final command = coordinator.commitSourceStroke(
+      sourceDabs: [lift.eraseDab],
+      cacheInvalidationSink: widget.cacheInvalidationSink,
     );
-    final commands = coordinator.frameStore
-        .getOrCreateFrame(coordinator.activeFrameKey)
-        .visibleActivePaintCommands;
-    if (commands.isEmpty) {
+    if (command == null) {
       return null;
     }
-    return (commandId: commands.last.id, stampDab: lift.stampDab);
+    setState(() {});
+    return (commandId: command.id, stampDab: lift.stampDab);
+  }
+
+  /// R16-① confirm: adopts the whole move session (raw lift + landed
+  /// stamp) into app history as ONE undo entry.
+  void _handleLiftConfirmed(
+    BrushPaintCommandId commandId,
+    List<BrushDab> dabs,
+  ) {
+    final coordinator = widget.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    final historyManager = widget.historyManager;
+    if (historyManager == null) {
+      coordinator.rewritePaintCommandDabs(
+        {commandId: dabs},
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      );
+      return;
+    }
+    historyManager.execute(
+      BrushLiftMoveHistoryCommand(
+        coordinator: coordinator,
+        commandId: commandId,
+        confirmedDabs: dabs,
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      ),
+    );
   }
 
   /// Raw lift-command dab rewrite (no history entry) — the drag lifecycle
