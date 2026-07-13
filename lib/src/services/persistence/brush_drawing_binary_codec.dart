@@ -17,6 +17,7 @@ import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_paint_command.dart';
 import '../../models/brush_paint_command_id.dart';
+import '../../models/brush_stamp_image.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_shape.dart';
 import '../../models/canvas_point.dart';
@@ -34,7 +35,10 @@ class QapDrawingEntry {
   final List<BrushPaintCommand> commands;
 }
 
-const int qapDrawingBinaryVersion = 1;
+/// v2: RGBA stamp dabs (R14-④ bitmap lift) — flag bit 16 + an inline
+/// stamp payload per dab (stamps are unique per lift; a dedup table would
+/// buy nothing). v1 archives decode unchanged (the flag never appears).
+const int qapDrawingBinaryVersion = 2;
 const int qapTipTableBinaryVersion = 1;
 
 /// Collects every distinct tip mask (by id) referenced from [entries] —
@@ -97,6 +101,7 @@ const int _flagErase = 1;
 const int _flagTipMask = 2;
 const int _flagDualMask = 4;
 const int _flagTextureMask = 8;
+const int _flagStamp = 16;
 
 Uint8List encodeDrawingEntry(
   QapDrawingEntry entry,
@@ -130,6 +135,9 @@ Uint8List encodeDrawingEntry(
       if (dab.textureMask != null) {
         flags |= _flagTextureMask;
       }
+      if (dab.stamp != null) {
+        flags |= _flagStamp;
+      }
       writer
         ..f32(dab.center.x)
         ..f32(dab.center.y)
@@ -159,6 +167,14 @@ Uint8List encodeDrawingEntry(
           ..u16(maskIndexById[dab.textureMask!.id]!)
           ..f32(dab.textureScale)
           ..u8(_unitToByte(dab.textureDensity));
+      }
+      final stamp = dab.stamp;
+      if (stamp != null) {
+        writer
+          ..string(stamp.id)
+          ..u16(stamp.width)
+          ..u16(stamp.height)
+          ..bytes(stamp.rgba);
       }
     }
   }
@@ -222,6 +238,18 @@ QapDrawingEntry decodeDrawingEntry(Uint8List bytes, List<BrushTipMask> masks) {
         textureScale = reader.f32();
         textureDensity = _byteToUnit(reader.u8());
       }
+      BrushStampImage? stamp;
+      if (flags & _flagStamp != 0) {
+        final stampId = reader.string();
+        final stampWidth = reader.u16();
+        final stampHeight = reader.u16();
+        stamp = BrushStampImage(
+          id: stampId,
+          width: stampWidth,
+          height: stampHeight,
+          rgba: reader.bytes(stampWidth * stampHeight * 4),
+        );
+      }
       dabs.add(
         BrushDab(
           center: CanvasPoint(x: x, y: y),
@@ -244,6 +272,7 @@ QapDrawingEntry decodeDrawingEntry(Uint8List bytes, List<BrushTipMask> masks) {
           textureScale: textureScale,
           textureDensity: textureDensity,
           erase: flags & _flagErase != 0,
+          stamp: stamp,
         ),
       );
     }

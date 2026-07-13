@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
@@ -82,12 +83,19 @@ void main() {
     );
   }
 
+  List<BrushPaintCommand> frameCommands(
+    BrushFrameEditingCoordinator coordinator,
+  ) => coordinator.frameStore
+      .getOrCreateFrame(coordinator.activeFrameKey)
+      .visibleActivePaintCommands;
+
   List<BrushDab> strokeDabs(BrushFrameEditingCoordinator coordinator) =>
-      coordinator.frameStore
-          .getOrCreateFrame(coordinator.activeFrameKey)
-          .visibleActivePaintCommands
-          .single
-          .sourceDabs;
+      frameCommands(coordinator).single.sourceDabs;
+
+  /// The lift command's STAMP dab (R14-④: the Move tool's first
+  /// interaction commits [erase, stamp]; moves translate the stamp).
+  BrushDab liftStampDab(BrushFrameEditingCoordinator coordinator) =>
+      frameCommands(coordinator).last.sourceDabs.last;
 
   Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -124,24 +132,45 @@ void main() {
     expect(env.commands.hasSelection, isTrue);
 
     // The MOVE tool drags the content (the selection survives the tool
-    // switch); drag by (+10, +5).
+    // switch); drag by (+10, +5). R14-④ bitmap lift: the first move cuts
+    // the region's PIXELS into an erase+stamp pair — the original stroke
+    // command NEVER moves.
     await env.setTool(CanvasTool.move);
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
 
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
+    expect(
+      frameCommands(env.coordinator),
+      hasLength(2),
+      reason: 'the lift is one extra command on top of the stroke',
+    );
+    expect(
+      frameCommands(env.coordinator).first.sourceDabs.first.center,
+      CanvasPoint(x: 30, y: 30),
+      reason: 'bitmap lift moves pixels, never the source stroke',
+    );
+    final liftDabs = frameCommands(env.coordinator).last.sourceDabs;
+    expect(liftDabs.first.erase, isTrue);
+    expect(liftDabs.last.stamp, isNotNull);
+    // The ACTIVE marquee is the second one, (25,25)-(68,68) → a 44×44
+    // stamp centered at (47,47), moved by the drag delta (+10,+5).
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
     expect(env.history.canUndo, isTrue);
 
-    env.history.undo();
+    env.history.undo(); // the move
     await tester.pump();
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 47, y: 47));
+    env.history.undo(); // the lift
+    await tester.pump();
+    expect(frameCommands(env.coordinator), hasLength(1));
 
     env.history.redo();
+    env.history.redo();
     await tester.pump();
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
 
     // Outside the region the move tool does nothing.
     await dragOnLayer(tester, const Offset(150, 150), const Offset(170, 170));
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 40, y: 35));
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
   });
 
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
@@ -192,13 +221,20 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
 
-    // Arrow nudge: one canvas pixel, one undo entry.
+    // Arrow nudge: one canvas pixel per entry — the FIRST nudge lifts the
+    // region's pixels (erase+stamp), then translates the stamp; the
+    // source stroke never moves (R14-④).
     env.commands.nudge(1, 0);
     await tester.pump();
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 31, y: 30));
+    expect(frameCommands(env.coordinator), hasLength(2));
+    expect(
+      frameCommands(env.coordinator).first.sourceDabs.first.center,
+      CanvasPoint(x: 30, y: 30),
+    );
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 46.5, y: 45.5));
     env.commands.nudge(0, -1);
     await tester.pump();
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 31, y: 29));
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 46.5, y: 44.5));
 
     // Ctrl+D (through the channel) deselects.
     env.commands.deselect();
@@ -353,8 +389,15 @@ void main() {
     await tester.pump();
 
     expect(env.commands.hasSelection, isTrue);
+    // R14-④: the nudge lifts the lasso region's pixels — bbox
+    // (10,10)-(90,90) → an 81×81 stamp centered at (50.5,50.5), nudged
+    // +2; the source stroke stays put.
     env.commands.nudge(2, 0);
     await tester.pump();
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 32, y: 30));
+    expect(
+      frameCommands(env.coordinator).first.sourceDabs.first.center,
+      CanvasPoint(x: 30, y: 30),
+    );
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 52.5, y: 50.5));
   });
 }

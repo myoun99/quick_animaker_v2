@@ -52,6 +52,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onShapeCommitted,
     this.selectionCommands,
     this.onDragActiveChanged,
+    this.onLiftRequested,
   });
 
   /// Which selection tool draws new regions (selectRect or lasso).
@@ -86,6 +87,18 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// Raised while a selection drag is in progress (the panel holds
   /// viewport gestures exactly like during a stroke).
   final ValueChanged<bool>? onDragActiveChanged;
+
+  /// R14-④ bitmap lift: called ONCE per selection shape when the Move
+  /// tool first drags (or nudges) it. The host cuts the shape's PIXELS
+  /// out of the active cel — an erase-mask + stamp dab pair through the
+  /// stroke funnel — and returns the STAMP command's id; the selection
+  /// then owns that single command and every later move translates it
+  /// (the origin is already gone, so "hide the original while moving"
+  /// holds by construction). Null return = the shape covers no pixels:
+  /// the move is a no-op. Without this callback the layer keeps the
+  /// legacy whole-stroke move (focused tests).
+  final BrushPaintCommandId? Function(CanvasSelectionShape shape)?
+  onLiftRequested;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -142,6 +155,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin {
   CanvasSelectionShape? _shape;
   Set<BrushPaintCommandId> _selectedIds = const {};
+
+  /// True from a USER selection (marquee commit, shape channel apply)
+  /// until its first Move interaction lifts the pixels; move/transform
+  /// commits keep it false so a lifted stamp never re-lifts itself.
+  bool _shapeNeedsLift = false;
 
   /// The committed region as it stood when a marquee drag started — the
   /// undo record's BEFORE (a cancelled drag restores it).
@@ -345,10 +363,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final shape = _shape;
-    if (shape == null || _selectedIds.isEmpty) {
+    if (shape == null) {
+      return;
+    }
+    if (widget.onLiftRequested != null) {
+      if (!_ensureLifted(shape)) {
+        return;
+      }
+    } else if (_selectedIds.isEmpty) {
       return;
     }
     _commitMove(dx: dx, dy: dy);
+  }
+
+  /// R14-④: lifts the shape's pixels once per user selection — the host
+  /// commits the erase+stamp pair and the selection re-targets onto the
+  /// stamp command. False = nothing under the shape to move.
+  bool _ensureLifted(CanvasSelectionShape shape) {
+    if (!_shapeNeedsLift) {
+      return _selectedIds.isNotEmpty;
+    }
+    final stampId = widget.onLiftRequested!(shape);
+    _shapeNeedsLift = false;
+    setState(() {
+      _selectedIds = stampId == null ? const {} : {stampId};
+    });
+    return stampId != null;
   }
 
   CanvasPoint _toCanvas(Offset local) =>
@@ -395,9 +435,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.tool == CanvasSelectionTool.move) {
       // The MOVE tool only drags the selected content; outside the
       // region (or without one) it does nothing (R11-⑧).
-      if (shape == null ||
-          _selectedIds.isEmpty ||
-          !shape.containsPoint(canvasPoint)) {
+      if (shape == null || !shape.containsPoint(canvasPoint)) {
+        return;
+      }
+      // R14-④: with a lift host the shape's PIXELS decide (a marquee over
+      // the middle of a stroke moves those pixels even though no whole
+      // command joined); legacy hosts still need selected commands.
+      if (widget.onLiftRequested != null) {
+        if (!_ensureLifted(shape)) {
+          return;
+        }
+      } else if (_selectedIds.isEmpty) {
         return;
       }
       _activePointer = event.pointer;
@@ -598,6 +646,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // finished one consumed the stash in _finishMarquee).
     if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
       _shape = _shapeBeforeMarquee;
+      _shapeNeedsLift = true;
       _selectedIds = selectCommandIdsInShape(
         commands: widget.visibleCommands(),
         shape: _shapeBeforeMarquee!,
@@ -648,6 +697,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(() {
       _shape = shape;
+      _shapeNeedsLift = shape != null;
       _selectedIds = shape == null
           ? const {}
           : selectCommandIdsInShape(

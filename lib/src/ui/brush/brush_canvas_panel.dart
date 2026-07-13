@@ -7,6 +7,8 @@ import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/brush_paint_command_id.dart';
+import '../../services/canvas_selection.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -650,6 +652,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             ),
                                         onTransformCommitted:
                                             _handleSelectionTransform,
+                                        // R14-④: the Move tool lifts the
+                                        // selection's PIXELS (never whole
+                                        // strokes) — 유저 direction ⑧b.
+                                        onLiftRequested: _handleSelectionLift,
                                       ),
                                     ),
                                 ],
@@ -894,6 +900,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
+  }
+
+  /// R14-④ bitmap lift: cuts [shape]'s pixels out of the active cel as an
+  /// erase-mask + stamp pair — ONE command through the exact stroke funnel
+  /// (one undo entry; the origin vanishes the moment the move starts) —
+  /// and returns the stamp command's id for the selection to own. Null
+  /// when the shape covers no pixels.
+  BrushPaintCommandId? _handleSelectionLift(CanvasSelectionShape shape) {
+    final coordinator = widget.coordinator;
+    if (coordinator == null) {
+      return null;
+    }
+    final lift = buildSelectionLiftDabs(
+      shape: shape,
+      surface: coordinator.activeSessionState.canvasState.currentSurface,
+      liftId: '${DateTime.now().microsecondsSinceEpoch}',
+    );
+    if (lift == null) {
+      return null;
+    }
+    _handleSourceStrokeCommitted(
+      BrushStrokeCommitData(sourceDabs: [lift.eraseDab, lift.stampDab]),
+    );
+    final commands = coordinator.frameStore
+        .getOrCreateFrame(coordinator.activeFrameKey)
+        .visibleActivePaintCommands;
+    // The commit lands as the newest visible command; empty only if the
+    // pair changed no pixels (already-blank region), which the null lift
+    // above rules out.
+    return commands.isEmpty ? null : commands.last.id;
   }
 
   void _commitSourceStroke(BrushStrokeCommitData strokeData) {

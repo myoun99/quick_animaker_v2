@@ -1,9 +1,15 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
+import '../models/brush_stamp_image.dart';
+import '../models/brush_tip_mask.dart';
+import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
+import '../models/tile_coord.dart';
 
 /// A selection region in canvas coordinates (P9): a closed polygon — the
 /// rectangle marquee is its 4-corner special case, the lasso is the
@@ -179,4 +185,172 @@ CanvasSelectionShape transformShape(
   return CanvasSelectionShape([
     for (final point in shape.points) affine.apply(point),
   ]);
+}
+
+/// The bitmap-lift pair (R14-④): an erase mask dab that cuts the
+/// selection's pixels out of the layer at their origin, and a stamp dab
+/// carrying those exact pixels — the Move tool commits the pair (origin
+/// vanishes), then drags the STAMP dab alone. Both ride the ordinary
+/// stroke funnel, so undo and .qap serialization come free, and a
+/// zero-move drop is byte-identical to the original by construction
+/// (hard-edged mask: full erase + source-over of the same pixels).
+class SelectionLiftDabs {
+  const SelectionLiftDabs({required this.eraseDab, required this.stampDab});
+
+  final BrushDab eraseDab;
+  final BrushDab stampDab;
+}
+
+/// Builds the lift pair for [shape] over the active layer's committed
+/// [surface]. Null when the selection covers no canvas pixels. The mask is
+/// HARD-EDGED (a pixel is in or out by its center, the same even-odd rule
+/// as [CanvasSelectionShape.containsPoint]) — partial coverage would make
+/// erase + stamp lose paint at the seam.
+SelectionLiftDabs? buildSelectionLiftDabs({
+  required CanvasSelectionShape shape,
+  required BitmapSurface surface,
+  required String liftId,
+}) {
+  final canvasWidth = surface.canvasSize.width;
+  final canvasHeight = surface.canvasSize.height;
+  var minX = double.infinity, minY = double.infinity;
+  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  for (final point in shape.points) {
+    minX = math.min(minX, point.x);
+    minY = math.min(minY, point.y);
+    maxX = math.max(maxX, point.x);
+    maxY = math.max(maxY, point.y);
+  }
+  final left = math.max(0, minX.floor());
+  final top = math.max(0, minY.floor());
+  final rightExclusive = math.min(canvasWidth, maxX.ceil() + 1);
+  final bottomExclusive = math.min(canvasHeight, maxY.ceil() + 1);
+  if (rightExclusive <= left || bottomExclusive <= top) {
+    return null;
+  }
+  final width = rightExclusive - left;
+  final height = bottomExclusive - top;
+
+  // Even-odd scanline mask over the bbox: per row, collect the polygon
+  // edge crossings at the pixel-center scanline and fill alternate spans —
+  // O(edges × rows + pixels), where the naive per-pixel ray cast made
+  // lasso lifts quadratic.
+  final mask = Uint8List(width * height);
+  final points = shape.points;
+  final crossings = <double>[];
+  for (var row = 0; row < height; row += 1) {
+    final scanY = top + row + 0.5;
+    crossings.clear();
+    for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+      final a = points[i];
+      final b = points[j];
+      if ((a.y > scanY) != (b.y > scanY)) {
+        crossings.add((b.x - a.x) * (scanY - a.y) / (b.y - a.y) + a.x);
+      }
+    }
+    crossings.sort();
+    for (var c = 0; c + 1 < crossings.length; c += 2) {
+      // Pixel centers strictly inside [start, end): x + 0.5 > crossing —
+      // the same "point.x < intersection" strictness as containsPoint.
+      var spanStart = (crossings[c] - 0.5).ceil();
+      var spanEndExclusive = (crossings[c + 1] - 0.5).ceil();
+      spanStart = math.max(spanStart, left);
+      spanEndExclusive = math.min(spanEndExclusive, rightExclusive);
+      for (var x = spanStart; x < spanEndExclusive; x += 1) {
+        mask[row * width + (x - left)] = 255;
+      }
+    }
+  }
+
+  // Lift the surface pixels under the mask (straight alpha, byte copies —
+  // tile buffers snapshot once per tile).
+  final rgba = Uint8List(width * height * 4);
+  final tileSize = surface.tileSize;
+  var liftedAnything = false;
+  final tileCache = <TileCoord, Uint8List?>{};
+  for (var row = 0; row < height; row += 1) {
+    final y = top + row;
+    for (var col = 0; col < width; col += 1) {
+      if (mask[row * width + col] == 0) {
+        continue;
+      }
+      final x = left + col;
+      final coord = TileCoord(x: x ~/ tileSize, y: y ~/ tileSize);
+      final pixels = tileCache.putIfAbsent(
+        coord,
+        () => surface.tiles[coord]?.pixels,
+      );
+      if (pixels == null) {
+        continue;
+      }
+      final sourceOffset =
+          ((y % tileSize) * tileSize + (x % tileSize)) * 4;
+      if (pixels[sourceOffset + 3] == 0) {
+        continue;
+      }
+      final targetOffset = (row * width + col) * 4;
+      rgba[targetOffset] = pixels[sourceOffset];
+      rgba[targetOffset + 1] = pixels[sourceOffset + 1];
+      rgba[targetOffset + 2] = pixels[sourceOffset + 2];
+      rgba[targetOffset + 3] = pixels[sourceOffset + 3];
+      liftedAnything = true;
+    }
+  }
+  if (!liftedAnything) {
+    return null;
+  }
+
+  // The erase mask must be SQUARE (BrushTipMask contract) — pad centered,
+  // exactly the fill-dab geometry (1:1 at dab size = square size).
+  final square = math.max(width, height);
+  final offsetX = (square - width) ~/ 2;
+  final offsetY = (square - height) ~/ 2;
+  final squareAlpha = Uint8List(square * square);
+  for (var row = 0; row < height; row += 1) {
+    squareAlpha.setRange(
+      (row + offsetY) * square + offsetX,
+      (row + offsetY) * square + offsetX + width,
+      mask,
+      row * width,
+    );
+  }
+
+  final eraseDab = BrushDab(
+    center: CanvasPoint(
+      x: left - offsetX + square / 2,
+      y: top - offsetY + square / 2,
+    ),
+    color: 0xFF000000,
+    size: square.toDouble(),
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: 0,
+    tipMask: BrushTipMask(
+      id: 'lift-erase-$liftId',
+      size: square,
+      alpha: squareAlpha,
+    ),
+    erase: true,
+  );
+  final stampDab = BrushDab(
+    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
+    color: 0xFF000000,
+    size: math.max(width, height).toDouble(),
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: 1,
+    stamp: BrushStampImage(
+      id: 'lift-stamp-$liftId',
+      width: width,
+      height: height,
+      rgba: rgba,
+    ),
+  );
+  return SelectionLiftDabs(eraseDab: eraseDab, stampDab: stampDab);
 }

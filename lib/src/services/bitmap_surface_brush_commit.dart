@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
@@ -57,6 +59,24 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   }
 
   for (final dab in sequence.dabs) {
+    // RGBA stamp dabs (R14-④ bitmap lift) take a dedicated 1:1 blend path
+    // — the generic tip machinery below stays byte-untouched (its parity
+    // pins never see stamps; live == commit still holds by construction
+    // because stamps only enter through programmatic commits).
+    final stamp = dab.stamp;
+    if (stamp != null) {
+      _blendStampDab(
+        dab: dab,
+        stamp: stamp,
+        canvasWidth: canvasWidth,
+        canvasHeight: canvasHeight,
+        tileSize: tileSize,
+        scratchBufferFor: scratchBufferFor,
+        changedCoords: changedCoords,
+      );
+      continue;
+    }
+
     final region = dirtyRegionForBrushDab(dab);
     if (region == null) {
       continue;
@@ -429,6 +449,112 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     surface: updatedSurface,
     dirtyTiles: dirtyTiles,
   );
+}
+
+/// The RGBA stamp blend (R14-④): the stamp's straight-alpha pixels land
+/// 1:1 source-over centered on the dab (integer top-left from the center,
+/// so a lift-then-drop round trip is byte-exact at full opacity). The
+/// source-over float grouping matches the generic path's exactly.
+void _blendStampDab({
+  required BrushDab dab,
+  required BrushStampImage stamp,
+  required int canvasWidth,
+  required int canvasHeight,
+  required int tileSize,
+  required Uint8List Function(TileCoord) scratchBufferFor,
+  required Set<TileCoord> changedCoords,
+}) {
+  final dabOpacity = dab.opacity;
+  if (dabOpacity == 0.0) {
+    return;
+  }
+  final stampLeft = (dab.center.x - stamp.width / 2).round();
+  final stampTop = (dab.center.y - stamp.height / 2).round();
+  final left = math.max(0, stampLeft);
+  final top = math.max(0, stampTop);
+  final rightExclusive = math.min(canvasWidth, stampLeft + stamp.width);
+  final bottomExclusive = math.min(canvasHeight, stampTop + stamp.height);
+  if (rightExclusive <= left || bottomExclusive <= top) {
+    return;
+  }
+  final rgba = stamp.rgba;
+
+  for (var y = top; y < bottomExclusive; y += 1) {
+    final tileY = y ~/ tileSize;
+    final localRowOffset = (y - tileY * tileSize) * tileSize;
+    final stampRowOffset = (y - stampTop) * stamp.width;
+    final tileXStart = left ~/ tileSize;
+    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+
+    for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+      final coord = TileCoord(x: tileX, y: tileY);
+      final buffer = scratchBufferFor(coord);
+      final tileLeft = tileX * tileSize;
+      final spanLeft = math.max(left, tileLeft);
+      final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
+
+      for (var x = spanLeft; x < spanRightExclusive; x += 1) {
+        final sourceOffset = (stampRowOffset + (x - stampLeft)) * 4;
+        final stampA = rgba[sourceOffset + 3];
+        if (stampA == 0) {
+          continue;
+        }
+        final sourceAlpha = (stampA / 255.0) * dabOpacity;
+
+        final offset =
+            (localRowOffset + (x - tileLeft)) * BitmapTile.bytesPerPixel;
+        final destR = buffer[offset];
+        final destG = buffer[offset + 1];
+        final destB = buffer[offset + 2];
+        final destA = buffer[offset + 3];
+        final destinationAlpha = destA / 255.0;
+
+        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+        int outRByte;
+        int outGByte;
+        int outBByte;
+        int outAByte;
+        if (outAlpha == 0.0) {
+          outRByte = 0;
+          outGByte = 0;
+          outBByte = 0;
+          outAByte = 0;
+        } else {
+          final inverseSourceAlpha = 1.0 - sourceAlpha;
+          outRByte =
+              ((rgba[sourceOffset] * sourceAlpha +
+                          destR * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          outGByte =
+              ((rgba[sourceOffset + 1] * sourceAlpha +
+                          destG * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          outBByte =
+              ((rgba[sourceOffset + 2] * sourceAlpha +
+                          destB * destinationAlpha * inverseSourceAlpha) /
+                      outAlpha)
+                  .round()
+                  .clamp(0, 255);
+          outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+        }
+
+        if (outRByte != destR ||
+            outGByte != destG ||
+            outBByte != destB ||
+            outAByte != destA) {
+          buffer[offset] = outRByte;
+          buffer[offset + 1] = outGByte;
+          buffer[offset + 2] = outBByte;
+          buffer[offset + 3] = outAByte;
+          changedCoords.add(coord);
+        }
+      }
+    }
+  }
 }
 
 /// Composites a pre-rasterized straight-alpha stroke buffer onto [surface]
