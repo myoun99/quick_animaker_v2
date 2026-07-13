@@ -558,5 +558,159 @@ QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Flood fill, frontier-stepped (R18 A-2b).
+//
+// EXACT port of the Dart scanline flood (floodFillRegion): expand each
+// popped run left/right, seed the rows above/below once per contiguous
+// matching run. The Dart original composes raster tiles LAZILY through a
+// callback; C cannot call back into Dart, so composition is stepped
+// instead: pixels that fall in a not-yet-composed 2^shift tile are
+// reported as CANDIDATES and treated as run boundaries. The Dart driver
+// composes those tiles, re-tests the candidates (filled[] dedupes), and
+// re-enters with them as fresh seeds. A scanline flood fills the whole
+// connected tolerance-region from any seed inside it, so the final
+// filled set is identical to the single-pass reference - the parity
+// suite pins it.
+//
+// Guards keep every early return BETWEEN runs (never mid-run): before a
+// pop, the call returns if the candidate buffer could not absorb a
+// whole worst-case run (~4*width) or the stack could not absorb its
+// pushes (~width). The driver then composes / grows and re-enters with
+// the stack state intact (it lives in caller-owned native memory).
+//
+// Returns the number of candidate pixel indices written.
+QA_EXPORT int32_t qa_flood_fill_step(
+    const uint8_t* rgb,
+    uint8_t* filled,
+    const uint8_t* composed,
+    int32_t width,
+    int32_t height,
+    int32_t compose_tile_shift,
+    int32_t tiles_x,
+    int32_t seed_r,
+    int32_t seed_g,
+    int32_t seed_b,
+    int32_t tolerance,
+    int32_t* stack,
+    int32_t* stack_size,
+    int32_t stack_capacity,
+    int32_t* candidates,
+    int32_t candidates_capacity,
+    int32_t* bounds) {
+  int32_t candidate_count = 0;
+  const int32_t candidate_margin = 4 * width + 16;
+  const int32_t stack_margin = width + 4;
+  int32_t min_x = bounds[0];
+  int32_t max_x = bounds[1];
+  int32_t min_y = bounds[2];
+  int32_t max_y = bounds[3];
+
+  while (*stack_size > 0) {
+    if (candidate_count + candidate_margin > candidates_capacity ||
+        *stack_size + stack_margin > stack_capacity) {
+      break;
+    }
+    *stack_size -= 1;
+    const int32_t index = stack[*stack_size];
+    const int32_t y = index / width;
+    const int32_t row_start = y * width;
+    const int32_t tile_row = (y >> compose_tile_shift) * tiles_x;
+
+    // Expand the scanline run left and right; an uncomposed tile is a
+    // candidate + run boundary (the driver re-seeds it after compose).
+    int32_t left = index - row_start;
+    while (left > 0 && filled[row_start + left - 1] == 0) {
+      const int32_t px = left - 1;
+      const int32_t p = row_start + px;
+      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
+        candidates[candidate_count] = p;
+        candidate_count += 1;
+        break;
+      }
+      const int32_t base = p * 3;
+      const int32_t dr = (int32_t)rgb[base] - seed_r;
+      const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
+      const int32_t db = (int32_t)rgb[base + 2] - seed_b;
+      if (dr > tolerance || -dr > tolerance || dg > tolerance ||
+          -dg > tolerance || db > tolerance || -db > tolerance) {
+        break;
+      }
+      left -= 1;
+      filled[row_start + left] = 255;
+    }
+    int32_t right = index - row_start;
+    while (right < width - 1 && filled[row_start + right + 1] == 0) {
+      const int32_t px = right + 1;
+      const int32_t p = row_start + px;
+      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
+        candidates[candidate_count] = p;
+        candidate_count += 1;
+        break;
+      }
+      const int32_t base = p * 3;
+      const int32_t dr = (int32_t)rgb[base] - seed_r;
+      const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
+      const int32_t db = (int32_t)rgb[base + 2] - seed_b;
+      if (dr > tolerance || -dr > tolerance || dg > tolerance ||
+          -dg > tolerance || db > tolerance || -db > tolerance) {
+        break;
+      }
+      right += 1;
+      filled[row_start + right] = 255;
+    }
+    if (left < min_x) min_x = left;
+    if (right > max_x) max_x = right;
+    if (y < min_y) min_y = y;
+    if (y > max_y) max_y = y;
+
+    // Seed the rows above and below across the run - ONE seed per
+    // contiguous matching run; uncomposed pixels are candidates and
+    // close the current run exactly like a non-match.
+    for (int32_t direction = 0; direction < 2; direction += 1) {
+      const int32_t neighbor_y = direction == 0 ? y - 1 : y + 1;
+      if (neighbor_y < 0 || neighbor_y >= height) {
+        continue;
+      }
+      const int32_t neighbor_row = neighbor_y * width;
+      const int32_t neighbor_tile_row =
+          (neighbor_y >> compose_tile_shift) * tiles_x;
+      int32_t run_open = 0;
+      for (int32_t x = left; x <= right; x += 1) {
+        const int32_t p = neighbor_row + x;
+        if (composed[neighbor_tile_row + (x >> compose_tile_shift)] == 0) {
+          candidates[candidate_count] = p;
+          candidate_count += 1;
+          run_open = 0;
+          continue;
+        }
+        if (filled[p] == 0) {
+          const int32_t base = p * 3;
+          const int32_t dr = (int32_t)rgb[base] - seed_r;
+          const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
+          const int32_t db = (int32_t)rgb[base + 2] - seed_b;
+          if (dr <= tolerance && -dr <= tolerance && dg <= tolerance &&
+              -dg <= tolerance && db <= tolerance && -db <= tolerance) {
+            if (!run_open) {
+              filled[p] = 255;
+              stack[*stack_size] = p;
+              *stack_size += 1;
+              run_open = 1;
+            }
+            continue;
+          }
+        }
+        run_open = 0;
+      }
+    }
+  }
+
+  bounds[0] = min_x;
+  bounds[1] = max_x;
+  bounds[2] = min_y;
+  bounds[3] = max_y;
+  return candidate_count;
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 3; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 4; }

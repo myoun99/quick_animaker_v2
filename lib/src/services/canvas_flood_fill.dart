@@ -10,6 +10,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
 import 'canvas_color_sampler.dart';
 import 'cut_frame_composite_plan.dart';
@@ -77,23 +78,55 @@ class FloodFillRegion {
 /// tap for seconds on big canvases). Posed layers are skipped (v1, same
 /// rule as the eyedropper).
 class LazyCanvasRasterRgb {
-  LazyCanvasRasterRgb({
+  /// With the native engine loaded the raster lives in native memory
+  /// (R18 A-2b): the compose loops write through typed-data views
+  /// unchanged, and the C flood stepper reads the SAME bytes — no
+  /// copies between compose and flood.
+  factory LazyCanvasRasterRgb({
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     Set<LayerId> fxBypassedLayerIds = const {},
     int paperColor = canvasPaperColor,
-  }) : width = cut.canvasSize.width,
+  }) {
+    final handles = QaNativeEngine.instance?.acquireFloodRaster(
+      width: cut.canvasSize.width,
+      height: cut.canvasSize.height,
+      composeTileSize: _tileSize,
+    );
+    return LazyCanvasRasterRgb._(
+      cut: cut,
+      frameIndex: frameIndex,
+      surfaceResolver: surfaceResolver,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+      paperColor: paperColor,
+      handles: handles,
+    );
+  }
+
+  LazyCanvasRasterRgb._({
+    required Cut cut,
+    required int frameIndex,
+    required LayerFrameSurfaceResolver surfaceResolver,
+    required Set<LayerId> fxBypassedLayerIds,
+    required int paperColor,
+    required QaFloodNativeHandles? handles,
+  }) : nativeHandles = handles,
+       width = cut.canvasSize.width,
        height = cut.canvasSize.height,
-       rgb = Uint8List(cut.canvasSize.width * cut.canvasSize.height * 3),
+       rgb =
+           handles?.rgbView ??
+           Uint8List(cut.canvasSize.width * cut.canvasSize.height * 3),
        _paperR = (paperColor >> 16) & 0xFF,
        _paperG = (paperColor >> 8) & 0xFF,
        _paperB = paperColor & 0xFF,
        _tilesX = (cut.canvasSize.width + _tileSize - 1) ~/ _tileSize,
-       _composed = Uint8List(
-         ((cut.canvasSize.width + _tileSize - 1) ~/ _tileSize) *
-             ((cut.canvasSize.height + _tileSize - 1) ~/ _tileSize),
-       ) {
+       _composed =
+           handles?.composedView ??
+           Uint8List(
+             ((cut.canvasSize.width + _tileSize - 1) ~/ _tileSize) *
+                 ((cut.canvasSize.height + _tileSize - 1) ~/ _tileSize),
+           ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
@@ -111,6 +144,10 @@ class LazyCanvasRasterRgb {
   }
 
   static const int _tileSize = 256;
+
+  /// Non-null when the raster is native-backed — hand this to
+  /// [floodFillRegion] so the C stepper floods the same memory.
+  final QaFloodNativeHandles? nativeHandles;
 
   final int width;
   final int height;
@@ -190,7 +227,9 @@ class LazyCanvasRasterRgb {
                 final effective = (alphaByte * opacityInt + 127) ~/ 255;
                 final inverse = 255 - effective;
                 rgb[target] =
-                    (pixels[source] * effective + rgb[target] * inverse + 127) ~/
+                    (pixels[source] * effective +
+                        rgb[target] * inverse +
+                        127) ~/
                     255;
                 rgb[target + 1] =
                     (pixels[source + 1] * effective +
@@ -232,6 +271,7 @@ FloodFillRegion? floodFillRegion({
   required int seedY,
   FloodFillOptions options = const FloodFillOptions(),
   void Function(int index)? ensureComposed,
+  QaFloodNativeHandles? nativeHandles,
 }) {
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) {
     return null;
@@ -242,6 +282,34 @@ FloodFillRegion? floodFillRegion({
   final seedG = rgb[seedIndex + 1];
   final seedB = rgb[seedIndex + 2];
   final tolerance = options.tolerance;
+
+  // R18 A-2b: with a native-backed raster the C stepper runs the flood
+  // (frontier-stepped around the lazy compose; result set identical by
+  // construction — parity-pinned). The Dart loop below stays as the
+  // reference and the fallback.
+  final native = QaNativeEngine.instance;
+  if (native != null && nativeHandles != null && ensureComposed != null) {
+    final result = native.floodFillRun(
+      handles: nativeHandles,
+      seedX: seedX,
+      seedY: seedY,
+      seedR: seedR,
+      seedG: seedG,
+      seedB: seedB,
+      tolerance: tolerance,
+      ensureComposed: ensureComposed,
+    );
+    return _cropAndFinishFloodRegion(
+      filled: result.filled,
+      width: width,
+      height: height,
+      minX: result.minX,
+      maxX: result.maxX,
+      minY: result.minY,
+      maxY: result.maxY,
+      options: options,
+    );
+  }
 
   // Pure byte compare — the caller guarantees the pixel's compose tile via
   // the crossing checks below (one ensure per 256px boundary).
@@ -321,6 +389,31 @@ FloodFillRegion? floodFillRegion({
     }
   }
 
+  return _cropAndFinishFloodRegion(
+    filled: filled,
+    width: width,
+    height: height,
+    minX: minX,
+    maxX: maxX,
+    minY: minY,
+    maxY: maxY,
+    options: options,
+  );
+}
+
+/// The shared post-flood tail: crop to the flooded bounds, then the
+/// expand and anti-alias passes region-locally (both the Dart and the
+/// native flood produce the same `filled` set, so this tail is common).
+FloodFillRegion _cropAndFinishFloodRegion({
+  required Uint8List filled,
+  required int width,
+  required int height,
+  required int minX,
+  required int maxX,
+  required int minY,
+  required int maxY,
+  required FloodFillOptions options,
+}) {
   // Crop FIRST (with room for the expand growth), then run the expand and
   // anti-alias passes region-locally: the old grow pass copied and scanned
   // a full-canvas array per pass.
@@ -427,6 +520,7 @@ BrushDab? buildFillDab({
       seedY: point.y.floor(),
       options: options,
       ensureComposed: raster.ensureComposedAt,
+      nativeHandles: raster.nativeHandles,
     ),
   );
   if (region == null) {

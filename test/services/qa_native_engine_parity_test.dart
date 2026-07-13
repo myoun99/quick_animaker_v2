@@ -15,6 +15,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// R18 A-0: the native engine core must be BYTE-IDENTICAL to the Dart
@@ -411,6 +412,130 @@ void main() {
       snapshot(dartResult.surface, canvasSize),
       reason: 'stamp upload cache reuse must stay byte-identical',
     );
+  });
+
+  test('native flood fill == Dart reference (frontier-stepped, '
+      'randomized)', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final engine = QaNativeEngine.instance!;
+    final random = Random(20260714);
+
+    for (var round = 0; round < 10; round += 1) {
+      // Sizes spanning one to many 256px compose tiles.
+      final width = 200 + random.nextInt(500);
+      final height = 150 + random.nextInt(400);
+      final source = Uint8List(width * height * 3);
+      for (var i = 0; i < source.length; i += 1) {
+        source[i] = 200;
+      }
+      // Blobby content: random rectangles of random colors — tolerance
+      // then forms real regions with edges crossing tile boundaries.
+      for (var blob = 0; blob < 30; blob += 1) {
+        final r = random.nextInt(256);
+        final g = random.nextInt(256);
+        final b = random.nextInt(256);
+        final left = random.nextInt(width);
+        final top = random.nextInt(height);
+        final blobWidth = 1 + random.nextInt(width - left);
+        final blobHeight = 1 + random.nextInt(height - top);
+        for (var y = top; y < top + blobHeight; y += 1) {
+          var offset = (y * width + left) * 3;
+          for (var x = 0; x < blobWidth; x += 1) {
+            source[offset] = r;
+            source[offset + 1] = g;
+            source[offset + 2] = b;
+            offset += 3;
+          }
+        }
+      }
+      final seedX = random.nextInt(width);
+      final seedY = random.nextInt(height);
+      final options = FloodFillOptions(
+        tolerance: const [0, 16, 48][round % 3],
+        expandPx: round % 2,
+        antiAlias: round.isOdd,
+      );
+
+      // Dart reference: plain heap raster, bytes fully present.
+      QaNativeEngine.debugForceDartFallback = true;
+      final dartRegion = floodFillRegion(
+        rgb: source,
+        width: width,
+        height: height,
+        seedX: seedX,
+        seedY: seedY,
+        options: options,
+        ensureComposed: (_) {},
+      );
+      QaNativeEngine.debugForceDartFallback = false;
+
+      // Native: a LAZY composer copies tile spans from the source into
+      // the native rgb view on demand — the real frontier-step path.
+      final handles = engine.acquireFloodRaster(
+        width: width,
+        height: height,
+        composeTileSize: 256,
+      );
+      var composeCalls = 0;
+      void composeAt(int index) {
+        final x = index % width;
+        final y = index ~/ width;
+        final tileIndex = (y >> 8) * handles.tilesX + (x >> 8);
+        if (handles.composedView[tileIndex] != 0) {
+          return;
+        }
+        handles.composedView[tileIndex] = 1;
+        composeCalls += 1;
+        final left = (x >> 8) << 8;
+        final top = (y >> 8) << 8;
+        final right = min(left + 256, width);
+        final bottom = min(top + 256, height);
+        for (var yy = top; yy < bottom; yy += 1) {
+          final start = (yy * width + left) * 3;
+          handles.rgbView.setRange(
+            start,
+            (yy * width + right) * 3,
+            source,
+            start,
+          );
+        }
+      }
+
+      final nativeRegion = floodFillRegion(
+        rgb: handles.rgbView,
+        width: width,
+        height: height,
+        seedX: seedX,
+        seedY: seedY,
+        options: options,
+        ensureComposed: composeAt,
+        nativeHandles: handles,
+      );
+
+      expect(nativeRegion, isNotNull);
+      expect(dartRegion, isNotNull);
+      expect(composeCalls, greaterThan(0));
+      expect(
+        (
+          nativeRegion!.left,
+          nativeRegion.top,
+          nativeRegion.width,
+          nativeRegion.height,
+        ),
+        (dartRegion!.left, dartRegion.top, dartRegion.width, dartRegion.height),
+        reason:
+            'round $round (${width}x$height seed $seedX,$seedY '
+            'tol ${options.tolerance}) region geometry must agree',
+      );
+      expect(
+        nativeRegion.mask,
+        dartRegion.mask,
+        reason: 'round $round mask must be byte-identical',
+      );
+    }
   });
 
   test('native premultiply == Dart reference, byte for byte (randomized)', () {
