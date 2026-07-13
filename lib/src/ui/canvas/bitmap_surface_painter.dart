@@ -74,12 +74,14 @@ class BitmapSurfacePainter extends CustomPainter {
     }
 
     // An erasing overlay draws destination-out against the committed tiles.
-    // With an opaque background painted in this same picture, dstOut would
-    // punch through the paper too — isolate tiles + overlay in a layer so
-    // only artwork pixels erase. (The production editing path paints the
-    // paper in the separate underlay, so no extra layer is needed there.)
+    // The tiles + overlay MUST be isolated in their own layer: without it,
+    // dstOut applies to the whole accumulated compositing buffer — the
+    // painter's own background here, and in the production editing path
+    // (paper in the separate underlay widget) the paper and panel chrome
+    // BELOW this picture, which showed live erase strokes as dark
+    // panel-background lines until the commit landed (R14-⑤). The layer
+    // makes the hole transparent so whatever is underneath shows through.
     final eraseOverlayLayer =
-        showTransparentBackground &&
         overlayModel != null &&
         overlayModel!.erase &&
         overlayModel!.hasStrokeContent;
