@@ -21,9 +21,10 @@ class QaNativeEngine {
     this._stampBlendRow,
     this._dabBlendTile,
     this._premultiplyRgba,
+    this._floodFillStep,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 3;
+  static const int _abiVersion = 4;
 
   final int Function(
     Pointer<Uint8> tileRow,
@@ -48,6 +49,27 @@ class QaNativeEngine {
   _dabBlendTile;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
+
+  final int Function(
+    Pointer<Uint8> rgb,
+    Pointer<Uint8> filled,
+    Pointer<Uint8> composed,
+    int width,
+    int height,
+    int composeTileShift,
+    int tilesX,
+    int seedR,
+    int seedG,
+    int seedB,
+    int tolerance,
+    Pointer<Int32> stack,
+    Pointer<Int32> stackSize,
+    int stackCapacity,
+    Pointer<Int32> candidates,
+    int candidatesCapacity,
+    Pointer<Int32> bounds,
+  )
+  _floodFillStep;
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -141,7 +163,53 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, int)
           >('qa_premultiply_rgba');
-      return QaNativeEngine._(stampBlendRow, dabBlendTile, premultiplyRgba);
+      final floodFillStep = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Int32,
+              Pointer<Int32>,
+              Int32,
+              Pointer<Int32>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              int,
+              Pointer<Int32>,
+              int,
+              Pointer<Int32>,
+            )
+          >('qa_flood_fill_step');
+      return QaNativeEngine._(
+        stampBlendRow,
+        dabBlendTile,
+        premultiplyRgba,
+        floodFillStep,
+      );
     } on Object {
       return null;
     }
@@ -191,6 +259,224 @@ class QaNativeEngine {
       calloc.free(_stampUploads.remove(oldest)!);
     }
     return pointer;
+  }
+
+  // -------------------------------------------------------------------
+  // Flood fill (R18 A-2b): engine-persistent, grow-only buffers. ONE
+  // fill runs at a time (a fill tap is synchronous and single-shot), so
+  // the lazy raster and the stepper share these across calls.
+
+  Pointer<Uint8> _floodRgb = nullptr;
+  int _floodRgbLength = 0;
+  Pointer<Uint8> _floodComposed = nullptr;
+  int _floodComposedLength = 0;
+  Pointer<Uint8> _floodFilled = nullptr;
+  int _floodFilledLength = 0;
+  Pointer<Int32> _floodStack = nullptr;
+  int _floodStackCapacity = 0;
+  Pointer<Int32> _floodCandidates = nullptr;
+  int _floodCandidatesCapacity = 0;
+  Pointer<Int32> _floodStackSize = nullptr;
+  Pointer<Int32> _floodBounds = nullptr;
+
+  Pointer<Uint8> _ensureUint8(Pointer<Uint8> current, int have, int need) {
+    if (have >= need) {
+      return current;
+    }
+    if (current != nullptr) {
+      calloc.free(current);
+    }
+    return calloc<Uint8>(need);
+  }
+
+  /// Acquires the shared lazy-raster buffers for one fill:
+  /// [QaFloodNativeHandles.rgbView] (`width*height*3`, contents
+  /// unspecified — only composed tiles are ever read) and
+  /// [QaFloodNativeHandles.composedView] (one byte per compose tile,
+  /// zeroed here). [composeTileSize] must be a power of two.
+  QaFloodNativeHandles acquireFloodRaster({
+    required int width,
+    required int height,
+    required int composeTileSize,
+  }) {
+    assert(
+      composeTileSize > 0 && (composeTileSize & (composeTileSize - 1)) == 0,
+      'composeTileSize must be a power of two',
+    );
+    final shift = composeTileSize.bitLength - 1;
+    final tilesX = (width + composeTileSize - 1) ~/ composeTileSize;
+    final tilesY = (height + composeTileSize - 1) ~/ composeTileSize;
+
+    final rgbLength = width * height * 3;
+    _floodRgb = _ensureUint8(_floodRgb, _floodRgbLength, rgbLength);
+    if (_floodRgbLength < rgbLength) {
+      _floodRgbLength = rgbLength;
+    }
+    final composedLength = tilesX * tilesY;
+    _floodComposed = _ensureUint8(
+      _floodComposed,
+      _floodComposedLength,
+      composedLength,
+    );
+    if (_floodComposedLength < composedLength) {
+      _floodComposedLength = composedLength;
+    }
+    final composedView = _floodComposed.asTypedList(composedLength);
+    composedView.fillRange(0, composedLength, 0);
+
+    return QaFloodNativeHandles._(
+      rgbView: _floodRgb.asTypedList(rgbLength),
+      composedView: composedView,
+      width: width,
+      height: height,
+      tilesX: tilesX,
+      composeTileShift: shift,
+    );
+  }
+
+  /// Runs the whole native flood from the (already composed, already
+  /// filled-marked) seed: steps the C kernel, composes candidate tiles
+  /// through [ensureComposed], re-tests candidates (filled dedupes) and
+  /// re-enters until the stack drains. Returns the filled mask as a view
+  /// over engine memory (valid until the next fill) plus the bounds —
+  /// result set identical to the Dart reference by construction
+  /// (parity-pinned).
+  ({Uint8List filled, int minX, int maxX, int minY, int maxY}) floodFillRun({
+    required QaFloodNativeHandles handles,
+    required int seedX,
+    required int seedY,
+    required int seedR,
+    required int seedG,
+    required int seedB,
+    required int tolerance,
+    required void Function(int index) ensureComposed,
+  }) {
+    final width = handles.width;
+    final height = handles.height;
+    final pixelCount = width * height;
+
+    _floodFilled = _ensureUint8(_floodFilled, _floodFilledLength, pixelCount);
+    if (_floodFilledLength < pixelCount) {
+      _floodFilledLength = pixelCount;
+    }
+    final filledView = _floodFilled.asTypedList(pixelCount);
+    filledView.fillRange(0, pixelCount, 0);
+
+    var stackCapacity = _floodStackCapacity;
+    if (stackCapacity < width + 4096) {
+      stackCapacity = width * 4 + 65536;
+      if (_floodStack != nullptr) {
+        calloc.free(_floodStack);
+      }
+      _floodStack = calloc<Int32>(stackCapacity);
+      _floodStackCapacity = stackCapacity;
+    }
+    final candidatesCapacity = 8 * width + 2048;
+    if (_floodCandidatesCapacity < candidatesCapacity) {
+      if (_floodCandidates != nullptr) {
+        calloc.free(_floodCandidates);
+      }
+      _floodCandidates = calloc<Int32>(candidatesCapacity);
+      _floodCandidatesCapacity = candidatesCapacity;
+    }
+    if (_floodStackSize == nullptr) {
+      _floodStackSize = calloc<Int32>(1);
+      _floodBounds = calloc<Int32>(4);
+    }
+
+    final seedIndex = seedY * width + seedX;
+    filledView[seedIndex] = 255;
+    _floodStack.value = seedIndex;
+    _floodStackSize.value = 1;
+    final bounds = _floodBounds.asTypedList(4);
+    bounds[0] = seedX;
+    bounds[1] = seedX;
+    bounds[2] = seedY;
+    bounds[3] = seedY;
+
+    final rgbView = handles.rgbView;
+    final composedView = handles.composedView;
+    while (true) {
+      final candidateCount = _floodFillStep(
+        _floodRgb,
+        _floodFilled,
+        _floodComposed,
+        width,
+        height,
+        handles.composeTileShift,
+        handles.tilesX,
+        seedR,
+        seedG,
+        seedB,
+        tolerance,
+        _floodStack,
+        _floodStackSize,
+        _floodStackCapacity,
+        _floodCandidates,
+        _floodCandidatesCapacity,
+        _floodBounds,
+      );
+      if (candidateCount > 0) {
+        final candidates = _floodCandidates.asTypedList(candidateCount);
+        for (var i = 0; i < candidateCount; i += 1) {
+          ensureComposed(candidates[i]);
+        }
+        var stackSize = _floodStackSize.value;
+        for (var i = 0; i < candidateCount; i += 1) {
+          final index = candidates[i];
+          if (filledView[index] != 0) {
+            continue;
+          }
+          final tile =
+              ((index ~/ width) >> handles.composeTileShift) * handles.tilesX +
+              ((index % width) >> handles.composeTileShift);
+          if (composedView[tile] == 0) {
+            // The callback failed its contract; a silent retry would spin
+            // forever, so fail loudly.
+            throw StateError(
+              'floodFillRun: ensureComposed left tile $tile uncomposed',
+            );
+          }
+          final base = index * 3;
+          if ((rgbView[base] - seedR).abs() <= tolerance &&
+              (rgbView[base + 1] - seedG).abs() <= tolerance &&
+              (rgbView[base + 2] - seedB).abs() <= tolerance) {
+            filledView[index] = 255;
+            if (stackSize >= _floodStackCapacity) {
+              _growFloodStack(stackSize);
+            }
+            _floodStack.asTypedList(_floodStackCapacity)[stackSize] = index;
+            stackSize += 1;
+          }
+        }
+        _floodStackSize.value = stackSize;
+        continue;
+      }
+      if (_floodStackSize.value == 0) {
+        break;
+      }
+      // No candidates but work remains: the stack headroom guard tripped.
+      _growFloodStack(_floodStackSize.value);
+    }
+
+    return (
+      filled: filledView,
+      minX: bounds[0],
+      maxX: bounds[1],
+      minY: bounds[2],
+      maxY: bounds[3],
+    );
+  }
+
+  void _growFloodStack(int liveEntries) {
+    final newCapacity = _floodStackCapacity * 2;
+    final grown = calloc<Int32>(newCapacity);
+    grown
+        .asTypedList(newCapacity)
+        .setRange(0, liveEntries, _floodStack.asTypedList(liveEntries));
+    calloc.free(_floodStack);
+    _floodStack = grown;
+    _floodStackCapacity = newCapacity;
   }
 
   /// Persistent grow-only scratch for [premultiplyRgba]'s round trip.
@@ -556,6 +842,35 @@ class QaNativeTileBuffer {
 
   final Pointer<Uint8> pointer;
   final Uint8List view;
+}
+
+/// The lazy fill raster's shared native buffers (R18 A-2b): the raster
+/// composes pixels into [rgbView] and marks compose tiles in
+/// [composedView]; the C flood stepper reads both through the SAME
+/// memory. Valid for one fill (the engine reuses the buffers on the next
+/// [QaNativeEngine.acquireFloodRaster]).
+class QaFloodNativeHandles {
+  QaFloodNativeHandles._({
+    required this.rgbView,
+    required this.composedView,
+    required this.width,
+    required this.height,
+    required this.tilesX,
+    required this.composeTileShift,
+  });
+
+  /// `width*height*3` straight-RGB bytes; only composed tiles are ever
+  /// read, so uncomposed regions may hold stale bytes.
+  final Uint8List rgbView;
+
+  /// One byte per compose tile (row-major, `tilesX` wide): nonzero once
+  /// the raster composed that tile. Zeroed at acquire.
+  final Uint8List composedView;
+
+  final int width;
+  final int height;
+  final int tilesX;
+  final int composeTileShift;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY
