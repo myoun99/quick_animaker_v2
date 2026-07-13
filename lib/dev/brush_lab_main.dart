@@ -68,6 +68,7 @@ class _LabPhase {
     this.collideSeekOnUp = false,
     this.collideRestroke = false,
     this.fillTaps = false,
+    this.scrubCollide = false,
   });
 
   final String label;
@@ -107,6 +108,11 @@ class _LabPhase {
   /// R16-④: FILL tool taps (empty full-canvas cel + painted cel) with the
   /// tap's wall time and the buildFillDab probe decomposition logged.
   final bool fillTaps;
+
+  /// R17-②: the ruler-scrub × commit collision — pen-up fires a scrub in
+  /// the same turn, wiggles, commits the scrub, and the next stroke
+  /// starts with barely a frame between.
+  final bool scrubCollide;
 }
 
 class _BrushLabDriverState extends State<_BrushLabDriver> {
@@ -132,6 +138,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _LabPhase('+HEAVY-rapid-restrokes', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true),
     _LabPhase('+HEAVY-collide-seek', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, collideSeekOnUp: true),
     _LabPhase('+HEAVY-collide-restroke', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true, collideRestroke: true),
+    _LabPhase('+HEAVY-scrub-collide', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, scrubCollide: true),
     _LabPhase('+fill-taps', hopFrames: false, onion: false, alternateTools: false, fillTaps: true),
   ];
 
@@ -277,18 +284,33 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
                 : null,
             // R15-③/R16-⑤: the commit-moment restroke — one frame (rapid)
             // or ZERO frames (collide) between pen-up and next pen-down.
-            settleAfter: phase.collideRestroke
+            settleAfter: phase.collideRestroke || phase.scrubCollide
                 ? 0
                 : phase.rapidRestrokes
                 ? 1
                 : 6,
-            // R16-⑤: a seek in the SAME event turn as the pen-up commit.
+            // R16-⑤: a seek in the SAME event turn as the pen-up commit;
+            // R17-②: a ruler SCRUB in that turn instead.
             onUpSameTurn: phase.collideSeekOnUp
                 ? () => session.selectFrameIndex(
                     (strokeIndex + 1) % frameCount,
                   )
+                : phase.scrubCollide
+                ? () => session.scrubFrameIndex(
+                    (strokeIndex + 1) % frameCount,
+                  )
                 : null,
           );
+          if (phase.scrubCollide) {
+            // The ruler wiggle right after the commit, released on the
+            // SAME frame — then the next stroke starts immediately (the
+            // user's "그리고 나서 룰러 확인하고 다시 그리기" loop).
+            await _settleFrames(1);
+            session.scrubFrameIndex(strokeIndex % frameCount);
+            await _settleFrames(1);
+            session.commitFrameScrub();
+            await _settleFrames(1);
+          }
         }
         watch.stop();
         _logBucket(phase.label, bucket, watch.elapsedMilliseconds);

@@ -17,6 +17,7 @@ class CanvasSelectionCommands {
   void Function(CanvasSelectionShape? shape)? _applyShape;
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
+  VoidCallback? _revertPendingMove;
 
   void bind({
     required bool Function() hasSelection,
@@ -29,6 +30,7 @@ class CanvasSelectionCommands {
     void Function(CanvasSelectionShape? shape)? applyShape,
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
+    VoidCallback? revertPendingMove,
   }) {
     _hasSelection = hasSelection;
     _nudge = nudge;
@@ -40,6 +42,7 @@ class CanvasSelectionCommands {
     _applyShape = applyShape;
     _movePending = movePending;
     _confirmPendingMove = confirmPendingMove;
+    _revertPendingMove = revertPendingMove;
   }
 
   void unbind() {
@@ -53,6 +56,7 @@ class CanvasSelectionCommands {
     _applyShape = null;
     _movePending = null;
     _confirmPendingMove = null;
+    _revertPendingMove = null;
   }
 
   /// Pushes a committed region into the mounted layer — the
@@ -89,4 +93,9 @@ class CanvasSelectionCommands {
   /// the confirm button, Enter, tool switches, and the history manager's
   /// pre-undo/redo hook. No-op without a pending session.
   void confirmPendingMove() => _confirmPendingMove?.call();
+
+  /// Reverts the pending move: the pixels return EXACTLY to where the
+  /// session found them (a fresh lift disappears entirely), no history
+  /// entry. The "되돌리기" choice in the R17-① confirm prompt.
+  void revertPendingMove() => _revertPendingMove?.call();
 }

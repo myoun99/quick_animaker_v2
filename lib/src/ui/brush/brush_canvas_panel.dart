@@ -674,6 +674,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         onLiftDabsRewritten:
                                             _handleLiftDabsRewritten,
                                         onLiftConfirmed: _handleLiftConfirmed,
+                                        onLiftReverted: _handleLiftReverted,
                                         // Pending move sessions hold the
                                         // session's edit lock (seeks
                                         // refused) WITHOUT locking
@@ -967,34 +968,75 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     if (coordinator == null) {
       return;
     }
-    final historyManager = widget.historyManager;
-    if (historyManager == null) {
-      coordinator.rewritePaintCommandDabs(
-        {commandId: dabs},
+    // The setState rebuilds the interactive view onto the post-confirm
+    // surface (R17-①b: without it the landed stamp stayed invisible —
+    // white hole at the origin, nothing at the destination — until an
+    // unrelated rebuild). Mounted guard: the layer's unmount path
+    // confirms post-frame, possibly after this panel went with it.
+    void run() {
+      final historyManager = widget.historyManager;
+      if (historyManager == null) {
+        coordinator.rewritePaintCommandDabs(
+          {commandId: dabs},
+          cacheInvalidationSink: widget.cacheInvalidationSink,
+        );
+        return;
+      }
+      historyManager.execute(
+        BrushLiftMoveHistoryCommand(
+          coordinator: coordinator,
+          commandId: commandId,
+          confirmedDabs: dabs,
+          cacheInvalidationSink: widget.cacheInvalidationSink,
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(run);
+    } else {
+      run();
+    }
+  }
+
+  /// REVERT of a fresh session (R17-①): the raw lift is the coordinator
+  /// stack's newest entry (drawing and seeks are locked while pending),
+  /// so popping it restores the pre-lift picture byte-exactly.
+  void _handleLiftReverted(BrushPaintCommandId commandId) {
+    void run() {
+      widget.coordinator?.undo(
         cacheInvalidationSink: widget.cacheInvalidationSink,
       );
-      return;
     }
-    historyManager.execute(
-      BrushLiftMoveHistoryCommand(
-        coordinator: coordinator,
-        commandId: commandId,
-        confirmedDabs: dabs,
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      ),
-    );
+
+    if (mounted) {
+      setState(run);
+    } else {
+      run();
+    }
   }
 
   /// Raw lift-command dab rewrite (no history entry) — the drag lifecycle
-  /// suppresses/restores the floating stamp through this.
+  /// suppresses/restores the floating stamp through this. The setState
+  /// matters: a rewrite swaps the session surface WITHOUT a session
+  /// notify, and the interactive view must rebuild onto the new surface
+  /// (R17-①b: the confirmed stamp was invisible until a frame roundtrip).
   void _handleLiftDabsRewritten(
     BrushPaintCommandId commandId,
     List<BrushDab> dabs,
   ) {
-    widget.coordinator?.rewritePaintCommandDabs(
-      {commandId: dabs},
-      cacheInvalidationSink: widget.cacheInvalidationSink,
-    );
+    void run() {
+      widget.coordinator?.rewritePaintCommandDabs(
+        {commandId: dabs},
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      );
+    }
+
+    if (mounted) {
+      setState(run);
+    } else {
+      run();
+    }
   }
 
   void _commitSourceStroke(BrushStrokeCommitData strokeData) {

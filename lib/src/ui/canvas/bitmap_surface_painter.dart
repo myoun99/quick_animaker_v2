@@ -99,6 +99,13 @@ class BitmapSurfacePainter extends CustomPainter {
     // density in tile-shaped patches. The pin and the overlay clear in one
     // notification, so the swap to committed pixels is atomic.
     final settleHold = overlayModel?.settleHoldTiles;
+    // Per-pixel fallback budget (R17 measured): the first paint after a
+    // FULL-CANVAS commit (a fill/lift stamp) used to draw ~130 undecoded
+    // tiles pixel-by-pixel — 65k rects per tile, the multi-second "first
+    // fill" freeze. A few tiles are fine; past the budget the tile waits
+    // for its decode (it lands within a few frames — the repaint hook
+    // brings it in).
+    var pixelFallbackBudget = 4;
     for (final tile in surface.tiles.values) {
       tileImageCache.ensureDecoded(tile, staleScope: staleScope);
       if (settleHold != null && settleHold.containsKey(tile.coord)) {
@@ -137,9 +144,10 @@ class BitmapSurfacePainter extends CustomPainter {
           ),
           tileImagePaint,
         );
-      } else {
+      } else if (pixelFallbackBudget > 0) {
         // First-ever content at this coordinate and not decoded yet: draw
-        // per pixel for this frame only.
+        // per pixel for this frame only — within the budget.
+        pixelFallbackBudget -= 1;
         _paintTilePixels(canvas, tile);
       }
     }

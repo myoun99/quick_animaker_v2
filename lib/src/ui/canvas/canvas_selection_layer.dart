@@ -55,6 +55,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftRequested,
     this.onLiftDabsRewritten,
     this.onLiftConfirmed,
+    this.onLiftReverted,
     this.onMoveSessionPendingChanged,
   });
 
@@ -116,6 +117,11 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// [onTransformCommitted] instead.
   final void Function(BrushPaintCommandId commandId, List<BrushDab> dabs)?
   onLiftConfirmed;
+
+  /// REVERT of a FRESH session (R17-①): the host pops the raw lift off
+  /// the coordinator stack — the picture returns byte-exactly to
+  /// pre-lift. (Re-opened sessions revert via [onLiftDabsRewritten].)
+  final void Function(BrushPaintCommandId commandId)? onLiftReverted;
 
   /// True while a move session awaits its confirm — the host holds the
   /// session's edit-interaction lock (seeks refused, warmer down) without
@@ -206,7 +212,54 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// confirm (green = confirmed / untouched).
   bool _moveSessionDirty = false;
 
+  /// The shape as the session found it — the revert restores it.
+  CanvasSelectionShape? _moveSessionStartShape;
+
   bool get _movePending => _pendingLiftStamp != null;
+
+  /// REVERT (R17-①): the pixels — and the ants — return exactly to where
+  /// the session found them; nothing lands in history.
+  void _revertMoveSession() {
+    final id = _liftCommandId;
+    final pending = _pendingLiftStamp;
+    if (id == null || pending == null) {
+      return;
+    }
+    if (_moveSessionFresh) {
+      widget.onLiftReverted?.call(id);
+    } else {
+      final before = _liftBeforeDabs;
+      if (before != null) {
+        widget.onLiftDabsRewritten?.call(id, before);
+      }
+    }
+    final startShape = _moveSessionStartShape;
+    if (mounted) {
+      setState(() {
+        if (startShape != null) {
+          _shape = startShape;
+        }
+        _shapeNeedsLift = true;
+        _selectedIds = _shape == null
+            ? const {}
+            : selectCommandIdsInShape(
+                commands: widget.visibleCommands(),
+                shape: _shape!,
+              );
+        _pendingLiftStamp = null;
+        _liftBeforeDabs = null;
+        _liftCommandId = null;
+        _moveSessionFresh = false;
+        _moveSessionDirty = false;
+        _moveSessionStartShape = null;
+        if (_transform == null) {
+          _floatSurface = null;
+        }
+      });
+    }
+    widget.onMoveSessionPendingChanged?.call(false);
+    _syncAnts();
+  }
 
   BrushPaintCommand? _liftCommand() {
     final id = _liftCommandId;
@@ -346,15 +399,53 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the drag-end notify reaches ancestor setState and must defer.
       _resetAll(deferDragNotify: true);
     }
-    // R16-①: switching tools with a pending move CONFIRMS it (the user's
-    // explicit choice over TVP's revert). Deferred: confirming executes a
-    // history command, which must never run inside the build phase.
+    // R17-①: a context change over a pending move ASKS (CSP grammar) —
+    // 확정 lands the session as one undo entry, 되돌리기 puts the pixels
+    // back exactly. Deferred post-frame: dialogs and history commands
+    // must never run inside the build phase.
     if (oldWidget.tool != widget.tool && _movePending) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _movePending) {
-          _confirmMoveSession();
+          _promptPendingMove();
         }
       });
+    }
+  }
+
+  /// The R17-① "확정시키겠습니까?" prompt. Modal: the session stays
+  /// pending until a choice lands (dismissing = confirm, the safe
+  /// default — pixels keep their moved position and stay undoable).
+  Future<void> _promptPendingMove() async {
+    if (!mounted || !_movePending) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const ValueKey<String>('selection-move-confirm-dialog'),
+        title: const Text('이동 확정'),
+        content: const Text('선택 영역 이동을 확정하시겠습니까?'),
+        actions: [
+          TextButton(
+            key: const ValueKey<String>('selection-move-revert-button'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('되돌리기'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('selection-move-apply-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('확정'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || !_movePending) {
+      return;
+    }
+    if (confirmed == false) {
+      _revertMoveSession();
+    } else {
+      _confirmMoveSession();
     }
   }
 
@@ -431,6 +522,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       applyShape: applyCommittedShape,
       movePending: () => _movePending,
       confirmPendingMove: _confirmMoveSession,
+      revertPendingMove: _revertMoveSession,
     );
   }
 
@@ -603,6 +695,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _liftBeforeDabs = null;
     _moveSessionFresh = true;
     _moveSessionDirty = false;
+    _moveSessionStartShape = shape;
     setState(() => _selectedIds = {lift.commandId});
     widget.onMoveSessionPendingChanged?.call(true);
     return true;
@@ -633,6 +726,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _pendingLiftStamp = stamp;
     _moveSessionFresh = false;
     _moveSessionDirty = false;
+    _moveSessionStartShape = _shape;
     widget.onLiftDabsRewritten!(command.id, [
       for (final dab in command.sourceDabs)
         if (dab.erase || dab.stamp == null) dab,
