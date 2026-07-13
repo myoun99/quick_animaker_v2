@@ -10,6 +10,7 @@ import '../models/brush_tip_shape.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_tip_mask_sampling.dart';
 
@@ -492,6 +493,28 @@ void _blendStampDab({
       final tileLeft = tileX * tileSize;
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
+
+      // R18 A-0: the native core blends the whole row span in one call —
+      // byte-identical to the Dart loop below (parity-pinned); the Dart
+      // path remains the reference and the fallback.
+      final native = QaNativeEngine.instance;
+      if (native != null) {
+        final changed = native.stampBlendRow(
+          tileRow: buffer,
+          tileOffset:
+              (localRowOffset + (spanLeft - tileLeft)) *
+              BitmapTile.bytesPerPixel,
+          stampRow: rgba,
+          stampOffset: (stampRowOffset + (spanLeft - stampLeft)) * 4,
+          count: spanRightExclusive - spanLeft,
+          opacity: dabOpacity,
+          erase: dab.erase,
+        );
+        if (changed) {
+          changedCoords.add(coord);
+        }
+        continue;
+      }
 
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {
         final sourceOffset = (stampRowOffset + (x - stampLeft)) * 4;
