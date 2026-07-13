@@ -894,5 +894,229 @@ QA_EXPORT int32_t qa_stamp_blend_tile(
   return changed;
 }
 
+// ---------------------------------------------------------------------------
+// Worker pool (R18 A-3a): tile batches fan out across a small persistent
+// thread pool. Tiles are DISJOINT memory, each tile's pixel loop runs
+// sequentially inside exactly one thread with the exact single-thread
+// kernels, so results are byte-identical regardless of worker count -
+// the parity suites keep pinning the whole path.
+//
+// Windows-only for now (the only shipping target); elsewhere batches run
+// inline on the caller, which is the same bytes at single-thread speed.
+// QA_ENGINE_THREADS caps the worker count (0 or 1 disables the pool).
+
+// One tile's span of a batch job. Field order/types MUST match the Dart
+// QaTileSpanStruct exactly; the loader cross-checks qa_tile_span_sizeof.
+typedef struct {
+  uint8_t* tile_pixels;
+  int32_t tile_left;
+  int32_t tile_top;
+  int32_t span_left;
+  int32_t span_right_exclusive;
+  int32_t span_top;
+  int32_t span_bottom_exclusive;
+  int32_t reserved;
+} qa_tile_span;
+
+QA_EXPORT int32_t qa_tile_span_sizeof(void) {
+  return (int32_t)sizeof(qa_tile_span);
+}
+
+typedef void (*qa_job_fn)(int32_t item_index, void* context);
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <process.h>
+#include <stdlib.h>
+
+#define QA_MAX_WORKERS 8
+
+static struct {
+  int initialized;
+  int worker_count;
+  HANDLE threads[QA_MAX_WORKERS];
+  HANDLE work_ready[QA_MAX_WORKERS];
+  HANDLE work_done[QA_MAX_WORKERS];
+  qa_job_fn job_fn;
+  void* job_context;
+  volatile LONG next_item;
+  int32_t item_count;
+} g_pool;
+
+static void qa_pool_run_items(void) {
+  for (;;) {
+    const LONG item = InterlockedIncrement(&g_pool.next_item) - 1;
+    if (item >= g_pool.item_count) {
+      return;
+    }
+    g_pool.job_fn((int32_t)item, g_pool.job_context);
+  }
+}
+
+static unsigned __stdcall qa_pool_worker(void* arg) {
+  const int index = (int)(intptr_t)arg;
+  for (;;) {
+    WaitForSingleObject(g_pool.work_ready[index], INFINITE);
+    qa_pool_run_items();
+    SetEvent(g_pool.work_done[index]);
+  }
+}
+
+static void qa_pool_init_once(void) {
+  if (g_pool.initialized) {
+    return;
+  }
+  g_pool.initialized = 1;
+  SYSTEM_INFO info;
+  GetSystemInfo(&info);
+  int workers = (int)info.dwNumberOfProcessors - 1;
+  const char* override_text = getenv("QA_ENGINE_THREADS");
+  if (override_text != NULL) {
+    const int override_value = atoi(override_text);
+    // The override is TOTAL threads including the caller.
+    workers = override_value - 1;
+  }
+  if (workers > QA_MAX_WORKERS) workers = QA_MAX_WORKERS;
+  if (workers < 0) workers = 0;
+  g_pool.worker_count = 0;
+  for (int i = 0; i < workers; i += 1) {
+    g_pool.work_ready[i] = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_pool.work_done[i] = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (g_pool.work_ready[i] == NULL || g_pool.work_done[i] == NULL) {
+      break;
+    }
+    const uintptr_t handle = _beginthreadex(
+        NULL, 0, qa_pool_worker, (void*)(intptr_t)i, 0, NULL);
+    if (handle == 0) {
+      break;
+    }
+    g_pool.threads[i] = (HANDLE)handle;
+    g_pool.worker_count += 1;
+  }
+}
+
+// Runs job_fn(0..item_count-1, context) across the pool + the caller;
+// returns only when every item completed.
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
+  if (item_count <= 0) {
+    return;
+  }
+  qa_pool_init_once();
+  if (g_pool.worker_count == 0 || item_count == 1) {
+    for (int32_t i = 0; i < item_count; i += 1) {
+      job_fn(i, context);
+    }
+    return;
+  }
+  g_pool.job_fn = job_fn;
+  g_pool.job_context = context;
+  g_pool.item_count = item_count;
+  g_pool.next_item = 0;
+  int engaged = g_pool.worker_count;
+  if (engaged > item_count - 1) {
+    engaged = (int)item_count - 1;
+  }
+  for (int i = 0; i < engaged; i += 1) {
+    SetEvent(g_pool.work_ready[i]);
+  }
+  qa_pool_run_items();
+  for (int i = 0; i < engaged; i += 1) {
+    WaitForSingleObject(g_pool.work_done[i], INFINITE);
+  }
+}
+
+#else  // !_WIN32: inline fallback, same bytes at single-thread speed.
+
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
+  for (int32_t i = 0; i < item_count; i += 1) {
+    job_fn(i, context);
+  }
+}
+
+#endif
+
+// --- Batched generic dab blend -------------------------------------------
+
+typedef struct {
+  qa_tile_span* tiles;
+  int32_t tile_size;
+  const qa_dab_spec* spec;
+  uint8_t* changed_out;
+} qa_dab_batch_context;
+
+static void qa_dab_batch_item(int32_t item_index, void* context) {
+  const qa_dab_batch_context* batch = (const qa_dab_batch_context*)context;
+  const qa_tile_span* span = &batch->tiles[item_index];
+  batch->changed_out[item_index] = (uint8_t)qa_dab_blend_tile(
+      span->tile_pixels, batch->tile_size, span->tile_left, span->tile_top,
+      span->span_left, span->span_right_exclusive, span->span_top,
+      span->span_bottom_exclusive, batch->spec);
+}
+
+// Blends one dab into MANY tiles in one call, fanned across the pool.
+QA_EXPORT void qa_dab_blend_tiles(
+    qa_tile_span* tiles,
+    int32_t tile_count,
+    int32_t tile_size,
+    const qa_dab_spec* spec,
+    uint8_t* changed_out) {
+  qa_dab_batch_context context;
+  context.tiles = tiles;
+  context.tile_size = tile_size;
+  context.spec = spec;
+  context.changed_out = changed_out;
+  qa_pool_run(qa_dab_batch_item, &context, tile_count);
+}
+
+// --- Batched stamp blend ---------------------------------------------------
+
+typedef struct {
+  qa_tile_span* tiles;
+  int32_t tile_size;
+  const uint8_t* stamp;
+  int32_t stamp_width;
+  int32_t stamp_left;
+  int32_t stamp_top;
+  double opacity;
+  int32_t erase;
+  uint8_t* changed_out;
+} qa_stamp_batch_context;
+
+static void qa_stamp_batch_item(int32_t item_index, void* context) {
+  const qa_stamp_batch_context* batch = (const qa_stamp_batch_context*)context;
+  const qa_tile_span* span = &batch->tiles[item_index];
+  batch->changed_out[item_index] = (uint8_t)qa_stamp_blend_tile(
+      span->tile_pixels, batch->tile_size, span->tile_left, span->tile_top,
+      batch->stamp, batch->stamp_width, batch->stamp_left, batch->stamp_top,
+      span->span_left, span->span_right_exclusive, span->span_top,
+      span->span_bottom_exclusive, batch->opacity, batch->erase);
+}
+
+// Blends one stamp dab into MANY tiles in one call, fanned across the pool.
+QA_EXPORT void qa_stamp_blend_tiles(
+    qa_tile_span* tiles,
+    int32_t tile_count,
+    int32_t tile_size,
+    const uint8_t* stamp,
+    int32_t stamp_width,
+    int32_t stamp_left,
+    int32_t stamp_top,
+    double opacity,
+    int32_t erase,
+    uint8_t* changed_out) {
+  qa_stamp_batch_context context;
+  context.tiles = tiles;
+  context.tile_size = tile_size;
+  context.stamp = stamp;
+  context.stamp_width = stamp_width;
+  context.stamp_left = stamp_left;
+  context.stamp_top = stamp_top;
+  context.opacity = opacity;
+  context.erase = erase;
+  context.changed_out = changed_out;
+  qa_pool_run(qa_stamp_batch_item, &context, tile_count);
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 7; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 8; }

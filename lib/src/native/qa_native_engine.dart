@@ -20,29 +20,16 @@ import '../models/bitmap_tile.dart';
 /// environment variable.
 class QaNativeEngine {
   QaNativeEngine._(
-    this._dabBlendTile,
     this._premultiplyRgba,
     this._floodFillStep,
     this._fillPaperRect,
     this._fillComposeTile,
     this._fillFinishMask,
-    this._stampBlendTile,
+    this._dabBlendTiles,
+    this._stampBlendTiles,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 7;
-
-  final int Function(
-    Pointer<Uint8> tilePixels,
-    int tileSize,
-    int tileLeft,
-    int tileTop,
-    int spanLeft,
-    int spanRightExclusive,
-    int spanTop,
-    int spanBottomExclusive,
-    Pointer<QaDabSpecStruct> spec,
-  )
-  _dabBlendTile;
+  static const int _abiVersion = 8;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -109,23 +96,28 @@ class QaNativeEngine {
   )
   _fillFinishMask;
 
-  final int Function(
-    Pointer<Uint8> tilePixels,
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
     int tileSize,
-    int tileLeft,
-    int tileTop,
+    Pointer<QaDabSpecStruct> spec,
+    Pointer<Uint8> changedOut,
+  )
+  _dabBlendTiles;
+
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
+    int tileSize,
     Pointer<Uint8> stamp,
     int stampWidth,
     int stampLeft,
     int stampTop,
-    int spanLeft,
-    int spanRightExclusive,
-    int spanTop,
-    int spanBottomExclusive,
     double opacity,
     int erase,
+    Pointer<Uint8> changedOut,
   )
-  _stampBlendTile;
+  _stampBlendTiles;
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -178,31 +170,14 @@ class QaNativeEngine {
       if (specSize != sizeOf<QaDabSpecStruct>()) {
         return null;
       }
-      final dabBlendTile = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Pointer<QaDabSpecStruct>,
-            ),
-            int Function(
-              Pointer<Uint8>,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              Pointer<QaDabSpecStruct>,
-            )
-          >('qa_dab_blend_tile');
+      final spanSize = library
+          .lookupFunction<Int32 Function(), int Function()>(
+            'qa_tile_span_sizeof',
+          )
+          .call();
+      if (spanSize != sizeOf<QaTileSpanStruct>()) {
+        return null;
+      }
       final premultiplyRgba = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Int32),
@@ -330,49 +305,58 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_fill_finish_mask');
-      final stampBlendTile = library
+      final dabBlendTiles = library
           .lookupFunction<
-            Int32 Function(
+            Void Function(
+              Pointer<QaTileSpanStruct>,
+              Int32,
+              Int32,
+              Pointer<QaDabSpecStruct>,
               Pointer<Uint8>,
-              Int32,
+            ),
+            void Function(
+              Pointer<QaTileSpanStruct>,
+              int,
+              int,
+              Pointer<QaDabSpecStruct>,
+              Pointer<Uint8>,
+            )
+          >('qa_dab_blend_tiles');
+      final stampBlendTiles = library
+          .lookupFunction<
+            Void Function(
+              Pointer<QaTileSpanStruct>,
               Int32,
               Int32,
               Pointer<Uint8>,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
               Int32,
               Int32,
               Int32,
               Double,
               Int32,
+              Pointer<Uint8>,
             ),
-            int Function(
+            void Function(
+              Pointer<QaTileSpanStruct>,
+              int,
+              int,
               Pointer<Uint8>,
-              int,
-              int,
-              int,
-              Pointer<Uint8>,
-              int,
-              int,
-              int,
-              int,
               int,
               int,
               int,
               double,
               int,
+              Pointer<Uint8>,
             )
-          >('qa_stamp_blend_tile');
+          >('qa_stamp_blend_tiles');
       return QaNativeEngine._(
-        dabBlendTile,
         premultiplyRgba,
         floodFillStep,
         fillPaperRect,
         fillComposeTile,
         fillFinishMask,
-        stampBlendTile,
+        dabBlendTiles,
+        stampBlendTiles,
       );
     } on Object {
       return null;
@@ -780,43 +764,87 @@ class QaNativeEngine {
     pixels.setAll(0, view);
   }
 
-  /// Blends a whole (dab, tile) stamp span in ONE call — the C side loops
-  /// the rows through the same row kernel (R18 F-1: the per-row FFI call
-  /// overhead was the fill commit's dominant term at ~10k calls per
-  /// full-canvas stamp). Returns true when any destination byte changed.
-  bool stampBlendTile({
+  /// Grow-only batch buffers (R18 A-3a): the tile spans of one dab and
+  /// the per-tile changed flags, staged once per dab and fanned across
+  /// the C worker pool.
+  Pointer<QaTileSpanStruct> _tileSpans = nullptr;
+  int _tileSpanCapacity = 0;
+  Pointer<Uint8> _batchChanged = nullptr;
+  int _batchChangedCapacity = 0;
+
+  /// Makes room for [count] spans in the current batch.
+  void ensureTileSpanBatch(int count) {
+    if (_tileSpanCapacity < count) {
+      if (_tileSpans != nullptr) {
+        calloc.free(_tileSpans);
+      }
+      _tileSpans = calloc<QaTileSpanStruct>(count);
+      _tileSpanCapacity = count;
+    }
+    if (_batchChangedCapacity < count) {
+      if (_batchChanged != nullptr) {
+        calloc.free(_batchChanged);
+      }
+      _batchChanged = calloc<Uint8>(count);
+      _batchChangedCapacity = count;
+    }
+  }
+
+  /// Stages the [index]-th span of the batch ([ensureTileSpanBatch] first).
+  void setTileSpan(
+    int index, {
     required Pointer<Uint8> tilePixels,
-    required int tileSize,
     required int tileLeft,
     required int tileTop,
-    required Pointer<Uint8> stampBytes,
-    required int stampWidth,
-    required int stampLeft,
-    required int stampTop,
     required int spanLeft,
     required int spanRightExclusive,
     required int spanTop,
     required int spanBottomExclusive,
+  }) {
+    final span = _tileSpans[index];
+    span.tilePixels = tilePixels;
+    span.tileLeft = tileLeft;
+    span.tileTop = tileTop;
+    span.spanLeft = spanLeft;
+    span.spanRightExclusive = spanRightExclusive;
+    span.spanTop = spanTop;
+    span.spanBottomExclusive = spanBottomExclusive;
+    span.reserved = 0;
+  }
+
+  /// Blends the prepared dab ([prepareDab]) into every staged span in ONE
+  /// call, fanned across the worker pool (tiles are disjoint, so results
+  /// are byte-identical to the sequential loop). Returns the per-tile
+  /// changed flags (valid until the next batch).
+  Uint8List dabBlendTiles({required int count, required int tileSize}) {
+    _dabBlendTiles(_tileSpans, count, tileSize, _spec, _batchChanged);
+    return _batchChanged.asTypedList(count);
+  }
+
+  /// The stamp counterpart of [dabBlendTiles].
+  Uint8List stampBlendTiles({
+    required int count,
+    required int tileSize,
+    required Pointer<Uint8> stampBytes,
+    required int stampWidth,
+    required int stampLeft,
+    required int stampTop,
     required double opacity,
     required bool erase,
   }) {
-    return _stampBlendTile(
-          tilePixels,
-          tileSize,
-          tileLeft,
-          tileTop,
-          stampBytes,
-          stampWidth,
-          stampLeft,
-          stampTop,
-          spanLeft,
-          spanRightExclusive,
-          spanTop,
-          spanBottomExclusive,
-          opacity,
-          erase ? 1 : 0,
-        ) !=
-        0;
+    _stampBlendTiles(
+      _tileSpans,
+      count,
+      tileSize,
+      stampBytes,
+      stampWidth,
+      stampLeft,
+      stampTop,
+      opacity,
+      erase ? 1 : 0,
+      _batchChanged,
+    );
+    return _batchChanged.asTypedList(count);
   }
 
   // -------------------------------------------------------------------
@@ -1101,33 +1129,6 @@ class QaNativeEngine {
         ? nullptr
         : _arenaFloat64(texVOneMinus);
   }
-
-  /// Blends the prepared dab ([prepareDab]) into one native tile buffer
-  /// over the given canvas-space spans — byte-identical to the Dart
-  /// generic loop. Returns true when any destination byte changed.
-  bool dabBlendTile({
-    required Pointer<Uint8> tilePixels,
-    required int tileSize,
-    required int tileLeft,
-    required int tileTop,
-    required int spanLeft,
-    required int spanRightExclusive,
-    required int spanTop,
-    required int spanBottomExclusive,
-  }) {
-    return _dabBlendTile(
-          tilePixels,
-          tileSize,
-          tileLeft,
-          tileTop,
-          spanLeft,
-          spanRightExclusive,
-          spanTop,
-          spanBottomExclusive,
-          _spec,
-        ) !=
-        0;
-  }
 }
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
@@ -1166,6 +1167,27 @@ class QaFloodNativeHandles {
   final int height;
   final int tilesX;
   final int composeTileShift;
+}
+
+/// Mirror of the C `qa_tile_span` — field order/types must match EXACTLY
+/// (the loader cross-checks sizeof on both sides before enabling the
+/// native path).
+final class QaTileSpanStruct extends Struct {
+  external Pointer<Uint8> tilePixels;
+  @Int32()
+  external int tileLeft;
+  @Int32()
+  external int tileTop;
+  @Int32()
+  external int spanLeft;
+  @Int32()
+  external int spanRightExclusive;
+  @Int32()
+  external int spanTop;
+  @Int32()
+  external int spanBottomExclusive;
+  @Int32()
+  external int reserved;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY
