@@ -218,6 +218,33 @@ void main() {
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 45.5, y: 45.5));
   });
 
+  testWidgets('REVERT puts the pixels back exactly and records nothing '
+      '(R17-①: the prompt\'s 되돌리기)', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+    expect(env.commands.movePending, isTrue);
+    expect(frameCommands(env.coordinator), hasLength(2));
+
+    env.commands.revertPendingMove();
+    await tester.pump();
+
+    expect(env.commands.movePending, isFalse);
+    expect(
+      frameCommands(env.coordinator),
+      hasLength(1),
+      reason: 'the raw lift pops off — pre-lift picture, byte-exact',
+    );
+    expect(env.history.undoCount, entriesBefore, reason: 'nothing recorded');
+    expect(
+      strokeDabs(env.coordinator).first.center,
+      CanvasPoint(x: 30, y: 30),
+    );
+  });
+
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
     tester,
   ) async {
