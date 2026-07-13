@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../src/models/brush_tip_mask.dart';
+import '../src/native/qa_native_engine.dart';
 import '../src/ui/brush/brush_tool_state.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../src/ui/editor_workspace.dart';
@@ -187,6 +188,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     final session = workspace.session;
     final brushTool = workspace.brushTool;
     _log('lab starting (phase-ladder mode)');
+    // The load-fallback discipline is SILENT by design — the lab must not
+    // be: a stale/missing DLL would quietly measure the Dart path.
+    _log('native engine loaded: ${QaNativeEngine.instance != null}');
 
     // Author a cel on each workflow frame.
     for (var frame = 0; frame < frameCount; frame += 1) {
