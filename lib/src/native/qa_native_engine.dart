@@ -20,25 +20,16 @@ import '../models/bitmap_tile.dart';
 /// environment variable.
 class QaNativeEngine {
   QaNativeEngine._(
-    this._stampBlendRow,
     this._dabBlendTile,
     this._premultiplyRgba,
     this._floodFillStep,
     this._fillPaperRect,
     this._fillComposeTile,
     this._fillFinishMask,
+    this._stampBlendTile,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 6;
-
-  final int Function(
-    Pointer<Uint8> tileRow,
-    Pointer<Uint8> stampRow,
-    int count,
-    double opacity,
-    int erase,
-  )
-  _stampBlendRow;
+  static const int _abiVersion = 7;
 
   final int Function(
     Pointer<Uint8> tilePixels,
@@ -118,6 +109,24 @@ class QaNativeEngine {
   )
   _fillFinishMask;
 
+  final int Function(
+    Pointer<Uint8> tilePixels,
+    int tileSize,
+    int tileLeft,
+    int tileTop,
+    Pointer<Uint8> stamp,
+    int stampWidth,
+    int stampLeft,
+    int stampTop,
+    int spanLeft,
+    int spanRightExclusive,
+    int spanTop,
+    int spanBottomExclusive,
+    double opacity,
+    int erase,
+  )
+  _stampBlendTile;
+
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
 
@@ -169,17 +178,6 @@ class QaNativeEngine {
       if (specSize != sizeOf<QaDabSpecStruct>()) {
         return null;
       }
-      final stampBlendRow = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Int32,
-              Double,
-              Int32,
-            ),
-            int Function(Pointer<Uint8>, Pointer<Uint8>, int, double, int)
-          >('qa_stamp_blend_row');
       final dabBlendTile = library
           .lookupFunction<
             Int32 Function(
@@ -332,14 +330,49 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_fill_finish_mask');
+      final stampBlendTile = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Double,
+              Int32,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              double,
+              int,
+            )
+          >('qa_stamp_blend_tile');
       return QaNativeEngine._(
-        stampBlendRow,
         dabBlendTile,
         premultiplyRgba,
         floodFillStep,
         fillPaperRect,
         fillComposeTile,
         fillFinishMask,
+        stampBlendTile,
       );
     } on Object {
       return null;
@@ -747,23 +780,39 @@ class QaNativeEngine {
     pixels.setAll(0, view);
   }
 
-  /// Blends a stamp row span straight between native buffers — the tile
-  /// scratch already lives in native memory and the stamp is uploaded
-  /// once, so there are no per-row copies (A-1.5). Byte-identical to the
-  /// Dart stamp path; returns true when any destination byte changed.
-  bool stampBlendRowAt({
+  /// Blends a whole (dab, tile) stamp span in ONE call — the C side loops
+  /// the rows through the same row kernel (R18 F-1: the per-row FFI call
+  /// overhead was the fill commit's dominant term at ~10k calls per
+  /// full-canvas stamp). Returns true when any destination byte changed.
+  bool stampBlendTile({
     required Pointer<Uint8> tilePixels,
-    required int tileByteOffset,
+    required int tileSize,
+    required int tileLeft,
+    required int tileTop,
     required Pointer<Uint8> stampBytes,
-    required int stampByteOffset,
-    required int count,
+    required int stampWidth,
+    required int stampLeft,
+    required int stampTop,
+    required int spanLeft,
+    required int spanRightExclusive,
+    required int spanTop,
+    required int spanBottomExclusive,
     required double opacity,
     required bool erase,
   }) {
-    return _stampBlendRow(
-          Pointer<Uint8>.fromAddress(tilePixels.address + tileByteOffset),
-          Pointer<Uint8>.fromAddress(stampBytes.address + stampByteOffset),
-          count,
+    return _stampBlendTile(
+          tilePixels,
+          tileSize,
+          tileLeft,
+          tileTop,
+          stampBytes,
+          stampWidth,
+          stampLeft,
+          stampTop,
+          spanLeft,
+          spanRightExclusive,
+          spanTop,
+          spanBottomExclusive,
           opacity,
           erase ? 1 : 0,
         ) !=

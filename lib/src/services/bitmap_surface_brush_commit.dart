@@ -615,16 +615,50 @@ void _blendStampDab({
   }
   final rgba = stamp.rgba;
 
-  // R18 A-0/A-1.5: the native core blends whole row spans, and both sides
-  // are native memory — the tile scratch is native-backed and the stamp
-  // uploads once per rgba identity (a move session re-commits the SAME
-  // stamp per drag move, so repeats are pure pointer math). Byte-identical
-  // to the Dart loop below (parity-pinned); Dart remains the reference
-  // and the fallback.
+  // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
+  // ONE call each (the per-row FFI call overhead was the fill commit's
+  // dominant term), and both sides are native memory — the tile scratch
+  // is native-backed and the stamp uploads once per rgba identity (a
+  // move session re-commits the SAME stamp per drag move, so repeats are
+  // pure pointer math). Byte-identical to the Dart loop below
+  // (parity-pinned); Dart remains the reference and the fallback.
   final native = QaNativeEngine.instance;
   final stampUpload = (native != null && nativeTileFor != null)
       ? native.uploadStampBytes(rgba)
       : null;
+  if (stampUpload != null) {
+    final tileXStart = left ~/ tileSize;
+    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+    final tileYStart = top ~/ tileSize;
+    final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+    for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
+      final tileTop = tileY * tileSize;
+      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+        final coord = TileCoord(x: tileX, y: tileY);
+        final tileLeft = tileX * tileSize;
+        final changed = native!.stampBlendTile(
+          tilePixels: nativeTileFor!(coord).pointer,
+          tileSize: tileSize,
+          tileLeft: tileLeft,
+          tileTop: tileTop,
+          stampBytes: stampUpload,
+          stampWidth: stamp.width,
+          stampLeft: stampLeft,
+          stampTop: stampTop,
+          spanLeft: math.max(left, tileLeft),
+          spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
+          spanTop: math.max(top, tileTop),
+          spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
+          opacity: dabOpacity,
+          erase: dab.erase,
+        );
+        if (changed) {
+          changedCoords.add(coord);
+        }
+      }
+    }
+    return;
+  }
 
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = y ~/ tileSize;
@@ -638,24 +672,6 @@ void _blendStampDab({
       final tileLeft = tileX * tileSize;
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
-
-      if (stampUpload != null) {
-        final changed = native!.stampBlendRowAt(
-          tilePixels: nativeTileFor!(coord).pointer,
-          tileByteOffset:
-              (localRowOffset + (spanLeft - tileLeft)) *
-              BitmapTile.bytesPerPixel,
-          stampBytes: stampUpload,
-          stampByteOffset: (stampRowOffset + (spanLeft - stampLeft)) * 4,
-          count: spanRightExclusive - spanLeft,
-          opacity: dabOpacity,
-          erase: dab.erase,
-        );
-        if (changed) {
-          changedCoords.add(coord);
-        }
-        continue;
-      }
 
       final buffer = scratchBufferFor(coord);
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {

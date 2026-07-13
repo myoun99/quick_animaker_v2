@@ -856,5 +856,43 @@ QA_EXPORT void qa_fill_finish_mask(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Stamp blend, whole tile span (R18 F-1): the Dart driver used to make
+// one FFI call PER ROW - a full-canvas fill stamp was ~10k calls whose
+// call overhead dwarfed the blend (commit.edit 55-95ms warm). One call
+// per (dab, tile) loops the rows here, through the SAME row kernel, so
+// the math (and its parity pins) are untouched.
+QA_EXPORT int32_t qa_stamp_blend_tile(
+    uint8_t* tile_pixels,
+    int32_t tile_size,
+    int32_t tile_left,
+    int32_t tile_top,
+    const uint8_t* stamp,
+    int32_t stamp_width,
+    int32_t stamp_left,
+    int32_t stamp_top,
+    int32_t span_left,
+    int32_t span_right_exclusive,
+    int32_t span_top,
+    int32_t span_bottom_exclusive,
+    double opacity,
+    int32_t erase) {
+  int32_t changed = 0;
+  const int32_t count = span_right_exclusive - span_left;
+  for (int32_t y = span_top; y < span_bottom_exclusive; y += 1) {
+    uint8_t* tile_row =
+        tile_pixels +
+        ((ptrdiff_t)(y - tile_top) * tile_size + (span_left - tile_left)) * 4;
+    const uint8_t* stamp_row =
+        stamp +
+        ((ptrdiff_t)(y - stamp_top) * stamp_width + (span_left - stamp_left)) *
+            4;
+    if (qa_stamp_blend_row(tile_row, stamp_row, count, opacity, erase)) {
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 6; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 7; }

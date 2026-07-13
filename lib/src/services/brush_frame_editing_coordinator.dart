@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../ui/dev_profile.dart';
 import '../models/brush_bitmap_materialization_history_entry.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
@@ -171,27 +172,32 @@ class BrushFrameEditingCoordinator {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
     }
 
-    final result =
-        commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-          sessionState: activeSessionState,
-          sequence: BrushDabSequence(sourceDabs),
-          layerId: _activeFrameKey.layerId,
-          frameId: _activeFrameKey.frameId,
-          cacheInvalidationSink:
-              cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
-          prerasterizedStrokePixels: prerasterizedStrokePixels,
-          prerasterizedStrokeBounds: prerasterizedStrokeBounds,
-        );
+    final result = labProbe(
+      'commit.materialize',
+      () => commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+        sessionState: activeSessionState,
+        sequence: BrushDabSequence(sourceDabs),
+        layerId: _activeFrameKey.layerId,
+        frameId: _activeFrameKey.frameId,
+        cacheInvalidationSink:
+            cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
+        prerasterizedStrokePixels: prerasterizedStrokePixels,
+        prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+      ),
+    );
     // Bitmap undo snapshots are byte- AND count-budgeted: the deepest
     // entries drop first (their undos fall back to the command replay), so
     // a run of huge strokes can never pin gigabytes of touched tiles — and
     // a run of SMALL strokes can never pile snapshots past the unified
     // history's reach (userUndoLimit), which used to fill the whole byte
     // budget with unreachable entries.
-    final budgetedHistory = trimMaterializationHistoryToByteBudget(
-      result.sessionState.materializationHistoryState,
-      maxBytes: historyPolicy.materializationByteBudget,
-      maxEntries: historyPolicy.userUndoLimit,
+    final budgetedHistory = labProbe(
+      'commit.trim',
+      () => trimMaterializationHistoryToByteBudget(
+        result.sessionState.materializationHistoryState,
+        maxBytes: historyPolicy.materializationByteBudget,
+        maxEntries: historyPolicy.userUndoLimit,
+      ),
     );
     final committedState =
         identical(
@@ -221,19 +227,29 @@ class BrushFrameEditingCoordinator {
         entry: affectedEntry,
       ),
     );
-    frameStore.addLivePaintCommand(
-      _activeFrameKey,
-      command,
-      dirtyTiles: affectedEntry.dirtyTiles,
+    labProbe(
+      'commit.addCommand',
+      () => frameStore.addLivePaintCommand(
+        _activeFrameKey,
+        command,
+        dirtyTiles: affectedEntry.dirtyTiles,
+      ),
     );
     // Keep the display cache fresh across the commit (donation replaces the
     // dirty-then-replay cycle); derived ui.Image caches still re-upload via
     // the invalidation sink below.
-    _donateSessionSurfaceToDisplayCache(_activeFrameKey, committedState);
-    _invalidateBrushFrame(
-      cacheInvalidationSink,
-      _activeFrameKey,
-      dirtyTiles: affectedEntry.dirtyTiles,
+    labProbe(
+      'commit.donate',
+      () =>
+          _donateSessionSurfaceToDisplayCache(_activeFrameKey, committedState),
+    );
+    labProbe(
+      'commit.invalidate',
+      () => _invalidateBrushFrame(
+        cacheInvalidationSink,
+        _activeFrameKey,
+        dirtyTiles: affectedEntry.dirtyTiles,
+      ),
     );
     _pushBrushPaintUndoEntry(command, _activeFrameKey);
     return command;

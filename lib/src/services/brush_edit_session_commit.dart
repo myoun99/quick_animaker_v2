@@ -7,6 +7,7 @@ import '../models/brush_edit_session_commit_result.dart';
 import '../models/canvas_surface_state.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
+import '../ui/dev_profile.dart';
 import 'brush_bitmap_materialization_history_entry_builder.dart';
 import 'brush_bitmap_materialization_history_stack.dart';
 import 'brush_surface_edit_builder.dart';
@@ -21,24 +22,32 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
 }) {
-  final edit = brushSurfaceEditForBrushDabSequenceOnBitmapSurface(
-    surface: canvasState.currentSurface,
-    sequence: sequence,
-    layerId: layerId,
-    frameId: frameId,
-    prerasterizedStrokePixels: prerasterizedStrokePixels,
-    prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+  final edit = labProbe(
+    'commit.edit',
+    () => brushSurfaceEditForBrushDabSequenceOnBitmapSurface(
+      surface: canvasState.currentSurface,
+      sequence: sequence,
+      layerId: layerId,
+      frameId: frameId,
+      prerasterizedStrokePixels: prerasterizedStrokePixels,
+      prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+    ),
   );
-  final updatedCanvasState = applyBrushSurfaceEditToCanvasSurfaceState(
-    state: canvasState,
-    edit: edit,
+  final updatedCanvasState = labProbe(
+    'commit.applyState',
+    () => applyBrushSurfaceEditToCanvasSurfaceState(
+      state: canvasState,
+      edit: edit,
+    ),
   );
-  final historyEntry =
-      brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
-        edit: edit,
-        layerId: layerId,
-        frameId: frameId,
-      );
+  final historyEntry = labProbe(
+    'commit.snapshot',
+    () => brushBitmapMaterializationHistoryEntryFromBrushSurfaceEdit(
+      edit: edit,
+      layerId: layerId,
+      frameId: frameId,
+    ),
+  );
 
   if (historyEntry == null) {
     return BrushEditSessionCommitResult(
