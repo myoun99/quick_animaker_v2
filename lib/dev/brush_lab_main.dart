@@ -14,12 +14,14 @@
 // command away from a measured verdict.
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../src/models/brush_tip_mask.dart';
 import '../src/ui/brush/brush_tool_state.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../src/ui/editor_workspace.dart';
@@ -61,6 +63,8 @@ class _LabPhase {
     this.hopDissect = 0,
     this.bigBrush = false,
     this.flipMidStroke = false,
+    this.heavyBrush = false,
+    this.rapidRestrokes = false,
   });
 
   final String label;
@@ -81,6 +85,14 @@ class _LabPhase {
   /// R13-4: flip the frame WHILE the pen is down (the red-screen repro).
   /// The stroke must pin to its original cel and nothing may throw.
   final bool flipMidStroke;
+
+  /// R15-③ heavy preset: max size + sampled tip mask + dual mask +
+  /// canvas texture — the "이상한 브러시" the user actually paints with.
+  final bool heavyBrush;
+
+  /// R15-③: pen-up → next pen-down with barely a frame between — the
+  /// commit-moment restroke the user reports as the remaining hitch.
+  final bool rapidRestrokes;
 }
 
 class _BrushLabDriverState extends State<_BrushLabDriver> {
@@ -102,6 +114,8 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _LabPhase('+tools(full)', hopFrames: true, onion: true, alternateTools: true),
     _LabPhase('+bigbrush-flipdraw', hopFrames: true, onion: true, alternateTools: false, bigBrush: true),
     _LabPhase('+flip-mid-stroke', hopFrames: true, onion: true, alternateTools: false, flipMidStroke: true),
+    _LabPhase('+HEAVY-brush-flipdraw', hopFrames: true, onion: true, alternateTools: false, heavyBrush: true),
+    _LabPhase('+HEAVY-rapid-restrokes', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true),
   ];
 
   final List<int> _buildMicros = <int>[];
@@ -169,11 +183,20 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       session.onionSkinSettings.value = session.onionSkinSettings.value
           .copyWith(enabled: phase.onion);
       if (brushTool != null) {
-        brushTool.value = brushTool.value.copyWith(
+        // HEAVY preset (R15-③): max size + sampled tip + dual + texture —
+        // the worst realistic brush, per the user's testing directive.
+        // Rebuilt from defaults so lighter phases really CLEAR the masks
+        // (copyWith(null) keeps old values).
+        brushTool.value = BrushToolState.defaults.copyWith(
           tool: CanvasTool.brush,
-          size: phase.bigBrush
+          size: phase.bigBrush || phase.heavyBrush
               ? BrushToolState.maxSize
               : BrushToolState.defaultSize,
+          tipMask: phase.heavyBrush ? _labNoiseMask('lab-tip', 128) : null,
+          dualMask: phase.heavyBrush ? _labNoiseMask('lab-dual', 64) : null,
+          textureMask: phase.heavyBrush
+              ? _labNoiseMask('lab-texture', 64)
+              : null,
         );
       }
       session.selectFrameIndex(0);
@@ -231,6 +254,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
                     (strokeIndex + 1) % frameCount,
                   )
                 : null,
+            // R15-③: the commit-moment restroke — barely a frame between
+            // pen-up and the next pen-down.
+            settleAfter: phase.rapidRestrokes ? 1 : 6,
           );
         }
         watch.stop();
@@ -263,7 +289,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     return result;
   }
 
-  Future<void> _stroke(Offset start, {VoidCallback? midStrokeAction}) async {
+  Future<void> _stroke(
+    Offset start, {
+    VoidCallback? midStrokeAction,
+    int settleAfter = 6,
+  }) async {
     final pointer = _pointerId++;
     _event(
       PointerDownEvent(
@@ -303,7 +333,19 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     );
     // Let the pen-up fan-out (commit, decode burst, settle) land inside
     // the bucket's timings.
-    await _settleFrames(6);
+    await _settleFrames(settleAfter);
+  }
+
+  /// Deterministic pseudo-noise mask (biased 96..255 so coverage never
+  /// vanishes) — the lab's stand-in for sampled/dual/texture brush tips.
+  static BrushTipMask _labNoiseMask(String id, int size) {
+    final alpha = Uint8List(size * size);
+    var seed = 0x9E3779B9;
+    for (var index = 0; index < alpha.length; index += 1) {
+      seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
+      alpha[index] = 96 + ((seed >> 16) % 160);
+    }
+    return BrushTipMask(id: id, size: size, alpha: alpha);
   }
 
   void _event(PointerEvent event) {
