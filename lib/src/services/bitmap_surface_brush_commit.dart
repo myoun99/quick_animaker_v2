@@ -310,8 +310,15 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
         texVFraction: textureVLattice?.fraction,
         texVOneMinus: textureVLattice?.oneMinusFraction,
       );
+      // One BATCH call per dab (R18 A-3a): the spans fan out across the
+      // C worker pool — tiles are disjoint, so the result is
+      // byte-identical to the sequential per-tile loop.
       final tileYStart = top ~/ tileSize;
       final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+      final batchCoords = <TileCoord>[];
+      native.ensureTileSpanBatch(
+        (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
+      );
       for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
         final tileTop = tileY * tileSize;
         final spanTop = math.max(top, tileTop);
@@ -324,9 +331,9 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
           scratchBufferFor(coord);
           final buffer = nativeTiles![coord]!;
           final tileLeft = tileX * tileSize;
-          final changed = native.dabBlendTile(
+          native.setTileSpan(
+            batchCoords.length,
             tilePixels: buffer.pointer,
-            tileSize: tileSize,
             tileLeft: tileLeft,
             tileTop: tileTop,
             spanLeft: math.max(left, tileLeft),
@@ -334,9 +341,16 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
             spanTop: spanTop,
             spanBottomExclusive: spanBottomExclusive,
           );
-          if (changed) {
-            changedCoords.add(coord);
-          }
+          batchCoords.add(coord);
+        }
+      }
+      final changed = native.dabBlendTiles(
+        count: batchCoords.length,
+        tileSize: tileSize,
+      );
+      for (var i = 0; i < batchCoords.length; i += 1) {
+        if (changed[i] != 0) {
+          changedCoords.add(batchCoords[i]);
         }
       }
       continue;
@@ -627,34 +641,48 @@ void _blendStampDab({
       ? native.uploadStampBytes(rgba)
       : null;
   if (stampUpload != null) {
+    // One BATCH call for the whole stamp (R18 A-3a): spans fan out
+    // across the C worker pool; disjoint tiles keep it byte-identical
+    // to the sequential loop.
     final tileXStart = left ~/ tileSize;
     final tileXEnd = (rightExclusive - 1) ~/ tileSize;
     final tileYStart = top ~/ tileSize;
     final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+    final batchCoords = <TileCoord>[];
+    native!.ensureTileSpanBatch(
+      (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
+    );
     for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
       final tileTop = tileY * tileSize;
       for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
         final coord = TileCoord(x: tileX, y: tileY);
         final tileLeft = tileX * tileSize;
-        final changed = native!.stampBlendTile(
+        native.setTileSpan(
+          batchCoords.length,
           tilePixels: nativeTileFor!(coord).pointer,
-          tileSize: tileSize,
           tileLeft: tileLeft,
           tileTop: tileTop,
-          stampBytes: stampUpload,
-          stampWidth: stamp.width,
-          stampLeft: stampLeft,
-          stampTop: stampTop,
           spanLeft: math.max(left, tileLeft),
           spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
           spanTop: math.max(top, tileTop),
           spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
-          opacity: dabOpacity,
-          erase: dab.erase,
         );
-        if (changed) {
-          changedCoords.add(coord);
-        }
+        batchCoords.add(coord);
+      }
+    }
+    final changed = native.stampBlendTiles(
+      count: batchCoords.length,
+      tileSize: tileSize,
+      stampBytes: stampUpload,
+      stampWidth: stamp.width,
+      stampLeft: stampLeft,
+      stampTop: stampTop,
+      opacity: dabOpacity,
+      erase: dab.erase,
+    );
+    for (var i = 0; i < batchCoords.length; i += 1) {
+      if (changed[i] != 0) {
+        changedCoords.add(batchCoords[i]);
       }
     }
     return;
