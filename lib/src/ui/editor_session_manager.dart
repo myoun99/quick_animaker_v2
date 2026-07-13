@@ -3450,6 +3450,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (editingInteractionBusy) {
       return;
     }
+    // A direct cut-local seek leaves any gap parking (R16-⑥); the global
+    // seek re-parks AFTER this call when it lands in a gap.
+    _gapGlobalFrame = null;
     labProbe('selectFrameIndex(sync)', () {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
@@ -3532,17 +3535,35 @@ class EditorSessionManager extends ChangeNotifier {
     return TrackFrameAxis(layout);
   }
 
-  /// The editing playhead as a track-global frame. Over-end positions
-  /// clamp to the active cut's TERRITORY (its frames plus its trailing
-  /// gap; the last cut's runway is endless) so a stale local index never
-  /// addresses the next cut.
+  /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
+  /// semantics: a gap has NO cut — the canvas shows a paperless void).
+  /// Stores the exact global frame, which the leading gap before the
+  /// first cut cannot express as any cut-local index.
+  int? _gapGlobalFrame;
+
+  /// Whether the editing playhead sits in a gap (no cut there).
+  bool get editingPlayheadInGap =>
+      _gapGlobalFrame != null || trackFrameAxis().isGap(editingGlobalFrame);
+
+  /// The gap parking's exact global frame, or null when the playhead sits
+  /// on a cut. Cheap field read — per-tick consumers (the storyboard
+  /// playhead) use it without rebuilding the axis.
+  int? get gapParkedGlobalFrame => _gapGlobalFrame;
+
+  /// The editing playhead as a track-global frame. A gap parking returns
+  /// its stored global; otherwise over-end positions clamp to the active
+  /// cut's TERRITORY (its frames plus its trailing gap; the last cut's
+  /// runway is endless) so a stale local index never addresses the next
+  /// cut.
   int get editingGlobalFrame =>
+      _gapGlobalFrame ??
       trackFrameAxis().clampedGlobalOf(activeCutId, currentFrameIndex) ??
       currentFrameIndex;
 
-  /// THE canonical seek: a global frame in, the owning cut + local frame
-  /// out (a gap = the preceding cut's over-end runway; the leading gap
-  /// before the first cut lands on its frame 0 — no negative locals).
+  /// THE canonical seek: a global frame in. Inside a cut it selects
+  /// cut + local frame; in a GAP it PARKS there (R16-⑥) — the stored
+  /// global addresses the gap exactly, INCLUDING the leading gap before
+  /// the first cut, and the canvas shows the no-cut void.
   void selectGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -3553,17 +3574,21 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final local = axis.localOf(globalFrame);
     if (local == null) {
-      final first = axis.entries.first;
-      if (first.cutId != activeCutId) {
-        selectCut(first.cutId);
-      }
+      // The leading gap before the FIRST cut has no owner cut at all.
       selectFrameIndex(0);
+      _gapGlobalFrame = globalFrame;
       return;
     }
     if (local.cutId != activeCutId) {
       selectCut(local.cutId);
     }
     selectFrameIndex(local.localFrame);
+    if (axis.isGap(globalFrame)) {
+      // Mid-track gap: the runway local addresses it, but the parking is
+      // still a NO-CUT position for the canvas (stored after the seek —
+      // selectFrameIndex clears stale parkings).
+      _gapGlobalFrame = globalFrame;
+    }
   }
 
   /// Global scrub: rides the cursor path inside the active cut's

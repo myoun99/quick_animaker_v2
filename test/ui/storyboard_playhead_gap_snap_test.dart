@@ -64,15 +64,31 @@ void main() {
     expect(storyboardPlayheadFrame(s), aEnd + 3);
   });
 
-  test('a leading gap before the FIRST cut lands on its first frame — '
-      'local frames cannot go negative', () {
+  test('a LEADING gap before the first cut PARKS the playhead exactly '
+      'there (R16-⑥: a gap is a no-cut position, not a snap)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
     s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
 
     seekStoryboardGlobalFrame(s, 1);
-    expect(s.activeCutId, cutId);
+    expect(s.editingGlobalFrame, 1, reason: 'the ruler stays where clicked');
+    expect(storyboardPlayheadFrame(s), 1);
+    expect(s.editingPlayheadInGap, isTrue, reason: 'no cut here — the void');
+
+    // Seeking back onto the cut leaves the parking.
+    seekStoryboardGlobalFrame(s, 3);
+    expect(s.editingPlayheadInGap, isFalse);
     expect(s.currentFrameIndex, 0);
+  });
+
+  test('gap parkings read as IN-GAP (the canvas void); cut frames do not', () {
+    final (s, first, _, aEnd) = gappedSession();
+    s.selectCut(first);
+
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.editingPlayheadInGap, isTrue);
+    s.selectGlobalFrame(2);
+    expect(s.editingPlayheadInGap, isFalse);
   });
 
   test('an editing scrub into the active cut\'s trailing gap rides the '
