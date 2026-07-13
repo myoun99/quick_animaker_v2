@@ -11,6 +11,7 @@ import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
+import '../ui/dev_profile.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_tip_mask_sampling.dart';
 
@@ -584,14 +585,20 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 
   var updatedSurface = surface;
   var dirtyTiles = DirtyTileSet.empty();
-  for (final coord in sortedCoords) {
-    // BitmapTile's constructor copies the bytes, so native-backed scratch
-    // views are safe to hand over before the buffers return to the pool.
-    updatedSurface = updatedSurface.putTile(
-      BitmapTile(coord: coord, size: tileSize, pixels: scratchBuffers[coord]!),
-    );
-    dirtyTiles = dirtyTiles.add(coord);
-  }
+  labProbe('commit.putTiles', () {
+    for (final coord in sortedCoords) {
+      // BitmapTile's constructor copies the bytes, so native-backed scratch
+      // views are safe to hand over before the buffers return to the pool.
+      updatedSurface = updatedSurface.putTile(
+        BitmapTile(
+          coord: coord,
+          size: tileSize,
+          pixels: scratchBuffers[coord]!,
+        ),
+      );
+      dirtyTiles = dirtyTiles.add(coord);
+    }
+  });
   releaseNativeTiles();
 
   return BrushSurfaceMaterialization(
@@ -638,7 +645,7 @@ void _blendStampDab({
   // (parity-pinned); Dart remains the reference and the fallback.
   final native = QaNativeEngine.instance;
   final stampUpload = (native != null && nativeTileFor != null)
-      ? native.uploadStampBytes(rgba)
+      ? labProbe('stamp.upload', () => native.uploadStampBytes(rgba))
       : null;
   if (stampUpload != null) {
     // One BATCH call for the whole stamp (R18 A-3a): spans fan out
@@ -649,36 +656,41 @@ void _blendStampDab({
     final tileYStart = top ~/ tileSize;
     final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
     final batchCoords = <TileCoord>[];
-    native!.ensureTileSpanBatch(
-      (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
-    );
-    for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
-      final tileTop = tileY * tileSize;
-      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-        final coord = TileCoord(x: tileX, y: tileY);
-        final tileLeft = tileX * tileSize;
-        native.setTileSpan(
-          batchCoords.length,
-          tilePixels: nativeTileFor!(coord).pointer,
-          tileLeft: tileLeft,
-          tileTop: tileTop,
-          spanLeft: math.max(left, tileLeft),
-          spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
-          spanTop: math.max(top, tileTop),
-          spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
-        );
-        batchCoords.add(coord);
+    labProbe('stamp.stage', () {
+      native!.ensureTileSpanBatch(
+        (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
+      );
+      for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
+        final tileTop = tileY * tileSize;
+        for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+          final coord = TileCoord(x: tileX, y: tileY);
+          final tileLeft = tileX * tileSize;
+          native.setTileSpan(
+            batchCoords.length,
+            tilePixels: nativeTileFor!(coord).pointer,
+            tileLeft: tileLeft,
+            tileTop: tileTop,
+            spanLeft: math.max(left, tileLeft),
+            spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
+            spanTop: math.max(top, tileTop),
+            spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
+          );
+          batchCoords.add(coord);
+        }
       }
-    }
-    final changed = native.stampBlendTiles(
-      count: batchCoords.length,
-      tileSize: tileSize,
-      stampBytes: stampUpload,
-      stampWidth: stamp.width,
-      stampLeft: stampLeft,
-      stampTop: stampTop,
-      opacity: dabOpacity,
-      erase: dab.erase,
+    });
+    final changed = labProbe(
+      'stamp.blend',
+      () => native!.stampBlendTiles(
+        count: batchCoords.length,
+        tileSize: tileSize,
+        stampBytes: stampUpload,
+        stampWidth: stamp.width,
+        stampLeft: stampLeft,
+        stampTop: stampTop,
+        opacity: dabOpacity,
+        erase: dab.erase,
+      ),
     );
     for (var i = 0; i < batchCoords.length; i += 1) {
       if (changed[i] != 0) {
