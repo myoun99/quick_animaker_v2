@@ -75,6 +75,21 @@ class BitmapTileImageCache extends ChangeNotifier {
     return tile == null ? null : _images[tile];
   }
 
+  /// Whether [ensureDecoded] would actually start work for [tile] — no
+  /// decoded image yet and no decode in flight. The painter's decode
+  /// chunking (R18 B-1) uses this to collect pending tiles without paying
+  /// the start cost.
+  bool needsDecodeStart(BitmapTile tile) =>
+      _images[tile] == null && _inFlight[tile] == null;
+
+  /// Decode STARTS a consumer should pay per frame (R18 B-1): each start
+  /// runs a synchronous tile copy + 65k-pixel premultiply on the UI
+  /// thread, so bursts of a hundred-plus starts in one frame hitch.
+  /// Completions notify listeners (coalesced per frame), so budgeted
+  /// consumers chain the next chunk off the notification and pending
+  /// tiles always drain.
+  static const int decodeStartBudget = 12;
+
   /// Starts decoding [tile] once; notifies listeners when the image is ready.
   ///
   /// [staleScope] identifies the logical surface lineage (e.g. a brush frame)
@@ -98,7 +113,8 @@ class BitmapTileImageCache extends ChangeNotifier {
         final scoped = _latestDecodedByScope.remove(staleScope);
         // Re-insert: this scope becomes the most recently used.
         (_latestDecodedByScope[staleScope] =
-            scoped ?? <TileCoord, BitmapTile>{})[tile.coord] = tile;
+                scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
+            tile;
         _evictScopesBeyondBudget();
         _scheduleNotify();
       },

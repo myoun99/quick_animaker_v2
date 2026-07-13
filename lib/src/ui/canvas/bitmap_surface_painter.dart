@@ -106,8 +106,20 @@ class BitmapSurfacePainter extends CustomPainter {
     // for its decode (it lands within a few frames — the repaint hook
     // brings it in).
     var pixelFallbackBudget = 4;
+    // Decode-start chunking (R18 B-1): STARTING a decode costs a
+    // synchronous tile copy + 65k-pixel premultiply on the UI thread, and
+    // a full-canvas commit used to start every changed tile in one paint
+    // (~130+ tiles — the post-commit hitch the R17 probe measured).
+    // Pending tiles are collected here and at most [decodeStartBudget]
+    // start per paint, visible tiles center-out first; each completion
+    // notifies (coalesced per frame), which repaints this painter and
+    // starts the next chunk, so the surface converges over a few frames
+    // while the stale/settle-hold fallbacks keep on-screen content stable.
+    List<BitmapTile>? pendingDecodes;
     for (final tile in surface.tiles.values) {
-      tileImageCache.ensureDecoded(tile, staleScope: staleScope);
+      if (tileImageCache.needsDecodeStart(tile)) {
+        (pendingDecodes ??= <BitmapTile>[]).add(tile);
+      }
       if (settleHold != null && settleHold.containsKey(tile.coord)) {
         final preTile = settleHold[tile.coord];
         if (preTile != null) {
@@ -151,6 +163,9 @@ class BitmapSurfacePainter extends CustomPainter {
         _paintTilePixels(canvas, tile);
       }
     }
+    if (pendingDecodes != null) {
+      _startPrioritizedDecodes(pendingDecodes, size);
+    }
 
     final overlay = overlayModel;
     if (overlay != null) {
@@ -182,6 +197,55 @@ class BitmapSurfacePainter extends CustomPainter {
       canvas.restore();
     }
     canvas.restore();
+  }
+
+  /// Maximum decode STARTS per paint. Completions notify → repaint → the
+  /// next chunk starts, so pending tiles always drain; the value trades
+  /// per-frame UI-thread cost (copy + premultiply per start) against how
+  /// many frames a full-canvas convergence takes.
+  static const int decodeStartBudget = BitmapTileImageCache.decodeStartBudget;
+
+  /// Starts up to [decodeStartBudget] of [pending]'s decodes — when over
+  /// budget, tiles overlapping the visible canvas rect go first (nearest
+  /// the view center), off-screen tiles strictly after.
+  void _startPrioritizedDecodes(List<BitmapTile> pending, Size size) {
+    var ordered = pending;
+    if (pending.length > decodeStartBudget) {
+      final resolvedViewport = viewport;
+      final visibleRect = resolvedViewport == null
+          ? (Offset.zero & size)
+          : MatrixUtils.transformRect(
+              viewportInverseTransformMatrix(resolvedViewport),
+              Offset.zero & size,
+            );
+      final center = visibleRect.center;
+      // Dominates any real distance² (canvas diagonals stay far below),
+      // so off-screen tiles sort after every visible one.
+      const offscreenBias = 1e18;
+      double score(BitmapTile tile) {
+        final tileSize = tile.size.toDouble();
+        final rect = Rect.fromLTWH(
+          tile.coord.x * tileSize,
+          tile.coord.y * tileSize,
+          tileSize,
+          tileSize,
+        );
+        final distance = (rect.center - center).distanceSquared;
+        return rect.overlaps(visibleRect) ? distance : distance + offscreenBias;
+      }
+
+      final scored = [
+        for (final tile in pending) (score: score(tile), tile: tile),
+      ];
+      scored.sort((a, b) => a.score.compareTo(b.score));
+      ordered = [for (final entry in scored) entry.tile];
+    }
+    final startCount = ordered.length < decodeStartBudget
+        ? ordered.length
+        : decodeStartBudget;
+    for (var i = 0; i < startCount; i += 1) {
+      tileImageCache.ensureDecoded(ordered[i], staleScope: staleScope);
+    }
   }
 
   void _paintTilePixels(Canvas canvas, BitmapTile tile) {
