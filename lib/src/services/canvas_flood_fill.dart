@@ -178,6 +178,60 @@ class LazyCanvasRasterRgb {
   void _composeTile(int left, int top) {
     final right = math.min(left + _tileSize, width);
     final bottom = math.min(top + _tileSize, height);
+
+    // R18 A-2c: with a native-backed raster the paper fill and the layer
+    // blends run in the C kernels — byte-identical to the Dart loops
+    // below (parity-pinned); Dart stays the reference and the fallback.
+    final native = QaNativeEngine.instance;
+    final handles = nativeHandles;
+    if (native != null && handles != null) {
+      native.fillPaperRect(
+        handles: handles,
+        left: left,
+        top: top,
+        rightExclusive: right,
+        bottomExclusive: bottom,
+        paperR: _paperR,
+        paperG: _paperG,
+        paperB: _paperB,
+      );
+      for (final layer in _layers) {
+        final surface = layer.surface;
+        final opacityInt = (layer.opacity * 255).round();
+        final surfaceTileSize = surface.tileSize;
+        for (
+          var ty = top ~/ surfaceTileSize;
+          ty <= (bottom - 1) ~/ surfaceTileSize;
+          ty += 1
+        ) {
+          for (
+            var tx = left ~/ surfaceTileSize;
+            tx <= (right - 1) ~/ surfaceTileSize;
+            tx += 1
+          ) {
+            final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+            if (tile == null) {
+              continue;
+            }
+            final baseX = tx * surfaceTileSize;
+            final baseY = ty * surfaceTileSize;
+            native.fillComposeTile(
+              handles: handles,
+              tile: tile,
+              baseX: baseX,
+              baseY: baseY,
+              clipLeft: math.max(left, baseX),
+              clipTop: math.max(top, baseY),
+              clipRightExclusive: math.min(right, baseX + surfaceTileSize),
+              clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
+              opacityInt: opacityInt,
+            );
+          }
+        }
+      }
+      return;
+    }
+
     for (var y = top; y < bottom; y += 1) {
       var target = (y * width + left) * 3;
       for (var x = left; x < right; x += 1) {
