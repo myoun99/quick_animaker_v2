@@ -155,73 +155,55 @@ class QaNativeEngine {
     return null;
   }
 
-  /// Scratch native buffers reused across calls (grown on demand) — the
-  /// copy-in/copy-out phase-0 shape; the zero-copy native-buffer
-  /// migration (A-1.5) retires these.
-  Pointer<Uint8> _tileScratch = nullptr;
-  int _tileScratchLength = 0;
-  Pointer<Uint8> _stampScratch = nullptr;
-  int _stampScratchLength = 0;
+  /// Uploaded stamp RGBA byte buffers keyed by the SOURCE Uint8List's
+  /// identity (BrushStampImage.rgba is a final field, so the identity is
+  /// stable for the stamp's lifetime). Small LRU — a move session
+  /// re-commits the SAME lift stamp on every drag move, so after the
+  /// first upload the whole stamp blend is zero-copy (A-1.5). A freshly
+  /// uploaded entry is always the most recent, so it can never be
+  /// evicted while its dab is still blending.
+  final LinkedHashMap<Object, Pointer<Uint8>> _stampUploads =
+      LinkedHashMap.identity();
+  static const int _stampUploadCap = 4;
 
-  Pointer<Uint8> _ensureTileScratch(int length) {
-    if (_tileScratchLength < length) {
-      if (_tileScratch != nullptr) {
-        calloc.free(_tileScratch);
-      }
-      _tileScratch = calloc<Uint8>(length);
-      _tileScratchLength = length;
+  /// Uploads [bytes] once (identity-cached) and returns the native copy.
+  Pointer<Uint8> uploadStampBytes(Uint8List bytes) {
+    final cached = _stampUploads.remove(bytes);
+    if (cached != null) {
+      _stampUploads[bytes] = cached;
+      return cached;
     }
-    return _tileScratch;
+    final pointer = calloc<Uint8>(bytes.length);
+    pointer.asTypedList(bytes.length).setAll(0, bytes);
+    _stampUploads[bytes] = pointer;
+    while (_stampUploads.length > _stampUploadCap) {
+      final oldest = _stampUploads.keys.first;
+      calloc.free(_stampUploads.remove(oldest)!);
+    }
+    return pointer;
   }
 
-  Pointer<Uint8> _ensureStampScratch(int length) {
-    if (_stampScratchLength < length) {
-      if (_stampScratch != nullptr) {
-        calloc.free(_stampScratch);
-      }
-      _stampScratch = calloc<Uint8>(length);
-      _stampScratchLength = length;
-    }
-    return _stampScratch;
-  }
-
-  /// Blends a stamp row span into [tileRow] (straight-alpha RGBA, 4 bytes
-  /// per pixel on both sides) — byte-identical to the Dart stamp path.
-  /// Returns true when any destination byte changed.
-  bool stampBlendRow({
-    required Uint8List tileRow,
-    required int tileOffset,
-    required Uint8List stampRow,
-    required int stampOffset,
+  /// Blends a stamp row span straight between native buffers — the tile
+  /// scratch already lives in native memory and the stamp is uploaded
+  /// once, so there are no per-row copies (A-1.5). Byte-identical to the
+  /// Dart stamp path; returns true when any destination byte changed.
+  bool stampBlendRowAt({
+    required Pointer<Uint8> tilePixels,
+    required int tileByteOffset,
+    required Pointer<Uint8> stampBytes,
+    required int stampByteOffset,
     required int count,
     required double opacity,
     required bool erase,
   }) {
-    final byteCount = count * 4;
-    final tilePointer = _ensureTileScratch(byteCount);
-    final stampPointer = _ensureStampScratch(byteCount);
-    tilePointer
-        .asTypedList(byteCount)
-        .setRange(0, byteCount, tileRow, tileOffset);
-    stampPointer
-        .asTypedList(byteCount)
-        .setRange(0, byteCount, stampRow, stampOffset);
-    final changed = _stampBlendRow(
-      tilePointer,
-      stampPointer,
-      count,
-      opacity,
-      erase ? 1 : 0,
-    );
-    if (changed != 0) {
-      tileRow.setRange(
-        tileOffset,
-        tileOffset + byteCount,
-        tilePointer.asTypedList(byteCount),
-      );
-      return true;
-    }
-    return false;
+    return _stampBlendRow(
+          Pointer<Uint8>.fromAddress(tilePixels.address + tileByteOffset),
+          Pointer<Uint8>.fromAddress(stampBytes.address + stampByteOffset),
+          count,
+          opacity,
+          erase ? 1 : 0,
+        ) !=
+        0;
   }
 
   // -------------------------------------------------------------------

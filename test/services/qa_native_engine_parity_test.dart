@@ -388,6 +388,12 @@ void main() {
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
       sequence: sequence,
     );
+    // A second native run with the SAME stamp instance rides the stamp
+    // upload cache (A-1.5) — must stay byte-identical.
+    final nativeRepeat = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
+      sequence: sequence,
+    );
 
     expect(
       snapshot(nativeResult.surface, canvasSize),
@@ -396,6 +402,11 @@ void main() {
     expect(
       nativeResult.dirtyTiles.coords.toSet(),
       dartResult.dirtyTiles.coords.toSet(),
+    );
+    expect(
+      snapshot(nativeRepeat.surface, canvasSize),
+      snapshot(dartResult.surface, canvasSize),
+      reason: 'stamp upload cache reuse must stay byte-identical',
     );
   });
 }
