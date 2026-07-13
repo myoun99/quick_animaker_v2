@@ -188,7 +188,8 @@ void main() {
       );
     }
 
-    test('wraps the region as one square mask dab centered on it', () {
+    test('wraps the region as one COLOR STAMP dab centered on it (R15-⑥: '
+        'exact bytes, no tip-mask resampling)', () {
       final surface = outlineSurface();
       final dab = buildFillDab(
         cut: cutWith([inkLayer()]),
@@ -202,12 +203,16 @@ void main() {
       expect(dab.size, 2);
       expect(dab.center, CanvasPoint(x: 4, y: 4));
       expect(dab.color, 0xFF3366CC);
-      expect(dab.hardness, 1);
       expect(dab.opacity, 1);
-      expect(dab.flow, 1);
-      expect(dab.tipMask, isNotNull);
-      expect(dab.tipMask!.size, 2);
-      expect(dab.tipMask!.alpha, everyElement(255));
+      final stamp = dab.stamp!;
+      expect((stamp.width, stamp.height), (2, 2));
+      for (var index = 0; index < 4; index += 1) {
+        expect(
+          stamp.rgba.sublist(index * 4, index * 4 + 4),
+          [0x33, 0x66, 0xCC, 255],
+          reason: 'fill color at full mask coverage, byte-exact',
+        );
+      }
     });
 
     test('a seed off the canvas fills nothing', () {

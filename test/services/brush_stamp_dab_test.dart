@@ -181,6 +181,60 @@ void main() {
     expect(pixelAt(result.surface, 6, 5), [0, 0, 0, 0]);
   });
 
+  test('a stamp-ERASE dab removes exactly the mask bytes — no resampled '
+      'fringe ring (R15-④)', () {
+    // Opaque red 3x3 block at (2,2).
+    final red = Uint8List.fromList([
+      for (var i = 0; i < 9; i += 1) ...[255, 0, 0, 255],
+    ]);
+    var surface = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+      sequence: BrushDabSequence([
+        stampDab(
+          left: 2,
+          top: 2,
+          stamp: BrushStampImage(id: 'base', width: 3, height: 3, rgba: red),
+        ),
+      ]),
+    ).surface;
+
+    // Erase the CENTER column with a stamp-alpha erase.
+    final eraseRgba = Uint8List.fromList([
+      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
+      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
+      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
+    ]);
+    final result = materializeBrushDabSequenceOnBitmapSurface(
+      surface: surface,
+      sequence: BrushDabSequence([
+        stampDab(
+          left: 2,
+          top: 2,
+          stamp: BrushStampImage(
+            id: 'erase',
+            width: 3,
+            height: 3,
+            rgba: eraseRgba,
+          ),
+        ).copyWith(erase: true),
+      ]),
+    );
+
+    for (var y = 2; y <= 4; y += 1) {
+      expect(
+        pixelAt(result.surface, 3, y),
+        [0, 0, 0, 0],
+        reason: 'masked pixels erase to byte zero',
+      );
+      expect(
+        pixelAt(result.surface, 2, y),
+        [255, 0, 0, 255],
+        reason: 'unmasked neighbors keep FULL alpha — no fringe ring',
+      );
+      expect(pixelAt(result.surface, 4, y), [255, 0, 0, 255]);
+    }
+  });
+
   test('.qap drawing codec round-trips stamp dabs byte-exactly (v2)', () {
     final stamp = BrushStampImage(
       id: 'lift-rt',

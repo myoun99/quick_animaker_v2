@@ -509,11 +509,41 @@ void _blendStampDab({
         final destA = buffer[offset + 3];
         final destinationAlpha = destA / 255.0;
 
-        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
         int outRByte;
         int outGByte;
         int outBByte;
         int outAByte;
+        if (dab.erase) {
+          // Stamp-ERASE (R15-④): destination-out from the stamp's EXACT
+          // alpha — no tip-mask resampling, so a lift's cut edge is
+          // byte-hard (the bilinear tip-mask erase left a half-alpha ring
+          // at the selection silhouette: the fringe + origin remnant).
+          final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
+          if (outAlpha == 0.0) {
+            outRByte = 0;
+            outGByte = 0;
+            outBByte = 0;
+            outAByte = 0;
+          } else {
+            outRByte = destR;
+            outGByte = destG;
+            outBByte = destB;
+            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
+          }
+          if (outRByte != destR ||
+              outGByte != destG ||
+              outBByte != destB ||
+              outAByte != destA) {
+            buffer[offset] = outRByte;
+            buffer[offset + 1] = outGByte;
+            buffer[offset + 2] = outBByte;
+            buffer[offset + 3] = outAByte;
+            changedCoords.add(coord);
+          }
+          continue;
+        }
+
+        final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
         if (outAlpha == 0.0) {
           outRByte = 0;
           outGByte = 0;

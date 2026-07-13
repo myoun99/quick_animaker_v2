@@ -80,6 +80,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
+    this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -173,6 +174,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// stroke is live.
   final ValueChanged<bool>? onStrokeInputActiveChanged;
 
+  /// Selection-drag lifecycle for the host (R15-⑤): the session blocks
+  /// frame seeks/cut switches while a selection interaction is live.
+  final ValueChanged<bool>? onSelectionInteractionChanged;
+
   /// False hides the rotate/flip toolbar controls and disables the
   /// rotation gestures — for hosts whose content layers speak zoom/pan
   /// only (the timesheet's ink and header-edit overlays).
@@ -217,9 +222,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   @override
   void dispose() {
     // A mid-stroke teardown must release the session's warm hold — a
-    // leaked hold would gate prerendering forever.
+    // leaked hold would gate prerendering forever. Same for a mid-drag
+    // selection interaction (R15-⑤: a leaked hold would block seeks).
     if (_strokeActive) {
       widget.onStrokeInputActiveChanged?.call(false);
+    }
+    if (_selectionDragActive) {
+      widget.onSelectionInteractionChanged?.call(false);
     }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _eyedropperHover.dispose();
@@ -645,17 +654,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             .visibleActivePaintCommands,
                                         selectionCommands:
                                             widget.selectionCommands,
-                                        onDragActiveChanged: (active) =>
+                                        onDragActiveChanged: (active) {
+                                          if (_selectionDragActive != active) {
+                                            widget.onSelectionInteractionChanged
+                                                ?.call(active);
                                             setState(
                                               () =>
                                                   _selectionDragActive = active,
-                                            ),
+                                            );
+                                          }
+                                        },
                                         onTransformCommitted:
                                             _handleSelectionTransform,
                                         // R14-④: the Move tool lifts the
                                         // selection's PIXELS (never whole
                                         // strokes) — 유저 direction ⑧b.
                                         onLiftRequested: _handleSelectionLift,
+                                        onLiftDabsRewritten:
+                                            _handleLiftDabsRewritten,
                                       ),
                                     ),
                                 ],
@@ -902,12 +918,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
   }
 
-  /// R14-④ bitmap lift: cuts [shape]'s pixels out of the active cel as an
-  /// erase-mask + stamp pair — ONE command through the exact stroke funnel
-  /// (one undo entry; the origin vanishes the moment the move starts) —
-  /// and returns the stamp command's id for the selection to own. Null
-  /// when the shape covers no pixels.
-  BrushPaintCommandId? _handleSelectionLift(CanvasSelectionShape shape) {
+  /// R14-④/R15-④ bitmap lift: commits [shape]'s ERASE through the stroke
+  /// funnel — the origin's pixels vanish the moment the move starts — and
+  /// returns the command's id plus the lifted stamp dab, which the layer
+  /// floats and lands at release. Null when the shape covers no pixels.
+  ({BrushPaintCommandId commandId, BrushDab stampDab})? _handleSelectionLift(
+    CanvasSelectionShape shape,
+  ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
       return null;
@@ -921,15 +938,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       return null;
     }
     _handleSourceStrokeCommitted(
-      BrushStrokeCommitData(sourceDabs: [lift.eraseDab, lift.stampDab]),
+      BrushStrokeCommitData(sourceDabs: [lift.eraseDab]),
     );
     final commands = coordinator.frameStore
         .getOrCreateFrame(coordinator.activeFrameKey)
         .visibleActivePaintCommands;
-    // The commit lands as the newest visible command; empty only if the
-    // pair changed no pixels (already-blank region), which the null lift
-    // above rules out.
-    return commands.isEmpty ? null : commands.last.id;
+    if (commands.isEmpty) {
+      return null;
+    }
+    return (commandId: commands.last.id, stampDab: lift.stampDab);
+  }
+
+  /// Raw lift-command dab rewrite (no history entry) — the drag lifecycle
+  /// suppresses/restores the floating stamp through this.
+  void _handleLiftDabsRewritten(
+    BrushPaintCommandId commandId,
+    List<BrushDab> dabs,
+  ) {
+    widget.coordinator?.rewritePaintCommandDabs(
+      {commandId: dabs},
+      cacheInvalidationSink: widget.cacheInvalidationSink,
+    );
   }
 
   void _commitSourceStroke(BrushStrokeCommitData strokeData) {

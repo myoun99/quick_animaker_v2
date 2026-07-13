@@ -500,6 +500,7 @@ class EditorSessionManager extends ChangeNotifier {
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
     brushInputActive.dispose();
+    selectionInteractionActive.dispose();
     dragPreview.dispose();
     onionSkinSettings.dispose();
     _historyManager.dispose();
@@ -1243,6 +1244,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectCut(CutId cutId) {
     if (cutId == _editingSession.activeCutId) {
+      return;
+    }
+    // R15-⑤: never switch cuts under a live editing interaction.
+    if (editingInteractionBusy) {
       return;
     }
 
@@ -3433,6 +3438,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// camera pose panel, timesheet playhead) subscribe to
   /// [frameSeekCommitted] and rebuild once per committed seek.
   void selectFrameIndex(int frameIndex) {
+    // R15-⑤: a live editing interaction REFUSES the seek outright — a
+    // flip under an in-flight edit tore widgets down inside the build
+    // phase (red screens) and could land the edit on the wrong cel.
+    if (editingInteractionBusy) {
+      return;
+    }
     labProbe('selectFrameIndex(sync)', () {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
@@ -3466,6 +3477,33 @@ class EditorSessionManager extends ChangeNotifier {
       prerenderScheduler.endInputHold();
     }
   }
+
+  /// Selection-tool interactions (marquee/move/transform drags) — counted
+  /// so overlapping holds nest (R15-⑤).
+  final ValueNotifier<bool> selectionInteractionActive = ValueNotifier<bool>(
+    false,
+  );
+  int _selectionInteractionHolds = 0;
+
+  void beginSelectionInteraction() {
+    _selectionInteractionHolds += 1;
+    selectionInteractionActive.value = true;
+    prerenderScheduler.beginInputHold();
+  }
+
+  void endSelectionInteraction() {
+    if (_selectionInteractionHolds > 0) {
+      _selectionInteractionHolds -= 1;
+      prerenderScheduler.endInputHold();
+    }
+    selectionInteractionActive.value = _selectionInteractionHolds > 0;
+  }
+
+  /// R15-⑤: any live editing interaction (brush stroke, selection drag)
+  /// blocks frame seeks, scrubs and cut switches entirely — the playhead
+  /// moves when the pen lifts, never under it.
+  bool get editingInteractionBusy =>
+      brushInputActive.value || selectionInteractionActive.value;
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
 
@@ -3677,6 +3715,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// first move that actually changes the frame, so a same-frame tap
   /// never flashes it.
   void scrubFrameIndex(int frameIndex) {
+    // R15-⑤: scrubs are seeks too — refused under a live edit.
+    if (editingInteractionBusy) {
+      return;
+    }
     if (frameIndex != _timelineController.currentFrameIndex) {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
