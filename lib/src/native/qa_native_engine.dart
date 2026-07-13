@@ -17,10 +17,13 @@ import 'dart:typed_data';
 /// Tests can point at a locally built binary with the QA_ENGINE_PATH
 /// environment variable.
 class QaNativeEngine {
-  QaNativeEngine._(this._stampBlendRow, this._dabBlendTile)
-    : _spec = calloc<QaDabSpecStruct>();
+  QaNativeEngine._(
+    this._stampBlendRow,
+    this._dabBlendTile,
+    this._premultiplyRgba,
+  ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 2;
+  static const int _abiVersion = 3;
 
   final int Function(
     Pointer<Uint8> tileRow,
@@ -43,6 +46,8 @@ class QaNativeEngine {
     Pointer<QaDabSpecStruct> spec,
   )
   _dabBlendTile;
+
+  final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -131,7 +136,12 @@ class QaNativeEngine {
               Pointer<QaDabSpecStruct>,
             )
           >('qa_dab_blend_tile');
-      return QaNativeEngine._(stampBlendRow, dabBlendTile);
+      final premultiplyRgba = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Int32),
+            void Function(Pointer<Uint8>, int)
+          >('qa_premultiply_rgba');
+      return QaNativeEngine._(stampBlendRow, dabBlendTile, premultiplyRgba);
     } on Object {
       return null;
     }
@@ -181,6 +191,28 @@ class QaNativeEngine {
       calloc.free(_stampUploads.remove(oldest)!);
     }
     return pointer;
+  }
+
+  /// Persistent grow-only scratch for [premultiplyRgba]'s round trip.
+  Pointer<Uint8> _premultiplyScratch = nullptr;
+  int _premultiplyScratchLength = 0;
+
+  /// Premultiplies [pixels] (straight-alpha RGBA) IN PLACE through the
+  /// native kernel — byte-identical to the Dart reference (Skia
+  /// mul-div-255 rounding). Two memcpys through a persistent scratch
+  /// replace the 65k-iteration Dart loop per tile (A-2a).
+  void premultiplyRgba(Uint8List pixels) {
+    if (_premultiplyScratchLength < pixels.length) {
+      if (_premultiplyScratch != nullptr) {
+        calloc.free(_premultiplyScratch);
+      }
+      _premultiplyScratch = calloc<Uint8>(pixels.length);
+      _premultiplyScratchLength = pixels.length;
+    }
+    final view = _premultiplyScratch.asTypedList(pixels.length);
+    view.setAll(0, pixels);
+    _premultiplyRgba(_premultiplyScratch, pixels.length ~/ 4);
+    pixels.setAll(0, view);
   }
 
   /// Blends a stamp row span straight between native buffers — the tile

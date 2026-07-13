@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_stamp_image.dart';
@@ -11,8 +12,10 @@ import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// R18 A-0: the native engine core must be BYTE-IDENTICAL to the Dart
 /// reference implementation — randomized stamps (paint and erase, edge
@@ -408,5 +411,42 @@ void main() {
       snapshot(dartResult.surface, canvasSize),
       reason: 'stamp upload cache reuse must stay byte-identical',
     );
+  });
+
+  test('native premultiply == Dart reference, byte for byte (randomized)', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final random = Random(7);
+    for (var round = 0; round < 12; round += 1) {
+      final size = 1 + random.nextInt(48);
+      final bytes = Uint8List(size * size * 4);
+      for (var i = 0; i < bytes.length; i += 1) {
+        // Edge-biased: plenty of alpha 0 / 255 plus the full range.
+        final roll = random.nextInt(6);
+        bytes[i] = roll == 0
+            ? 0
+            : roll == 1
+            ? 255
+            : random.nextInt(256);
+      }
+      final tile = BitmapTile(
+        coord: TileCoord(x: 0, y: 0),
+        size: size,
+        pixels: bytes,
+      );
+
+      QaNativeEngine.debugForceDartFallback = true;
+      final dartResult = BitmapTileImageCache.premultipliedTilePixels(tile);
+      QaNativeEngine.debugForceDartFallback = false;
+      final nativeResult = BitmapTileImageCache.premultipliedTilePixels(tile);
+
+      expect(
+        nativeResult,
+        dartResult,
+        reason: 'round $round (${size}x$size) must be byte-identical',
+      );
+    }
   });
 }
