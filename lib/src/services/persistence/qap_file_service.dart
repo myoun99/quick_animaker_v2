@@ -2,20 +2,26 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
+import '../bitmap_surface_brush_commit.dart';
 import '../brush_frame_store.dart';
+import '../../models/brush_dab_sequence.dart';
 import 'brush_drawing_binary_codec.dart';
 import 'qap_project_archive.dart';
 
 /// A loaded .qap: the project with media paths already RESOLVED (relative
 /// manifest entries that exist next to the file win over the stored
-/// absolute paths — the Drive-portability rule) plus the drawings to seed
-/// the brush store with.
+/// absolute paths — the Drive-portability rule) plus the BAKED cels to
+/// seed the brush store with (R19 bake-only: v1 legacy drawings are
+/// materialized once right here, so every open hands the session pure
+/// raster truth).
 class QapOpenResult {
-  const QapOpenResult({required this.project, required this.drawings});
+  const QapOpenResult({required this.project, required this.cels});
 
   final Project project;
-  final List<QapDrawingEntry> drawings;
+  final Map<BrushFrameKey, BitmapSurface> cels;
 }
 
 /// Saves/loads .qap project files (P3). Writes are ATOMIC: the archive is
@@ -30,9 +36,36 @@ class QapFileService {
     required BrushFrameStore brushFrameStore,
     required String filePath,
   }) async {
-    final drawings = [
-      for (final entry in brushFrameStore.drawingsSnapshotForSave().entries)
-        QapDrawingEntry(key: entry.key, commands: entry.value),
+    // R19 bake-only: the save payload is the baked raster truth. Cels
+    // that only carry legacy in-session commands (opened from v1 and
+    // untouched since... which cannot happen anymore — opens bake — but
+    // kept as a belt-and-braces path) materialize on the way out.
+    final cutCanvasSizes = {
+      for (final track in project.tracks)
+        for (final cut in track.cuts) cut.id: cut.canvasSize,
+    };
+    final baked = brushFrameStore.bakedSnapshotForSave(
+      materialize: (key, commands) {
+        var surface = BitmapSurface(
+          canvasSize:
+              cutCanvasSizes[key.cutId] ??
+              project.tracks.first.cuts.first.canvasSize,
+        );
+        for (final command in commands) {
+          if (command.sourceDabs.isEmpty) {
+            continue;
+          }
+          surface = materializeBrushDabSequenceOnBitmapSurface(
+            surface: surface,
+            sequence: BrushDabSequence(command.sourceDabs),
+          ).surface;
+        }
+        return surface;
+      },
+    );
+    final cels = [
+      for (final entry in baked.entries)
+        QapCelEntry(key: entry.key, surface: entry.value),
     ];
     final saveDirectory = _parentDirectory(filePath);
     // Encode + deflate OFF the UI isolate: the archive build cost grows
@@ -44,7 +77,7 @@ class QapFileService {
     final bytes = await Isolate.run(
       () => buildQapArchiveBytes(
         project: project,
-        drawings: drawings,
+        cels: cels,
         saveDirectory: saveDirectory,
       ),
     );
@@ -58,7 +91,47 @@ class QapFileService {
   Future<QapOpenResult> open({required String filePath}) async {
     final bytes = Uint8List.fromList(await File(filePath).readAsBytes());
     // Inflate + decode off the UI isolate (the mirror of save's encode).
-    final contents = await Isolate.run(() => parseQapArchiveBytes(bytes));
+    // v1 legacy drawings ALSO materialize off the UI isolate right here —
+    // the one-time bake that turns an old command file into raster truth
+    // (rides the Dart reference materializer: the C engine is per-isolate
+    // and byte-identical anyway).
+    final (:project, :cels, :mediaRelativePaths) = await Isolate.run(() {
+      final contents = parseQapArchiveBytes(bytes);
+      final cutCanvasSizes = {
+        for (final track in contents.project.tracks)
+          for (final cut in track.cuts) cut.id: cut.canvasSize,
+      };
+      final baked = <BrushFrameKey, BitmapSurface>{
+        for (final cel in contents.cels) cel.key: cel.surface,
+      };
+      for (final drawing in contents.drawings) {
+        if (baked.containsKey(drawing.key)) {
+          continue;
+        }
+        final canvasSize = cutCanvasSizes[drawing.key.cutId];
+        if (canvasSize == null) {
+          continue;
+        }
+        var surface = BitmapSurface(canvasSize: canvasSize);
+        for (final command in drawing.commands) {
+          if (command.sourceDabs.isEmpty) {
+            continue;
+          }
+          surface = materializeBrushDabSequenceOnBitmapSurface(
+            surface: surface,
+            sequence: BrushDabSequence(command.sourceDabs),
+          ).surface;
+        }
+        if (surface.tiles.isNotEmpty) {
+          baked[drawing.key] = surface;
+        }
+      }
+      return (
+        project: contents.project,
+        cels: baked,
+        mediaRelativePaths: contents.mediaRelativePaths,
+      );
+    });
 
     // Relative media resolution: an entry whose relative path exists next
     // to the .qap wins (the folder traveled whole); otherwise the stored
@@ -66,7 +139,7 @@ class QapFileService {
     // over.
     final directory = _parentDirectory(filePath);
     final remap = <String, String>{};
-    for (final entry in contents.mediaRelativePaths.entries) {
+    for (final entry in mediaRelativePaths.entries) {
       final resolved = '$directory/${entry.value}';
       if (await File(resolved).exists()) {
         remap[entry.key] = resolved;
@@ -74,8 +147,8 @@ class QapFileService {
     }
 
     return QapOpenResult(
-      project: remapProjectMediaPaths(contents.project, remap),
-      drawings: contents.drawings,
+      project: remapProjectMediaPaths(project, remap),
+      cels: cels,
     );
   }
 

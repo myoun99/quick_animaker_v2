@@ -30,12 +30,13 @@ void main() {
     // A real stroke in the brush store (the canvas commit path) so the
     // round-trip carries drawing content.
     final selection = s.activeBrushEditorSelection!;
+    final drawnKey = s.brushFrameKeyForCut(
+      s.activeCut,
+      selection.layerId,
+      selection.frameId,
+    );
     BrushFrameEditingCoordinator(
-      initialFrameKey: s.brushFrameKeyForCut(
-        s.activeCut,
-        selection.layerId,
-        selection.frameId,
-      ),
+      initialFrameKey: drawnKey,
       frameStore: s.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.activeCut.canvasSize,
@@ -86,8 +87,9 @@ void main() {
     expect(s.canUndo, isFalse);
     expect(s.canRedo, isFalse);
 
-    // The saved drawing survived the round-trip through the brush store.
-    expect(s.brushFrameStore.drawingsSnapshotForSave(), isNotEmpty);
+    // The saved drawing survived the round-trip as BAKED raster truth
+    // (R19 bake-only: opens carry no commands — the picture is the file).
+    expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
 
     // New edits after the load are undoable and undo cleanly.
     s.selectCut(s.repository.requireProject().tracks.first.cuts.first.id);

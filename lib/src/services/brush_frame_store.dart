@@ -1,5 +1,6 @@
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
+import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
@@ -11,6 +12,7 @@ import '../models/cut_id.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/layer_id.dart';
 import '../models/undo_payload_ref.dart';
+import 'bitmap_surface_geometry.dart';
 
 class BrushFrameFlushResult {
   const BrushFrameFlushResult({
@@ -127,6 +129,76 @@ class BrushFrameStore {
     _displayCacheBytes = 0;
   }
 
+  // -------------------------------------------------------------------
+  // Baked raster truth (R19 bake-only).
+  //
+  // From format v2 on, a cel's picture IS its baked tile raster — like
+  // every raster program, what you saved is what reopens, byte for byte.
+  // The map is deliberately NOT byte-budgeted: truth cannot be evicted
+  // (the display-cache LRU above remains a derived-preview affair).
+  // Surfaces are immutable and shared with sessions/donations, so this
+  // adds no copies.
+
+  final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
+
+  /// The cel's baked raster truth, or null for a never-drawn cel.
+  BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) => _bakedSurfaces[key];
+
+  /// Stores [surface] as the cel's baked truth (commit donations and
+  /// project opens both land here).
+  void storeBakedSurface(BrushFrameKey key, BitmapSurface surface) {
+    if (surface.tiles.isEmpty) {
+      _bakedSurfaces.remove(key);
+      return;
+    }
+    _bakedSurfaces[key] = surface;
+  }
+
+  /// Every baked cel for the .qap v2 save payload. Cels that only have
+  /// legacy in-session commands (opened from v1 and never edited) bake
+  /// here on the way out via [materialize].
+  Map<BrushFrameKey, BitmapSurface> bakedSnapshotForSave({
+    required BitmapSurface Function(
+      BrushFrameKey key,
+      List<BrushPaintCommand> commands,
+    )
+    materialize,
+  }) {
+    final snapshot = <BrushFrameKey, BitmapSurface>{..._bakedSurfaces};
+    for (final entry in _frames.entries) {
+      if (snapshot.containsKey(entry.key)) {
+        continue;
+      }
+      final commands = entry.value.allPaintCommandsInDisplayOrder;
+      if (commands.isEmpty) {
+        continue;
+      }
+      final surface = materialize(entry.key, commands);
+      if (surface.tiles.isNotEmpty) {
+        snapshot[entry.key] = surface;
+      }
+    }
+    return snapshot;
+  }
+
+  /// Replaces the WHOLE store with loaded baked cels (v2 project open):
+  /// frames reseed live at sourceRevision 1 with EMPTY command lists —
+  /// the raster is the truth — and the display caches seed from the same
+  /// surfaces so first paint is O(1).
+  void restoreBaked(Map<BrushFrameKey, BitmapSurface> cels) {
+    _frames.clear();
+    clearDisplayCaches();
+    _bakedSurfaces.clear();
+    for (final entry in cels.entries) {
+      _frames[entry.key] = BrushFrameDrawingState(
+        key: entry.key,
+        sourceRevision: 1,
+      );
+      _bakedSurfaces[entry.key] = entry.value;
+      storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
+    }
+  }
+
   /// Every drawn frame's VISIBLE commands (source dabs included) — the
   /// .qap save payload (P3). The same command list export replays
   /// (allPaintCommandsInDisplayOrder), so a saved file reproduces exactly
@@ -146,6 +218,7 @@ class BrushFrameStore {
   void restoreDrawings(Map<BrushFrameKey, List<BrushPaintCommand>> drawings) {
     _frames.clear();
     clearDisplayCaches();
+    _bakedSurfaces.clear();
     for (final entry in drawings.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
@@ -168,6 +241,11 @@ class BrushFrameStore {
       final cache = _displayCaches.remove(from);
       if (cache != null) {
         _displayCaches[to] = cache;
+      }
+      // The baked truth travels with the cel (R19).
+      final baked = _bakedSurfaces.remove(from);
+      if (baked != null) {
+        _bakedSurfaces[to] = baked;
       }
     }
   }
@@ -206,6 +284,54 @@ class BrushFrameStore {
             .toList();
         return _markCacheDirty(state.copyWith(paintCommands: commands));
       });
+      // The baked truth shifts as a raster blit (R19): anchored resizes
+      // move content by whole pixels, so the round matches the command
+      // shift exactly for the integer offsets resize anchors produce.
+      final baked = _bakedSurfaces[key];
+      if (baked != null) {
+        _bakedSurfaces[key] = translateBitmapSurface(
+          baked,
+          dx: dx.round(),
+          dy: dy.round(),
+          canvasSize: baked.canvasSize,
+        );
+      }
+    }
+  }
+
+  /// Adopts a new canvas size for every baked surface (R19: a resize is
+  /// a raster crop/extend — top-left anchored, every tile kept, so
+  /// shrinking then growing back restores exactly).
+  void resizeBakedSurfaces(CanvasSize canvasSize) {
+    for (final key in _bakedSurfaces.keys.toList()) {
+      _bakedSurfaces[key] = resizeBitmapSurfaceCanvas(
+        _bakedSurfaces[key]!,
+        canvasSize,
+      );
+    }
+  }
+
+  /// The cut's baked surfaces by key — surfaces are immutable, so this
+  /// snapshot is reference-cheap (the anchored-resize command keeps one
+  /// for its exact undo).
+  Map<BrushFrameKey, BitmapSurface> bakedSurfacesForCut(CutId cutId) {
+    return {
+      for (final entry in _bakedSurfaces.entries)
+        if (entry.key.cutId == cutId) entry.key: entry.value,
+    };
+  }
+
+  /// Restores a [bakedSurfacesForCut] snapshot (anchored-resize undo):
+  /// the cut's baked set becomes exactly the snapshot again.
+  void restoreBakedForCut(
+    CutId cutId,
+    Map<BrushFrameKey, BitmapSurface> snapshot,
+  ) {
+    _bakedSurfaces.removeWhere((key, _) => key.cutId == cutId);
+    _bakedSurfaces.addAll(snapshot);
+    for (final key in snapshot.keys) {
+      // The display caches follow the restored truth.
+      storeRebuiltDisplayCache(key: key, previewSurface: snapshot[key]!);
     }
   }
 

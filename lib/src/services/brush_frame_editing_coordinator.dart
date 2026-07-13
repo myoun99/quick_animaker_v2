@@ -80,6 +80,10 @@ class BrushFrameEditingCoordinator {
     }
     sessionStore.resizeCanvas(canvasSize);
     frameStore.clearDisplayCaches();
+    // R19 bake-only: a resize is a raster crop/extend of the baked truth
+    // (top-left anchored, pixels untouched) — anchored variants shift
+    // via translateCutContent's blit before this runs.
+    frameStore.resizeBakedSurfaces(canvasSize);
     _rebuildSessionFromCommands(_activeFrameKey);
   }
 
@@ -98,9 +102,27 @@ class BrushFrameEditingCoordinator {
   /// back to a full replay.
   BrushEditSessionState _rebuildSessionFromCommands(BrushFrameKey key) {
     final blank = sessionStore.reset(key);
+    final frame = frameStore.frameOrNull(key);
     final commands =
-        frameStore.frameOrNull(key)?.allPaintCommandsInDisplayOrder ??
-        const <BrushPaintCommand>[];
+        frame?.allPaintCommandsInDisplayOrder ?? const <BrushPaintCommand>[];
+    // R19 bake-only: the baked raster is the truth — seeding from it is
+    // O(1) and byte-exact. Cels with NO legacy commands in ANY state
+    // (v2 opens, and everything once P3 retires command bookkeeping)
+    // always seed from it; cels still carrying commands — hidden ones
+    // included, an all-hidden cel must rebuild BLANK — only seed from it
+    // while it is KNOWN CURRENT (the display cache's validity): a
+    // hidden-by-undo command dirties the cache, and the legacy replay
+    // below must win then or the undone stroke would stay visible.
+    final hasAnyCommands = frame != null && frame.paintCommands.isNotEmpty;
+    final baked = frameStore.bakedSurfaceOrNull(key);
+    if (baked != null &&
+        baked.canvasSize == sessionStore.canvasSize &&
+        (!hasAnyCommands || frameStore.hasValidDisplayCache(key))) {
+      return sessionStore.update(
+        key,
+        blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: baked)),
+      );
+    }
     if (commands.isEmpty) {
       return blank;
     }
@@ -147,10 +169,12 @@ class BrushFrameEditingCoordinator {
     BrushFrameKey key,
     BrushEditSessionState sessionState,
   ) {
-    frameStore.storeRebuiltDisplayCache(
-      key: key,
-      previewSurface: sessionState.canvasState.currentSurface,
-    );
+    final surface = sessionState.canvasState.currentSurface;
+    frameStore.storeRebuiltDisplayCache(key: key, previewSurface: surface);
+    // R19 bake-only: the donation IS the bake — every commit, undo, redo
+    // and rewrite lands the exact post-edit pixels as the cel's raster
+    // truth (immutable surface, shared instance, no copy).
+    frameStore.storeBakedSurface(key, surface);
   }
 
   /// Commits a finished stroke: stores the source dabs as the durable

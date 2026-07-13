@@ -3722,9 +3722,9 @@ class EditorSessionManager extends ChangeNotifier {
     final result = await _qapFileService.open(filePath: filePath);
     playback.stop();
     _repository.replaceProject(result.project);
-    brushFrameStore.restoreDrawings({
-      for (final entry in result.drawings) entry.key: entry.commands,
-    });
+    // R19 bake-only: opens hand the store pure raster truth (v1 legacy
+    // drawings were materialized once inside the file service).
+    brushFrameStore.restoreBaked(result.cels);
     _historyManager.clear();
     _copiedFrame = null;
     _layerClipboard = null;
