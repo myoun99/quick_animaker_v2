@@ -6,9 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart'
+    show ActiveStrokePixelSource;
 import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -189,6 +192,94 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [255, 0, 0, 255]);
     });
   });
+
+  group('live erase isolation (R14-⑤)', () {
+    test('an erase overlay removes committed pixels but NEVER punches '
+        'through content below the painter in the same buffer', () async {
+      // Committed red pixel at (0,0).
+      final tile = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+      );
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: 2, height: 2),
+        tileSize: 2,
+        tiles: {tile.coord: tile},
+      );
+
+      // A live ERASE stroke covering (0,0) at full alpha.
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      overlay.erase = true;
+      overlay.updateRegion(
+        source: _AlphaAtOriginSource(),
+        region: DirtyRegion(
+          left: 0,
+          top: 0,
+          rightExclusive: 1,
+          bottomExclusive: 1,
+        ),
+      );
+      await overlay.waitForPendingDecodes();
+
+      // The production layout: paper/panel pixels live BELOW the painter
+      // in the same compositing buffer (the painter paints no background of
+      // its own). Without the erase saveLayer isolation, dstOut punched
+      // through the white too and the live stroke showed as the (dark)
+      // panel background — the user's black-line eraser.
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, 2, 2),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      BitmapSurfacePainter(
+        surface: surface,
+        overlayModel: overlay,
+        showTransparentBackground: false,
+        tileImageCache: BitmapTileImageCache(),
+      ).paint(canvas, const Size(2, 2));
+      final image = await recorder.endRecording().toImage(2, 2);
+      final byteData = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      final pixels = byteData!.buffer.asUint8List();
+
+      expect(
+        _rgbaAt(pixels, width: 2, x: 0, y: 0),
+        [255, 255, 255, 255],
+        reason: 'the committed red erases; the white below survives',
+      );
+      expect(
+        _rgbaAt(pixels, width: 2, x: 1, y: 1),
+        [255, 255, 255, 255],
+        reason: 'pixels the stroke never touched are unchanged',
+      );
+    });
+  });
+}
+
+/// Full-alpha stroke coverage at canvas (0,0) only — a minimal live ERASE
+/// stroke feed.
+class _AlphaAtOriginSource implements ActiveStrokePixelSource {
+  @override
+  int get canvasWidth => 2;
+
+  @override
+  int get canvasHeight => 2;
+
+  @override
+  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
+    for (var i = 0; i < count; i += 1) {
+      final offset = targetOffset + i * 4;
+      final covered = (x + i) == 0 && y == 0;
+      target[offset] = 0;
+      target[offset + 1] = 0;
+      target[offset + 2] = 0;
+      target[offset + 3] = covered ? 255 : 0;
+    }
+  }
 }
 
 BitmapTile _tile({

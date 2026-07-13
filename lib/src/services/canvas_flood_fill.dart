@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -207,6 +206,14 @@ class LazyCanvasRasterRgb {
 /// Scanline flood fill over an RGB raster from the seed, within
 /// [FloodFillOptions.tolerance] of the SEED color; null when the seed is
 /// out of bounds. Includes expand + anti-alias post passes.
+///
+/// R14-② performance contract: [ensureComposed] fires per COMPOSE-TILE
+/// crossing (256px, [LazyCanvasRasterRgb]'s tile), never per pixel — the
+/// old per-visit dynamic dispatch across tens of millions of pixels was
+/// the multi-second fill freeze on large regions. The vertical seeding
+/// enqueues one seed per contiguous run (not every matching pixel), and
+/// the expand/anti-alias passes operate on the CROPPED region instead of
+/// copying the full canvas array per pass.
 FloodFillRegion? floodFillRegion({
   required Uint8List rgb,
   required int width,
@@ -226,8 +233,9 @@ FloodFillRegion? floodFillRegion({
   final seedB = rgb[seedIndex + 2];
   final tolerance = options.tolerance;
 
-  bool matches(int index) {
-    ensureComposed?.call(index);
+  // Pure byte compare — the caller guarantees the pixel's compose tile via
+  // the crossing checks below (one ensure per 256px boundary).
+  bool matchesComposed(int index) {
     final base = index * 3;
     return (rgb[base] - seedR).abs() <= tolerance &&
         (rgb[base + 1] - seedG).abs() <= tolerance &&
@@ -235,87 +243,114 @@ FloodFillRegion? floodFillRegion({
   }
 
   final filled = Uint8List(width * height);
-  final queue = Queue<int>()..add(seedY * width + seedX);
+  final stack = <int>[seedY * width + seedX];
   filled[seedY * width + seedX] = 255;
   var minX = seedX, maxX = seedX, minY = seedY, maxY = seedY;
 
-  while (queue.isNotEmpty) {
-    final index = queue.removeFirst();
+  while (stack.isNotEmpty) {
+    final index = stack.removeLast();
     final y = index ~/ width;
-    // Expand the scanline run left and right.
-    var left = index;
-    while (left % width > 0 && filled[left - 1] == 0 && matches(left - 1)) {
+    final rowStart = y * width;
+
+    // Expand the scanline run left and right; ensure fires only when the
+    // walk crosses into a new 256px compose tile.
+    var left = index - rowStart;
+    while (left > 0 && filled[rowStart + left - 1] == 0) {
+      if ((left & 0xFF) == 0) {
+        ensureComposed?.call(rowStart + left - 1);
+      }
+      if (!matchesComposed(rowStart + left - 1)) {
+        break;
+      }
       left -= 1;
-      filled[left] = 255;
+      filled[rowStart + left] = 255;
     }
-    var right = index;
-    while ((right + 1) % width != 0 &&
-        filled[right + 1] == 0 &&
-        matches(right + 1)) {
+    var right = index - rowStart;
+    while (right < width - 1 && filled[rowStart + right + 1] == 0) {
+      if (((right + 1) & 0xFF) == 0) {
+        ensureComposed?.call(rowStart + right + 1);
+      }
+      if (!matchesComposed(rowStart + right + 1)) {
+        break;
+      }
       right += 1;
-      filled[right] = 255;
+      filled[rowStart + right] = 255;
     }
-    final runMinX = left % width;
-    final runMaxX = right % width;
-    minX = math.min(minX, runMinX);
-    maxX = math.max(maxX, runMaxX);
+    minX = math.min(minX, left);
+    maxX = math.max(maxX, right);
     minY = math.min(minY, y);
     maxY = math.max(maxY, y);
-    // Seed the rows above and below across the run.
-    for (final rowStart in [
-      if (y > 0) left - width,
-      if (y < height - 1) left + width,
-    ]) {
-      for (var i = rowStart; i <= rowStart + (right - left); i += 1) {
-        if (filled[i] == 0 && matches(i)) {
-          filled[i] = 255;
-          queue.add(i);
+
+    // Seed the rows above and below across the run — ONE seed per
+    // contiguous matching run (the seed's own expansion fills the rest);
+    // enqueueing every matching pixel used to flood the queue with the
+    // whole region.
+    for (final dy in const [-1, 1]) {
+      final neighborY = y + dy;
+      if (neighborY < 0 || neighborY >= height) {
+        continue;
+      }
+      final neighborRow = neighborY * width;
+      ensureComposed?.call(neighborRow + left);
+      var runOpen = false;
+      for (var x = left; x <= right; x += 1) {
+        if ((x & 0xFF) == 0 && x != left) {
+          ensureComposed?.call(neighborRow + x);
+        }
+        final neighborIndex = neighborRow + x;
+        if (filled[neighborIndex] == 0 && matchesComposed(neighborIndex)) {
+          if (!runOpen) {
+            filled[neighborIndex] = 255;
+            stack.add(neighborIndex);
+            runOpen = true;
+          }
+        } else {
+          runOpen = false;
         }
       }
     }
   }
 
+  // Crop FIRST (with room for the expand growth), then run the expand and
+  // anti-alias passes region-locally: the old grow pass copied and scanned
+  // a full-canvas array per pass.
+  final cropLeft = math.max(0, minX - options.expandPx);
+  final cropTop = math.max(0, minY - options.expandPx);
+  final cropRight = math.min(width - 1, maxX + options.expandPx);
+  final cropBottom = math.min(height - 1, maxY + options.expandPx);
+  final regionWidth = cropRight - cropLeft + 1;
+  final regionHeight = cropBottom - cropTop + 1;
+  final mask = Uint8List(regionWidth * regionHeight);
+  for (var y = 0; y < regionHeight; y += 1) {
+    final sourceStart = (cropTop + y) * width + cropLeft;
+    mask.setRange(
+      y * regionWidth,
+      y * regionWidth + regionWidth,
+      filled,
+      sourceStart,
+    );
+  }
+
   // Expand: grow the region by N pixels (covers anti-aliased ink edges).
   for (var pass = 0; pass < options.expandPx; pass += 1) {
-    final grown = Uint8List.fromList(filled);
-    for (
-      var y = math.max(0, minY - pass - 1);
-      y <= math.min(height - 1, maxY + pass + 1);
-      y += 1
-    ) {
-      for (
-        var x = math.max(0, minX - pass - 1);
-        x <= math.min(width - 1, maxX + pass + 1);
-        x += 1
-      ) {
-        final index = y * width + x;
-        if (filled[index] != 0) {
+    final grown = Uint8List.fromList(mask);
+    for (var y = 0; y < regionHeight; y += 1) {
+      for (var x = 0; x < regionWidth; x += 1) {
+        final index = y * regionWidth + x;
+        if (mask[index] != 0) {
           continue;
         }
         final touches =
-            (x > 0 && filled[index - 1] != 0) ||
-            (x < width - 1 && filled[index + 1] != 0) ||
-            (y > 0 && filled[index - width] != 0) ||
-            (y < height - 1 && filled[index + width] != 0);
+            (x > 0 && mask[index - 1] != 0) ||
+            (x < regionWidth - 1 && mask[index + 1] != 0) ||
+            (y > 0 && mask[index - regionWidth] != 0) ||
+            (y < regionHeight - 1 && mask[index + regionWidth] != 0);
         if (touches) {
           grown[index] = 255;
         }
       }
     }
-    filled.setAll(0, grown);
-    minX = math.max(0, minX - 1);
-    minY = math.max(0, minY - 1);
-    maxX = math.min(width - 1, maxX + 1);
-    maxY = math.min(height - 1, maxY + 1);
-  }
-
-  final regionWidth = maxX - minX + 1;
-  final regionHeight = maxY - minY + 1;
-  final mask = Uint8List(regionWidth * regionHeight);
-  for (var y = 0; y < regionHeight; y += 1) {
-    for (var x = 0; x < regionWidth; x += 1) {
-      mask[y * regionWidth + x] = filled[(minY + y) * width + (minX + x)];
-    }
+    mask.setAll(0, grown);
   }
 
   if (options.antiAlias) {
@@ -339,8 +374,8 @@ FloodFillRegion? floodFillRegion({
   }
 
   return FloodFillRegion(
-    left: minX,
-    top: minY,
+    left: cropLeft,
+    top: cropTop,
     width: regionWidth,
     height: regionHeight,
     mask: mask,
