@@ -1,0 +1,101 @@
+import '../ui/storyboard_timeline_layout.dart';
+import 'cut_id.dart';
+
+/// THE track-global frame axis (R15-①): one structural model of a track's
+/// timeline — cuts occupy [start, end) ranges, the frames between them are
+/// REAL addresses exactly like a layer timeline's empty frames — consumed
+/// by the session's editing playhead, the storyboard AND the timeline.
+/// There is exactly one implementation of "which frame is this globally":
+/// changing the axis changes every panel.
+///
+/// A GAP (or past-the-end) frame is OWNED by the preceding cut: its local
+/// index runs over that cut's end, which is the same runway grammar the
+/// timeline's endless frame axis already speaks. `ownerOf` returns null
+/// only in the leading gap before the first cut.
+class TrackFrameAxis {
+  TrackFrameAxis(this.entries);
+
+  /// The active track's cut ranges in sequence order (the same entries the
+  /// storyboard layout builds — one cumulative pass over leading gaps and
+  /// durations).
+  final List<StoryboardTimelineLayoutEntry> entries;
+
+  bool get isEmpty => entries.isEmpty;
+
+  /// The cut owning [globalFrame]: containing it, or — in a gap / past the
+  /// last cut — the cut BEFORE it (its over-end runway).
+  StoryboardTimelineLayoutEntry? ownerOf(int globalFrame) {
+    StoryboardTimelineLayoutEntry? previous;
+    for (final entry in entries) {
+      if (globalFrame < entry.startFrame) {
+        return previous;
+      }
+      if (globalFrame < entry.endFrame) {
+        return entry;
+      }
+      previous = entry;
+    }
+    return previous;
+  }
+
+  /// Whether [globalFrame] falls between cuts (no cut contains it).
+  bool isGap(int globalFrame) {
+    final owner = ownerOf(globalFrame);
+    return owner == null || globalFrame >= owner.endFrame;
+  }
+
+  StoryboardTimelineLayoutEntry? entryFor(CutId cutId) {
+    for (final entry in entries) {
+      if (entry.cutId == cutId) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  /// The global frame of ([cutId], [localFrame]); null for unknown cuts.
+  int? globalOf(CutId cutId, int localFrame) {
+    final entry = entryFor(cutId);
+    if (entry == null) {
+      return null;
+    }
+    return entry.startFrame + localFrame;
+  }
+
+  /// ([cutId], cut-local frame) for [globalFrame] under the owner rule;
+  /// null in the leading gap before the first cut.
+  ({CutId cutId, int localFrame})? localOf(int globalFrame) {
+    final owner = ownerOf(globalFrame);
+    if (owner == null) {
+      return null;
+    }
+    return (cutId: owner.cutId, localFrame: globalFrame - owner.startFrame);
+  }
+
+  /// The last local frame of [cutId]'s TERRITORY — its frames plus its
+  /// trailing gap; null for the last cut (endless runway) or unknown cuts.
+  int? territoryLastLocalOf(CutId cutId) {
+    for (var index = 0; index < entries.length - 1; index += 1) {
+      if (entries[index].cutId == cutId) {
+        return entries[index + 1].startFrame - entries[index].startFrame - 1;
+      }
+    }
+    return null;
+  }
+
+  /// ([cutId], [localFrame]) as a global frame, clamped into the cut's
+  /// territory — a stale over-end local index never addresses the next
+  /// cut. Null for unknown cuts.
+  int? clampedGlobalOf(CutId cutId, int localFrame) {
+    final entry = entryFor(cutId);
+    if (entry == null) {
+      return null;
+    }
+    final local = localFrame < 0 ? 0 : localFrame;
+    final territoryLast = territoryLastLocalOf(cutId);
+    return entry.startFrame +
+        (territoryLast == null || local <= territoryLast
+            ? local
+            : territoryLast);
+  }
+}
