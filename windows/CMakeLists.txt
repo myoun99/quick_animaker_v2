@@ -52,6 +52,11 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# QuickAnimaker native engine core (R18): the portable C hot loops,
+# bundled beside the executable and loaded via dart:ffi (with a Dart
+# reference fallback when absent).
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../native" "qa_engine_build")
+
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
@@ -86,6 +91,9 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+install(TARGETS qa_engine RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
