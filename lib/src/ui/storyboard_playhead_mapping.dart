@@ -55,12 +55,13 @@ int? storyboardPlayheadFrame(
       ? session.playback.position
       : null;
   if (playbackPosition == null) {
-    // Editing playhead: the ONE axis model's territory-clamped global
-    // (over-end is legal inside the trailing gap; the last cut's runway
-    // is endless) — same math the session's editingGlobalFrame speaks.
-    return TrackFrameAxis(
-      layout,
-    ).clampedGlobalOf(session.activeCutId, session.currentFrameIndex);
+    // Editing playhead: a GAP PARKING reads its exact stored global
+    // (R16-⑥); otherwise the ONE axis model's territory-clamped global —
+    // the same math the session's editingGlobalFrame speaks.
+    return session.gapParkedGlobalFrame ??
+        TrackFrameAxis(
+          layout,
+        ).clampedGlobalOf(session.activeCutId, session.currentFrameIndex);
   }
   for (final entry in layout) {
     if (entry.cutId == playbackPosition.cutId) {

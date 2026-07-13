@@ -175,10 +175,22 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // machinery) — the editing chrome (layer stacks, overlays, gizmo)
     // holds off exactly like during playback.
     final isScrubbing = !isPlaybackActive && session.frameScrubActive.value;
-    final layerStack = session.editingCanvasStack;
+    // R16-⑥ (user semantics): a gap has NO cut — the canvas shows a
+    // paperless VOID: no editable cel, no layer content, no paper.
+    final inGap =
+        !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
+    final layerStack = inGap
+        ? (
+            below: const <CanvasLayerImageRequest>[],
+            above: const <CanvasLayerImageRequest>[],
+            activeLayerOpacity: 1.0,
+          )
+        : session.editingCanvasStack;
     final showAboveLayers =
         !isPlaybackActive && !isScrubbing && layerStack.above.isNotEmpty;
-    final selection = isCameraLayerActive
+    final selection = inGap
+        ? null
+        : isCameraLayerActive
         ? session.cameraBackdropSelection
         : session.activeBrushEditorSelection;
     // The layer shown in the interactive view draws POSED (always-applied
@@ -296,13 +308,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       ...layerStack.below,
                       // Onion ghosts (P2) sit ABOVE the other layers and
                       // directly UNDER the active drawing; playback and
-                      // scrubs never reach here, so they auto-hide.
-                      ...session.onionSkinCanvasRequests(),
+                      // scrubs never reach here, so they auto-hide. A gap
+                      // parking shows the VOID (R16-⑥): no ghosts either.
+                      if (!inGap) ...session.onionSkinCanvasRequests(),
                     ],
                     imageCache: session.layerFrameImageCache,
                     canvasSize: canvasSize,
                     viewport: viewport,
-                    paintPaper: cutPoseSample == null,
+                    // R16-⑥: no cut in a gap — no paper (per-cut papers
+                    // make anything else confusing; the void is the truth).
+                    paintPaper: cutPoseSample == null && !inGap,
                     paperBackground: session.projectBackground,
                   );
                   if (cutPoseSample == null) {
