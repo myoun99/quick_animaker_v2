@@ -26,9 +26,10 @@ class QaNativeEngine {
     this._floodFillStep,
     this._fillPaperRect,
     this._fillComposeTile,
+    this._fillFinishMask,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 5;
+  static const int _abiVersion = 6;
 
   final int Function(
     Pointer<Uint8> tileRow,
@@ -102,6 +103,20 @@ class QaNativeEngine {
     int opacityInt,
   )
   _fillComposeTile;
+
+  final void Function(
+    Pointer<Uint8> filled,
+    int canvasWidth,
+    int cropLeft,
+    int cropTop,
+    int regionWidth,
+    int regionHeight,
+    int expandPx,
+    int antiAlias,
+    Pointer<Uint8> mask,
+    Pointer<Uint8> scratch,
+  )
+  _fillFinishMask;
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -290,6 +305,33 @@ class QaNativeEngine {
               int,
             )
           >('qa_fill_compose_tile');
+      final fillFinishMask = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+            ),
+            void Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+            )
+          >('qa_fill_finish_mask');
       return QaNativeEngine._(
         stampBlendRow,
         dabBlendTile,
@@ -297,6 +339,7 @@ class QaNativeEngine {
         floodFillStep,
         fillPaperRect,
         fillComposeTile,
+        fillFinishMask,
       );
     } on Object {
       return null;
@@ -621,6 +664,54 @@ class QaNativeEngine {
       minY: bounds[2],
       maxY: bounds[3],
     );
+  }
+
+  /// Grow-only region scratches for [finishFillMask]'s double buffer.
+  Pointer<Uint8> _maskScratchA = nullptr;
+  int _maskScratchALength = 0;
+  Pointer<Uint8> _maskScratchB = nullptr;
+  int _maskScratchBLength = 0;
+
+  /// Crop + expand + anti-alias over the native flood mask (A-2d) —
+  /// byte-identical to the Dart tail. Returns a fresh heap mask the
+  /// caller owns.
+  Uint8List finishFillMask({
+    required int canvasWidth,
+    required int cropLeft,
+    required int cropTop,
+    required int regionWidth,
+    required int regionHeight,
+    required int expandPx,
+    required bool antiAlias,
+  }) {
+    final regionLength = regionWidth * regionHeight;
+    if (_maskScratchALength < regionLength) {
+      if (_maskScratchA != nullptr) {
+        calloc.free(_maskScratchA);
+      }
+      _maskScratchA = calloc<Uint8>(regionLength);
+      _maskScratchALength = regionLength;
+    }
+    if (_maskScratchBLength < regionLength) {
+      if (_maskScratchB != nullptr) {
+        calloc.free(_maskScratchB);
+      }
+      _maskScratchB = calloc<Uint8>(regionLength);
+      _maskScratchBLength = regionLength;
+    }
+    _fillFinishMask(
+      _floodFilled,
+      canvasWidth,
+      cropLeft,
+      cropTop,
+      regionWidth,
+      regionHeight,
+      expandPx,
+      antiAlias ? 1 : 0,
+      _maskScratchA,
+      _maskScratchB,
+    );
+    return Uint8List.fromList(_maskScratchA.asTypedList(regionLength));
   }
 
   void _growFloodStack(int liveEntries) {
