@@ -78,7 +78,32 @@ void main() {
         find.byType(InteractiveBrushEditCanvasView),
       );
 
-  testWidgets('a committed seek during a stroke defers the canvas retarget '
+  testWidgets('a selection interaction blocks seeks until it ends (R15-⑤)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: twoFrameProject())),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+
+    session.beginSelectionInteraction();
+    session.selectFrameIndex(1);
+    expect(session.currentFrameIndex, 0, reason: 'seek refused mid-drag');
+    session.scrubFrameIndex(1);
+    expect(session.editingFrameCursor.value, 0, reason: 'scrub refused too');
+
+    session.endSelectionInteraction();
+    session.selectFrameIndex(1);
+    expect(session.currentFrameIndex, 1);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a committed seek during a stroke is REFUSED '
       'and the stroke commits to its ORIGINAL cel', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: twoFrameProject())),
@@ -102,9 +127,15 @@ void main() {
     await gesture.moveBy(const Offset(24, 12));
     await tester.pump();
 
-    // Mid-stroke frame flip: the canvas must NOT retarget under the pen.
+    // Mid-stroke frame flip: R15-⑤ REFUSES the seek outright — the
+    // playhead itself must not move under a live stroke.
     session.selectFrameIndex(1);
     await tester.pump();
+    expect(
+      session.currentFrameIndex,
+      0,
+      reason: 'seeks are blocked while the pen is down',
+    );
     expect(
       viewOf(tester).frameId,
       frameA,
@@ -116,8 +147,11 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    // Pen-up: commit landed on the ORIGINAL cel, then the deferred
-    // retarget swapped the canvas to the seeked frame.
+    // Pen-up: the commit landed on the ORIGINAL cel; a seek AFTER the
+    // stroke works normally again.
+    expect(viewOf(tester).frameId, frameA);
+    session.selectFrameIndex(1);
+    await tester.pumpAndSettle();
     expect(viewOf(tester).frameId, frameB);
     expect(
       session.brushFrameStore

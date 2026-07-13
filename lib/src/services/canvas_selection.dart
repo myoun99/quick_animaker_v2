@@ -6,7 +6,6 @@ import '../models/brush_dab.dart';
 import '../models/brush_paint_command.dart';
 import '../models/brush_paint_command_id.dart';
 import '../models/brush_stamp_image.dart';
-import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
@@ -300,38 +299,28 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     return null;
   }
 
-  // The erase mask must be SQUARE (BrushTipMask contract) — pad centered,
-  // exactly the fill-dab geometry (1:1 at dab size = square size).
-  final square = math.max(width, height);
-  final offsetX = (square - width) ~/ 2;
-  final offsetY = (square - height) ~/ 2;
-  final squareAlpha = Uint8List(square * square);
-  for (var row = 0; row < height; row += 1) {
-    squareAlpha.setRange(
-      (row + offsetY) * square + offsetX,
-      (row + offsetY) * square + offsetX + width,
-      mask,
-      row * width,
-    );
+  // The erase rides the STAMP path too (R15-④): destination-out from the
+  // exact mask bytes — tip-mask erases resample bilinearly and left a
+  // half-alpha ring at the silhouette (the fringe + origin remnant).
+  final eraseAlpha = Uint8List(width * height * 4);
+  for (var index = 0; index < mask.length; index += 1) {
+    eraseAlpha[index * 4 + 3] = mask[index];
   }
-
   final eraseDab = BrushDab(
-    center: CanvasPoint(
-      x: left - offsetX + square / 2,
-      y: top - offsetY + square / 2,
-    ),
+    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
     color: 0xFF000000,
-    size: square.toDouble(),
+    size: math.max(width, height).toDouble(),
     opacity: 1,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,
     pressure: 1,
     sequence: 0,
-    tipMask: BrushTipMask(
+    stamp: BrushStampImage(
       id: 'lift-erase-$liftId',
-      size: square,
-      alpha: squareAlpha,
+      width: width,
+      height: height,
+      rgba: eraseAlpha,
     ),
     erase: true,
   );

@@ -53,6 +53,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
+    this.onSelectionInteractionChanged,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -116,6 +117,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
+
+  /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle (R15-⑤
+  /// seek lock).
+  final ValueChanged<bool>? onSelectionInteractionChanged;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -186,6 +191,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
+      onSelectionInteractionChanged: widget.onSelectionInteractionChanged,
     );
   }
 

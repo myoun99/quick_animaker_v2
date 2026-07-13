@@ -260,6 +260,61 @@ class BrushFrameEditingCoordinator {
     // Undo/redo may fire after the playhead moved on: the command targets
     // the frame it was recorded on, not whatever is active now.
     final key = frameKey ?? _activeFrameKey;
+
+    // R15-④ fast path: rewriting ONLY the newest visible command reverts
+    // its bitmap from the materialization snapshot and re-materializes the
+    // new dabs in place — the full command replay froze heavy cels at
+    // every selection-move release. Byte-equal to the replay by
+    // construction: the snapshot revert is the parity-pinned undo math and
+    // the command is LAST in display order. Falls back to the replay when
+    // the snapshot was budget-trimmed or the command is not newest.
+    final visible = frameStore.frameOrNull(key)?.visibleActivePaintCommands;
+    final state = sessionStore.sessionOrNull(key);
+    if (dabsById.length == 1 &&
+        dabsById.values.single.isNotEmpty &&
+        visible != null &&
+        visible.isNotEmpty &&
+        dabsById.keys.single == visible.last.id &&
+        state != null &&
+        state.canUndo) {
+      final reverted =
+          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
+            sessionState: state,
+            cacheInvalidationSink: _NoopCacheInvalidationSink(),
+          );
+      frameStore.replacePaintCommandDabs(key, dabsById);
+      // Re-commit the new dabs through the ordinary session primitive: the
+      // surface math is the commit path's own, and the pushed
+      // materialization entry keeps the NEXT rewrite of this command on
+      // the fast path too (repeated move gestures stay cheap).
+      final result =
+          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+            sessionState: reverted.sessionState,
+            sequence: BrushDabSequence(dabsById.values.single),
+            layerId: key.layerId,
+            frameId: key.frameId,
+            cacheInvalidationSink: _NoopCacheInvalidationSink(),
+          );
+      final budgetedHistory = trimMaterializationHistoryToByteBudget(
+        result.sessionState.materializationHistoryState,
+        maxBytes: historyPolicy.materializationByteBudget,
+        maxEntries: historyPolicy.userUndoLimit,
+      );
+      final committedState =
+          identical(
+            budgetedHistory,
+            result.sessionState.materializationHistoryState,
+          )
+          ? result.sessionState
+          : result.sessionState.copyWith(
+              materializationHistoryState: budgetedHistory,
+            );
+      final rebuilt = sessionStore.update(key, committedState);
+      _donateSessionSurfaceToDisplayCache(key, rebuilt);
+      _invalidateBrushFrame(cacheInvalidationSink, key);
+      return;
+    }
+
     frameStore.replacePaintCommandDabs(key, dabsById);
     _rebuildSessionFromCommands(key);
     _invalidateBrushFrame(cacheInvalidationSink, key);

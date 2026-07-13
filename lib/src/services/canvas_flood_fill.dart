@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
-import '../models/brush_tip_mask.dart';
+import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
@@ -151,7 +151,11 @@ class LazyCanvasRasterRgb {
     }
     for (final layer in _layers) {
       final surface = layer.surface;
-      final opacity = layer.opacity;
+      // Integer blend (R15-⑥): the per-pixel double multiply/round path
+      // was a whole-canvas-scale cost on big fills; the raster only feeds
+      // seed MATCHING (tolerance compares), so byte-rounded source-over
+      // is exact enough by construction.
+      final opacityInt = (layer.opacity * 255).round();
       final surfaceTileSize = surface.tileSize;
       for (
         var ty = top ~/ surfaceTileSize;
@@ -182,16 +186,21 @@ class LazyCanvasRasterRgb {
             for (var x = clipLeft; x < clipRight; x += 1) {
               final alphaByte = pixels[source + 3];
               if (alphaByte != 0) {
-                final alpha = alphaByte / 255.0 * opacity;
+                final effective = (alphaByte * opacityInt + 127) ~/ 255;
+                final inverse = 255 - effective;
                 rgb[target] =
-                    (pixels[source] * alpha + rgb[target] * (1 - alpha))
-                        .round();
+                    (pixels[source] * effective + rgb[target] * inverse + 127) ~/
+                    255;
                 rgb[target + 1] =
-                    (pixels[source + 1] * alpha + rgb[target + 1] * (1 - alpha))
-                        .round();
+                    (pixels[source + 1] * effective +
+                        rgb[target + 1] * inverse +
+                        127) ~/
+                    255;
                 rgb[target + 2] =
-                    (pixels[source + 2] * alpha + rgb[target + 2] * (1 - alpha))
-                        .round();
+                    (pixels[source + 2] * effective +
+                        rgb[target + 2] * inverse +
+                        127) ~/
+                    255;
               }
               source += 4;
               target += 3;
@@ -417,42 +426,44 @@ BrushDab? buildFillDab({
     return null;
   }
 
-  // Pad the region into the SQUARE mask BrushTipMask requires, centered so
-  // the dab center = the region center (1:1 pixel mapping at dab size =
-  // square size, hardness 1 = no falloff).
-  final square = math.max(region.width, region.height);
-  final offsetX = (square - region.width) ~/ 2;
-  final offsetY = (square - region.height) ~/ 2;
-  final alpha = Uint8List(square * square);
-  for (var y = 0; y < region.height; y += 1) {
-    alpha.setRange(
-      (y + offsetY) * square + offsetX,
-      (y + offsetY) * square + offsetX + region.width,
-      region.mask,
-      y * region.width,
-    );
+  // The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
+  // coverage, drawn 1:1 by the stamp blend path. The old square-padded
+  // tip-mask dab re-sampled the giant mask bilinearly per pixel at every
+  // materialization — a multi-second slice on large fills — and the stamp
+  // is byte-exact by construction.
+  final r = (color >> 16) & 0xFF;
+  final g = (color >> 8) & 0xFF;
+  final b = color & 0xFF;
+  final rgba = Uint8List(region.width * region.height * 4);
+  for (var index = 0; index < region.mask.length; index += 1) {
+    final coverage = region.mask[index];
+    if (coverage == 0) {
+      continue;
+    }
+    final offset = index * 4;
+    rgba[offset] = r;
+    rgba[offset + 1] = g;
+    rgba[offset + 2] = b;
+    rgba[offset + 3] = coverage;
   }
-
-  // The square's canvas top-left is (region.left - offsetX,
-  // region.top - offsetY); the dab covers [center - size/2, center +
-  // size/2], so this center puts the mask exactly over the region.
   return BrushDab(
     center: CanvasPoint(
-      x: region.left - offsetX + square / 2,
-      y: region.top - offsetY + square / 2,
+      x: region.left + region.width / 2,
+      y: region.top + region.height / 2,
     ),
     color: color,
-    size: square.toDouble(),
+    size: math.max(region.width, region.height).toDouble(),
     opacity: 1,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,
     pressure: 1,
     sequence: 0,
-    tipMask: BrushTipMask(
+    stamp: BrushStampImage(
       id: 'fill-${DateTime.now().microsecondsSinceEpoch}',
-      size: square,
-      alpha: alpha,
+      width: region.width,
+      height: region.height,
+      rgba: rgba,
     ),
   );
 }

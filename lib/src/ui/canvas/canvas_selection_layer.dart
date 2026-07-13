@@ -53,6 +53,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onLiftRequested,
+    this.onLiftDabsRewritten,
   });
 
   /// Which selection tool draws new regions (selectRect or lasso).
@@ -88,17 +89,24 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// viewport gestures exactly like during a stroke).
   final ValueChanged<bool>? onDragActiveChanged;
 
-  /// R14-④ bitmap lift: called ONCE per selection shape when the Move
-  /// tool first drags (or nudges) it. The host cuts the shape's PIXELS
-  /// out of the active cel — an erase-mask + stamp dab pair through the
-  /// stroke funnel — and returns the STAMP command's id; the selection
-  /// then owns that single command and every later move translates it
-  /// (the origin is already gone, so "hide the original while moving"
-  /// holds by construction). Null return = the shape covers no pixels:
-  /// the move is a no-op. Without this callback the layer keeps the
-  /// legacy whole-stroke move (focused tests).
-  final BrushPaintCommandId? Function(CanvasSelectionShape shape)?
+  /// R14-④/R15-④ bitmap lift: called ONCE per selection shape when the
+  /// Move tool first drags (or nudges) it. The host commits the shape's
+  /// ERASE (origin pixels vanish immediately) and returns that command's
+  /// id plus the lifted STAMP dab, which the layer floats during the drag
+  /// and lands into the command at release — so the original is never
+  /// visible while moving and a cancelled/zero drag restores it exactly.
+  /// Null return = the shape covers no pixels: the move is a no-op.
+  /// Without this callback the layer keeps the legacy whole-stroke move
+  /// (focused tests).
+  final ({BrushPaintCommandId commandId, BrushDab stampDab})? Function(
+    CanvasSelectionShape shape,
+  )?
   onLiftRequested;
+
+  /// Raw dab rewrite on the lift command (no history entry) — the drag
+  /// lifecycle uses it to suppress/restore the stamp while floating.
+  final void Function(BrushPaintCommandId commandId, List<BrushDab> dabs)?
+  onLiftDabsRewritten;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -161,6 +169,34 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// commits keep it false so a lifted stamp never re-lifts itself.
   bool _shapeNeedsLift = false;
 
+  /// The lift command owning this selection's pixels (R15-④), the stamp
+  /// dab currently FLOATING (removed from the command while dragging so
+  /// the base never shows it — no double image), and the command's dabs
+  /// as they stood before the gesture (the history command's `before`,
+  /// and the cancel restore target).
+  BrushPaintCommandId? _liftCommandId;
+  BrushDab? _pendingLiftStamp;
+  List<BrushDab>? _liftBeforeDabs;
+
+  BrushPaintCommand? _liftCommand() {
+    final id = _liftCommandId;
+    if (id == null) {
+      return null;
+    }
+    for (final command in widget.visibleCommands()) {
+      if (command.id == id) {
+        return command;
+      }
+    }
+    return null;
+  }
+
+  void _clearLiftState() {
+    _liftCommandId = null;
+    _pendingLiftStamp = null;
+    _liftBeforeDabs = null;
+  }
+
   /// The committed region as it stood when a marquee drag started — the
   /// undo record's BEFORE (a cancelled drag restores it).
   CanvasSelectionShape? _shapeBeforeMarquee;
@@ -216,7 +252,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _bindCommands();
     }
     if (oldWidget.frameToken != widget.frameToken) {
-      _resetAll();
+      // Build-phase safety (R15-⑤): this runs inside didUpdateWidget —
+      // the drag-end notify reaches ancestor setState and must defer.
+      _resetAll(deferDragNotify: true);
     }
   }
 
@@ -243,13 +281,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  void _resetAll() {
+  void _resetAll({bool deferDragNotify = false}) {
+    final wasDragging = _dragMode != _DragMode.none;
     setState(() {
+      // Cancel FIRST: a floating lift stamp must land back into its
+      // command before the lift bookkeeping clears.
+      _cancelDrag(notify: wasDragging && !deferDragNotify);
       _shape = null;
       _selectedIds = const {};
+      _clearLiftState();
       _clearTransform();
-      _cancelDrag(notify: _dragMode != _DragMode.none);
     });
+    if (deferDragNotify && wasDragging) {
+      final notify = widget.onDragActiveChanged;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notify?.call(false);
+      });
+    }
     _syncAnts();
   }
 
@@ -376,19 +424,74 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _commitMove(dx: dx, dy: dy);
   }
 
-  /// R14-④: lifts the shape's pixels once per user selection — the host
-  /// commits the erase+stamp pair and the selection re-targets onto the
-  /// stamp command. False = nothing under the shape to move.
+  /// R14-④/R15-④: lifts the shape's pixels once per user selection — the
+  /// host commits the ERASE (origin vanishes) and hands back the stamp,
+  /// which floats until release. False = nothing under the shape to move.
   bool _ensureLifted(CanvasSelectionShape shape) {
     if (!_shapeNeedsLift) {
+      if (_liftCommandId != null) {
+        return _liftCommand() != null;
+      }
       return _selectedIds.isNotEmpty;
     }
-    final stampId = widget.onLiftRequested!(shape);
+    final lift = widget.onLiftRequested!(shape);
     _shapeNeedsLift = false;
-    setState(() {
-      _selectedIds = stampId == null ? const {} : {stampId};
-    });
-    return stampId != null;
+    if (lift == null) {
+      _clearLiftState();
+      setState(() => _selectedIds = const {});
+      return false;
+    }
+    _liftCommandId = lift.commandId;
+    _pendingLiftStamp = lift.stampDab;
+    // Undo of the upcoming move must show the pixels back at the ORIGIN
+    // (visually the pre-lift picture), so the history `before` is the
+    // erase command WITH the stamp at its lift position.
+    final command = _liftCommand();
+    _liftBeforeDabs = [...?command?.sourceDabs, lift.stampDab];
+    setState(() => _selectedIds = {lift.commandId});
+    return true;
+  }
+
+  /// A move gesture on an ALREADY-landed lift: pull the stamp out of the
+  /// command (raw rewrite, no history) so the base stops drawing it — the
+  /// float alone shows the moving pixels, never a double image.
+  void _suppressLiftStampForDrag() {
+    if (_liftCommandId == null || _pendingLiftStamp != null) {
+      return;
+    }
+    final command = _liftCommand();
+    if (command == null) {
+      _clearLiftState();
+      return;
+    }
+    BrushDab? stamp;
+    for (final dab in command.sourceDabs) {
+      if (dab.stamp != null && !dab.erase) {
+        stamp = dab;
+      }
+    }
+    if (stamp == null || widget.onLiftDabsRewritten == null) {
+      return;
+    }
+    _liftBeforeDabs = command.sourceDabs;
+    _pendingLiftStamp = stamp;
+    widget.onLiftDabsRewritten!(command.id, [
+      for (final dab in command.sourceDabs)
+        if (dab.erase || dab.stamp == null) dab,
+    ]);
+  }
+
+  /// Cancel / zero-move release: the floating stamp lands back exactly
+  /// where the gesture found it (raw rewrite, no history entry).
+  void _restoreSuppressedLiftStamp() {
+    final id = _liftCommandId;
+    final before = _liftBeforeDabs;
+    if (id == null || _pendingLiftStamp == null || before == null) {
+      return;
+    }
+    widget.onLiftDabsRewritten?.call(id, before);
+    _pendingLiftStamp = null;
+    _liftBeforeDabs = null;
   }
 
   CanvasPoint _toCanvas(Offset local) =>
@@ -445,6 +548,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         if (!_ensureLifted(shape)) {
           return;
         }
+        // Later gestures: the landed stamp leaves the base for the float.
+        _suppressLiftStampForDrag();
       } else if (_selectedIds.isEmpty) {
         return;
       }
@@ -642,6 +747,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
+    // A cancelled (or zero-move) lift gesture lands the floating stamp
+    // back exactly where the gesture found it.
+    if (_dragMode == _DragMode.move) {
+      _restoreSuppressedLiftStamp();
+    }
     // A CANCELLED marquee restores the region it hid at drag start (a
     // finished one consumed the stash in _finishMarquee).
     if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
@@ -698,6 +808,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       _shape = shape;
       _shapeNeedsLift = shape != null;
+      _clearLiftState();
       _selectedIds = shape == null
           ? const {}
           : selectCommandIdsInShape(
@@ -749,6 +860,51 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void _commitMove({required double dx, required double dy}) {
     final shape = _shape;
     if (shape == null || (dx == 0 && dy == 0)) {
+      return;
+    }
+    // R15-④ lift move: the ERASE stays at the origin forever; only the
+    // stamp translates. A floating (suppressed) stamp lands directly at
+    // the destination in the same rewrite.
+    final liftId = _liftCommandId;
+    if (liftId != null && _selectedIds.contains(liftId)) {
+      final command = _liftCommand();
+      if (command == null) {
+        _clearLiftState();
+        return;
+      }
+      final pending = _pendingLiftStamp;
+      final beforeDabs = _liftBeforeDabs ?? command.sourceDabs;
+      final List<BrushDab> afterDabs;
+      if (pending != null) {
+        afterDabs = [
+          ...command.sourceDabs,
+          pending.copyWith(
+            center: CanvasPoint(
+              x: pending.center.x + dx,
+              y: pending.center.y + dy,
+            ),
+          ),
+        ];
+      } else {
+        afterDabs = [
+          for (final dab in command.sourceDabs)
+            dab.stamp != null && !dab.erase
+                ? dab.copyWith(
+                    center: CanvasPoint(
+                      x: dab.center.x + dx,
+                      y: dab.center.y + dy,
+                    ),
+                  )
+                : dab,
+        ];
+      }
+      _pendingLiftStamp = null;
+      _liftBeforeDabs = null;
+      widget.onTransformCommitted((
+        before: {liftId: beforeDabs},
+        after: {liftId: afterDabs},
+      ));
+      setState(() => _shape = shape.translated(dx: dx, dy: dy));
       return;
     }
     final before = <BrushPaintCommandId, List<BrushDab>>{};
@@ -866,6 +1022,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// committed picture.
   BitmapSurface _buildFloatSurface() {
     var surface = BitmapSurface(canvasSize: widget.canvasSize);
+    // A floating lift stamp IS the moving content (R15-④): the base no
+    // longer draws it, the float draws exactly it.
+    final pending = _pendingLiftStamp;
+    if (pending != null) {
+      return materializeBrushDabSequenceOnBitmapSurface(
+        surface: surface,
+        sequence: BrushDabSequence([pending]),
+      ).surface;
+    }
     for (final command in widget.visibleCommands()) {
       if (!_selectedIds.contains(command.id) || command.sourceDabs.isEmpty) {
         continue;

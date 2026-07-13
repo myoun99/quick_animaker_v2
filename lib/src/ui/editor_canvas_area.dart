@@ -248,6 +248,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // R13-3: a live stroke holds the prerender warmer — composite
           // warming never shares the UI/raster threads with drawing.
           onStrokeInputActiveChanged: session.setBrushInputActive,
+          // R15-⑤: selection drags block seeks/cut switches entirely.
+          onSelectionInteractionChanged: (active) => active
+              ? session.beginSelectionInteraction()
+              : session.endSelectionInteraction(),
           // P5 eyedropper: sample the VISIBLE composite ("pick what you
           // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
           // armed until the user changes tools, Alt-picks keep the

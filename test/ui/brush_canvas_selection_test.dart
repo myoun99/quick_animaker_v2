@@ -173,6 +173,31 @@ void main() {
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
   });
 
+  testWidgets('while dragging, the base holds ONLY the erase — the origin '
+      'is invisible and a zero-move release restores it (R15-④)', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + const Offset(45, 45));
+    await tester.pump();
+    // Mid-drag: the lift command carries the erase but NOT the stamp —
+    // the base never shows the moving pixels (no double image).
+    final midDabs = frameCommands(env.coordinator).last.sourceDabs;
+    expect(midDabs.every((dab) => dab.erase), isTrue);
+
+    // Zero-move release: the stamp lands back at its origin — the picture
+    // is visually intact.
+    await gesture.up();
+    await tester.pump();
+    final restored = frameCommands(env.coordinator).last.sourceDabs;
+    expect(restored.any((dab) => dab.stamp != null && !dab.erase), isTrue);
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 45.5, y: 45.5));
+  });
+
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
     tester,
   ) async {
