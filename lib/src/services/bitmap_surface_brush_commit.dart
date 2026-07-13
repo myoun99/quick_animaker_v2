@@ -103,6 +103,12 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
         canvasHeight: canvasHeight,
         tileSize: tileSize,
         scratchBufferFor: scratchBufferFor,
+        nativeTileFor: nativeTiles == null
+            ? null
+            : (coord) {
+                scratchBufferFor(coord);
+                return nativeTiles[coord]!;
+              },
         changedCoords: changedCoords,
       );
       continue;
@@ -591,6 +597,7 @@ void _blendStampDab({
   required int canvasHeight,
   required int tileSize,
   required Uint8List Function(TileCoord) scratchBufferFor,
+  required QaNativeTileBuffer Function(TileCoord)? nativeTileFor,
   required Set<TileCoord> changedCoords,
 }) {
   final dabOpacity = dab.opacity;
@@ -608,6 +615,17 @@ void _blendStampDab({
   }
   final rgba = stamp.rgba;
 
+  // R18 A-0/A-1.5: the native core blends whole row spans, and both sides
+  // are native memory — the tile scratch is native-backed and the stamp
+  // uploads once per rgba identity (a move session re-commits the SAME
+  // stamp per drag move, so repeats are pure pointer math). Byte-identical
+  // to the Dart loop below (parity-pinned); Dart remains the reference
+  // and the fallback.
+  final native = QaNativeEngine.instance;
+  final stampUpload = (native != null && nativeTileFor != null)
+      ? native.uploadStampBytes(rgba)
+      : null;
+
   for (var y = top; y < bottomExclusive; y += 1) {
     final tileY = y ~/ tileSize;
     final localRowOffset = (y - tileY * tileSize) * tileSize;
@@ -617,23 +635,18 @@ void _blendStampDab({
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
       final coord = TileCoord(x: tileX, y: tileY);
-      final buffer = scratchBufferFor(coord);
       final tileLeft = tileX * tileSize;
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
 
-      // R18 A-0: the native core blends the whole row span in one call —
-      // byte-identical to the Dart loop below (parity-pinned); the Dart
-      // path remains the reference and the fallback.
-      final native = QaNativeEngine.instance;
-      if (native != null) {
-        final changed = native.stampBlendRow(
-          tileRow: buffer,
-          tileOffset:
+      if (stampUpload != null) {
+        final changed = native!.stampBlendRowAt(
+          tilePixels: nativeTileFor!(coord).pointer,
+          tileByteOffset:
               (localRowOffset + (spanLeft - tileLeft)) *
               BitmapTile.bytesPerPixel,
-          stampRow: rgba,
-          stampOffset: (stampRowOffset + (spanLeft - stampLeft)) * 4,
+          stampBytes: stampUpload,
+          stampByteOffset: (stampRowOffset + (spanLeft - stampLeft)) * 4,
           count: spanRightExclusive - spanLeft,
           opacity: dabOpacity,
           erase: dab.erase,
@@ -644,6 +657,7 @@ void _blendStampDab({
         continue;
       }
 
+      final buffer = scratchBufferFor(coord);
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {
         final sourceOffset = (stampRowOffset + (x - stampLeft)) * 4;
         final stampA = rgba[sourceOffset + 3];
