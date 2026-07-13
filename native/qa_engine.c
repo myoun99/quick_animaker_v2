@@ -11,6 +11,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
@@ -775,5 +776,85 @@ QA_EXPORT void qa_fill_compose_tile(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Fill mask finish (R18 A-2d): crop + expand + anti-alias, ported
+// verbatim from the Dart tail (_cropAndFinishFloodRegion). The A-2c
+// verification lab showed these full-region passes (two copies + two
+// whole-region scans in debug Dart) are what actually remains inside
+// the fill.flood probe.
+//
+// Crops the flooded canvas mask to the region, then runs expand_px
+// grow passes and the optional one-pass anti-alias - writing the final
+// coverage into `mask` (region_width * region_height). `scratch` must
+// be at least the same size (the double buffer the Dart passes copy
+// through).
+QA_EXPORT void qa_fill_finish_mask(
+    const uint8_t* filled,
+    int32_t canvas_width,
+    int32_t crop_left,
+    int32_t crop_top,
+    int32_t region_width,
+    int32_t region_height,
+    int32_t expand_px,
+    int32_t anti_alias,
+    uint8_t* mask,
+    uint8_t* scratch) {
+  for (int32_t y = 0; y < region_height; y += 1) {
+    memcpy(
+        mask + (ptrdiff_t)y * region_width,
+        filled + (ptrdiff_t)(crop_top + y) * canvas_width + crop_left,
+        (size_t)region_width);
+  }
+
+  // Expand: grow the region by one pixel per pass (4-neighbor), reading
+  // the previous generation while writing the next - identical to the
+  // Dart grown-copy semantics.
+  for (int32_t pass = 0; pass < expand_px; pass += 1) {
+    memcpy(scratch, mask, (size_t)region_width * (size_t)region_height);
+    for (int32_t y = 0; y < region_height; y += 1) {
+      for (int32_t x = 0; x < region_width; x += 1) {
+        const int32_t index = y * region_width + x;
+        if (mask[index] != 0) {
+          continue;
+        }
+        const int touches =
+            (x > 0 && mask[index - 1] != 0) ||
+            (x < region_width - 1 && mask[index + 1] != 0) ||
+            (y > 0 && mask[index - region_width] != 0) ||
+            (y < region_height - 1 && mask[index + region_width] != 0);
+        if (touches) {
+          scratch[index] = 255;
+        }
+      }
+    }
+    memcpy(mask, scratch, (size_t)region_width * (size_t)region_height);
+  }
+
+  if (anti_alias) {
+    // One soft edge pass: boundary mask pixels average their
+    // 4-neighbors; the Dart formula rounds a double division, so this
+    // stays double + llround for byte identity.
+    memcpy(scratch, mask, (size_t)region_width * (size_t)region_height);
+    for (int32_t y = 0; y < region_height; y += 1) {
+      for (int32_t x = 0; x < region_width; x += 1) {
+        const int32_t index = y * region_width + x;
+        const int32_t center = mask[index];
+        const int32_t left_v = x > 0 ? mask[index - 1] : 0;
+        const int32_t right_v = x < region_width - 1 ? mask[index + 1] : 0;
+        const int32_t up_v = y > 0 ? mask[index - region_width] : 0;
+        const int32_t down_v =
+            y < region_height - 1 ? mask[index + region_width] : 0;
+        const int32_t sum = center + left_v + right_v + up_v + down_v;
+        if (sum != center * 5) {
+          const int64_t rounded =
+              llround((double)(center * 3 + (sum - center)) / 7.0);
+          scratch[index] = (uint8_t)rounded;
+        }
+      }
+    }
+    memcpy(mask, scratch, (size_t)region_width * (size_t)region_height);
+  }
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 5; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 6; }

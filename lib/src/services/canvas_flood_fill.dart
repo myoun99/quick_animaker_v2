@@ -353,15 +353,28 @@ FloodFillRegion? floodFillRegion({
       tolerance: tolerance,
       ensureComposed: ensureComposed,
     );
-    return _cropAndFinishFloodRegion(
-      filled: result.filled,
-      width: width,
-      height: height,
-      minX: result.minX,
-      maxX: result.maxX,
-      minY: result.minY,
-      maxY: result.maxY,
-      options: options,
+    // The finish (crop + expand + anti-alias) runs natively too (A-2d):
+    // the verification lab showed these full-region passes were most of
+    // what remained in the fill.flood probe. Same crop math as the Dart
+    // tail below.
+    final cropLeft = math.max(0, result.minX - options.expandPx);
+    final cropTop = math.max(0, result.minY - options.expandPx);
+    final cropRight = math.min(width - 1, result.maxX + options.expandPx);
+    final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+    return FloodFillRegion(
+      left: cropLeft,
+      top: cropTop,
+      width: cropRight - cropLeft + 1,
+      height: cropBottom - cropTop + 1,
+      mask: native.finishFillMask(
+        canvasWidth: width,
+        cropLeft: cropLeft,
+        cropTop: cropTop,
+        regionWidth: cropRight - cropLeft + 1,
+        regionHeight: cropBottom - cropTop + 1,
+        expandPx: options.expandPx,
+        antiAlias: options.antiAlias,
+      ),
     );
   }
 
