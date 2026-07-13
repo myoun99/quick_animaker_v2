@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_stamp_image.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -160,7 +161,8 @@ void main() {
       expect(
         snapshot(nativeResult.surface, canvasSize),
         snapshot(dartResult.surface, canvasSize),
-        reason: 'round $round (erase=$erase opacity=$opacity '
+        reason:
+            'round $round (erase=$erase opacity=$opacity '
             '${width}x$height) must be byte-identical',
       );
       expect(
@@ -169,5 +171,231 @@ void main() {
         reason: 'round $round dirty tiles must agree',
       );
     }
+  });
+
+  test('native generic dab blend == Dart reference, byte for byte '
+      '(randomized, all shape/mask modes)', () {
+    if (!available) {
+      markTestSkipped(
+        'qa_engine.dll not built — run: cmake -S native -B '
+        'build/native_standalone && cmake --build build/native_standalone '
+        '--config Release',
+      );
+      return;
+    }
+    expect(
+      QaNativeEngine.instance,
+      isNotNull,
+      reason: 'the locally built engine must load',
+    );
+
+    const canvasSize = CanvasSize(width: 96, height: 64);
+    final random = Random(20260713);
+
+    BrushTipMask randomMask(String id) {
+      final size = 3 + random.nextInt(22);
+      final alpha = Uint8List(size * size);
+      for (var i = 0; i < alpha.length; i += 1) {
+        final roll = random.nextInt(8);
+        alpha[i] = roll == 0
+            ? 0
+            : roll == 1
+            ? 255
+            : random.nextInt(256);
+      }
+      return BrushTipMask(id: id, size: size, alpha: alpha);
+    }
+
+    CanvasPoint randomCenter() {
+      // Includes off-canvas overhang so region clamping gets exercised.
+      return CanvasPoint(
+        x: random.nextDouble() * (canvasSize.width + 20) - 10,
+        y: random.nextDouble() * (canvasSize.height + 20) - 10,
+      );
+    }
+
+    for (var round = 0; round < 40; round += 1) {
+      final mode = round % 8;
+      final heavy = mode == 6;
+      final anyMask = mode == 7 && random.nextBool();
+      final tipMask = (mode == 4 || mode == 5 || heavy || anyMask)
+          ? randomMask('tip-$round')
+          : null;
+      final dualMask = (heavy || (mode == 7 && random.nextBool()))
+          ? randomMask('dual-$round')
+          : null;
+      final textureMask = (heavy || (mode == 7 && random.nextBool()))
+          ? randomMask('texture-$round')
+          : null;
+      // Mode map: 0 plain round, 1 ellipse, 2 square, 3 rotated rect,
+      // 4 unrotated tip, 5 rotated tip, 6 tip+dual+texture, 7 chaos.
+      final isRoundTip =
+          mode == 0 || mode == 1 || (mode == 7 && random.nextBool());
+      final roundness =
+          (mode == 1 || mode == 3 || mode == 5 || heavy || mode == 7)
+          ? 0.2 + random.nextDouble() * 0.8
+          : 1.0;
+      final angleDegrees = (mode == 3 || mode == 5 || heavy)
+          ? random.nextDouble() * 360.0 - 180.0
+          : (mode == 7 && random.nextBool())
+          ? random.nextDouble() * 90.0
+          : 0.0;
+
+      final dabs = <BrushDab>[];
+      for (var i = 0; i < 3; i += 1) {
+        dabs.add(
+          BrushDab(
+            center: randomCenter(),
+            color:
+                (0xFF000000 |
+                (random.nextInt(256) << 16) |
+                (random.nextInt(256) << 8) |
+                random.nextInt(256)),
+            size: 2.0 + random.nextDouble() * 48.0,
+            opacity: i == 0 ? 1.0 : random.nextDouble(),
+            flow: i == 1 ? 0.5 : 0.05 + random.nextDouble() * 0.95,
+            hardness: random.nextDouble(),
+            tipShape: isRoundTip ? BrushTipShape.round : BrushTipShape.square,
+            pressure: 1,
+            sequence: i,
+            roundness: roundness,
+            angleDegrees: angleDegrees,
+            tipMask: tipMask,
+            dualMask: dualMask,
+            dualMaskScale: dualMask == null
+                ? 1.0
+                : 0.3 + random.nextDouble() * 2.0,
+            dualOffsetU: dualMask == null ? 0.0 : random.nextDouble(),
+            dualOffsetV: dualMask == null ? 0.0 : random.nextDouble(),
+            textureMask: textureMask,
+            textureScale: textureMask == null
+                ? 1.0
+                : 0.3 + random.nextDouble() * 2.0,
+            textureDensity: textureMask == null ? 1.0 : random.nextDouble(),
+            erase: round % 3 == 2 && i > 0,
+          ),
+        );
+      }
+      final sequence = BrushDabSequence(dabs);
+
+      // A partially painted base (built through the Dart reference so both
+      // runs start from the identical surface).
+      QaNativeEngine.debugForceDartFallback = true;
+      final base = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
+        sequence: BrushDabSequence([
+          BrushDab(
+            center: CanvasPoint(x: 30, y: 28),
+            color: 0xFF3366CC,
+            size: 44,
+            opacity: 0.9,
+            flow: 1,
+            hardness: 0.4,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ]),
+      ).surface;
+
+      final dartResult = materializeBrushDabSequenceOnBitmapSurface(
+        surface: base,
+        sequence: sequence,
+      );
+      QaNativeEngine.debugForceDartFallback = false;
+      final nativeResult = materializeBrushDabSequenceOnBitmapSurface(
+        surface: base,
+        sequence: sequence,
+      );
+
+      expect(
+        snapshot(nativeResult.surface, canvasSize),
+        snapshot(dartResult.surface, canvasSize),
+        reason:
+            'round $round (mode $mode roundness=$roundness '
+            'angle=$angleDegrees tip=${tipMask?.size} dual=${dualMask?.size} '
+            'texture=${textureMask?.size}) must be byte-identical',
+      );
+      expect(
+        nativeResult.dirtyTiles.coords.toSet(),
+        dartResult.dirtyTiles.coords.toSet(),
+        reason: 'round $round dirty tiles must agree',
+      );
+    }
+  });
+
+  test('native path handles mixed stamp + generic dab sequences', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    const canvasSize = CanvasSize(width: 96, height: 64);
+    final random = Random(99);
+    final stampRgba = Uint8List(24 * 24 * 4);
+    for (var i = 0; i < stampRgba.length; i += 1) {
+      stampRgba[i] = random.nextInt(256);
+    }
+    final sequence = BrushDabSequence([
+      BrushDab(
+        center: CanvasPoint(x: 20, y: 20),
+        color: 0xFFCC2200,
+        size: 30,
+        opacity: 0.8,
+        flow: 0.9,
+        hardness: 0.5,
+        tipShape: BrushTipShape.round,
+        pressure: 1,
+        sequence: 0,
+      ),
+      BrushDab(
+        center: CanvasPoint(x: 40, y: 30),
+        color: 0xFF000000,
+        size: 24,
+        opacity: 0.7,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 1,
+        stamp: BrushStampImage(
+          id: 'mixed-stamp',
+          width: 24,
+          height: 24,
+          rgba: stampRgba,
+        ),
+      ),
+      BrushDab(
+        center: CanvasPoint(x: 32, y: 26),
+        color: 0xFF000000,
+        size: 26,
+        opacity: 0.6,
+        flow: 1,
+        hardness: 0.3,
+        tipShape: BrushTipShape.round,
+        pressure: 1,
+        sequence: 2,
+        erase: true,
+      ),
+    ]);
+
+    QaNativeEngine.debugForceDartFallback = true;
+    final dartResult = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
+      sequence: sequence,
+    );
+    QaNativeEngine.debugForceDartFallback = false;
+    final nativeResult = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
+      sequence: sequence,
+    );
+
+    expect(
+      snapshot(nativeResult.surface, canvasSize),
+      snapshot(dartResult.surface, canvasSize),
+    );
+    expect(
+      nativeResult.dirtyTiles.coords.toSet(),
+      dartResult.dirtyTiles.coords.toSet(),
+    );
   });
 }

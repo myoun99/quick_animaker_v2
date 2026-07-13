@@ -42,21 +42,51 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   final canvasWidth = surface.canvasSize.width;
   final canvasHeight = surface.canvasSize.height;
   final tileSize = surface.tileSize;
+  final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
 
   // Mutable scratch pixels per touched tile. `BitmapTile.pixels` already
   // returns a defensive copy, so it can be mutated freely; blank tiles start
   // as zeroed buffers without allocating a BitmapTile.
+  //
+  // With the native engine loaded (R18 A-1) the scratch lives in pooled
+  // NATIVE memory: Dart works through a typed-data view (the fallback and
+  // stamp loops run unchanged) while the kernel gets the raw pointer — the
+  // whole dab sequence blends with zero tile copies. BitmapTile's
+  // constructor copies, so handing the view to putTile below stays safe
+  // after the buffers return to the pool.
+  final native = QaNativeEngine.instance;
+  final nativeTiles = native == null ? null : <TileCoord, QaNativeTileBuffer>{};
   final scratchBuffers = <TileCoord, Uint8List>{};
   final changedCoords = <TileCoord>{};
 
   Uint8List scratchBufferFor(TileCoord coord) {
     return scratchBuffers.putIfAbsent(coord, () {
       final tile = surface.tileAt(coord);
+      if (nativeTiles != null) {
+        final buffer = native!.acquireTileBuffer(
+          tileByteLength,
+          zeroed: tile == null,
+        );
+        nativeTiles[coord] = buffer;
+        if (tile != null) {
+          tile.copyPixelsInto(buffer.view);
+        }
+        return buffer.view;
+      }
       if (tile == null) {
-        return Uint8List(tileSize * tileSize * BitmapTile.bytesPerPixel);
+        return Uint8List(tileByteLength);
       }
       return tile.pixels;
     });
+  }
+
+  void releaseNativeTiles() {
+    if (nativeTiles != null) {
+      for (final buffer in nativeTiles.values) {
+        native!.releaseTileBuffer(buffer);
+      }
+      nativeTiles.clear();
+    }
   }
 
   for (final dab in sequence.dabs) {
@@ -211,6 +241,100 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 
     final tileXStart = left ~/ tileSize;
     final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+
+    // Native kernel (R18 A-1): identical pixel visits and float math, one
+    // call per (dab, tile) straight into the native-backed scratch. The
+    // Dart loop below stays byte-for-byte as the reference fallback.
+    if (native != null) {
+      native.prepareDab(
+        centerX: centerX,
+        centerY: centerY,
+        radius: radius,
+        hardRadius: hardRadius,
+        edgeSpan: edgeSpan,
+        minorRadius: minorRadius,
+        tipCos: tipCos,
+        tipSin: tipSin,
+        inverseRoundness: inverseRoundness,
+        dabOpacity: dabOpacity,
+        dabFlow: dabFlow,
+        sourceAlphaNorm: sourceAlphaNorm,
+        radiusSqSkip: radiusSqSkip,
+        textureDensity: textureDensity,
+        textureOneMinusDensity: textureOneMinusDensity,
+        sourceR: sourceR,
+        sourceG: sourceG,
+        sourceB: sourceB,
+        flags:
+            (dabErase ? QaNativeEngine.dabFlagErase : 0) |
+            (isRound ? QaNativeEngine.dabFlagRound : 0) |
+            (isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
+            (isRotatedRect ? QaNativeEngine.dabFlagRotatedRect : 0) |
+            (unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0),
+        regionLeft: left,
+        regionTop: top,
+        tipAlpha: tipMask?.alphaNormalized,
+        tipSize: tipMask?.size ?? 0,
+        tipUTexel0: tipULattice?.texel0,
+        tipUFraction: tipULattice?.fraction,
+        tipUOneMinus: tipULattice?.oneMinusFraction,
+        tipUInRange: tipULattice?.inRange,
+        tipVTexel0: tipVLattice?.texel0,
+        tipVFraction: tipVLattice?.fraction,
+        tipVOneMinus: tipVLattice?.oneMinusFraction,
+        tipVInRange: tipVLattice?.inRange,
+        dualAlpha: dualMask?.alphaNormalized,
+        dualSize: dualMask?.size ?? 0,
+        dualUTexel0: dualULattice?.texel0,
+        dualUTexel1: dualULattice?.texel1,
+        dualUFraction: dualULattice?.fraction,
+        dualUOneMinus: dualULattice?.oneMinusFraction,
+        dualVTexel0: dualVLattice?.texel0,
+        dualVTexel1: dualVLattice?.texel1,
+        dualVFraction: dualVLattice?.fraction,
+        dualVOneMinus: dualVLattice?.oneMinusFraction,
+        texAlpha: textureMask?.alphaNormalized,
+        texSize: textureMask?.size ?? 0,
+        texUTexel0: textureULattice?.texel0,
+        texUTexel1: textureULattice?.texel1,
+        texUFraction: textureULattice?.fraction,
+        texUOneMinus: textureULattice?.oneMinusFraction,
+        texVTexel0: textureVLattice?.texel0,
+        texVTexel1: textureVLattice?.texel1,
+        texVFraction: textureVLattice?.fraction,
+        texVOneMinus: textureVLattice?.oneMinusFraction,
+      );
+      final tileYStart = top ~/ tileSize;
+      final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+      for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
+        final tileTop = tileY * tileSize;
+        final spanTop = math.max(top, tileTop);
+        final spanBottomExclusive = math.min(
+          bottomExclusive,
+          tileTop + tileSize,
+        );
+        for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+          final coord = TileCoord(x: tileX, y: tileY);
+          scratchBufferFor(coord);
+          final buffer = nativeTiles![coord]!;
+          final tileLeft = tileX * tileSize;
+          final changed = native.dabBlendTile(
+            tilePixels: buffer.pointer,
+            tileSize: tileSize,
+            tileLeft: tileLeft,
+            tileTop: tileTop,
+            spanLeft: math.max(left, tileLeft),
+            spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
+            spanTop: spanTop,
+            spanBottomExclusive: spanBottomExclusive,
+          );
+          if (changed) {
+            changedCoords.add(coord);
+          }
+        }
+      }
+      continue;
+    }
 
     for (var y = top; y < bottomExclusive; y += 1) {
       final tileY = y ~/ tileSize;
@@ -424,6 +548,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   }
 
   if (changedCoords.isEmpty) {
+    releaseNativeTiles();
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
@@ -440,11 +565,14 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   var updatedSurface = surface;
   var dirtyTiles = DirtyTileSet.empty();
   for (final coord in sortedCoords) {
+    // BitmapTile's constructor copies the bytes, so native-backed scratch
+    // views are safe to hand over before the buffers return to the pool.
     updatedSurface = updatedSurface.putTile(
       BitmapTile(coord: coord, size: tileSize, pixels: scratchBuffers[coord]!),
     );
     dirtyTiles = dirtyTiles.add(coord);
   }
+  releaseNativeTiles();
 
   return BrushSurfaceMaterialization(
     surface: updatedSurface,

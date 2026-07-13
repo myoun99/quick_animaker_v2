@@ -30,6 +30,12 @@ class BitmapTile {
 
   Uint8List get pixels => Uint8List.fromList(_pixels);
 
+  /// Copies the pixel bytes into [target] without the intermediate copy
+  /// the [pixels] getter makes — the materializer's scratch-seeding path.
+  void copyPixelsInto(Uint8List target) {
+    target.setRange(0, _pixels.length, _pixels);
+  }
+
   bool get isFullyTransparent {
     for (final byte in _pixels) {
       if (byte != 0) return false;
