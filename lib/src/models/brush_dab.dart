@@ -1,5 +1,6 @@
 import 'brush_input_sample.dart';
 import 'brush_settings.dart';
+import 'brush_stamp_image.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
 import 'canvas_point.dart';
@@ -26,6 +27,7 @@ class BrushDab {
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.erase = false,
+    this.stamp,
   }) {
     if (!textureScale.isFinite || textureScale <= 0.0) {
       throw ArgumentError.value(
@@ -133,6 +135,13 @@ class BrushDab {
   /// supplies the source alpha; RGB is ignored.
   final bool erase;
 
+  /// RGBA stamp (R14-④ bitmap lift): when set, the dab draws the stamp's
+  /// pixels 1:1 source-over centered on [center] (no resampling; [opacity]
+  /// still modulates) and every tip/texture/erase field is ignored. [size]
+  /// should be max(stamp.width, stamp.height) so dirty-region math covers
+  /// the rect.
+  final BrushStampImage? stamp;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -154,6 +163,7 @@ class BrushDab {
     double? textureScale,
     double? textureDensity,
     bool? erase,
+    BrushStampImage? stamp,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -176,6 +186,7 @@ class BrushDab {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       erase: erase ?? this.erase,
+      stamp: stamp ?? this.stamp,
     );
   }
 
@@ -200,6 +211,7 @@ class BrushDab {
     'textureScale': textureScale,
     'textureDensity': textureDensity,
     if (erase) 'erase': true,
+    if (stamp != null) 'stamp': stamp!.toJson(),
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -230,6 +242,9 @@ class BrushDab {
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
       erase: json['erase'] as bool? ?? false,
+      stamp: json['stamp'] == null
+          ? null
+          : BrushStampImage.fromJson(json['stamp'] as Map<String, dynamic>),
     );
   }
 
@@ -256,7 +271,8 @@ class BrushDab {
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
-          other.erase == erase;
+          other.erase == erase &&
+          other.stamp == stamp;
 
   @override
   int get hashCode => Object.hashAll([
@@ -280,6 +296,7 @@ class BrushDab {
     textureScale,
     textureDensity,
     erase,
+    stamp,
   ]);
 
   @override
