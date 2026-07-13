@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
 
+import '../models/bitmap_tile.dart';
+
 /// The native engine core's FFI bindings (R18 A-track).
 ///
 /// LOAD-FALLBACK DISCIPLINE: every native function has a Dart REFERENCE
@@ -22,9 +24,11 @@ class QaNativeEngine {
     this._dabBlendTile,
     this._premultiplyRgba,
     this._floodFillStep,
+    this._fillPaperRect,
+    this._fillComposeTile,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 4;
+  static const int _abiVersion = 5;
 
   final int Function(
     Pointer<Uint8> tileRow,
@@ -70,6 +74,34 @@ class QaNativeEngine {
     Pointer<Int32> bounds,
   )
   _floodFillStep;
+
+  final void Function(
+    Pointer<Uint8> rgb,
+    int rasterWidth,
+    int left,
+    int top,
+    int rightExclusive,
+    int bottomExclusive,
+    int paperR,
+    int paperG,
+    int paperB,
+  )
+  _fillPaperRect;
+
+  final void Function(
+    Pointer<Uint8> rgb,
+    int rasterWidth,
+    Pointer<Uint8> tilePixels,
+    int tileSize,
+    int baseX,
+    int baseY,
+    int clipLeft,
+    int clipTop,
+    int clipRightExclusive,
+    int clipBottomExclusive,
+    int opacityInt,
+  )
+  _fillComposeTile;
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -204,11 +236,67 @@ class QaNativeEngine {
               Pointer<Int32>,
             )
           >('qa_flood_fill_step');
+      final fillPaperRect = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+            ),
+            void Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+            )
+          >('qa_fill_paper_rect');
+      final fillComposeTile = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int32,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+            ),
+            void Function(
+              Pointer<Uint8>,
+              int,
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+            )
+          >('qa_fill_compose_tile');
       return QaNativeEngine._(
         stampBlendRow,
         dabBlendTile,
         premultiplyRgba,
         floodFillStep,
+        fillPaperRect,
+        fillComposeTile,
       );
     } on Object {
       return null;
@@ -331,6 +419,73 @@ class QaNativeEngine {
       height: height,
       tilesX: tilesX,
       composeTileShift: shift,
+    );
+  }
+
+  /// Persistent grow-only scratch for [fillComposeTile]'s source tile.
+  Pointer<Uint8> _composeTileScratch = nullptr;
+  int _composeTileScratchLength = 0;
+
+  /// Fills a rect of the native fill raster with the paper color
+  /// (A-2c) — identical to the Dart paper loop.
+  void fillPaperRect({
+    required QaFloodNativeHandles handles,
+    required int left,
+    required int top,
+    required int rightExclusive,
+    required int bottomExclusive,
+    required int paperR,
+    required int paperG,
+    required int paperB,
+  }) {
+    _fillPaperRect(
+      _floodRgb,
+      handles.width,
+      left,
+      top,
+      rightExclusive,
+      bottomExclusive,
+      paperR,
+      paperG,
+      paperB,
+    );
+  }
+
+  /// Integer source-over of one surface-tile clip onto the native fill
+  /// raster (A-2c) — byte-identical to the Dart compose loop. The tile
+  /// bytes are staged once through a persistent scratch.
+  void fillComposeTile({
+    required QaFloodNativeHandles handles,
+    required BitmapTile tile,
+    required int baseX,
+    required int baseY,
+    required int clipLeft,
+    required int clipTop,
+    required int clipRightExclusive,
+    required int clipBottomExclusive,
+    required int opacityInt,
+  }) {
+    final byteLength = tile.size * tile.size * BitmapTile.bytesPerPixel;
+    if (_composeTileScratchLength < byteLength) {
+      if (_composeTileScratch != nullptr) {
+        calloc.free(_composeTileScratch);
+      }
+      _composeTileScratch = calloc<Uint8>(byteLength);
+      _composeTileScratchLength = byteLength;
+    }
+    tile.copyPixelsInto(_composeTileScratch.asTypedList(byteLength));
+    _fillComposeTile(
+      _floodRgb,
+      handles.width,
+      _composeTileScratch,
+      tile.size,
+      baseX,
+      baseY,
+      clipLeft,
+      clipTop,
+      clipRightExclusive,
+      clipBottomExclusive,
+      opacityInt,
     );
   }
 

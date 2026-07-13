@@ -12,7 +12,14 @@ import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
 import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
@@ -536,6 +543,127 @@ void main() {
         reason: 'round $round mask must be byte-identical',
       );
     }
+  });
+
+  test('native fill compose == Dart reference, byte for byte '
+      '(layers, opacity, sparse tiles)', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    const canvasSize = CanvasSize(width: 600, height: 520);
+
+    BitmapSurface randomSurface(int seed) {
+      final surfaceRandom = Random(seed);
+      const tileSize = 64;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var ty = 0; ty < (canvasSize.height + 63) ~/ 64; ty += 1) {
+        for (var tx = 0; tx < (canvasSize.width + 63) ~/ 64; tx += 1) {
+          if (surfaceRandom.nextInt(3) == 0) {
+            continue; // Sparse: some coordinates stay empty.
+          }
+          final pixels = Uint8List(tileSize * tileSize * 4);
+          for (var i = 0; i < pixels.length; i += 1) {
+            final roll = surfaceRandom.nextInt(6);
+            pixels[i] = roll == 0
+                ? 0
+                : roll == 1
+                ? 255
+                : surfaceRandom.nextInt(256);
+          }
+          final coord = TileCoord(x: tx, y: ty);
+          tiles[coord] = BitmapTile(
+            coord: coord,
+            size: tileSize,
+            pixels: pixels,
+          );
+        }
+      }
+      return BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+    }
+
+    Frame frame(String id) =>
+        Frame(id: FrameId(id), duration: 1, strokes: const []);
+    Layer layerWith(String id, double opacity) => Layer(
+      id: LayerId(id),
+      name: id,
+      opacity: opacity,
+      frames: [frame('$id-frame')],
+      timeline: {0: TimelineExposure.drawing(FrameId('$id-frame'), length: 1)},
+    );
+    final cut = Cut(
+      id: const CutId('cut'),
+      name: 'Cut',
+      layers: [layerWith('below', 1.0), layerWith('above', 0.55)],
+      duration: 24,
+      canvasSize: canvasSize,
+    );
+    final surfaces = {
+      const LayerId('below'): randomSurface(1),
+      const LayerId('above'): randomSurface(2),
+    };
+
+    LazyCanvasRasterRgb rasterFor() => LazyCanvasRasterRgb(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => surfaces[layer.id],
+    );
+    void composeAll(LazyCanvasRasterRgb raster) {
+      for (var y = 0; y < canvasSize.height; y += 256) {
+        for (var x = 0; x < canvasSize.width; x += 256) {
+          raster.ensureComposedAt(y * canvasSize.width + x);
+        }
+      }
+    }
+
+    QaNativeEngine.debugForceDartFallback = true;
+    final dartRaster = rasterFor();
+    composeAll(dartRaster);
+    QaNativeEngine.debugForceDartFallback = false;
+    final nativeRaster = rasterFor();
+    composeAll(nativeRaster);
+
+    expect(
+      Uint8List.fromList(nativeRaster.rgb),
+      Uint8List.fromList(dartRaster.rgb),
+      reason: 'composed raster must be byte-identical',
+    );
+
+    // End to end: the whole fill tap (compose + flood + stamp build)
+    // must produce the identical dab through both paths.
+    QaNativeEngine.debugForceDartFallback = true;
+    final dartDab = buildFillDab(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => surfaces[layer.id],
+      point: CanvasPoint(x: 300, y: 260),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(tolerance: 40),
+    );
+    QaNativeEngine.debugForceDartFallback = false;
+    final nativeDab = buildFillDab(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => surfaces[layer.id],
+      point: CanvasPoint(x: 300, y: 260),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(tolerance: 40),
+    );
+
+    expect(nativeDab, isNotNull);
+    expect(dartDab, isNotNull);
+    expect(nativeDab!.center, dartDab!.center);
+    expect(nativeDab.stamp!.width, dartDab.stamp!.width);
+    expect(nativeDab.stamp!.height, dartDab.stamp!.height);
+    expect(
+      nativeDab.stamp!.rgba,
+      dartDab.stamp!.rgba,
+      reason: 'the whole fill tap must be byte-identical end to end',
+    );
   });
 
   test('native premultiply == Dart reference, byte for byte (randomized)', () {

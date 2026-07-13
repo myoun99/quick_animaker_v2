@@ -712,5 +712,68 @@ QA_EXPORT int32_t qa_flood_fill_step(
   return candidate_count;
 }
 
+// ---------------------------------------------------------------------------
+// Fill raster compose (R18 A-2c): LazyCanvasRasterRgb's per-tile compose
+// ported verbatim - the clean-run lab showed the lazy compose (paper
+// fill + integer source-over of layer tiles onto the RGB raster) is
+// most of what remains inside the fill.flood probe now that the flood
+// itself is native.
+
+// Fills a raster rect with the paper color (RGB, 3 bytes per pixel).
+QA_EXPORT void qa_fill_paper_rect(
+    uint8_t* rgb,
+    int32_t raster_width,
+    int32_t left,
+    int32_t top,
+    int32_t right_exclusive,
+    int32_t bottom_exclusive,
+    int32_t paper_r,
+    int32_t paper_g,
+    int32_t paper_b) {
+  for (int32_t y = top; y < bottom_exclusive; y += 1) {
+    uint8_t* dst = rgb + ((ptrdiff_t)y * raster_width + left) * 3;
+    for (int32_t x = left; x < right_exclusive; x += 1) {
+      dst[0] = (uint8_t)paper_r;
+      dst[1] = (uint8_t)paper_g;
+      dst[2] = (uint8_t)paper_b;
+      dst += 3;
+    }
+  }
+}
+
+// Integer source-over of one RGBA surface-tile clip onto the RGB raster
+// (byte-rounded, exactly the Dart loop: effective = (a*o+127)/255 etc.).
+QA_EXPORT void qa_fill_compose_tile(
+    uint8_t* rgb,
+    int32_t raster_width,
+    const uint8_t* tile_pixels,
+    int32_t tile_size,
+    int32_t base_x,
+    int32_t base_y,
+    int32_t clip_left,
+    int32_t clip_top,
+    int32_t clip_right_exclusive,
+    int32_t clip_bottom_exclusive,
+    int32_t opacity_int) {
+  for (int32_t y = clip_top; y < clip_bottom_exclusive; y += 1) {
+    const uint8_t* src =
+        tile_pixels +
+        ((ptrdiff_t)(y - base_y) * tile_size + (clip_left - base_x)) * 4;
+    uint8_t* dst = rgb + ((ptrdiff_t)y * raster_width + clip_left) * 3;
+    for (int32_t x = clip_left; x < clip_right_exclusive; x += 1) {
+      const int32_t alpha = src[3];
+      if (alpha != 0) {
+        const int32_t effective = (alpha * opacity_int + 127) / 255;
+        const int32_t inverse = 255 - effective;
+        dst[0] = (uint8_t)((src[0] * effective + dst[0] * inverse + 127) / 255);
+        dst[1] = (uint8_t)((src[1] * effective + dst[1] * inverse + 127) / 255);
+        dst[2] = (uint8_t)((src[2] * effective + dst[2] * inverse + 127) / 255);
+      }
+      src += 4;
+      dst += 3;
+    }
+  }
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 4; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 5; }
