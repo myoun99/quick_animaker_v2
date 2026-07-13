@@ -4,8 +4,7 @@
 /// (playhead clamp on tab switch) share one implementation.
 library;
 
-import 'dart:math' as math;
-
+import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'storyboard_timeline_layout.dart';
@@ -55,29 +54,19 @@ int? storyboardPlayheadFrame(
   final playbackPosition = session.playback.isActive
       ? session.playback.position
       : null;
-  final cutId = playbackPosition?.cutId ?? session.activeCutId;
-  final localFrame =
-      playbackPosition?.localFrameIndex ?? session.currentFrameIndex;
-  for (var index = 0; index < layout.length; index += 1) {
-    final entry = layout[index];
-    if (entry.cutId == cutId) {
-      final isLastCut = index == layout.length - 1;
-      if (playbackPosition == null) {
-        // Editing playhead: over-end is LEGAL — the trailing gap is the
-        // cut's runway (gap landing, R14-①), and the last cut's runway is
-        // endless. Mid-track over-end clamps to the gap so a stale index
-        // never paints on top of the next cut.
-        final local = math.max(0, localFrame);
-        return entry.startFrame +
-            (isLastCut
-                ? local
-                : math.min(
-                    local,
-                    layout[index + 1].startFrame - entry.startFrame - 1,
-                  ));
-      }
+  if (playbackPosition == null) {
+    // Editing playhead: the ONE axis model's territory-clamped global
+    // (over-end is legal inside the trailing gap; the last cut's runway
+    // is endless) — same math the session's editingGlobalFrame speaks.
+    return TrackFrameAxis(
+      layout,
+    ).clampedGlobalOf(session.activeCutId, session.currentFrameIndex);
+  }
+  for (final entry in layout) {
+    if (entry.cutId == playbackPosition.cutId) {
       final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
-      return entry.startFrame + localFrame.clamp(0, maxLocal);
+      return entry.startFrame +
+          playbackPosition.localFrameIndex.clamp(0, maxLocal);
     }
   }
   return null;
@@ -103,39 +92,17 @@ bool storyboardFrameCached(
   return false;
 }
 
-/// The layout entry that OWNS [globalFrame]: the cut containing it, or —
-/// inside a gap — the cut BEFORE it (a trailing gap is the preceding
-/// cut's over-end runway, R14-①: the editing playhead lands in gaps as an
-/// over-end frame of that cut, the same grammar as the last cut's endless
-/// runway). Null only in the leading gap before the first cut, which has
-/// no preceding cut to run over.
+/// The layout entry that OWNS [globalFrame] — delegates to the ONE
+/// structural axis model ([TrackFrameAxis.ownerOf], R15-①).
 StoryboardTimelineLayoutEntry? storyboardEntryOwningFrame(
   List<StoryboardTimelineLayoutEntry> layout,
   int globalFrame,
-) {
-  StoryboardTimelineLayoutEntry? previous;
-  for (final entry in layout) {
-    if (globalFrame < entry.startFrame) {
-      return previous;
-    }
-    if (globalFrame < entry.endFrame) {
-      return entry;
-    }
-    previous = entry;
-  }
-  return previous;
-}
+) => TrackFrameAxis(layout).ownerOf(globalFrame);
 
-/// Ruler seeks: playback seeks the clock, editing selects cut + frame;
-/// beyond a cut's end — a GAP or past the last cut — the editing playhead
-/// LANDS there as the owning cut's over-end frame (R14-①), exactly like
-/// clicking past the cut end in the timeline. Playback seeks land in gaps
-/// directly (background frame).
+/// Ruler seeks: playback seeks the clock; EDITING seeks are the session's
+/// own global-axis seek ([EditorSessionManager.selectGlobalFrame]) — the
+/// storyboard adds nothing of its own (R15-①: one model, both panels).
 void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
-  final layout = storyboardActiveTrackLayout(session);
-  if (layout.isEmpty) {
-    return;
-  }
   final playback = session.playback;
   if (playback.isActive) {
     if (playback.scope == PlaybackScope.allCuts) {
@@ -144,7 +111,7 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     }
     // Single-cut playback: its playlist is rebased to frame 0, and seeks
     // outside the playing cut are a no-op.
-    for (final entry in layout) {
+    for (final entry in storyboardActiveTrackLayout(session)) {
       if (globalFrame >= entry.startFrame &&
           globalFrame < entry.endFrame &&
           entry.cutId == playback.position?.cutId) {
@@ -154,43 +121,18 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     }
     return;
   }
-  final owner = storyboardEntryOwningFrame(layout, globalFrame);
-  if (owner == null) {
-    // The leading gap before the FIRST cut: local frames cannot go
-    // negative, so land on its first frame.
-    final first = layout.first;
-    if (first.cutId != session.activeCutId) {
-      session.selectCut(first.cutId);
-    }
-    session.selectFrameIndex(0);
-    return;
-  }
-  if (owner.cutId != session.activeCutId) {
-    session.selectCut(owner.cutId);
-  }
-  session.selectFrameIndex(globalFrame - owner.startFrame);
+  session.selectGlobalFrame(globalFrame);
 }
 
 /// Ruler drag moves: playback keeps seeking the clock per move; editing
-/// scrubs ride the session cursor path inside the ACTIVE cut (no notify,
-/// canvas preview follows) — including into its trailing gap (over-end
-/// cursor) — and fall back to the full seek only when the drag crosses
-/// into another cut's territory: the cut switch is a real selection.
+/// scrubs are the session's global-axis scrub (cursor path inside the
+/// active cut's territory, full seek on cut crossings).
 void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   if (session.playback.isActive) {
     seekStoryboardGlobalFrame(session, globalFrame);
     return;
   }
-  final layout = storyboardActiveTrackLayout(session);
-  if (layout.isEmpty) {
-    return;
-  }
-  final owner = storyboardEntryOwningFrame(layout, globalFrame);
-  if (owner == null || owner.cutId != session.activeCutId) {
-    seekStoryboardGlobalFrame(session, globalFrame);
-    return;
-  }
-  session.scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
+  session.scrubGlobalFrame(globalFrame);
 }
 
 /// The storyboard ruler drag's release: commits the scrubbed playhead once
@@ -209,19 +151,12 @@ void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (session.playback.isActive) {
     return;
   }
-  final layout = storyboardActiveTrackLayout(session);
-  if (layout.isEmpty || layout.last.cutId == session.activeCutId) {
-    return;
-  }
-  for (var index = 0; index < layout.length - 1; index += 1) {
-    final entry = layout[index];
-    if (entry.cutId != session.activeCutId) {
-      continue;
-    }
-    final maxLocal = layout[index + 1].startFrame - entry.startFrame - 1;
-    if (maxLocal >= 0 && session.currentFrameIndex > maxLocal) {
-      session.selectFrameIndex(maxLocal);
-    }
-    return;
+  final maxLocal = TrackFrameAxis(
+    storyboardActiveTrackLayout(session),
+  ).territoryLastLocalOf(session.activeCutId);
+  if (maxLocal != null &&
+      maxLocal >= 0 &&
+      session.currentFrameIndex > maxLocal) {
+    session.selectFrameIndex(maxLocal);
   }
 }

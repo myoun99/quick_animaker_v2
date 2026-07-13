@@ -108,6 +108,36 @@ void main() {
     expect(s.currentFrameIndex, aEnd + 2);
   });
 
+  test('R15-①: the session speaks the axis natively — selectGlobalFrame '
+      'round-trips through editingGlobalFrame, and the storyboard playhead '
+      'is the SAME number (one model, both panels)', () {
+    final (s, first, second, aEnd) = gappedSession();
+    s.selectCut(first);
+
+    for (final global in [0, aEnd - 1, aEnd, aEnd + 3, aEnd + 4, aEnd + 9]) {
+      s.selectGlobalFrame(global);
+      expect(s.editingGlobalFrame, global, reason: 'round trip at $global');
+      expect(
+        storyboardPlayheadFrame(s),
+        global,
+        reason: 'the storyboard reads the same axis at $global',
+      );
+    }
+    // Ownership: gap frames belong to cut-a, cut-b starts at aEnd+4.
+    s.selectGlobalFrame(aEnd + 2);
+    expect(s.activeCutId, first);
+    s.selectGlobalFrame(aEnd + 4);
+    expect(s.activeCutId, second);
+
+    // Territory clamp: a stale over-end local never addresses cut-b.
+    s.selectCut(first);
+    expect(
+      s.trackFrameAxis().clampedGlobalOf(first, aEnd + 400),
+      aEnd + 3,
+      reason: 'mid-track territory ends at the gap\'s last frame',
+    );
+  });
+
   testWidgets('a playback seek lands IN the gap: background frame, no snap', (
     tester,
   ) async {

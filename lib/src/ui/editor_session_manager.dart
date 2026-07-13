@@ -60,6 +60,7 @@ import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
+import '../models/track_frame_axis.dart';
 import 'storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
 import '../services/command.dart';
@@ -3504,6 +3505,80 @@ class EditorSessionManager extends ChangeNotifier {
   /// moves when the pen lifts, never under it.
   bool get editingInteractionBusy =>
       brushInputActive.value || selectionInteractionActive.value;
+
+  // --- Track-global frame axis (R15-①) -----------------------------------
+
+  /// THE structural model of the active track's timeline: cuts occupy
+  /// [start, end) global ranges and the frames between them are REAL
+  /// addresses (a layer timeline's empty frames, at track scale). The
+  /// session playhead, the storyboard and the timeline consume THIS ONE
+  /// axis — change it and every panel changes together.
+  TrackFrameAxis trackFrameAxis() {
+    final layout = buildStoryboardTimelineLayout(repository.requireProject());
+    for (final entry in layout) {
+      if (entry.cutId == activeCutId) {
+        return TrackFrameAxis(
+          layout
+              .where((candidate) => candidate.trackId == entry.trackId)
+              .toList(growable: false),
+        );
+      }
+    }
+    return TrackFrameAxis(layout);
+  }
+
+  /// The editing playhead as a track-global frame. Over-end positions
+  /// clamp to the active cut's TERRITORY (its frames plus its trailing
+  /// gap; the last cut's runway is endless) so a stale local index never
+  /// addresses the next cut.
+  int get editingGlobalFrame =>
+      trackFrameAxis().clampedGlobalOf(activeCutId, currentFrameIndex) ??
+      currentFrameIndex;
+
+  /// THE canonical seek: a global frame in, the owning cut + local frame
+  /// out (a gap = the preceding cut's over-end runway; the leading gap
+  /// before the first cut lands on its frame 0 — no negative locals).
+  void selectGlobalFrame(int globalFrame) {
+    if (editingInteractionBusy) {
+      return;
+    }
+    final axis = trackFrameAxis();
+    if (axis.isEmpty) {
+      return;
+    }
+    final local = axis.localOf(globalFrame);
+    if (local == null) {
+      final first = axis.entries.first;
+      if (first.cutId != activeCutId) {
+        selectCut(first.cutId);
+      }
+      selectFrameIndex(0);
+      return;
+    }
+    if (local.cutId != activeCutId) {
+      selectCut(local.cutId);
+    }
+    selectFrameIndex(local.localFrame);
+  }
+
+  /// Global scrub: rides the cursor path inside the active cut's
+  /// territory, falls back to the full seek when the drag crosses into
+  /// another cut's.
+  void scrubGlobalFrame(int globalFrame) {
+    if (editingInteractionBusy) {
+      return;
+    }
+    final axis = trackFrameAxis();
+    if (axis.isEmpty) {
+      return;
+    }
+    final owner = axis.ownerOf(globalFrame);
+    if (owner == null || owner.cutId != activeCutId) {
+      selectGlobalFrame(globalFrame);
+      return;
+    }
+    scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
+  }
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
 
