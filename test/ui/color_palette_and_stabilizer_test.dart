@@ -53,6 +53,40 @@ void main() {
     expect(addButton, findsOneWidget);
   });
 
+  testWidgets('picking a color KEEPS the active tool (R18 UI-1: the sliced '
+      'color tab must write through the live notifier, never a stale '
+      'captured state)', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+
+    // Open the Color tab first so its (sliced) subtree is built...
+    final tab = find.byKey(const ValueKey<String>('panel-tab-color-wheel'));
+    await tester.ensureVisible(tab);
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+
+    // ...then switch to the eraser — an OFF-SLICE change for the color
+    // tab, so its builder does not re-run.
+    final eraser = find.byKey(const ValueKey<String>('tool-eraser-button'));
+    await tester.ensureVisible(eraser);
+    await tester.tap(eraser);
+    await tester.pumpAndSettle();
+
+    // Picking a color now must recolor WITHOUT reverting the tool.
+    final swatch = find.byKey(const ValueKey<String>('palette-swatch-1'));
+    await tester.ensureVisible(swatch);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool,
+      CanvasTool.eraser,
+      reason: 'a captured toolState written back would revert the switch',
+    );
+    expect(find.text('#E53935'), findsOneWidget);
+  });
+
   testWidgets('the Stabilizer slider lives in Brush Settings', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
