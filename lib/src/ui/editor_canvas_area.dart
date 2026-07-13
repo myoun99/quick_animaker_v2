@@ -251,254 +251,257 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // and reused, and the host's element keeps all its state.
         child: ValueListenableBuilder<BrushToolState>(
           valueListenable: widget.brushToolState,
-          builder: (context, toolState, _) => MainCanvasBrushHost(
-            // Camera mode still needs artwork on screen: fall
-            // back to the first drawn layer at the playhead.
-            selection: selection,
-            canvasSize: session.activeCut.canvasSize,
-            frameStore: session.brushFrameStore,
-            cacheInvalidationSink: session.cacheInvalidationHub,
-            historyManager: session.historyManager,
-            viewport: _canvasViewport,
-            onViewportChanged: (viewport) {
-              setState(() => _canvasViewport = viewport);
-            },
-            selectionLabels: session.canvasSelectionLabels,
-            brushToolState: toolState,
-            fitFocusRect: fitFocusRect,
-            viewCommands: widget.canvasViewCommands,
-            selectionCommands: widget.canvasSelectionCommands,
-            // R13-3: a live stroke holds the prerender warmer — composite
-            // warming never shares the UI/raster threads with drawing.
-            onStrokeInputActiveChanged: session.setBrushInputActive,
-            // R15-⑤: selection drags block seeks/cut switches entirely.
-            onSelectionInteractionChanged: (active) => active
-                ? session.beginSelectionInteraction()
-                : session.endSelectionInteraction(),
-            // P5 eyedropper: sample the VISIBLE composite ("pick what you
-            // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
-            // armed until the user changes tools, Alt-picks keep the
-            // painting tool.
-            sampleColorAt: (point) => sampleCompositeColor(
-              cut: session.activeCut,
-              frameIndex: session.currentFrameIndex,
-              surfaceResolver: session.brushSurfaceForLayerFrame,
-              point: point,
-              fxBypassedLayerIds: session.fxBypassedLayerIds,
-              paperColor: session.projectBackground.argb,
-            ),
-            onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
-              widget.brushToolState.value.copyWith(color: color),
-            ),
-            onAltColorPick: (color) => widget.onBrushToolStateChanged?.call(
-              widget.brushToolState.value.copyWith(color: color),
-            ),
-            // P6 fill: the flood region as ONE mask dab; the panel commits it
-            // through the stroke funnel onto the active layer's frame.
-            fillDabAt: (point, color) => buildFillDab(
-              cut: session.activeCut,
-              frameIndex: session.currentFrameIndex,
-              surfaceResolver: session.brushSurfaceForLayerFrame,
-              point: point,
-              color: color,
-              fxBypassedLayerIds: session.fxBypassedLayerIds,
-              options: widget.fillOptions?.value ?? const FloodFillOptions(),
-              paperColor: session.projectBackground.argb,
-            ),
-            // Layers below/above the active one composite around the
-            // interactive view from the layer image cache — this is what makes
-            // the other layers (and their visibility/opacity) visible while
-            // editing. During playback the composite covers everything. Under
-            // an active CUT pose (R9-B) the paper splits out of the wrap: the
-            // canvas is the static stage, only the content rides the pose.
-            viewportUnderlayBuilder: isPlaybackActive || isScrubbing
-                ? null
-                : (context, viewport) {
-                    final below = CanvasLayerStackView(
-                      layers: [
-                        ...layerStack.below,
-                        // Onion ghosts (P2) sit ABOVE the other layers and
-                        // directly UNDER the active drawing; playback and
-                        // scrubs never reach here, so they auto-hide. A gap
-                        // parking shows the VOID (R16-⑥): no ghosts either.
-                        if (!inGap) ...session.onionSkinCanvasRequests(),
-                      ],
-                      imageCache: session.layerFrameImageCache,
-                      canvasSize: canvasSize,
-                      viewport: viewport,
-                      // R16-⑥: no cut in a gap — no paper (per-cut papers
-                      // make anything else confusing; the void is the truth).
-                      paintPaper: cutPoseSample == null && !inGap,
-                      paperBackground: session.projectBackground,
-                    );
-                    if (cutPoseSample == null) {
-                      return below;
-                    }
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CanvasLayerStackView(
-                            layers: const [],
-                            imageCache: session.layerFrameImageCache,
-                            canvasSize: canvasSize,
-                            viewport: viewport,
-                            paintPaper: true,
-                            paperBackground: session.projectBackground,
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: _wrapInCutPose(
-                            below,
-                            sample: cutPoseSample,
-                            canvasSize: canvasSize,
-                            viewport: viewport,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-            interactiveContentOpacity: layerStack.activeLayerOpacity,
-            interactiveContentPose: interactiveWrapPose,
-            // The playback view renders the camera framing itself; the editing
-            // overlay would show a stale playhead pose on top of it. A scrub
-            // keeps the CAMERA overlay only — the preview is the current view
-            // moving through time, so the frame stays visible and rides the
-            // cursor.
-            viewportOverlayBuilder:
-                (showCameraOverlay ||
-                        showAboveLayers ||
-                        showPositionGizmo ||
-                        showFadeWash) &&
-                    !isPlaybackActive
-                ? (context, viewport) => Stack(
-                    children: [
-                      if (showAboveLayers)
-                        Positioned.fill(
-                          // Above-layers ride the cut pose too (R9-B); the
-                          // camera overlay stays unposed (canvas chrome).
-                          child: _wrapInCutPose(
-                            CanvasLayerStackView(
-                              layers: layerStack.above,
+          builder: (context, toolState, _) {
+            return MainCanvasBrushHost(
+              // Camera mode still needs artwork on screen: fall
+              // back to the first drawn layer at the playhead.
+              selection: selection,
+              canvasSize: session.activeCut.canvasSize,
+              frameStore: session.brushFrameStore,
+              cacheInvalidationSink: session.cacheInvalidationHub,
+              historyManager: session.historyManager,
+              viewport: _canvasViewport,
+              onViewportChanged: (viewport) {
+                setState(() => _canvasViewport = viewport);
+              },
+              selectionLabels: session.canvasSelectionLabels,
+              brushToolState: toolState,
+              fitFocusRect: fitFocusRect,
+              viewCommands: widget.canvasViewCommands,
+              selectionCommands: widget.canvasSelectionCommands,
+              // R13-3: a live stroke holds the prerender warmer — composite
+              // warming never shares the UI/raster threads with drawing.
+              onStrokeInputActiveChanged: session.setBrushInputActive,
+              // R15-⑤: selection drags block seeks/cut switches entirely.
+              onSelectionInteractionChanged: (active) => active
+                  ? session.beginSelectionInteraction()
+                  : session.endSelectionInteraction(),
+              // P5 eyedropper: sample the VISIBLE composite ("pick what you
+              // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
+              // armed until the user changes tools, Alt-picks keep the
+              // painting tool.
+              sampleColorAt: (point) => sampleCompositeColor(
+                cut: session.activeCut,
+                frameIndex: session.currentFrameIndex,
+                surfaceResolver: session.brushSurfaceForLayerFrame,
+                point: point,
+                fxBypassedLayerIds: session.fxBypassedLayerIds,
+                paperColor: session.projectBackground.argb,
+              ),
+              onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
+                widget.brushToolState.value.copyWith(color: color),
+              ),
+              onAltColorPick: (color) => widget.onBrushToolStateChanged?.call(
+                widget.brushToolState.value.copyWith(color: color),
+              ),
+              // P6 fill: the flood region as ONE mask dab; the panel commits it
+              // through the stroke funnel onto the active layer's frame.
+              fillDabAt: (point, color) => buildFillDab(
+                cut: session.activeCut,
+                frameIndex: session.currentFrameIndex,
+                surfaceResolver: session.brushSurfaceForLayerFrame,
+                point: point,
+                color: color,
+                fxBypassedLayerIds: session.fxBypassedLayerIds,
+                options: widget.fillOptions?.value ?? const FloodFillOptions(),
+                paperColor: session.projectBackground.argb,
+              ),
+              // Layers below/above the active one composite around the
+              // interactive view from the layer image cache — this is what makes
+              // the other layers (and their visibility/opacity) visible while
+              // editing. During playback the composite covers everything. Under
+              // an active CUT pose (R9-B) the paper splits out of the wrap: the
+              // canvas is the static stage, only the content rides the pose.
+              viewportUnderlayBuilder: isPlaybackActive || isScrubbing
+                  ? null
+                  : (context, viewport) {
+                      final below = CanvasLayerStackView(
+                        layers: [
+                          ...layerStack.below,
+                          // Onion ghosts (P2) sit ABOVE the other layers and
+                          // directly UNDER the active drawing; playback and
+                          // scrubs never reach here, so they auto-hide. A gap
+                          // parking shows the VOID (R16-⑥): no ghosts either.
+                          if (!inGap) ...session.onionSkinCanvasRequests(),
+                        ],
+                        imageCache: session.layerFrameImageCache,
+                        canvasSize: canvasSize,
+                        viewport: viewport,
+                        // R16-⑥: no cut in a gap — no paper (per-cut papers
+                        // make anything else confusing; the void is the truth).
+                        paintPaper: cutPoseSample == null && !inGap,
+                        paperBackground: session.projectBackground,
+                      );
+                      if (cutPoseSample == null) {
+                        return below;
+                      }
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CanvasLayerStackView(
+                              layers: const [],
                               imageCache: session.layerFrameImageCache,
                               canvasSize: canvasSize,
                               viewport: viewport,
+                              paintPaper: true,
+                              paperBackground: session.projectBackground,
                             ),
-                            sample: cutPoseSample,
-                            canvasSize: canvasSize,
-                            viewport: viewport,
                           ),
-                        ),
-                      if (showFadeWash)
-                        Positioned.fill(
-                          // The cut fade as a wash of the fade target color
-                          // over the canvas (R9-C) — above every layer,
-                          // below the chrome; matches playback's overlay at
-                          // (1 − fade).
-                          child: IgnorePointer(
-                            child: CustomPaint(
-                              painter: _CutFadeWashPainter(
-                                viewport: viewport,
+                          Positioned.fill(
+                            child: _wrapInCutPose(
+                              below,
+                              sample: cutPoseSample,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+              interactiveContentOpacity: layerStack.activeLayerOpacity,
+              interactiveContentPose: interactiveWrapPose,
+              // The playback view renders the camera framing itself; the editing
+              // overlay would show a stale playhead pose on top of it. A scrub
+              // keeps the CAMERA overlay only — the preview is the current view
+              // moving through time, so the frame stays visible and rides the
+              // cursor.
+              viewportOverlayBuilder:
+                  (showCameraOverlay ||
+                          showAboveLayers ||
+                          showPositionGizmo ||
+                          showFadeWash) &&
+                      !isPlaybackActive
+                  ? (context, viewport) => Stack(
+                      children: [
+                        if (showAboveLayers)
+                          Positioned.fill(
+                            // Above-layers ride the cut pose too (R9-B); the
+                            // camera overlay stays unposed (canvas chrome).
+                            child: _wrapInCutPose(
+                              CanvasLayerStackView(
+                                layers: layerStack.above,
+                                imageCache: session.layerFrameImageCache,
                                 canvasSize: canvasSize,
-                                color: cutFadeTargetColor(session.activeCut)
-                                    .withValues(
-                                      alpha: (1 - cutFadeOpacity).clamp(
-                                        0.0,
-                                        1.0,
+                                viewport: viewport,
+                              ),
+                              sample: cutPoseSample,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                            ),
+                          ),
+                        if (showFadeWash)
+                          Positioned.fill(
+                            // The cut fade as a wash of the fade target color
+                            // over the canvas (R9-C) — above every layer,
+                            // below the chrome; matches playback's overlay at
+                            // (1 − fade).
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _CutFadeWashPainter(
+                                  viewport: viewport,
+                                  canvasSize: canvasSize,
+                                  color: cutFadeTargetColor(session.activeCut)
+                                      .withValues(
+                                        alpha: (1 - cutFadeOpacity).clamp(
+                                          0.0,
+                                          1.0,
+                                        ),
                                       ),
-                                    ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      if (showCameraOverlay)
-                        Positioned.fill(
-                          // The cursor subscription keeps the frame gliding
-                          // along its animated pose during scrubs (and after
-                          // committed seeks) without any wider rebuild.
-                          child: ListenableBuilder(
-                            listenable: session.editingFrameCursor,
-                            builder: (context, _) => CameraFrameOverlay(
-                              pose: session.cameraPoseAtCurrentFrame,
-                              cameraFrameSize: session.cameraFrameSize,
-                              viewport: viewport,
-                              // Dim belongs to camera-view mode; plain
-                              // manipulation keeps the artwork undimmed.
-                              dimOpacity: widget.cameraViewEnabled.value
-                                  ? widget.cameraDimOpacity.value
-                                  : 0,
-                              interactive: isCameraLayerActive && !isScrubbing,
-                              onPoseCommitted:
-                                  session.setCameraKeyframeAtCurrentFrame,
-                            ),
-                          ),
-                        ),
-                      if (showPositionGizmo)
-                        Positioned.fill(
-                          // The gizmo rides the cut pose too (R9-C): the
-                          // crosshair sits ON the posed picture and the
-                          // wrap's hit-test inverse maps drag deltas back
-                          // into the layer's own canvas space — the
-                          // committed Position stays unposed.
-                          child: _wrapInCutPose(
-                            LayerPositionGizmo(
-                              pose: session.layerPoseAtFrame(
-                                activeLayer,
-                                session.currentFrameIndex,
+                        if (showCameraOverlay)
+                          Positioned.fill(
+                            // The cursor subscription keeps the frame gliding
+                            // along its animated pose during scrubs (and after
+                            // committed seeks) without any wider rebuild.
+                            child: ListenableBuilder(
+                              listenable: session.editingFrameCursor,
+                              builder: (context, _) => CameraFrameOverlay(
+                                pose: session.cameraPoseAtCurrentFrame,
+                                cameraFrameSize: session.cameraFrameSize,
+                                viewport: viewport,
+                                // Dim belongs to camera-view mode; plain
+                                // manipulation keeps the artwork undimmed.
+                                dimOpacity: widget.cameraViewEnabled.value
+                                    ? widget.cameraDimOpacity.value
+                                    : 0,
+                                interactive:
+                                    isCameraLayerActive && !isScrubbing,
+                                onPoseCommitted:
+                                    session.setCameraKeyframeAtCurrentFrame,
                               ),
-                              viewport: viewport,
-                              // ONE key at the playhead per drag (AE rule,
-                              // one undo).
-                              onPositionCommitted: (position) =>
-                                  session.updateLayerTransformTrack(
-                                    activeLayer.id,
-                                    transformTrackWithPositionDragged(
-                                      activeLayer.transformTrack,
-                                      frameIndex: session.currentFrameIndex,
-                                      position: position,
-                                    ),
-                                    description: 'Move ${activeLayer.name}',
-                                  ),
                             ),
-                            sample: cutPoseSample,
-                            canvasSize: canvasSize,
-                            viewport: viewport,
                           ),
-                        ),
-                    ],
-                  )
-                : null,
-            contentOverride: isPlaybackActive
-                ? (context, viewport) => CanvasPlaybackView(
-                    controller: session.playback,
-                    compositeCache: session.cutFrameCompositeCache,
-                    qualityOf: () => session.playbackQuality,
-                    prerenderProgress: session.prerenderScheduler.progress,
-                    cameraViewEnabled: widget.cameraViewEnabled.value,
-                    cameraFrameSize: session.cameraFrameSize,
-                    cameraPoseOf: session.cameraPoseForCut,
-                    cutFxEnabledOf: session.isCutFxEnabled,
-                    cutPictureVisibleOf: session.isCutPictureVisible,
-                    viewport: viewport,
-                    background: session.projectBackground,
-                  )
-                : isScrubbing
-                ? (context, viewport) => CanvasScrubPreview(
-                    frameCursor: session.editingFrameCursor,
-                    compositeCache: session.cutFrameCompositeCache,
-                    cut: session.activeCut,
-                    qualityOf: () => session.playbackQuality,
-                    // The cut pose AND fade follow the editing canvas
-                    // (R9-B/C): fx-gated per cursor frame, identity when off.
-                    cutPoseSampleAt: (frame) =>
-                        session.activeCutCanvasPoseSample(frameIndex: frame),
-                    cutFadeOpacityAt: (frame) =>
-                        session.activeCutEditingFadeOpacity(frameIndex: frame),
-                    fadeColor: cutFadeTargetColor(session.activeCut),
-                    viewport: viewport,
-                    paperBackground: session.projectBackground,
-                  )
-                : null,
-          ),
+                        if (showPositionGizmo)
+                          Positioned.fill(
+                            // The gizmo rides the cut pose too (R9-C): the
+                            // crosshair sits ON the posed picture and the
+                            // wrap's hit-test inverse maps drag deltas back
+                            // into the layer's own canvas space — the
+                            // committed Position stays unposed.
+                            child: _wrapInCutPose(
+                              LayerPositionGizmo(
+                                pose: session.layerPoseAtFrame(
+                                  activeLayer,
+                                  session.currentFrameIndex,
+                                ),
+                                viewport: viewport,
+                                // ONE key at the playhead per drag (AE rule,
+                                // one undo).
+                                onPositionCommitted: (position) =>
+                                    session.updateLayerTransformTrack(
+                                      activeLayer.id,
+                                      transformTrackWithPositionDragged(
+                                        activeLayer.transformTrack,
+                                        frameIndex: session.currentFrameIndex,
+                                        position: position,
+                                      ),
+                                      description: 'Move ${activeLayer.name}',
+                                    ),
+                              ),
+                              sample: cutPoseSample,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                            ),
+                          ),
+                      ],
+                    )
+                  : null,
+              contentOverride: isPlaybackActive
+                  ? (context, viewport) => CanvasPlaybackView(
+                      controller: session.playback,
+                      compositeCache: session.cutFrameCompositeCache,
+                      qualityOf: () => session.playbackQuality,
+                      prerenderProgress: session.prerenderScheduler.progress,
+                      cameraViewEnabled: widget.cameraViewEnabled.value,
+                      cameraFrameSize: session.cameraFrameSize,
+                      cameraPoseOf: session.cameraPoseForCut,
+                      cutFxEnabledOf: session.isCutFxEnabled,
+                      cutPictureVisibleOf: session.isCutPictureVisible,
+                      viewport: viewport,
+                      background: session.projectBackground,
+                    )
+                  : isScrubbing
+                  ? (context, viewport) => CanvasScrubPreview(
+                      frameCursor: session.editingFrameCursor,
+                      compositeCache: session.cutFrameCompositeCache,
+                      cut: session.activeCut,
+                      qualityOf: () => session.playbackQuality,
+                      // The cut pose AND fade follow the editing canvas
+                      // (R9-B/C): fx-gated per cursor frame, identity when off.
+                      cutPoseSampleAt: (frame) =>
+                          session.activeCutCanvasPoseSample(frameIndex: frame),
+                      cutFadeOpacityAt: (frame) => session
+                          .activeCutEditingFadeOpacity(frameIndex: frame),
+                      fadeColor: cutFadeTargetColor(session.activeCut),
+                      viewport: viewport,
+                      paperBackground: session.projectBackground,
+                    )
+                  : null,
+            );
+          },
         ),
       ),
     );

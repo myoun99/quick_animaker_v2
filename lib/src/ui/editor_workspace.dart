@@ -34,6 +34,7 @@ import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
+import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
@@ -615,10 +616,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Tool Library',
           icon: Icons.brush_outlined,
           locked: locked,
-          // Sliced (R18 UI-1): the library follows the active tool and
-          // that tool's remembered preset — nothing else. The preset id
-          // is part of the slice because _applyPreset mutates the map
-          // and relies on the accompanying _brushTool write to repaint.
+          // Sliced (R18 UI-1) + per-tool keep-alive (R18 UI-4): the
+          // library follows the active tool and that tool's remembered
+          // preset — nothing else — and switching back to a tool whose
+          // preset didn't change is a pure index flip (the preset grid
+          // was the other half of the per-switch rebuild cost).
           builder: (context) =>
               SlicedValueListenableBuilder<
                 BrushToolState,
@@ -626,30 +628,38 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               >(
                 valueListenable: _brushTool,
                 slice: (state) => (state.tool, _activePresetByTool[state.tool]),
-                builder: (context, toolState) => ToolLibraryPanel(
-                  tool: toolState.tool,
-                  onToolChanged: (tool) =>
-                      _brushTool.value = _brushTool.value.copyWith(tool: tool),
-                  brushLibrary: ListenableBuilder(
-                    listenable: _presetLibrary,
-                    builder: (context, _) => BrushPresetPanel(
-                      presets: _presetLibrary.presets,
-                      selectedPresetId: _activePresetByTool[toolState.tool],
-                      onPresetApplied: _applyPreset,
-                      onPresetSaveRequested: () {
-                        _presetLibrary.saveCurrent(
-                          _brushTool.value.toBrushSettings(),
-                        );
-                      },
-                      onPresetDeleted: _presetLibrary.delete,
-                      onPresetRenamed: _presetLibrary.rename,
-                      onPresetsReordered: _presetLibrary.reorder,
-                      onPresetImportRequested: () {
-                        unawaited(_importBrushFile());
-                      },
+                builder: (context, toolState) =>
+                    KeyedKeepAliveStack<CanvasTool, BrushPresetId?>(
+                      keys: CanvasTool.values,
+                      activeKey: toolState.tool,
+                      stateOf: () => _activePresetByTool[toolState.tool],
+                      builder: (context) => ToolLibraryPanel(
+                        tool: toolState.tool,
+                        onToolChanged: (tool) => _brushTool.value = _brushTool
+                            .value
+                            .copyWith(tool: tool),
+                        brushLibrary: ListenableBuilder(
+                          listenable: _presetLibrary,
+                          builder: (context, _) => BrushPresetPanel(
+                            presets: _presetLibrary.presets,
+                            selectedPresetId:
+                                _activePresetByTool[toolState.tool],
+                            onPresetApplied: _applyPreset,
+                            onPresetSaveRequested: () {
+                              _presetLibrary.saveCurrent(
+                                _brushTool.value.toBrushSettings(),
+                              );
+                            },
+                            onPresetDeleted: _presetLibrary.delete,
+                            onPresetRenamed: _presetLibrary.rename,
+                            onPresetsReordered: _presetLibrary.reorder,
+                            onPresetImportRequested: () {
+                              unawaited(_importBrushFile());
+                            },
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
               ),
         );
       case EditorWorkspace.brushSettingsTabId:
@@ -660,18 +670,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Tool Settings',
           icon: Icons.tune,
           locked: locked,
+          // Per-tool keep-alive (R18 UI-4): switching back to a tool whose
+          // settings didn't change is a pure index flip — the frozen-panel
+          // experiment showed these per-switch rebuilds were the bulk of
+          // the tool-switch jank. Each tool's panel also keeps its own
+          // scroll position, CSP-style.
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _brushTool,
             builder: (context, toolState, _) =>
                 ValueListenableBuilder<FloodFillOptions>(
                   valueListenable: _fillOptions,
-                  builder: (context, fillOptions, _) => ToolSettingsPanel(
-                    state: toolState,
-                    onChanged: (state) => _brushTool.value = state,
-                    fillOptions: fillOptions,
-                    onFillOptionsChanged: (options) =>
-                        _fillOptions.value = options,
-                  ),
+                  builder: (context, fillOptions, _) =>
+                      KeyedKeepAliveStack<
+                        CanvasTool,
+                        (BrushToolState, FloodFillOptions)
+                      >(
+                        keys: CanvasTool.values,
+                        activeKey: toolState.tool,
+                        stateOf: () => (toolState, fillOptions),
+                        builder: (context) => ToolSettingsPanel(
+                          state: toolState,
+                          onChanged: (state) => _brushTool.value = state,
+                          fillOptions: fillOptions,
+                          onFillOptionsChanged: (options) =>
+                              _fillOptions.value = options,
+                        ),
+                      ),
                 ),
           ),
         );
