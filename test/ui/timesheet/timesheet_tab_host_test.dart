@@ -22,6 +22,8 @@ void main() {
     addTearDown(session.dispose);
     inkController = TimesheetInkController();
     addTearDown(inkController.dispose);
+    final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    addTearDown(brushTool.dispose);
 
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -38,7 +40,7 @@ void main() {
               viewport: CanvasViewport(),
               onViewportChanged: (_) {},
               inkController: inkController,
-              brushToolState: BrushToolState.defaults,
+              brushToolState: brushTool,
               inkEnabled: enabled,
               onInkEnabledChanged: (next) => setState(() => enabled = next),
             ),

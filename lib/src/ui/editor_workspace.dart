@@ -877,11 +877,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           locked: locked,
           keepAlive: true,
           builder: (context) => PanelAwareListenableBuilder(
+            // _brushTool is deliberately NOT merged here (R18 UI-3): the
+            // sheet layout never depends on it, and rebuilding the whole
+            // (keep-alive, often hidden) B4 document on every tool
+            // switch / color notch was measurably half the tool-switch
+            // jank. Only the ink overlay consumes the tool state, through
+            // its own boundary builder inside the host.
             listenable: Listenable.merge([
               _timesheetContinuous,
               _timesheetViewport,
               _timesheetInkEnabled,
-              _brushTool,
             ]),
             builder: (context) => TimesheetTabHost(
               session: widget.session,
@@ -894,7 +899,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _timesheetViewport.value = viewport;
               },
               inkController: _timesheetInk,
-              brushToolState: _brushTool.value,
+              brushToolState: _brushTool,
               inkEnabled: _timesheetInkEnabled.value,
               onInkEnabledChanged: (enabled) {
                 _timesheetInkEnabled.value = enabled;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/canvas_size.dart';
@@ -49,8 +50,12 @@ class TimesheetTabHost extends StatefulWidget {
   /// tab switches. Null renders the sheet read-only.
   final TimesheetInkController? inkController;
 
-  /// The editor's current brush/eraser; required for ink input.
-  final BrushToolState? brushToolState;
+  /// The editor's current brush/eraser LISTENABLE; required for ink
+  /// input. A listenable, not a value (R18 UI-3): the sheet layout never
+  /// depends on the tool state, so only the ink overlay subscribes —
+  /// tool switches and setting tweaks must not rebuild the whole
+  /// (keep-alive) document.
+  final ValueListenable<BrushToolState>? brushToolState;
 
   /// The sheet-ink allow toggle (owned above the tab group): blocked ink
   /// protects the sheet from stray pen marks AND turns taps into
@@ -318,103 +323,116 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           rect: layout.pageRect(playheadPage),
                         );
                   return BrushCanvasPanel(
-                coordinator: null,
-                availableFrameKeys: const [],
-                cacheInvalidationSink: _cacheInvalidationSink,
-                canvasSize: CanvasSize(
-                  width: documentSize.width.ceil(),
-                  height: documentSize.height.ceil(),
-                ),
-                viewport: widget.viewport,
-                onViewportChanged: widget.onViewportChanged,
-                selectionLabels: CanvasEditorSelectionLabels(
-                  projectLabel: document.title,
-                  cutLabel: document.cutName,
-                  layerLabel: 'Timesheet',
-                  frameLabel: '${playheadFrame + 1}',
-                ),
-                // Fit frames the page the playhead is on.
-                fitFocusRect: layout.pageRect(playheadPage),
-                autoFrame: autoFrame,
-                // The sheet's ink/header overlays speak zoom/pan only —
-                // the paper never rotates (P8 is the drawing canvas's).
-                allowViewRotation: false,
-                contentStrokeActive: inkController == null || !widget.inkEnabled
-                    ? null
-                    : _inkStrokeActive,
-                contentOverride: (context, viewport) => Stack(
-                  children: [
-                    Positioned.fill(
-                      child: CustomPaint(
-                        key: const ValueKey<String>('timesheet-document-paint'),
-                        painter: TimesheetDocumentPainter(
-                          document: document,
-                          layout: layout,
-                          viewport: viewport,
-                        ),
-                        child: const SizedBox.expand(),
-                      ),
+                    coordinator: null,
+                    availableFrameKeys: const [],
+                    cacheInvalidationSink: _cacheInvalidationSink,
+                    canvasSize: CanvasSize(
+                      width: documentSize.width.ceil(),
+                      height: documentSize.height.ceil(),
                     ),
-                    // The playhead row highlight repaints ALONE (R13-2):
-                    // cursor moves, seeks and playback ticks drive this
-                    // thin layer through its repaint listenable — the
-                    // sheet painter above never rebuilds for them.
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: RepaintBoundary(
+                    viewport: widget.viewport,
+                    onViewportChanged: widget.onViewportChanged,
+                    selectionLabels: CanvasEditorSelectionLabels(
+                      projectLabel: document.title,
+                      cutLabel: document.cutName,
+                      layerLabel: 'Timesheet',
+                      frameLabel: '${playheadFrame + 1}',
+                    ),
+                    // Fit frames the page the playhead is on.
+                    fitFocusRect: layout.pageRect(playheadPage),
+                    autoFrame: autoFrame,
+                    // The sheet's ink/header overlays speak zoom/pan only —
+                    // the paper never rotates (P8 is the drawing canvas's).
+                    allowViewRotation: false,
+                    contentStrokeActive:
+                        inkController == null || !widget.inkEnabled
+                        ? null
+                        : _inkStrokeActive,
+                    contentOverride: (context, viewport) => Stack(
+                      children: [
+                        Positioned.fill(
                           child: CustomPaint(
                             key: const ValueKey<String>(
-                              'timesheet-playhead-overlay',
+                              'timesheet-document-paint',
                             ),
-                            painter: TimesheetPlayheadPainter(
+                            painter: TimesheetDocumentPainter(
                               document: document,
                               layout: layout,
                               viewport: viewport,
-                              resolvePlayheadFrame: () =>
-                                  _resolvePlayheadFrame(session),
-                              repaint: Listenable.merge([
-                                session.editingFrameCursor,
-                                session.frameSeekCommitted,
-                                session.playback.globalFrameIndexListenable,
-                              ]),
                             ),
                             child: const SizedBox.expand(),
                           ),
                         ),
-                      ),
-                    ),
-                    // Under the ink windows: reachable exactly when ink is
-                    // blocked (the toggle doubles as the edit-mode switch).
-                    Positioned.fill(
-                      child: TimesheetHeaderEditLayer(
-                        key: const ValueKey<String>(
-                          'timesheet-header-edit-layer',
+                        // The playhead row highlight repaints ALONE (R13-2):
+                        // cursor moves, seeks and playback ticks drive this
+                        // thin layer through its repaint listenable — the
+                        // sheet painter above never rebuilds for them.
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                key: const ValueKey<String>(
+                                  'timesheet-playhead-overlay',
+                                ),
+                                painter: TimesheetPlayheadPainter(
+                                  document: document,
+                                  layout: layout,
+                                  viewport: viewport,
+                                  resolvePlayheadFrame: () =>
+                                      _resolvePlayheadFrame(session),
+                                  repaint: Listenable.merge([
+                                    session.editingFrameCursor,
+                                    session.frameSeekCommitted,
+                                    session.playback.globalFrameIndexListenable,
+                                  ]),
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
+                          ),
                         ),
-                        layout: layout,
-                        viewport: viewport,
-                        onHeaderFieldCommitted: _commitHeaderField,
-                        onMemoCommitted: session.updateActiveCutNote,
-                      ),
-                    ),
-                    if (inkController != null &&
-                        brushToolState != null &&
-                        widget.inkEnabled)
-                      Positioned.fill(
-                        child: TimesheetInkLayer(
-                          key: const ValueKey<String>('timesheet-ink-layer'),
-                          controller: inkController,
-                          layout: layout,
-                          pagedLayout: pagedLayout,
-                          cutId: session.activeCut.id,
-                          brushToolState: brushToolState,
-                          historyManager: session.historyManager,
-                          viewport: viewport,
-                          strokeActive: _inkStrokeActive,
-                          cacheInvalidationSink: _cacheInvalidationSink,
+                        // Under the ink windows: reachable exactly when ink is
+                        // blocked (the toggle doubles as the edit-mode switch).
+                        Positioned.fill(
+                          child: TimesheetHeaderEditLayer(
+                            key: const ValueKey<String>(
+                              'timesheet-header-edit-layer',
+                            ),
+                            layout: layout,
+                            viewport: viewport,
+                            onHeaderFieldCommitted: _commitHeaderField,
+                            onMemoCommitted: session.updateActiveCutNote,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                        if (inkController != null &&
+                            brushToolState != null &&
+                            widget.inkEnabled)
+                          Positioned.fill(
+                            // The tool-state boundary (R18 UI-3): only this
+                            // small overlay follows the brush/eraser — the
+                            // sheet document above never rebuilds for it.
+                            child: ValueListenableBuilder<BrushToolState>(
+                              valueListenable: brushToolState,
+                              builder: (context, toolState, _) =>
+                                  TimesheetInkLayer(
+                                    key: const ValueKey<String>(
+                                      'timesheet-ink-layer',
+                                    ),
+                                    controller: inkController,
+                                    layout: layout,
+                                    pagedLayout: pagedLayout,
+                                    cutId: session.activeCut.id,
+                                    brushToolState: toolState,
+                                    historyManager: session.historyManager,
+                                    viewport: viewport,
+                                    strokeActive: _inkStrokeActive,
+                                    cacheInvalidationSink:
+                                        _cacheInvalidationSink,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -432,8 +450,7 @@ int _resolvePlayheadFrame(EditorSessionManager session) {
   final playbackGlobalFrame = session.playback.globalFrameIndexListenable.value;
   return playbackGlobalFrame == null
       ? session.currentFrameIndex
-      : session.playback.position?.localFrameIndex ??
-            session.currentFrameIndex;
+      : session.playback.position?.localFrameIndex ?? session.currentFrameIndex;
 }
 
 /// Token-gated host for the sheet panel's PLAYHEAD-derived facts (R13-2):
