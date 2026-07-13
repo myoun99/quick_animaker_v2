@@ -15,6 +15,8 @@ class CanvasSelectionCommands {
   VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
   void Function(CanvasSelectionShape? shape)? _applyShape;
+  bool Function()? _movePending;
+  VoidCallback? _confirmPendingMove;
 
   void bind({
     required bool Function() hasSelection,
@@ -25,6 +27,8 @@ class CanvasSelectionCommands {
     VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
     void Function(CanvasSelectionShape? shape)? applyShape,
+    bool Function()? movePending,
+    VoidCallback? confirmPendingMove,
   }) {
     _hasSelection = hasSelection;
     _nudge = nudge;
@@ -34,6 +38,8 @@ class CanvasSelectionCommands {
     _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
     _applyShape = applyShape;
+    _movePending = movePending;
+    _confirmPendingMove = confirmPendingMove;
   }
 
   void unbind() {
@@ -45,6 +51,8 @@ class CanvasSelectionCommands {
     _commitTransform = null;
     _cancelTransform = null;
     _applyShape = null;
+    _movePending = null;
+    _confirmPendingMove = null;
   }
 
   /// Pushes a committed region into the mounted layer — the
@@ -73,4 +81,12 @@ class CanvasSelectionCommands {
 
   /// Escape: discards the open transform.
   void cancelTransform() => _cancelTransform?.call();
+
+  /// Whether a TVP-style move session awaits its confirm (R16-①).
+  bool get movePending => _movePending?.call() ?? false;
+
+  /// Adopts the pending move into history as ONE undo entry — called by
+  /// the confirm button, Enter, tool switches, and the history manager's
+  /// pre-undo/redo hook. No-op without a pending session.
+  void confirmPendingMove() => _confirmPendingMove?.call();
 }

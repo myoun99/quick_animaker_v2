@@ -42,9 +42,19 @@ class HistoryManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called before undo/redo touches the stacks (R16-①): the selection
+  /// layer adopts a PENDING move session into history first, so an undo
+  /// never pops out from under an unadopted coordinator entry. The hook
+  /// may execute() a fresh command; the stacks re-check after it runs.
+  VoidCallback? onBeforeUndoRedo;
+
   void undo() {
     if (_undoStack.isEmpty) {
       throw StateError('No commands to undo.');
+    }
+    onBeforeUndoRedo?.call();
+    if (_undoStack.isEmpty) {
+      return;
     }
 
     final command = _undoStack.removeLast();
@@ -56,6 +66,11 @@ class HistoryManager extends ChangeNotifier {
   void redo() {
     if (_redoStack.isEmpty) {
       throw StateError('No commands to redo.');
+    }
+    onBeforeUndoRedo?.call();
+    if (_redoStack.isEmpty) {
+      // The hook's confirm pushed a fresh entry and cleared redo.
+      return;
     }
 
     final command = _redoStack.removeLast();

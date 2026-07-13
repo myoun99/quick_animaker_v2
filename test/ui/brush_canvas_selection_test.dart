@@ -131,39 +131,52 @@ void main() {
     expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
     expect(env.commands.hasSelection, isTrue);
 
-    // The MOVE tool drags the content (the selection survives the tool
-    // switch); drag by (+10, +5). R14-④ bitmap lift: the first move cuts
-    // the region's PIXELS into an erase+stamp pair — the original stroke
-    // command NEVER moves.
+    // The MOVE tool opens a TVP-style SESSION (R16-①): drags move only
+    // the floating stamp — nothing lands and nothing is undoable until
+    // the CONFIRM, which adopts lift + final position as ONE entry.
     await env.setTool(CanvasTool.move);
+    final entriesBeforeMove = env.history.undoCount;
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
 
     expect(
       frameCommands(env.coordinator),
       hasLength(2),
-      reason: 'the lift is one extra command on top of the stroke',
+      reason: 'the raw lift erase is committed; the stamp floats',
     );
+    expect(
+      frameCommands(env.coordinator).last.sourceDabs.every((d) => d.erase),
+      isTrue,
+      reason: 'pending: the base holds only the erase',
+    );
+    expect(env.commands.movePending, isTrue);
+    expect(
+      env.history.undoCount,
+      entriesBeforeMove,
+      reason: 'nothing is undoable before the confirm',
+    );
+
+    // CONFIRM: one history entry; the stamp lands at the moved position.
+    // The ACTIVE marquee is the second one, (25,25)-(68,68) → a 44×44
+    // stamp centered at (47,47), moved by the drag delta (+10,+5).
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+    expect(env.history.undoCount, entriesBeforeMove + 1);
+    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
     expect(
       frameCommands(env.coordinator).first.sourceDabs.first.center,
       CanvasPoint(x: 30, y: 30),
       reason: 'bitmap lift moves pixels, never the source stroke',
     );
-    final liftDabs = frameCommands(env.coordinator).last.sourceDabs;
-    expect(liftDabs.first.erase, isTrue);
-    expect(liftDabs.last.stamp, isNotNull);
-    // The ACTIVE marquee is the second one, (25,25)-(68,68) → a 44×44
-    // stamp centered at (47,47), moved by the drag delta (+10,+5).
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
-    expect(env.history.canUndo, isTrue);
 
-    env.history.undo(); // the move
+    env.history.undo(); // the WHOLE session (lift + move) as one step
     await tester.pump();
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 47, y: 47));
-    env.history.undo(); // the lift
-    await tester.pump();
-    expect(frameCommands(env.coordinator), hasLength(1));
+    expect(
+      frameCommands(env.coordinator),
+      hasLength(1),
+      reason: 'one undo restores the pre-lift picture',
+    );
 
-    env.history.redo();
     env.history.redo();
     await tester.pump();
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
@@ -173,10 +186,9 @@ void main() {
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
   });
 
-  testWidgets('while dragging, the base holds ONLY the erase — the origin '
-      'is invisible and a zero-move release restores it (R15-④)', (
-    tester,
-  ) async {
+  testWidgets('the session floats through the WHOLE interaction: the base '
+      'holds only the erase until the confirm; a zero-move confirm is an '
+      'identity landing (R16-①)', (tester) async {
     final env = await pumpSelectionPanel(tester);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
@@ -189,12 +201,20 @@ void main() {
     final midDabs = frameCommands(env.coordinator).last.sourceDabs;
     expect(midDabs.every((dab) => dab.erase), isTrue);
 
-    // Zero-move release: the stamp lands back at its origin — the picture
-    // is visually intact.
+    // Zero-move release: the session STAYS pending (the float keeps
+    // showing the pixels); the base still holds only the erase.
     await gesture.up();
     await tester.pump();
-    final restored = frameCommands(env.coordinator).last.sourceDabs;
-    expect(restored.any((dab) => dab.stamp != null && !dab.erase), isTrue);
+    expect(env.commands.movePending, isTrue);
+    expect(
+      frameCommands(env.coordinator).last.sourceDabs.every((d) => d.erase),
+      isTrue,
+    );
+
+    // Confirm: the stamp lands at its origin — identity picture.
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 45.5, y: 45.5));
   });
 
@@ -246,19 +266,20 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
 
-    // Arrow nudge: one canvas pixel per entry — the FIRST nudge lifts the
-    // region's pixels (erase+stamp), then translates the stamp; the
-    // source stroke never moves (R14-④).
+    // Arrow nudges move the SESSION's float only (R16-①); the confirm
+    // lands the accumulated result as one entry. The source stroke never
+    // moves.
     env.commands.nudge(1, 0);
+    env.commands.nudge(0, -1);
     await tester.pump();
     expect(frameCommands(env.coordinator), hasLength(2));
+    expect(env.commands.movePending, isTrue);
+    env.commands.confirmPendingMove();
+    await tester.pump();
     expect(
       frameCommands(env.coordinator).first.sourceDabs.first.center,
       CanvasPoint(x: 30, y: 30),
     );
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 46.5, y: 45.5));
-    env.commands.nudge(0, -1);
-    await tester.pump();
     expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 46.5, y: 44.5));
 
     // Ctrl+D (through the channel) deselects.
@@ -414,10 +435,12 @@ void main() {
     await tester.pump();
 
     expect(env.commands.hasSelection, isTrue);
-    // R14-④: the nudge lifts the lasso region's pixels — bbox
-    // (10,10)-(90,90) → an 81×81 stamp centered at (50.5,50.5), nudged
-    // +2; the source stroke stays put.
+    // The nudge lifts the lasso region's pixels into a pending session —
+    // bbox (10,10)-(90,90) → an 81×81 stamp centered at (50.5,50.5),
+    // nudged +2 and CONFIRMED; the source stroke stays put.
     env.commands.nudge(2, 0);
+    await tester.pump();
+    env.commands.confirmPendingMove();
     await tester.pump();
     expect(
       frameCommands(env.coordinator).first.sourceDabs.first.center,

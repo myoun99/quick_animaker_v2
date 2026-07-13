@@ -10,6 +10,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
+import '../ui/dev_profile.dart';
 import 'canvas_color_sampler.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -406,21 +407,27 @@ BrushDab? buildFillDab({
   int paperColor = canvasPaperColor,
 }) {
   final CanvasSize canvasSize = cut.canvasSize;
-  final raster = LazyCanvasRasterRgb(
-    cut: cut,
-    frameIndex: frameIndex,
-    surfaceResolver: surfaceResolver,
-    fxBypassedLayerIds: fxBypassedLayerIds,
-    paperColor: paperColor,
+  final raster = labProbe(
+    'fill.raster-ctor',
+    () => LazyCanvasRasterRgb(
+      cut: cut,
+      frameIndex: frameIndex,
+      surfaceResolver: surfaceResolver,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+      paperColor: paperColor,
+    ),
   );
-  final region = floodFillRegion(
-    rgb: raster.rgb,
-    width: canvasSize.width,
-    height: canvasSize.height,
-    seedX: point.x.floor(),
-    seedY: point.y.floor(),
-    options: options,
-    ensureComposed: raster.ensureComposedAt,
+  final region = labProbe(
+    'fill.flood',
+    () => floodFillRegion(
+      rgb: raster.rgb,
+      width: canvasSize.width,
+      height: canvasSize.height,
+      seedX: point.x.floor(),
+      seedY: point.y.floor(),
+      options: options,
+      ensureComposed: raster.ensureComposedAt,
+    ),
   );
   if (region == null) {
     return null;
@@ -434,18 +441,21 @@ BrushDab? buildFillDab({
   final r = (color >> 16) & 0xFF;
   final g = (color >> 8) & 0xFF;
   final b = color & 0xFF;
-  final rgba = Uint8List(region.width * region.height * 4);
-  for (var index = 0; index < region.mask.length; index += 1) {
-    final coverage = region.mask[index];
-    if (coverage == 0) {
-      continue;
+  final rgba = labProbe('fill.stamp-build', () {
+    final bytes = Uint8List(region.width * region.height * 4);
+    for (var index = 0; index < region.mask.length; index += 1) {
+      final coverage = region.mask[index];
+      if (coverage == 0) {
+        continue;
+      }
+      final offset = index * 4;
+      bytes[offset] = r;
+      bytes[offset + 1] = g;
+      bytes[offset + 2] = b;
+      bytes[offset + 3] = coverage;
     }
-    final offset = index * 4;
-    rgba[offset] = r;
-    rgba[offset + 1] = g;
-    rgba[offset + 2] = b;
-    rgba[offset + 3] = coverage;
-  }
+    return bytes;
+  });
   return BrushDab(
     center: CanvasPoint(
       x: region.left + region.width / 2,
