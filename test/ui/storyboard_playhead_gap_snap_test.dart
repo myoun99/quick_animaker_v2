@@ -6,9 +6,10 @@ import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dar
 import 'package:quick_animaker_v2/src/ui/storyboard_playhead_mapping.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 
-/// W3c: editing seeks/scrubs landing in a cut GAP snap to the nearest cut
-/// edge (the editing playhead is cut-local, a gap has no cut); playback
-/// seeks land in the gap as-is (black frame).
+/// R14-① (was R10-⑤b): the editing playhead LANDS in cut gaps. A trailing
+/// gap is the preceding cut's over-end runway — seeks/scrubs into it keep
+/// that cut active with an over-end frame index, the exact grammar of the
+/// last cut's endless runway. Playback seeks land in gaps directly.
 void main() {
   /// Two default-track cuts with a gap before the second:
   /// cut-a [0, aEnd), gap [aEnd, aEnd+4), cut-b [aEnd+4, ...).
@@ -22,71 +23,89 @@ void main() {
     return (s, first, second, track.cuts[0].duration);
   }
 
-  test('snapStoryboardGapToNearestEdge picks the closer cut edge and ties '
-      'to the previous cut', () {
-    final (s, _, second, aEnd) = gappedSession();
+  test('storyboardEntryOwningFrame: cut frames map to their cut, gap frames '
+      'to the PRECEDING cut, past-the-end to the last cut', () {
+    final (s, first, second, aEnd) = gappedSession();
     final layout = buildStoryboardTimelineLayout(s.repository.requireProject());
 
-    // Non-gap frames pass through untouched.
-    expect(snapStoryboardGapToNearestEdge(layout, 0), 0);
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd - 1), aEnd - 1);
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd + 4), aEnd + 4);
-
-    // Gap [aEnd, aEnd+4): frames closer to cut-a's LAST frame (aEnd-1)
-    // snap back, frames closer to cut-b's first (aEnd+4) snap forward.
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd), aEnd - 1);
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd + 1), aEnd - 1);
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd + 2), aEnd + 4);
-    expect(snapStoryboardGapToNearestEdge(layout, aEnd + 3), aEnd + 4);
-
-    // A true tie (equidistant from both edges) snaps BACKWARD.
-    s.repository.updateCutLeadingGap(cutId: second, leadingGapFrames: 3);
-    final tightLayout = buildStoryboardTimelineLayout(
-      s.repository.requireProject(),
+    expect(storyboardEntryOwningFrame(layout, 0)?.cutId, first);
+    expect(storyboardEntryOwningFrame(layout, aEnd - 1)?.cutId, first);
+    // Every gap frame belongs to cut-a's runway — no nearest-edge split.
+    expect(storyboardEntryOwningFrame(layout, aEnd)?.cutId, first);
+    expect(storyboardEntryOwningFrame(layout, aEnd + 3)?.cutId, first);
+    expect(storyboardEntryOwningFrame(layout, aEnd + 4)?.cutId, second);
+    expect(
+      storyboardEntryOwningFrame(layout, aEnd + 400)?.cutId,
+      second,
+      reason: 'past the last cut = its endless runway',
     );
-    // Gap [aEnd, aEnd+3): aEnd+1 is 2 from aEnd-1 and 2 from aEnd+3.
-    expect(snapStoryboardGapToNearestEdge(tightLayout, aEnd + 1), aEnd - 1);
   });
 
-  test('a leading gap before the FIRST cut snaps forward to its start', () {
+  test('an editing seek into the gap LANDS there: preceding cut stays '
+      'active with an over-end frame, and the playhead maps back to the '
+      'same global frame', () {
+    final (s, first, _, aEnd) = gappedSession();
+    s.selectCut(first);
+
+    seekStoryboardGlobalFrame(s, aEnd + 1);
+    expect(s.activeCutId, first);
+    expect(s.currentFrameIndex, aEnd + 1, reason: 'over-end local frame');
+    expect(
+      storyboardPlayheadFrame(s),
+      aEnd + 1,
+      reason: 'the ruler shows the gap landing, not a snapped edge',
+    );
+
+    // Late in the gap: STILL the preceding cut (the whole gap is its
+    // runway — no nearest-edge handover).
+    seekStoryboardGlobalFrame(s, aEnd + 3);
+    expect(s.activeCutId, first);
+    expect(s.currentFrameIndex, aEnd + 3);
+    expect(storyboardPlayheadFrame(s), aEnd + 3);
+  });
+
+  test('a leading gap before the FIRST cut lands on its first frame — '
+      'local frames cannot go negative', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
     s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
-    final layout = buildStoryboardTimelineLayout(s.repository.requireProject());
 
-    expect(snapStoryboardGapToNearestEdge(layout, 0), 3);
-    expect(snapStoryboardGapToNearestEdge(layout, 2), 3);
-  });
-
-  test('an editing seek into the gap selects the snapped cut and frame', () {
-    final (s, first, second, aEnd) = gappedSession();
-    s.selectCut(first);
-
-    // Early in the gap → cut-a's last frame.
-    seekStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.activeCutId, first);
-    expect(s.currentFrameIndex, aEnd - 1);
-
-    // Late in the gap → cut-b frame 0 (a real cut switch).
-    seekStoryboardGlobalFrame(s, aEnd + 3);
-    expect(s.activeCutId, second);
+    seekStoryboardGlobalFrame(s, 1);
+    expect(s.activeCutId, cutId);
     expect(s.currentFrameIndex, 0);
   });
 
-  test('an editing scrub through the gap rides the snapped edge on the '
-      'cursor path', () {
+  test('an editing scrub into the active cut\'s trailing gap rides the '
+      'cursor path (no session notify) with an over-end cursor', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    // Scrub within the active cut, then into the gap: the cursor pins to
-    // the cut's last frame without a session notify (cursor path).
     scrubStoryboardGlobalFrame(s, aEnd - 2);
     expect(s.editingFrameCursor.value, aEnd - 2);
     scrubStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.editingFrameCursor.value, aEnd - 1);
+    expect(s.editingFrameCursor.value, aEnd + 1, reason: 'gap = over-end');
     expect(notifies, 0);
+  });
+
+  test('the mid-track playhead clamps to the END of the trailing gap, not '
+      'the cut end — and the tab-switch clamp agrees', () {
+    final (s, first, _, aEnd) = gappedSession();
+    s.selectCut(first);
+
+    // Over-end BEYOND the gap can't paint on top of cut-b: the mapping
+    // clamps the displayed playhead to the gap's last frame.
+    s.selectFrameIndex(aEnd + 40);
+    expect(storyboardPlayheadFrame(s), aEnd + 3);
+
+    clampPlayheadForStoryboard(s);
+    expect(s.currentFrameIndex, aEnd + 3);
+
+    // Within the gap the clamp leaves the landing alone.
+    s.selectFrameIndex(aEnd + 2);
+    clampPlayheadForStoryboard(s);
+    expect(s.currentFrameIndex, aEnd + 2);
   });
 
   testWidgets('a playback seek lands IN the gap: background frame, no snap', (

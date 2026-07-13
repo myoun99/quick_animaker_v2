@@ -58,14 +58,26 @@ int? storyboardPlayheadFrame(
   final cutId = playbackPosition?.cutId ?? session.activeCutId;
   final localFrame =
       playbackPosition?.localFrameIndex ?? session.currentFrameIndex;
-  for (final entry in layout) {
+  for (var index = 0; index < layout.length; index += 1) {
+    final entry = layout[index];
     if (entry.cutId == cutId) {
-      final isLastCut = identical(entry, layout.last);
+      final isLastCut = index == layout.length - 1;
+      if (playbackPosition == null) {
+        // Editing playhead: over-end is LEGAL — the trailing gap is the
+        // cut's runway (gap landing, R14-①), and the last cut's runway is
+        // endless. Mid-track over-end clamps to the gap so a stale index
+        // never paints on top of the next cut.
+        final local = math.max(0, localFrame);
+        return entry.startFrame +
+            (isLastCut
+                ? local
+                : math.min(
+                    local,
+                    layout[index + 1].startFrame - entry.startFrame - 1,
+                  ));
+      }
       final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
-      return entry.startFrame +
-          (isLastCut && playbackPosition == null
-              ? math.max(0, localFrame)
-              : localFrame.clamp(0, maxLocal));
+      return entry.startFrame + localFrame.clamp(0, maxLocal);
     }
   }
   return null;
@@ -91,36 +103,34 @@ bool storyboardFrameCached(
   return false;
 }
 
-/// A GAP frame (empty space between cuts) snapped to the nearest cut edge
-/// — the editing playhead is cut-local and has no home in a gap. Returns
-/// [globalFrame] unchanged when it is not in a gap.
-int snapStoryboardGapToNearestEdge(
+/// The layout entry that OWNS [globalFrame]: the cut containing it, or —
+/// inside a gap — the cut BEFORE it (a trailing gap is the preceding
+/// cut's over-end runway, R14-①: the editing playhead lands in gaps as an
+/// over-end frame of that cut, the same grammar as the last cut's endless
+/// runway). Null only in the leading gap before the first cut, which has
+/// no preceding cut to run over.
+StoryboardTimelineLayoutEntry? storyboardEntryOwningFrame(
   List<StoryboardTimelineLayoutEntry> layout,
   int globalFrame,
 ) {
   StoryboardTimelineLayoutEntry? previous;
   for (final entry in layout) {
     if (globalFrame < entry.startFrame) {
-      final previousLast = previous == null ? null : previous.endFrame - 1;
-      if (previousLast == null) {
-        return entry.startFrame;
-      }
-      return (globalFrame - previousLast) <= (entry.startFrame - globalFrame)
-          ? previousLast
-          : entry.startFrame;
+      return previous;
     }
     if (globalFrame < entry.endFrame) {
-      return globalFrame;
+      return entry;
     }
     previous = entry;
   }
-  return globalFrame;
+  return previous;
 }
 
 /// Ruler seeks: playback seeks the clock, editing selects cut + frame;
-/// beyond the last cut = over-end selection on the last cut, exactly like
-/// clicking past the cut end in the timeline. Editing seeks into a GAP
-/// snap to the nearest cut edge (playback seeks land in the gap — black).
+/// beyond a cut's end — a GAP or past the last cut — the editing playhead
+/// LANDS there as the owning cut's over-end frame (R14-①), exactly like
+/// clicking past the cut end in the timeline. Playback seeks land in gaps
+/// directly (background frame).
 void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   final layout = storyboardActiveTrackLayout(session);
   if (layout.isEmpty) {
@@ -144,29 +154,28 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     }
     return;
   }
-  final snapped = snapStoryboardGapToNearestEdge(layout, globalFrame);
-  for (final entry in layout) {
-    if (snapped >= entry.startFrame && snapped < entry.endFrame) {
-      if (entry.cutId != session.activeCutId) {
-        session.selectCut(entry.cutId);
-      }
-      session.selectFrameIndex(snapped - entry.startFrame);
-      return;
+  final owner = storyboardEntryOwningFrame(layout, globalFrame);
+  if (owner == null) {
+    // The leading gap before the FIRST cut: local frames cannot go
+    // negative, so land on its first frame.
+    final first = layout.first;
+    if (first.cutId != session.activeCutId) {
+      session.selectCut(first.cutId);
     }
+    session.selectFrameIndex(0);
+    return;
   }
-  final last = layout.last;
-  if (snapped >= last.endFrame) {
-    if (last.cutId != session.activeCutId) {
-      session.selectCut(last.cutId);
-    }
-    session.selectFrameIndex(snapped - last.startFrame);
+  if (owner.cutId != session.activeCutId) {
+    session.selectCut(owner.cutId);
   }
+  session.selectFrameIndex(globalFrame - owner.startFrame);
 }
 
 /// Ruler drag moves: playback keeps seeking the clock per move; editing
 /// scrubs ride the session cursor path inside the ACTIVE cut (no notify,
-/// canvas preview follows) and fall back to the full seek only when the
-/// drag crosses into another cut — the cut switch is a real selection.
+/// canvas preview follows) — including into its trailing gap (over-end
+/// cursor) — and fall back to the full seek only when the drag crosses
+/// into another cut's territory: the cut switch is a real selection.
 void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   if (session.playback.isActive) {
     seekStoryboardGlobalFrame(session, globalFrame);
@@ -176,27 +185,12 @@ void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   if (layout.isEmpty) {
     return;
   }
-  // Editing scrubs through a gap ride the nearest cut edge (the same snap
-  // the seek applies).
-  final snapped = snapStoryboardGapToNearestEdge(layout, globalFrame);
-  for (final entry in layout) {
-    if (snapped >= entry.startFrame && snapped < entry.endFrame) {
-      if (entry.cutId == session.activeCutId) {
-        session.scrubFrameIndex(snapped - entry.startFrame);
-      } else {
-        seekStoryboardGlobalFrame(session, snapped);
-      }
-      return;
-    }
+  final owner = storyboardEntryOwningFrame(layout, globalFrame);
+  if (owner == null || owner.cutId != session.activeCutId) {
+    seekStoryboardGlobalFrame(session, globalFrame);
+    return;
   }
-  final last = layout.last;
-  if (snapped >= last.endFrame) {
-    if (last.cutId == session.activeCutId) {
-      session.scrubFrameIndex(snapped - last.startFrame);
-    } else {
-      seekStoryboardGlobalFrame(session, snapped);
-    }
-  }
+  session.scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
 }
 
 /// The storyboard ruler drag's release: commits the scrubbed playhead once
@@ -207,9 +201,10 @@ void commitStoryboardScrub(EditorSessionManager session) {
   }
 }
 
-/// Switching into the storyboard clamps an over-end playhead back onto the
-/// cut (except on the track's last cut, whose runway can show it) so the
-/// frame counter and the playhead line agree.
+/// Switching into the storyboard clamps an over-end playhead back into the
+/// cut's territory — its frames PLUS its trailing gap (the over-end runway
+/// gap landings live in, R14-①); the track's last cut keeps its endless
+/// runway — so the frame counter and the playhead line agree.
 void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (session.playback.isActive) {
     return;
@@ -218,8 +213,15 @@ void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (layout.isEmpty || layout.last.cutId == session.activeCutId) {
     return;
   }
-  final duration = session.activeCut.duration;
-  if (duration > 0 && session.currentFrameIndex >= duration) {
-    session.selectFrameIndex(duration - 1);
+  for (var index = 0; index < layout.length - 1; index += 1) {
+    final entry = layout[index];
+    if (entry.cutId != session.activeCutId) {
+      continue;
+    }
+    final maxLocal = layout[index + 1].startFrame - entry.startFrame - 1;
+    if (maxLocal >= 0 && session.currentFrameIndex > maxLocal) {
+      session.selectFrameIndex(maxLocal);
+    }
+    return;
   }
 }
