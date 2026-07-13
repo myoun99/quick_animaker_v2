@@ -17,19 +17,26 @@ import '../../models/brush_tip_mask.dart';
 import '../../models/project.dart';
 import 'brush_drawing_binary_codec.dart';
 
-const int qapFormatVersion = 1;
+/// v2 (R19 bake-only): cels persist as BAKED tile rasters
+/// (`cels/<n>.bin`) — the truth. Drawings (`drawings/<n>.bin`) are no
+/// longer written; v1 archives still read (their commands materialize
+/// ONCE on open, then live as raster like everything else).
+const int qapFormatVersion = 2;
 
 /// A parsed .qap archive: the project (media paths NOT yet resolved — see
-/// [remapProjectMediaPaths]), its drawings and the saved relative-path
-/// manifest ({absolute path at save time: save-dir-relative path}).
+/// [remapProjectMediaPaths]), its baked cels (v2), any legacy drawings
+/// (v1) and the saved relative-path manifest ({absolute path at save
+/// time: save-dir-relative path}).
 class QapArchiveContents {
   const QapArchiveContents({
     required this.project,
+    required this.cels,
     required this.drawings,
     required this.mediaRelativePaths,
   });
 
   final Project project;
+  final List<QapCelEntry> cels;
   final List<QapDrawingEntry> drawings;
   final Map<String, String> mediaRelativePaths;
 }
@@ -39,14 +46,9 @@ class QapArchiveContents {
 /// under it is recorded relative, everything else stays absolute-only.
 Uint8List buildQapArchiveBytes({
   required Project project,
-  required List<QapDrawingEntry> drawings,
+  required List<QapCelEntry> cels,
   String? saveDirectory,
 }) {
-  final masks = collectTipMasks(drawings);
-  final maskIndexById = {
-    for (var i = 0; i < masks.length; i += 1) masks[i].id: i,
-  };
-
   final mediaRelativePaths = <String, String>{};
   if (saveDirectory != null) {
     for (final path in _projectMediaPaths(project)) {
@@ -67,15 +69,11 @@ Uint8List buildQapArchiveBytes({
           if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
         }),
       ),
-    )
-    ..add(ArchiveFile.bytes('tips.bin', encodeTipMaskTable(masks)));
-  for (var i = 0; i < drawings.length; i += 1) {
-    archive.add(
-      ArchiveFile.bytes(
-        'drawings/$i.bin',
-        encodeDrawingEntry(drawings[i], maskIndexById),
-      ),
     );
+  // v2 (R19 bake-only): baked cel rasters ARE the drawing truth; no
+  // drawings/tips entries are written anymore.
+  for (var i = 0; i < cels.length; i += 1) {
+    archive.add(ArchiveFile.bytes('cels/$i.bin', encodeCelEntry(cels[i])));
   }
   return ZipEncoder().encodeBytes(archive);
 }
@@ -111,14 +109,23 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
       ? const <BrushTipMask>[]
       : decodeTipMaskTable(tipsEntry.readBytes()!);
 
+  // v1 legacy: command drawings, materialized once by the opener.
   final drawings = <QapDrawingEntry>[
     for (final file in archive.files)
       if (file.isFile && file.name.startsWith('drawings/'))
         decodeDrawingEntry(file.readBytes()!, masks),
   ];
 
+  // v2 truth: baked cel rasters.
+  final cels = <QapCelEntry>[
+    for (final file in archive.files)
+      if (file.isFile && file.name.startsWith('cels/'))
+        decodeCelEntry(file.readBytes()!),
+  ];
+
   return QapArchiveContents(
     project: project,
+    cels: cels,
     drawings: drawings,
     mediaRelativePaths: mediaRelativePaths,
   );

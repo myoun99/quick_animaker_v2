@@ -1,10 +1,16 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
 import 'package:quick_animaker_v2/src/models/brush_paint_command_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
@@ -111,25 +117,51 @@ void main() {
     expect(encodeDrawingEntry(decoded, maskIndex), bytes);
   });
 
-  test('the archive round-trips project + drawings; media under the save '
-      'directory records relative paths and remaps on the way in', () {
+  test('the archive round-trips project + BAKED cels byte-exactly (R19 '
+      'bake-only); media under the save directory records relative paths '
+      'and remaps on the way in', () {
     final project = createDefaultProject().copyWith(
       mediaAssets: const [
         MediaAsset(path: 'D:/work/proj/audio/boom.wav', name: 'boom'),
         MediaAsset(path: 'E:/elsewhere/hiss.wav', name: 'hiss'),
       ],
     );
+    final pixels = Uint8List(8 * 8 * 4);
+    for (var i = 0; i < pixels.length; i += 1) {
+      pixels[i] = (i * 37) & 0xFF;
+    }
+    final surface = BitmapSurface(
+      canvasSize: CanvasSize(width: 16, height: 16),
+      tileSize: 8,
+      tiles: {
+        TileCoord(x: 1, y: 0): BitmapTile(
+          coord: TileCoord(x: 1, y: 0),
+          size: 8,
+          pixels: pixels,
+        ),
+      },
+    );
 
     final bytes = buildQapArchiveBytes(
       project: project,
-      drawings: [entry()],
+      cels: [QapCelEntry(key: key, surface: surface)],
       saveDirectory: r'D:\work\proj',
     );
     final contents = parseQapArchiveBytes(bytes);
 
     expect(contents.project, project);
-    expect(contents.drawings, hasLength(1));
-    expect(contents.drawings.single.key, key);
+    expect(contents.cels, hasLength(1));
+    expect(contents.cels.single.key, key);
+    final reopened = contents.cels.single.surface;
+    expect(reopened.canvasSize, surface.canvasSize);
+    expect(reopened.tileSize, 8);
+    expect(
+      reopened.tiles[TileCoord(x: 1, y: 0)]!.pixels,
+      pixels,
+      reason: 'what you saved is what reopens, byte for byte',
+    );
+    // v2 writes no legacy drawings.
+    expect(contents.drawings, isEmpty);
     // Only the in-folder path got a relative entry.
     expect(contents.mediaRelativePaths, {
       'D:/work/proj/audio/boom.wav': 'audio/boom.wav',
@@ -141,6 +173,39 @@ void main() {
     });
     expect(remapped.mediaAssets.first.path, 'G:/drive/proj/audio/boom.wav');
     expect(remapped.mediaAssets[1].path, 'E:/elsewhere/hiss.wav');
+  });
+
+  test('a v1 archive (command drawings) still parses — the legacy read '
+      'path that opens materialize once', () {
+    final drawingEntry = entry();
+    final masks = collectTipMasks([drawingEntry]);
+    final maskIndex = {
+      for (var i = 0; i < masks.length; i += 1) masks[i].id: i,
+    };
+    final archive = Archive()
+      ..add(
+        ArchiveFile.string(
+          'project.json',
+          jsonEncode({
+            'formatVersion': 1,
+            'project': createDefaultProject().toJson(),
+          }),
+        ),
+      )
+      ..add(ArchiveFile.bytes('tips.bin', encodeTipMaskTable(masks)))
+      ..add(
+        ArchiveFile.bytes(
+          'drawings/0.bin',
+          encodeDrawingEntry(drawingEntry, maskIndex),
+        ),
+      );
+    final v1Bytes = ZipEncoder().encodeBytes(archive);
+
+    final contents = parseQapArchiveBytes(Uint8List.fromList(v1Bytes));
+    expect(contents.cels, isEmpty);
+    expect(contents.drawings, hasLength(1));
+    expect(contents.drawings.single.key, key);
+    expect(contents.drawings.single.commands, hasLength(2));
   });
 
   test('media remap rewrites SE audio clips on tracks AND cuts', () {
@@ -171,7 +236,7 @@ void main() {
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildQapArchiveBytes(
       project: createDefaultProject(),
-      drawings: const [],
+      cels: const [],
     );
     expect(parseQapArchiveBytes(bytes).project, isNotNull);
 

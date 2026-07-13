@@ -13,8 +13,12 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
+import '../../models/tile_coord.dart';
 import '../../models/brush_paint_command.dart';
 import '../../models/brush_paint_command_id.dart';
 import '../../models/brush_stamp_image.dart';
@@ -302,6 +306,80 @@ double _byteToRoundness(int byte) => byte.clamp(1, 255) / 255;
 int _unitToU16(double value) => (value.clamp(0.0, 1.0) * 65535).round();
 
 double _u16ToUnit(int value) => value / 65535;
+
+/// One cel's BAKED raster — the persistence TRUTH from .qap format v2 on
+/// (R19 bake-only): what you saved is exactly what reopens, byte for
+/// byte, with no re-materialization ever.
+class QapCelEntry {
+  const QapCelEntry({required this.key, required this.surface});
+
+  final BrushFrameKey key;
+  final BitmapSurface surface;
+}
+
+const int qapCelBinaryVersion = 1;
+
+/// Encodes a baked cel: key, canvas geometry, then each tile's coord and
+/// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
+/// line art extremely well — no inner compression layer).
+Uint8List encodeCelEntry(QapCelEntry entry) {
+  final surface = entry.surface;
+  final writer = _ByteWriter()
+    ..u8(qapCelBinaryVersion)
+    ..string(entry.key.projectId.value)
+    ..string(entry.key.trackId.value)
+    ..string(entry.key.cutId.value)
+    ..string(entry.key.layerId.value)
+    ..string(entry.key.frameId.value)
+    ..u32(surface.canvasSize.width)
+    ..u32(surface.canvasSize.height)
+    ..u16(surface.tileSize)
+    ..u32(surface.tiles.length);
+  for (final tile in surface.tiles.values) {
+    writer
+      ..u32(tile.coord.x)
+      ..u32(tile.coord.y)
+      ..bytes(tile.pixels);
+  }
+  return writer.takeBytes();
+}
+
+QapCelEntry decodeCelEntry(Uint8List bytes) {
+  final reader = _ByteReader(bytes);
+  final version = reader.u8();
+  if (version > qapCelBinaryVersion) {
+    throw const FormatException('Unsupported cel entry version.');
+  }
+  final key = BrushFrameKey(
+    projectId: ProjectId(reader.string()),
+    trackId: TrackId(reader.string()),
+    cutId: CutId(reader.string()),
+    layerId: LayerId(reader.string()),
+    frameId: FrameId(reader.string()),
+  );
+  final width = reader.u32();
+  final height = reader.u32();
+  final tileSize = reader.u16();
+  final tileCount = reader.u32();
+  final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
+  final tiles = <TileCoord, BitmapTile>{};
+  for (var i = 0; i < tileCount; i += 1) {
+    final coord = TileCoord(x: reader.u32(), y: reader.u32());
+    tiles[coord] = BitmapTile(
+      coord: coord,
+      size: tileSize,
+      pixels: reader.bytes(tileByteLength),
+    );
+  }
+  return QapCelEntry(
+    key: key,
+    surface: BitmapSurface(
+      canvasSize: CanvasSize(width: width, height: height),
+      tileSize: tileSize,
+      tiles: tiles,
+    ),
+  );
+}
 
 class _ByteWriter {
   final BytesBuilder _builder = BytesBuilder(copy: true);

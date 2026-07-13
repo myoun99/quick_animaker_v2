@@ -1,3 +1,5 @@
+import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -29,6 +31,7 @@ class ResizeCutCanvasCommand implements Command {
   Project? _previousProject;
   double _contentDx = 0;
   double _contentDy = 0;
+  Map<BrushFrameKey, BitmapSurface>? _previousBaked;
 
   @override
   String get description =>
@@ -45,6 +48,11 @@ class ResizeCutCanvasCommand implements Command {
     );
     _contentDx = offset.dx;
     _contentDy = offset.dy;
+
+    // R19 bake-only: the raster blit clips pixels shifted off-canvas, so
+    // the exact undo restores the pre-resize baked surfaces by reference
+    // (immutable — the snapshot is free).
+    _previousBaked = brushFrameStore?.bakedSurfacesForCut(cutId);
 
     repository.updateCutCanvasSize(cutId: cutId, canvasSize: canvasSize);
     brushFrameStore?.translateCutContent(
@@ -67,5 +75,11 @@ class ResizeCutCanvasCommand implements Command {
       dx: -_contentDx,
       dy: -_contentDy,
     );
+    final previousBaked = _previousBaked;
+    if (previousBaked != null) {
+      // Reference restore SUPERSEDES the blit-back above: pixels the
+      // forward blit clipped come back exactly.
+      brushFrameStore?.restoreBakedForCut(cutId, previousBaked);
+    }
   }
 }
