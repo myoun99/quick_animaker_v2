@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
+import '../../native/qa_native_engine.dart';
 import 'deferred_image_disposal.dart';
 
 /// Identity-keyed cache converting immutable [BitmapTile] pixel bytes into
@@ -182,6 +183,14 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// upload in the app rounds identically.
   static Uint8List premultipliedTilePixels(BitmapTile tile) {
     final pixels = tile.pixels;
+    // R18 A-2a: the native kernel runs the same integer math in place —
+    // byte-identical (parity-pinned); the Dart loop below remains the
+    // reference and the fallback.
+    final native = QaNativeEngine.instance;
+    if (native != null) {
+      native.premultiplyRgba(pixels);
+      return pixels;
+    }
     for (var offset = 0; offset < pixels.length; offset += 4) {
       final alpha = pixels[offset + 3];
       if (alpha == 255) {

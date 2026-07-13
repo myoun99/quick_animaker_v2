@@ -529,5 +529,34 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   return changed;
 }
 
+// ---------------------------------------------------------------------------
+// Alpha premultiply (R18 A-2a): the display upload path's per-tile
+// conversion (BitmapTileImageCache.premultipliedTilePixels) - straight
+// alpha to premultiplied with Skia's own SkMulDiv255Round so uploads
+// round identically to Skia's rasterization. Pure integer math, ported
+// verbatim from the Dart reference.
+QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
+  for (int32_t i = 0; i < pixel_count; i += 1) {
+    uint8_t* p = pixels + (ptrdiff_t)i * 4;
+    const int32_t alpha = p[3];
+    if (alpha == 255) {
+      continue;
+    }
+    if (alpha == 0) {
+      p[0] = 0;
+      p[1] = 0;
+      p[2] = 0;
+      continue;
+    }
+    // SkMulDiv255Round: round(value * alpha / 255) for bytes.
+    int32_t product = p[0] * alpha + 128;
+    p[0] = (uint8_t)((product + (product >> 8)) >> 8);
+    product = p[1] * alpha + 128;
+    p[1] = (uint8_t)((product + (product >> 8)) >> 8);
+    product = p[2] * alpha + 128;
+    p[2] = (uint8_t)((product + (product >> 8)) >> 8);
+  }
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 2; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 3; }
