@@ -747,11 +747,26 @@ class _InteractiveBrushEditCanvasViewState
     if (!_settling || !mounted) {
       return;
     }
+    // Budgeted starts (R18 B-1): a canvas-covering stroke used to start
+    // EVERY touched tile's decode in this one call — each start is a
+    // synchronous tile copy + 65k-pixel premultiply, a pen-up hitch at
+    // heavy sizes. Chunks chain instead: every decode completion notifies
+    // the cache listener below, which re-requests the next chunk until
+    // [allDecoded] releases the overlay (the overlay keeps the stroke on
+    // screen throughout, so the handoff stays atomic and invisible).
+    var budget = BitmapTileImageCache.decodeStartBudget;
     for (final tile in _settlingTiles()) {
+      if (!BitmapTileImageCache.instance.needsDecodeStart(tile)) {
+        continue;
+      }
       BitmapTileImageCache.instance.ensureDecoded(
         tile,
         staleScope: (widget.layerId, widget.frameId),
       );
+      budget -= 1;
+      if (budget <= 0) {
+        break;
+      }
     }
   }
 
@@ -761,6 +776,10 @@ class _InteractiveBrushEditCanvasViewState
     }
     if (BitmapTileImageCache.instance.allDecoded(_settlingTiles())) {
       _resetOverlay();
+    } else {
+      // Not done yet — start the next decode chunk off this notification
+      // (the 50ms timer stays as the belt-and-braces fallback).
+      _requestSettlingDecodes();
     }
   }
 

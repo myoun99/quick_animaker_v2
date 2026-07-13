@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
@@ -190,6 +191,117 @@ void main() {
       final pixels = await paint(overlay);
 
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [255, 0, 0, 255]);
+    });
+  });
+
+  group('decode-start chunking (R18 B-1)', () {
+    // 8×4 tile grid (32 tiles) — well over the per-paint start budget.
+    BitmapSurface grid() {
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var y = 0; y < 4; y += 1) {
+        for (var x = 0; x < 8; x += 1) {
+          final coord = TileCoord(x: x, y: y);
+          tiles[coord] = BitmapTile.blank(coord: coord, size: 2);
+        }
+      }
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: 16, height: 8),
+        tileSize: 2,
+        tiles: tiles,
+      );
+    }
+
+    int pendingCount(BitmapTileImageCache cache, BitmapSurface surface) {
+      var count = 0;
+      for (final tile in surface.tiles.values) {
+        if (cache.needsDecodeStart(tile)) {
+          count += 1;
+        }
+      }
+      return count;
+    }
+
+    void paintOnce(CustomPainter painter, Size size) {
+      final recorder = ui.PictureRecorder();
+      painter.paint(Canvas(recorder), size);
+      recorder.endRecording().dispose();
+    }
+
+    test('one paint starts at most decodeStartBudget decodes; repeated '
+        'paints drain the rest', () {
+      final cache = BitmapTileImageCache();
+      final surface = grid();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: cache,
+      );
+      const budget = BitmapSurfacePainter.decodeStartBudget;
+
+      expect(pendingCount(cache, surface), 32);
+      paintOnce(painter, const Size(16, 8));
+      expect(pendingCount(cache, surface), 32 - budget);
+      paintOnce(painter, const Size(16, 8));
+      expect(pendingCount(cache, surface), 32 - 2 * budget);
+      paintOnce(painter, const Size(16, 8));
+      expect(pendingCount(cache, surface), 0);
+    });
+
+    test('visible tiles start strictly before off-screen tiles', () {
+      final cache = BitmapTileImageCache();
+      final surface = grid();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: cache,
+      );
+
+      // Viewport-less paint sized to the left quarter of the canvas:
+      // tiles at x∈{0,1} are visible (8), the other 24 are off-screen —
+      // fewer visible tiles than the budget, so ALL of them must be in
+      // the first chunk.
+      paintOnce(painter, const Size(4, 8));
+
+      for (final tile in surface.tiles.values) {
+        if (tile.coord.x < 2) {
+          expect(
+            cache.needsDecodeStart(tile),
+            isFalse,
+            reason:
+                'visible tile ${tile.coord} must start in the first '
+                'chunk',
+          );
+        }
+      }
+      expect(
+        pendingCount(cache, surface),
+        32 - BitmapSurfacePainter.decodeStartBudget,
+      );
+    });
+
+    test('a zoomed viewport prioritizes the tiles it actually shows', () {
+      final cache = BitmapTileImageCache();
+      final surface = grid();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        viewport: CanvasViewport(zoom: 4.0),
+        showTransparentBackground: false,
+        tileImageCache: cache,
+      );
+
+      // At zoom 4 a 4×8 widget shows canvas rect (0,0)-(1,2): only tile
+      // (0,0) overlaps it — it must be in the first chunk.
+      paintOnce(painter, const Size(4, 8));
+
+      expect(
+        cache.needsDecodeStart(surface.tiles[TileCoord(x: 0, y: 0)]!),
+        isFalse,
+        reason: 'the one visible tile must start in the first chunk',
+      );
+      expect(
+        pendingCount(cache, surface),
+        32 - BitmapSurfacePainter.decodeStartBudget,
+      );
     });
   });
 
