@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
+import '../../native/qa_native_engine.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../brush/canvas_selection_commands.dart';
@@ -597,7 +599,56 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ),
       ];
     });
+    _decodeMeshFloatImage();
     _syncAnts();
+  }
+
+  /// The float stamp decoded once per mesh session for the LIVE warp
+  /// preview: drawVertices over the SAME fixed-diagonal triangulation
+  /// the commit resampler uses — what warps on screen is what lands.
+  /// Until the (few-ms) decode completes the float shows unwarped.
+  ui.Image? _meshFloatImage;
+  int _meshImageRequest = 0;
+
+  void _decodeMeshFloatImage() {
+    final stamp = _pendingLiftStamp?.stamp;
+    if (stamp == null) {
+      return;
+    }
+    final request = ++_meshImageRequest;
+    // drawVertices composites premultiplied — premultiply a copy first
+    // (the same rule the tile image cache follows).
+    final premultiplied = Uint8List.fromList(stamp.rgba);
+    final native = QaNativeEngine.instance;
+    if (native != null) {
+      native.premultiplyRgba(premultiplied);
+    } else {
+      for (var i = 0; i < premultiplied.length; i += 4) {
+        final alpha = premultiplied[i + 3];
+        if (alpha == 255) {
+          continue;
+        }
+        premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
+        premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
+        premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
+      }
+    }
+    ui.decodeImageFromPixels(
+      premultiplied,
+      stamp.width,
+      stamp.height,
+      ui.PixelFormat.rgba8888,
+      (image) {
+        if (!mounted || request != _meshImageRequest || _meshPoints == null) {
+          image.dispose();
+          return;
+        }
+        setState(() {
+          _meshFloatImage?.dispose();
+          _meshFloatImage = image;
+        });
+      },
+    );
   }
 
   int? _hitTestMeshPoint(Offset local) {
@@ -642,6 +693,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _meshPoints = null;
     _meshDragIndex = null;
     _meshDragStartPoints = null;
+    _meshImageRequest += 1; // Invalidate an in-flight decode.
+    _meshFloatImage?.dispose();
+    _meshFloatImage = null;
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
     _floatSurface = _movePending ? _buildFloatSurface() : null;
@@ -1660,7 +1714,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       onPointerCancel: _handlePointerCancel,
       child: Stack(
         children: [
-          if (floatSurface != null &&
+          // R21 mesh LIVE warp preview: drawVertices over the SAME
+          // fixed-diagonal triangulation the commit resampler uses —
+          // the warped picture on screen is exactly what Enter lands.
+          if (meshPoints != null && _meshFloatImage != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  key: const ValueKey<String>('mesh-warp-preview'),
+                  painter: _MeshWarpPainter(
+                    image: _meshFloatImage!,
+                    columns: _meshColumns,
+                    rows: _meshRows,
+                    positions: [
+                      for (final point in meshPoints)
+                        _mapCanvasToViewportOffset(point),
+                    ],
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            )
+          else if (floatSurface != null &&
               (_dragMode == _DragMode.move ||
                   transform != null ||
                   _movePending))
@@ -1770,6 +1845,81 @@ typedef _TransformChrome = ({
   List<Offset> handles,
   Offset? knob,
 });
+
+/// The mesh session's LIVE warp preview (R21): the float stamp as a
+/// textured triangle mesh — destination positions are the control grid
+/// in viewport space, texture coordinates the uniform stamp-local grid,
+/// triangulated with the SAME fixed TL–BR diagonal as
+/// [transformStampDabMesh], so preview == commit by construction.
+class _MeshWarpPainter extends CustomPainter {
+  _MeshWarpPainter({
+    required this.image,
+    required this.columns,
+    required this.rows,
+    required this.positions,
+  });
+
+  final ui.Image image;
+  final int columns;
+  final int rows;
+
+  /// `(columns+1)*(rows+1)` viewport-space grid positions, row-major.
+  final List<Offset> positions;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final vertexPositions = Float32List(columns * rows * 12);
+    final textureCoordinates = Float32List(columns * rows * 12);
+    final cellWidth = image.width / columns;
+    final cellHeight = image.height / rows;
+    var write = 0;
+    void vertex(int column, int row) {
+      final position = positions[row * (columns + 1) + column];
+      vertexPositions[write] = position.dx;
+      textureCoordinates[write] = column * cellWidth;
+      write += 1;
+      vertexPositions[write] = position.dy;
+      textureCoordinates[write] = row * cellHeight;
+      write += 1;
+    }
+
+    for (var row = 0; row < rows; row += 1) {
+      for (var column = 0; column < columns; column += 1) {
+        // Fixed TL–BR diagonal: (TL, TR, BL) + (TR, BR, BL).
+        vertex(column, row);
+        vertex(column + 1, row);
+        vertex(column, row + 1);
+        vertex(column + 1, row);
+        vertex(column + 1, row + 1);
+        vertex(column, row + 1);
+      }
+    }
+    final paint = Paint()
+      ..shader = ui.ImageShader(
+        image,
+        TileMode.clamp,
+        TileMode.clamp,
+        Matrix4.identity().storage,
+        filterQuality: FilterQuality.medium,
+      );
+    canvas.drawVertices(
+      ui.Vertices.raw(
+        ui.VertexMode.triangles,
+        vertexPositions,
+        textureCoordinates: textureCoordinates,
+      ),
+      BlendMode.srcOver,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MeshWarpPainter oldDelegate) =>
+      oldDelegate.image != image ||
+      oldDelegate.positions != positions ||
+      oldDelegate.columns != columns ||
+      oldDelegate.rows != rows;
+}
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
 class _SelectionAntsPainter extends CustomPainter {
