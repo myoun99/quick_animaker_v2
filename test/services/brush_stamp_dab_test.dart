@@ -4,26 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_stamp_image.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
-import 'package:quick_animaker_v2/src/services/persistence/brush_drawing_binary_codec.dart';
 
 /// R14-④ bitmap lift engine: RGBA stamp dabs land 1:1 through the stroke
-/// funnel's materializer, the erase-mask + stamp pair implements the lift,
-/// and the .qap codec round-trips stamps byte-exactly.
+/// funnel's materializer, and the erase-mask + stamp pair implements the
+/// lift.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -282,43 +273,5 @@ void main() {
       );
       expect(pixelAt(result.surface, 4, y), [255, 0, 0, 255]);
     }
-  });
-
-  test('.qap drawing codec round-trips stamp dabs byte-exactly (v2)', () {
-    final stamp = BrushStampImage(
-      id: 'lift-rt',
-      width: 3,
-      height: 2,
-      rgba: Uint8List.fromList([for (var i = 0; i < 24; i += 1) i * 10 % 256]),
-    );
-    final entry = QapDrawingEntry(
-      key: const BrushFrameKey(
-        projectId: ProjectId('p'),
-        trackId: TrackId('t'),
-        cutId: CutId('c'),
-        layerId: LayerId('l'),
-        frameId: FrameId('f'),
-      ),
-      commands: [
-        BrushPaintCommand(
-          id: const BrushPaintCommandId('cmd-1'),
-          sequenceNumber: 1,
-          kind: BrushPaintCommandKind.paintStroke,
-          sourceDabs: [stampDab(left: 2, top: 3, stamp: stamp)],
-        ),
-      ],
-    );
-
-    final encoded = encodeDrawingEntry(entry, const {});
-    final decoded = decodeDrawingEntry(encoded, const []);
-
-    final decodedStamp = decoded.commands.single.sourceDabs.single.stamp!;
-    expect(decodedStamp.id, 'lift-rt');
-    expect(decodedStamp.width, 3);
-    expect(decodedStamp.height, 2);
-    expect(decodedStamp.rgba, stamp.rgba);
-    // Canonical quantization contract: re-encoding the decoded entry
-    // reproduces identical bytes.
-    expect(encodeDrawingEntry(decoded, const {}), encoded);
   });
 }

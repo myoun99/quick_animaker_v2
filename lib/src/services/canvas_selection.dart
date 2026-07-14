@@ -3,8 +3,6 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
-import '../models/brush_paint_command.dart';
-import '../models/brush_paint_command_id.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
@@ -59,48 +57,6 @@ class CanvasSelectionShape {
       for (final point in points) CanvasPoint(x: point.x + dx, y: point.y + dy),
     ]);
   }
-}
-
-/// The commands a selection shape captures (P9 backend rule): a command
-/// joins when at least [threshold] of its dabs' CENTERS fall inside the
-/// shape — stroke-level selection, deliberately not a raster cut-stamp.
-Set<BrushPaintCommandId> selectCommandIdsInShape({
-  required List<BrushPaintCommand> commands,
-  required CanvasSelectionShape shape,
-  double threshold = 0.6,
-}) {
-  final selected = <BrushPaintCommandId>{};
-  for (final command in commands) {
-    if (command.sourceDabs.isEmpty) {
-      continue;
-    }
-    var inside = 0;
-    for (final dab in command.sourceDabs) {
-      if (shape.containsPoint(dab.center)) {
-        inside += 1;
-      }
-    }
-    if (inside / command.sourceDabs.length >= threshold) {
-      selected.add(command.id);
-    }
-  }
-  return selected;
-}
-
-/// The selected dabs translated by (dx, dy) — the P9 move. Only geometry
-/// moves; every brush property (size, masks, dynamics) rides along
-/// untouched so the re-render is stroke-identical elsewhere.
-List<BrushDab> translateDabs(
-  List<BrushDab> dabs, {
-  required double dx,
-  required double dy,
-}) {
-  return [
-    for (final dab in dabs)
-      dab.copyWith(
-        center: CanvasPoint(x: dab.center.x + dx, y: dab.center.y + dy),
-      ),
-  ];
 }
 
 /// The Ctrl+T free-transform affine (P9b), canvas space:

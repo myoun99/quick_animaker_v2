@@ -5,18 +5,14 @@ import 'dart:typed_data';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
-import '../bitmap_surface_brush_commit.dart';
 import '../brush_frame_store.dart';
-import '../../models/brush_dab_sequence.dart';
 import 'brush_drawing_binary_codec.dart';
 import 'qap_project_archive.dart';
 
 /// A loaded .qap: the project with media paths already RESOLVED (relative
 /// manifest entries that exist next to the file win over the stored
 /// absolute paths — the Drive-portability rule) plus the BAKED cels to
-/// seed the brush store with (R19 bake-only: v1 legacy drawings are
-/// materialized once right here, so every open hands the session pure
-/// raster truth).
+/// seed the brush store with (R19 bake-only).
 class QapOpenResult {
   const QapOpenResult({required this.project, required this.cels});
 
@@ -70,47 +66,13 @@ class QapFileService {
   Future<QapOpenResult> open({required String filePath}) async {
     final bytes = Uint8List.fromList(await File(filePath).readAsBytes());
     // Inflate + decode off the UI isolate (the mirror of save's encode).
-    // v1 legacy drawings ALSO materialize off the UI isolate right here —
-    // the one-time bake that turns an old command file into raster truth
-    // (rides the Dart reference materializer: the C engine is per-isolate
-    // and byte-identical anyway).
+    // R19-Z: the isolate boundary ships PLAIN-BYTES cel entries (native
+    // tiles are Finalizable = unsendable).
     final (:project, :celEntries, :mediaRelativePaths) = await Isolate.run(() {
       final contents = parseQapArchiveBytes(bytes);
-      final cutCanvasSizes = {
-        for (final track in contents.project.tracks)
-          for (final cut in track.cuts) cut.id: cut.canvasSize,
-      };
-      // R19-Z: the isolate boundary ships PLAIN-BYTES cel entries (native
-      // tiles are Finalizable = unsendable); v1 drawings materialize here
-      // and snapshot to bytes the same way.
-      final baked = <BrushFrameKey, QapCelEntry>{
-        for (final cel in contents.cels) cel.key: cel,
-      };
-      for (final drawing in contents.drawings) {
-        if (baked.containsKey(drawing.key)) {
-          continue;
-        }
-        final canvasSize = cutCanvasSizes[drawing.key.cutId];
-        if (canvasSize == null) {
-          continue;
-        }
-        var surface = BitmapSurface(canvasSize: canvasSize);
-        for (final command in drawing.commands) {
-          if (command.sourceDabs.isEmpty) {
-            continue;
-          }
-          surface = materializeBrushDabSequenceOnBitmapSurface(
-            surface: surface,
-            sequence: BrushDabSequence(command.sourceDabs),
-          ).surface;
-        }
-        if (surface.tiles.isNotEmpty) {
-          baked[drawing.key] = QapCelEntry.fromSurface(drawing.key, surface);
-        }
-      }
       return (
         project: contents.project,
-        celEntries: baked.values.toList(),
+        celEntries: contents.cels,
         mediaRelativePaths: contents.mediaRelativePaths,
       );
     });

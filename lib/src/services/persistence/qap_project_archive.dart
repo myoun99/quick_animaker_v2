@@ -1,10 +1,9 @@
 /// The .qap container (P3): ONE self-contained ZIP — `project.json`
-/// (timeline + metadata, with a formatVersion), `tips.bin` (deduplicated
-/// tip-mask table) and `drawings/<n>.bin` (per-frame compact binary dab
-/// payloads; deflate does the rest). Drawings live INSIDE the file (user
-/// direction: no scattered sidecars); media stays EXTERNAL Premiere-style,
-/// with save-directory-relative paths recorded so a Drive folder opened on
-/// another machine relinks by itself.
+/// (timeline + metadata, with a formatVersion) and `cels/<n>.bin` (baked
+/// tile rasters; deflate does the rest). Drawings live INSIDE the file
+/// (user direction: no scattered sidecars); media stays EXTERNAL
+/// Premiere-style, with save-directory-relative paths recorded so a Drive
+/// folder opened on another machine relinks by itself.
 library;
 
 import 'dart:convert';
@@ -13,31 +12,27 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 
 import '../../models/audio_clip.dart';
-import '../../models/brush_tip_mask.dart';
 import '../../models/project.dart';
 import 'brush_drawing_binary_codec.dart';
 
 /// v2 (R19 bake-only): cels persist as BAKED tile rasters
-/// (`cels/<n>.bin`) — the truth. Drawings (`drawings/<n>.bin`) are no
-/// longer written; v1 archives still read (their commands materialize
-/// ONCE on open, then live as raster like everything else).
+/// (`cels/<n>.bin`) — the truth. The v1 command-drawing reader is DELETED
+/// (R20-E3): no production v1 file was ever written (user-confirmed), so
+/// `drawings/`/`tips.bin` entries are simply ignored.
 const int qapFormatVersion = 2;
 
 /// A parsed .qap archive: the project (media paths NOT yet resolved — see
-/// [remapProjectMediaPaths]), its baked cels (v2), any legacy drawings
-/// (v1) and the saved relative-path manifest ({absolute path at save
-/// time: save-dir-relative path}).
+/// [remapProjectMediaPaths]), its baked cels and the saved relative-path
+/// manifest ({absolute path at save time: save-dir-relative path}).
 class QapArchiveContents {
   const QapArchiveContents({
     required this.project,
     required this.cels,
-    required this.drawings,
     required this.mediaRelativePaths,
   });
 
   final Project project;
   final List<QapCelEntry> cels;
-  final List<QapDrawingEntry> drawings;
   final Map<String, String> mediaRelativePaths;
 }
 
@@ -104,19 +99,8 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
           entry.key as String: entry.value as String,
   };
 
-  final tipsEntry = archive.find('tips.bin');
-  final masks = tipsEntry == null
-      ? const <BrushTipMask>[]
-      : decodeTipMaskTable(tipsEntry.readBytes()!);
-
-  // v1 legacy: command drawings, materialized once by the opener.
-  final drawings = <QapDrawingEntry>[
-    for (final file in archive.files)
-      if (file.isFile && file.name.startsWith('drawings/'))
-        decodeDrawingEntry(file.readBytes()!, masks),
-  ];
-
-  // v2 truth: baked cel rasters.
+  // v2 truth: baked cel rasters. (v1 drawings/tips entries are ignored —
+  // reader deleted, no production v1 file exists.)
   final cels = <QapCelEntry>[
     for (final file in archive.files)
       if (file.isFile && file.name.startsWith('cels/'))
@@ -126,7 +110,6 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
   return QapArchiveContents(
     project: project,
     cels: cels,
-    drawings: drawings,
     mediaRelativePaths: mediaRelativePaths,
   );
 }
