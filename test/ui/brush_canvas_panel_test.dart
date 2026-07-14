@@ -448,6 +448,10 @@ void main() {
 
     // The committed stroke is materialized into the session surface and
     // displayed from the bitmap (WYSIWYG), not as source-dab stamps.
+    // R25-④: the commit landed in the previous frame's post-frame
+    // phase, so the view widget rebuilds with the post-commit session
+    // state one pump later.
+    await tester.pump();
     final canvasView = tester.widget<BrushEditCanvasView>(
       find.byType(BrushEditCanvasView),
     );
