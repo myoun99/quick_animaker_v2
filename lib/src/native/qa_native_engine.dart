@@ -32,9 +32,103 @@ class QaNativeEngine {
     this._tilePoolCachedBytes,
     this._fillGapCloseRun,
     this._floodFillWave,
+    this._fillComposeBatch,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 13;
+  static const int _abiVersion = 14;
+
+  /// R25-③ batched fill compose: packs compose-tile items + their
+  /// ordered layer blends into grow-only native arrays and fans the
+  /// tiles across the worker pool in ONE call (the per-tile serial FFI
+  /// compose was the fill's largest remaining serial slice).
+  Pointer<QaComposeTileItemStruct> _composeItems = nullptr;
+  int _composeItemCapacity = 0;
+  Pointer<QaComposeBlendStruct> _composeBlends = nullptr;
+  int _composeBlendCapacity = 0;
+
+  void fillComposeBatch({
+    required int rasterWidth,
+    required int paperR,
+    required int paperG,
+    required int paperB,
+    required List<
+      ({
+        int left,
+        int top,
+        int rightExclusive,
+        int bottomExclusive,
+        int firstBlend,
+        int blendCount,
+      })
+    >
+    tiles,
+    required List<
+      ({
+        Pointer<Uint8> pixels,
+        int tileSize,
+        int baseX,
+        int baseY,
+        int clipLeft,
+        int clipTop,
+        int clipRightExclusive,
+        int clipBottomExclusive,
+        int opacityInt,
+      })
+    >
+    blends,
+  }) {
+    if (tiles.isEmpty) {
+      return;
+    }
+    if (_composeItemCapacity < tiles.length) {
+      if (_composeItems != nullptr) {
+        calloc.free(_composeItems);
+      }
+      _composeItems = calloc<QaComposeTileItemStruct>(tiles.length);
+      _composeItemCapacity = tiles.length;
+    }
+    if (_composeBlendCapacity < blends.length && blends.isNotEmpty) {
+      if (_composeBlends != nullptr) {
+        calloc.free(_composeBlends);
+      }
+      _composeBlends = calloc<QaComposeBlendStruct>(blends.length);
+      _composeBlendCapacity = blends.length;
+    }
+    for (var i = 0; i < tiles.length; i += 1) {
+      final tile = tiles[i];
+      final item = _composeItems + i;
+      item.ref.tileLeft = tile.left;
+      item.ref.tileTop = tile.top;
+      item.ref.tileRightExclusive = tile.rightExclusive;
+      item.ref.tileBottomExclusive = tile.bottomExclusive;
+      item.ref.firstBlend = tile.firstBlend;
+      item.ref.blendCount = tile.blendCount;
+    }
+    for (var i = 0; i < blends.length; i += 1) {
+      final blend = blends[i];
+      final entry = _composeBlends + i;
+      entry.ref.tilePixels = blend.pixels;
+      entry.ref.tileSize = blend.tileSize;
+      entry.ref.baseX = blend.baseX;
+      entry.ref.baseY = blend.baseY;
+      entry.ref.clipLeft = blend.clipLeft;
+      entry.ref.clipTop = blend.clipTop;
+      entry.ref.clipRightExclusive = blend.clipRightExclusive;
+      entry.ref.clipBottomExclusive = blend.clipBottomExclusive;
+      entry.ref.opacityInt = blend.opacityInt;
+      entry.ref.reserved = 0;
+    }
+    _fillComposeBatch(
+      _floodRgb,
+      rasterWidth,
+      paperR,
+      paperG,
+      paperB,
+      _composeItems,
+      tiles.length,
+      _composeBlends,
+    );
+  }
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -206,6 +300,18 @@ class QaNativeEngine {
     Pointer<Int32> bounds,
   )
   _floodFillWave;
+
+  final void Function(
+    Pointer<Uint8> rgb,
+    int rasterWidth,
+    int paperR,
+    int paperG,
+    int paperB,
+    Pointer<QaComposeTileItemStruct> items,
+    int itemCount,
+    Pointer<QaComposeBlendStruct> blends,
+  )
+  _fillComposeBatch;
 
   final void Function(
     Pointer<Uint8> rgb,
@@ -565,6 +671,45 @@ class QaNativeEngine {
               Pointer<Int32>,
             )
           >('qa_flood_fill_wave');
+      final composeBlendSize = library
+          .lookupFunction<Int32 Function(), int Function()>(
+            'qa_compose_blend_sizeof',
+          )
+          .call();
+      if (composeBlendSize != sizeOf<QaComposeBlendStruct>()) {
+        return null;
+      }
+      final composeItemSize = library
+          .lookupFunction<Int32 Function(), int Function()>(
+            'qa_compose_tile_item_sizeof',
+          )
+          .call();
+      if (composeItemSize != sizeOf<QaComposeTileItemStruct>()) {
+        return null;
+      }
+      final fillComposeBatch = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<QaComposeTileItemStruct>,
+              Int32,
+              Pointer<QaComposeBlendStruct>,
+            ),
+            void Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              Pointer<QaComposeTileItemStruct>,
+              int,
+              Pointer<QaComposeBlendStruct>,
+            )
+          >('qa_fill_compose_batch');
       return QaNativeEngine._(
         premultiplyRgba,
         fillPaperRect,
@@ -580,6 +725,7 @@ class QaNativeEngine {
         tilePoolCachedBytes,
         fillGapCloseRun,
         floodFillWave,
+        fillComposeBatch,
       );
     } on Object {
       return null;
@@ -821,6 +967,7 @@ class QaNativeEngine {
     required int seedB,
     required int tolerance,
     required void Function(int index) ensureComposed,
+    void Function(Int32List pixelIndices)? ensureComposedBatch,
   }) {
     final width = handles.width;
     final height = handles.height;
@@ -903,8 +1050,15 @@ class QaNativeEngine {
       }
       if (candidateCount > 0) {
         final candidates = _floodCandidates.asTypedList(candidateCount);
-        for (var i = 0; i < candidateCount; i += 1) {
-          ensureComposed(candidates[i]);
+        // R25-③: one pooled compose for the whole candidate round
+        // (per-candidate serial FFI compose was the fill's largest
+        // remaining serial slice).
+        if (ensureComposedBatch != null) {
+          ensureComposedBatch(candidates);
+        } else {
+          for (var i = 0; i < candidateCount; i += 1) {
+            ensureComposed(candidates[i]);
+          }
         }
         var stackSize = _floodStackSize.value;
         for (var i = 0; i < candidateCount; i += 1) {
@@ -1414,6 +1568,46 @@ class QaNativeTileBuffer {
 
   final Pointer<Uint8> pointer;
   final Uint8List view;
+}
+
+/// Mirror of the C `qa_compose_blend` (R25-③) — field order/types must
+/// match EXACTLY (sizeof cross-checked before the native path enables).
+final class QaComposeBlendStruct extends Struct {
+  external Pointer<Uint8> tilePixels;
+  @Int32()
+  external int tileSize;
+  @Int32()
+  external int baseX;
+  @Int32()
+  external int baseY;
+  @Int32()
+  external int clipLeft;
+  @Int32()
+  external int clipTop;
+  @Int32()
+  external int clipRightExclusive;
+  @Int32()
+  external int clipBottomExclusive;
+  @Int32()
+  external int opacityInt;
+  @Int32()
+  external int reserved;
+}
+
+/// Mirror of the C `qa_compose_tile_item` (R25-③).
+final class QaComposeTileItemStruct extends Struct {
+  @Int32()
+  external int tileLeft;
+  @Int32()
+  external int tileTop;
+  @Int32()
+  external int tileRightExclusive;
+  @Int32()
+  external int tileBottomExclusive;
+  @Int32()
+  external int firstBlend;
+  @Int32()
+  external int blendCount;
 }
 
 /// A fresh premultiplied stamp buffer (R23 fill overlay): [view] feeds
