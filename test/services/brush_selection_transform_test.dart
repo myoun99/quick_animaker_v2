@@ -16,11 +16,11 @@ import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.d
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
 import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
-import 'package:quick_animaker_v2/src/services/commands/brush_selection_transform_history_command.dart';
-import 'package:quick_animaker_v2/src/services/history_manager.dart';
 
-/// P9 backend: the in-place dab rewrite (store + coordinator) and the
-/// app-level selection-transform undo command.
+/// P9 backend: the in-place dab rewrite (store + coordinator). The old
+/// app-level dab-map transform command retired with the R19 pixel
+/// selection model (Ctrl+T now rides the lift session + stamp resample —
+/// see canvas_selection_transform_stamp_test.dart).
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 16);
 
@@ -130,66 +130,5 @@ void main() {
     c.redo();
     expect(pixelAt(c, 12, 12), isNot(0));
     expect(pixelAt(c, 6, 2), isNot(0));
-  });
-
-  test('the history command round-trips exactly through the app stack', () {
-    final c = coordinator();
-    final history = HistoryManager();
-    final stroke = c.commitSourceStroke(sourceDabs: [dab(2, 2)])!;
-    final originalDabs = stroke.sourceDabs;
-
-    history.execute(
-      BrushSelectionTransformHistoryCommand(
-        coordinator: c,
-        frameKey: c.activeFrameKey,
-        before: {stroke.id: originalDabs},
-        after: {stroke.id: translateDabs(originalDabs, dx: 5, dy: 3)},
-      ),
-    );
-    expect(pixelAt(c, 7, 5), isNot(0));
-    expect(pixelAt(c, 2, 2), 0);
-
-    history.undo();
-    expect(
-      c.frameStore
-          .getOrCreateFrame(c.activeFrameKey)
-          .commandById(stroke.id)!
-          .sourceDabs,
-      originalDabs,
-      reason: 'undo restores the EXACT original dab payload',
-    );
-    expect(pixelAt(c, 2, 2), isNot(0));
-
-    history.redo();
-    expect(pixelAt(c, 7, 5), isNot(0));
-  });
-
-  test('undo targets the recorded frame even after the playhead moved', () {
-    final c = coordinator();
-    final history = HistoryManager();
-    final stroke = c.commitSourceStroke(sourceDabs: [dab(2, 2)])!;
-    final frameA = c.activeFrameKey;
-
-    history.execute(
-      BrushSelectionTransformHistoryCommand(
-        coordinator: c,
-        frameKey: frameA,
-        before: {stroke.id: stroke.sourceDabs},
-        after: {stroke.id: translateDabs(stroke.sourceDabs, dx: 5, dy: 0)},
-      ),
-    );
-
-    c.selectFrame(key('frame-b'));
-    history.undo();
-
-    expect(
-      c.frameStore.getOrCreateFrame(frameA).commandById(stroke.id)!.sourceDabs,
-      stroke.sourceDabs,
-    );
-    expect(
-      c.frameStore.getOrCreateFrame(key('frame-b')).visibleActivePaintCommands,
-      isEmpty,
-      reason: 'the other frame stays untouched',
-    );
   });
 }

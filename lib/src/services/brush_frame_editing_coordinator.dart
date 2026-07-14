@@ -288,7 +288,7 @@ class BrushFrameEditingCoordinator {
   /// arbitrary rewrite has no incremental entry): undo of OLDER strokes
   /// falls back to the replay path, exactly like after a canvas resize.
   /// This operation itself creates no coordinator undo entry — the
-  /// app-level BrushSelectionTransformHistoryCommand owns before/after.
+  /// app-level BrushLiftMoveHistoryCommand owns the session's adopt.
   void rewritePaintCommandDabs(
     Map<BrushPaintCommandId, List<BrushDab>> dabsById, {
     BrushFrameKey? frameKey,
