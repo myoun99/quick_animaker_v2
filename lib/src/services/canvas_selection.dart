@@ -721,6 +721,18 @@ class SelectionMaskOptions {
 
   bool get isHard => growPx == 0 && featherPx <= 0 && !antiAlias;
 
+  SelectionMaskOptions copyWith({
+    int? growPx,
+    double? featherPx,
+    bool? antiAlias,
+  }) {
+    return SelectionMaskOptions(
+      growPx: growPx ?? this.growPx,
+      featherPx: featherPx ?? this.featherPx,
+      antiAlias: antiAlias ?? this.antiAlias,
+    );
+  }
+
   /// Extra bounding-box padding the post-passes may write into.
   int get bboxPad =>
       (growPx > 0 ? growPx : 0) + featherPx.ceil() + (antiAlias ? 1 : 0);

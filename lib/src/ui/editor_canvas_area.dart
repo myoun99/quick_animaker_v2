@@ -6,6 +6,7 @@ import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
+import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -43,6 +44,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.canvasSelectionCommands,
     this.expandedLaneLayerIds,
     this.fillOptions,
+    this.selectionMaskOptions,
   });
 
   final EditorSessionManager session;
@@ -75,6 +77,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The fill tool's flood options (Tool Settings knobs, R11-④); null
   /// keeps the defaults.
   final ValueListenable<FloodFillOptions>? fillOptions;
+
+  /// The Select tool's lift-time mask knobs (R26); null keeps the
+  /// classic byte-preserving hard mask.
+  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -296,6 +302,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
+              selectionMaskOptions: widget.selectionMaskOptions,
               fillDabAt: (point, color) => buildFillDab(
                 cut: session.activeCut,
                 frameIndex: session.currentFrameIndex,
