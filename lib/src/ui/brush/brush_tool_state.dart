@@ -182,7 +182,9 @@ class BrushToolState {
   }
 
   static const double minSize = 1.0;
-  static const double maxSize = 128.0;
+  // CSP-parity ceiling; the settings slider maps this range exponentially so
+  // the small sizes keep their precision.
+  static const double maxSize = 2000.0;
   static const double defaultSize = 10.0;
   static const double defaultOpacity = 1.0;
   static const int defaultColor = 0xFF000000;

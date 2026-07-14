@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/onion_skin_settings.dart';
+import '../widgets/field_slider.dart';
 
 /// The onion-skin dock panel (P2, Callipeg's light-table language): the
 /// master toggle, the Colors/Images mode, and one peg strip per side —
@@ -130,12 +131,16 @@ class OnionSkinPanel extends StatelessWidget {
         Row(
           children: [
             const Icon(Icons.opacity, size: 14),
+            const SizedBox(width: 6),
             Expanded(
-              child: Slider(
+              child: FieldSlider(
                 key: ValueKey<String>('onion-opacity-$keyPrefix'),
                 min: 0.05,
                 max: 1,
                 value: baseOpacity.clamp(0.05, 1.0),
+                valueText: '${(baseOpacity.clamp(0.05, 1.0) * 100).round()}%',
+                displayFactor: 100,
+                height: 18,
                 onChanged: (value) {
                   final scale = baseOpacity <= 0 ? 0.0 : value / baseOpacity;
                   onPegsChanged([
@@ -151,6 +156,7 @@ class OnionSkinPanel extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 6),
         Row(
           children: [
             for (final candidate in tints)

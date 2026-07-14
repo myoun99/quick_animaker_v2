@@ -10,6 +10,7 @@ import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../theme/app_theme.dart';
+import '../widgets/field_slider.dart';
 import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -668,28 +669,18 @@ class _AudioGainDialogState extends State<_AudioGainDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Clip Gain'),
-      content: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 220,
-            child: Slider(
-              key: const ValueKey<String>('audio-gain-slider'),
-              min: 0,
-              max: 2,
-              value: _gain,
-              onChanged: (value) => setState(() => _gain = value),
-            ),
-          ),
-          SizedBox(
-            width: 48,
-            child: Text(
-              '${(_gain * 100).round()}%',
-              key: const ValueKey<String>('audio-gain-value'),
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
+      content: SizedBox(
+        width: 240,
+        child: FieldSlider(
+          key: const ValueKey<String>('audio-gain-slider'),
+          min: 0,
+          max: 2,
+          value: _gain,
+          label: 'Gain',
+          valueText: '${(_gain * 100).round()}%',
+          displayFactor: 100,
+          onChanged: (value) => setState(() => _gain = value),
+        ),
       ),
       actions: [
         TextButton(

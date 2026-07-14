@@ -28,6 +28,7 @@ import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
+import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
@@ -1899,24 +1900,18 @@ class _StoryboardSeLabel extends StatelessWidget {
               if (layer != null && onLayerOpacityChanged != null)
                 SizedBox(
                   width: 44,
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 2,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 5,
-                      ),
-                      overlayShape: SliderComponentShape.noOverlay,
+                  child: FieldSlider(
+                    key: ValueKey<String>(
+                      'storyboard-layer-opacity-${layer.id}',
                     ),
-                    child: Slider(
-                      key: ValueKey<String>(
-                        'storyboard-layer-opacity-${layer.id}',
-                      ),
-                      min: 0,
-                      max: 1,
-                      value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                      onChanged: (opacity) =>
-                          onLayerOpacityChanged!(layer.id, opacity),
-                    ),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    valueText: '${(layer.opacity * 100).round()}%',
+                    displayFactor: 100,
+                    height: 16,
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged!(layer.id, opacity),
                   ),
                 ),
               if (onToggleWaveform != null)

@@ -14,6 +14,7 @@ import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import '../widgets/field_slider.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
 import 'timeline_orientation.dart';
@@ -290,7 +291,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 ),
                 SizedBox(
                   width: 140,
-                  child: Slider(
+                  child: FieldSlider(
                     key: const ValueKey<String>('timeline-zoom-slider'),
                     min: TimelinePanel.minPixelsPerFrame,
                     max: TimelinePanel.maxPixelsPerFrame,
@@ -298,6 +299,11 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       TimelinePanel.minPixelsPerFrame,
                       TimelinePanel.maxPixelsPerFrame,
                     ),
+                    // Zoom reads as percent of the default frame width.
+                    valueText:
+                        '${(widget.pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
+                    displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
+                    height: 18,
                     onChanged: widget.onPixelsPerFrameChanged,
                   ),
                 ),
