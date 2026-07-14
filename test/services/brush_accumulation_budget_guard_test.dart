@@ -22,13 +22,14 @@ import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// R13 accumulation-budget guards: a drawing session must not grow the
-/// heap per cel forever. Three budgets pin that:
+/// heap per cel forever. Pinned here:
 ///
 /// 1. the edit-session store retains at most
 ///    [BrushHistoryPolicy.retainedSessionLimit] live sessions (LRU);
 /// 2. undo of an EVICTED cel's stroke still lands exactly (the command
 ///    replay fallback);
-/// 3. the frame store's preview surfaces stay under their byte budget;
+/// 3. display caches ALIAS the baked truth (R19 P3a) — they carry no
+///    independent bytes, which is why they need no budget of their own;
 /// 4. the tile-image cache pins stale-fallback tiles for at most
 ///    [BitmapTileImageCache.retainedScopeLimit] scopes.
 void main() {
@@ -148,31 +149,31 @@ void main() {
     );
   });
 
-  test('display caches stay under their byte budget (LRU eviction, the '
-      'newest donation always kept)', () {
-    const tileBytes = 256 * 256 * 4;
-    // Room for two single-tile caches; the third donation evicts the LRU.
-    final store = BrushFrameStore(displayCacheByteBudget: tileBytes * 2);
+  test('display caches are ALIASES of the baked truth (R19 P3a): storing '
+      'and re-reading shares the surface object, so the old byte-budget '
+      'eviction would have freed nothing', () {
+    final store = BrushFrameStore();
 
-    BitmapSurface surfaceWithTile() =>
-        BitmapSurface(canvasSize: canvasSize).putTile(
-          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
-        );
+    BitmapSurface surfaceWithTile() => BitmapSurface(
+      canvasSize: canvasSize,
+    ).putTile(BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256));
 
     for (var cel = 0; cel < 3; cel += 1) {
-      store.storeRebuiltDisplayCache(
-        key: celKey(cel),
-        previewSurface: surfaceWithTile(),
-      );
+      final surface = surfaceWithTile();
+      // The donation path stores the SAME immutable surface into both maps.
+      store.storeBakedSurface(celKey(cel), surface);
+      store.storeRebuiltDisplayCache(key: celKey(cel), previewSurface: surface);
     }
 
-    expect(store.displayCacheBytes, lessThanOrEqualTo(tileBytes * 2));
-    expect(store.displayCacheOrNull(celKey(2)), isNotNull);
-    expect(
-      store.displayCacheOrNull(celKey(0)),
-      isNull,
-      reason: 'the least-recent cel evicted',
-    );
+    for (var cel = 0; cel < 3; cel += 1) {
+      final cache = store.displayCacheOrNull(celKey(cel));
+      expect(cache, isNotNull, reason: 'no eviction: caches are all kept');
+      expect(
+        identical(cache!.previewSurface, store.bakedSurfaceOrNull(celKey(cel))),
+        isTrue,
+        reason: 'the cache aliases the baked truth — zero independent bytes',
+      );
+    }
   });
 
   test('the tile-image cache pins at most retainedScopeLimit scopes', () async {

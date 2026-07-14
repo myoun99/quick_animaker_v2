@@ -106,7 +106,6 @@ class EditorSessionManager extends ChangeNotifier {
       brushFrameStore: brushFrameStore,
     );
     _rebuildActiveCutControllers();
-    brushFrameStore.protectedCutId = _editingSession.activeCutId;
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
     audioPlaybackSync.attach();
     playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
@@ -987,15 +986,22 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layer.id,
       frameId: frame.id,
     );
-    final drawing = brushFrameStore.frameOrNull(frameKey);
-    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+    // Content oracle, not a command check (R19 P3a): an OPENED cel's
+    // picture is its baked raster with no commands — the old guard made
+    // fill compose and the eyedropper treat every loaded cel as empty.
+    if (!brushFrameStore.celHasRenderableContent(frameKey)) {
       return null;
     }
-    final cached = brushFrameStore.displayCacheOrNull(frameKey);
-    if (cached != null &&
-        cached.isValid &&
-        cached.previewSurface.canvasSize == activeCut.canvasSize) {
-      return cached.previewSurface;
+    final direct = brushFrameStore.currentSurfaceWithoutReplay(
+      frameKey,
+      canvasSize: activeCut.canvasSize,
+    );
+    if (direct != null) {
+      return direct;
+    }
+    final drawing = brushFrameStore.frameOrNull(frameKey);
+    if (drawing == null) {
+      return null;
     }
     final rebuilt = BrushFrameDisplayCacheRenderer(
       canvasSize: activeCut.canvasSize,
@@ -1254,10 +1260,6 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _editingSession.setActiveCutId(cutId);
-    // Pin the working cut's display caches (R16-⑤ measured): a byte-budget
-    // eviction of the cut being flipped through forced multi-second cold
-    // replays on the UI thread with heavy brushes.
-    brushFrameStore.protectedCutId = cutId;
     _copiedFrame = null;
     _rebuildActiveCutControllers();
     _warmActiveCut();

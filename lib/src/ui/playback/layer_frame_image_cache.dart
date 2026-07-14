@@ -76,8 +76,11 @@ class LayerFrameImageCache {
       return cached;
     }
 
+    // Content oracle, not a command check (R19 P3a): an OPENED cel's
+    // picture is its baked raster and carries no commands at all — the
+    // old command-emptiness guard blanked every loaded cel in playback.
     final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
       _dropEntry((key, quality));
       return null;
     }
@@ -142,7 +145,7 @@ class LayerFrameImageCache {
     }
 
     final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
       return null;
     }
     final revision = drawing.sourceRevision;

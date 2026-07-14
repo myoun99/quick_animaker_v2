@@ -49,22 +49,28 @@ class ExportFrameRenderer {
     }
     return _surfaces.putIfAbsent((layer.id, frame.id), () {
       final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
-      final drawing = session.brushFrameStore.frameOrNull(frameKey);
-      if (drawing == null || drawing.allPaintCommandsInDisplayOrder.isEmpty) {
+      final store = session.brushFrameStore;
+      // Content oracle, not a command check (R19 P3a): an OPENED cel's
+      // picture is its baked raster with no commands — the old guard
+      // exported every loaded cel BLANK.
+      if (!store.celHasRenderableContent(frameKey)) {
         return null;
       }
-      // The store's display cache usually holds the exact pixels already —
-      // the editing coordinator donates the session surface on every
-      // commit/undo/redo — so reuse it READ-ONLY instead of replaying the
-      // frame's whole command list (the storyboard thumbnail re-render after
-      // each stroke was a main part of the post-stroke UI freeze). Replay
-      // stays the cold fallback; nothing is stored back, so batch exports
-      // don't grow the shared cache.
-      final cached = session.brushFrameStore.displayCacheOrNull(frameKey);
-      if (cached != null &&
-          cached.isValid &&
-          cached.previewSurface.canvasSize == cut.canvasSize) {
-        return cached.previewSurface;
+      // Valid display cache or the baked truth, READ-ONLY (the coordinator
+      // donates on every commit/undo/redo, so this is usually the exact
+      // pixels already). Nothing is stored back, so batch exports don't
+      // grow the shared cache. Replay stays the cold fallback for legacy
+      // this-session command cels whose cache went stale.
+      final direct = store.currentSurfaceWithoutReplay(
+        frameKey,
+        canvasSize: cut.canvasSize,
+      );
+      if (direct != null) {
+        return direct;
+      }
+      final drawing = store.frameOrNull(frameKey);
+      if (drawing == null) {
+        return null;
       }
       return BrushFrameDisplayCacheRenderer(
         canvasSize: cut.canvasSize,
