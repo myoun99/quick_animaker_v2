@@ -20,9 +20,8 @@ class PanelVisibilityScope extends InheritedWidget {
 
   /// Null when no scope is present (bare panels in focused widget tests
   /// behave exactly like always-visible ones).
-  static ValueListenable<bool>? maybeOf(BuildContext context) => context
-      .getInheritedWidgetOfExactType<PanelVisibilityScope>()
-      ?.visible;
+  static ValueListenable<bool>? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<PanelVisibilityScope>()?.visible;
 
   @override
   bool updateShouldNotify(PanelVisibilityScope oldWidget) =>

@@ -144,8 +144,7 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == b.id).timeline[7], isNull);
   });
 
-  test('a mark landing stays illegal: preview clears, release is a no-op',
-      () {
+  test('a mark landing stays illegal: preview clears, release is a no-op', () {
     final (s, a, _) = twoLayerSession();
     // Drop a mark at frame 4 on layer A (empty space there).
     s.selectFrameIndex(4);

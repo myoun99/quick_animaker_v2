@@ -1255,34 +1255,34 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                    // Width driver: the scroll content spans
-                                    // the full frame runway even when every
-                                    // row is narrower (the pinned ruler used
-                                    // to do this from inside the content).
-                                    SizedBox(width: contentWidth),
-                                    // Track groups in TIMELINE order (R6
-                                    // B3), mirroring the rail exactly 窶・
-                                    // row for row, height for height.
-                                    for (
-                                      var index = 0;
-                                      index < project.tracks.length;
-                                      index++
-                                    )
-                                      ..._stripRowsForTrack(
-                                        project.tracks[index],
-                                        index,
-                                        layoutEntries
-                                            .where(
-                                              (entry) =>
-                                                  entry.trackIndex == index,
-                                            )
-                                            .toList(growable: false),
-                                        contentWidth,
-                                        scale,
-                                        index < seStripRowsByTrack.length
-                                            ? seStripRowsByTrack[index]
-                                            : const [],
-                                      ),
+                                      // Width driver: the scroll content spans
+                                      // the full frame runway even when every
+                                      // row is narrower (the pinned ruler used
+                                      // to do this from inside the content).
+                                      SizedBox(width: contentWidth),
+                                      // Track groups in TIMELINE order (R6
+                                      // B3), mirroring the rail exactly 窶・
+                                      // row for row, height for height.
+                                      for (
+                                        var index = 0;
+                                        index < project.tracks.length;
+                                        index++
+                                      )
+                                        ..._stripRowsForTrack(
+                                          project.tracks[index],
+                                          index,
+                                          layoutEntries
+                                              .where(
+                                                (entry) =>
+                                                    entry.trackIndex == index,
+                                              )
+                                              .toList(growable: false),
+                                          contentWidth,
+                                          scale,
+                                          index < seStripRowsByTrack.length
+                                              ? seStripRowsByTrack[index]
+                                              : const [],
+                                        ),
                                     ],
                                   ),
                                 ),

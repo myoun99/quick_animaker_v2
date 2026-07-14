@@ -299,8 +299,7 @@ void main() {
   });
 
   test('a start-edge TRIM re-anchors the canonical fade to the new length '
-      '(the fade-out keeps riding the end — same durability as end trims)',
-      () {
+      '(the fade-out keeps riding the end — same durability as end trims)', () {
     final (s, _, second) = twoCutSession();
     s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
 

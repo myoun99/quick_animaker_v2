@@ -130,8 +130,7 @@ class PlaybackPrerenderScheduler {
 
   /// True when warming may touch the UI thread right now.
   bool _isQuietNow() =>
-      _inputHolds == 0 &&
-      DateTime.now().difference(_lastActivity) >= idleDelay;
+      _inputHolds == 0 && DateTime.now().difference(_lastActivity) >= idleDelay;
 
   /// Outstanding gate/yield waits, cancellable as a group: [cancel] and
   /// [dispose] flush them so a parked warm run resumes at once, sees its
@@ -246,8 +245,7 @@ class PlaybackPrerenderScheduler {
       if (_isQuietNow()) {
         return;
       }
-      final remaining =
-          idleDelay - DateTime.now().difference(_lastActivity);
+      final remaining = idleDelay - DateTime.now().difference(_lastActivity);
       // With a hold open (or the window already elapsed but held) poll on
       // the 50ms heartbeat; otherwise sleep out the remaining window.
       await _wait(
