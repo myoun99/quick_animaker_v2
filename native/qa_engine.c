@@ -988,17 +988,109 @@ QA_EXPORT void qa_fill_compose_tile(
 }
 
 // ---------------------------------------------------------------------------
-// Fill mask finish (R18 A-2d): crop + expand + anti-alias, ported
-// verbatim from the Dart tail (_cropAndFinishFloodRegion). The A-2c
-// verification lab showed these full-region passes (two copies + two
-// whole-region scans in debug Dart) are what actually remains inside
-// the fill.flood probe.
-//
-// Crops the flooded canvas mask to the region, then runs expand_px
-// grow passes and the optional one-pass anti-alias - writing the final
-// coverage into `mask` (region_width * region_height). `scratch` must
-// be at least the same size (the double buffer the Dart passes copy
-// through).
+// Fill mask finish (R18 A-2d / R24-A1 parallel): crop + expand +
+// anti-alias, byte-identical to the Dart tail. Every pass reads one
+// generation and writes another, so ROW BANDS are embarrassingly
+// parallel - they fan out across the worker pool (R24-A1: at 8K these
+// full-region passes were the largest remaining sequential slice of
+// fill.flood). Generations ping-pong between `mask` and `scratch`; a
+// final banded copy lands the result in `mask` when the pass count is
+// odd.
+
+// The pool lives further down with the tile-batch machinery.
+typedef void (*qa_job_fn)(int32_t item_index, void* context);
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count);
+
+#define QA_FINISH_BAND_ROWS 64
+
+typedef struct {
+  const uint8_t* filled; // Crop source (mode 0 only).
+  int32_t canvas_width;
+  int32_t crop_left;
+  int32_t crop_top;
+  const uint8_t* src; // Read generation (modes 1-3).
+  uint8_t* dst;       // Write generation.
+  int32_t region_width;
+  int32_t region_height;
+  int32_t mode; // 0=crop, 1=expand, 2=anti-alias, 3=plain copy.
+} qa_finish_band_context;
+
+static void qa_finish_band_item(int32_t item_index, void* context) {
+  const qa_finish_band_context* c = (const qa_finish_band_context*)context;
+  const int32_t width = c->region_width;
+  const int32_t y0 = item_index * QA_FINISH_BAND_ROWS;
+  int32_t y1 = y0 + QA_FINISH_BAND_ROWS;
+  if (y1 > c->region_height) {
+    y1 = c->region_height;
+  }
+  switch (c->mode) {
+    case 0:
+      for (int32_t y = y0; y < y1; y += 1) {
+        memcpy(
+            c->dst + (ptrdiff_t)y * width,
+            c->filled + (ptrdiff_t)(c->crop_top + y) * c->canvas_width +
+                c->crop_left,
+            (size_t)width);
+      }
+      return;
+    case 3:
+      memcpy(
+          c->dst + (ptrdiff_t)y0 * width,
+          c->src + (ptrdiff_t)y0 * width,
+          (size_t)(y1 - y0) * (size_t)width);
+      return;
+    case 1:
+      // Expand: dst = src, then zero pixels touching a nonzero
+      // 4-neighbor become 255 - identical to the Dart grown-copy.
+      for (int32_t y = y0; y < y1; y += 1) {
+        const uint8_t* src_row = c->src + (ptrdiff_t)y * width;
+        uint8_t* dst_row = c->dst + (ptrdiff_t)y * width;
+        memcpy(dst_row, src_row, (size_t)width);
+        for (int32_t x = 0; x < width; x += 1) {
+          if (src_row[x] != 0) {
+            continue;
+          }
+          const int touches =
+              (x > 0 && src_row[x - 1] != 0) ||
+              (x < width - 1 && src_row[x + 1] != 0) ||
+              (y > 0 && c->src[(ptrdiff_t)(y - 1) * width + x] != 0) ||
+              (y < c->region_height - 1 &&
+               c->src[(ptrdiff_t)(y + 1) * width + x] != 0);
+          if (touches) {
+            dst_row[x] = 255;
+          }
+        }
+      }
+      return;
+    default:
+      // Anti-alias: boundary pixels average their 4-neighbors; the
+      // Dart formula rounds a double division, so this stays double +
+      // llround for byte identity.
+      for (int32_t y = y0; y < y1; y += 1) {
+        const uint8_t* src_row = c->src + (ptrdiff_t)y * width;
+        uint8_t* dst_row = c->dst + (ptrdiff_t)y * width;
+        memcpy(dst_row, src_row, (size_t)width);
+        for (int32_t x = 0; x < width; x += 1) {
+          const int32_t center = src_row[x];
+          const int32_t left_v = x > 0 ? src_row[x - 1] : 0;
+          const int32_t right_v = x < width - 1 ? src_row[x + 1] : 0;
+          const int32_t up_v =
+              y > 0 ? c->src[(ptrdiff_t)(y - 1) * width + x] : 0;
+          const int32_t down_v = y < c->region_height - 1
+              ? c->src[(ptrdiff_t)(y + 1) * width + x]
+              : 0;
+          const int32_t sum = center + left_v + right_v + up_v + down_v;
+          if (sum != center * 5) {
+            const int64_t rounded =
+                llround((double)(center * 3 + (sum - center)) / 7.0);
+            dst_row[x] = (uint8_t)rounded;
+          }
+        }
+      }
+      return;
+  }
+}
+
 QA_EXPORT void qa_fill_finish_mask(
     const uint8_t* filled,
     int32_t canvas_width,
@@ -1010,60 +1102,47 @@ QA_EXPORT void qa_fill_finish_mask(
     int32_t anti_alias,
     uint8_t* mask,
     uint8_t* scratch) {
-  for (int32_t y = 0; y < region_height; y += 1) {
-    memcpy(
-        mask + (ptrdiff_t)y * region_width,
-        filled + (ptrdiff_t)(crop_top + y) * canvas_width + crop_left,
-        (size_t)region_width);
-  }
+  const int32_t bands =
+      (region_height + QA_FINISH_BAND_ROWS - 1) / QA_FINISH_BAND_ROWS;
+  qa_finish_band_context context;
+  context.filled = filled;
+  context.canvas_width = canvas_width;
+  context.crop_left = crop_left;
+  context.crop_top = crop_top;
+  context.region_width = region_width;
+  context.region_height = region_height;
 
-  // Expand: grow the region by one pixel per pass (4-neighbor), reading
-  // the previous generation while writing the next - identical to the
-  // Dart grown-copy semantics.
+  context.mode = 0;
+  context.src = NULL;
+  context.dst = mask;
+  qa_pool_run(qa_finish_band_item, &context, bands);
+
+  // Ping-pong generations through the passes; land back in `mask`.
+  uint8_t* current = mask;
+  uint8_t* other = scratch;
   for (int32_t pass = 0; pass < expand_px; pass += 1) {
-    memcpy(scratch, mask, (size_t)region_width * (size_t)region_height);
-    for (int32_t y = 0; y < region_height; y += 1) {
-      for (int32_t x = 0; x < region_width; x += 1) {
-        const int32_t index = y * region_width + x;
-        if (mask[index] != 0) {
-          continue;
-        }
-        const int touches =
-            (x > 0 && mask[index - 1] != 0) ||
-            (x < region_width - 1 && mask[index + 1] != 0) ||
-            (y > 0 && mask[index - region_width] != 0) ||
-            (y < region_height - 1 && mask[index + region_width] != 0);
-        if (touches) {
-          scratch[index] = 255;
-        }
-      }
-    }
-    memcpy(mask, scratch, (size_t)region_width * (size_t)region_height);
+    context.mode = 1;
+    context.src = current;
+    context.dst = other;
+    qa_pool_run(qa_finish_band_item, &context, bands);
+    uint8_t* swap = current;
+    current = other;
+    other = swap;
   }
-
   if (anti_alias) {
-    // One soft edge pass: boundary mask pixels average their
-    // 4-neighbors; the Dart formula rounds a double division, so this
-    // stays double + llround for byte identity.
-    memcpy(scratch, mask, (size_t)region_width * (size_t)region_height);
-    for (int32_t y = 0; y < region_height; y += 1) {
-      for (int32_t x = 0; x < region_width; x += 1) {
-        const int32_t index = y * region_width + x;
-        const int32_t center = mask[index];
-        const int32_t left_v = x > 0 ? mask[index - 1] : 0;
-        const int32_t right_v = x < region_width - 1 ? mask[index + 1] : 0;
-        const int32_t up_v = y > 0 ? mask[index - region_width] : 0;
-        const int32_t down_v =
-            y < region_height - 1 ? mask[index + region_width] : 0;
-        const int32_t sum = center + left_v + right_v + up_v + down_v;
-        if (sum != center * 5) {
-          const int64_t rounded =
-              llround((double)(center * 3 + (sum - center)) / 7.0);
-          scratch[index] = (uint8_t)rounded;
-        }
-      }
-    }
-    memcpy(mask, scratch, (size_t)region_width * (size_t)region_height);
+    context.mode = 2;
+    context.src = current;
+    context.dst = other;
+    qa_pool_run(qa_finish_band_item, &context, bands);
+    uint8_t* swap = current;
+    current = other;
+    other = swap;
+  }
+  if (current != mask) {
+    context.mode = 3;
+    context.src = current;
+    context.dst = mask;
+    qa_pool_run(qa_finish_band_item, &context, bands);
   }
 }
 
@@ -1324,7 +1403,7 @@ QA_EXPORT int32_t qa_tile_span_sizeof(void) {
   return (int32_t)sizeof(qa_tile_span);
 }
 
-typedef void (*qa_job_fn)(int32_t item_index, void* context);
+// qa_job_fn is declared with the fill-finish machinery above.
 
 // R22-E1: cap raised 8 -> 32 for future many-core CPUs. Default stays
 // "logical cores - 1, clamped"; past ~8 workers the tile kernels go
