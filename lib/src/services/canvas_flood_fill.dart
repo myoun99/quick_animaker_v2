@@ -429,8 +429,9 @@ FloodFillRegion? floodFillRegion({
     );
   }
 
-  // R18 A-2b: with a native-backed raster the C stepper runs the flood
-  // (frontier-stepped around the lazy compose; result set identical by
+  // R18 A-2b / R22-E3: with a native-backed raster the wave-parallel C
+  // engine runs the flood (per-compose-tile local floods across the
+  // worker pool around the lazy compose; result set identical by
   // construction — parity-pinned). The Dart loop below stays as the
   // reference and the fallback.
   final native = QaNativeEngine.instance;
@@ -445,29 +446,33 @@ FloodFillRegion? floodFillRegion({
       tolerance: tolerance,
       ensureComposed: ensureComposed,
     );
-    // The finish (crop + expand + anti-alias) runs natively too (A-2d):
-    // the verification lab showed these full-region passes were most of
-    // what remained in the fill.flood probe. Same crop math as the Dart
-    // tail below.
-    final cropLeft = math.max(0, result.minX - options.expandPx);
-    final cropTop = math.max(0, result.minY - options.expandPx);
-    final cropRight = math.min(width - 1, result.maxX + options.expandPx);
-    final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
-    return FloodFillRegion(
-      left: cropLeft,
-      top: cropTop,
-      width: cropRight - cropLeft + 1,
-      height: cropBottom - cropTop + 1,
-      mask: native.finishFillMask(
-        canvasWidth: width,
-        cropLeft: cropLeft,
-        cropTop: cropTop,
-        regionWidth: cropRight - cropLeft + 1,
-        regionHeight: cropBottom - cropTop + 1,
-        expandPx: options.expandPx,
-        antiAlias: options.antiAlias,
-      ),
-    );
+    if (result != null) {
+      // The finish (crop + expand + anti-alias) runs natively too
+      // (A-2d): the verification lab showed these full-region passes
+      // were most of what remained in the fill.flood probe. Same crop
+      // math as the Dart tail below.
+      final cropLeft = math.max(0, result.minX - options.expandPx);
+      final cropTop = math.max(0, result.minY - options.expandPx);
+      final cropRight = math.min(width - 1, result.maxX + options.expandPx);
+      final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+      return FloodFillRegion(
+        left: cropLeft,
+        top: cropTop,
+        width: cropRight - cropLeft + 1,
+        height: cropBottom - cropTop + 1,
+        mask: native.finishFillMask(
+          canvasWidth: width,
+          cropLeft: cropLeft,
+          cropTop: cropTop,
+          regionWidth: cropRight - cropLeft + 1,
+          regionHeight: cropBottom - cropTop + 1,
+          expandPx: options.expandPx,
+          antiAlias: options.antiAlias,
+        ),
+      );
+    }
+    // Wave arena failure (belt) — fall through to the Dart reference,
+    // which starts from its own clean heap state.
   }
 
   // Pure byte compare — the caller guarantees the pixel's compose tile via

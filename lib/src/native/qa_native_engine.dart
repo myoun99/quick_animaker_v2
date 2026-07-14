@@ -19,7 +19,6 @@ import 'dart:typed_data';
 class QaNativeEngine {
   QaNativeEngine._(
     this._premultiplyRgba,
-    this._floodFillStep,
     this._fillPaperRect,
     this._fillComposeTile,
     this._fillFinishMask,
@@ -32,9 +31,10 @@ class QaNativeEngine {
     this._tileFreePointer,
     this._tilePoolCachedBytes,
     this._fillGapCloseRun,
+    this._floodFillWave,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 12;
+  static const int _abiVersion = 13;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -182,6 +182,11 @@ class QaNativeEngine {
     );
   }
 
+  /// Wave-parallel flood (R22-E3): same lazy-compose candidate protocol
+  /// as the stepper, but the composed frontier floods per compose-tile
+  /// across the worker pool. Returns -1 on an internal allocation/bound
+  /// failure — the caller redoes the fill on the sequential Dart path
+  /// from clean state.
   final int Function(
     Pointer<Uint8> rgb,
     Pointer<Uint8> filled,
@@ -196,12 +201,11 @@ class QaNativeEngine {
     int tolerance,
     Pointer<Int32> stack,
     Pointer<Int32> stackSize,
-    int stackCapacity,
     Pointer<Int32> candidates,
     int candidatesCapacity,
     Pointer<Int32> bounds,
   )
-  _floodFillStep;
+  _floodFillWave;
 
   final void Function(
     Pointer<Uint8> rgb,
@@ -332,47 +336,6 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, int)
           >('qa_premultiply_rgba');
-      final floodFillStep = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Pointer<Int32>,
-              Pointer<Int32>,
-              Int32,
-              Pointer<Int32>,
-              Int32,
-              Pointer<Int32>,
-            ),
-            int Function(
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              Pointer<Int32>,
-              Pointer<Int32>,
-              int,
-              Pointer<Int32>,
-              int,
-              Pointer<Int32>,
-            )
-          >('qa_flood_fill_step');
       final fillPaperRect = library
           .lookupFunction<
             Void Function(
@@ -563,9 +526,47 @@ class QaNativeEngine {
               Pointer<Int32>,
             )
           >('qa_fill_gap_close_run');
+      final floodFillWave = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Int32,
+              Pointer<Int32>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              int,
+              Pointer<Int32>,
+            )
+          >('qa_flood_fill_wave');
       return QaNativeEngine._(
         premultiplyRgba,
-        floodFillStep,
         fillPaperRect,
         fillComposeTile,
         fillFinishMask,
@@ -578,6 +579,7 @@ class QaNativeEngine {
         tileFreePointer,
         tilePoolCachedBytes,
         fillGapCloseRun,
+        floodFillWave,
       );
     } on Object {
       return null;
@@ -775,13 +777,16 @@ class QaNativeEngine {
   }
 
   /// Runs the whole native flood from the (already composed, already
-  /// filled-marked) seed: steps the C kernel, composes candidate tiles
-  /// through [ensureComposed], re-tests candidates (filled dedupes) and
-  /// re-enters until the stack drains. Returns the filled mask as a view
-  /// over engine memory (valid until the next fill) plus the bounds —
-  /// result set identical to the Dart reference by construction
-  /// (parity-pinned).
-  ({Uint8List filled, int minX, int maxX, int minY, int maxY}) floodFillRun({
+  /// filled-marked) seed: the wave-parallel engine (R22-E3) floods the
+  /// composed frontier per compose-tile across the worker pool, the
+  /// driver composes candidate tiles through [ensureComposed], re-tests
+  /// candidates (filled dedupes) and re-enters until nothing is
+  /// pending. Returns the filled mask as a view over engine memory
+  /// (valid until the next fill) plus the bounds — result set identical
+  /// to the Dart reference by construction (parity-pinned). Null on an
+  /// internal wave failure (allocation/bound belt): the caller redoes
+  /// the fill on the Dart path from clean state.
+  ({Uint8List filled, int minX, int maxX, int minY, int maxY})? floodFillRun({
     required QaFloodNativeHandles handles,
     required int seedX,
     required int seedY,
@@ -811,7 +816,17 @@ class QaNativeEngine {
       _floodStack = calloc<Int32>(stackCapacity);
       _floodStackCapacity = stackCapacity;
     }
-    final candidatesCapacity = 8 * width + 2048;
+    // The wave engine can surface a whole composed-region perimeter of
+    // crossings in ONE call — capacity is the total tile-edge pixel
+    // count, which caps per-call emissions by construction (a pixel
+    // fills once; only edge pixels emit).
+    final tileSize = 1 << handles.composeTileShift;
+    final tilesY = (height + tileSize - 1) >> handles.composeTileShift;
+    var candidatesCapacity = 8 * width + 2048;
+    final waveCapacity = handles.tilesX * tilesY * 4 * tileSize;
+    if (waveCapacity > candidatesCapacity) {
+      candidatesCapacity = waveCapacity;
+    }
     if (_floodCandidatesCapacity < candidatesCapacity) {
       if (_floodCandidates != nullptr) {
         calloc.free(_floodCandidates);
@@ -837,7 +852,7 @@ class QaNativeEngine {
     final rgbView = handles.rgbView;
     final composedView = handles.composedView;
     while (true) {
-      final candidateCount = _floodFillStep(
+      final candidateCount = _floodFillWave(
         _floodRgb,
         _floodFilled,
         _floodComposed,
@@ -851,11 +866,15 @@ class QaNativeEngine {
         tolerance,
         _floodStack,
         _floodStackSize,
-        _floodStackCapacity,
         _floodCandidates,
         _floodCandidatesCapacity,
         _floodBounds,
       );
+      if (candidateCount < 0) {
+        // Wave arena failure (belt; the bounds make it unreachable in
+        // practice) — the caller redoes the fill on the Dart path.
+        return null;
+      }
       if (candidateCount > 0) {
         final candidates = _floodCandidates.asTypedList(candidateCount);
         for (var i = 0; i < candidateCount; i += 1) {
