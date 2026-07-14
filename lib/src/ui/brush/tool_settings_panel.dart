@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/canvas_flood_fill.dart';
+import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
@@ -302,42 +303,40 @@ class _FillSettings extends StatelessWidget {
       children: [
         Text('Fill', style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
-        Text(
-          'Tolerance ${options.tolerance}',
-          style: theme.textTheme.labelMedium,
-        ),
-        Slider(
+        FieldSlider(
           key: const ValueKey<String>('fill-tolerance-slider'),
           min: 0,
           max: 128,
           divisions: 128,
           value: options.tolerance.toDouble().clamp(0, 128),
+          label: 'Tolerance',
+          valueText: '${options.tolerance}',
           onChanged: (value) =>
               onChanged(options.copyWith(tolerance: value.round())),
         ),
-        Text(
-          'Expand ${options.expandPx}px',
-          style: theme.textTheme.labelMedium,
-        ),
-        Slider(
+        const SizedBox(height: 8),
+        FieldSlider(
           key: const ValueKey<String>('fill-expand-slider'),
           min: 0,
           max: 4,
           divisions: 4,
           value: options.expandPx.toDouble().clamp(0, 4),
+          label: 'Expand',
+          valueText: '${options.expandPx} px',
           onChanged: (value) =>
               onChanged(options.copyWith(expandPx: value.round())),
         ),
-        Text(
-          'Gap Close ${options.gapClosePx == 0 ? 'off' : '${options.gapClosePx}px'}',
-          style: theme.textTheme.labelMedium,
-        ),
-        Slider(
+        const SizedBox(height: 8),
+        FieldSlider(
           key: const ValueKey<String>('fill-gap-close-slider'),
           min: 0,
           max: 8,
           divisions: 8,
           value: options.gapClosePx.toDouble().clamp(0, 8),
+          label: 'Gap Close',
+          valueText: options.gapClosePx == 0
+              ? 'off'
+              : '${options.gapClosePx} px',
           onChanged: (value) =>
               onChanged(options.copyWith(gapClosePx: value.round())),
         ),

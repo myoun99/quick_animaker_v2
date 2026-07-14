@@ -104,11 +104,6 @@ ThemeData buildAppTheme() {
         disabledForegroundColor: AppColors.textDim.withValues(alpha: 0.5),
       ),
     ),
-    sliderTheme: const SliderThemeData(
-      trackHeight: 3,
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-      overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
-    ),
     scrollbarTheme: const ScrollbarThemeData(
       thumbVisibility: WidgetStatePropertyAll<bool>(true),
       trackVisibility: WidgetStatePropertyAll<bool>(true),
