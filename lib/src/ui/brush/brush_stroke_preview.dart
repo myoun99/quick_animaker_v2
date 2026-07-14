@@ -7,6 +7,7 @@ import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../services/brush_dab_coverage.dart';
+import '../../services/brush_tip_stamp_cache.dart';
 
 /// A small S-curve stroke sample rendered with the preset's settings.
 ///
@@ -119,24 +120,28 @@ Uint8List _rasterizeStrokeSample(
     final opacity = settings.pressureOpacity
         ? settings.opacity * pressure
         : settings.opacity;
-    final dab = BrushDab(
-      center: CanvasPoint(x: x, y: y),
-      color: 0xFF000000,
-      size: math.max(1.0, baseSize * sizeRatio),
-      opacity: opacity.clamp(0.05, 1.0),
-      flow: settings.flow.clamp(0.05, 1.0),
-      hardness: settings.hardness,
-      tipShape: settings.tipShape,
-      pressure: pressure,
-      sequence: sequence,
-      roundness: settings.roundness,
-      angleDegrees: settings.angleDegrees,
-      tipMask: settings.tipMask,
-      dualMask: settings.dualMask,
-      dualMaskScale: settings.dualMaskScale,
-      textureMask: settings.textureMask,
-      textureScale: settings.textureScale,
-      textureDensity: settings.textureDensity,
+    // R20-B: the preview resolves through the tip-stamp cache like the
+    // canvas does — what the list shows is the quantized reality.
+    final dab = BrushTipStampCache.instance.resolveDab(
+      BrushDab(
+        center: CanvasPoint(x: x, y: y),
+        color: 0xFF000000,
+        size: math.max(1.0, baseSize * sizeRatio),
+        opacity: opacity.clamp(0.05, 1.0),
+        flow: settings.flow.clamp(0.05, 1.0),
+        hardness: settings.hardness,
+        tipShape: settings.tipShape,
+        pressure: pressure,
+        sequence: sequence,
+        roundness: settings.roundness,
+        angleDegrees: settings.angleDegrees,
+        tipMask: settings.tipMask,
+        dualMask: settings.dualMask,
+        dualMaskScale: settings.dualMaskScale,
+        textureMask: settings.textureMask,
+        textureScale: settings.textureScale,
+        textureDensity: settings.textureDensity,
+      ),
     );
     sequence += 1;
 
