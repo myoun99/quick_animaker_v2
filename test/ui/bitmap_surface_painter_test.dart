@@ -195,17 +195,17 @@ void main() {
   });
 
   group('decode-start chunking (R18 B-1)', () {
-    // 8×4 tile grid (32 tiles) — well over the per-paint start budget.
+    // 10×8 tile grid (80 tiles) — well over the per-paint start budget.
     BitmapSurface grid() {
       final tiles = <TileCoord, BitmapTile>{};
-      for (var y = 0; y < 4; y += 1) {
-        for (var x = 0; x < 8; x += 1) {
+      for (var y = 0; y < 8; y += 1) {
+        for (var x = 0; x < 10; x += 1) {
           final coord = TileCoord(x: x, y: y);
           tiles[coord] = BitmapTile.blank(coord: coord, size: 2);
         }
       }
       return BitmapSurface(
-        canvasSize: CanvasSize(width: 16, height: 8),
+        canvasSize: CanvasSize(width: 20, height: 16),
         tileSize: 2,
         tiles: tiles,
       );
@@ -238,12 +238,12 @@ void main() {
       );
       const budget = BitmapSurfacePainter.decodeStartBudget;
 
-      expect(pendingCount(cache, surface), 32);
-      paintOnce(painter, const Size(16, 8));
-      expect(pendingCount(cache, surface), 32 - budget);
-      paintOnce(painter, const Size(16, 8));
-      expect(pendingCount(cache, surface), 32 - 2 * budget);
-      paintOnce(painter, const Size(16, 8));
+      expect(pendingCount(cache, surface), 80);
+      paintOnce(painter, const Size(20, 16));
+      expect(pendingCount(cache, surface), 80 - budget);
+      paintOnce(painter, const Size(20, 16));
+      expect(pendingCount(cache, surface), 80 - 2 * budget);
+      paintOnce(painter, const Size(20, 16));
       expect(pendingCount(cache, surface), 0);
     });
 
@@ -256,11 +256,11 @@ void main() {
         tileImageCache: cache,
       );
 
-      // Viewport-less paint sized to the left quarter of the canvas:
-      // tiles at x∈{0,1} are visible (8), the other 24 are off-screen —
+      // Viewport-less paint sized to the left fifth of the canvas:
+      // tiles at x∈{0,1} are visible (16), the other 64 are off-screen —
       // fewer visible tiles than the budget, so ALL of them must be in
       // the first chunk.
-      paintOnce(painter, const Size(4, 8));
+      paintOnce(painter, const Size(4, 16));
 
       for (final tile in surface.tiles.values) {
         if (tile.coord.x < 2) {
@@ -275,7 +275,7 @@ void main() {
       }
       expect(
         pendingCount(cache, surface),
-        32 - BitmapSurfacePainter.decodeStartBudget,
+        80 - BitmapSurfacePainter.decodeStartBudget,
       );
     });
 
@@ -300,7 +300,7 @@ void main() {
       );
       expect(
         pendingCount(cache, surface),
-        32 - BitmapSurfacePainter.decodeStartBudget,
+        80 - BitmapSurfacePainter.decodeStartBudget,
       );
     });
   });

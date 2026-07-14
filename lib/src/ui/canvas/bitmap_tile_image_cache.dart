@@ -84,12 +84,15 @@ class BitmapTileImageCache extends ChangeNotifier {
       _images[tile] == null && _inFlight[tile] == null;
 
   /// Decode STARTS a consumer should pay per frame (R18 B-1): each start
-  /// runs a synchronous tile copy + 65k-pixel premultiply on the UI
-  /// thread, so bursts of a hundred-plus starts in one frame hitch.
-  /// Completions notify listeners (coalesced per frame), so budgeted
-  /// consumers chain the next chunk off the notification and pending
-  /// tiles always drain.
-  static const int decodeStartBudget = 12;
+  /// runs a synchronous tile copy + premultiply on the UI thread, so
+  /// bursts of a hundred-plus starts in one frame hitch. Completions
+  /// notify listeners (coalesced per frame), so budgeted consumers chain
+  /// the next chunk off the notification and pending tiles always drain.
+  ///
+  /// 32 (R19-8K): the premultiply now runs in C, so a start is dominated
+  /// by the 256KB tile copy — 12/frame left an 8000² full-canvas commit
+  /// (1024 tiles) converging over ~85 frames (~1.4s of the fill wall).
+  static const int decodeStartBudget = 32;
 
   /// Starts decoding [tile] once; notifies listeners when the image is ready.
   ///

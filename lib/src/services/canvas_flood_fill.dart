@@ -603,9 +603,25 @@ BrushDab? buildFillDab({
   final g = (color >> 8) & 0xFF;
   final b = color & 0xFF;
   final rgba = labProbe('fill.stamp-build', () {
+    final mask = region.mask;
     final bytes = Uint8List(region.width * region.height * 4);
-    for (var index = 0; index < region.mask.length; index += 1) {
-      final coverage = region.mask[index];
+    if (Endian.host == Endian.little) {
+      // One word store per pixel (R19-8K): the four byte stores below
+      // were a 197ms term on an 8000² fill. Little-endian word layout
+      // [r, g, b, coverage] is byte-identical to the byte loop.
+      final words = Uint32List.view(bytes.buffer, 0, mask.length);
+      final baseRgb = r | (g << 8) | (b << 16);
+      for (var index = 0; index < mask.length; index += 1) {
+        final coverage = mask[index];
+        if (coverage == 0) {
+          continue;
+        }
+        words[index] = baseRgb | (coverage << 24);
+      }
+      return bytes;
+    }
+    for (var index = 0; index < mask.length; index += 1) {
+      final coverage = mask[index];
       if (coverage == 0) {
         continue;
       }

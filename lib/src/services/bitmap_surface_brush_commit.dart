@@ -586,16 +586,19 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   var updatedSurface = surface;
   var dirtyTiles = DirtyTileSet.empty();
   labProbe('commit.putTiles', () {
-    for (final coord in sortedCoords) {
-      // BitmapTile's constructor copies the bytes, so native-backed scratch
-      // views are safe to hand over before the buffers return to the pool.
-      updatedSurface = updatedSurface.putTile(
+    // BitmapTile's constructor copies the bytes, so native-backed scratch
+    // views are safe to hand over before the buffers return to the pool.
+    // ONE batched put: per-tile putTile copied the whole tile map each
+    // time — O(n²) across a full-canvas commit.
+    updatedSurface = updatedSurface.putTiles([
+      for (final coord in sortedCoords)
         BitmapTile(
           coord: coord,
           size: tileSize,
           pixels: scratchBuffers[coord]!,
         ),
-      );
+    ]);
+    for (final coord in sortedCoords) {
       dirtyTiles = dirtyTiles.add(coord);
     }
   });
@@ -1002,10 +1005,11 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
 
   var updatedSurface = surface;
   var dirtyTiles = DirtyTileSet.empty();
-  for (final coord in sortedCoords) {
-    updatedSurface = updatedSurface.putTile(
+  updatedSurface = updatedSurface.putTiles([
+    for (final coord in sortedCoords)
       BitmapTile(coord: coord, size: tileSize, pixels: scratchBuffers[coord]!),
-    );
+  ]);
+  for (final coord in sortedCoords) {
     dirtyTiles = dirtyTiles.add(coord);
   }
 
