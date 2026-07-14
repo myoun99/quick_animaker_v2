@@ -390,7 +390,14 @@ class QaNativeEngine {
   /// evicted while its dab is still blending.
   final LinkedHashMap<Object, Pointer<Uint8>> _stampUploads =
       LinkedHashMap.identity();
+  final Map<Object, int> _stampUploadSizes = HashMap.identity();
+  int _stampUploadBytes = 0;
   static const int _stampUploadCap = 4;
+
+  /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
+  /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
+  /// newest entry always survives even when it alone exceeds the budget.
+  static const int stampUploadByteBudget = 320 * 1024 * 1024;
 
   /// Uploads [bytes] once (identity-cached) and returns the native copy.
   Pointer<Uint8> uploadStampBytes(Uint8List bytes) {
@@ -399,12 +406,19 @@ class QaNativeEngine {
       _stampUploads[bytes] = cached;
       return cached;
     }
-    final pointer = calloc<Uint8>(bytes.length);
+    // malloc, not calloc: the copy below overwrites every byte — the
+    // calloc memset doubled an 8000² fill stamp's 256MB upload traffic.
+    final pointer = malloc<Uint8>(bytes.length);
     pointer.asTypedList(bytes.length).setAll(0, bytes);
     _stampUploads[bytes] = pointer;
-    while (_stampUploads.length > _stampUploadCap) {
+    _stampUploadSizes[bytes] = bytes.length;
+    _stampUploadBytes += bytes.length;
+    while (_stampUploads.length > 1 &&
+        (_stampUploads.length > _stampUploadCap ||
+            _stampUploadBytes > stampUploadByteBudget)) {
       final oldest = _stampUploads.keys.first;
-      calloc.free(_stampUploads.remove(oldest)!);
+      malloc.free(_stampUploads.remove(oldest)!);
+      _stampUploadBytes -= _stampUploadSizes.remove(oldest)!;
     }
     return pointer;
   }
@@ -857,7 +871,13 @@ class QaNativeEngine {
   // length and reused across commits.
 
   final Map<int, List<QaNativeTileBuffer>> _tilePool = {};
-  static const int _tilePoolCapPerLength = 32;
+
+  /// BYTE-budgeted (R19-8K): the old 32-buffers-per-length cap made an
+  /// 8000² full-canvas commit malloc/free ~250MB of tile scratch EVERY
+  /// fill (992 of its 1024 tiles missed the pool) — one full 8K frame's
+  /// worth now stays pooled.
+  static const int tilePoolByteBudget = 320 * 1024 * 1024;
+  int _tilePoolBytes = 0;
 
   /// A pooled buffer; [zeroed] skips the memset when the caller overwrites
   /// every byte anyway (existing-tile copy-in).
@@ -865,22 +885,31 @@ class QaNativeEngine {
     final pool = _tilePool[byteLength];
     if (pool != null && pool.isNotEmpty) {
       final buffer = pool.removeLast();
+      _tilePoolBytes -= byteLength;
       if (zeroed) {
         buffer.view.fillRange(0, byteLength, 0);
       }
       return buffer;
     }
-    final pointer = calloc<Uint8>(byteLength);
-    return QaNativeTileBuffer._(pointer, pointer.asTypedList(byteLength));
+    // malloc, not calloc: fresh buffers are either explicitly zeroed here
+    // or fully overwritten by the copy-in — calloc's memset was pure
+    // waste at full-canvas scale.
+    final pointer = malloc<Uint8>(byteLength);
+    final view = pointer.asTypedList(byteLength);
+    if (zeroed) {
+      view.fillRange(0, byteLength, 0);
+    }
+    return QaNativeTileBuffer._(pointer, view);
   }
 
   void releaseTileBuffer(QaNativeTileBuffer buffer) {
-    final pool = _tilePool.putIfAbsent(buffer.view.length, () => []);
-    if (pool.length >= _tilePoolCapPerLength) {
-      calloc.free(buffer.pointer);
+    final byteLength = buffer.view.length;
+    if (_tilePoolBytes + byteLength > tilePoolByteBudget) {
+      malloc.free(buffer.pointer);
       return;
     }
-    pool.add(buffer);
+    _tilePool.putIfAbsent(byteLength, () => []).add(buffer);
+    _tilePoolBytes += byteLength;
   }
 
   // -------------------------------------------------------------------

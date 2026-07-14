@@ -22,6 +22,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../src/models/brush_tip_mask.dart';
+import '../src/models/canvas_resize_anchor.dart';
+import '../src/models/canvas_size.dart';
 import '../src/native/qa_native_engine.dart';
 import '../src/ui/brush/brush_tool_state.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -57,7 +59,8 @@ class _BrushLabDriver extends StatefulWidget {
 
 /// One A/B phase of the lab run: which workflow ingredients are active.
 class _LabPhase {
-  const _LabPhase(this.label, {
+  const _LabPhase(
+    this.label, {
     required this.hopFrames,
     required this.onion,
     required this.alternateTools,
@@ -127,20 +130,95 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// fire the seek's PARTS separately (all public notifiers) to name which
   /// consumer owns the flip hitch.
   static const List<_LabPhase> phases = [
-    _LabPhase('strokes-only', hopFrames: false, onion: false, alternateTools: false),
-    _LabPhase('hop-cursor-only', hopFrames: false, onion: false, alternateTools: false, hopDissect: 1),
-    _LabPhase('hop-seek-same-frame', hopFrames: false, onion: false, alternateTools: false, hopDissect: 2),
+    _LabPhase(
+      'strokes-only',
+      hopFrames: false,
+      onion: false,
+      alternateTools: false,
+    ),
+    _LabPhase(
+      'hop-cursor-only',
+      hopFrames: false,
+      onion: false,
+      alternateTools: false,
+      hopDissect: 1,
+    ),
+    _LabPhase(
+      'hop-seek-same-frame',
+      hopFrames: false,
+      onion: false,
+      alternateTools: false,
+      hopDissect: 2,
+    ),
     _LabPhase('hop-full', hopFrames: true, onion: false, alternateTools: false),
     _LabPhase('+onion', hopFrames: true, onion: true, alternateTools: false),
-    _LabPhase('+tools(full)', hopFrames: true, onion: true, alternateTools: true),
-    _LabPhase('+bigbrush-flipdraw', hopFrames: true, onion: true, alternateTools: false, bigBrush: true),
-    _LabPhase('+flip-mid-stroke', hopFrames: true, onion: true, alternateTools: false, flipMidStroke: true),
-    _LabPhase('+HEAVY-brush-flipdraw', hopFrames: true, onion: true, alternateTools: false, heavyBrush: true),
-    _LabPhase('+HEAVY-rapid-restrokes', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true),
-    _LabPhase('+HEAVY-collide-seek', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, collideSeekOnUp: true),
-    _LabPhase('+HEAVY-collide-restroke', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, rapidRestrokes: true, collideRestroke: true),
-    _LabPhase('+HEAVY-scrub-collide', hopFrames: false, onion: true, alternateTools: false, heavyBrush: true, scrubCollide: true),
-    _LabPhase('+fill-taps', hopFrames: false, onion: false, alternateTools: false, fillTaps: true),
+    _LabPhase(
+      '+tools(full)',
+      hopFrames: true,
+      onion: true,
+      alternateTools: true,
+    ),
+    _LabPhase(
+      '+bigbrush-flipdraw',
+      hopFrames: true,
+      onion: true,
+      alternateTools: false,
+      bigBrush: true,
+    ),
+    _LabPhase(
+      '+flip-mid-stroke',
+      hopFrames: true,
+      onion: true,
+      alternateTools: false,
+      flipMidStroke: true,
+    ),
+    _LabPhase(
+      '+HEAVY-brush-flipdraw',
+      hopFrames: true,
+      onion: true,
+      alternateTools: false,
+      heavyBrush: true,
+    ),
+    _LabPhase(
+      '+HEAVY-rapid-restrokes',
+      hopFrames: false,
+      onion: true,
+      alternateTools: false,
+      heavyBrush: true,
+      rapidRestrokes: true,
+    ),
+    _LabPhase(
+      '+HEAVY-collide-seek',
+      hopFrames: false,
+      onion: true,
+      alternateTools: false,
+      heavyBrush: true,
+      collideSeekOnUp: true,
+    ),
+    _LabPhase(
+      '+HEAVY-collide-restroke',
+      hopFrames: false,
+      onion: true,
+      alternateTools: false,
+      heavyBrush: true,
+      rapidRestrokes: true,
+      collideRestroke: true,
+    ),
+    _LabPhase(
+      '+HEAVY-scrub-collide',
+      hopFrames: false,
+      onion: true,
+      alternateTools: false,
+      heavyBrush: true,
+      scrubCollide: true,
+    ),
+    _LabPhase(
+      '+fill-taps',
+      hopFrames: false,
+      onion: false,
+      alternateTools: false,
+      fillTaps: true,
+    ),
   ];
 
   final List<int> _buildMicros = <int>[];
@@ -191,6 +269,19 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     // The load-fallback discipline is SILENT by design — the lab must not
     // be: a stale/missing DLL would quietly measure the Dart path.
     _log('native engine loaded: ${QaNativeEngine.instance != null}');
+
+    // Optional worst-case canvas (R19: the user's 8000x8000 report):
+    // --dart-define=BRUSH_LAB_CANVAS=8000 resizes the active cut before
+    // the ladder runs, so every phase measures at that scale.
+    const labCanvas = int.fromEnvironment('BRUSH_LAB_CANVAS');
+    if (labCanvas > 0) {
+      session.resizeActiveCutCanvas(
+        CanvasSize(width: labCanvas, height: labCanvas),
+        anchor: CanvasResizeAnchor.topLeft,
+      );
+      await _settleFrames(6);
+      _log('lab canvas: ${labCanvas}x$labCanvas');
+    }
 
     // Author a cel on each workflow frame.
     for (var frame = 0; frame < frameCount; frame += 1) {
@@ -282,9 +373,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
             // R13-4 repro: flip the frame at the stroke's midpoint with
             // the pen still down — the stroke must pin to its cel.
             midStrokeAction: phase.flipMidStroke
-                ? () => session.selectFrameIndex(
-                    (strokeIndex + 1) % frameCount,
-                  )
+                ? () => session.selectFrameIndex((strokeIndex + 1) % frameCount)
                 : null,
             // R15-③/R16-⑤: the commit-moment restroke — one frame (rapid)
             // or ZERO frames (collide) between pen-up and next pen-down.
@@ -296,13 +385,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
             // R16-⑤: a seek in the SAME event turn as the pen-up commit;
             // R17-②: a ruler SCRUB in that turn instead.
             onUpSameTurn: phase.collideSeekOnUp
-                ? () => session.selectFrameIndex(
-                    (strokeIndex + 1) % frameCount,
-                  )
+                ? () => session.selectFrameIndex((strokeIndex + 1) % frameCount)
                 : phase.scrubCollide
-                ? () => session.scrubFrameIndex(
-                    (strokeIndex + 1) % frameCount,
-                  )
+                ? () => session.scrubFrameIndex((strokeIndex + 1) % frameCount)
                 : null,
           );
           if (phase.scrubCollide) {
@@ -362,9 +447,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       await _settleFrames(4);
     }
     if (brushTool != null) {
-      brushTool.value = BrushToolState.defaults.copyWith(
-        tool: CanvasTool.fill,
-      );
+      brushTool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.fill);
       await _settleFrames(2);
     }
     for (var tap = 0; tap < 6; tap += 1) {
@@ -505,7 +588,8 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       return (sorted[index] / 1000.0).toStringAsFixed(1);
     }
 
-    final jank = raster.where((r) => r > 16000).length +
+    final jank =
+        raster.where((r) => r > 16000).length +
         build.where((b) => b > 16000).length;
     _log(
       '$phase bucket ${(bucket + 1) * strokesPerBucket} strokes | '

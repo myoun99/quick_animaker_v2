@@ -55,6 +55,31 @@ class BitmapSurface {
     return copyWith(tiles: {..._tiles, tile.coord: tile});
   }
 
+  /// Puts MANY tiles in one map rebuild — [putTile] copies the whole
+  /// tile map per call, which is O(n²) across a full-canvas commit's n
+  /// tiles (417ms of an 8000² fill was exactly this).
+  BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
+    final updated = <TileCoord, BitmapTile>{..._tiles};
+    for (final tile in tilesToPut) {
+      if (!containsTileCoord(tile.coord)) {
+        throw ArgumentError.value(
+          tile.coord,
+          'tile.coord',
+          'BitmapSurface tile coord must be inside surface tile bounds.',
+        );
+      }
+      if (tile.size != tileSize) {
+        throw ArgumentError.value(
+          tile.size,
+          'tile.size',
+          'BitmapSurface tile size must match surface tileSize.',
+        );
+      }
+      updated[tile.coord] = tile;
+    }
+    return copyWith(tiles: updated);
+  }
+
   BitmapSurface removeTile(TileCoord coord) {
     final nextTiles = Map<TileCoord, BitmapTile>.of(_tiles)..remove(coord);
     return copyWith(tiles: nextTiles);
