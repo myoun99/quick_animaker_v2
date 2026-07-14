@@ -691,6 +691,155 @@ class SelectionLiftDabs {
   final BrushDab stampDab;
 }
 
+/// R26 (C2): optional selection-mask post-passes applied at LIFT time.
+/// The DEFAULT keeps the mask hard-edged and byte-identical to the
+/// classic path — the pure-move byte-preservation contract holds.
+/// Grow/shrink, feather and edge anti-alias are opt-in; a soft mask
+/// inherently trades exact byte preservation at the seam for the
+/// softened boundary (two mul-div-255 round trips) — the same trade
+/// CSP/PS make for feathered selections.
+class SelectionMaskOptions {
+  const SelectionMaskOptions({
+    this.growPx = 0,
+    this.featherPx = 0,
+    this.antiAlias = false,
+  });
+
+  static const SelectionMaskOptions none = SelectionMaskOptions();
+
+  /// Positive grows (dilates) the mask, negative shrinks (erodes) —
+  /// one 4-neighbor pass per pixel, the fill expand pass's math.
+  final int growPx;
+
+  /// Inward alpha ramp width in pixels (0 = hard edge). Feathering is
+  /// INWARD-only: pixels outside the selection stay unselected, so a
+  /// feathered lift never grabs paint beyond the boundary.
+  final double featherPx;
+
+  /// One boundary-softening pass (the fill finish's anti-alias math).
+  final bool antiAlias;
+
+  bool get isHard => growPx == 0 && featherPx <= 0 && !antiAlias;
+
+  /// Extra bounding-box padding the post-passes may write into.
+  int get bboxPad =>
+      (growPx > 0 ? growPx : 0) + featherPx.ceil() + (antiAlias ? 1 : 0);
+}
+
+/// Grow (dilate) or shrink (erode) [mask] in place by [passes]
+/// 4-neighbor generations — generation-exact like the fill expand.
+void _growShrinkMask(Uint8List mask, int width, int height, int passes) {
+  final grow = passes > 0;
+  final count = passes.abs();
+  var src = mask;
+  var dst = Uint8List(mask.length);
+  for (var pass = 0; pass < count; pass += 1) {
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        final index = y * width + x;
+        final center = src[index];
+        if (grow ? center != 0 : center == 0) {
+          dst[index] = center;
+          continue;
+        }
+        final touches = grow
+            ? ((x > 0 && src[index - 1] != 0) ||
+                  (x < width - 1 && src[index + 1] != 0) ||
+                  (y > 0 && src[index - width] != 0) ||
+                  (y < height - 1 && src[index + width] != 0))
+            : ((x > 0 && src[index - 1] == 0) ||
+                  (x < width - 1 && src[index + 1] == 0) ||
+                  (y > 0 && src[index - width] == 0) ||
+                  (y < height - 1 && src[index + width] == 0) ||
+                  x == 0 ||
+                  x == width - 1 ||
+                  y == 0 ||
+                  y == height - 1);
+        dst[index] = grow ? (touches ? 255 : 0) : (touches ? 0 : center);
+      }
+    }
+    final swap = src;
+    src = dst;
+    dst = swap;
+  }
+  if (!identical(src, mask)) {
+    mask.setAll(0, src);
+  }
+}
+
+/// Inward feather: 3-4 chamfer distance from the OUTSIDE, alpha ramps
+/// over [featherPx] (chamfer units: 3 per orthogonal pixel).
+void _featherMask(Uint8List mask, int width, int height, double featherPx) {
+  const infinity = 60000;
+  final dist = Uint16List(width * height);
+  for (var i = 0; i < mask.length; i += 1) {
+    dist[i] = mask[i] == 0 ? 0 : infinity;
+  }
+  for (var y = 0; y < height; y += 1) {
+    for (var x = 0; x < width; x += 1) {
+      final i = y * width + x;
+      int best = dist[i];
+      if (best == 0) continue;
+      // Canvas-edge pixels ramp too (border counts as outside).
+      if (x == 0 || y == 0 || x == width - 1 || y == height - 1) best = 3;
+      if (x > 0 && dist[i - 1] + 3 < best) best = dist[i - 1] + 3;
+      if (y > 0) {
+        if (dist[i - width] + 3 < best) best = dist[i - width] + 3;
+        if (x > 0 && dist[i - width - 1] + 4 < best) {
+          best = dist[i - width - 1] + 4;
+        }
+        if (x < width - 1 && dist[i - width + 1] + 4 < best) {
+          best = dist[i - width + 1] + 4;
+        }
+      }
+      dist[i] = best > infinity ? infinity : best;
+    }
+  }
+  for (var y = height - 1; y >= 0; y -= 1) {
+    for (var x = width - 1; x >= 0; x -= 1) {
+      final i = y * width + x;
+      int best = dist[i];
+      if (best == 0) continue;
+      if (x < width - 1 && dist[i + 1] + 3 < best) best = dist[i + 1] + 3;
+      if (y < height - 1) {
+        if (dist[i + width] + 3 < best) best = dist[i + width] + 3;
+        if (x < width - 1 && dist[i + width + 1] + 4 < best) {
+          best = dist[i + width + 1] + 4;
+        }
+        if (x > 0 && dist[i + width - 1] + 4 < best) {
+          best = dist[i + width - 1] + 4;
+        }
+      }
+      dist[i] = best > infinity ? infinity : best;
+    }
+  }
+  final ramp = featherPx * 3.0;
+  for (var i = 0; i < mask.length; i += 1) {
+    if (mask[i] == 0) continue;
+    final alpha = (dist[i] / ramp * 255).round();
+    mask[i] = alpha >= 255 ? 255 : alpha;
+  }
+}
+
+/// One boundary soft pass — the fill finish's anti-alias math.
+void _antiAliasMask(Uint8List mask, int width, int height) {
+  final source = Uint8List.fromList(mask);
+  for (var y = 0; y < height; y += 1) {
+    for (var x = 0; x < width; x += 1) {
+      final index = y * width + x;
+      final center = source[index];
+      final left = x > 0 ? source[index - 1] : 0;
+      final right = x < width - 1 ? source[index + 1] : 0;
+      final up = y > 0 ? source[index - width] : 0;
+      final down = y < height - 1 ? source[index + width] : 0;
+      final sum = center + left + right + up + down;
+      if (sum != center * 5) {
+        mask[index] = ((center * 3 + (sum - center)) / 7).round();
+      }
+    }
+  }
+}
+
 /// Builds the lift pair for [shape] over the active layer's committed
 /// [surface]. Null when the selection covers no canvas pixels. The mask is
 /// HARD-EDGED (a pixel is in or out by its center, the same even-odd rule
@@ -700,6 +849,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   required CanvasSelectionShape shape,
   required BitmapSurface surface,
   required String liftId,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
   final canvasWidth = surface.canvasSize.width;
   final canvasHeight = surface.canvasSize.height;
@@ -711,10 +861,12 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     maxX = math.max(maxX, point.x);
     maxY = math.max(maxY, point.y);
   }
-  final left = math.max(0, minX.floor());
-  final top = math.max(0, minY.floor());
-  final rightExclusive = math.min(canvasWidth, maxX.ceil() + 1);
-  final bottomExclusive = math.min(canvasHeight, maxY.ceil() + 1);
+  // R26: grow/feather/AA may write beyond the polygon's bbox.
+  final pad = options.bboxPad;
+  final left = math.max(0, minX.floor() - pad);
+  final top = math.max(0, minY.floor() - pad);
+  final rightExclusive = math.min(canvasWidth, maxX.ceil() + 1 + pad);
+  final bottomExclusive = math.min(canvasHeight, maxY.ceil() + 1 + pad);
   if (rightExclusive <= left || bottomExclusive <= top) {
     return null;
   }
@@ -752,6 +904,20 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     }
   }
 
+  // R26 opt-in mask post-passes (defaults leave the classic hard mask
+  // byte-identical). Order: resize the region first, then soften.
+  if (!options.isHard) {
+    if (options.growPx != 0) {
+      _growShrinkMask(mask, width, height, options.growPx);
+    }
+    if (options.featherPx > 0) {
+      _featherMask(mask, width, height, options.featherPx);
+    }
+    if (options.antiAlias) {
+      _antiAliasMask(mask, width, height);
+    }
+  }
+
   // Lift the surface pixels under the mask (straight alpha, byte copies —
   // tile buffers snapshot once per tile).
   final rgba = Uint8List(width * height * 4);
@@ -781,7 +947,16 @@ SelectionLiftDabs? buildSelectionLiftDabs({
       rgba[targetOffset] = pixels[sourceOffset];
       rgba[targetOffset + 1] = pixels[sourceOffset + 1];
       rgba[targetOffset + 2] = pixels[sourceOffset + 2];
-      rgba[targetOffset + 3] = pixels[sourceOffset + 3];
+      final maskValue = mask[row * width + col];
+      if (maskValue == 255) {
+        rgba[targetOffset + 3] = pixels[sourceOffset + 3];
+      } else {
+        // Soft mask (R26): the stamp carries alpha scaled by coverage,
+        // matching the erase's partial removal at the same pixel —
+        // Skia's mul-div-255 rounding, like the overlay pipeline.
+        final product = pixels[sourceOffset + 3] * maskValue + 128;
+        rgba[targetOffset + 3] = (product + (product >> 8)) >> 8;
+      }
       liftedAnything = true;
     }
   }
