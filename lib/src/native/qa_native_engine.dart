@@ -34,7 +34,7 @@ class QaNativeEngine {
     this._fillGapCloseRun,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 11;
+  static const int _abiVersion = 12;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -673,10 +673,11 @@ class QaNativeEngine {
   }
 
   /// Acquires the shared lazy-raster buffers for one fill:
-  /// [QaFloodNativeHandles.rgbView] (`width*height*3`, contents
-  /// unspecified — only composed tiles are ever read) and
-  /// [QaFloodNativeHandles.composedView] (one byte per compose tile,
-  /// zeroed here). [composeTileSize] must be a power of two.
+  /// [QaFloodNativeHandles.rgbView] (`width*height*4` RGBX — R22-D; the
+  /// X byte is 0 in every composed pixel, and only composed tiles are
+  /// ever read) and [QaFloodNativeHandles.composedView] (one byte per
+  /// compose tile, zeroed here). [composeTileSize] must be a power of
+  /// two.
   QaFloodNativeHandles acquireFloodRaster({
     required int width,
     required int height,
@@ -690,7 +691,7 @@ class QaNativeEngine {
     final tilesX = (width + composeTileSize - 1) ~/ composeTileSize;
     final tilesY = (height + composeTileSize - 1) ~/ composeTileSize;
 
-    final rgbLength = width * height * 3;
+    final rgbLength = width * height * 4;
     _floodRgb = _ensureUint8(_floodRgb, _floodRgbLength, rgbLength);
     if (_floodRgbLength < rgbLength) {
       _floodRgbLength = rgbLength;
@@ -876,7 +877,7 @@ class QaNativeEngine {
               'floodFillRun: ensureComposed left tile $tile uncomposed',
             );
           }
-          final base = index * 3;
+          final base = index * 4;
           if ((rgbView[base] - seedR).abs() <= tolerance &&
               (rgbView[base + 1] - seedG).abs() <= tolerance &&
               (rgbView[base + 2] - seedB).abs() <= tolerance) {

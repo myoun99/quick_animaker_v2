@@ -434,9 +434,12 @@ void main() {
       // Sizes spanning one to many 256px compose tiles.
       final width = 200 + random.nextInt(500);
       final height = 150 + random.nextInt(400);
-      final source = Uint8List(width * height * 3);
-      for (var i = 0; i < source.length; i += 1) {
+      // RGBX (R22-D): X stays 0 everywhere — the SIMD compare contract.
+      final source = Uint8List(width * height * 4);
+      for (var i = 0; i < source.length; i += 4) {
         source[i] = 200;
+        source[i + 1] = 200;
+        source[i + 2] = 200;
       }
       // Blobby content: random rectangles of random colors — tolerance
       // then forms real regions with edges crossing tile boundaries.
@@ -449,12 +452,12 @@ void main() {
         final blobWidth = 1 + random.nextInt(width - left);
         final blobHeight = 1 + random.nextInt(height - top);
         for (var y = top; y < top + blobHeight; y += 1) {
-          var offset = (y * width + left) * 3;
+          var offset = (y * width + left) * 4;
           for (var x = 0; x < blobWidth; x += 1) {
             source[offset] = r;
             source[offset + 1] = g;
             source[offset + 2] = b;
-            offset += 3;
+            offset += 4;
           }
         }
       }
@@ -501,10 +504,10 @@ void main() {
         final right = min(left + 256, width);
         final bottom = min(top + 256, height);
         for (var yy = top; yy < bottom; yy += 1) {
-          final start = (yy * width + left) * 3;
+          final start = (yy * width + left) * 4;
           handles.rgbView.setRange(
             start,
-            (yy * width + right) * 3,
+            (yy * width + right) * 4,
             source,
             start,
           );
