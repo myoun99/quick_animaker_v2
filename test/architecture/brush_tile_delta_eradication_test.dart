@@ -328,10 +328,13 @@ void main() {
     test(
       'public brush undo boundary does not depend on materialization history APIs',
       () {
+        // R19 P3b: the app-level undo boundary is the history commands +
+        // the store; undo payloads are SURFACE SNAPSHOTS, never session
+        // materialization state.
         final publicBoundaryFiles = [
-          'lib/src/models/undo_payload_ref.dart',
-          'lib/src/models/unified_undo_history.dart',
-          'lib/src/models/undo_history_entry.dart',
+          'lib/src/services/history_manager.dart',
+          'lib/src/services/commands/brush_stroke_history_command.dart',
+          'lib/src/services/commands/brush_lift_move_history_command.dart',
           'lib/src/services/brush_frame_store.dart',
         ];
 
@@ -353,7 +356,8 @@ void main() {
               text,
               isNot(contains(forbidden)),
               reason:
-                  '$path must keep user undo refs pointed at BrushPaintCommand payloads, not $forbidden.',
+                  '$path must keep user undo payloads as surface '
+                  'snapshots, never $forbidden.',
             );
           }
         }

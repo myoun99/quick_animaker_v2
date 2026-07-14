@@ -382,14 +382,14 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    final command = coordinator.frameStore
-        .getOrCreateFrame(coordinator.activeFrameKey)
-        .visibleActivePaintCommands
-        .single;
-    final sequences = command.sourceDabs.map((dab) => dab.sequence).toList();
-    expect(command.sourceDabs.length, greaterThan(2));
-    expect(sequences, everyElement(greaterThanOrEqualTo(0)));
-    expect(_isStrictlyIncreasing(sequences), isTrue);
+    // R19 P3b: the stroke lands as raster truth — the pixels are the
+    // record (no command bookkeeping to inspect).
+    expect(
+      coordinator.frameStore.celHasRenderableContent(
+        coordinator.activeFrameKey,
+      ),
+      isTrue,
+    );
     // Commit materializes the stroke and invalidates the affected frame and
     // derived layer-tile caches so previews/playback refresh.
     expect(sink.brushFrames, hasLength(1));
@@ -456,10 +456,12 @@ void main() {
       isNotEmpty,
     );
     expect(
-      coordinator.frameStore
-          .getOrCreateFrame(coordinator.activeFrameKey)
-          .visibleActivePaintCommands,
-      hasLength(1),
+      identical(
+        coordinator.frameStore.bakedSurfaceOrNull(coordinator.activeFrameKey),
+        cache.previewSurface,
+      ),
+      isTrue,
+      reason: 'the donation is also the bake (raster truth)',
     );
   });
 
@@ -896,15 +898,4 @@ void main() {
       expect(viewports.last.zoom, closeTo(1.1, 1e-9));
     });
   });
-}
-
-bool _isStrictlyIncreasing(Iterable<int> values) {
-  int? previous;
-  for (final value in values) {
-    if (previous != null && value <= previous) {
-      return false;
-    }
-    previous = value;
-  }
-  return true;
 }

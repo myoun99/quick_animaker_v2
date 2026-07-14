@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
@@ -227,22 +227,22 @@ void main() {
         historyManager: historyManager,
       );
 
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 1);
-      expect(controller.strokeCountFor(TimesheetInkPlane.page, page0), 1);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
+      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isTrue);
 
       historyManager.undo();
       expect(
-        controller.strokeCountFor(TimesheetInkPlane.page, page0),
-        0,
+        controller.hasInkFor(TimesheetInkPlane.page, page0),
+        isFalse,
         reason: 'the LAST stroke (page plane) undoes first',
       );
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 1);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
 
       historyManager.undo();
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 0);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isFalse);
 
       historyManager.redo();
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 1);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
     });
   });
 
@@ -313,8 +313,8 @@ void main() {
 
       final band0 = TimesheetInkController.stripBandKey(_cutId, 0);
       final page0 = TimesheetInkController.pageKey(_cutId, 0);
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 1);
-      expect(controller.strokeCountFor(TimesheetInkPlane.page, page0), 0);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
+      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isFalse);
 
       // On the Direction memo band (under the header, left of the memo
       // box) → page plane.
@@ -323,13 +323,13 @@ void main() {
         memoBand.topLeft + const Offset(30, 40),
         memoBand.topLeft + const Offset(80, 60),
       );
-      expect(controller.strokeCountFor(TimesheetInkPlane.page, page0), 1);
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 1);
+      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isTrue);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
 
       historyManager.undo();
       historyManager.undo();
-      expect(controller.strokeCountFor(TimesheetInkPlane.strip, band0), 0);
-      expect(controller.strokeCountFor(TimesheetInkPlane.page, page0), 0);
+      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isFalse);
+      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isFalse);
     });
   });
 }

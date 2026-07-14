@@ -130,7 +130,7 @@ void main() {
       await tapCanvas(tester, const Offset(1.5, 1.5));
 
       expect(find.textContaining('operation: commit'), findsOneWidget);
-      expect(find.textContaining('cacheInvalidations: 0'), findsOneWidget);
+      expect(find.textContaining('cacheInvalidations: 2'), findsOneWidget);
 
       // The committed stroke is materialized into the session surface.
       expect(_alphaAt(tester, 1, 1), 255);
@@ -382,9 +382,12 @@ void main() {
         'operation: none, cacheInvalidations: 0, color: 0xFF000000',
       );
       await tapCanvas(tester, const Offset(1.5, 1.5));
+      // R19 P3b: the commit rides the history command WITH the sink, so
+      // it counts too; undo/redo are surface-snapshot restores (one
+      // whole-frame invalidation each).
       expect(
         _debugStatus(tester),
-        'operation: commit, cacheInvalidations: 0, color: 0xFF000000',
+        'operation: commit, cacheInvalidations: 2, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -392,7 +395,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: undo, cacheInvalidations: 1, color: 0xFF000000',
+        'operation: undo, cacheInvalidations: 3, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -400,7 +403,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 2, color: 0xFF000000',
+        'operation: redo, cacheInvalidations: 4, color: 0xFF000000',
       );
       await _tapKey(
         tester,
@@ -408,7 +411,7 @@ void main() {
       );
       expect(
         _debugStatus(tester),
-        'operation: redo, cacheInvalidations: 2, color: 0xFFFF0000',
+        'operation: redo, cacheInvalidations: 4, color: 0xFFFF0000',
       );
       await _tapKey(
         tester,

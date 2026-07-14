@@ -78,17 +78,21 @@ class BrushFrameEditingCoordinator {
 
   /// Seeds the frame's session from the baked raster truth — O(1) and
   /// byte-exact (donations keep baked current across every mutation).
-  /// A never-drawn cel seeds blank.
+  /// A never-drawn cel seeds blank. The seed re-donates so the display
+  /// cache is fresh whenever a session exists (e.g. right after a resize
+  /// cleared every old-size cache).
   BrushEditSessionState _seedSession(BrushFrameKey key) {
     final blank = sessionStore.reset(key);
     final baked = frameStore.bakedSurfaceOrNull(key);
     if (baked == null || baked.canvasSize != sessionStore.canvasSize) {
       return blank;
     }
-    return sessionStore.update(
+    final seeded = sessionStore.update(
       key,
       blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: baked)),
     );
+    _donateSessionSurfaceToDisplayCache(key, seeded);
+    return seeded;
   }
 
   /// Donates the session's post-edit surface to the store's display cache.

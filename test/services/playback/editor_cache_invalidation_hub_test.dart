@@ -71,7 +71,7 @@ void main() {
       ),
     );
 
-    coordinator.commitSourceStroke(
+    final outcome = coordinator.commitSourceStroke(
       sourceDabs: [
         BrushDab(
           center: CanvasPoint(x: 1, y: 1),
@@ -86,12 +86,21 @@ void main() {
         ),
       ],
       cacheInvalidationSink: hub,
-    );
+    )!;
     expect(received, hasLength(1));
     expect(received.single.hasDirtyTiles, isTrue);
 
-    coordinator.undo(cacheInvalidationSink: hub);
-    coordinator.redo(cacheInvalidationSink: hub);
+    // Undo/redo = surface snapshot restores (R19 P3b) — both invalidate.
+    coordinator.restoreSurfaceSnapshot(
+      coordinator.activeFrameKey,
+      outcome.preSurface,
+      cacheInvalidationSink: hub,
+    );
+    coordinator.restoreSurfaceSnapshot(
+      coordinator.activeFrameKey,
+      outcome.postSurface,
+      cacheInvalidationSink: hub,
+    );
     expect(received, hasLength(3));
   });
 

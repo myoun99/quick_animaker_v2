@@ -193,6 +193,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
         BrushStrokeHistoryCommand(
           coordinator: _coordinator,
           strokeData: strokeData,
+          cacheInvalidationSink: _cacheInvalidationSink,
         ),
       );
       _sessionRevision += 1;
@@ -245,9 +246,13 @@ class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
   final frameComposites = <FrameCompositeCacheKey>[];
   final playbackPreviews = <PlaybackPreviewCacheKey>[];
+  var brushFrames = 0;
 
   int get totalCalls =>
-      layerTiles.length + frameComposites.length + playbackPreviews.length;
+      brushFrames +
+      layerTiles.length +
+      frameComposites.length +
+      playbackPreviews.length;
 
   @override
   void invalidateLayerTile(LayerTileCacheKey key) {
@@ -255,7 +260,11 @@ class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateBrushFrame(invalidation) {}
+  void invalidateBrushFrame(invalidation) {
+    // R19 P3b: undo/redo restore surface snapshots and invalidate the
+    // whole frame — counted so the debug status shows them working.
+    brushFrames += 1;
+  }
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) {

@@ -1,282 +1,149 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_state.dart';
+import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/models/undo_history_entry.dart';
-import 'package:quick_animaker_v2/src/models/undo_history_entry_id.dart';
-import 'package:quick_animaker_v2/src/models/undo_history_entry_kind.dart';
-import 'package:quick_animaker_v2/src/models/undo_payload_ref.dart';
-import 'package:quick_animaker_v2/src/models/unified_undo_history.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 
+/// R19 P3b store contract: the baked raster IS the cel; the drawing
+/// state is a mutation ledger; display caches are aliases.
 void main() {
   BrushFrameKey key({
     String project = 'p',
-    String track = 't',
     String cut = 'c',
     String layer = 'l',
     String frame = 'f',
   }) => BrushFrameKey(
     projectId: ProjectId(project),
-    trackId: TrackId(track),
+    trackId: TrackId('t'),
     cutId: CutId(cut),
     layerId: LayerId(layer),
     frameId: FrameId(frame),
   );
 
-  BrushPaintCommand command(int sequence) => BrushPaintCommand(
-    id: BrushPaintCommandId('paint-$sequence'),
-    sequenceNumber: sequence,
-    kind: BrushPaintCommandKind.paintStroke,
-    materializationRef: 'brush-materialization/session-only/$sequence',
-  );
+  BitmapSurface surfaceWithInk({int size = 4}) {
+    final pixels = Uint8List(4 * 4 * 4)..fillRange(0, 16, 255);
+    return BitmapSurface(
+      canvasSize: CanvasSize(width: size, height: size),
+      tileSize: 4,
+    ).putTile(
+      BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
+    );
+  }
 
-  UndoHistoryEntry paintEntry(BrushFrameKey frameKey, int sequence) =>
-      UndoHistoryEntry(
-        id: UndoHistoryEntryId('entry-$sequence'),
-        sequenceNumber: sequence,
-        kind: UndoHistoryEntryKind.paintStroke,
-        scope: UndoHistoryScope.brushFrame,
-        payloadRef: UndoPayloadRef.paintCommand(
-          frameKey: frameKey,
-          paintCommandId: BrushPaintCommandId('paint-$sequence'),
+  test('storeBakedSurface is the content oracle; empty tiles REMOVE the '
+      'cel (an all-undone cel is empty)', () {
+    final store = BrushFrameStore();
+    final k = key();
+    expect(store.celHasRenderableContent(k), isFalse);
+
+    store.storeBakedSurface(k, surfaceWithInk());
+    expect(store.celHasRenderableContent(k), isTrue);
+
+    store.storeBakedSurface(
+      k,
+      BitmapSurface(canvasSize: const CanvasSize(width: 4, height: 4)),
+    );
+    expect(store.celHasRenderableContent(k), isFalse);
+    expect(store.bakedSurfaceOrNull(k), isNull);
+  });
+
+  test('markCelEdited bumps the revision and dirties an existing display '
+      'cache; the follow-up donation refreshes it', () {
+    final store = BrushFrameStore();
+    final k = key();
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(k, surface);
+    store.storeRebuiltDisplayCache(key: k, previewSurface: surface);
+    final revisionBefore = store.getOrCreateFrame(k).sourceRevision;
+
+    store.markCelEdited(
+      k,
+      dirtyTiles: DirtyTileSet.empty().add(TileCoord(x: 0, y: 0)),
+    );
+
+    expect(
+      store.getOrCreateFrame(k).sourceRevision,
+      greaterThan(revisionBefore),
+    );
+    expect(store.hasValidDisplayCache(k), isFalse);
+
+    store.storeRebuiltDisplayCache(key: k, previewSurface: surface);
+    expect(store.hasValidDisplayCache(k), isTrue);
+  });
+
+  test('currentSurfaceWithoutReplay: valid cache first, else baked, null '
+      'for a size mismatch', () {
+    final store = BrushFrameStore();
+    final k = key();
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(k, surface);
+
+    expect(
+      identical(
+        store.currentSurfaceWithoutReplay(
+          k,
+          canvasSize: const CanvasSize(width: 4, height: 4),
         ),
-      );
-
-  test(
-    'paint undo payload ref resolves through BrushFrameStore to command payload',
-    () {
-      final store = BrushFrameStore();
-      final frameKey = key();
-      final added = command(1);
-      store.addLivePaintCommand(frameKey, added);
-      final entry = paintEntry(frameKey, 1);
-
-      expect(entry.payloadRef.isPaintCommand, isTrue);
-      expect(entry.payloadRef.storeName, UndoPayloadRef.paintStoreName);
-      expect(entry.payloadRef.paintCommandId, added.id);
-
-      final resolved = store.paintCommandForUndoPayload(entry.payloadRef);
-
-      expect(resolved, isNotNull);
-      expect(resolved!.id, added.id);
-      expect(resolved.materializationRef, added.materializationRef);
-      expect(resolved.state, BrushPaintCommandState.live);
-    },
-  );
-
-  test(
-    'non-paint undo payload ref does not resolve through brush frame store',
-    () {
-      final store = BrushFrameStore();
-      final frameKey = key();
-      store.addLivePaintCommand(frameKey, command(1));
-
-      final resolved = store.paintCommandForUndoPayload(
-        const UndoPayloadRef(
-          storeName: 'brushBitmapMaterializationHistoryState',
-          payloadId: 'entry-1',
-          targetPath: 'internal/session-local',
-        ),
-      );
-
-      expect(resolved, isNull);
-    },
-  );
-
-  test(
-    'trimmed paint entry moves to deferred bake and leaves kept entries undoable',
-    () {
-      final store = BrushFrameStore();
-      final frameKey = key();
-      var history = UnifiedUndoHistory(userUndoLimit: 3);
-
-      for (var i = 1; i <= 4; i += 1) {
-        store.addLivePaintCommand(frameKey, command(i));
-        final result = history.pushNewEntry(paintEntry(frameKey, i));
-        history = result.history;
-        for (final trimmed in result.trimmedEntries.where(
-          (entry) => entry.isPaintPayload,
-        )) {
-          store.movePaintCommandToDeferredBake(
-            trimmed.payloadRef.targetKey!,
-            trimmed.payloadRef.paintCommandId,
-          );
-        }
-      }
-
-      final state = store.getOrCreateFrame(frameKey);
-      expect(
-        state.commandById(BrushPaintCommandId('paint-1'))!.state,
-        BrushPaintCommandState.deferredBake,
-      );
-      expect(state.livePaintCommands.map((item) => item.id.value), [
-        'paint-2',
-        'paint-3',
-        'paint-4',
-      ]);
-      expect(state.visibleActivePaintCommands.map((item) => item.id.value), [
-        'paint-1',
-        'paint-2',
-        'paint-3',
-        'paint-4',
-      ]);
-      expect(
-        history.undoStack.map((item) => item.payloadRef.payloadId),
-        isNot(contains('paint-1')),
-      );
-    },
-  );
-
-  test('trimmed structural command is not deferred baked', () {
-    final store = BrushFrameStore();
-    final frameKey = key();
-    store.addLivePaintCommand(frameKey, command(1));
-    var history = UnifiedUndoHistory(userUndoLimit: 1);
-    history = history
-        .pushNewEntry(
-          UndoHistoryEntry(
-            id: UndoHistoryEntryId('structural'),
-            sequenceNumber: 1,
-            kind: UndoHistoryEntryKind.deleteLayer,
-            scope: UndoHistoryScope.layer,
-            payloadRef: UndoPayloadRef(
-              storeName: 'layerStore',
-              payloadId: 'delete-layer',
-              targetPath: 'layer/l',
-            ),
-          ),
-        )
-        .history;
-    final result = history.pushNewEntry(paintEntry(frameKey, 1));
-    for (final trimmed in result.trimmedEntries.where(
-      (entry) => entry.isPaintPayload,
-    )) {
-      store.movePaintCommandToDeferredBake(
-        trimmed.payloadRef.targetKey!,
-        trimmed.payloadRef.paintCommandId,
-      );
-    }
-
-    expect(store.getOrCreateFrame(frameKey).deferredBakePaintCommands, isEmpty);
+        surface,
+      ),
+      isTrue,
+    );
+    expect(
+      store.currentSurfaceWithoutReplay(
+        k,
+        canvasSize: const CanvasSize(width: 8, height: 8),
+      ),
+      isNull,
+    );
   });
 
-  test('undo paint hides command without baking and redo restores it', () {
+  test('rekeyFrames moves ledger, cache and baked truth together', () {
     final store = BrushFrameStore();
-    final frameKey = key();
-    store.addLivePaintCommand(frameKey, command(1));
-    var history = UnifiedUndoHistory(
-      userUndoLimit: 3,
-    ).pushNewEntry(paintEntry(frameKey, 1)).history;
+    final from = key(layer: 'a');
+    final to = key(layer: 'b');
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(from, surface);
+    store.storeRebuiltDisplayCache(key: from, previewSurface: surface);
+    store.markCelEdited(from);
 
-    final undo = history.takeUndo();
-    history = undo.history;
-    store.markPaintCommandHiddenByUndo(
-      frameKey,
-      undo.entry!.payloadRef.paintCommandId,
-    );
-    expect(
-      store.getOrCreateFrame(frameKey).visibleActivePaintCommands,
-      isEmpty,
-    );
-    expect(
-      store.getOrCreateFrame(frameKey).hiddenCommandIds,
-      contains(BrushPaintCommandId('paint-1')),
-    );
-    expect(store.getOrCreateFrame(frameKey).deferredBakePaintCommands, isEmpty);
-    expect(store.getOrCreateFrame(frameKey).bakedPaintCommandIds, isEmpty);
+    store.rekeyFrames([(from, to)]);
 
-    final redo = history.takeRedo();
-    store.restorePaintCommandFromUndo(
-      frameKey,
-      redo.entry!.payloadRef.paintCommandId,
-    );
-    expect(
-      store
-          .getOrCreateFrame(frameKey)
-          .visibleActivePaintCommands
-          .map((item) => item.id.value),
-      ['paint-1'],
-    );
-    expect(store.getOrCreateFrame(frameKey).hiddenCommandIds, isEmpty);
+    expect(store.bakedSurfaceOrNull(from), isNull);
+    expect(identical(store.bakedSurfaceOrNull(to), surface), isTrue);
+    expect(store.displayCacheOrNull(to), isNotNull);
+    expect(store.frameOrNull(to)?.key, to);
   });
 
-  test('deferred commands stay visible when latest live command is undone', () {
+  test('bakedSnapshotForSave is a reference-cheap copy of the truth', () {
     final store = BrushFrameStore();
-    final frameKey = key();
-    store.addLivePaintCommand(frameKey, command(1));
-    store.addLivePaintCommand(frameKey, command(2));
-    store.movePaintCommandToDeferredBake(
-      frameKey,
-      BrushPaintCommandId('paint-1'),
-    );
-    store.markPaintCommandHiddenByUndo(
-      frameKey,
-      BrushPaintCommandId('paint-2'),
-    );
+    final k = key();
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(k, surface);
 
-    final state = store.getOrCreateFrame(frameKey);
-    expect(
-      state.commandById(BrushPaintCommandId('paint-1'))!.state,
-      BrushPaintCommandState.deferredBake,
-    );
-    expect(state.visibleActivePaintCommands.map((item) => item.id.value), [
-      'paint-1',
-    ]);
+    final snapshot = store.bakedSnapshotForSave();
+
+    expect(identical(snapshot[k], surface), isTrue);
+    snapshot.remove(k);
+    expect(store.bakedSurfaceOrNull(k), isNotNull, reason: 'copy, not view');
   });
 
-  test(
-    'flushFrame returns deferred commands without deleting live commands or changing undo order',
-    () {
-      final store = BrushFrameStore();
-      final frameKey = key();
-      store.addLivePaintCommand(frameKey, command(1));
-      store.addLivePaintCommand(frameKey, command(2));
-      store.movePaintCommandToDeferredBake(
-        frameKey,
-        BrushPaintCommandId('paint-1'),
-      );
-      final history = UnifiedUndoHistory(
-        userUndoLimit: 3,
-      ).pushNewEntry(paintEntry(frameKey, 2)).history;
-
-      final flush = store.flushFrame(frameKey);
-
-      expect(flush.deferredCommands.map((item) => item.id.value), ['paint-1']);
-      expect(
-        store
-            .getOrCreateFrame(frameKey)
-            .livePaintCommands
-            .map((item) => item.id.value),
-        ['paint-2'],
-      );
-      expect(history.undoStack.map((item) => item.payloadRef.payloadId), [
-        'paint-2',
-      ]);
-    },
-  );
-
-  test('full-path BrushFrameKey isolates states sharing the same frame id', () {
+  test('full-path BrushFrameKey isolates cels sharing the same frame id', () {
     final store = BrushFrameStore();
-    final first = key(project: 'p1', frame: 'same');
-    final second = key(project: 'p2', frame: 'same');
+    final first = key(project: 'p1');
+    final second = key(project: 'p2');
+    store.storeBakedSurface(first, surfaceWithInk());
 
-    store.addLivePaintCommand(first, command(1));
-    store.addLivePaintCommand(second, command(2));
-
-    expect(
-      store.getOrCreateFrame(first).livePaintCommands.single.id.value,
-      'paint-1',
-    );
-    expect(
-      store.getOrCreateFrame(second).livePaintCommands.single.id.value,
-      'paint-2',
-    );
+    expect(store.celHasRenderableContent(first), isTrue);
+    expect(store.celHasRenderableContent(second), isFalse);
   });
 }

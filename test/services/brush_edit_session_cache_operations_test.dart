@@ -177,142 +177,6 @@ void main() {
       expect(cacheAware.affectedEntry, normal.historyEntry);
     });
 
-    test('undo no-op does not call cache sink', () {
-      final sink = FakeCacheInvalidationSink();
-
-      undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: emptySession(),
-        cacheInvalidationSink: sink,
-      );
-
-      expect(sink.totalCalls, 0);
-    });
-
-    test('undo no-op returns zero cache invalidation result', () {
-      final result =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: emptySession(),
-            cacheInvalidationSink: FakeCacheInvalidationSink(),
-          );
-
-      expect(result.cacheInvalidationResult.totalCount, 0);
-    });
-
-    test('undo changed calls cache sink', () {
-      final committed = commitChanged(
-        emptySession(),
-        FakeCacheInvalidationSink(),
-      );
-      final sink = FakeCacheInvalidationSink();
-      final result =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: committed.sessionState,
-            cacheInvalidationSink: sink,
-          );
-
-      expect(
-        sink.totalCalls,
-        result.affectedEntry!.cacheInvalidationPlan.totalKeyCount,
-      );
-    });
-
-    test(
-      'undo changed result kind/sessionState/affectedEntry match normal undo',
-      () {
-        final committed = commitBrushDabSequenceToBrushEditSessionState(
-          sessionState: emptySession(),
-          sequence: changedSequence(),
-          layerId: layerId,
-          frameId: frameId,
-        );
-        final sessionState = sessionStateFromCommitResult(committed);
-        final normal = undoLatestBrushBitmapMaterializationInSessionState(
-          sessionState: sessionState,
-        );
-        final cacheAware =
-            undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-              sessionState: sessionState,
-              cacheInvalidationSink: FakeCacheInvalidationSink(),
-            );
-
-        expect(cacheAware.kind, BrushEditSessionOperationKind.undo);
-        expect(cacheAware.sessionState, sessionStateFromStepResult(normal));
-        expect(cacheAware.affectedEntry, normal.materializationEntry);
-      },
-    );
-
-    test('redo no-op does not call cache sink', () {
-      final sink = FakeCacheInvalidationSink();
-
-      redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: emptySession(),
-        cacheInvalidationSink: sink,
-      );
-
-      expect(sink.totalCalls, 0);
-    });
-
-    test('redo no-op returns zero cache invalidation result', () {
-      final result =
-          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: emptySession(),
-            cacheInvalidationSink: FakeCacheInvalidationSink(),
-          );
-
-      expect(result.cacheInvalidationResult.totalCount, 0);
-    });
-
-    test('redo changed calls cache sink', () {
-      final committed = commitChanged(
-        emptySession(),
-        FakeCacheInvalidationSink(),
-      );
-      final undone =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: committed.sessionState,
-            cacheInvalidationSink: FakeCacheInvalidationSink(),
-          );
-      final sink = FakeCacheInvalidationSink();
-      final result =
-          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: undone.sessionState,
-            cacheInvalidationSink: sink,
-          );
-
-      expect(
-        sink.totalCalls,
-        result.affectedEntry!.cacheInvalidationPlan.totalKeyCount,
-      );
-    });
-
-    test(
-      'redo changed result kind/sessionState/affectedEntry match normal redo',
-      () {
-        final committed = commitBrushDabSequenceToBrushEditSessionState(
-          sessionState: emptySession(),
-          sequence: changedSequence(),
-          layerId: layerId,
-          frameId: frameId,
-        );
-        final undone = undoLatestBrushBitmapMaterializationInSessionState(
-          sessionState: sessionStateFromCommitResult(committed),
-        );
-        final sessionState = sessionStateFromStepResult(undone);
-        final normal = redoLatestBrushBitmapMaterializationInSessionState(
-          sessionState: sessionState,
-        );
-        final cacheAware =
-            redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-              sessionState: sessionState,
-              cacheInvalidationSink: FakeCacheInvalidationSink(),
-            );
-
-        expect(cacheAware.kind, BrushEditSessionOperationKind.redo);
-        expect(cacheAware.sessionState, sessionStateFromStepResult(normal));
-        expect(cacheAware.affectedEntry, normal.materializationEntry);
-      },
-    );
-
     test('cache invalidation counts match executed plan counts', () {
       final result = commitChanged(emptySession(), FakeCacheInvalidationSink());
       final plan = result.affectedEntry!.cacheInvalidationPlan;
@@ -330,28 +194,6 @@ void main() {
         plan.playbackPreviews.length,
       );
       expect(result.cacheInvalidationResult.totalCount, plan.totalKeyCount);
-    });
-
-    test('commit -> undo -> redo with cache-aware facade works', () {
-      final committed = commitChanged(
-        emptySession(),
-        FakeCacheInvalidationSink(),
-      );
-      final undone =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: committed.sessionState,
-            cacheInvalidationSink: FakeCacheInvalidationSink(),
-          );
-      final redone =
-          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: undone.sessionState,
-            cacheInvalidationSink: FakeCacheInvalidationSink(),
-          );
-
-      expect(committed.didAffectHistory, isTrue);
-      expect(undone.didAffectHistory, isTrue);
-      expect(redone.didAffectHistory, isTrue);
-      expect(redone.sessionState, committed.sessionState);
     });
 
     test('input BrushEditSessionState is not mutated', () {
@@ -392,22 +234,6 @@ void main() {
       expect(sessionState.materializationHistoryState.redoEntries, isEmpty);
     });
 
-    test('CacheInvalidationPlan is not mutated', () {
-      final committed = commitChanged(
-        emptySession(),
-        FakeCacheInvalidationSink(),
-      );
-      final plan = committed.affectedEntry!.cacheInvalidationPlan;
-      final before = plan.toJson();
-
-      undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-        sessionState: committed.sessionState,
-        cacheInvalidationSink: FakeCacheInvalidationSink(),
-      );
-
-      expect(plan.toJson(), before);
-    });
-
     test('no real cache storage is implemented', () {
       final sink = FakeCacheInvalidationSink();
       final result = commitChanged(emptySession(), sink);
@@ -422,14 +248,6 @@ void main() {
     test('no UI/state management/timeline/storyboard changes', () {
       expect(
         commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation,
-        isA<Function>(),
-      );
-      expect(
-        undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation,
-        isA<Function>(),
-      );
-      expect(
-        redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation,
         isA<Function>(),
       );
     });

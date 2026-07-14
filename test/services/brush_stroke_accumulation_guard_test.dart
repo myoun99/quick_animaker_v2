@@ -28,27 +28,20 @@ import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sin
 /// for the measured curve).
 void main() {
   group('brush stroke accumulation stays bounded', () {
-    test('bitmap materialization snapshots never outgrow the unified '
-        'history reach (userUndoLimit)', () {
+    test('the SESSION retains zero per-stroke history — undo weight lives '
+        'only on the app stack as surface snapshots (R19 P3b)', () {
       final coordinator = _coordinator(userUndoLimit: 8);
       for (var stroke = 0; stroke < 40; stroke += 1) {
         coordinator.commitSourceStroke(sourceDabs: [_dab(stroke % 6)]);
       }
 
-      final entries = coordinator
-          .activeSessionState
-          .materializationHistoryState
-          .undoEntries;
       expect(
-        entries.length,
-        lessThanOrEqualTo(8),
+        coordinator.activeSessionState.materializationHistoryState.undoEntries,
+        isEmpty,
         reason:
-            'snapshots below the undo limit are unreachable dead weight; '
-            'the byte budget alone let small strokes pin ~256MB of them',
+            'commits never push session history anymore — 40 strokes '
+            'retain nothing in the session beyond the current surface',
       );
-      // The kept snapshots are the NEWEST — the fast tile-revert path
-      // still covers the whole usable undo depth.
-      expect(coordinator.activeSessionState.canUndo, isTrue);
     });
 
     test('the app history command drops its one-shot commit payload after '
@@ -71,20 +64,20 @@ void main() {
             'hundreds of MB over a drawing run',
       );
 
-      // Undo/redo keep working through the coordinator history without it.
+      // Undo/redo keep working through the surface snapshots without it.
       history.undo();
       expect(
-        coordinator.frameStore
-            .getOrCreateFrame(coordinator.activeFrameKey)
-            .visibleActivePaintCommands,
-        isEmpty,
+        coordinator.frameStore.celHasRenderableContent(
+          coordinator.activeFrameKey,
+        ),
+        isFalse,
       );
       history.redo();
       expect(
-        coordinator.frameStore
-            .getOrCreateFrame(coordinator.activeFrameKey)
-            .visibleActivePaintCommands,
-        hasLength(1),
+        coordinator.frameStore.celHasRenderableContent(
+          coordinator.activeFrameKey,
+        ),
+        isTrue,
       );
     });
 

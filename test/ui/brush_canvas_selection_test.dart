@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
+import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -15,9 +16,10 @@ import 'package:quick_animaker_v2/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
-/// P9 widget routing: the selection layer mounts only for selection
-/// tools, the marquee selects committed strokes, moving/nudging commits
-/// ONE undoable rewrite, and click-away/Ctrl+D deselect.
+/// P9 widget routing on the R19 pixel model: the selection layer mounts
+/// only for selection tools, regions select PIXELS, move sessions float
+/// until ONE confirmed history entry, and all oracles are the raster
+/// itself (commands retired — the picture is the record).
 void main() {
   const layerKey = ValueKey<String>('canvas-selection-layer');
 
@@ -83,19 +85,18 @@ void main() {
     );
   }
 
-  List<BrushPaintCommand> frameCommands(
-    BrushFrameEditingCoordinator coordinator,
-  ) => coordinator.frameStore
-      .getOrCreateFrame(coordinator.activeFrameKey)
-      .visibleActivePaintCommands;
+  /// The cel's CURRENT pixels — 0/null means transparent.
+  int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) {
+    return surfacePixelRgba(
+          coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+          x,
+          y,
+        ) ??
+        0;
+  }
 
-  List<BrushDab> strokeDabs(BrushFrameEditingCoordinator coordinator) =>
-      frameCommands(coordinator).first.sourceDabs;
-
-  /// The lift command's STAMP dab (R14-④: the Move tool's first
-  /// interaction commits [erase, stamp]; moves translate the stamp).
-  BrushDab liftStampDab(BrushFrameEditingCoordinator coordinator) =>
-      frameCommands(coordinator).last.sourceDabs.last;
+  BitmapSurface currentSurface(BrushFrameEditingCoordinator coordinator) =>
+      coordinator.currentSurfaceOf(coordinator.activeFrameKey);
 
   Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -116,8 +117,8 @@ void main() {
     expect(find.byType(CanvasSelectionLayer), findsOneWidget);
   });
 
-  testWidgets('marquee selects; the MOVE tool commits one undoable rewrite '
-      '(R11-⑧: selection ≠ move)', (tester) async {
+  testWidgets('marquee selects; the MOVE tool floats a session and the '
+      'confirm lands ONE undoable pixel move (R11-⑧/R16-①)', (tester) async {
     final env = await pumpSelectionPanel(tester);
 
     // Marquee around the whole stroke (viewport is identity: local ==
@@ -128,25 +129,20 @@ void main() {
     // A MARQUEE-tool drag inside the region draws a NEW region — content
     // never moves on the selection tools.
     await dragOnLayer(tester, const Offset(25, 25), const Offset(68, 68));
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
     expect(env.commands.hasSelection, isTrue);
 
-    // The MOVE tool opens a TVP-style SESSION (R16-①): drags move only
-    // the floating stamp — nothing lands and nothing is undoable until
-    // the CONFIRM, which adopts lift + final position as ONE entry.
+    // The MOVE tool opens a TVP-style SESSION: the lift's erase lands raw
+    // (origin vanishes), drags move only the floating stamp — nothing is
+    // undoable until the CONFIRM.
     await env.setTool(CanvasTool.move);
     final entriesBeforeMove = env.history.undoCount;
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
 
     expect(
-      frameCommands(env.coordinator),
-      hasLength(2),
-      reason: 'the raw lift erase is committed; the stamp floats',
-    );
-    expect(
-      frameCommands(env.coordinator).last.sourceDabs.every((d) => d.erase),
-      isTrue,
-      reason: 'pending: the base holds only the erase',
+      inkAt(env.coordinator, 30, 30),
+      0,
+      reason: 'pending: the base holds only the erase — origin is blank',
     );
     expect(env.commands.movePending, isTrue);
     expect(
@@ -155,91 +151,83 @@ void main() {
       reason: 'nothing is undoable before the confirm',
     );
 
-    // CONFIRM: one history entry; the stamp lands at the moved position.
-    // The ACTIVE marquee is the second one, (25,25)-(68,68) → a 44×44
-    // stamp centered at (47,47), moved by the drag delta (+10,+5).
+    // CONFIRM: one history entry; the pixels land moved by (+10,+5).
     env.commands.confirmPendingMove();
     await tester.pump();
     expect(env.commands.movePending, isFalse);
     expect(env.history.undoCount, entriesBeforeMove + 1);
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
-    expect(
-      frameCommands(env.coordinator).first.sourceDabs.first.center,
-      CanvasPoint(x: 30, y: 30),
-      reason: 'bitmap lift moves pixels, never the source stroke',
-    );
+    expect(inkAt(env.coordinator, 40, 35), isNonZero);
+    expect(inkAt(env.coordinator, 28, 28), 0);
 
     env.history.undo(); // the WHOLE session (lift + move) as one step
     await tester.pump();
     expect(
-      frameCommands(env.coordinator),
-      hasLength(1),
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
       reason: 'one undo restores the pre-lift picture',
     );
 
     env.history.redo();
     await tester.pump();
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
+    expect(inkAt(env.coordinator, 40, 35), isNonZero);
 
     // Outside the region the move tool does nothing.
     await dragOnLayer(tester, const Offset(150, 150), const Offset(170, 170));
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 57, y: 52));
+    expect(inkAt(env.coordinator, 40, 35), isNonZero);
   });
 
   testWidgets('the session floats through the WHOLE interaction: the base '
-      'holds only the erase until the confirm; a zero-move confirm is an '
-      'identity landing (R16-①)', (tester) async {
+      'holds only the erase until the confirm; a zero-move confirm is a '
+      'byte-identical landing (R16-①)', (tester) async {
     final env = await pumpSelectionPanel(tester);
+    final beforeLift = currentSurface(env.coordinator);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
 
     final origin = tester.getTopLeft(find.byKey(layerKey));
     final gesture = await tester.startGesture(origin + const Offset(45, 45));
     await tester.pump();
-    // Mid-drag: the lift command carries the erase but NOT the stamp —
-    // the base never shows the moving pixels (no double image).
-    final midDabs = frameCommands(env.coordinator).last.sourceDabs;
-    expect(midDabs.every((dab) => dab.erase), isTrue);
+    // Mid-drag: the base carries the erase but NOT the stamp — the base
+    // never shows the moving pixels (no double image).
+    expect(inkAt(env.coordinator, 30, 30), 0);
+    expect(inkAt(env.coordinator, 45, 45), 0);
 
     // Zero-move release: the session STAYS pending (the float keeps
     // showing the pixels); the base still holds only the erase.
     await gesture.up();
     await tester.pump();
     expect(env.commands.movePending, isTrue);
-    expect(
-      frameCommands(env.coordinator).last.sourceDabs.every((d) => d.erase),
-      isTrue,
-    );
+    expect(inkAt(env.coordinator, 45, 45), 0);
 
-    // Confirm: the stamp lands at its origin — identity picture.
+    // Confirm: the stamp lands at its origin — byte-identical picture
+    // (the R14-④ zero-move lift-and-drop pin, now at the widget level).
     env.commands.confirmPendingMove();
     await tester.pump();
     expect(env.commands.movePending, isFalse);
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 45.5, y: 45.5));
+    expect(currentSurface(env.coordinator), equals(beforeLift));
   });
 
   testWidgets('REVERT puts the pixels back exactly and records nothing '
       '(R17-①: the prompt\'s 되돌리기)', (tester) async {
     final env = await pumpSelectionPanel(tester);
+    final beforeLift = currentSurface(env.coordinator);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
     await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
     expect(env.commands.movePending, isTrue);
-    expect(frameCommands(env.coordinator), hasLength(2));
 
     env.commands.revertPendingMove();
     await tester.pump();
 
     expect(env.commands.movePending, isFalse);
     expect(
-      frameCommands(env.coordinator),
-      hasLength(1),
-      reason: 'the raw lift pops off — pre-lift picture, byte-exact',
+      identical(currentSurface(env.coordinator), beforeLift),
+      isTrue,
+      reason: 'the pre-lift surface snapshot restores BY REFERENCE',
     );
     expect(env.history.undoCount, entriesBefore, reason: 'nothing recorded');
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
   });
 
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
@@ -276,10 +264,10 @@ void main() {
     await dragOnLayer(tester, const Offset(100, 100), const Offset(140, 140));
     expect(env.commands.hasSelection, isTrue);
 
-    // The move tool grabs nothing there (no commands joined the region).
+    // The move tool grabs nothing there (the region covers no pixels).
     await env.setTool(CanvasTool.move);
     await dragOnLayer(tester, const Offset(110, 110), const Offset(120, 120));
-    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
   });
 
   testWidgets('click-away and Ctrl+D deselect; nudges move by one pixel', (
@@ -291,20 +279,19 @@ void main() {
     expect(env.commands.hasSelection, isTrue);
 
     // Arrow nudges move the SESSION's float only (R16-①); the confirm
-    // lands the accumulated result as one entry. The source stroke never
-    // moves.
+    // lands the accumulated result as one entry.
     env.commands.nudge(1, 0);
     env.commands.nudge(0, -1);
     await tester.pump();
-    expect(frameCommands(env.coordinator), hasLength(2));
     expect(env.commands.movePending, isTrue);
+    expect(inkAt(env.coordinator, 30, 30), 0, reason: 'origin erased');
     env.commands.confirmPendingMove();
     await tester.pump();
     expect(
-      frameCommands(env.coordinator).first.sourceDabs.first.center,
-      CanvasPoint(x: 30, y: 30),
+      inkAt(env.coordinator, 31, 29),
+      isNonZero,
+      reason: 'pixels landed at the nudged position (+1,−1)',
     );
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 46.5, y: 44.5));
 
     // Ctrl+D (through the channel) deselects.
     env.commands.deselect();
@@ -323,7 +310,7 @@ void main() {
 
   group('Ctrl+T free transform (R19 pixel model: lift + stamp resample)', () {
     testWidgets('inside-drag translates; Enter confirms the session as one '
-        'undo entry — the STAMP moves, the source stroke never does', (
+        'undo entry — pure translation lands byte-preserved pixels', (
       tester,
     ) async {
       final env = await pumpSelectionPanel(tester);
@@ -332,9 +319,11 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
       expect(env.commands.transformActive, isTrue);
-      // The Ctrl+T opened a lift session: [stroke, lift] committed, the
-      // stamp floating.
-      expect(frameCommands(env.coordinator).length, 2);
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: 'Ctrl+T opened a lift session — the base holds the erase',
+      );
 
       // Drag inside the box: rides the session (nothing committed yet —
       // the history holds only the marquee's Select entry).
@@ -345,26 +334,20 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
       expect(env.commands.transformActive, isFalse);
-      // Shape bbox (20,20)..(70,70) = a 51×51 stamp centered (45.5,45.5);
-      // the pure translation (+10,+3) moves it byte-exactly.
-      expect(liftStampDab(env.coordinator).center.x, closeTo(55.5, 0.001));
-      expect(liftStampDab(env.coordinator).center.y, closeTo(48.5, 0.001));
-      expect(
-        strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 30, y: 30),
-        reason: 'the source stroke command is pixel-lifted, never rewritten',
-      );
+      // The (+10,+3) translation landed: (30,30) → (40,33).
+      expect(inkAt(env.coordinator, 40, 33), isNonZero);
+      expect(inkAt(env.coordinator, 30, 30), 0);
       expect(env.history.canUndo, isTrue);
       env.history.undo();
       expect(
-        frameCommands(env.coordinator).length,
-        1,
+        inkAt(env.coordinator, 30, 30),
+        isNonZero,
         reason: 'one Ctrl+Z retires the whole lift session',
       );
     });
 
     testWidgets('a corner drag scales anchored on the opposite corner: the '
-        'stamp RESAMPLES to the scaled footprint', (tester) async {
+        'pixels RESAMPLE into the scaled footprint', (tester) async {
       final env = await pumpSelectionPanel(tester);
       // Selection box (20,20)..(70,70): pivot (45,45), BR handle at (70,70).
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
@@ -376,17 +359,11 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      // Source stamp rect [20,71]² × 1.5 about the fixed TL → [20,96.5]²:
-      // a 77×77 resample centered (58.5,58.5).
-      final stampDab = liftStampDab(env.coordinator);
-      expect(stampDab.stamp!.width, 77);
-      expect(stampDab.stamp!.height, 77);
-      expect(stampDab.center.x, closeTo(58.5, 0.001));
-      expect(stampDab.center.y, closeTo(58.5, 0.001));
-      expect(
-        strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 30, y: 30),
-      );
+      // Dab centers map through q = 20 + 1.5·(p − 20):
+      // (30,30)→(35,35), (45,45)→(57.5,57.5), (60,60)→(80,80).
+      expect(inkAt(env.coordinator, 35, 35), isNonZero);
+      expect(inkAt(env.coordinator, 57, 57), isNonZero);
+      expect(inkAt(env.coordinator, 80, 80), isNonZero);
     });
 
     testWidgets('Alt scales about the center; Escape reverts a fresh '
@@ -403,12 +380,11 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      // Source rect [20,71]² × 2 about (45,45) → [−5,97]²: 102×102
-      // centered (46,46).
-      final stampDab = liftStampDab(env.coordinator);
-      expect(stampDab.stamp!.width, 102);
-      expect(stampDab.center.x, closeTo(46, 0.001));
-      final commandsAfterFirst = frameCommands(env.coordinator).length;
+      // q = 45 + 2·(p − 45): (30,30)→(15,15), (45,45) fixed, (60,60)→(75,75).
+      expect(inkAt(env.coordinator, 15, 15), isNonZero);
+      expect(inkAt(env.coordinator, 45, 45), isNonZero);
+      expect(inkAt(env.coordinator, 75, 75), isNonZero);
+      final afterFirst = currentSurface(env.coordinator);
 
       // A second session cancelled with Escape leaves no trace: the
       // fresh lift it opened reverts whole.
@@ -418,15 +394,20 @@ void main() {
       env.commands.cancelTransform();
       await tester.pump();
       expect(env.commands.transformActive, isFalse);
-      expect(frameCommands(env.coordinator).length, commandsAfterFirst);
-      expect(liftStampDab(env.coordinator).center.x, closeTo(46, 0.001));
+      expect(
+        identical(currentSurface(env.coordinator), afterFirst),
+        isTrue,
+        reason: 'Escape restores the pre-Ctrl+T surface by reference',
+      );
     });
 
-    testWidgets('the rotate knob turns the selection about its center: the '
-        'stamp resamples into the rotated footprint', (tester) async {
+    testWidgets('the rotate knob turns the selection about its center: '
+        'only the shape\'s PIXELS rotate, unlifted content stays', (
+      tester,
+    ) async {
       final env = await pumpSelectionPanel(tester);
-      // Lower box (20,40)..(70,90): only the shape's PIXELS lift — the
-      // (30,30) dab's pixels stay in the base untouched.
+      // Lower box (20,40)..(70,90): dabs (45,45) and (60,60) lift; the
+      // (30,30) dab's pixels sit above the region and stay in the base.
       await dragOnLayer(tester, const Offset(20, 40), const Offset(70, 90));
       expect(env.commands.hasSelection, isTrue);
       env.commands.beginTransform();
@@ -438,18 +419,15 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      // Source stamp rect [20,71]×[40,91] rotated 90° about (45,65) →
-      // AABB [19,70]×[40,91]: 51×51 centered (44.5,65.5).
-      final stampDab = liftStampDab(env.coordinator);
-      expect(stampDab.stamp!.width, 51);
-      expect(stampDab.stamp!.height, 51);
-      expect(stampDab.center.x, closeTo(44.5, 0.01));
-      expect(stampDab.center.y, closeTo(65.5, 0.01));
+      // R90 about (45,65): (45,45)→(65,65), (60,60)→(50,80).
+      expect(inkAt(env.coordinator, 65, 65), isNonZero);
+      expect(inkAt(env.coordinator, 50, 80), isNonZero);
       expect(
-        strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 30, y: 30),
-        reason: 'the unlifted dab pixels stay put; commands never rewrite',
+        inkAt(env.coordinator, 30, 30),
+        isNonZero,
+        reason: 'the unlifted pixels never move',
       );
+      expect(inkAt(env.coordinator, 45, 45), 0, reason: 'origin rotated away');
     });
   });
 
@@ -472,17 +450,13 @@ void main() {
     await tester.pump();
 
     expect(env.commands.hasSelection, isTrue);
-    // The nudge lifts the lasso region's pixels into a pending session —
-    // bbox (10,10)-(90,90) → an 81×81 stamp centered at (50.5,50.5),
-    // nudged +2 and CONFIRMED; the source stroke stays put.
+    // The nudge lifts the lasso region's pixels into a pending session;
+    // the confirm lands them moved (+2,0) — the raster is the record.
     env.commands.nudge(2, 0);
     await tester.pump();
     env.commands.confirmPendingMove();
     await tester.pump();
-    expect(
-      frameCommands(env.coordinator).first.sourceDabs.first.center,
-      CanvasPoint(x: 30, y: 30),
-    );
-    expect(liftStampDab(env.coordinator).center, CanvasPoint(x: 52.5, y: 50.5));
+    expect(inkAt(env.coordinator, 32, 30), isNonZero);
+    expect(inkAt(env.coordinator, 28, 30), 0);
   });
 }

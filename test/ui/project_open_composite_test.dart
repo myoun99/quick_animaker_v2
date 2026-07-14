@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +17,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
@@ -80,12 +79,7 @@ void main() {
     final path = '${directory.path}/scene.qap';
     await s.saveProjectToFile(path);
     await s.openProjectFromFile(path);
-    // Sanity: the open really is command-free with baked truth.
-    expect(
-      s.brushFrameStore.frameOrNull(drawnKey)?.paintCommands ?? const [],
-      isEmpty,
-      reason: 'bake-only opens carry no commands',
-    );
+    // Sanity: the open restored the baked raster truth.
     expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
     return (s, drawnKey);
   }
@@ -176,7 +170,7 @@ void main() {
 
     final cache = BrushFrameDisplayCacheService(
       frameStore: store,
-      renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+      canvasSize: canvasSize,
     ).prepareFramePreview(key);
 
     expect(

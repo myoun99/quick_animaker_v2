@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
@@ -11,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
@@ -213,7 +212,7 @@ void main() {
       // keeps them (the just-deactivated layer's tiles are always warm).
       final preview = BrushFrameDisplayCacheService(
         frameStore: store,
-        renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+        canvasSize: canvasSize,
       ).prepareFramePreview(key('frame-a')).previewSurface;
       for (final tile in preview.tiles.values) {
         BitmapTileImageCache.instance.ensureDecoded(tile);
