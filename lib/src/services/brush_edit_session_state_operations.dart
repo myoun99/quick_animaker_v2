@@ -2,14 +2,11 @@ import 'dart:typed_data';
 
 import '../models/brush_dab_sequence.dart';
 import '../models/dirty_region.dart';
-import '../models/brush_bitmap_materialization_step_result.dart';
 import '../models/brush_edit_session_commit_result.dart';
 import '../models/brush_edit_session_state.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
-import 'brush_bitmap_materialization_redo_service.dart';
 import 'brush_edit_session_commit.dart';
-import 'brush_bitmap_materialization_undo_service.dart';
 
 BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   required BrushEditSessionState sessionState,
@@ -30,37 +27,8 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   );
 }
 
-BrushBitmapMaterializationStepResult
-undoLatestBrushBitmapMaterializationInSessionState({
-  required BrushEditSessionState sessionState,
-}) {
-  return undoLatestBrushBitmapMaterialization(
-    canvasState: sessionState.canvasState,
-    materializationHistoryState: sessionState.materializationHistoryState,
-  );
-}
-
-BrushBitmapMaterializationStepResult
-redoLatestBrushBitmapMaterializationInSessionState({
-  required BrushEditSessionState sessionState,
-}) {
-  return redoLatestBrushBitmapMaterialization(
-    canvasState: sessionState.canvasState,
-    materializationHistoryState: sessionState.materializationHistoryState,
-  );
-}
-
 BrushEditSessionState sessionStateFromCommitResult(
   BrushEditSessionCommitResult result,
-) {
-  return BrushEditSessionState(
-    canvasState: result.canvasState,
-    materializationHistoryState: result.materializationHistoryState,
-  );
-}
-
-BrushEditSessionState sessionStateFromStepResult(
-  BrushBitmapMaterializationStepResult result,
 ) {
   return BrushEditSessionState(
     canvasState: result.canvasState,

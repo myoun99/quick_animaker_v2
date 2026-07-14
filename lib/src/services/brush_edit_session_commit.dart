@@ -9,7 +9,6 @@ import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import '../ui/dev_profile.dart';
 import 'brush_bitmap_materialization_history_entry_builder.dart';
-import 'brush_bitmap_materialization_history_stack.dart';
 import 'brush_surface_edit_builder.dart';
 import 'canvas_surface_state_edit.dart';
 
@@ -49,22 +48,12 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
     ),
   );
 
-  if (historyEntry == null) {
-    return BrushEditSessionCommitResult(
-      canvasState: updatedCanvasState,
-      materializationHistoryState: materializationHistoryState,
-      historyEntry: null,
-    );
-  }
-
-  final updatedHistoryState = pushBrushBitmapMaterializationHistoryEntry(
-    history: materializationHistoryState,
-    entry: historyEntry,
-  );
-
+  // R19 P3b: the entry is returned as the commit's dirty-tiles and
+  // invalidation-plan carrier, but NOTHING pushes it into a history —
+  // undo/redo are app-level surface snapshots now.
   return BrushEditSessionCommitResult(
     canvasState: updatedCanvasState,
-    materializationHistoryState: updatedHistoryState,
+    materializationHistoryState: materializationHistoryState,
     historyEntry: historyEntry,
   );
 }
