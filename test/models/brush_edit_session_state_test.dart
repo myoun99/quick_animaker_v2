@@ -11,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_edit_session_commit.dart';
-import 'package:quick_animaker_v2/src/services/brush_bitmap_materialization_undo_service.dart';
 
 void main() {
   group('BrushEditSessionState', () {
@@ -50,7 +49,8 @@ void main() {
       expect(state.materializationHistoryState, materializationHistoryState);
     });
 
-    test('canUndo delegates to materializationHistoryState.canUndo', () {
+    test('a commit never grows the materialization history (R19 P3b: '
+        'undo/redo are app-level surface snapshots)', () {
       final committed = commitBrushDabSequenceToBrushEditSession(
         canvasState: CanvasSurfaceState(currentSurface: surface()),
         materializationHistoryState: BrushBitmapMaterializationHistoryState(),
@@ -63,29 +63,9 @@ void main() {
         materializationHistoryState: committed.materializationHistoryState,
       );
 
-      expect(state.canUndo, committed.materializationHistoryState.canUndo);
-      expect(state.canUndo, isTrue);
-    });
-
-    test('canRedo delegates to materializationHistoryState.canRedo', () {
-      final committed = commitBrushDabSequenceToBrushEditSession(
-        canvasState: CanvasSurfaceState(currentSurface: surface()),
-        materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-        sequence: changedSequence(),
-        layerId: layerId,
-        frameId: frameId,
-      );
-      final undone = undoLatestBrushBitmapMaterialization(
-        canvasState: committed.canvasState,
-        materializationHistoryState: committed.materializationHistoryState,
-      );
-      final state = BrushEditSessionState(
-        canvasState: undone.canvasState,
-        materializationHistoryState: undone.materializationHistoryState,
-      );
-
-      expect(state.canRedo, undone.materializationHistoryState.canRedo);
-      expect(state.canRedo, isTrue);
+      expect(committed.historyEntry, isNotNull, reason: 'dirty-tile carrier');
+      expect(state.canUndo, isFalse);
+      expect(state.canRedo, isFalse);
     });
 
     test('hasLastEdit delegates to canvasState.hasLastEdit', () {

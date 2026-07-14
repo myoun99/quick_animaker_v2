@@ -69,13 +69,8 @@ void main() {
           ),
         ],
       );
-      final command = session.brushFrameStore
-          .getOrCreateFrame(frameKey)
-          .paintCommands
-          .single;
-
       // Tamper the (valid) display cache with a RED sentinel pixel at (0,0):
-      // reading the cache shows red, replaying the commands cannot.
+      // reading the cache shows red, the baked truth cannot.
       final sentinelPixels = Uint8List(256 * 256 * 4);
       sentinelPixels[0] = 255;
       sentinelPixels[3] = 255;
@@ -111,26 +106,22 @@ void main() {
       expect(fromCache.getUint8(1), 0);
       expect(fromCache.getUint8(2), 0);
 
-      // Store-level command edits dirty the cache WITHOUT donating — the
-      // renderer must then fall back to replaying the commands: the black
-      // stroke reappears and the sentinel is gone.
-      session.brushFrameStore.markPaintCommandHiddenByUndo(
-        frameKey,
-        command.id,
-      );
-      session.brushFrameStore.restorePaintCommandFromUndo(frameKey, command.id);
+      // A store-level edit mark dirties the cache WITHOUT donating — the
+      // renderer must then fall back to the BAKED truth (R19 P3b: no
+      // replay exists): the black stroke reappears, the sentinel is gone.
+      session.brushFrameStore.markCelEdited(frameKey);
       expect(
         session.brushFrameStore.displayCacheOrNull(frameKey)!.dirty,
         isTrue,
       );
 
-      final replayed = await renderedBytes();
-      expect(replayed.getUint8(3), 0, reason: 'sentinel gone after replay');
+      final baked = await renderedBytes();
+      expect(baked.getUint8(3), 0, reason: 'sentinel gone — cache skipped');
       final strokeOffset = (4 * cut.canvasSize.width + 4) * 4;
       expect(
-        replayed.getUint8(strokeOffset + 3),
+        baked.getUint8(strokeOffset + 3),
         greaterThan(0),
-        reason: 'the black stroke comes back from the command replay',
+        reason: 'the black stroke comes back from the baked truth',
       );
     });
     await tester.pumpAndSettle();

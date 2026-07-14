@@ -49,8 +49,18 @@ void main() {
                   id: layerId,
                   name: 'Pin Layer',
                   frames: [
-                    Frame(id: frameA, name: 'A', duration: 1, strokes: const []),
-                    Frame(id: frameB, name: 'B', duration: 1, strokes: const []),
+                    Frame(
+                      id: frameA,
+                      name: 'A',
+                      duration: 1,
+                      strokes: const [],
+                    ),
+                    Frame(
+                      id: frameB,
+                      name: 'B',
+                      duration: 1,
+                      strokes: const [],
+                    ),
                   ],
                   timeline: {
                     0: TimelineExposure.drawing(frameA, length: 1),
@@ -154,19 +164,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewOf(tester).frameId, frameB);
     expect(
-      session.brushFrameStore
-              .frameOrNull(keyFor(frameA))
-              ?.allPaintCommandsInDisplayOrder ??
-          const [],
-      isNotEmpty,
+      session.brushFrameStore.celHasRenderableContent(keyFor(frameA)),
+      isTrue,
       reason: 'the stroke belongs to the frame it STARTED on',
     );
     expect(
-      session.brushFrameStore
-              .frameOrNull(keyFor(frameB))
-              ?.allPaintCommandsInDisplayOrder ??
-          const [],
-      isEmpty,
+      session.brushFrameStore.celHasRenderableContent(keyFor(frameB)),
+      isFalse,
       reason: 'nothing may leak onto the frame the seek landed on',
     );
 

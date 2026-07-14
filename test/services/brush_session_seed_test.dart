@@ -93,7 +93,8 @@ void main() {
     }
   });
 
-  test('a dirty cache (hidden command) falls back to the replay', () {
+  test('an undone stroke never comes back from a stale seed: the baked '
+      'truth follows every snapshot restore (R19 P3b)', () {
     final store = BrushFrameStore();
     final author = coordinatorOver(store);
     author.commitSourceStroke(sourceDabs: [dab(20, 20, 0xFFCC2200)]);
@@ -101,21 +102,22 @@ void main() {
       sourceDabs: [dab(90, 90, 0xFF0022CC)],
     )!;
 
-    // Hiding a command dirties the cache BEFORE any rebuild can seed.
-    store.markPaintCommandHiddenByUndo(frameKey, second.id);
+    // Undo the second stroke: the restore donates, so a FRESH coordinator
+    // seeding from baked sees exactly the post-undo picture.
+    author.restoreSurfaceSnapshot(frameKey, second.preSurface);
 
     final surface = coordinatorOver(
       store,
     ).activeSessionState.canvasState.currentSurface;
     expect(
-      surfacePixelRgba(surface, 20, 20)! & 0xFF,
+      surfacePixelRgba(surface, 20, 20),
       isNonZero,
-      reason: 'the visible stroke replays',
+      reason: 'the surviving stroke seeds from baked',
     );
     expect(
       surfacePixelRgba(surface, 90, 90),
       anyOf(isNull, 0),
-      reason: 'the hidden stroke must NOT come back from a stale cache',
+      reason: 'the undone stroke must NOT come back from a stale cache',
     );
   });
 }

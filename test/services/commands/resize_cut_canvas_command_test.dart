@@ -1,10 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_resize_anchor.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -13,9 +12,11 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
 import 'package:quick_animaker_v2/src/services/commands/resize_cut_canvas_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
@@ -96,7 +97,7 @@ void main() {
     });
   });
 
-  group('anchored stroke translation', () {
+  group('anchored raster translation (R19: the baked truth blits)', () {
     // Target cut: 1920x1080. Resizing to 1720x880 shrinks by 200x200.
     const shrunkenSize = CanvasSize(width: 1720, height: 880);
 
@@ -114,41 +115,43 @@ void main() {
       );
     }
 
-    test('center anchor shifts strokes by half the size delta', () {
-      final store = _storeWithDabAt(x: 500, y: 400);
+    test('center anchor shifts pixels by half the size delta', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
       command(
         repository: _repository(),
         store: store,
         anchor: CanvasResizeAnchor.center,
       ).execute();
 
-      expect(_dabCenter(store), CanvasPoint(x: 400, y: 300));
+      expect(_inkAt(store, 400, 300), isNonZero);
+      expect(_inkAt(store, 500, 400), anyOf(isNull, 0));
     });
 
-    test('bottom-right anchor shifts strokes by the full size delta', () {
-      final store = _storeWithDabAt(x: 500, y: 400);
+    test('bottom-right anchor shifts pixels by the full size delta', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
       command(
         repository: _repository(),
         store: store,
         anchor: CanvasResizeAnchor.bottomRight,
       ).execute();
 
-      expect(_dabCenter(store), CanvasPoint(x: 300, y: 200));
+      expect(_inkAt(store, 300, 200), isNonZero);
     });
 
-    test('top-left anchor leaves stroke coordinates untouched', () {
-      final store = _storeWithDabAt(x: 500, y: 400);
+    test('top-left anchor leaves pixels untouched', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
       command(
         repository: _repository(),
         store: store,
         anchor: CanvasResizeAnchor.topLeft,
       ).execute();
 
-      expect(_dabCenter(store), CanvasPoint(x: 500, y: 400));
+      expect(_inkAt(store, 500, 400), isNonZero);
     });
 
-    test('undo and redo restore stroke coordinates exactly', () {
-      final store = _storeWithDabAt(x: 500, y: 400);
+    test('undo restores the baked surface BY REFERENCE; redo re-applies', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
+      final original = store.bakedSurfaceOrNull(_frameKey())!;
       final repository = _repository();
       final historyManager = HistoryManager();
 
@@ -161,19 +164,24 @@ void main() {
       );
       historyManager.undo();
 
-      expect(_dabCenter(store), CanvasPoint(x: 500, y: 400));
+      expect(
+        identical(store.bakedSurfaceOrNull(_frameKey()), original),
+        isTrue,
+        reason: 'the reference snapshot restores byte-exactly for free',
+      );
       expect(repository.requireProject().tracks.single.cuts.first, _targetCut);
 
       historyManager.redo();
-      expect(_dabCenter(store), CanvasPoint(x: 400, y: 300));
+      expect(_inkAt(store, 400, 300), isNonZero);
     });
 
-    test('other cuts strokes are not translated', () {
+    test('other cuts pixels are not translated', () {
       final store = BrushFrameStore();
-      store.addLivePaintCommand(
+      store.storeBakedSurface(
         _frameKey(cutId: 'cut-other'),
-        _paintCommandWithDabAt(x: 500, y: 400),
+        _surfaceWithInkAt(x: 500, y: 400),
       );
+      final before = store.bakedSurfaceOrNull(_frameKey(cutId: 'cut-other'));
 
       command(
         repository: _repository(),
@@ -181,10 +189,12 @@ void main() {
         anchor: CanvasResizeAnchor.center,
       ).execute();
 
-      final state = store.frameOrNull(_frameKey(cutId: 'cut-other'))!;
       expect(
-        state.paintCommands.single.sourceDabs.single.center,
-        CanvasPoint(x: 500, y: 400),
+        identical(
+          store.bakedSurfaceOrNull(_frameKey(cutId: 'cut-other')),
+          before,
+        ),
+        isTrue,
       );
     });
   });
@@ -198,42 +208,30 @@ BrushFrameKey _frameKey({String cutId = 'cut-target'}) => BrushFrameKey(
   frameId: const FrameId('frame-1'),
 );
 
-BrushPaintCommand _paintCommandWithDabAt({
-  required double x,
-  required double y,
-}) {
-  return BrushPaintCommand(
-    id: const BrushPaintCommandId('paint-1'),
-    sequenceNumber: 1,
-    kind: BrushPaintCommandKind.paintStroke,
-    sourceDabs: [
-      BrushDab(
-        center: CanvasPoint(x: x, y: y),
-        color: 0xFF000000,
-        size: 2,
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.round,
-        pressure: 1,
-        sequence: 0,
-      ),
-    ],
-  );
+/// A 1920x1080 baked surface with ONE opaque black pixel at ([x], [y]).
+BitmapSurface _surfaceWithInkAt({required int x, required int y}) {
+  const tileSize = 256;
+  final coord = TileCoord(x: x ~/ tileSize, y: y ~/ tileSize);
+  final pixels = Uint8List(tileSize * tileSize * 4);
+  final offset = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
+  pixels[offset + 3] = 255;
+  return BitmapSurface(
+    canvasSize: const CanvasSize(width: 1920, height: 1080),
+  ).putTile(BitmapTile(coord: coord, size: tileSize, pixels: pixels));
 }
 
-BrushFrameStore _storeWithDabAt({required double x, required double y}) {
+BrushFrameStore _storeWithInkAt({required int x, required int y}) {
   return BrushFrameStore()
-    ..addLivePaintCommand(_frameKey(), _paintCommandWithDabAt(x: x, y: y));
+    ..storeBakedSurface(_frameKey(), _surfaceWithInkAt(x: x, y: y));
 }
 
-CanvasPoint _dabCenter(BrushFrameStore store) => store
-    .frameOrNull(_frameKey())!
-    .paintCommands
-    .single
-    .sourceDabs
-    .single
-    .center;
+int? _inkAt(BrushFrameStore store, int x, int y) {
+  final surface = store.bakedSurfaceOrNull(_frameKey());
+  if (surface == null) {
+    return null;
+  }
+  return surfacePixelRgba(surface, x, y);
+}
 
 final _targetCut = Cut(
   id: const CutId('cut-target'),

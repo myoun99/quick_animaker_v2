@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
@@ -17,7 +17,6 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
@@ -264,12 +263,9 @@ void main() {
         );
         coordinator.commitSourceStroke(sourceDabs: [dab]);
 
-        final committed = BrushFrameDisplayCacheRenderer(canvasSize: canvasSize)
-            .rebuildPreview(
-              coordinator.frameStore.getOrCreateFrame(
-                coordinator.activeFrameKey,
-              ),
-            );
+        final committed = coordinator.frameStore.bakedSurfaceOrNull(
+          coordinator.activeFrameKey,
+        )!;
 
         for (var y = 0; y < 8; y += 1) {
           for (var x = 0; x < 8; x += 1) {

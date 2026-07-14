@@ -1,4 +1,4 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,10 +112,8 @@ void main() {
     expect(picks, [0xFF123456]);
     expect(sampledPoints, hasLength(1));
     expect(
-      coordinator.frameStore
-          .getOrCreateFrame(frameKeys.first)
-          .visibleActivePaintCommands,
-      isEmpty,
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isFalse,
     );
   });
 
@@ -178,15 +176,13 @@ void main() {
     await tester.tap(find.byKey(tapLayerKey));
     await tester.pump();
 
-    // The active tool color reached the fill and the dab landed as a
-    // normal paint command (undo/parity/serialization ride the funnel).
+    // The active tool color reached the fill and the dab landed through
+    // the ordinary stroke funnel — the pixels are the record (R19 P3b).
     expect(fillColors, [0xFF3366CC]);
-    final commands = coordinator.frameStore
-        .getOrCreateFrame(frameKeys.first)
-        .visibleActivePaintCommands;
-    expect(commands, hasLength(1));
-    expect(commands.single.sourceDabs.single.color, 0xFF3366CC);
-    expect(coordinator.canUndo, isTrue);
+    expect(
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isTrue,
+    );
   });
 
   testWidgets('a null fill region commits nothing', (tester) async {
@@ -214,10 +210,8 @@ void main() {
     await tester.pump();
 
     expect(
-      coordinator.frameStore
-          .getOrCreateFrame(frameKeys.first)
-          .visibleActivePaintCommands,
-      isEmpty,
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isFalse,
     );
   });
 
@@ -248,20 +242,16 @@ void main() {
 
     expect(altPicks, [0xFFAABBCC]);
     expect(
-      coordinator.frameStore
-          .getOrCreateFrame(frameKeys.first)
-          .visibleActivePaintCommands,
-      isEmpty,
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isFalse,
     );
     // Without Alt the same tap draws — the gate is the modifier, not the
     // handler wiring.
     await tapCanvas(tester, const Offset(30, 30));
     await tester.pumpAndSettle();
     expect(
-      coordinator.frameStore
-          .getOrCreateFrame(frameKeys.first)
-          .visibleActivePaintCommands,
-      isNotEmpty,
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isTrue,
     );
   });
 

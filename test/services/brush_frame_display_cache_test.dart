@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
@@ -11,12 +10,14 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_renderer.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 
+/// R19 P3b: the display cache is an ALIAS of the baked truth — donations
+/// keep it fresh across every commit and snapshot restore, and the
+/// service's rebuild path is a reference reseed (no replay exists).
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 16);
   final key = BrushFrameKey(
@@ -45,73 +46,62 @@ void main() {
   BrushFrameDisplayCacheService serviceFor(BrushFrameStore store) {
     return BrushFrameDisplayCacheService(
       frameStore: store,
-      renderer: const BrushFrameDisplayCacheRenderer(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ),
+      canvasSize: canvasSize,
+      tileSize: 4,
     );
   }
 
-  test('display cache is derived', () {
+  test('the prepared cache aliases the baked truth', () {
     final c = coordinator();
-    final command = c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)])!;
+    c.commitSourceStroke(sourceDabs: [_dab(4, 4, 0)]);
 
     final cache = serviceFor(c.frameStore).prepareFramePreview(key);
-    final drawing = c.frameStore.getOrCreateFrame(key);
 
     expect(cache.isValid, isTrue);
-    expect(cache.previewSurface.tiles, isNotEmpty);
-    expect(drawing.commands, [command]);
-    expect(drawing.commandById(command.id)!.sourceDabs, hasLength(1));
-    expect(drawing.inactivePreviewDirty, isFalse);
+    expect(
+      identical(cache.previewSurface, c.frameStore.bakedSurfaceOrNull(key)),
+      isTrue,
+    );
+    expect(c.frameStore.getOrCreateFrame(key).inactivePreviewDirty, isFalse);
   });
 
-  test('commit undo redo keep the display cache FRESH (donation replaces '
-      'the dirty-then-replay cycle)', () {
+  test('commit, undo and redo keep the display cache FRESH (donation on '
+      'every mutation — consumers never find a dirty cache)', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
-    final command = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)])!;
+    final outcome = c.commitSourceStroke(sourceDabs: [_dab(2, 2, 0)])!;
     service.prepareFramePreview(key);
     expect(c.frameStore.hasValidDisplayCache(key), isTrue);
 
-    // Every edit donates the session surface, so consumers never find a
-    // dirty cache to replay after commit…
-    c.commitSourceStroke(sourceDabs: [_dab(8, 8, 1)]);
+    final second = c.commitSourceStroke(sourceDabs: [_dab(8, 8, 1)])!;
     expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
-    expect(c.frameStore.getOrCreateFrame(key).inactivePreviewDirty, isFalse);
     expect(
-      c.frameStore.validPreviewSurfaceOrNull(key),
-      BrushFrameDisplayCacheRenderer(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ).rebuildPreview(c.frameStore.getOrCreateFrame(key)),
-      reason: 'the donated surface equals a reference replay',
+      identical(
+        c.frameStore.validPreviewSurfaceOrNull(key),
+        second.postSurface,
+      ),
+      isTrue,
     );
 
-    // …after undo…
-    c.undo();
+    c.restoreSurfaceSnapshot(key, second.preSurface); // undo the 2nd stroke
     expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
-    expect(c.frameStore.getOrCreateFrame(key).hiddenCommandIds, isNotEmpty);
     expect(
-      c.frameStore.validPreviewSurfaceOrNull(key),
-      BrushFrameDisplayCacheRenderer(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ).rebuildPreview(c.frameStore.getOrCreateFrame(key)),
+      identical(
+        c.frameStore.validPreviewSurfaceOrNull(key),
+        outcome.postSurface,
+      ),
+      isTrue,
+      reason: 'chain sharing: pre(2nd) IS post(1st)',
     );
 
-    // …and after redo.
-    c.redo();
+    c.restoreSurfaceSnapshot(key, second.postSurface); // redo
     expect(c.frameStore.displayCacheOrNull(key)!.dirty, isFalse);
-    expect(c.frameStore.getOrCreateFrame(key).hiddenCommandIds, isEmpty);
-    final restoredFrame = c.frameStore.getOrCreateFrame(key);
-    expect(restoredFrame.commandById(command.id), command);
     expect(
-      c.frameStore.validPreviewSurfaceOrNull(key),
-      BrushFrameDisplayCacheRenderer(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ).rebuildPreview(restoredFrame),
+      identical(
+        c.frameStore.validPreviewSurfaceOrNull(key),
+        second.postSurface,
+      ),
+      isTrue,
     );
   });
 
@@ -127,21 +117,18 @@ void main() {
     expect(c.frameStore.validPreviewSurfaceOrNull(key), first.previewSurface);
   });
 
-  test('active overlay is not cached', () {
-    final c = coordinator();
-    c.commitSourceStroke(sourceDabs: [_dab(3, 3, 0)]);
-    final cache = serviceFor(c.frameStore).prepareFramePreview(key);
-
-    final activeOnlySurface = BrushFrameDisplayCacheRenderer(
+  test('an invalidated cache on an EMPTY cel reseeds blank, never stale', () {
+    final store = BrushFrameStore();
+    final service = BrushFrameDisplayCacheService(
+      frameStore: store,
       canvasSize: canvasSize,
       tileSize: 4,
-    ).rebuildPreview(c.frameStore.getOrCreateFrame(key));
+    );
 
-    expect(cache.previewSurface, activeOnlySurface);
-    expect(cache.previewSurface, isA<BitmapSurface>());
-    expect(c.frameStore.getOrCreateFrame(key).commands.single.sourceDabs, [
-      _dab(3, 3, 0),
-    ]);
+    final cache = service.prepareFramePreview(key);
+
+    expect(cache.previewSurface.tiles, isEmpty);
+    expect(cache.isValid, isTrue);
   });
 
   test('live pointer path skips cache generation', () {

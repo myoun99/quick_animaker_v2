@@ -54,18 +54,9 @@ void main() {
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
     });
 
-    test('keeps paint commands and unified undo history', () {
-      final c = coordinator();
-      final command = c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)])!;
-
-      c.resizeCanvas(const CanvasSize(width: 12, height: 12));
-
-      final frame = c.frameStore.getOrCreateFrame(c.activeFrameKey);
-      expect(frame.commandById(command.id), command);
-      expect(c.undoHistory.undoStack, hasLength(1));
-    });
-
-    test('shrinking crops without destroying stroke data', () {
+    test('shrinking crops the raster (PS semantics) — surviving pixels '
+        'stay byte-true; the resize COMMAND owns restoration via its '
+        'reference snapshot', () {
       final c = coordinator();
       // One dab inside the shrunken bounds, one outside.
       c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
@@ -78,10 +69,10 @@ void main() {
         const CanvasSize(width: 4, height: 4),
       );
 
-      // Growing back restores the cropped stroke from its commands.
+      // Growing back keeps the surviving content; the cropped tile is
+      // gone (raster truth — ResizeCutCanvasCommand's undo restores it).
       c.resizeCanvas(canvasSize);
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
-      expect(_alphaAt(c, x: 6, y: 6), greaterThan(0));
     });
 
     test('same size is a no-op that keeps session state', () {
@@ -115,23 +106,6 @@ void main() {
       // …while inactive frames' old-size caches are simply dropped (they
       // rebuild lazily on selection).
       expect(c.frameStore.displayCacheOrNull(frameA), isNull);
-    });
-
-    test('undo after resize hides the stroke on the rebuilt surface', () {
-      final c = coordinator();
-      c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
-      c.commitSourceStroke(sourceDabs: [_dab(x: 3, y: 1)]);
-
-      c.resizeCanvas(const CanvasSize(width: 12, height: 12));
-      // The bitmap materialization history was reset by the resize, so undo
-      // takes the command-replay fallback.
-      c.undo();
-
-      expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
-      expect(_alphaAt(c, x: 3, y: 1), 0);
-
-      c.redo();
-      expect(_alphaAt(c, x: 3, y: 1), greaterThan(0));
     });
 
     test('inactive frames rebuild lazily when selected after resize', () {

@@ -14,7 +14,6 @@ import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.da
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:quick_animaker_v2/src/services/brush_materialization_history_budget.dart';
 import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
 import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
@@ -102,21 +101,12 @@ void main() {
           watch.stop();
         }
 
-        final session = coordinator.activeSessionState;
-        final materializationEntries =
-            session.materializationHistoryState.undoEntries;
-        var materializationBytes = 0;
-        for (final entry in materializationEntries) {
-          materializationBytes += materializationEntryByteEstimate(entry);
-        }
-        final paintCommands = store.frameOrNull(frameKey)!.paintCommands;
         // ignore: avoid_print
         print(
           '[accumulation] strokes ${(bucket + 1) * strokesPerBucket}: '
           '${(watch.elapsedMicroseconds / 1000.0 / strokesPerBucket).toStringAsFixed(2)}'
-          'ms/commit | materialization entries ${materializationEntries.length} '
-          '(~${(materializationBytes / (1024 * 1024)).toStringAsFixed(0)}MB) | '
-          'store paintCommands ${paintCommands.length} | '
+          'ms/commit | undo snapshot bytes '
+          '~${(historyManager.retainedBytes / (1024 * 1024)).toStringAsFixed(0)}MB | '
           'app undo stack ${historyManager.undoCount}',
         );
       }

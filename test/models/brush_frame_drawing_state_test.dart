@@ -1,55 +1,61 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_drawing_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_paint_command_state.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 
+/// R19 P3b: the drawing state is a pure mutation ledger (revision +
+/// cache-dirty bookkeeping) — command lists retired with the raster
+/// truth model.
 void main() {
-  test(
-    'visibleActivePaintCommands excludes hiddenByUndo and orders deferred before live deterministically',
-    () {
-      final key = BrushFrameKey(
+  final key = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('l'),
+    frameId: FrameId('f'),
+  );
+
+  test('copyWith updates the ledger fields and keeps the rest', () {
+    final state = BrushFrameDrawingState(key: key, sourceRevision: 3);
+    final dirty = DirtyTileSet.empty().add(TileCoord(x: 1, y: 0));
+
+    final next = state.copyWith(
+      sourceRevision: 4,
+      inactivePreviewDirty: true,
+      cacheDirtyTiles: dirty,
+    );
+
+    expect(next.key, key);
+    expect(next.sourceRevision, 4);
+    expect(next.inactivePreviewDirty, isTrue);
+    expect(next.cacheDirtyTiles.contains(TileCoord(x: 1, y: 0)), isTrue);
+    expect(state.sourceRevision, 3, reason: 'immutable value semantics');
+  });
+
+  test('copyWithKey re-homes the cel with bookkeeping unchanged', () {
+    final state = BrushFrameDrawingState(
+      key: key,
+      sourceRevision: 7,
+      inactivePreviewDirty: true,
+    );
+    final moved = state.copyWithKey(
+      BrushFrameKey(
         projectId: ProjectId('p'),
         trackId: TrackId('t'),
         cutId: CutId('c'),
-        layerId: LayerId('l'),
+        layerId: LayerId('other-layer'),
         frameId: FrameId('f'),
-      );
-      final state = BrushFrameDrawingState(
-        key: key,
-        paintCommands: [
-          BrushPaintCommand(
-            id: BrushPaintCommandId('3'),
-            sequenceNumber: 3,
-            kind: BrushPaintCommandKind.paintStroke,
-          ),
-          BrushPaintCommand(
-            id: BrushPaintCommandId('1'),
-            sequenceNumber: 1,
-            kind: BrushPaintCommandKind.paintStroke,
-            state: BrushPaintCommandState.deferredBake,
-          ),
-          BrushPaintCommand(
-            id: BrushPaintCommandId('2'),
-            sequenceNumber: 2,
-            kind: BrushPaintCommandKind.paintStroke,
-          ),
-        ],
-        hiddenCommandIds: {BrushPaintCommandId('2')},
-      );
+      ),
+    );
 
-      expect(state.hasDeferredBakeCommands, isTrue);
-      expect(state.deferredBakeCount, 1);
-      expect(
-        state.visibleActivePaintCommands.map((command) => command.id.value),
-        ['1', '3'],
-      );
-    },
-  );
+    expect(moved.key.layerId, LayerId('other-layer'));
+    expect(moved.sourceRevision, 7);
+    expect(moved.inactivePreviewDirty, isTrue);
+  });
 }

@@ -106,13 +106,14 @@ void main() {
     );
   });
 
-  test('undo and redo of an EVICTED cel still land: the replay fallback '
-      'rebuilds the exact pixels', () {
+  test('undo and redo of an EVICTED cel still land byte-exactly: surface '
+      'snapshots are self-contained (R19 P3b — stronger than the old '
+      'replay fallback)', () {
     final (coordinator, sessionStore, history) = coordinatorFixture();
 
     coordinator.selectFrame(celKey(0));
     commitStroke(coordinator, history);
-    expect(coordinator.liveCommandCount(celKey(0)), 1);
+    expect(coordinator.frameStore.celHasRenderableContent(celKey(0)), isTrue);
 
     // Draw across enough cels to evict cel 0's session.
     for (var cel = 1; cel < 7; cel += 1) {
@@ -122,30 +123,26 @@ void main() {
     expect(sessionStore.sessionOrNull(celKey(0)), isNull);
 
     // Undo everything back through cel 0's stroke (its session is gone —
-    // the command-replay fallback must cover it).
+    // the snapshot needs no session state at all).
     for (var i = 0; i < 7; i += 1) {
       history.undo();
     }
-    int visibleCommands() => coordinator.frameStore
-        .frameOrNull(celKey(0))!
-        .visibleActivePaintCommands
-        .length;
-    expect(visibleCommands(), 0);
+    expect(coordinator.frameStore.celHasRenderableContent(celKey(0)), isFalse);
     coordinator.selectFrame(celKey(0));
     expect(
       coordinator.activeSessionState.canvasState.currentSurface.tiles,
       isEmpty,
-      reason: 'the replay fallback restored the blank pre-stroke surface',
+      reason: 'undo restored the blank pre-stroke surface exactly',
     );
 
-    // Redo lands the stroke back through the same fallback.
+    // Redo lands the stroke back from the post snapshot.
     history.redo();
-    expect(visibleCommands(), 1);
+    expect(coordinator.frameStore.celHasRenderableContent(celKey(0)), isTrue);
     coordinator.selectFrame(celKey(0));
     expect(
       coordinator.activeSessionState.canvasState.currentSurface.tiles,
       isNotEmpty,
-      reason: 'redo repainted the stroke',
+      reason: 'redo restored the stroke pixels',
     );
   });
 
