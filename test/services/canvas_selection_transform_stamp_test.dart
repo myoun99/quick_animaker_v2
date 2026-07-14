@@ -122,6 +122,47 @@ void main() {
     }
   });
 
+  test('scaling a mid-tone edge OVERSHOOTS (bicubic ringing signature — '
+      'R20-D1; bilinear could never leave the source range)', () {
+    // A 4×1 opaque stamp: two gray-100 texels then two gray-200 texels.
+    final rgba = Uint8List.fromList([
+      for (var i = 0; i < 2; i += 1) ...[100, 100, 100, 255],
+      for (var i = 0; i < 2; i += 1) ...[200, 200, 200, 255],
+    ]);
+    final dab = BrushDab(
+      center: CanvasPoint(x: 10, y: 10),
+      color: 0xFFFFFFFF,
+      size: 4,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(id: 'edge-tone', width: 4, height: 1, rgba: rgba),
+    );
+    final out = transformStampDab(
+      dab,
+      SelectionAffine(pivot: CanvasPoint(x: 10, y: 10), sx: 2, sy: 1),
+    );
+    final stamp = out.stamp!;
+    var overshoot = false;
+    for (var x = 0; x < stamp.width; x += 1) {
+      final pixel = pixelOf(stamp, x, 0);
+      if (pixel[3] == 0) {
+        continue;
+      }
+      if (pixel[0] < 100 || pixel[0] > 200) {
+        overshoot = true;
+      }
+    }
+    expect(
+      overshoot,
+      isTrue,
+      reason: 'the Catmull-Rom negative lobes must ring across the edge',
+    );
+  });
+
   test('transparent texels never bleed color into opaque neighbours '
       '(alpha-weighted sampling)', () {
     // A 2×1 stamp: opaque WHITE next to fully transparent BLACK.

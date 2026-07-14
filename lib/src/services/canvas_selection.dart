@@ -148,10 +148,14 @@ CanvasSelectionShape transformShape(
 /// - identity returns the dab untouched;
 /// - a pure translation only moves the center — byte-exact, the same
 ///   arithmetic as a drag move;
-/// - anything else bilinearly resamples the stamp's straight-alpha RGBA
-///   into the transformed region's axis-aligned bounding box (raster
-///   semantics — the same rule as Photoshop's free transform). Sampling
-///   is alpha-weighted so transparent texels never bleed dark fringes.
+/// - anything else resamples the stamp's straight-alpha RGBA into the
+///   transformed region's axis-aligned bounding box with a Catmull-Rom
+///   BICUBIC kernel (R20-D1 — the PS default-quality tier; noticeably
+///   sharper than bilinear on rotate/scale). The kernel is interpolating
+///   (δ at integer alignment), so axis-aligned 90° rotations stay EXACT
+///   pixel permutations. Sampling is alpha-weighted so transparent
+///   texels never bleed dark fringes; the negative lobes clamp at the
+///   byte edge (the usual bicubic ringing contract).
 BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
   final stamp = stampDab.stamp;
   if (stamp == null || affine.isIdentity) {
@@ -215,33 +219,41 @@ BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
       final y0 = sampleY.floor();
       final fx = sampleX - x0;
       final fy = sampleY - y0;
+      _catmullRomWeights(fx, _cubicWeightsX);
+      _catmullRomWeights(fy, _cubicWeightsY);
 
       var alphaAcc = 0.0;
       var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
-      for (var tap = 0; tap < 4; tap += 1) {
-        final tapX = x0 + (tap & 1);
-        final tapY = y0 + (tap >> 1);
-        if (tapX < 0 ||
-            tapY < 0 ||
-            tapX >= stamp.width ||
-            tapY >= stamp.height) {
+      for (var tapJ = 0; tapJ < 4; tapJ += 1) {
+        final tapY = y0 - 1 + tapJ;
+        if (tapY < 0 || tapY >= stamp.height) {
           continue;
         }
-        final weight =
-            ((tap & 1) == 0 ? 1 - fx : fx) * ((tap >> 1) == 0 ? 1 - fy : fy);
-        if (weight == 0) {
+        final weightY = _cubicWeightsY[tapJ];
+        if (weightY == 0) {
           continue;
         }
-        final offset = (tapY * stamp.width + tapX) * 4;
-        final alpha = source[offset + 3];
-        if (alpha == 0) {
-          continue;
+        final rowOffset = tapY * stamp.width;
+        for (var tapI = 0; tapI < 4; tapI += 1) {
+          final tapX = x0 - 1 + tapI;
+          if (tapX < 0 || tapX >= stamp.width) {
+            continue;
+          }
+          final weight = _cubicWeightsX[tapI] * weightY;
+          if (weight == 0) {
+            continue;
+          }
+          final offset = (rowOffset + tapX) * 4;
+          final alpha = source[offset + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          final weightedAlpha = weight * alpha;
+          alphaAcc += weightedAlpha;
+          redAcc += weightedAlpha * source[offset];
+          greenAcc += weightedAlpha * source[offset + 1];
+          blueAcc += weightedAlpha * source[offset + 2];
         }
-        final weightedAlpha = weight * alpha;
-        alphaAcc += weightedAlpha;
-        redAcc += weightedAlpha * source[offset];
-        greenAcc += weightedAlpha * source[offset + 1];
-        blueAcc += weightedAlpha * source[offset + 2];
       }
       if (alphaAcc <= 0) {
         continue;
@@ -265,6 +277,21 @@ BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
     ),
   );
 }
+
+/// Catmull-Rom weights for taps at offsets {-1, 0, +1, +2} around the
+/// floor sample, written into [out] (reused scratch — the resample loop
+/// is per-pixel hot). Interpolating: f == 0 → (0, 1, 0, 0).
+void _catmullRomWeights(double f, Float64List out) {
+  final f2 = f * f;
+  final f3 = f2 * f;
+  out[0] = 0.5 * (-f3 + 2.0 * f2 - f);
+  out[1] = 0.5 * (3.0 * f3 - 5.0 * f2 + 2.0);
+  out[2] = 0.5 * (-3.0 * f3 + 4.0 * f2 + f);
+  out[3] = 0.5 * (f3 - f2);
+}
+
+final Float64List _cubicWeightsX = Float64List(4);
+final Float64List _cubicWeightsY = Float64List(4);
 
 /// The bitmap-lift pair (R14-④): an erase mask dab that cuts the
 /// selection's pixels out of the layer at their origin, and a stamp dab
