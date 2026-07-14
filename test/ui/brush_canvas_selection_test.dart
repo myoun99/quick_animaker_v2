@@ -176,6 +176,46 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
   });
 
+  testWidgets('Ctrl+corner opens the PERSPECTIVE quad (R20-D2): the '
+      'numeric channels blank out and Enter commits ONE resampled entry', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final entriesBefore = env.history.undoCount;
+
+    // Ctrl+grab the top-left corner handle of the always-on box and pinch
+    // it inward — the PS perspective gesture.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    final gesture = await tester.startGesture(origin + const Offset(20, 20));
+    await tester.pump();
+    await gesture.moveTo(origin + const Offset(34, 24));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+    expect(env.commands.transformActive, isTrue, reason: 'quad session open');
+    expect(
+      env.commands.transformValues,
+      isNull,
+      reason: 'a free quad has no affine channels — the fields blank out',
+    );
+
+    // Enter: resample through the homography + confirm as ONE entry.
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+    expect(env.history.undoCount, entriesBefore + 1);
+
+    // One undo restores the pre-lift picture whole.
+    env.history.undo();
+    await tester.pump();
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
+  });
+
   testWidgets('the session floats through the WHOLE interaction: the base '
       'holds only the erase until the confirm; a zero-move confirm is a '
       'byte-identical landing (R16-①)', (tester) async {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -436,7 +438,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       revertPendingMove: _revertMoveSession,
       transformValues: () {
         final transform = _transform;
-        if (transform == null) {
+        // A quad session has no affine channels (R20-D2) — the numeric
+        // fields blank out rather than lie.
+        if (transform == null || _warpCorners != null) {
           return null;
         }
         return (
@@ -459,6 +463,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required double rotationDegrees,
     required double scale,
   }) {
+    if (_warpCorners != null) {
+      return; // Quad mode: the corners are the only channels (R20-D2).
+    }
     if (_transform == null) {
       _beginTransform();
     }
@@ -499,6 +506,56 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  // --- Perspective quad session (R20-D2, PS Ctrl+corner) --------------
+  //
+  // Non-null = the open box is in QUAD mode: the four corners move
+  // freely, the float previews through the forward homography, Enter
+  // resamples through [transformStampDabQuad]. Entered by Ctrl-grabbing
+  // a corner handle; Escape/commit semantics are the affine session's.
+  List<CanvasPoint>? _warpCorners;
+  int? _warpDragCorner; // null while dragging inside = translate all four.
+  List<CanvasPoint>? _warpDragStartCorners;
+
+  /// The pending stamp's canvas rect corners (TL/TR/BR/BL) — the quad's
+  /// BASE. Initializing corners as affine(base) makes an untouched quad
+  /// exactly identity for [transformStampDabQuad].
+  List<CanvasPoint>? _stampRectCorners() {
+    final pending = _pendingLiftStamp;
+    final stamp = pending?.stamp;
+    if (pending == null || stamp == null) {
+      return null;
+    }
+    final left = pending.center.x - stamp.width / 2;
+    final top = pending.center.y - stamp.height / 2;
+    return [
+      CanvasPoint(x: left, y: top),
+      CanvasPoint(x: left + stamp.width, y: top),
+      CanvasPoint(x: left + stamp.width, y: top + stamp.height),
+      CanvasPoint(x: left, y: top + stamp.height),
+    ];
+  }
+
+  static const List<_TransformHandle> _cornerHandles = [
+    _TransformHandle.topLeft,
+    _TransformHandle.topRight,
+    _TransformHandle.bottomRight,
+    _TransformHandle.bottomLeft,
+  ];
+
+  int? _hitTestWarpCorner(Offset local) {
+    final corners = _warpCorners;
+    if (corners == null) {
+      return null;
+    }
+    for (var i = 0; i < 4; i += 1) {
+      final mapped = widget.viewport.canvasToViewport(corners[i]);
+      if ((local - Offset(mapped.x, mapped.y)).distance <= _handleHitRadius) {
+        return i;
+      }
+    }
+    return null;
+  }
+
   void _clearTransform() {
     _transform = null;
     _transformOpenedLift = false;
@@ -507,6 +564,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _transformDragHandle = null;
     _transformDragStart = null;
     _transformDragStartPointer = null;
+    _warpCorners = null;
+    _warpDragCorner = null;
+    _warpDragStartCorners = null;
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
     _floatSurface = _movePending ? _buildFloatSurface() : null;
@@ -561,6 +621,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final shape = _shape;
     final pending = _pendingLiftStamp;
     if (affine == null || shape == null) {
+      return;
+    }
+    // R20-D2: an open quad resamples through the homography instead.
+    final warpCorners = _warpCorners;
+    if (warpCorners != null && pending != null) {
+      final warped = transformStampDabQuad(pending, warpCorners);
+      if (identical(warped, pending)) {
+        // Untouched (or degenerate) quad: close the box, session pends on.
+        setState(_clearTransform);
+        _syncAnts();
+        return;
+      }
+      final base = _stampRectCorners();
+      final h = base == null ? null : solveHomography(base, warpCorners);
+      setState(() {
+        _pendingLiftStamp = warped;
+        _shape = h == null
+            ? CanvasSelectionShape(warpCorners)
+            : CanvasSelectionShape([
+                for (final point in shape.points) _applyHomography(h, point),
+              ]);
+        _moveSessionDirty = true;
+        _clearTransform();
+      });
+      _confirmMoveSession();
       return;
     }
     if (!affine.isIdentity && pending != null) {
@@ -737,12 +822,53 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // The open box is modal: only the box's handles/inside react;
       // clicks elsewhere are inert until Enter/Escape closes the session.
       final openTransform = transform;
+      // R20-D2: an open QUAD session hit-tests its corners + inside only
+      // (rotate/edge handles have no meaning on a free quad).
+      final warpCorners = _warpCorners;
+      if (warpCorners != null) {
+        final cornerIndex = _hitTestWarpCorner(event.localPosition);
+        if (cornerIndex == null &&
+            !CanvasSelectionShape(warpCorners).containsPoint(canvasPoint)) {
+          return;
+        }
+        _activePointer = event.pointer;
+        setState(() {
+          _dragMode = _DragMode.transform;
+          _warpDragCorner = cornerIndex;
+          _warpDragStartCorners = List.of(warpCorners);
+          _transformDragStartPointer = canvasPoint;
+        });
+        widget.onDragActiveChanged?.call(true);
+        return;
+      }
       final handle = _hitTestTransformHandle(
         event.localPosition,
         openTransform,
       );
       if (handle == null) {
         return;
+      }
+      // R20-D2: Ctrl+corner switches the box into the perspective quad
+      // (the PS gesture) — corners initialize at the affine positions of
+      // the pending stamp's rect, so an untouched quad stays identity.
+      if (_cornerHandles.contains(handle) &&
+          HardwareKeyboard.instance.isControlPressed) {
+        final base = _stampRectCorners();
+        if (base != null) {
+          final corners = [
+            for (final corner in base) openTransform.apply(corner),
+          ];
+          _activePointer = event.pointer;
+          setState(() {
+            _warpCorners = corners;
+            _dragMode = _DragMode.transform;
+            _warpDragCorner = _cornerHandles.indexOf(handle);
+            _warpDragStartCorners = List.of(corners);
+            _transformDragStartPointer = canvasPoint;
+          });
+          widget.onDragActiveChanged?.call(true);
+          return;
+        }
       }
       _activePointer = event.pointer;
       setState(() {
@@ -820,6 +946,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _updateTransformDrag(CanvasPoint pointer) {
+    // R20-D2 quad drag: one corner follows the pointer, or (inside) all
+    // four translate together.
+    final warpStart = _warpDragStartCorners;
+    if (_warpCorners != null && warpStart != null) {
+      final startPointer = _transformDragStartPointer;
+      if (startPointer == null) {
+        return;
+      }
+      final dx = pointer.x - startPointer.x;
+      final dy = pointer.y - startPointer.y;
+      final corner = _warpDragCorner;
+      setState(() {
+        _warpCorners = [
+          for (var i = 0; i < 4; i += 1)
+            corner == null || corner == i
+                ? CanvasPoint(x: warpStart[i].x + dx, y: warpStart[i].y + dy)
+                : warpStart[i],
+        ];
+      });
+      _syncAnts();
+      return;
+    }
     final handle = _transformDragHandle;
     final start = _transformDragStart;
     final startPointer = _transformDragStartPointer;
@@ -1083,6 +1231,54 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  static CanvasPoint _applyHomography(Float64List h, CanvasPoint point) {
+    final w = h[6] * point.x + h[7] * point.y + h[8];
+    if (w.abs() < 1e-12) {
+      return point;
+    }
+    return CanvasPoint(
+      x: (h[0] * point.x + h[1] * point.y + h[2]) / w,
+      y: (h[3] * point.x + h[4] * point.y + h[5]) / w,
+    );
+  }
+
+  /// The quad preview matrix (R20-D2): the forward homography from the
+  /// pending stamp's rect onto the warp corners, wrapped into screen
+  /// space through the SAME viewport transform as the affine preview.
+  Matrix4? _quadScreenMatrix(List<CanvasPoint> corners) {
+    final base = _stampRectCorners();
+    if (base == null) {
+      return null;
+    }
+    final h = solveHomography(base, corners);
+    if (h == null) {
+      return null;
+    }
+    // Row-major 3×3 homography embedded into a column-major 4×4 acting
+    // on (x, y, z, 1) with the perspective terms on the w row.
+    final canvasMatrix = Matrix4(
+      h[0],
+      h[3],
+      0,
+      h[6], //
+      h[1],
+      h[4],
+      0,
+      h[7], //
+      0,
+      0,
+      1,
+      0, //
+      h[2],
+      h[5],
+      0,
+      h[8],
+    );
+    return viewportTransformMatrix(widget.viewport)
+      ..multiply(canvasMatrix)
+      ..multiply(viewportInverseTransformMatrix(widget.viewport));
+  }
+
   /// A base-local point mapped through [affine] into viewport space.
   Offset _mapLocalToViewport(SelectionAffine affine, CanvasPoint local) {
     final canvasPoint = affine.apply(
@@ -1227,11 +1423,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final floatSurface = _floatSurface;
     final transform = _transform;
     final shape = _shape;
+    final warpCorners = _warpCorners;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
-    // and the box chrome renders around the transformed base box.
-    final displayShape = transform != null && shape != null
+    // and the box chrome renders around the transformed base box. An
+    // open QUAD (R20-D2) maps the region through the homography instead.
+    var displayShape = transform != null && shape != null
         ? transformShape(shape, transform)
         : shape;
+    if (warpCorners != null && shape != null) {
+      final base = _stampRectCorners();
+      final h = base == null ? null : solveHomography(base, warpCorners);
+      displayShape = h == null
+          ? CanvasSelectionShape(warpCorners)
+          : CanvasSelectionShape([
+              for (final point in shape.points) _applyHomography(h, point),
+            ]);
+    }
     // R17-U 핸들 상시: with the Move tool a selection shows its box
     // chrome even before any session opens (identity affine around the
     // shape bounds; grabbing a handle opens the session at that moment).
@@ -1248,7 +1455,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       chromeWidth = bounds.width;
       chromeHeight = bounds.height;
     }
-    final chrome = chromeAffine == null
+    // Quad chrome (R20-D2): the free quadrilateral with its four corner
+    // handles only — edges and the rotate knob have no quad meaning.
+    final chrome = warpCorners != null
+        ? (
+            box: [
+              for (final point in warpCorners)
+                _mapCanvasToViewportOffset(point),
+            ],
+            handles: [
+              for (final point in warpCorners)
+                _mapCanvasToViewportOffset(point),
+            ],
+            knob: null as Offset?,
+          )
+        : chromeAffine == null
         ? null
         : (
             box: [
@@ -1266,7 +1487,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   _handleLocal(handle, chromeWidth, chromeHeight)!,
                 ),
             ],
-            knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight),
+            knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
           );
     return Listener(
       key: const ValueKey<String>('canvas-selection-layer'),
@@ -1284,7 +1505,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             Positioned.fill(
               child: IgnorePointer(
                 child: Transform(
-                  transform: transform != null
+                  transform: warpCorners != null
+                      ? (_quadScreenMatrix(warpCorners) ?? Matrix4.identity())
+                      : transform != null
                       ? _affineScreenMatrix(transform)
                       : Matrix4.translationValues(
                           _moveScreenDelta.dx,
@@ -1378,11 +1601,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 }
 
 /// The Ctrl+T box chrome in viewport space: the transformed box outline,
-/// the 8 scale handles and the rotate knob.
+/// the scale handles and the rotate knob (null in QUAD mode — a free
+/// quadrilateral has no rotation lever).
 typedef _TransformChrome = ({
   List<Offset> box,
   List<Offset> handles,
-  Offset knob,
+  Offset? knob,
 });
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
@@ -1486,12 +1710,16 @@ class _SelectionAntsPainter extends CustomPainter {
       );
     }
     // The rotate lever: line from the top edge midpoint to the knob.
-    final topMid = Offset(
-      (chrome.box[0].dx + chrome.box[1].dx) / 2,
-      (chrome.box[0].dy + chrome.box[1].dy) / 2,
-    );
-    canvas.drawLine(topMid, chrome.knob, stroke);
-    canvas.drawCircle(chrome.knob, 5, fill);
+    // Quad mode carries no knob (R20-D2).
+    final knob = chrome.knob;
+    if (knob != null) {
+      final topMid = Offset(
+        (chrome.box[0].dx + chrome.box[1].dx) / 2,
+        (chrome.box[0].dy + chrome.box[1].dy) / 2,
+      );
+      canvas.drawLine(topMid, knob, stroke);
+      canvas.drawCircle(knob, 5, fill);
+    }
   }
 
   /// White under-stroke + phase-offset colored dashes: GREEN for a

@@ -163,6 +163,105 @@ void main() {
     );
   });
 
+  group('perspective quad (R20-D2)', () {
+    test('solveHomography reproduces all four correspondences exactly', () {
+      final from = [
+        CanvasPoint(x: 0, y: 0),
+        CanvasPoint(x: 4, y: 0),
+        CanvasPoint(x: 4, y: 4),
+        CanvasPoint(x: 0, y: 4),
+      ];
+      final to = [
+        CanvasPoint(x: 1, y: 0.5),
+        CanvasPoint(x: 3, y: 0),
+        CanvasPoint(x: 5, y: 4),
+        CanvasPoint(x: -1, y: 5),
+      ];
+      final h = solveHomography(from, to)!;
+      for (var i = 0; i < 4; i += 1) {
+        final w = h[6] * from[i].x + h[7] * from[i].y + h[8];
+        expect(
+          (h[0] * from[i].x + h[1] * from[i].y + h[2]) / w,
+          closeTo(to[i].x, 1e-9),
+        );
+        expect(
+          (h[3] * from[i].x + h[4] * from[i].y + h[5]) / w,
+          closeTo(to[i].y, 1e-9),
+        );
+      }
+      expect(
+        solveHomography(from, [
+          CanvasPoint(x: 0, y: 0),
+          CanvasPoint(x: 1, y: 1),
+          CanvasPoint(x: 2, y: 2),
+          CanvasPoint(x: 3, y: 3),
+        ]),
+        isNull,
+        reason: 'a collinear target quad is degenerate — refuse',
+      );
+    });
+
+    test('corners at the source rect leave the dab untouched', () {
+      final dab = stampDab(); // 2×2 centered at (10,10) → rect (9,9)-(11,11).
+      final out = transformStampDabQuad(dab, [
+        CanvasPoint(x: 9, y: 9),
+        CanvasPoint(x: 11, y: 9),
+        CanvasPoint(x: 11, y: 11),
+        CanvasPoint(x: 9, y: 11),
+      ]);
+      expect(identical(out, dab), isTrue);
+    });
+
+    test('a pinched top edge renders a trapezoid: the top of the output '
+        'is narrower than the bottom (the perspective signature)', () {
+      final rgba = Uint8List.fromList([
+        for (var i = 0; i < 36; i += 1) ...[255, 0, 0, 255],
+      ]);
+      final dab = BrushDab(
+        center: CanvasPoint(x: 10, y: 10),
+        color: 0xFFFFFFFF,
+        size: 6,
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
+        stamp: BrushStampImage(id: 'quad', width: 6, height: 6, rgba: rgba),
+      );
+      // Source rect (7,7)-(13,13); pinch the TOP corners inward by 2px.
+      final out = transformStampDabQuad(dab, [
+        CanvasPoint(x: 9, y: 7),
+        CanvasPoint(x: 11, y: 7),
+        CanvasPoint(x: 13, y: 13),
+        CanvasPoint(x: 7, y: 13),
+      ]);
+      final stamp = out.stamp!;
+      int opaqueWidthOfRow(int y) {
+        var count = 0;
+        for (var x = 0; x < stamp.width; x += 1) {
+          if (stamp.rgba[(y * stamp.width + x) * 4 + 3] > 128) {
+            count += 1;
+          }
+        }
+        return count;
+      }
+
+      expect(
+        opaqueWidthOfRow(0),
+        lessThan(opaqueWidthOfRow(stamp.height - 1)),
+        reason: 'perspective, not affine: parallel edges converge',
+      );
+      // The warp stays pure red everywhere it lands.
+      for (var i = 0; i < stamp.rgba.length; i += 4) {
+        if (stamp.rgba[i + 3] > 0) {
+          expect(stamp.rgba[i], 255);
+          expect(stamp.rgba[i + 2], 0);
+        }
+      }
+    });
+  });
+
   test('transparent texels never bleed color into opaque neighbours '
       '(alpha-weighted sampling)', () {
     // A 2×1 stamp: opaque WHITE next to fully transparent BLACK.

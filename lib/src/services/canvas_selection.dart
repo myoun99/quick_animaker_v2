@@ -278,6 +278,193 @@ BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
   );
 }
 
+/// Solves the 3×3 homography H mapping each `from[i]` onto `to[i]`
+/// (4 point pairs, row-major 9 elements, h22 fixed at 1), via the
+/// standard 8-unknown linear system with partial-pivot Gaussian
+/// elimination. Null for degenerate quads (collinear/self-crossing
+/// input) — callers refuse the warp rather than produce garbage.
+Float64List? solveHomography(List<CanvasPoint> from, List<CanvasPoint> to) {
+  assert(from.length == 4 && to.length == 4);
+  // Rows: [x y 1 0 0 0 -x*u -y*u | u] and [0 0 0 x y 1 -x*v -y*v | v].
+  final a = List.generate(8, (_) => Float64List(9));
+  for (var i = 0; i < 4; i += 1) {
+    final x = from[i].x, y = from[i].y;
+    final u = to[i].x, v = to[i].y;
+    a[i * 2]
+      ..[0] = x
+      ..[1] = y
+      ..[2] = 1
+      ..[6] = -x * u
+      ..[7] = -y * u
+      ..[8] = u;
+    a[i * 2 + 1]
+      ..[3] = x
+      ..[4] = y
+      ..[5] = 1
+      ..[6] = -x * v
+      ..[7] = -y * v
+      ..[8] = v;
+  }
+  for (var column = 0; column < 8; column += 1) {
+    var pivotRow = column;
+    for (var row = column + 1; row < 8; row += 1) {
+      if (a[row][column].abs() > a[pivotRow][column].abs()) {
+        pivotRow = row;
+      }
+    }
+    if (a[pivotRow][column].abs() < 1e-9) {
+      return null;
+    }
+    final tmp = a[column];
+    a[column] = a[pivotRow];
+    a[pivotRow] = tmp;
+    final pivot = a[column][column];
+    for (var row = column + 1; row < 8; row += 1) {
+      final factor = a[row][column] / pivot;
+      if (factor == 0) {
+        continue;
+      }
+      for (var k = column; k < 9; k += 1) {
+        a[row][k] -= factor * a[column][k];
+      }
+    }
+  }
+  final h = Float64List(9);
+  h[8] = 1;
+  for (var row = 7; row >= 0; row -= 1) {
+    var sum = a[row][8];
+    for (var k = row + 1; k < 8; k += 1) {
+      sum -= a[row][k] * h[k];
+    }
+    h[row] = sum / a[row][row];
+  }
+  return h;
+}
+
+/// The lifted stamp through a free QUAD (R20-D2 perspective transform,
+/// the PS Ctrl+corner mode): [corners] are the destination positions of
+/// the stamp rect's TL/TR/BR/BL corners in canvas space. Resamples with
+/// the same alpha-weighted Catmull-Rom kernel as the affine path,
+/// through the inverse homography. Corners exactly at the source rect =
+/// untouched; a degenerate quad refuses (returns the dab unchanged).
+BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
+  final stamp = stampDab.stamp;
+  if (stamp == null) {
+    return stampDab;
+  }
+  assert(corners.length == 4);
+  final srcLeft = stampDab.center.x - stamp.width / 2;
+  final srcTop = stampDab.center.y - stamp.height / 2;
+  final base = [
+    CanvasPoint(x: srcLeft, y: srcTop),
+    CanvasPoint(x: srcLeft + stamp.width, y: srcTop),
+    CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
+    CanvasPoint(x: srcLeft, y: srcTop + stamp.height),
+  ];
+  var identity = true;
+  for (var i = 0; i < 4; i += 1) {
+    if (corners[i].x != base[i].x || corners[i].y != base[i].y) {
+      identity = false;
+      break;
+    }
+  }
+  if (identity) {
+    return stampDab;
+  }
+  // dst → src directly: no matrix inversion, one solve.
+  final h = solveHomography(corners, base);
+  if (h == null) {
+    return stampDab;
+  }
+
+  var minX = double.infinity, minY = double.infinity;
+  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  for (final corner in corners) {
+    minX = math.min(minX, corner.x);
+    maxX = math.max(maxX, corner.x);
+    minY = math.min(minY, corner.y);
+    maxY = math.max(maxY, corner.y);
+  }
+  final outLeft = minX.floor();
+  final outTop = minY.floor();
+  final outWidth = math.max(1, maxX.ceil() - outLeft);
+  final outHeight = math.max(1, maxY.ceil() - outTop);
+
+  final source = stamp.rgba;
+  final bytes = Uint8List(outWidth * outHeight * 4);
+  for (var oy = 0; oy < outHeight; oy += 1) {
+    final qy = outTop + oy + 0.5;
+    for (var ox = 0; ox < outWidth; ox += 1) {
+      final qx = outLeft + ox + 0.5;
+      final w = h[6] * qx + h[7] * qy + h[8];
+      if (w.abs() < 1e-12) {
+        continue;
+      }
+      final px = (h[0] * qx + h[1] * qy + h[2]) / w;
+      final py = (h[3] * qx + h[4] * qy + h[5]) / w;
+      final sampleX = px - srcLeft - 0.5;
+      final sampleY = py - srcTop - 0.5;
+      final x0 = sampleX.floor();
+      final y0 = sampleY.floor();
+      _catmullRomWeights(sampleX - x0, _cubicWeightsX);
+      _catmullRomWeights(sampleY - y0, _cubicWeightsY);
+
+      var alphaAcc = 0.0;
+      var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
+      for (var tapJ = 0; tapJ < 4; tapJ += 1) {
+        final tapY = y0 - 1 + tapJ;
+        if (tapY < 0 || tapY >= stamp.height) {
+          continue;
+        }
+        final weightY = _cubicWeightsY[tapJ];
+        if (weightY == 0) {
+          continue;
+        }
+        final rowOffset = tapY * stamp.width;
+        for (var tapI = 0; tapI < 4; tapI += 1) {
+          final tapX = x0 - 1 + tapI;
+          if (tapX < 0 || tapX >= stamp.width) {
+            continue;
+          }
+          final weight = _cubicWeightsX[tapI] * weightY;
+          if (weight == 0) {
+            continue;
+          }
+          final offset = (rowOffset + tapX) * 4;
+          final alpha = source[offset + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          final weightedAlpha = weight * alpha;
+          alphaAcc += weightedAlpha;
+          redAcc += weightedAlpha * source[offset];
+          greenAcc += weightedAlpha * source[offset + 1];
+          blueAcc += weightedAlpha * source[offset + 2];
+        }
+      }
+      if (alphaAcc <= 0) {
+        continue;
+      }
+      final offset = (oy * outWidth + ox) * 4;
+      bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+    }
+  }
+
+  return stampDab.copyWith(
+    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
+    size: math.max(outWidth, outHeight).toDouble(),
+    stamp: BrushStampImage(
+      id: '${stamp.id}-q${DateTime.now().microsecondsSinceEpoch}',
+      width: outWidth,
+      height: outHeight,
+      rgba: bytes,
+    ),
+  );
+}
+
 /// Catmull-Rom weights for taps at offsets {-1, 0, +1, +2} around the
 /// floor sample, written into [out] (reused scratch — the resample loop
 /// is per-pixel hot). Interpolating: f == 0 → (0, 1, 0, 0).
