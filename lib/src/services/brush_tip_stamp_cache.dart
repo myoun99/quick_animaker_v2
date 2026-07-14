@@ -147,11 +147,17 @@ class BrushTipStampCache {
     required double angleDegrees,
   }) {
     final radius = size / 2.0;
-    // ≈1 texel per canvas pixel; raster source tips keep at least their
-    // native resolution (prerotation must not downsample detail away).
-    var maskSize = (size.ceil() + 2).clamp(4, 2048);
+    // ≈1 texel per canvas pixel, CAPPED for huge brushes (R21): a 1000px
+    // tip at full resolution meant a ~1M-texel render (plus an 8MB
+    // Float64 table and an 8MB engine upload) PER cache miss, on the UI
+    // thread, and pressure-driven size sweeps miss constantly — the
+    // reported 8K/1000px stall. Above the cap the bilinear lattice
+    // upsamples the mask; an analytic tip's edge softens by at most
+    // ~radius/cap pixels (≈2px at 1000px — the CSP/PS big-brush
+    // contract). Raster source tips keep more of their native detail.
+    var maskSize = (size.ceil() + 2).clamp(4, 256);
     if (sourceTip != null) {
-      maskSize = math.max(maskSize, math.min(sourceTip.size, 2048));
+      maskSize = math.max(maskSize, math.min(sourceTip.size, 512));
     }
 
     final angleRadians = angleDegrees * (math.pi / 180.0);

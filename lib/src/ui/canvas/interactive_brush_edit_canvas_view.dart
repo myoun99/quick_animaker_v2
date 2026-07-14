@@ -226,6 +226,9 @@ class _InteractiveBrushEditCanvasViewState
       final hadActiveStroke = _activeDrawingPointer != null;
       _clearStrokeInputState();
       _resetOverlay();
+      // clear() before dropping: the live tiles are native-backed (R21)
+      // and return to the engine's free list through it.
+      _liveRasterizer?.clear();
       _liveRasterizer = null;
       if (hadActiveStroke) {
         final notify = widget.onActiveStrokeChanged;
@@ -241,6 +244,7 @@ class _InteractiveBrushEditCanvasViewState
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingFallbackTimer?.cancel();
     _overlayModel.dispose();
+    _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
     super.dispose();
   }
 
@@ -796,6 +800,7 @@ class _InteractiveBrushEditCanvasViewState
         widget.sessionState.canvasState.currentSurface.canvasSize;
     final existing = _liveRasterizer;
     if (existing == null || existing.canvasSize != canvasSize) {
+      existing?.clear(); // Native tiles return to the engine (R21).
       _liveRasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
     } else {
       existing.clear();

@@ -5,6 +5,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
+import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_tip_mask_sampling.dart';
 
@@ -52,7 +53,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   /// Straight-alpha RGBA tile buffers keyed by `tileY * tilesPerRow +
   /// tileX`, allocated (zeroed) the first time a dab touches the tile.
+  ///
+  /// R21: with the engine loaded the buffers are NATIVE-backed (the map
+  /// holds asTypedList views; [_nativeBuffers] the raw pointers) and the
+  /// per-dab blend fans through the SAME C kernel as the commit — a
+  /// 1000px dab is ~1M pixels, and the pure-Dart loop below was the
+  /// reported big-brush stall on the UI thread. Dart stays the reference
+  /// and the fallback; the kernel is parity-pinned byte-for-byte.
   final Map<int, Uint8List> _tiles = <int, Uint8List>{};
+  final Map<int, QaNativeTileBuffer> _nativeBuffers =
+      <int, QaNativeTileBuffer>{};
+  final QaNativeEngine? _native = QaNativeEngine.instance;
 
   late final int _tilesPerRow = (canvasSize.width + tileSize - 1) ~/ tileSize;
 
@@ -69,18 +80,34 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// Number of allocated stroke tiles (test/debug oracle for sparseness).
   int get allocatedTileCount => _tiles.length;
 
-  /// Drops the stroke's tiles so the rasterizer can host the next stroke.
+  /// Drops the stroke's tiles so the rasterizer can host the next stroke
+  /// (native buffers return to the engine's free list).
   void clear() {
+    final native = _native;
+    if (native != null) {
+      for (final buffer in _nativeBuffers.values) {
+        native.releaseTileBuffer(buffer);
+      }
+    }
+    _nativeBuffers.clear();
     _tiles.clear();
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
 
   Uint8List _tileBuffer(int tileX, int tileY) {
-    return _tiles.putIfAbsent(
-      tileY * _tilesPerRow + tileX,
-      () => Uint8List(tileSize * tileSize * 4),
-    );
+    return _tiles.putIfAbsent(tileY * _tilesPerRow + tileX, () {
+      final native = _native;
+      if (native != null) {
+        final buffer = native.acquireTileBuffer(
+          tileSize * tileSize * 4,
+          zeroed: true,
+        );
+        _nativeBuffers[tileY * _tilesPerRow + tileX] = buffer;
+        return buffer.view;
+      }
+      return Uint8List(tileSize * tileSize * 4);
+    });
   }
 
   @override
@@ -292,6 +319,108 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
     final tileXStart = left ~/ tileSize;
     final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+
+    // R21: the C kernel runs the live blend exactly like the commit —
+    // same spec, same lattices, srcOver only (the live overlay never
+    // carries the erase flag; erase strokes composite at display time).
+    // Byte-identical to the Dart loop below (parity-pinned).
+    final native = _native;
+    if (native != null && dab.stamp == null) {
+      native.prepareDab(
+        centerX: centerX,
+        centerY: centerY,
+        radius: radius,
+        hardRadius: hardRadius,
+        edgeSpan: edgeSpan,
+        minorRadius: minorRadius,
+        tipCos: tipCos,
+        tipSin: tipSin,
+        inverseRoundness: inverseRoundness,
+        dabOpacity: dabOpacity,
+        dabFlow: dabFlow,
+        sourceAlphaNorm: sourceAlphaNorm,
+        radiusSqSkip: radiusSqSkip,
+        textureDensity: textureDensity,
+        textureOneMinusDensity: textureOneMinusDensity,
+        sourceR: sourceR,
+        sourceG: sourceG,
+        sourceB: sourceB,
+        flags:
+            (isRound ? QaNativeEngine.dabFlagRound : 0) |
+            (isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
+            (isRotatedRect ? QaNativeEngine.dabFlagRotatedRect : 0) |
+            (unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0),
+        regionLeft: left,
+        regionTop: top,
+        tipAlpha: tipMask?.alphaNormalized,
+        tipSize: tipMask?.size ?? 0,
+        tipUTexel0: tipULattice?.texel0,
+        tipUFraction: tipULattice?.fraction,
+        tipUOneMinus: tipULattice?.oneMinusFraction,
+        tipUInRange: tipULattice?.inRange,
+        tipVTexel0: tipVLattice?.texel0,
+        tipVFraction: tipVLattice?.fraction,
+        tipVOneMinus: tipVLattice?.oneMinusFraction,
+        tipVInRange: tipVLattice?.inRange,
+        dualAlpha: dualMask?.alphaNormalized,
+        dualSize: dualMask?.size ?? 0,
+        dualUTexel0: dualULattice?.texel0,
+        dualUTexel1: dualULattice?.texel1,
+        dualUFraction: dualULattice?.fraction,
+        dualUOneMinus: dualULattice?.oneMinusFraction,
+        dualVTexel0: dualVLattice?.texel0,
+        dualVTexel1: dualVLattice?.texel1,
+        dualVFraction: dualVLattice?.fraction,
+        dualVOneMinus: dualVLattice?.oneMinusFraction,
+        texAlpha: textureMask?.alphaNormalized,
+        texSize: textureMask?.size ?? 0,
+        texUTexel0: textureULattice?.texel0,
+        texUTexel1: textureULattice?.texel1,
+        texUFraction: textureULattice?.fraction,
+        texUOneMinus: textureULattice?.oneMinusFraction,
+        texVTexel0: textureVLattice?.texel0,
+        texVTexel1: textureVLattice?.texel1,
+        texVFraction: textureVLattice?.fraction,
+        texVOneMinus: textureVLattice?.oneMinusFraction,
+      );
+      final tileYStart = top ~/ tileSize;
+      final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+      var spanCount = 0;
+      native.ensureTileSpanBatch(
+        (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
+      );
+      for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
+        final tileTop = tileY * tileSize;
+        final spanTop = math.max(top, tileTop);
+        final spanBottomExclusive = math.min(
+          bottomExclusive,
+          tileTop + tileSize,
+        );
+        for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+          _tileBuffer(tileX, tileY);
+          final buffer = _nativeBuffers[tileY * _tilesPerRow + tileX]!;
+          final tileLeft = tileX * tileSize;
+          native.setTileSpan(
+            spanCount,
+            tilePixels: buffer.pointer,
+            tileLeft: tileLeft,
+            tileTop: tileTop,
+            spanLeft: math.max(left, tileLeft),
+            spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
+            spanTop: spanTop,
+            spanBottomExclusive: spanBottomExclusive,
+          );
+          spanCount += 1;
+        }
+      }
+      native.dabBlendTiles(count: spanCount, tileSize: tileSize);
+      return DirtyRegion(
+        left: left,
+        top: top,
+        rightExclusive: rightExclusive,
+        bottomExclusive: bottomExclusive,
+      );
+    }
 
     for (var y = top; y < bottomExclusive; y += 1) {
       final dy = y + 0.5 - centerY;
