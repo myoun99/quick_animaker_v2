@@ -225,13 +225,22 @@ void main() {
     await env.setTool(CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
-    env.commands.beginMeshTransform();
+    await tester.runAsync(() async {
+      env.commands.beginMeshTransform();
+      // Let the float decode land (drawVertices live warp preview, R21).
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
     expect(
       env.commands.transformValues,
       isNull,
       reason: 'a mesh has no affine channels — the fields blank out',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('mesh-warp-preview')),
+      findsOneWidget,
+      reason: 'the live warp preview mounts once the float image decodes',
     );
 
     // Drag an interior control point (stamp rect (20,20)-(71,71), 3×3
