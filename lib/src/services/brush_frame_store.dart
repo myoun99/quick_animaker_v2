@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:isolate';
 
 import '../models/bitmap_surface.dart';
@@ -72,36 +73,61 @@ class BrushFrameStore {
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
   final Map<BrushFrameKey, QapCelBlob> _coldCels = {};
+  final Map<BrushFrameKey, QapCelScratchRef> _scratchCels = {};
   final Map<BrushFrameKey, int> _hotByteEstimates = {};
   int _hotBytes = 0;
+  int _coldBytes = 0;
 
   /// Hot-tier byte budget. Cels beyond it cool (encode + deflate) in LRU
   /// order in a background isolate. Test-settable.
   int hotCelByteBudget = 1536 * 1024 * 1024;
 
+  /// Cold-tier byte budget (R20-A2 scratch disk): deflated blobs beyond
+  /// it spill to per-cel files in the session scratch directory — RAM
+  /// holds a bounded working set no matter how many cuts the project
+  /// carries. Test-settable.
+  int coldCelByteBudget = 1024 * 1024 * 1024;
+
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotBytes;
+
+  /// Blob bytes currently resident in the cold RAM tier
+  /// (diagnostics/tests).
+  int get coldBakedBytes => _coldBytes;
 
   /// Keys currently in the cold tier (diagnostics/tests).
   Iterable<BrushFrameKey> get coldCelKeys => _coldCels.keys;
 
+  /// Keys currently spilled to the scratch disk (diagnostics/tests).
+  Iterable<BrushFrameKey> get scratchCelKeys => _scratchCels.keys;
+
   bool isCelCold(BrushFrameKey key) => _coldCels.containsKey(key);
 
+  bool isCelSpilled(BrushFrameKey key) => _scratchCels.containsKey(key);
+
   /// The cel's baked raster truth, or null for a never-drawn cel. A cold
-  /// cel materializes (inflate + decode) and promotes to hot right here —
-  /// this is the ONE seam every pixel consumer goes through.
+  /// cel materializes (inflate + decode) and promotes to hot right here;
+  /// a spilled cel reads back from its scratch file first — this is the
+  /// ONE seam every pixel consumer goes through.
   BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) {
     final hot = _bakedSurfaces.remove(key);
     if (hot != null) {
       _bakedSurfaces[key] = hot; // LRU touch.
       return hot;
     }
-    final cold = _coldCels[key];
+    var cold = _coldCels[key];
     if (cold == null) {
-      return null;
+      final scratch = _scratchCels.remove(key);
+      if (scratch == null) {
+        return null;
+      }
+      cold = QapCelBlob(File(scratch.filePath).readAsBytesSync());
+      _deleteScratchFile(scratch.filePath);
+    } else {
+      _coldCels.remove(key);
+      _coldBytes -= cold.bytes.length;
     }
     final surface = cold.decode().toSurface();
-    _coldCels.remove(key);
     _storeHot(key, surface);
     // Reseed the display cache from the same object so first paint after
     // a promotion is O(1), mirroring what open used to do eagerly.
@@ -125,7 +151,14 @@ class BrushFrameStore {
 
   void _removeBaked(BrushFrameKey key) {
     _bakedSurfaces.remove(key);
-    _coldCels.remove(key);
+    final cold = _coldCels.remove(key);
+    if (cold != null) {
+      _coldBytes -= cold.bytes.length;
+    }
+    final scratch = _scratchCels.remove(key);
+    if (scratch != null) {
+      _deleteScratchFile(scratch.filePath);
+    }
     final estimate = _hotByteEstimates.remove(key);
     if (estimate != null) {
       _hotBytes -= estimate;
@@ -139,23 +172,43 @@ class BrushFrameStore {
       _removeBaked(key);
       return;
     }
-    _coldCels.remove(key);
+    final cold = _coldCels.remove(key);
+    if (cold != null) {
+      _coldBytes -= cold.bytes.length;
+    }
+    final scratch = _scratchCels.remove(key);
+    if (scratch != null) {
+      _deleteScratchFile(scratch.filePath);
+    }
     _storeHot(key, surface);
     _scheduleCooling();
   }
 
   /// Every baked cel for the .qap v3 save payload: hot surfaces (the
-  /// saver encodes them) and cold blobs (already archive bytes — written
-  /// through with ZERO re-encode). Reference-cheap on both sides.
-  ({Map<BrushFrameKey, BitmapSurface> hot, Map<BrushFrameKey, QapCelBlob> cold})
+  /// saver encodes them), cold blobs (already archive bytes — written
+  /// through with ZERO re-encode) and scratch refs (the save isolate
+  /// reads the files itself). Callers reading scratch files MUST hold
+  /// [lockScratchFiles] for the duration or a concurrent materialization
+  /// could delete a file mid-save.
+  ({
+    Map<BrushFrameKey, BitmapSurface> hot,
+    Map<BrushFrameKey, QapCelBlob> cold,
+    Map<BrushFrameKey, QapCelScratchRef> scratch,
+  })
   bakedSnapshotForSave() {
-    return (hot: {..._bakedSurfaces}, cold: {..._coldCels});
+    return (
+      hot: {..._bakedSurfaces},
+      cold: {..._coldCels},
+      scratch: {..._scratchCels},
+    );
   }
 
   /// Replaces the WHOLE store with loaded cels (project open) — all COLD:
   /// no pixel decodes on open, so a 1500-cut project opens in archive-read
   /// time. Frames reseed at sourceRevision 1; first access per cel
-  /// materializes.
+  /// materializes. The previous project's scratch files are discarded;
+  /// spilling kicks in immediately when the loaded blobs exceed the cold
+  /// budget.
   void restoreBaked(Map<BrushFrameKey, QapCelBlob> cels) {
     _frames.clear();
     clearDisplayCaches();
@@ -163,20 +216,26 @@ class BrushFrameStore {
     _coldCels.clear();
     _hotByteEstimates.clear();
     _hotBytes = 0;
+    _coldBytes = 0;
+    _discardScratchStorage();
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
         sourceRevision: 1,
       );
       _coldCels[entry.key] = entry.value;
+      _coldBytes += entry.value.bytes.length;
     }
+    _scheduleSpilling();
   }
 
   /// Whether the cel shows ANY picture content — the composite/export/
-  /// fill resolvers' emptiness oracle. Cold counts: representation is not
-  /// existence.
+  /// fill resolvers' emptiness oracle. Cold and spilled count:
+  /// representation is not existence.
   bool celHasRenderableContent(BrushFrameKey key) =>
-      _bakedSurfaces.containsKey(key) || _coldCels.containsKey(key);
+      _bakedSurfaces.containsKey(key) ||
+      _coldCels.containsKey(key) ||
+      _scratchCels.containsKey(key);
 
   /// The cel's current pixels: a VALID display cache at [canvasSize]
   /// first (donations keep it fresh), else the baked truth (a cold cel
@@ -196,6 +255,10 @@ class BrushFrameStore {
     }
     final cold = _coldCels[key];
     if (cold != null && cold.canvasSize == canvasSize) {
+      return bakedSurfaceOrNull(key);
+    }
+    final scratch = _scratchCels[key];
+    if (scratch != null && scratch.canvasSize == canvasSize) {
       return bakedSurfaceOrNull(key);
     }
     return null;
@@ -247,8 +310,136 @@ class BrushFrameStore {
         _bakedSurfaces.remove(key);
         _hotBytes -= _hotByteEstimates.remove(key)!;
         _coldCels[key] = blob;
+        _coldBytes += blob.bytes.length;
         // Drop the derived alias too, or the surface stays resident.
         _displayCaches.remove(key);
+        _scheduleSpilling();
+      }
+    }
+  }
+
+  // --- Scratch disk spill (cold → file, R20-A2) ------------------------
+
+  Directory? _scratchDirectory;
+  int _scratchFileSeq = 0;
+  Future<void>? _activeSpilling;
+  int _scratchReadLocks = 0;
+  final List<String> _pendingScratchDeletes = [];
+
+  /// Completes when no spill pass is running (tests).
+  Future<void> drainSpilling() async {
+    while (_activeSpilling != null) {
+      await _activeSpilling;
+    }
+  }
+
+  /// Completes when neither cooling nor spilling is running (tests).
+  Future<void> drainTiering() async {
+    while (_activeCooling != null || _activeSpilling != null) {
+      await drainCooling();
+      await drainSpilling();
+    }
+  }
+
+  /// While held, spilled files are never deleted (deletes defer) — the
+  /// save path reads scratch files from another isolate and a concurrent
+  /// materialization must not pull one out from under it. Pair with
+  /// [unlockScratchFiles] in a finally.
+  void lockScratchFiles() {
+    _scratchReadLocks += 1;
+  }
+
+  void unlockScratchFiles() {
+    assert(_scratchReadLocks > 0);
+    _scratchReadLocks -= 1;
+    if (_scratchReadLocks == 0) {
+      for (final path in _pendingScratchDeletes) {
+        File(path).delete().ignore();
+      }
+      _pendingScratchDeletes.clear();
+      for (final directory in _pendingScratchDirDeletes) {
+        directory.delete(recursive: true).ignore();
+      }
+      _pendingScratchDirDeletes.clear();
+    }
+  }
+
+  void _deleteScratchFile(String path) {
+    if (_scratchReadLocks > 0) {
+      _pendingScratchDeletes.add(path);
+      return;
+    }
+    File(path).delete().ignore();
+  }
+
+  final List<Directory> _pendingScratchDirDeletes = [];
+
+  /// Drops the whole scratch directory (project switch) — refs first so
+  /// no read can chase a deleted file. Under a scratch lock (a save in
+  /// flight) the directory deletion defers with the file deletes.
+  void _discardScratchStorage() {
+    _scratchCels.clear();
+    _pendingScratchDeletes.clear();
+    final directory = _scratchDirectory;
+    _scratchDirectory = null;
+    if (directory == null) {
+      return;
+    }
+    if (_scratchReadLocks > 0) {
+      _pendingScratchDirDeletes.add(directory);
+      return;
+    }
+    directory.delete(recursive: true).ignore();
+  }
+
+  Directory _ensureScratchDirectory() {
+    final existing = _scratchDirectory;
+    if (existing != null) {
+      return existing;
+    }
+    final directory = Directory(
+      '${Directory.systemTemp.path}/qa_scratch_$pid'
+      '_${DateTime.now().microsecondsSinceEpoch}',
+    )..createSync(recursive: true);
+    _scratchDirectory = directory;
+    return directory;
+  }
+
+  void _scheduleSpilling() {
+    if (_activeSpilling != null ||
+        _coldBytes <= coldCelByteBudget ||
+        _coldCels.isEmpty) {
+      return;
+    }
+    _activeSpilling = _spillLoop().whenComplete(() {
+      _activeSpilling = null;
+      _scheduleSpilling();
+    });
+  }
+
+  /// Spills oldest-cold blobs to per-cel scratch files until the cold
+  /// budget holds: async write first, then the swap commits ONLY if the
+  /// key still maps to the identical blob (a materialization or donation
+  /// in between wins and the file is discarded).
+  Future<void> _spillLoop() async {
+    while (_coldBytes > coldCelByteBudget && _coldCels.isNotEmpty) {
+      final key = _coldCels.keys.first;
+      final blob = _coldCels[key]!;
+      final file = File(
+        '${_ensureScratchDirectory().path}/${_scratchFileSeq++}.celz',
+      );
+      await file.writeAsBytes(blob.bytes);
+      if (identical(_coldCels[key], blob)) {
+        _coldCels.remove(key);
+        _coldBytes -= blob.bytes.length;
+        _scratchCels[key] = QapCelScratchRef(
+          filePath: file.path,
+          canvasSize: blob.canvasSize,
+          tileSize: blob.tileSize,
+          byteLength: blob.bytes.length,
+        );
+      } else {
+        _deleteScratchFile(file.path);
       }
     }
   }
@@ -276,6 +467,10 @@ class BrushFrameStore {
       final cold = _coldCels.remove(from);
       if (cold != null) {
         _coldCels[to] = cold;
+      }
+      final scratch = _scratchCels.remove(from);
+      if (scratch != null) {
+        _scratchCels[to] = scratch;
       }
     }
   }
@@ -314,6 +509,8 @@ class BrushFrameStore {
       if (key.cutId == cutId) key,
     for (final key in _coldCels.keys)
       if (key.cutId == cutId) key,
+    for (final key in _scratchCels.keys)
+      if (key.cutId == cutId) key,
   ];
 
   /// Adopts a new canvas size for every baked surface (R19: a resize is
@@ -333,11 +530,37 @@ class BrushFrameStore {
       if (cold.canvasSize == canvasSize) {
         continue;
       }
-      final resized = resizeBitmapSurfaceCanvas(
-        cold.decode().toSurface(),
-        canvasSize,
+      final resized = QapCelBlob.encode(
+        QapCelEntry.fromSurface(
+          key,
+          resizeBitmapSurfaceCanvas(cold.decode().toSurface(), canvasSize),
+        ),
       );
-      _coldCels[key] = QapCelBlob.encode(QapCelEntry.fromSurface(key, resized));
+      _coldBytes += resized.bytes.length - cold.bytes.length;
+      _coldCels[key] = resized;
+    }
+    for (final key in _scratchCels.keys.toList()) {
+      final scratch = _scratchCels[key]!;
+      if (scratch.canvasSize == canvasSize) {
+        continue;
+      }
+      final file = File(scratch.filePath);
+      final resized = QapCelBlob.encode(
+        QapCelEntry.fromSurface(
+          key,
+          resizeBitmapSurfaceCanvas(
+            QapCelBlob(file.readAsBytesSync()).decode().toSurface(),
+            canvasSize,
+          ),
+        ),
+      );
+      file.writeAsBytesSync(resized.bytes);
+      _scratchCels[key] = QapCelScratchRef(
+        filePath: scratch.filePath,
+        canvasSize: canvasSize,
+        tileSize: resized.tileSize,
+        byteLength: resized.bytes.length,
+      );
     }
   }
 
@@ -433,4 +656,22 @@ class BrushFrameStore {
     _frames[key] = next;
     return next;
   }
+}
+
+/// A cel spilled to the scratch disk (R20-A2): the file holds the exact
+/// [QapCelBlob] bytes; canvas geometry rides along so size checks never
+/// touch the disk. Paths cross the save isolate cheaply — the saver reads
+/// the file itself (hold [BrushFrameStore.lockScratchFiles] while it does).
+class QapCelScratchRef {
+  const QapCelScratchRef({
+    required this.filePath,
+    required this.canvasSize,
+    required this.tileSize,
+    required this.byteLength,
+  });
+
+  final String filePath;
+  final CanvasSize canvasSize;
+  final int tileSize;
+  final int byteLength;
 }
