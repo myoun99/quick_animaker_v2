@@ -21,6 +21,7 @@ import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service
 import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_frame_renderer.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
@@ -163,8 +164,12 @@ void main() {
       frameId: FrameId('f'),
     );
     final baked = materializeSingleDabSurface(canvasSize);
-    store.restoreBaked({key: baked});
-    // The cache is present after a restore; drop it to simulate any
+    // R20-A1: opens land cels COLD (encoded blobs) — the rebuild path
+    // must materialize and serve the same pixels.
+    store.restoreBaked({
+      key: QapCelBlob.encode(QapCelEntry.fromSurface(key, baked)),
+    });
+    // The cache seeds on first materialization; drop it to simulate any
     // invalidation and force the service down its rebuild path.
     store.clearDisplayCaches();
 

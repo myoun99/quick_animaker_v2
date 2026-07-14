@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
@@ -11,13 +10,15 @@ import 'qap_project_archive.dart';
 
 /// A loaded .qap: the project with media paths already RESOLVED (relative
 /// manifest entries that exist next to the file win over the stored
-/// absolute paths — the Drive-portability rule) plus the BAKED cels to
-/// seed the brush store with (R19 bake-only).
+/// absolute paths — the Drive-portability rule) plus the baked cels in
+/// COLD form (R20-A1): headers parsed, pixels still deflated — the store
+/// materializes each cel on first access, so opening a 1500-cut project
+/// costs archive-read time, not a full decode.
 class QapOpenResult {
   const QapOpenResult({required this.project, required this.cels});
 
   final Project project;
-  final Map<BrushFrameKey, BitmapSurface> cels;
+  final Map<BrushFrameKey, QapCelBlob> cels;
 }
 
 /// Saves/loads .qap project files (P3). Writes are ATOMIC: the archive is
@@ -33,26 +34,28 @@ class QapFileService {
     required String filePath,
   }) async {
     // R19 bake-only: the save payload IS the baked raster truth (every
-    // commit and undo donates into it; opens bake v1 files on the way in).
-    // R19-Z: snapshot to plain BYTES here — native-backed tiles are
-    // Finalizable and cannot cross the encode isolate (the old implicit
-    // graph copy cost the same, so this is not a new copy).
+    // commit and undo donates into it). R20-A1: cold cels are ALREADY
+    // archive bytes — they pass through with zero re-encode; only hot
+    // cels snapshot to plain byte entries here (native-backed tiles are
+    // Finalizable and cannot cross the encode isolate).
     final baked = brushFrameStore.bakedSnapshotForSave();
-    final cels = [
-      for (final entry in baked.entries)
+    final hotEntries = [
+      for (final entry in baked.hot.entries)
         QapCelEntry.fromSurface(entry.key, entry.value),
     ];
+    final coldBlobs = baked.cold.values.toList();
     final saveDirectory = _parentDirectory(filePath);
     // Encode + deflate OFF the UI isolate: the archive build cost grows
-    // with every stroke in the project, and running it inline froze the
-    // editor for the whole encode on autosave ticks and manual saves
-    // (R11-⑦). The snapshot is immutable model data, so the isolate send
-    // is a plain graph copy; the result bytes return via Isolate.exit
-    // (zero-copy).
+    // with edited cels, and running it inline froze the editor on
+    // autosave ticks and manual saves (R11-⑦). The result bytes return
+    // via Isolate.exit (zero-copy).
     final bytes = await Isolate.run(
       () => buildQapArchiveBytes(
         project: project,
-        cels: cels,
+        cels: [
+          ...coldBlobs,
+          for (final entry in hotEntries) QapCelBlob.encode(entry),
+        ],
         saveDirectory: saveDirectory,
       ),
     );
@@ -65,18 +68,18 @@ class QapFileService {
 
   Future<QapOpenResult> open({required String filePath}) async {
     final bytes = Uint8List.fromList(await File(filePath).readAsBytes());
-    // Inflate + decode off the UI isolate (the mirror of save's encode).
-    // R19-Z: the isolate boundary ships PLAIN-BYTES cel entries (native
-    // tiles are Finalizable = unsendable).
-    final (:project, :celEntries, :mediaRelativePaths) = await Isolate.run(() {
+    // Archive parse off the UI isolate. R20-A1: cels come back COLD (a
+    // header parse per cel, no pixel inflate/decode anywhere on open) and
+    // return via Isolate.exit (zero-copy).
+    final (:project, :celBlobs, :mediaRelativePaths) = await Isolate.run(() {
       final contents = parseQapArchiveBytes(bytes);
       return (
         project: contents.project,
-        celEntries: contents.cels,
+        celBlobs: contents.cels,
         mediaRelativePaths: contents.mediaRelativePaths,
       );
     });
-    final cels = {for (final entry in celEntries) entry.key: entry.toSurface()};
+    final cels = {for (final blob in celBlobs) blob.key: blob};
 
     // Relative media resolution: an entry whose relative path exists next
     // to the .qap wins (the folder traveled whole); otherwise the stored

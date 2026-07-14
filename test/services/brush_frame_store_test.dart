@@ -132,8 +132,9 @@ void main() {
 
     final snapshot = store.bakedSnapshotForSave();
 
-    expect(identical(snapshot[k], surface), isTrue);
-    snapshot.remove(k);
+    expect(identical(snapshot.hot[k], surface), isTrue);
+    expect(snapshot.cold, isEmpty);
+    snapshot.hot.remove(k);
     expect(store.bakedSurfaceOrNull(k), isNotNull, reason: 'copy, not view');
   });
 

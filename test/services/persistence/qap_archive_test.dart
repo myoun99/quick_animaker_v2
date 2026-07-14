@@ -53,9 +53,10 @@ void main() {
       },
     );
 
+    final blob = QapCelBlob.encode(QapCelEntry.fromSurface(key, surface));
     final bytes = buildQapArchiveBytes(
       project: project,
-      cels: [QapCelEntry.fromSurface(key, surface)],
+      cels: [blob],
       saveDirectory: r'D:\work\proj',
     );
     final contents = parseQapArchiveBytes(bytes);
@@ -63,7 +64,14 @@ void main() {
     expect(contents.project, project);
     expect(contents.cels, hasLength(1));
     expect(contents.cels.single.key, key);
-    final reopened = contents.cels.single.toSurface();
+    expect(
+      contents.cels.single.bytes,
+      blob.bytes,
+      reason:
+          'R20-A1: the archive entry IS the cold blob byte-for-byte '
+          '(STORE mode) — cold cels save with zero re-encode',
+    );
+    final reopened = contents.cels.single.decode().toSurface();
     expect(reopened.canvasSize, surface.canvasSize);
     expect(reopened.tileSize, 8);
     expect(
