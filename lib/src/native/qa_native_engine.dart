@@ -5,8 +5,6 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
 
-import '../models/bitmap_tile.dart';
-
 /// The native engine core's FFI bindings (R18 A-track).
 ///
 /// LOAD-FALLBACK DISCIPLINE: every native function has a Dart REFERENCE
@@ -29,9 +27,13 @@ class QaNativeEngine {
     this._stampBlendTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
+    this._tileAlloc,
+    this._tileFree,
+    this._tileFreePointer,
+    this._tilePoolCachedBytes,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 9;
+  static const int _abiVersion = 10;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -46,6 +48,36 @@ class QaNativeEngine {
   void copyBytes(Pointer<Uint8> dst, Pointer<Uint8> src, int length) {
     _copyBytes(dst, src, length);
   }
+
+  final Pointer<Void> Function(int size) _tileAlloc;
+  final void Function(Pointer<Void> pixels) _tileFree;
+  final Pointer<NativeFinalizerFunction> _tileFreePointer;
+  final int Function() _tilePoolCachedBytes;
+
+  /// Allocates tile pixel bytes from the C free-list allocator (R20-E1).
+  /// Freed/finalized tile blocks park in exact-size C-side lists, so a
+  /// commit's "fresh" buffers are recycled blocks, not mallocs — adoption
+  /// (R19-Z) had drained the old Dart pool, costing ~1024 fresh mallocs
+  /// per full-canvas 8K fill. Free via [tileFree] or [tileFinalizer].
+  Pointer<Uint8> tileAlloc(int byteLength) {
+    final pointer = _tileAlloc(byteLength);
+    if (pointer == nullptr) {
+      throw StateError('qa_tile_alloc failed for $byteLength bytes');
+    }
+    return pointer.cast();
+  }
+
+  /// Returns a [tileAlloc] block to the C free list.
+  void tileFree(Pointer<Uint8> pixels) {
+    _tileFree(pixels.cast());
+  }
+
+  /// Finalizer that frees [tileAlloc] blocks — BitmapTile attaches this
+  /// when the engine is loaded (GC threads call qa_tile_free directly).
+  late final NativeFinalizer tileFinalizer = NativeFinalizer(_tileFreePointer);
+
+  /// Bytes currently parked in the C free lists (tests/diagnostics).
+  int debugTilePoolCachedBytes() => _tilePoolCachedBytes();
 
   final int Function(
     Pointer<Uint8> rgb,
@@ -373,6 +405,22 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_copy_bytes');
+      final tileAlloc = library
+          .lookupFunction<
+            Pointer<Void> Function(Int64),
+            Pointer<Void> Function(int)
+          >('qa_tile_alloc');
+      final tileFree = library
+          .lookupFunction<
+            Void Function(Pointer<Void>),
+            void Function(Pointer<Void>)
+          >('qa_tile_free');
+      final tileFreePointer = library
+          .lookup<NativeFunction<Void Function(Pointer<Void>)>>('qa_tile_free');
+      final tilePoolCachedBytes = library
+          .lookupFunction<Int64 Function(), int Function()>(
+            'qa_tile_pool_cached_bytes',
+          );
       return QaNativeEngine._(
         premultiplyRgba,
         floodFillStep,
@@ -383,6 +431,10 @@ class QaNativeEngine {
         stampBlendTiles,
         premultiplyRgbaCopy,
         copyBytes,
+        tileAlloc,
+        tileFree,
+        tileFreePointer,
+        tilePoolCachedBytes,
       );
     } on Object {
       return null;
@@ -522,10 +574,6 @@ class QaNativeEngine {
     );
   }
 
-  /// Persistent grow-only scratch for [fillComposeTile]'s source tile.
-  Pointer<Uint8> _composeTileScratch = nullptr;
-  int _composeTileScratchLength = 0;
-
   /// Fills a rect of the native fill raster with the paper color
   /// (A-2c) — identical to the Dart paper loop.
   void fillPaperRect({
@@ -552,11 +600,13 @@ class QaNativeEngine {
   }
 
   /// Integer source-over of one surface-tile clip onto the native fill
-  /// raster (A-2c) — byte-identical to the Dart compose loop. The tile
-  /// bytes are staged once through a persistent scratch.
+  /// raster (A-2c) — byte-identical to the Dart compose loop. Reads the
+  /// tile's NATIVE pixels directly (R20-E1: tiles are native-backed since
+  /// R19-Z, so the old per-tile staging copy was pure waste).
   void fillComposeTile({
     required QaFloodNativeHandles handles,
-    required BitmapTile tile,
+    required Pointer<Uint8> tilePixels,
+    required int tileSize,
     required int baseX,
     required int baseY,
     required int clipLeft,
@@ -565,20 +615,11 @@ class QaNativeEngine {
     required int clipBottomExclusive,
     required int opacityInt,
   }) {
-    final byteLength = tile.size * tile.size * BitmapTile.bytesPerPixel;
-    if (_composeTileScratchLength < byteLength) {
-      if (_composeTileScratch != nullptr) {
-        calloc.free(_composeTileScratch);
-      }
-      _composeTileScratch = calloc<Uint8>(byteLength);
-      _composeTileScratchLength = byteLength;
-    }
-    tile.copyPixelsInto(_composeTileScratch.asTypedList(byteLength));
     _fillComposeTile(
       _floodRgb,
       handles.width,
-      _composeTileScratch,
-      tile.size,
+      tilePixels,
+      tileSize,
       baseX,
       baseY,
       clipLeft,
@@ -903,39 +944,21 @@ class QaNativeEngine {
   }
 
   // -------------------------------------------------------------------
-  // Native-backed tile scratch buffers (R18 A-1).
+  // Native-backed tile scratch buffers (R18 A-1 / R20-E1).
   //
   // The materializer's per-tile scratch lives in native memory: the Dart
   // side works on an asTypedList VIEW (so the Dart fallback loops and the
   // stamp path run unchanged), while the native kernel gets the raw
-  // pointer — zero tile copies per dab. Buffers are pooled per byte
-  // length and reused across commits.
+  // pointer — zero tile copies per dab. Buffers come from the C free-list
+  // allocator: commits ADOPT them as finished tiles (R19-Z), and the tile
+  // finalizers return the blocks to the same C lists — the old Dart-side
+  // pool could never see adopted buffers again, so every fill paid ~1024
+  // fresh mallocs. One cache layer, C-side, byte-capped.
 
-  final Map<int, List<QaNativeTileBuffer>> _tilePool = {};
-
-  /// BYTE-budgeted (R19-8K): the old 32-buffers-per-length cap made an
-  /// 8000² full-canvas commit malloc/free ~250MB of tile scratch EVERY
-  /// fill (992 of its 1024 tiles missed the pool) — one full 8K frame's
-  /// worth now stays pooled.
-  static const int tilePoolByteBudget = 320 * 1024 * 1024;
-  int _tilePoolBytes = 0;
-
-  /// A pooled buffer; [zeroed] skips the memset when the caller overwrites
-  /// every byte anyway (existing-tile copy-in).
+  /// [zeroed] skips the memset when the caller overwrites every byte
+  /// anyway (existing-tile copy-in).
   QaNativeTileBuffer acquireTileBuffer(int byteLength, {required bool zeroed}) {
-    final pool = _tilePool[byteLength];
-    if (pool != null && pool.isNotEmpty) {
-      final buffer = pool.removeLast();
-      _tilePoolBytes -= byteLength;
-      if (zeroed) {
-        buffer.view.fillRange(0, byteLength, 0);
-      }
-      return buffer;
-    }
-    // malloc, not calloc: fresh buffers are either explicitly zeroed here
-    // or fully overwritten by the copy-in — calloc's memset was pure
-    // waste at full-canvas scale.
-    final pointer = malloc<Uint8>(byteLength);
+    final pointer = tileAlloc(byteLength);
     final view = pointer.asTypedList(byteLength);
     if (zeroed) {
       view.fillRange(0, byteLength, 0);
@@ -944,13 +967,7 @@ class QaNativeEngine {
   }
 
   void releaseTileBuffer(QaNativeTileBuffer buffer) {
-    final byteLength = buffer.view.length;
-    if (_tilePoolBytes + byteLength > tilePoolByteBudget) {
-      malloc.free(buffer.pointer);
-      return;
-    }
-    _tilePool.putIfAbsent(byteLength, () => []).add(buffer);
-    _tilePoolBytes += byteLength;
+    tileFree(buffer.pointer);
   }
 
   // -------------------------------------------------------------------

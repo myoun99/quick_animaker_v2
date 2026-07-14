@@ -217,7 +217,8 @@ class LazyCanvasRasterRgb {
             final baseY = ty * surfaceTileSize;
             native.fillComposeTile(
               handles: handles,
-              tile: tile,
+              tilePixels: tile.nativePixels,
+              tileSize: tile.size,
               baseX: baseX,
               baseY: baseY,
               clipLeft: math.max(left, baseX),
