@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -11,8 +12,10 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:quick_animaker_v2/src/services/persistence/qap_file_service.dart';
 
 /// R20-A1 two-tier baked truth: cold cels are encoded+deflated blobs
 /// (the same bytes the archive stores), materialize byte-exactly on
@@ -175,6 +178,124 @@ void main() {
     expect(store.celHasRenderableContent(from), isFalse);
     expect(store.isCelCold(to), isTrue);
     expect(store.bakedSurfaceOrNull(to), isNotNull);
+  });
+
+  test('over-budget COLD blobs SPILL to scratch files and read back '
+      'byte-exactly (R20-A2)', () async {
+    final store = BrushFrameStore()..coldCelByteBudget = 0;
+    final k1 = key(frame: 'f1');
+    final k2 = key(frame: 'f2');
+    final s1 = inkSurface(seed: 11);
+    store.restoreBaked({k1: blobOf(k1, s1), k2: blobOf(k2, inkSurface())});
+    await store.drainTiering();
+
+    expect(store.isCelSpilled(k1), isTrue);
+    expect(store.isCelSpilled(k2), isTrue);
+    expect(store.coldBakedBytes, 0, reason: 'RAM holds nothing spilled');
+    expect(store.celHasRenderableContent(k1), isTrue);
+    expect(
+      store.currentSurfaceWithoutReplay(
+        k1,
+        canvasSize: const CanvasSize(width: 99, height: 99),
+      ),
+      isNull,
+      reason: 'the scratch ref carries the size — no disk read to reject',
+    );
+    expect(store.isCelSpilled(k1), isTrue);
+
+    final back = store.bakedSurfaceOrNull(k1)!;
+    expect(store.isCelSpilled(k1), isFalse, reason: 'read back promotes');
+    expect(
+      back.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'cold → disk → hot round trip is byte-exact',
+    );
+  });
+
+  test('the full ladder: hot → cold → scratch under zero budgets, and '
+      'save snapshot exposes every tier', () async {
+    final store = BrushFrameStore()
+      ..hotCelByteBudget = 0
+      ..coldCelByteBudget = 0;
+    final k1 = key(frame: 'f1');
+    final k2 = key(frame: 'f2');
+    store.storeBakedSurface(k1, inkSurface(seed: 2));
+    store.storeBakedSurface(k2, inkSurface(seed: 4));
+    await store.drainTiering();
+
+    expect(
+      store.isCelSpilled(k1),
+      isTrue,
+      reason: 'cooled blob immediately exceeds the zero cold budget',
+    );
+    expect(store.isCelCold(k1), isFalse);
+    expect(
+      store.isCelSpilled(k2),
+      isFalse,
+      reason: 'the most recent cel stays hot end to end',
+    );
+
+    final snapshot = store.bakedSnapshotForSave();
+    expect(snapshot.hot.containsKey(k2), isTrue);
+    expect(snapshot.scratch.containsKey(k1), isTrue);
+  });
+
+  test(
+    'scratch file deletion DEFERS while locked (the save-read window)',
+    () async {
+      final store = BrushFrameStore()..coldCelByteBudget = 0;
+      final k = key();
+      final s = inkSurface(seed: 13);
+      store.restoreBaked({k: blobOf(k, s)});
+      await store.drainTiering();
+      final ref = store.bakedSnapshotForSave().scratch[k]!;
+
+      store.lockScratchFiles();
+      // Materialization normally deletes the file — the lock must defer it.
+      final surface = store.bakedSurfaceOrNull(k)!;
+      expect(
+        surface.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+        s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      );
+      expect(
+        File(ref.filePath).existsSync(),
+        isTrue,
+        reason: 'a concurrent save may still be reading this file',
+      );
+      store.unlockScratchFiles();
+      // Deletion is async best-effort after unlock; poll briefly.
+      for (var i = 0; i < 50 && File(ref.filePath).existsSync(); i += 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(File(ref.filePath).existsSync(), isFalse);
+    },
+  );
+
+  test('a SPILLED cel saves through the .qap byte-exactly (the save '
+      'isolate reads the scratch file itself)', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-spill-save');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = BrushFrameStore()..coldCelByteBudget = 0;
+    final k = key();
+    final s = inkSurface(seed: 17);
+    store.restoreBaked({k: blobOf(k, s)});
+    await store.drainTiering();
+    expect(store.isCelSpilled(k), isTrue);
+
+    final path = '${directory.path}/spill.qap';
+    await const QapFileService().save(
+      project: createDefaultProject(),
+      brushFrameStore: store,
+      filePath: path,
+    );
+    final result = await const QapFileService().open(filePath: path);
+
+    expect(result.cels.keys, [k]);
+    expect(
+      result.cels[k]!.decode().toSurface().tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'disk-tier cels reach the archive byte-exactly',
+    );
   });
 
   test('resizeBakedSurfaces transforms cold cels WITHOUT materializing '

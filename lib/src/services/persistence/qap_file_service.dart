@@ -44,21 +44,34 @@ class QapFileService {
         QapCelEntry.fromSurface(entry.key, entry.value),
     ];
     final coldBlobs = baked.cold.values.toList();
+    // R20-A2: spilled cels stream from their scratch files INSIDE the
+    // save isolate (paths cross cheaply, bytes never touch the UI
+    // isolate). The lock keeps a concurrent materialization from
+    // deleting a file mid-read.
+    final scratchPaths = [for (final ref in baked.scratch.values) ref.filePath];
     final saveDirectory = _parentDirectory(filePath);
-    // Encode + deflate OFF the UI isolate: the archive build cost grows
-    // with edited cels, and running it inline froze the editor on
-    // autosave ticks and manual saves (R11-⑦). The result bytes return
-    // via Isolate.exit (zero-copy).
-    final bytes = await Isolate.run(
-      () => buildQapArchiveBytes(
-        project: project,
-        cels: [
-          ...coldBlobs,
-          for (final entry in hotEntries) QapCelBlob.encode(entry),
-        ],
-        saveDirectory: saveDirectory,
-      ),
-    );
+    brushFrameStore.lockScratchFiles();
+    final Uint8List bytes;
+    try {
+      // Encode + deflate OFF the UI isolate: the archive build cost grows
+      // with edited cels, and running it inline froze the editor on
+      // autosave ticks and manual saves (R11-⑦). The result bytes return
+      // via Isolate.exit (zero-copy).
+      bytes = await Isolate.run(
+        () => buildQapArchiveBytes(
+          project: project,
+          cels: [
+            ...coldBlobs,
+            for (final path in scratchPaths)
+              QapCelBlob(File(path).readAsBytesSync()),
+            for (final entry in hotEntries) QapCelBlob.encode(entry),
+          ],
+          saveDirectory: saveDirectory,
+        ),
+      );
+    } finally {
+      brushFrameStore.unlockScratchFiles();
+    }
 
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.parent.create(recursive: true);
