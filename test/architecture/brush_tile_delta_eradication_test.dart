@@ -301,7 +301,6 @@ void main() {
           'lib/src/services/brush_edit_session_cache_operations.dart',
           'lib/src/services/brush_edit_session_commit.dart',
           'lib/src/models/brush_commit_result.dart',
-          'lib/src/models/brush_paint_command.dart',
           'lib/src/models/brush_frame_drawing_state.dart',
           'lib/src/models/brush_frame_cache_invalidation.dart',
           'lib/src/ui/brush/brush_edit_cache_invalidation_sink.dart',

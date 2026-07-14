@@ -7,9 +7,9 @@ import 'layer_id.dart';
 /// Internal bitmap materialization snapshot entry.
 ///
 /// This entry wraps a BrushCommitResult only for temporary/session-local
-/// BitmapSurface materialization and cache invalidation. It must not be used as
-/// the authoritative brush command or user-facing undo payload; production
-/// brush undo uses BrushPaintCommand refs in UnifiedUndoHistory.
+/// BitmapSurface materialization and cache invalidation. It must not be
+/// used as user-facing undo payload; production undo is the app
+/// HistoryManager's surface-snapshot commands (R19 P3b-2).
 class BrushBitmapMaterializationHistoryEntry {
   BrushBitmapMaterializationHistoryEntry({
     required this.layerId,
