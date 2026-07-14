@@ -44,52 +44,6 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   );
 }
 
-BrushEditSessionCacheOperationResult
-undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
-  required BrushEditSessionState sessionState,
-  required CacheInvalidationSink cacheInvalidationSink,
-}) {
-  final undoResult = undoLatestBrushBitmapMaterializationInSessionState(
-    sessionState: sessionState,
-  );
-  final undoneMaterializationEntry = undoResult.materializationEntry;
-
-  return BrushEditSessionCacheOperationResult(
-    kind: BrushEditSessionOperationKind.undo,
-    sessionState: sessionStateFromStepResult(undoResult),
-    affectedEntry: undoneMaterializationEntry,
-    cacheInvalidationResult: undoneMaterializationEntry == null
-        ? _zeroCacheInvalidationResult()
-        : executeCacheInvalidationPlan(
-            plan: undoneMaterializationEntry.cacheInvalidationPlan,
-            sink: cacheInvalidationSink,
-          ),
-  );
-}
-
-BrushEditSessionCacheOperationResult
-redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation({
-  required BrushEditSessionState sessionState,
-  required CacheInvalidationSink cacheInvalidationSink,
-}) {
-  final redoResult = redoLatestBrushBitmapMaterializationInSessionState(
-    sessionState: sessionState,
-  );
-  final redoneMaterializationEntry = redoResult.materializationEntry;
-
-  return BrushEditSessionCacheOperationResult(
-    kind: BrushEditSessionOperationKind.redo,
-    sessionState: sessionStateFromStepResult(redoResult),
-    affectedEntry: redoneMaterializationEntry,
-    cacheInvalidationResult: redoneMaterializationEntry == null
-        ? _zeroCacheInvalidationResult()
-        : executeCacheInvalidationPlan(
-            plan: redoneMaterializationEntry.cacheInvalidationPlan,
-            sink: cacheInvalidationSink,
-          ),
-  );
-}
-
 CacheInvalidationExecutionResult _zeroCacheInvalidationResult() {
   return CacheInvalidationExecutionResult(
     layerTileCount: 0,
