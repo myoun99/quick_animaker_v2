@@ -9,8 +9,9 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../native/qa_native_engine.dart' show QaStampScratch;
 import '../../services/brush_live_stroke_rasterizer.dart'
-    show ActiveStrokePixelSource;
+    show ActiveStrokePixelSource, BrushLiveStrokeRasterizer;
 import 'deferred_image_disposal.dart';
 
 /// Mutable state of the in-progress stroke overlay.
@@ -148,6 +149,21 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     final width = math.min(tileSize, source.canvasWidth - left);
     final height = math.min(tileSize, source.canvasHeight - top);
 
+    // R25 fast path: a FULL interior tile of a native-backed live
+    // rasterizer shares this model's 128px grid, so snapshot +
+    // premultiply collapse into one C call (per 2000px move that is
+    // ~256 tiles — the Dart loops below were the big-brush stall and
+    // the visible pre-stroke tiles). Same bytes: the C premultiply is
+    // parity-pinned against this exact rounding.
+    QaStampScratch? scratch;
+    Uint8List? fused;
+    if (width == tileSize &&
+        height == tileSize &&
+        source is BrushLiveStrokeRasterizer &&
+        BrushLiveStrokeRasterizer.tileSize == tileSize) {
+      scratch = source.premultipliedOverlayTile(coord.x, coord.y);
+      fused = scratch?.view;
+    }
     // Snapshot the straight-alpha rows, then premultiply in place with the
     // same per-pixel branches/rounding as before: the engine interprets
     // rgba8888 uploads as premultiplied, and Skia's mul-div-255 rounding
@@ -155,30 +171,36 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     // alpha==0 case must ZERO the color bytes — a straight-alpha stroke
     // pixel can round to alpha 0 while keeping non-zero color, which would
     // be invalid premultiplied data.
-    final bytes = Uint8List(width * height * 4);
-    for (var y = 0; y < height; y += 1) {
-      source.copyRow(left, top + y, width, bytes, y * width * 4);
-    }
-    for (var offset = 0; offset < bytes.length; offset += 4) {
-      final alpha = bytes[offset + 3];
-      if (alpha == 255) {
-        continue;
+    final Uint8List bytes;
+    if (fused != null) {
+      bytes = fused;
+    } else {
+      bytes = Uint8List(width * height * 4);
+      for (var y = 0; y < height; y += 1) {
+        source.copyRow(left, top + y, width, bytes, y * width * 4);
       }
-      if (alpha == 0) {
-        bytes[offset] = 0;
-        bytes[offset + 1] = 0;
-        bytes[offset + 2] = 0;
-        continue;
+      for (var offset = 0; offset < bytes.length; offset += 4) {
+        final alpha = bytes[offset + 3];
+        if (alpha == 255) {
+          continue;
+        }
+        if (alpha == 0) {
+          bytes[offset] = 0;
+          bytes[offset + 1] = 0;
+          bytes[offset + 2] = 0;
+          continue;
+        }
+        bytes[offset] = _mul255Round(bytes[offset], alpha);
+        bytes[offset + 1] = _mul255Round(bytes[offset + 1], alpha);
+        bytes[offset + 2] = _mul255Round(bytes[offset + 2], alpha);
       }
-      bytes[offset] = _mul255Round(bytes[offset], alpha);
-      bytes[offset + 1] = _mul255Round(bytes[offset + 1], alpha);
-      bytes[offset + 2] = _mul255Round(bytes[offset + 2], alpha);
     }
 
     final generation = _generation;
     ui.decodeImageFromPixels(bytes, width, height, ui.PixelFormat.rgba8888, (
       image,
     ) {
+      scratch?.free();
       if (generation != _generation) {
         // The stroke was reset or the model disposed while decoding. This
         // image was never painted, so no frame can reference it: direct

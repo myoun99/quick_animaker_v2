@@ -659,6 +659,19 @@ class QaNativeEngine {
     return QaStampScratch._(buffer.asTypedList(rgba.length), buffer);
   }
 
+  /// R25: fused premultiplied copy of an already-NATIVE tile buffer
+  /// (the live rasterizer's stroke tiles) — one C call replaces the
+  /// overlay's per-tile Dart row-copy + premultiply loops. Free the
+  /// scratch in the decode callback.
+  QaStampScratch premultipliedTileScratch(
+    Pointer<Uint8> source,
+    int pixelCount,
+  ) {
+    final buffer = malloc<Uint8>(pixelCount * 4);
+    _premultiplyRgbaCopy(buffer, source, pixelCount);
+    return QaStampScratch._(buffer.asTypedList(pixelCount * 4), buffer);
+  }
+
   // -------------------------------------------------------------------
   // Flood fill (R18 A-2b): engine-persistent, grow-only buffers. ONE
   // fill runs at a time (a fill tap is synchronous and single-shot), so
