@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
@@ -532,15 +533,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                           'canvas-tool-tap-layer',
                                         ),
                                         behavior: HitTestBehavior.opaque,
-                                        onPointerDown: (event) =>
-                                            _toolTapHandler()!(
-                                              _viewport.viewportToCanvas(
-                                                ViewportPoint(
-                                                  x: event.localPosition.dx,
-                                                  y: event.localPosition.dy,
-                                                ),
+                                        onPointerDown: (event) {
+                                          // PRIMARY contact only (R22-B):
+                                          // the middle-button pan (the
+                                          // ancestor gesture layer) used
+                                          // to ALSO fire the tool here —
+                                          // every pan click deposited a
+                                          // stray fill, which is why one
+                                          // fill sometimes took two undos.
+                                          if (event.buttons != kPrimaryButton) {
+                                            return;
+                                          }
+                                          _toolTapHandler()!(
+                                            _viewport.viewportToCanvas(
+                                              ViewportPoint(
+                                                x: event.localPosition.dx,
+                                                y: event.localPosition.dy,
                                               ),
                                             ),
+                                          );
+                                        },
                                       ),
                                     ),
                                   // Eyedropper cursor (R11-②): crosshair +
@@ -738,6 +750,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
               }
             },
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
+      // R22-A: the FILL tool runs through the view's stroke pipeline
+      // (instant overlay + settling hold) instead of the panel tap layer.
+      fillDabAt: widget.brushToolState.tool == CanvasTool.fill
+          ? widget.fillDabAt
+          : null,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -903,21 +920,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           }
         };
       case CanvasTool.fill:
-        final fill = widget.fillDabAt;
-        if (fill == null || widget.coordinator == null) {
-          return null;
-        }
-        return (point) {
-          final dab = fill(point, widget.brushToolState.color);
-          if (dab != null) {
-            // The exact stroke funnel: history, parity and .qap
-            // serialization treat the fill like any stroke ("fill = one
-            // mask dab").
-            _handleSourceStrokeCommitted(
-              BrushStrokeCommitData(sourceDabs: [dab]),
-            );
-          }
-        };
+        // R22-A: fill taps are handled by the interactive view's stroke
+        // pipeline (fillDabAt) — instant overlay, settling hold, and the
+        // same primary-button discipline as strokes. No tap layer.
+        return null;
     }
   }
 

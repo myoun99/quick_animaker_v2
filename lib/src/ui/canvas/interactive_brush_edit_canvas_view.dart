@@ -96,6 +96,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onAltPick,
+    this.fillDabAt,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -112,6 +113,15 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// Alt+pointer-down picks a color instead of starting a stroke (P5's
   /// temporary eyedropper); null disables the shortcut.
   final ValueChanged<CanvasPoint>? onAltPick;
+
+  /// FILL mode (R22-A): non-null while the fill tool is active — a
+  /// primary tap builds the flood's stamp dab here and the view runs it
+  /// through the STROKE pipeline: the overlay shows the filled region
+  /// the very next frame (native stamp blend into the live rasterizer),
+  /// the commit rides [onSourceStrokeCommitted], and the overlay holds
+  /// until the committed tiles decode (the settling contract) — no more
+  /// tile-by-tile reveal on big fills.
+  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -325,6 +335,40 @@ class _InteractiveBrushEditCanvasViewState
       if (startsInsideSurface) {
         onAltPick(canvasPosition);
       }
+      return;
+    }
+
+    // FILL tap (R22-A): the flood's stamp dab runs through the STROKE
+    // pipeline — overlay next frame, commit through the same funnel,
+    // settling holds the overlay until the committed tiles decode.
+    final fillDabAt = widget.fillDabAt;
+    if (fillDabAt != null) {
+      if (!startsInsideSurface) {
+        return;
+      }
+      final dab = fillDabAt(canvasPosition, widget.inputSettings.color);
+      if (dab == null) {
+        return;
+      }
+      _prepareLiveRasterizer();
+      _resetOverlay();
+      _overlayModel.erase = false;
+      _collectedDabs
+        ..clear()
+        ..add(dab);
+      _queueOverlayDabs([dab]);
+      _flushPendingOverlayDabs();
+      final rasterizer = _liveRasterizer;
+      _settlingBounds = rasterizer?.strokeBounds;
+      _overlayModel.holdPreStrokeTiles(
+        preStrokeHoldTiles(
+          surface: widget.sessionState.canvasState.currentSurface,
+          bounds: _settlingBounds,
+        ),
+      );
+      widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
+      _collectedDabs.clear();
+      _beginSettling();
       return;
     }
 
