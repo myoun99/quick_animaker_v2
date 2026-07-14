@@ -465,6 +465,203 @@ BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
   );
 }
 
+/// The lifted stamp through a MESH warp (R20-D3): an n×m control grid
+/// over the stamp rect, each cell split into two triangles with a fixed
+/// diagonal; destination triangles inverse-map affinely (barycentric)
+/// onto the source and sample with the same alpha-weighted Catmull-Rom
+/// kernel. The preview renders the SAME triangulation, so what warps on
+/// screen is what commits. [points] holds `(columns+1)*(rows+1)`
+/// destination grid positions, row-major; the base grid is the stamp
+/// rect subdivided uniformly. All points at base = untouched. Fold-overs
+/// resolve by triangle order (first hit wins — deterministic).
+BrushDab transformStampDabMesh(
+  BrushDab stampDab, {
+  required int columns,
+  required int rows,
+  required List<CanvasPoint> points,
+}) {
+  final stamp = stampDab.stamp;
+  if (stamp == null || columns < 1 || rows < 1) {
+    return stampDab;
+  }
+  assert(points.length == (columns + 1) * (rows + 1));
+  final srcLeft = stampDab.center.x - stamp.width / 2;
+  final srcTop = stampDab.center.y - stamp.height / 2;
+  final cellWidth = stamp.width / columns;
+  final cellHeight = stamp.height / rows;
+  CanvasPoint baseAt(int column, int row) => CanvasPoint(
+    x: srcLeft + column * cellWidth,
+    y: srcTop + row * cellHeight,
+  );
+
+  var identity = true;
+  for (var row = 0; row <= rows && identity; row += 1) {
+    for (var column = 0; column <= columns; column += 1) {
+      final base = baseAt(column, row);
+      final point = points[row * (columns + 1) + column];
+      if (point.x != base.x || point.y != base.y) {
+        identity = false;
+        break;
+      }
+    }
+  }
+  if (identity) {
+    return stampDab;
+  }
+
+  var minX = double.infinity, minY = double.infinity;
+  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  for (final point in points) {
+    minX = math.min(minX, point.x);
+    maxX = math.max(maxX, point.x);
+    minY = math.min(minY, point.y);
+    maxY = math.max(maxY, point.y);
+  }
+  final outLeft = minX.floor();
+  final outTop = minY.floor();
+  final outWidth = math.max(1, maxX.ceil() - outLeft);
+  final outHeight = math.max(1, maxY.ceil() - outTop);
+  final source = stamp.rgba;
+  final bytes = Uint8List(outWidth * outHeight * 4);
+  final covered = Uint8List(outWidth * outHeight);
+
+  void rasterizeTriangle(
+    CanvasPoint d0,
+    CanvasPoint d1,
+    CanvasPoint d2,
+    CanvasPoint s0,
+    CanvasPoint s1,
+    CanvasPoint s2,
+  ) {
+    final denominator =
+        (d1.x - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (d1.y - d0.y);
+    if (denominator.abs() < 1e-12) {
+      return; // Degenerate destination triangle.
+    }
+    final left = math.max(
+      outLeft,
+      math.min(d0.x, math.min(d1.x, d2.x)).floor(),
+    );
+    final top = math.max(outTop, math.min(d0.y, math.min(d1.y, d2.y)).floor());
+    final right = math.min(
+      outLeft + outWidth,
+      math.max(d0.x, math.max(d1.x, d2.x)).ceil(),
+    );
+    final bottom = math.min(
+      outTop + outHeight,
+      math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
+    );
+    for (var y = top; y < bottom; y += 1) {
+      final qy = y + 0.5;
+      for (var x = left; x < right; x += 1) {
+        final index = (y - outTop) * outWidth + (x - outLeft);
+        if (covered[index] != 0) {
+          continue;
+        }
+        final qx = x + 0.5;
+        // Barycentric coordinates in the destination triangle.
+        final w1 =
+            ((qx - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (qy - d0.y)) /
+            denominator;
+        final w2 =
+            ((d1.x - d0.x) * (qy - d0.y) - (qx - d0.x) * (d1.y - d0.y)) /
+            denominator;
+        final w0 = 1.0 - w1 - w2;
+        const slack = -1e-9;
+        if (w0 < slack || w1 < slack || w2 < slack) {
+          continue;
+        }
+        final px = s0.x * w0 + s1.x * w1 + s2.x * w2;
+        final py = s0.y * w0 + s1.y * w1 + s2.y * w2;
+        final sampleX = px - srcLeft - 0.5;
+        final sampleY = py - srcTop - 0.5;
+        final x0 = sampleX.floor();
+        final y0 = sampleY.floor();
+        _catmullRomWeights(sampleX - x0, _cubicWeightsX);
+        _catmullRomWeights(sampleY - y0, _cubicWeightsY);
+        var alphaAcc = 0.0;
+        var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
+        for (var tapJ = 0; tapJ < 4; tapJ += 1) {
+          final tapY = y0 - 1 + tapJ;
+          if (tapY < 0 || tapY >= stamp.height) {
+            continue;
+          }
+          final weightY = _cubicWeightsY[tapJ];
+          if (weightY == 0) {
+            continue;
+          }
+          final rowOffset = tapY * stamp.width;
+          for (var tapI = 0; tapI < 4; tapI += 1) {
+            final tapX = x0 - 1 + tapI;
+            if (tapX < 0 || tapX >= stamp.width) {
+              continue;
+            }
+            final weight = _cubicWeightsX[tapI] * weightY;
+            if (weight == 0) {
+              continue;
+            }
+            final offset = (rowOffset + tapX) * 4;
+            final alpha = source[offset + 3];
+            if (alpha == 0) {
+              continue;
+            }
+            final weightedAlpha = weight * alpha;
+            alphaAcc += weightedAlpha;
+            redAcc += weightedAlpha * source[offset];
+            greenAcc += weightedAlpha * source[offset + 1];
+            blueAcc += weightedAlpha * source[offset + 2];
+          }
+        }
+        covered[index] = 1;
+        if (alphaAcc <= 0) {
+          continue;
+        }
+        final offset = index * 4;
+        bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
+        bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
+        bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
+        bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+      }
+    }
+  }
+
+  CanvasPoint destAt(int column, int row) =>
+      points[row * (columns + 1) + column];
+  for (var row = 0; row < rows; row += 1) {
+    for (var column = 0; column < columns; column += 1) {
+      // Fixed diagonal TL–BR mirror of the preview triangulation:
+      // (TL, TR, BL) and (TR, BR, BL).
+      rasterizeTriangle(
+        destAt(column, row),
+        destAt(column + 1, row),
+        destAt(column, row + 1),
+        baseAt(column, row),
+        baseAt(column + 1, row),
+        baseAt(column, row + 1),
+      );
+      rasterizeTriangle(
+        destAt(column + 1, row),
+        destAt(column + 1, row + 1),
+        destAt(column, row + 1),
+        baseAt(column + 1, row),
+        baseAt(column + 1, row + 1),
+        baseAt(column, row + 1),
+      );
+    }
+  }
+
+  return stampDab.copyWith(
+    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
+    size: math.max(outWidth, outHeight).toDouble(),
+    stamp: BrushStampImage(
+      id: '${stamp.id}-m${DateTime.now().microsecondsSinceEpoch}',
+      width: outWidth,
+      height: outHeight,
+      rgba: bytes,
+    ),
+  );
+}
+
 /// Catmull-Rom weights for taps at offsets {-1, 0, +1, +2} around the
 /// floor sample, written into [out] (reused scratch — the resample loop
 /// is per-pixel hot). Interpolating: f == 0 → (0, 1, 0, 0).

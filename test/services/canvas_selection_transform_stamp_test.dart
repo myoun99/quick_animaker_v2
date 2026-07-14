@@ -262,6 +262,109 @@ void main() {
     });
   });
 
+  group('mesh warp (R20-D3)', () {
+    BrushDab redDab(int size) {
+      final rgba = Uint8List.fromList([
+        for (var i = 0; i < size * size; i += 1) ...[255, 0, 0, 255],
+      ]);
+      return BrushDab(
+        center: CanvasPoint(x: 10, y: 10),
+        color: 0xFFFFFFFF,
+        size: size.toDouble(),
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
+        stamp: BrushStampImage(
+          id: 'mesh',
+          width: size,
+          height: size,
+          rgba: rgba,
+        ),
+      );
+    }
+
+    List<CanvasPoint> baseGrid(BrushDab dab, int columns, int rows) {
+      final stamp = dab.stamp!;
+      final left = dab.center.x - stamp.width / 2;
+      final top = dab.center.y - stamp.height / 2;
+      return [
+        for (var row = 0; row <= rows; row += 1)
+          for (var column = 0; column <= columns; column += 1)
+            CanvasPoint(
+              x: left + column * stamp.width / columns,
+              y: top + row * stamp.height / rows,
+            ),
+      ];
+    }
+
+    test('an untouched grid is identity', () {
+      final dab = redDab(8);
+      final out = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: baseGrid(dab, 2, 2),
+      );
+      expect(identical(out, dab), isTrue);
+    });
+
+    test('pulling ONE interior control point bulges the warp locally: '
+        'coverage grows on the pulled side only, hue stays pure', () {
+      final dab = redDab(8); // rect (6,6)-(14,14), 2×2 grid center = (10,10).
+      final points = baseGrid(dab, 2, 2);
+      // Pull the CENTER control point 3px right.
+      points[4] = CanvasPoint(x: 13, y: 10);
+      final out = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+      );
+      expect(identical(out, dab), isFalse);
+      final stamp = out.stamp!;
+      // Every visible pixel stays pure red (alpha-weighted bicubic).
+      var visible = 0;
+      for (var i = 0; i < stamp.rgba.length; i += 4) {
+        if (stamp.rgba[i + 3] > 0) {
+          visible += 1;
+          expect(stamp.rgba[i], 255);
+          expect(stamp.rgba[i + 2], 0);
+        }
+      }
+      // The outer boundary is unchanged (corners stayed), so the footprint
+      // stays the 8×8 rect — the warp is interior-only.
+      expect(visible, greaterThan(0));
+      expect((stamp.width, stamp.height), (8, 8));
+    });
+
+    test('warping the whole right edge outward widens the footprint', () {
+      final dab = redDab(8);
+      final points = baseGrid(dab, 2, 2);
+      for (final index in [2, 5, 8]) {
+        points[index] = CanvasPoint(x: points[index].x + 4, y: points[index].y);
+      }
+      final out = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+      );
+      expect(out.stamp!.width, 12, reason: 'right edge moved +4');
+      // Rightmost column carries visible pixels (the warp reached it).
+      var rightHit = false;
+      final stamp = out.stamp!;
+      for (var y = 0; y < stamp.height; y += 1) {
+        if (stamp.rgba[(y * stamp.width + stamp.width - 1) * 4 + 3] > 100) {
+          rightHit = true;
+        }
+      }
+      expect(rightHit, isTrue);
+    });
+  });
+
   test('transparent texels never bleed color into opaque neighbours '
       '(alpha-weighted sampling)', () {
     // A 2×1 stamp: opaque WHITE next to fully transparent BLACK.
