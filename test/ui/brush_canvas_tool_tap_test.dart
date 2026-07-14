@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show kMiddleMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,7 +174,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(tapLayerKey));
+    // R22-A: fill taps land on the interactive VIEW (the stroke
+    // pipeline), not a panel tap layer — instant overlay + settling.
+    expect(find.byKey(tapLayerKey), findsNothing);
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(10, 10),
+    );
     await tester.pump();
 
     // The active tool color reached the fill and the dab landed through
@@ -183,6 +192,21 @@ void main() {
       coordinator.frameStore.celHasRenderableContent(frameKeys.first),
       isTrue,
     );
+
+    // Middle-button regression pin (R22-B): a wheel-click pan attempt
+    // must NEVER fill (it used to deposit stray entries — the
+    // "two undos to remove one fill" bug).
+    final before = fillColors.length;
+    final gesture = await tester.createGesture(buttons: kMiddleMouseButton);
+    await gesture.down(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(12, 12),
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(fillColors.length, before, reason: 'middle click never fills');
   });
 
   testWidgets('a null fill region commits nothing', (tester) async {
@@ -206,7 +230,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(tapLayerKey));
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(10, 10),
+    );
     await tester.pump();
 
     expect(
