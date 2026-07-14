@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/playback_quality.dart';
-import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
@@ -94,7 +93,7 @@ class LayerFrameImageCache {
     }
     final preview = BrushFrameDisplayCacheService(
       frameStore: frameStore,
-      renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+      canvasSize: canvasSize,
     ).prepareFramePreview(key).previewSurface;
 
     // Per-tile GPU compose: the editing canvas keeps the on-screen frame's
@@ -151,11 +150,10 @@ class LayerFrameImageCache {
     final revision = drawing.sourceRevision;
 
     final preview = labProbe(
-      'prepareFramePreview(${key.frameId.value} '
-      '${drawing.allPaintCommandsInDisplayOrder.length}cmd)',
+      'prepareFramePreview(${key.frameId.value} rev${drawing.sourceRevision})',
       () => BrushFrameDisplayCacheService(
         frameStore: frameStore,
-        renderer: BrushFrameDisplayCacheRenderer(canvasSize: canvasSize),
+        canvasSize: canvasSize,
       ).prepareFramePreview(key).previewSurface,
     );
     final image = composeTiledSurfaceImageSyncOrNull(

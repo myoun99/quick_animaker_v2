@@ -1,11 +1,10 @@
-import 'package:flutter/gestures.dart';
+﻿import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
-import '../../models/brush_paint_command_id.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -84,7 +83,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// shape covers no pixels: the move is a no-op. R19 pixel model: every
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
-  final ({BrushPaintCommandId commandId, BrushDab stampDab})? Function(
+  final ({int liftToken, BrushDab stampDab})? Function(
     CanvasSelectionShape shape,
   )?
   onLiftRequested;
@@ -92,18 +91,18 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// Raw landing of the floating stamp at its pending position (no
   /// history entry) — the abandon fallback so a reset can never lose the
   /// float's pixels.
-  final void Function(BrushPaintCommandId commandId, BrushDab stampDab)?
+  final void Function(int liftToken, BrushDab stampDab)?
   onLiftLanded;
 
   /// CONFIRM of a move session (R16-①): the host lands [stampDab] and
   /// adopts the whole session (raw lift + landed stamp) as ONE history
   /// entry (BrushLiftMoveHistoryCommand).
-  final void Function(BrushPaintCommandId commandId, BrushDab stampDab)?
+  final void Function(int liftToken, BrushDab stampDab)?
   onLiftConfirmed;
 
   /// REVERT (R17-①): the host restores the pre-lift picture byte-exactly;
   /// nothing lands in history.
-  final void Function(BrushPaintCommandId commandId)? onLiftReverted;
+  final void Function(int liftToken)? onLiftReverted;
 
   /// True while a move session awaits its confirm — the host holds the
   /// session's edit-interaction lock (seeks refused, warmer down) without
@@ -181,7 +180,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// nudge — nothing lands and nothing is undoable until the user
   /// CONFIRMS (button, Enter, tool switch, deselect, undo/redo hook),
   /// which adopts the whole session as ONE history entry.
-  BrushPaintCommandId? _liftCommandId;
+  int? _liftToken;
   BrushDab? _pendingLiftStamp;
 
   /// True once the session actually MOVED — the ants turn red until the
@@ -196,7 +195,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// REVERT (R17-①): the pixels — and the ants — return exactly to where
   /// the session found them; nothing lands in history.
   void _revertMoveSession() {
-    final id = _liftCommandId;
+    final id = _liftToken;
     final pending = _pendingLiftStamp;
     if (id == null || pending == null) {
       return;
@@ -210,7 +209,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
         _shapeNeedsLift = true;
         _pendingLiftStamp = null;
-        _liftCommandId = null;
+        _liftToken = null;
         _moveSessionDirty = false;
         _moveSessionStartShape = null;
         if (_transform == null) {
@@ -224,7 +223,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   void _clearLiftState() {
     final wasPending = _movePending;
-    _liftCommandId = null;
+    _liftToken = null;
     _pendingLiftStamp = null;
     _moveSessionDirty = false;
     if (wasPending) {
@@ -238,7 +237,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// triggers defer post-frame). Afterwards the shape needs a fresh lift
   /// (R19 pixel model: the landed raster IS the content to move next).
   void _confirmMoveSession() {
-    final id = _liftCommandId;
+    final id = _liftToken;
     final pending = _pendingLiftStamp;
     if (id == null || pending == null) {
       return;
@@ -253,7 +252,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (mounted) {
       setState(() {
         _pendingLiftStamp = null;
-        _liftCommandId = null;
+        _liftToken = null;
         _moveSessionDirty = false;
         _moveSessionStartShape = null;
         _shapeNeedsLift = true;
@@ -263,7 +262,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       });
     } else {
       _pendingLiftStamp = null;
-      _liftCommandId = null;
+      _liftToken = null;
       _moveSessionDirty = false;
       _moveSessionStartShape = null;
       _shapeNeedsLift = true;
@@ -392,7 +391,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // post-frame (dispose can run inside a build); the interaction hold
     // releases NOW so a leak can never lock seeks.
     final pendingStamp = _pendingLiftStamp;
-    final liftId = _liftCommandId;
+    final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
       widget.onMoveSessionPendingChanged?.call(false);
       final onConfirmed = widget.onLiftConfirmed;
@@ -610,7 +609,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _clearLiftState();
       return false;
     }
-    _liftCommandId = lift.commandId;
+    _liftToken = lift.liftToken;
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = shape;
@@ -622,14 +621,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// position (raw, no history) so the pixels are never lost. Ordinary
   /// session ends go through the confirm.
   void _landPendingLiftStamp() {
-    final id = _liftCommandId;
+    final id = _liftToken;
     final pending = _pendingLiftStamp;
     if (id == null || pending == null) {
       return;
     }
     widget.onLiftLanded?.call(id, pending);
     _pendingLiftStamp = null;
-    _liftCommandId = null;
+    _liftToken = null;
   }
 
   CanvasPoint _toCanvas(Offset local) =>

@@ -1,9 +1,10 @@
 import 'dart:typed_data';
 
 import '../ui/dev_profile.dart';
-import '../models/brush_bitmap_materialization_history_entry.dart';
+import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/brush_stroke_commit_outcome.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_surface_state.dart';
 import '../models/dirty_region.dart';
@@ -12,55 +13,44 @@ import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_history_policy.dart';
 import '../models/dirty_tile_set.dart';
-import '../models/brush_paint_command.dart';
-import '../models/brush_paint_command_id.dart';
-import '../models/brush_paint_command_state.dart';
-import '../models/undo_history_entry.dart';
-import '../models/undo_history_entry_id.dart';
-import '../models/undo_history_entry_kind.dart';
-import '../models/undo_payload_ref.dart';
-import '../models/unified_undo_history.dart';
-import 'bitmap_surface_brush_commit.dart';
 import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
-import 'brush_materialization_history_budget.dart';
 import 'cache_invalidation_executor.dart';
 
+/// The brush editing spine (R19 P3b): sessions hold the CURRENT surface
+/// only. Undo/redo live at the app level as pre/post SURFACE REFERENCES
+/// (immutable tile maps — a snapshot is free), restored through
+/// [restoreSurfaceSnapshot]. No command bookkeeping, no replay: the
+/// raster is the truth end to end.
 class BrushFrameEditingCoordinator {
   BrushFrameEditingCoordinator({
     required BrushFrameKey initialFrameKey,
     required this.frameStore,
     required this.sessionStore,
     required this.historyPolicy,
-    UnifiedUndoHistory? undoHistory,
-  }) : _activeFrameKey = initialFrameKey,
-       _undoHistory =
-           undoHistory ??
-           UnifiedUndoHistory(userUndoLimit: historyPolicy.userUndoLimit);
+  }) : _activeFrameKey = initialFrameKey;
 
   final BrushFrameStore frameStore;
   final BrushFrameEditSessionStore sessionStore;
   final BrushHistoryPolicy historyPolicy;
   BrushFrameKey _activeFrameKey;
-  UnifiedUndoHistory _undoHistory;
-  int _nextSequenceNumber = 1;
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
-  UnifiedUndoHistory get undoHistory => _undoHistory;
-  bool get canUndo => _undoHistory.undoStack.isNotEmpty;
-  bool get canRedo => _undoHistory.redoStack.isNotEmpty;
   BrushEditSessionState get activeSessionState => _sessionFor(_activeFrameKey);
+
+  /// The cel's CURRENT pixels — the pre-image capture point for
+  /// surface-snapshot undo entries.
+  BitmapSurface currentSurfaceOf(BrushFrameKey key) =>
+      _sessionFor(key).canvasState.currentSurface;
 
   void selectFrame(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
     _sessionFor(key);
     _activeFrameKey = key;
-    // Session-count budget (R13): without it every cel ever drawn on kept
-    // its session (undo snapshots included) for the rest of the run, and
-    // the swelling heap's GC pauses slowed the WHOLE app the longer a
-    // drawing session went. Evicted cels reseed from the donated display
-    // cache in O(1); their undos take the command-replay fallback.
+    // Session-count budget (R13): sessions are thin now (current surface
+    // only, shared with the baked truth), but unbounded growth is still
+    // bookkeeping for nothing — evicted cels reseed from baked in O(1).
     sessionStore.evictBeyondRetainLimit(
       retainLimit: historyPolicy.retainedSessionLimit,
       protect: key,
@@ -69,124 +59,64 @@ class BrushFrameEditingCoordinator {
 
   /// Adopts a new editing canvas size.
   ///
-  /// Session surfaces and display caches are derived at the old size, so they
-  /// are dropped and rebuilt from the durable paint commands. Stroke
-  /// coordinates are untouched (top-left anchor): shrinking crops
-  /// non-destructively and growing extends with transparency, so resizing back
-  /// restores the original picture.
+  /// Session surfaces and display caches are derived at the old size, so
+  /// they are dropped and reseeded from the resized baked truth (R19: a
+  /// resize is a raster crop/extend — pixels untouched).
   void resizeCanvas(CanvasSize canvasSize) {
     if (canvasSize == sessionStore.canvasSize) {
       return;
     }
     sessionStore.resizeCanvas(canvasSize);
     frameStore.clearDisplayCaches();
-    // R19 bake-only: a resize is a raster crop/extend of the baked truth
-    // (top-left anchored, pixels untouched) — anchored variants shift
-    // via translateCutContent's blit before this runs.
     frameStore.resizeBakedSurfaces(canvasSize);
-    _rebuildSessionFromCommands(_activeFrameKey);
+    _seedSession(_activeFrameKey);
   }
 
   BrushEditSessionState _sessionFor(BrushFrameKey key) {
-    return sessionStore.sessionOrNull(key) ?? _rebuildSessionFromCommands(key);
+    return sessionStore.sessionOrNull(key) ?? _seedSession(key);
   }
 
-  /// Rebuilds the frame's session surface at the store's current canvas
-  /// size. A VALID display cache seeds it directly (byte-identical to a
-  /// replay — donations come FROM session surfaces and rebuilt caches ride
-  /// the parity-pinned renderer), so opening a frame costs O(1) instead of
-  /// replaying its whole stroke history (R11-⑦: the first edit of every
-  /// frame after a project load replayed thousands of commands). The
-  /// command replay stays the cold fallback. The bitmap materialization
-  /// history starts empty either way; undo/redo of older strokes falls
-  /// back to a full replay.
-  BrushEditSessionState _rebuildSessionFromCommands(BrushFrameKey key) {
+  /// Seeds the frame's session from the baked raster truth — O(1) and
+  /// byte-exact (donations keep baked current across every mutation).
+  /// A never-drawn cel seeds blank.
+  BrushEditSessionState _seedSession(BrushFrameKey key) {
     final blank = sessionStore.reset(key);
-    final frame = frameStore.frameOrNull(key);
-    final commands =
-        frame?.allPaintCommandsInDisplayOrder ?? const <BrushPaintCommand>[];
-    // R19 bake-only: the baked raster is the truth — seeding from it is
-    // O(1) and byte-exact. Cels with NO legacy commands in ANY state
-    // (v2 opens, and everything once P3 retires command bookkeeping)
-    // always seed from it; cels still carrying commands — hidden ones
-    // included, an all-hidden cel must rebuild BLANK — only seed from it
-    // while it is KNOWN CURRENT (the display cache's validity): a
-    // hidden-by-undo command dirties the cache, and the legacy replay
-    // below must win then or the undone stroke would stay visible.
-    final hasAnyCommands = frame != null && frame.paintCommands.isNotEmpty;
     final baked = frameStore.bakedSurfaceOrNull(key);
-    if (baked != null &&
-        baked.canvasSize == sessionStore.canvasSize &&
-        (!hasAnyCommands || frameStore.hasValidDisplayCache(key))) {
-      return sessionStore.update(
-        key,
-        blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: baked)),
-      );
-    }
-    if (commands.isEmpty) {
+    if (baked == null || baked.canvasSize != sessionStore.canvasSize) {
       return blank;
     }
-    final cachedSurface = frameStore.validPreviewSurfaceOrNull(key);
-    if (cachedSurface != null &&
-        cachedSurface.canvasSize == sessionStore.canvasSize) {
-      return sessionStore.update(
-        key,
-        blank.copyWith(
-          canvasState: CanvasSurfaceState(currentSurface: cachedSurface),
-        ),
-      );
-    }
-    var surface = blank.canvasState.currentSurface;
-    for (final command in commands) {
-      if (command.sourceDabs.isEmpty) {
-        continue;
-      }
-      surface = materializeBrushDabSequenceOnBitmapSurface(
-        surface: surface,
-        sequence: BrushDabSequence(command.sourceDabs),
-      ).surface;
-    }
-    final rebuilt = sessionStore.update(
+    return sessionStore.update(
       key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: baked)),
     );
-    // The replay just produced the frame's exact pixels — donate them so no
-    // display consumer replays the same commands again.
-    _donateSessionSurfaceToDisplayCache(key, rebuilt);
-    return rebuilt;
   }
 
   /// Donates the session's post-edit surface to the store's display cache.
   ///
   /// The commit fast path already produced the exact post-stroke pixels
-  /// (byte-identical to a command replay — the three-route parity suites pin
+  /// (byte-identical across the three blend routes — the parity suites pin
   /// live == commit == reference), and [BitmapSurface] is an immutable tile
   /// map, so sharing it is a free snapshot. Downstream consumers (playback
-  /// layer images, storyboard thumbnails, camera preview) then skip the
-  /// full-frame command replay whose cost grows with every stroke on the
-  /// frame — the post-stroke UI freeze.
+  /// layer images, storyboard thumbnails, camera preview) read it instead
+  /// of ever re-deriving pixels.
   void _donateSessionSurfaceToDisplayCache(
     BrushFrameKey key,
     BrushEditSessionState sessionState,
   ) {
     final surface = sessionState.canvasState.currentSurface;
     frameStore.storeRebuiltDisplayCache(key: key, previewSurface: surface);
-    // R19 bake-only: the donation IS the bake — every commit, undo, redo
-    // and rewrite lands the exact post-edit pixels as the cel's raster
-    // truth (immutable surface, shared instance, no copy).
+    // R19 bake-only: the donation IS the bake — every commit and every
+    // snapshot restore lands the exact pixels as the cel's raster truth
+    // (immutable surface, shared instance, no copy).
     frameStore.storeBakedSurface(key, surface);
   }
 
-  /// Commits a finished stroke: stores the source dabs as the durable
-  /// [BrushPaintCommand] (source of truth) and materializes the stroke into
-  /// the session bitmap surface so the canvas displays exactly what was
-  /// committed and undo/redo can revert the bitmap alongside the command.
+  /// Commits a finished stroke into the active cel's surface and returns
+  /// its surface transition — the caller's undo payload (R19 P3b).
   ///
-  /// Returns `null` when the stroke changed no pixels: creating a paint
-  /// command and undo entry without a matching bitmap materialization entry
-  /// would desynchronize the two histories, making a later undo revert the
-  /// previous stroke's bitmap while hiding the no-op command.
-  BrushPaintCommand? commitSourceStroke({
+  /// Returns `null` when the stroke changed no pixels: a no-op stroke
+  /// must create no undo entry.
+  BrushStrokeCommitOutcome? commitSourceStroke({
     required List<BrushDab> sourceDabs,
     CacheInvalidationSink? cacheInvalidationSink,
     Uint8List? prerasterizedStrokePixels,
@@ -196,10 +126,12 @@ class BrushFrameEditingCoordinator {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
     }
 
+    final before = activeSessionState;
+    final preSurface = before.canvasState.currentSurface;
     final result = labProbe(
       'commit.materialize',
       () => commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-        sessionState: activeSessionState,
+        sessionState: before,
         sequence: BrushDabSequence(sourceDabs),
         layerId: _activeFrameKey.layerId,
         frameId: _activeFrameKey.frameId,
@@ -209,59 +141,20 @@ class BrushFrameEditingCoordinator {
         prerasterizedStrokeBounds: prerasterizedStrokeBounds,
       ),
     );
-    // Bitmap undo snapshots are byte- AND count-budgeted: the deepest
-    // entries drop first (their undos fall back to the command replay), so
-    // a run of huge strokes can never pin gigabytes of touched tiles — and
-    // a run of SMALL strokes can never pile snapshots past the unified
-    // history's reach (userUndoLimit), which used to fill the whole byte
-    // budget with unreachable entries.
-    final budgetedHistory = labProbe(
-      'commit.trim',
-      () => trimMaterializationHistoryToByteBudget(
-        result.sessionState.materializationHistoryState,
-        maxBytes: historyPolicy.materializationByteBudget,
-        maxEntries: historyPolicy.userUndoLimit,
-      ),
-    );
-    final committedState =
-        identical(
-          budgetedHistory,
-          result.sessionState.materializationHistoryState,
-        )
-        ? result.sessionState
-        : result.sessionState.copyWith(
-            materializationHistoryState: budgetedHistory,
-          );
+    final committedState = result.sessionState;
     sessionStore.update(_activeFrameKey, committedState);
     final affectedEntry = result.affectedEntry;
     if (affectedEntry == null) {
       return null;
     }
 
-    final sequenceNumber = _nextSequenceNumber++;
-    final command = BrushPaintCommand(
-      id: BrushPaintCommandId('brush-paint-$sequenceNumber'),
-      sequenceNumber: sequenceNumber,
-      kind: BrushPaintCommandKind.paintStroke,
-      debugLabel: 'Paint stroke $sequenceNumber',
-      sourceDabs: List<BrushDab>.unmodifiable(sourceDabs),
-      materializationRef: _materializationRefFor(
-        frameKey: _activeFrameKey,
-        sequenceNumber: sequenceNumber,
-        entry: affectedEntry,
-      ),
-    );
     labProbe(
-      'commit.addCommand',
-      () => frameStore.addLivePaintCommand(
+      'commit.markEdited',
+      () => frameStore.markCelEdited(
         _activeFrameKey,
-        command,
         dirtyTiles: affectedEntry.dirtyTiles,
       ),
     );
-    // Keep the display cache fresh across the commit (donation replaces the
-    // dirty-then-replay cycle); derived ui.Image caches still re-upload via
-    // the invalidation sink below.
     labProbe(
       'commit.donate',
       () =>
@@ -275,202 +168,44 @@ class BrushFrameEditingCoordinator {
         dirtyTiles: affectedEntry.dirtyTiles,
       ),
     );
-    _pushBrushPaintUndoEntry(command, _activeFrameKey);
-    return command;
+    return BrushStrokeCommitOutcome(
+      preSurface: preSurface,
+      postSurface: committedState.canvasState.currentSurface,
+      dirtyTiles: affectedEntry.dirtyTiles,
+    );
   }
 
-  /// Rewrites the given commands' dabs in place on the ACTIVE frame (P9
-  /// selection move/transform) and rebuilds the session from the command
-  /// replay — the same fallback path undo uses, so what displays equals
-  /// what every composite route replays, by construction.
+  /// THE undo/redo primitive (R19 P3b): makes [surface] the cel's current
+  /// pixels — session, baked truth, display cache and downstream caches
+  /// all follow. Undo restores an entry's pre-surface, redo its
+  /// post-surface; both are plain references, so this is O(changed tiles)
+  /// in GC terms and O(1) in copies.
   ///
-  /// The bitmap materialization history resets with the rebuild (an
-  /// arbitrary rewrite has no incremental entry): undo of OLDER strokes
-  /// falls back to the replay path, exactly like after a canvas resize.
-  /// This operation itself creates no coordinator undo entry — the
-  /// app-level BrushLiftMoveHistoryCommand owns the session's adopt.
-  void rewritePaintCommandDabs(
-    Map<BrushPaintCommandId, List<BrushDab>> dabsById, {
-    BrushFrameKey? frameKey,
+  /// A surface captured at a different canvas size is refused (debug
+  /// assert, release no-op): the LIFO history order means a
+  /// ResizeCutCanvasCommand always unwinds first, so this only trips on a
+  /// programming error.
+  void restoreSurfaceSnapshot(
+    BrushFrameKey key,
+    BitmapSurface surface, {
     CacheInvalidationSink? cacheInvalidationSink,
   }) {
-    if (dabsById.isEmpty) {
-      return;
-    }
-    // Undo/redo may fire after the playhead moved on: the command targets
-    // the frame it was recorded on, not whatever is active now.
-    final key = frameKey ?? _activeFrameKey;
-
-    // R15-④ fast path: rewriting ONLY the newest visible command reverts
-    // its bitmap from the materialization snapshot and re-materializes the
-    // new dabs in place — the full command replay froze heavy cels at
-    // every selection-move release. Byte-equal to the replay by
-    // construction: the snapshot revert is the parity-pinned undo math and
-    // the command is LAST in display order. Falls back to the replay when
-    // the snapshot was budget-trimmed or the command is not newest.
-    final visible = frameStore.frameOrNull(key)?.visibleActivePaintCommands;
-    final state = sessionStore.sessionOrNull(key);
-    if (dabsById.length == 1 &&
-        dabsById.values.single.isNotEmpty &&
-        visible != null &&
-        visible.isNotEmpty &&
-        dabsById.keys.single == visible.last.id &&
-        state != null &&
-        state.canUndo) {
-      final reverted =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: state,
-            cacheInvalidationSink: _NoopCacheInvalidationSink(),
-          );
-      frameStore.replacePaintCommandDabs(key, dabsById);
-      // Re-commit the new dabs through the ordinary session primitive: the
-      // surface math is the commit path's own, and the pushed
-      // materialization entry keeps the NEXT rewrite of this command on
-      // the fast path too (repeated move gestures stay cheap).
-      final result =
-          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-            sessionState: reverted.sessionState,
-            sequence: BrushDabSequence(dabsById.values.single),
-            layerId: key.layerId,
-            frameId: key.frameId,
-            cacheInvalidationSink: _NoopCacheInvalidationSink(),
-          );
-      final budgetedHistory = trimMaterializationHistoryToByteBudget(
-        result.sessionState.materializationHistoryState,
-        maxBytes: historyPolicy.materializationByteBudget,
-        maxEntries: historyPolicy.userUndoLimit,
-      );
-      final committedState =
-          identical(
-            budgetedHistory,
-            result.sessionState.materializationHistoryState,
-          )
-          ? result.sessionState
-          : result.sessionState.copyWith(
-              materializationHistoryState: budgetedHistory,
-            );
-      final rebuilt = sessionStore.update(key, committedState);
-      _donateSessionSurfaceToDisplayCache(key, rebuilt);
-      _invalidateBrushFrame(cacheInvalidationSink, key);
-      return;
-    }
-
-    frameStore.replacePaintCommandDabs(key, dabsById);
-    _rebuildSessionFromCommands(key);
-    _invalidateBrushFrame(cacheInvalidationSink, key);
-  }
-
-  UndoHistoryEntry? undo({CacheInvalidationSink? cacheInvalidationSink}) {
-    final take = _undoHistory.takeUndo();
-    _undoHistory = take.history;
-    final entry = take.entry;
-    if (entry == null ||
-        !entry.isPaintPayload ||
-        entry.payloadRef.targetKey == null) {
-      return entry;
-    }
-    final key = entry.payloadRef.targetKey!;
-    final state = _sessionFor(key);
-    if (state.canUndo) {
-      final result =
-          undoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: state,
-            cacheInvalidationSink:
-                cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
-          );
-      sessionStore.update(key, result.sessionState);
-      frameStore.markPaintCommandHiddenByUndo(
-        key,
-        entry.payloadRef.paintCommandId,
-        dirtyTiles: result.affectedEntry?.dirtyTiles,
-      );
-      _donateSessionSurfaceToDisplayCache(key, result.sessionState);
-      _invalidateBrushFrame(
-        cacheInvalidationSink,
-        key,
-        dirtyTiles: result.affectedEntry?.dirtyTiles,
-      );
-    } else {
-      // The bitmap materialization history no longer covers this entry (it is
-      // reset by a canvas resize), so revert the bitmap by replaying the
-      // remaining visible commands instead.
-      frameStore.markPaintCommandHiddenByUndo(
-        key,
-        entry.payloadRef.paintCommandId,
-      );
-      _rebuildSessionFromCommands(key);
-      _invalidateBrushFrame(cacheInvalidationSink, key);
-    }
-    return entry;
-  }
-
-  UndoHistoryEntry? redo({CacheInvalidationSink? cacheInvalidationSink}) {
-    final take = _undoHistory.takeRedo();
-    _undoHistory = take.history;
-    final entry = take.entry;
-    if (entry == null ||
-        !entry.isPaintPayload ||
-        entry.payloadRef.targetKey == null) {
-      return entry;
-    }
-    final key = entry.payloadRef.targetKey!;
-    final state = _sessionFor(key);
-    if (state.canRedo) {
-      final result =
-          redoLatestBrushBitmapMaterializationInSessionStateWithCacheInvalidation(
-            sessionState: state,
-            cacheInvalidationSink:
-                cacheInvalidationSink ?? _NoopCacheInvalidationSink(),
-          );
-      sessionStore.update(key, result.sessionState);
-      frameStore.restorePaintCommandFromUndo(
-        key,
-        entry.payloadRef.paintCommandId,
-        dirtyTiles: result.affectedEntry?.dirtyTiles,
-      );
-      _donateSessionSurfaceToDisplayCache(key, result.sessionState);
-      _invalidateBrushFrame(
-        cacheInvalidationSink,
-        key,
-        dirtyTiles: result.affectedEntry?.dirtyTiles,
-      );
-    } else {
-      // Same fallback as undo: replay visible commands when the bitmap
-      // materialization history cannot restore this entry.
-      frameStore.restorePaintCommandFromUndo(
-        key,
-        entry.payloadRef.paintCommandId,
-      );
-      _rebuildSessionFromCommands(key);
-      _invalidateBrushFrame(cacheInvalidationSink, key);
-    }
-    return entry;
-  }
-
-  void _pushBrushPaintUndoEntry(
-    BrushPaintCommand command,
-    BrushFrameKey frameKey,
-  ) {
-    final entry = UndoHistoryEntry(
-      id: UndoHistoryEntryId('undo-${command.id.value}'),
-      sequenceNumber: command.sequenceNumber,
-      kind: UndoHistoryEntryKind.paintStroke,
-      scope: UndoHistoryScope.brushFrame,
-      payloadRef: UndoPayloadRef.paintCommand(
-        frameKey: frameKey,
-        paintCommandId: command.id,
-      ),
+    assert(
+      surface.canvasSize == sessionStore.canvasSize,
+      'surface snapshot size ${surface.canvasSize} != session canvas '
+      '${sessionStore.canvasSize} — undo order must unwind resizes first',
     );
-    final pushResult = _undoHistory.pushNewEntry(entry);
-    _undoHistory = pushResult.history;
-    for (final trimmed in pushResult.trimmedEntries) {
-      if (trimmed.isPaintPayload && trimmed.payloadRef.targetKey != null) {
-        frameStore.movePaintCommandToDeferredBake(
-          trimmed.payloadRef.targetKey!,
-          trimmed.payloadRef.paintCommandId,
-        );
-      }
+    if (surface.canvasSize != sessionStore.canvasSize) {
+      return;
     }
+    final blank = sessionStore.reset(key);
+    final state = sessionStore.update(
+      key,
+      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+    );
+    frameStore.markCelEdited(key);
+    _donateSessionSurfaceToDisplayCache(key, state);
+    _invalidateBrushFrame(cacheInvalidationSink, key);
   }
 
   void _invalidateBrushFrame(
@@ -486,31 +221,6 @@ class BrushFrameEditingCoordinator {
       ),
     );
   }
-
-  String _materializationRefFor({
-    required BrushFrameKey frameKey,
-    required int sequenceNumber,
-    required BrushBitmapMaterializationHistoryEntry entry,
-  }) {
-    return [
-      'brush-materialization',
-      frameKey.projectId.value,
-      frameKey.trackId.value,
-      frameKey.cutId.value,
-      frameKey.layerId.value,
-      frameKey.frameId.value,
-      'seq-$sequenceNumber',
-      'entry-layer-${entry.layerId.value}',
-      'entry-frame-${entry.frameId.value}',
-      'dirty-tiles-${entry.changedTileCount}',
-    ].join('/');
-  }
-
-  int liveCommandCount(BrushFrameKey key) => frameStore
-      .getOrCreateFrame(key)
-      .paintCommands
-      .where((command) => command.state == BrushPaintCommandState.live)
-      .length;
 }
 
 class _NoopCacheInvalidationSink implements CacheInvalidationSink {

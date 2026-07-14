@@ -1,45 +1,40 @@
+import '../models/bitmap_surface.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_key.dart';
-import 'brush_frame_display_cache_renderer.dart';
+import '../models/canvas_size.dart';
 import 'brush_frame_store.dart';
 
 /// Coordinates explicit, non-pointer-move preview cache rebuilds.
+///
+/// R19 P3b: with the baked raster as the sole truth (no command replay),
+/// a "rebuild" is a reference reseed — the valid cache, else the baked
+/// surface, else a blank surface for an empty cel.
 class BrushFrameDisplayCacheService {
   const BrushFrameDisplayCacheService({
     required this.frameStore,
-    required this.renderer,
+    required this.canvasSize,
+    this.tileSize = 256,
   });
 
   final BrushFrameStore frameStore;
-  final BrushFrameDisplayCacheRenderer renderer;
+  final CanvasSize canvasSize;
+  final int tileSize;
 
   BrushFrameDisplayCache prepareFramePreview(BrushFrameKey key) {
-    final drawing = frameStore.getOrCreateFrame(key);
+    frameStore.getOrCreateFrame(key);
     final existing = frameStore.displayCacheOrNull(key);
     if (existing != null &&
         existing.isValid &&
-        existing.previewSurface.canvasSize == renderer.canvasSize) {
+        existing.previewSurface.canvasSize == canvasSize) {
       return existing;
     }
 
-    // R19 bake-only: the baked raster serves directly when no commands
-    // could have diverged from it — an OPENED cel has no commands at all,
-    // and the command replay below would wrongly rebuild it BLANK.
-    final baked = frameStore.currentSurfaceWithoutReplay(
-      key,
-      canvasSize: renderer.canvasSize,
-    );
-    if (baked != null) {
-      return frameStore.storeRebuiltDisplayCache(
-        key: key,
-        previewSurface: baked,
-      );
-    }
-
-    final preview = renderer.rebuildPreview(drawing);
+    final surface =
+        frameStore.currentSurfaceWithoutReplay(key, canvasSize: canvasSize) ??
+        BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
     return frameStore.storeRebuiltDisplayCache(
       key: key,
-      previewSurface: preview,
+      previewSurface: surface,
     );
   }
 }

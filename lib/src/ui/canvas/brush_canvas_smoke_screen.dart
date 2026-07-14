@@ -16,6 +16,8 @@ import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
+import '../../services/commands/brush_stroke_history_command.dart';
+import '../../services/history_manager.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_canvas_smoke_host.dart';
 
@@ -183,12 +185,15 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
   String _colorHex(int color) =>
       '0x${color.toUnsigned(32).toRadixString(16).padLeft(8, '0').toUpperCase()}';
 
+  final HistoryManager _history = HistoryManager();
+
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     setState(() {
-      _coordinator.commitSourceStroke(
-        sourceDabs: strokeData.sourceDabs,
-        prerasterizedStrokePixels: strokeData.strokePixels,
-        prerasterizedStrokeBounds: strokeData.strokeBounds,
+      _history.execute(
+        BrushStrokeHistoryCommand(
+          coordinator: _coordinator,
+          strokeData: strokeData,
+        ),
       );
       _sessionRevision += 1;
       _debugOperation = 'commit';
@@ -197,27 +202,32 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
 
   void _undo() {
     setState(() {
-      final entry = _coordinator.undo(
-        cacheInvalidationSink: _cacheInvalidationSink,
-      );
+      if (_history.canUndo) {
+        _history.undo();
+        _debugOperation = 'undo';
+      } else {
+        _debugOperation = 'undo-empty';
+      }
       _sessionRevision += 1;
-      _debugOperation = entry == null ? 'undo-empty' : 'undo';
     });
   }
 
   void _redo() {
     setState(() {
-      final entry = _coordinator.redo(
-        cacheInvalidationSink: _cacheInvalidationSink,
-      );
+      if (_history.canRedo) {
+        _history.redo();
+        _debugOperation = 'redo';
+      } else {
+        _debugOperation = 'redo-empty';
+      }
       _sessionRevision += 1;
-      _debugOperation = entry == null ? 'redo-empty' : 'redo';
     });
   }
 
   void _resetSession({required String debugOperation}) {
     setState(() {
       _coordinator = _createCoordinator();
+      _history.clear();
       _sessionRevision += 1;
       _cacheInvalidationSink = _RecordingCacheInvalidationSink();
       _debugOperation = debugOperation;

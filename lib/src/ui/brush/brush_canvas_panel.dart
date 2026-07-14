@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../../services/brush_stroke_commit_data.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_paint_command_id.dart';
 import '../../services/canvas_selection.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -920,67 +920,54 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
   }
 
+  /// Pre-lift surfaces by session token (R19 P3b): the immutable surface
+  /// captured BEFORE a lift's erase — the confirm command's undo target
+  /// and the revert's restore point. Reference-cheap.
+  final Map<int, BitmapSurface> _liftAnchors = {};
+  int _liftTokenSeq = 0;
+
   /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
   /// history (the origin must vanish instantly, but nothing is undoable
-  /// until the session CONFIRMS) — and returns the command's id plus the
+  /// until the session CONFIRMS) — and returns a session token plus the
   /// lifted stamp dab, which floats until the confirm. Null when the
   /// shape covers no pixels.
-  ({BrushPaintCommandId commandId, BrushDab stampDab})? _handleSelectionLift(
+  ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
     CanvasSelectionShape shape,
   ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
       return null;
     }
+    final preLift = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final lift = buildSelectionLiftDabs(
       shape: shape,
-      surface: coordinator.activeSessionState.canvasState.currentSurface,
+      surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
     );
     if (lift == null) {
       return null;
     }
-    final command = coordinator.commitSourceStroke(
+    final outcome = coordinator.commitSourceStroke(
       sourceDabs: [lift.eraseDab],
       cacheInvalidationSink: widget.cacheInvalidationSink,
     );
-    if (command == null) {
+    if (outcome == null) {
       return null;
     }
+    final token = ++_liftTokenSeq;
+    _liftAnchors[token] = preLift;
     setState(() {});
-    return (commandId: command.id, stampDab: lift.stampDab);
+    return (liftToken: token, stampDab: lift.stampDab);
   }
 
-  /// The lift command's dabs with the floating [stampDab] LANDED at its
-  /// pending position (R19 pixel model: the layer only knows the stamp;
-  /// the command's erase dabs live here in the store).
-  List<BrushDab>? _liftDabsWithStamp(
-    BrushPaintCommandId commandId,
-    BrushDab stampDab,
-  ) {
+  /// R16-① confirm: lands the floating stamp and adopts the whole move
+  /// session (raw lift + landed stamp) into app history as ONE undo
+  /// entry — a surface-snapshot command whose undo target is the exact
+  /// pre-lift picture (R19 P3b).
+  void _handleLiftConfirmed(int liftToken, BrushDab stampDab) {
     final coordinator = widget.coordinator;
+    final preLift = _liftAnchors.remove(liftToken);
     if (coordinator == null) {
-      return null;
-    }
-    final command = coordinator.frameStore
-        .frameOrNull(coordinator.activeFrameKey)
-        ?.commandById(commandId);
-    if (command == null) {
-      return null;
-    }
-    return [
-      for (final dab in command.sourceDabs)
-        if (dab.erase || dab.stamp == null) dab,
-      stampDab,
-    ];
-  }
-
-  /// R16-① confirm: adopts the whole move session (raw lift + landed
-  /// stamp) into app history as ONE undo entry.
-  void _handleLiftConfirmed(BrushPaintCommandId commandId, BrushDab stampDab) {
-    final coordinator = widget.coordinator;
-    final dabs = _liftDabsWithStamp(commandId, stampDab);
-    if (coordinator == null || dabs == null) {
       return;
     }
     // The setState rebuilds the interactive view onto the post-confirm
@@ -990,17 +977,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     // confirms post-frame, possibly after this panel went with it.
     void run() {
       final historyManager = widget.historyManager;
-      if (historyManager == null) {
-        coordinator.rewritePaintCommandDabs({
-          commandId: dabs,
-        }, cacheInvalidationSink: widget.cacheInvalidationSink);
+      if (historyManager == null || preLift == null) {
+        // Headless hosts (focused tests) or a lost anchor: land raw.
+        coordinator.commitSourceStroke(
+          sourceDabs: [stampDab],
+          cacheInvalidationSink: widget.cacheInvalidationSink,
+        );
         return;
       }
       historyManager.execute(
         BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
-          commandId: commandId,
-          confirmedDabs: dabs,
+          frameKey: coordinator.activeFrameKey,
+          preLiftSurface: preLift,
+          stampDab: stampDab,
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),
       );
@@ -1013,12 +1003,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  /// REVERT of a session (R17-①): the raw lift is the coordinator
-  /// stack's newest entry (drawing and seeks are locked while pending),
-  /// so popping it restores the pre-lift picture byte-exactly.
-  void _handleLiftReverted(BrushPaintCommandId commandId) {
+  /// REVERT of a session (R17-①): the pre-lift surface snapshot restores
+  /// the picture byte-exactly; nothing lands in history.
+  void _handleLiftReverted(int liftToken) {
+    final coordinator = widget.coordinator;
+    final preLift = _liftAnchors.remove(liftToken);
+    if (coordinator == null || preLift == null) {
+      return;
+    }
     void run() {
-      widget.coordinator?.undo(
+      coordinator.restoreSurfaceSnapshot(
+        coordinator.activeFrameKey,
+        preLift,
         cacheInvalidationSink: widget.cacheInvalidationSink,
       );
     }
@@ -1031,19 +1027,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   /// Raw landing of the floating stamp (no history entry) — the abandon
-  /// fallback so a reset never loses the float's pixels. The setState
-  /// matters: a rewrite swaps the session surface WITHOUT a session
-  /// notify, and the interactive view must rebuild onto the new surface
-  /// (R17-①b: the confirmed stamp was invisible until a frame roundtrip).
-  void _handleLiftLanded(BrushPaintCommandId commandId, BrushDab stampDab) {
-    final dabs = _liftDabsWithStamp(commandId, stampDab);
-    if (dabs == null) {
+  /// fallback so a reset never loses the float's pixels. The base surface
+  /// is the post-erase state throughout the session, so landing is a
+  /// plain stamp commit.
+  void _handleLiftLanded(int liftToken, BrushDab stampDab) {
+    final coordinator = widget.coordinator;
+    _liftAnchors.remove(liftToken);
+    if (coordinator == null) {
       return;
     }
     void run() {
-      widget.coordinator?.rewritePaintCommandDabs({
-        commandId: dabs,
-      }, cacheInvalidationSink: widget.cacheInvalidationSink);
+      coordinator.commitSourceStroke(
+        sourceDabs: [stampDab],
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      );
     }
 
     if (mounted) {

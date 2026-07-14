@@ -1,16 +1,21 @@
+import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
 
-/// Bridges a brush source stroke into the app-level [HistoryManager].
+/// Bridges a brush source stroke into the app-level [HistoryManager]
+/// (R19 P3b surface-snapshot undo).
 ///
-/// The first execute commits the stroke as a BrushPaintCommand (with the
-/// pen-up composite fast path when the stroke arrives pre-rasterized). Later
-/// execute calls are redo operations that restore that same command through
-/// the coordinator's unified brush undo history. The command never stores
-/// bitmap deltas or cache payloads as user-facing undo state.
-class BrushStrokeHistoryCommand implements Command {
+/// The first execute commits the stroke and captures its pre/post
+/// SURFACE REFERENCES — immutable tile maps, so together they retain
+/// only the stroke's changed tiles, and a chain of strokes shares each
+/// link. Undo restores the pre-surface, redo the post-surface, both
+/// byte-exactly and independent of any session/replay state (the entry
+/// is self-contained: it survives session eviction and outlives every
+/// cache).
+class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
   BrushStrokeHistoryCommand({
     required this.coordinator,
     required BrushStrokeCommitData strokeData,
@@ -24,14 +29,21 @@ class BrushStrokeHistoryCommand implements Command {
   /// stroke's pre-rasterized pixel buffer can be megabytes, and this
   /// command sits on the app undo stack for the rest of the session —
   /// retaining the payload made drawing sessions gradually accumulate
-  /// hundreds of MB (GC pressure = the progressive brush lag). Redo and
-  /// undo run through the coordinator's own history and never need it.
+  /// hundreds of MB (GC pressure = the progressive brush lag).
   BrushStrokeCommitData? _strokeData;
   bool _hasCommitted = false;
   bool _committedChanges = false;
 
+  BrushFrameKey? _frameKey;
+  BitmapSurface? _preSurface;
+  BitmapSurface? _postSurface;
+  int _retainedBytes = 0;
+
   /// Diagnostic for the accumulation regression guard.
   bool get retainsCommitPayload => _strokeData != null;
+
+  @override
+  int get estimatedRetainedBytes => _retainedBytes;
 
   @override
   String get description => 'Brush stroke';
@@ -40,24 +52,35 @@ class BrushStrokeHistoryCommand implements Command {
   void execute() {
     if (_hasCommitted) {
       if (_committedChanges) {
-        coordinator.redo(cacheInvalidationSink: cacheInvalidationSink);
+        coordinator.restoreSurfaceSnapshot(
+          _frameKey!,
+          _postSurface!,
+          cacheInvalidationSink: cacheInvalidationSink,
+        );
       }
       return;
     }
-    // A stroke that changes no pixels creates no brush undo entry; this
-    // app-level command then stays inert so undo/redo never pops an
-    // unrelated brush entry.
+    // A stroke that changes no pixels retains nothing and stays inert so
+    // undo/redo never disturb an unrelated state.
     final strokeData = _strokeData!;
-    _committedChanges =
-        coordinator.commitSourceStroke(
-          sourceDabs: strokeData.sourceDabs,
-          cacheInvalidationSink: cacheInvalidationSink,
-          prerasterizedStrokePixels: strokeData.strokePixels,
-          prerasterizedStrokeBounds: strokeData.strokeBounds,
-        ) !=
-        null;
+    final frameKey = coordinator.activeFrameKey;
+    final outcome = coordinator.commitSourceStroke(
+      sourceDabs: strokeData.sourceDabs,
+      cacheInvalidationSink: cacheInvalidationSink,
+      prerasterizedStrokePixels: strokeData.strokePixels,
+      prerasterizedStrokeBounds: strokeData.strokeBounds,
+    );
     _hasCommitted = true;
     _strokeData = null;
+    _committedChanges = outcome != null;
+    if (outcome != null) {
+      _frameKey = frameKey;
+      _preSurface = outcome.preSurface;
+      _postSurface = outcome.postSurface;
+      // Pre AND post images of the changed tiles are uniquely ours in
+      // the worst case (no neighbouring entries to share with).
+      _retainedBytes = outcome.estimatedRetainedBytes * 2;
+    }
   }
 
   @override
@@ -65,6 +88,10 @@ class BrushStrokeHistoryCommand implements Command {
     if (!_committedChanges) {
       return;
     }
-    coordinator.undo(cacheInvalidationSink: cacheInvalidationSink);
+    coordinator.restoreSurfaceSnapshot(
+      _frameKey!,
+      _preSurface!,
+      cacheInvalidationSink: cacheInvalidationSink,
+    );
   }
 }

@@ -182,10 +182,11 @@ class TimesheetInkController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// VISIBLE committed stroke count for one band/page (test/debug oracle;
-  /// undo hides commands rather than changing their live state).
-  int strokeCountFor(TimesheetInkPlane plane, BrushFrameKey key) {
+  /// Whether the band/page cel holds any ink (test/debug oracle — R19
+  /// P3b: the baked raster is the content; undo restores surfaces, so
+  /// "count" collapses to has-content).
+  bool hasInkFor(TimesheetInkPlane plane, BrushFrameKey key) {
     final store = plane == TimesheetInkPlane.strip ? _stripStore : _pageStore;
-    return store.frameOrNull(key)?.allPaintCommandsInDisplayOrder.length ?? 0;
+    return store.celHasRenderableContent(key);
   }
 }
