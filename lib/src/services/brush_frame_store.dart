@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import '../models/bitmap_surface.dart';
 import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
@@ -6,6 +8,7 @@ import '../models/brush_frame_key.dart';
 import '../models/cut_id.dart';
 import '../models/dirty_tile_set.dart';
 import 'bitmap_surface_geometry.dart';
+import 'persistence/brush_drawing_binary_codec.dart';
 
 class BrushFrameStore {
   BrushFrameStore();
@@ -48,65 +51,137 @@ class BrushFrameStore {
   }
 
   // -------------------------------------------------------------------
-  // Baked raster truth (R19 bake-only).
+  // Baked raster truth (R19 bake-only / R20-A1 two-tier).
   //
-  // From format v2 on, a cel's picture IS its baked tile raster — like
-  // every raster program, what you saved is what reopens, byte for byte.
-  // The map is deliberately NOT byte-budgeted: truth cannot be evicted
-  // (the display-cache LRU above remains a derived-preview affair).
-  // Surfaces are immutable and shared with sessions/donations, so this
-  // adds no copies.
+  // A cel's picture IS its baked tile raster. The truth now lives in TWO
+  // forms (TVP-style non-visible cel compression, sized for 400-cut TV /
+  // 1500-cut theatrical projects in one file):
+  //
+  //  - HOT: a BitmapSurface, insertion-ordered as an LRU (access
+  //    re-inserts). Byte-budgeted by [hotCelByteBudget].
+  //  - COLD: a [QapCelBlob] — the cel encoded + deflated, the SAME bytes
+  //    the .qap v3 archive stores. Opens land every cel cold (no pixel
+  //    decode); first access materializes; over-budget hot cels cool
+  //    back down in a background isolate.
+  //
+  // A key is in exactly one of the two maps. Truth is never evicted —
+  // cooling changes representation, not existence. Undo snapshots hold
+  // their own surface references and are budgeted separately
+  // (HistoryManager.retainedByteBudget), so cooling here never touches
+  // history correctness.
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
+  final Map<BrushFrameKey, QapCelBlob> _coldCels = {};
+  final Map<BrushFrameKey, int> _hotByteEstimates = {};
+  int _hotBytes = 0;
 
-  /// The cel's baked raster truth, or null for a never-drawn cel.
-  BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) => _bakedSurfaces[key];
+  /// Hot-tier byte budget. Cels beyond it cool (encode + deflate) in LRU
+  /// order in a background isolate. Test-settable.
+  int hotCelByteBudget = 1536 * 1024 * 1024;
+
+  /// Bytes currently resident in the hot tier (diagnostics/tests).
+  int get hotBakedBytes => _hotBytes;
+
+  /// Keys currently in the cold tier (diagnostics/tests).
+  Iterable<BrushFrameKey> get coldCelKeys => _coldCels.keys;
+
+  bool isCelCold(BrushFrameKey key) => _coldCels.containsKey(key);
+
+  /// The cel's baked raster truth, or null for a never-drawn cel. A cold
+  /// cel materializes (inflate + decode) and promotes to hot right here —
+  /// this is the ONE seam every pixel consumer goes through.
+  BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) {
+    final hot = _bakedSurfaces.remove(key);
+    if (hot != null) {
+      _bakedSurfaces[key] = hot; // LRU touch.
+      return hot;
+    }
+    final cold = _coldCels[key];
+    if (cold == null) {
+      return null;
+    }
+    final surface = cold.decode().toSurface();
+    _coldCels.remove(key);
+    _storeHot(key, surface);
+    // Reseed the display cache from the same object so first paint after
+    // a promotion is O(1), mirroring what open used to do eagerly.
+    storeRebuiltDisplayCache(key: key, previewSurface: surface);
+    _scheduleCooling();
+    return surface;
+  }
+
+  void _storeHot(BrushFrameKey key, BitmapSurface surface) {
+    final previous = _hotByteEstimates.remove(key);
+    if (previous != null) {
+      _hotBytes -= previous;
+    }
+    final estimate =
+        surface.tiles.length * surface.tileSize * surface.tileSize * 4;
+    _bakedSurfaces.remove(key);
+    _bakedSurfaces[key] = surface;
+    _hotByteEstimates[key] = estimate;
+    _hotBytes += estimate;
+  }
+
+  void _removeBaked(BrushFrameKey key) {
+    _bakedSurfaces.remove(key);
+    _coldCels.remove(key);
+    final estimate = _hotByteEstimates.remove(key);
+    if (estimate != null) {
+      _hotBytes -= estimate;
+    }
+  }
 
   /// Stores [surface] as the cel's baked truth (commit donations and
-  /// project opens both land here).
+  /// snapshot restores land here) — always hot: it was just touched.
   void storeBakedSurface(BrushFrameKey key, BitmapSurface surface) {
     if (surface.tiles.isEmpty) {
-      _bakedSurfaces.remove(key);
+      _removeBaked(key);
       return;
     }
-    _bakedSurfaces[key] = surface;
+    _coldCels.remove(key);
+    _storeHot(key, surface);
+    _scheduleCooling();
   }
 
-  /// Every baked cel for the .qap v2 save payload — a reference-cheap map
-  /// copy: the baked truth is ALWAYS current (every commit and snapshot
-  /// restore donates into it), so the save payload is simply the truth.
-  Map<BrushFrameKey, BitmapSurface> bakedSnapshotForSave() {
-    return {..._bakedSurfaces};
+  /// Every baked cel for the .qap v3 save payload: hot surfaces (the
+  /// saver encodes them) and cold blobs (already archive bytes — written
+  /// through with ZERO re-encode). Reference-cheap on both sides.
+  ({Map<BrushFrameKey, BitmapSurface> hot, Map<BrushFrameKey, QapCelBlob> cold})
+  bakedSnapshotForSave() {
+    return (hot: {..._bakedSurfaces}, cold: {..._coldCels});
   }
 
-  /// Replaces the WHOLE store with loaded baked cels (v2 project open):
-  /// frames reseed live at sourceRevision 1 with EMPTY command lists —
-  /// the raster is the truth — and the display caches seed from the same
-  /// surfaces so first paint is O(1).
-  void restoreBaked(Map<BrushFrameKey, BitmapSurface> cels) {
+  /// Replaces the WHOLE store with loaded cels (project open) — all COLD:
+  /// no pixel decodes on open, so a 1500-cut project opens in archive-read
+  /// time. Frames reseed at sourceRevision 1; first access per cel
+  /// materializes.
+  void restoreBaked(Map<BrushFrameKey, QapCelBlob> cels) {
     _frames.clear();
     clearDisplayCaches();
     _bakedSurfaces.clear();
+    _coldCels.clear();
+    _hotByteEstimates.clear();
+    _hotBytes = 0;
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
         sourceRevision: 1,
       );
-      _bakedSurfaces[entry.key] = entry.value;
-      storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
+      _coldCels[entry.key] = entry.value;
     }
   }
 
   /// Whether the cel shows ANY picture content — the composite/export/
-  /// fill resolvers' emptiness oracle. R19 P3b: the baked raster IS the
-  /// content (commands retired; donations keep it current through every
-  /// commit, undo and redo).
+  /// fill resolvers' emptiness oracle. Cold counts: representation is not
+  /// existence.
   bool celHasRenderableContent(BrushFrameKey key) =>
-      _bakedSurfaces.containsKey(key);
+      _bakedSurfaces.containsKey(key) || _coldCels.containsKey(key);
 
   /// The cel's current pixels: a VALID display cache at [canvasSize]
-  /// first (donations keep it fresh), else the baked truth. Null = the
-  /// cel is empty (or sized for another canvas — resize flows reseed).
+  /// first (donations keep it fresh), else the baked truth (a cold cel
+  /// materializes if its recorded size matches). Null = the cel is empty
+  /// (or sized for another canvas — resize flows reseed).
   BitmapSurface? currentSurfaceWithoutReplay(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
@@ -115,11 +190,67 @@ class BrushFrameStore {
     if (cached != null && cached.canvasSize == canvasSize) {
       return cached;
     }
-    final baked = _bakedSurfaces[key];
-    if (baked != null && baked.canvasSize == canvasSize) {
-      return baked;
+    final hot = _bakedSurfaces[key];
+    if (hot != null) {
+      return hot.canvasSize == canvasSize ? bakedSurfaceOrNull(key) : null;
+    }
+    final cold = _coldCels[key];
+    if (cold != null && cold.canvasSize == canvasSize) {
+      return bakedSurfaceOrNull(key);
     }
     return null;
+  }
+
+  // --- Cooling (hot → cold) -------------------------------------------
+
+  Future<void>? _activeCooling;
+
+  /// Completes when no cooling pass is running (tests).
+  Future<void> drainCooling() async {
+    while (_activeCooling != null) {
+      await _activeCooling;
+    }
+  }
+
+  void _scheduleCooling() {
+    if (_activeCooling != null ||
+        _hotBytes <= hotCelByteBudget ||
+        _bakedSurfaces.length <= 1) {
+      // The length guard both mirrors the loop's never-cool-the-last-hot
+      // rule and keeps the completion re-schedule from spinning when the
+      // one remaining cel alone exceeds the budget.
+      return;
+    }
+    _activeCooling = _coolLoop().whenComplete(() {
+      _activeCooling = null;
+      // Work stored while this pass ran (or that this pass could not cool
+      // yet — e.g. a lone hot cel that stopped the loop) gets a fresh
+      // pass; without this, a skipped schedule during an active pass
+      // would never retry.
+      _scheduleCooling();
+    });
+  }
+
+  /// Cools LRU hot cels until the budget holds, one at a time: snapshot
+  /// bytes on the main isolate, deflate in a background isolate, then
+  /// commit the swap ONLY if the cel's surface is still the identical
+  /// object (a donation in between wins and the stale blob is dropped).
+  /// The most recently used cel never cools — the one being painted or
+  /// displayed must not thrash even if it alone exceeds the budget.
+  Future<void> _coolLoop() async {
+    while (_hotBytes > hotCelByteBudget && _bakedSurfaces.length > 1) {
+      final key = _bakedSurfaces.keys.first;
+      final surface = _bakedSurfaces[key]!;
+      final entry = QapCelEntry.fromSurface(key, surface);
+      final blob = await Isolate.run(() => QapCelBlob.encode(entry));
+      if (identical(_bakedSurfaces[key], surface)) {
+        _bakedSurfaces.remove(key);
+        _hotBytes -= _hotByteEstimates.remove(key)!;
+        _coldCels[key] = blob;
+        // Drop the derived alias too, or the surface stays resident.
+        _displayCaches.remove(key);
+      }
+    }
   }
 
   /// Re-homes stored drawings under new keys (a cross-layer block move,
@@ -136,10 +267,15 @@ class BrushFrameStore {
       if (cache != null) {
         _displayCaches[to] = cache;
       }
-      // The baked truth travels with the cel (R19).
+      // The baked truth travels with the cel (R19) — either tier.
       final baked = _bakedSurfaces.remove(from);
       if (baked != null) {
         _bakedSurfaces[to] = baked;
+        _hotByteEstimates[to] = _hotByteEstimates.remove(from)!;
+      }
+      final cold = _coldCels.remove(from);
+      if (cold != null) {
+        _coldCels[to] = cold;
       }
     }
   }
@@ -156,39 +292,62 @@ class BrushFrameStore {
     if (dx == 0 && dy == 0) {
       return;
     }
-    for (final key in _bakedSurfaces.keys.toList()) {
-      if (key.cutId != cutId) {
-        continue;
-      }
-      _bakedSurfaces[key] = translateBitmapSurface(
-        _bakedSurfaces[key]!,
-        dx: dx.round(),
-        dy: dy.round(),
-        canvasSize: _bakedSurfaces[key]!.canvasSize,
+    for (final key in _celKeysOfCut(cutId)) {
+      // Cold cels of the cut materialize first (cut-scoped = bounded).
+      final surface = bakedSurfaceOrNull(key)!;
+      _storeHot(
+        key,
+        translateBitmapSurface(
+          surface,
+          dx: dx.round(),
+          dy: dy.round(),
+          canvasSize: surface.canvasSize,
+        ),
       );
       markCelEdited(key);
     }
+    _scheduleCooling();
   }
+
+  List<BrushFrameKey> _celKeysOfCut(CutId cutId) => [
+    for (final key in _bakedSurfaces.keys)
+      if (key.cutId == cutId) key,
+    for (final key in _coldCels.keys)
+      if (key.cutId == cutId) key,
+  ];
 
   /// Adopts a new canvas size for every baked surface (R19: a resize is
   /// a raster crop/extend — top-left anchored, every tile kept, so
-  /// shrinking then growing back restores exactly).
+  /// shrinking then growing back restores exactly). Cold cels transform
+  /// one at a time through a decode→resize→re-encode round trip and STAY
+  /// cold — a 1500-cel project must never materialize whole for a resize.
   void resizeBakedSurfaces(CanvasSize canvasSize) {
     for (final key in _bakedSurfaces.keys.toList()) {
-      _bakedSurfaces[key] = resizeBitmapSurfaceCanvas(
-        _bakedSurfaces[key]!,
+      _storeHot(
+        key,
+        resizeBitmapSurfaceCanvas(_bakedSurfaces[key]!, canvasSize),
+      );
+    }
+    for (final key in _coldCels.keys.toList()) {
+      final cold = _coldCels[key]!;
+      if (cold.canvasSize == canvasSize) {
+        continue;
+      }
+      final resized = resizeBitmapSurfaceCanvas(
+        cold.decode().toSurface(),
         canvasSize,
       );
+      _coldCels[key] = QapCelBlob.encode(QapCelEntry.fromSurface(key, resized));
     }
   }
 
-  /// The cut's baked surfaces by key — surfaces are immutable, so this
-  /// snapshot is reference-cheap (the anchored-resize command keeps one
+  /// The cut's baked surfaces by key — cold cels of the cut materialize
+  /// (cut-scoped = bounded); surfaces are immutable, so the snapshot is
+  /// reference-cheap from there (the anchored-resize command keeps one
   /// for its exact undo).
   Map<BrushFrameKey, BitmapSurface> bakedSurfacesForCut(CutId cutId) {
     return {
-      for (final entry in _bakedSurfaces.entries)
-        if (entry.key.cutId == cutId) entry.key: entry.value,
+      for (final key in _celKeysOfCut(cutId)) key: bakedSurfaceOrNull(key)!,
     };
   }
 
@@ -198,12 +357,15 @@ class BrushFrameStore {
     CutId cutId,
     Map<BrushFrameKey, BitmapSurface> snapshot,
   ) {
-    _bakedSurfaces.removeWhere((key, _) => key.cutId == cutId);
-    _bakedSurfaces.addAll(snapshot);
-    for (final key in snapshot.keys) {
-      // The display caches follow the restored truth.
-      storeRebuiltDisplayCache(key: key, previewSurface: snapshot[key]!);
+    for (final key in _celKeysOfCut(cutId)) {
+      _removeBaked(key);
     }
+    for (final entry in snapshot.entries) {
+      _storeHot(entry.key, entry.value);
+      // The display caches follow the restored truth.
+      storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
+    }
+    _scheduleCooling();
   }
 
   BrushFrameDisplayCache storeRebuiltDisplayCache({

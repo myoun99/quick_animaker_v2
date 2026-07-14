@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import '../../models/bitmap_surface.dart';
@@ -127,6 +128,73 @@ QapCelEntry decodeCelEntry(Uint8List bytes) {
   );
 }
 
+const int _qapCelBlobVersion = 1;
+
+/// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
+/// geometry, readable WITHOUT inflating) followed by the deflated
+/// [encodeCelEntry] stream.
+///
+/// This one byte layout is BOTH the in-RAM cold-cel form (the store's
+/// tier-1 compression) and the .qap v3 archive entry (STORE'd, since the
+/// payload is already deflated) — so an untouched cel saves with zero
+/// re-encode and a project opens without decoding a single pixel.
+class QapCelBlob {
+  QapCelBlob(this.bytes) {
+    final reader = _ByteReader(bytes);
+    final version = reader.u8();
+    if (version > _qapCelBlobVersion) {
+      throw const FormatException('Unsupported cel blob version.');
+    }
+    key = BrushFrameKey(
+      projectId: ProjectId(reader.string()),
+      trackId: TrackId(reader.string()),
+      cutId: CutId(reader.string()),
+      layerId: LayerId(reader.string()),
+      frameId: FrameId(reader.string()),
+    );
+    canvasSize = CanvasSize(width: reader.u32(), height: reader.u32());
+    tileSize = reader.u16();
+    _deflatedOffset = reader.offset;
+  }
+
+  factory QapCelBlob.encode(QapCelEntry entry) {
+    final body = encodeCelEntry(entry);
+    final deflated = ZLibEncoder().convert(body);
+    final writer = _ByteWriter()
+      ..u8(_qapCelBlobVersion)
+      ..string(entry.key.projectId.value)
+      ..string(entry.key.trackId.value)
+      ..string(entry.key.cutId.value)
+      ..string(entry.key.layerId.value)
+      ..string(entry.key.frameId.value)
+      ..u32(entry.canvasSize.width)
+      ..u32(entry.canvasSize.height)
+      ..u16(entry.tileSize)
+      ..bytes(deflated);
+    return QapCelBlob(writer.takeBytes());
+  }
+
+  /// The whole blob — header + deflate stream. Archive entries carry
+  /// exactly these bytes (STORE'd).
+  final Uint8List bytes;
+
+  late final BrushFrameKey key;
+  late final CanvasSize canvasSize;
+  late final int tileSize;
+  late final int _deflatedOffset;
+
+  int get byteLength => bytes.length;
+
+  QapCelEntry decode() {
+    final inflated = ZLibDecoder().convert(
+      Uint8List.sublistView(bytes, _deflatedOffset),
+    );
+    return decodeCelEntry(
+      inflated is Uint8List ? inflated : Uint8List.fromList(inflated),
+    );
+  }
+}
+
 class _ByteWriter {
   final BytesBuilder _builder = BytesBuilder(copy: true);
   final ByteData _scratch = ByteData(8);
@@ -167,6 +235,8 @@ class _ByteReader {
   final ByteData _data;
   final Uint8List _bytes;
   int _offset = 0;
+
+  int get offset => _offset;
 
   int u8() => _data.getUint8(_offset++);
 

@@ -15,15 +15,20 @@ import '../../models/audio_clip.dart';
 import '../../models/project.dart';
 import 'brush_drawing_binary_codec.dart';
 
-/// v2 (R19 bake-only): cels persist as BAKED tile rasters
-/// (`cels/<n>.bin`) — the truth. The v1 command-drawing reader is DELETED
-/// (R20-E3): no production v1 file was ever written (user-confirmed), so
-/// `drawings/`/`tips.bin` entries are simply ignored.
-const int qapFormatVersion = 2;
+/// v3 (R20-A1 cold-cel tiering): cels persist as PRE-DEFLATED blobs
+/// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
+/// blob layout is identical to the in-RAM cold-cel form, so untouched
+/// cold cels save with zero re-encode and opens keep every cel cold
+/// (no pixel decode) until first access. The v1 command-drawing reader
+/// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
+/// bump: no production file of either version exists (user-confirmed);
+/// legacy entries are simply ignored.
+const int qapFormatVersion = 3;
 
 /// A parsed .qap archive: the project (media paths NOT yet resolved — see
-/// [remapProjectMediaPaths]), its baked cels and the saved relative-path
-/// manifest ({absolute path at save time: save-dir-relative path}).
+/// [remapProjectMediaPaths]), its baked cels in COLD form (headers parsed,
+/// pixels still deflated) and the saved relative-path manifest
+/// ({absolute path at save time: save-dir-relative path}).
 class QapArchiveContents {
   const QapArchiveContents({
     required this.project,
@@ -32,7 +37,7 @@ class QapArchiveContents {
   });
 
   final Project project;
-  final List<QapCelEntry> cels;
+  final List<QapCelBlob> cels;
   final Map<String, String> mediaRelativePaths;
 }
 
@@ -41,7 +46,7 @@ class QapArchiveContents {
 /// under it is recorded relative, everything else stays absolute-only.
 Uint8List buildQapArchiveBytes({
   required Project project,
-  required List<QapCelEntry> cels,
+  required List<QapCelBlob> cels,
   String? saveDirectory,
 }) {
   final mediaRelativePaths = <String, String>{};
@@ -65,10 +70,13 @@ Uint8List buildQapArchiveBytes({
         }),
       ),
     );
-  // v2 (R19 bake-only): baked cel rasters ARE the drawing truth; no
-  // drawings/tips entries are written anymore.
+  // v3: cel blobs are already deflated — STORE them as-is (an inner
+  // deflate-of-deflate would only burn CPU).
   for (var i = 0; i < cels.length; i += 1) {
-    archive.add(ArchiveFile.bytes('cels/$i.bin', encodeCelEntry(cels[i])));
+    archive.add(
+      ArchiveFile.bytes('cels/$i.celz', cels[i].bytes)
+        ..compression = CompressionType.none,
+    );
   }
   return ZipEncoder().encodeBytes(archive);
 }
@@ -99,12 +107,13 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
           entry.key as String: entry.value as String,
   };
 
-  // v2 truth: baked cel rasters. (v1 drawings/tips entries are ignored —
-  // reader deleted, no production v1 file exists.)
-  final cels = <QapCelEntry>[
+  // v3 truth: cold cel blobs — header parse only, pixels stay deflated
+  // until the store's first access. (v1 drawings/tips and v2 cels/*.bin
+  // entries are ignored — readers deleted, no production file exists.)
+  final cels = <QapCelBlob>[
     for (final file in archive.files)
-      if (file.isFile && file.name.startsWith('cels/'))
-        decodeCelEntry(file.readBytes()!),
+      if (file.isFile && file.name.endsWith('.celz'))
+        QapCelBlob(file.readBytes()!),
   ];
 
   return QapArchiveContents(
