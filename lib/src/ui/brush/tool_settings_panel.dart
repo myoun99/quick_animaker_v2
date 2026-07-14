@@ -235,6 +235,18 @@ class _MoveSettingsState extends State<_MoveSettings> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        // R20-D3 mesh warp: opens the control grid on the selection
+        // (Enter commits the triangulated warp; Esc reverts). Perspective
+        // rides the Ctrl+corner gesture on the box itself (R20-D2).
+        OutlinedButton.icon(
+          key: const ValueKey<String>('move-mesh-warp-button'),
+          onPressed: hasSelection
+              ? () => widget.selectionCommands?.beginMeshTransform()
+              : null,
+          icon: const Icon(Icons.grid_4x4, size: 16),
+          label: const Text('Mesh Warp'),
+        ),
       ],
     );
   }
