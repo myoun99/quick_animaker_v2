@@ -74,34 +74,36 @@ void main() {
       );
     });
 
-    test('rightward push: the block ahead shifts by the overlap, cascading',
-        () {
-      final layer = layerWith(
-        'a',
-        {
-          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
-          3: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
-          6: const TimelineExposure.drawing(FrameId('a-f3'), length: 2),
-        },
-        frameIds: ['a-f1', 'a-f2', 'a-f3'],
-      );
+    test(
+      'rightward push: the block ahead shifts by the overlap, cascading',
+      () {
+        final layer = layerWith(
+          'a',
+          {
+            0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+            3: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+            6: const TimelineExposure.drawing(FrameId('a-f3'), length: 2),
+          },
+          frameIds: ['a-f1', 'a-f2', 'a-f3'],
+        );
 
-      final plan = planDrawingBlockMove(
-        source: layer,
-        target: layer,
-        blockStartIndex: 0,
-        frameDelta: 3,
-      );
+        final plan = planDrawingBlockMove(
+          source: layer,
+          target: layer,
+          blockStartIndex: 0,
+          frameDelta: 3,
+        );
 
-      expect(plan, isNotNull);
-      final timeline = plan!.sourceAfter.timeline;
-      expect(plan.destinationStartIndex, 3);
-      expect(timeline[3]!.frameId, const FrameId('a-f1'));
-      // [3,5) pushed to [5,7); that push shoves [6,8) on to [7,9).
-      expect(timeline[5]!.frameId, const FrameId('a-f2'));
-      expect(timeline[7]!.frameId, const FrameId('a-f3'));
-      expect(timeline.length, 3);
-    });
+        expect(plan, isNotNull);
+        final timeline = plan!.sourceAfter.timeline;
+        expect(plan.destinationStartIndex, 3);
+        expect(timeline[3]!.frameId, const FrameId('a-f1'));
+        // [3,5) pushed to [5,7); that push shoves [6,8) on to [7,9).
+        expect(timeline[5]!.frameId, const FrameId('a-f2'));
+        expect(timeline[7]!.frameId, const FrameId('a-f3'));
+        expect(timeline.length, 3);
+      },
+    );
 
     test('leftward push: the block ahead slides toward frame 0, and the '
         'move clamps when the wall stops the chain', () {

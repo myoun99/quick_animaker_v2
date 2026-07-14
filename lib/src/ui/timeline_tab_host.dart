@@ -1,4 +1,4 @@
-﻿import 'package:file_selector/file_selector.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
@@ -889,9 +889,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.frameSeekCommitted.removeListener(
-        _handleSeekCommitted,
-      );
+      oldWidget.session.frameSeekCommitted.removeListener(_handleSeekCommitted);
       widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
     }
     _token = _deriveToken();

@@ -173,9 +173,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       (id) => !tabs.any((tab) => tab.id == id && tab.keepAlive),
     );
     _contentCache.removeWhere((id, _) => !_builtTabIds.contains(id));
-    _tabVisibility.removeWhere(
-      (id, _) => !tabs.any((tab) => tab.id == id),
-    );
+    _tabVisibility.removeWhere((id, _) => !tabs.any((tab) => tab.id == id));
     if (active.keepAlive) {
       _builtTabIds.add(active.id);
     }
@@ -239,8 +237,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                             visible: tab.id == active.id,
                           ),
                           child: tab.keepAlive
-                              ? (_contentCache[tab.id] ??=
-                                    _buildTabContent(tab))
+                              ? (_contentCache[tab.id] ??= _buildTabContent(
+                                  tab,
+                                ))
                               : _buildTabContent(tab),
                         ),
                       ),

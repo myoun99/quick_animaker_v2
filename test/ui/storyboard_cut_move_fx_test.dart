@@ -11,7 +11,9 @@ import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
 /// open too (the state the keys get authored in).
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    final manager = EditorSessionManager(initialProject: createDefaultProject());
+    final manager = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
     manager.createCut();
     addTearDown(manager.dispose);
 
@@ -19,10 +21,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ListenableBuilder(
-            listenable: Listenable.merge([
-              manager,
-              manager.frameSeekCommitted,
-            ]),
+            listenable: Listenable.merge([manager, manager.frameSeekCommitted]),
             builder: (context, _) => StoryboardTabHost(
               session: manager,
               pixelsPerFrame: 12,

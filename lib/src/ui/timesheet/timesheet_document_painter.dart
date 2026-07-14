@@ -1096,7 +1096,6 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-
   /// An SE entry's start cell (R5-⑦, user-approved mockup v4): a full-width
   /// thin red bar RIGHT BEFORE the block start, a compact ACCENT name box
   /// (the app's shared accent — same chip as the timeline/X-sheet rows)

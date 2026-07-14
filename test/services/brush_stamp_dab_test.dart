@@ -34,10 +34,7 @@ void main() {
     double opacity = 1.0,
   }) {
     return BrushDab(
-      center: CanvasPoint(
-        x: left + stamp.width / 2,
-        y: top + stamp.height / 2,
-      ),
+      center: CanvasPoint(x: left + stamp.width / 2, y: top + stamp.height / 2),
       color: 0xFF000000,
       size: stamp.width > stamp.height
           ? stamp.width.toDouble()
@@ -59,8 +56,7 @@ void main() {
       return const [0, 0, 0, 0];
     }
     final pixels = tile.pixels;
-    final offset =
-        ((y % tileSize) * tileSize + (x % tileSize)) * 4;
+    final offset = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
     return pixels.sublist(offset, offset + 4);
   }
 
@@ -74,7 +70,12 @@ void main() {
       // row 2
       200, 100, 50, 64, /**/ 255, 255, 255, 255,
     ]);
-    final stamp = BrushStampImage(id: 'lift-1', width: 2, height: 3, rgba: rgba);
+    final stamp = BrushStampImage(
+      id: 'lift-1',
+      width: 2,
+      height: 3,
+      rgba: rgba,
+    );
 
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
@@ -150,8 +151,22 @@ void main() {
       erase: true,
     );
     final lifted = Uint8List.fromList([
-      255, 0, 0, 255, /**/ 0, 0, 0, 0,
-      255, 0, 0, 255, /**/ 0, 0, 0, 0,
+      255,
+      0,
+      0,
+      255,
+      /**/ 0,
+      0,
+      0,
+      0,
+      255,
+      0,
+      0,
+      255,
+      /**/ 0,
+      0,
+      0,
+      0,
     ]);
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: surface,
@@ -200,9 +215,42 @@ void main() {
 
     // Erase the CENTER column with a stamp-alpha erase.
     final eraseRgba = Uint8List.fromList([
-      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
-      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
-      0, 0, 0, 0, /**/ 0, 0, 0, 255, /**/ 0, 0, 0, 0,
+      0,
+      0,
+      0,
+      0,
+      /**/ 0,
+      0,
+      0,
+      255,
+      /**/ 0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      /**/ 0,
+      0,
+      0,
+      255,
+      /**/ 0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      /**/ 0,
+      0,
+      0,
+      255,
+      /**/ 0,
+      0,
+      0,
+      0,
     ]);
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: surface,
@@ -221,11 +269,12 @@ void main() {
     );
 
     for (var y = 2; y <= 4; y += 1) {
-      expect(
-        pixelAt(result.surface, 3, y),
-        [0, 0, 0, 0],
-        reason: 'masked pixels erase to byte zero',
-      );
+      expect(pixelAt(result.surface, 3, y), [
+        0,
+        0,
+        0,
+        0,
+      ], reason: 'masked pixels erase to byte zero');
       expect(
         pixelAt(result.surface, 2, y),
         [255, 0, 0, 255],
@@ -255,9 +304,7 @@ void main() {
           id: const BrushPaintCommandId('cmd-1'),
           sequenceNumber: 1,
           kind: BrushPaintCommandKind.paintStroke,
-          sourceDabs: [
-            stampDab(left: 2, top: 3, stamp: stamp),
-          ],
+          sourceDabs: [stampDab(left: 2, top: 3, stamp: stamp)],
         ),
       ],
     );

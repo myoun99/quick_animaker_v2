@@ -18,9 +18,7 @@ void main() {
   }
 
   testWidgets('crossing a cut boundary switches the active cut QUIETLY and '
-      'never touches undo — the stop notify catches the UI up', (
-    tester,
-  ) async {
+      'never touches undo — the stop notify catches the UI up', (tester) async {
     final (s, first, second) = twoCutSession();
     addTearDown(s.dispose);
     final firstDuration = s.cutById(first)!.duration;

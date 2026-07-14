@@ -203,10 +203,7 @@ void main() {
         layerB.id: layerB.copyWith(
           timeline: {
             ...layerB.timeline,
-            0: TimelineExposure.drawing(
-              const FrameId('layer-a-f1'),
-              length: 4,
-            ),
+            0: TimelineExposure.drawing(const FrameId('layer-a-f1'), length: 4),
           },
         ),
       },

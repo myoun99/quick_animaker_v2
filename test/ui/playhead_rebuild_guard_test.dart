@@ -15,7 +15,9 @@ import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
 void main() {
   testWidgets('a committed seek inside the same enablement state does NOT '
       'rebuild the timeline toolbar', (tester) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
     addTearDown(session.dispose);
 
     await tester.pumpWidget(
@@ -72,7 +74,9 @@ void main() {
 
   testWidgets('a cursor move repaints only the timesheet playhead overlay '
       '— never the sheet painter', (tester) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
     addTearDown(session.dispose);
 
     await tester.pumpWidget(
