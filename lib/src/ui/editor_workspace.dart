@@ -12,6 +12,7 @@ import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
+import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tool_state.dart';
@@ -232,6 +233,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
     const FloodFillOptions(),
   );
+
+  /// The Select tool's lift-time mask knobs (R26): grow/shrink, inward
+  /// feather, edge AA. Defaults keep the lift byte-preserving.
+  final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
+      ValueNotifier(SelectionMaskOptions.none);
 
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
@@ -619,6 +625,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,
             fillOptions: _fillOptions,
+            selectionMaskOptions: _selectionMaskOptions,
           ),
         );
       case EditorWorkspace.brushesTabId:
@@ -702,14 +709,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         keys: CanvasTool.values,
                         activeKey: toolState.tool,
                         stateOf: () => (toolState, fillOptions),
-                        builder: (context) => ToolSettingsPanel(
-                          state: toolState,
-                          onChanged: (state) => _brushTool.value = state,
-                          fillOptions: fillOptions,
-                          onFillOptionsChanged: (options) =>
-                              _fillOptions.value = options,
-                          selectionCommands: widget.canvasSelectionCommands,
-                        ),
+                        builder: (context) =>
+                            ValueListenableBuilder<SelectionMaskOptions>(
+                              valueListenable: _selectionMaskOptions,
+                              builder: (context, maskOptions, _) =>
+                                  ToolSettingsPanel(
+                                    state: toolState,
+                                    onChanged: (state) =>
+                                        _brushTool.value = state,
+                                    fillOptions: fillOptions,
+                                    onFillOptionsChanged: (options) =>
+                                        _fillOptions.value = options,
+                                    selectionMaskOptions: maskOptions,
+                                    onSelectionMaskOptionsChanged: (options) =>
+                                        _selectionMaskOptions.value = options,
+                                    selectionCommands:
+                                        widget.canvasSelectionCommands,
+                                  ),
+                            ),
                       ),
                 ),
           ),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_dab.dart';
@@ -10,6 +11,7 @@ import '../../models/canvas_viewport.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/layer_pose_paint.dart';
@@ -50,6 +52,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
+    this.selectionMaskOptions,
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
@@ -108,6 +111,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
+  /// mask knobs.
+  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;
@@ -188,6 +195,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onEyedropperPick: widget.onEyedropperPick,
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
+      selectionMaskOptions: widget.selectionMaskOptions,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,

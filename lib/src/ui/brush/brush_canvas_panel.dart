@@ -78,6 +78,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
+    this.selectionMaskOptions,
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
@@ -161,6 +162,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
+  /// Null/absent keeps the classic byte-preserving hard mask.
+  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
   /// The app-level rotate/flip shortcut channel (P8); the panel binds its
   /// viewport-center handlers while mounted.
@@ -954,6 +959,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       shape: shape,
       surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
+      options:
+          widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
     );
     if (lift == null) {
       return null;

@@ -136,4 +136,96 @@ void main() {
       isNull,
     );
   });
+
+  // --- R26 (C2): selection mask options -----------------------------
+
+  /// The erase stamp's alpha at canvas (x, y) — the mask oracle.
+  int eraseAlphaAt(SelectionLiftDabs lift, int x, int y) {
+    final stamp = lift.eraseDab.stamp!;
+    final left = (lift.eraseDab.center.x - stamp.width / 2).round();
+    final top = (lift.eraseDab.center.y - stamp.height / 2).round();
+    final col = x - left;
+    final row = y - top;
+    if (col < 0 || row < 0 || col >= stamp.width || row >= stamp.height) {
+      return 0;
+    }
+    return stamp.rgba[(row * stamp.width + col) * 4 + 3];
+  }
+
+  CanvasSelectionShape rect2to5() =>
+      CanvasSelectionShape.rect(left: 2, top: 2, right: 6, bottom: 6);
+
+  test('default options are BYTE-IDENTICAL to the classic hard lift', () {
+    final surface = paintedSurface();
+    final classic = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 'a',
+    )!;
+    final withDefaults = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 'a',
+      options: SelectionMaskOptions.none,
+    )!;
+    expect(withDefaults.stampDab.stamp!.rgba, classic.stampDab.stamp!.rgba);
+    expect(withDefaults.eraseDab.stamp!.rgba, classic.eraseDab.stamp!.rgba);
+  });
+
+  test('grow +2 selects 2px beyond the rect; shrink -1 releases the rim',
+      () {
+    final surface = paintedSurface();
+    final grown = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 'g',
+      options: const SelectionMaskOptions(growPx: 2),
+    )!;
+    // (1, 3) and (0, 3) are 1px and 2px left of the rect: both grown in.
+    expect(eraseAlphaAt(grown, 1, 3), 255);
+    expect(eraseAlphaAt(grown, 0, 3), 255);
+    // Diagonal corner 2 steps out in BOTH axes stays out (4-neighbor
+    // growth is diamond-shaped, exactly like the fill expand).
+    expect(eraseAlphaAt(grown, 0, 0), 0);
+
+    final shrunk = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 's',
+      options: const SelectionMaskOptions(growPx: -1),
+    )!;
+    // The rect's rim (x==2) erodes away; the interior keeps.
+    expect(eraseAlphaAt(shrunk, 2, 3), 0);
+    expect(eraseAlphaAt(shrunk, 3, 3), 255);
+  });
+
+  test('feather ramps alpha inward: boundary < interior, center full',
+      () {
+    final surface = paintedSurface();
+    final feathered = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 'f',
+      options: const SelectionMaskOptions(featherPx: 3),
+    )!;
+    final rim = eraseAlphaAt(feathered, 2, 4);
+    final inner = eraseAlphaAt(feathered, 3, 4);
+    expect(rim, greaterThan(0));
+    expect(inner, greaterThan(rim));
+    expect(eraseAlphaAt(feathered, 7, 4), 0, reason: 'outside stays out');
+  });
+
+  test('anti-alias softens only the boundary', () {
+    final surface = paintedSurface();
+    final softened = buildSelectionLiftDabs(
+      shape: rect2to5(),
+      surface: surface,
+      liftId: 'aa',
+      options: const SelectionMaskOptions(antiAlias: true),
+    )!;
+    final rim = eraseAlphaAt(softened, 2, 4);
+    expect(rim, greaterThan(0));
+    expect(rim, lessThan(255));
+    expect(eraseAlphaAt(softened, 4, 4), 255, reason: 'interior untouched');
+  });
 }

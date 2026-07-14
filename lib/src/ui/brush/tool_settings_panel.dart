@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/canvas_flood_fill.dart';
+import '../../services/canvas_selection.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
@@ -18,6 +19,8 @@ class ToolSettingsPanel extends StatelessWidget {
     required this.onChanged,
     required this.fillOptions,
     required this.onFillOptionsChanged,
+    this.selectionMaskOptions = SelectionMaskOptions.none,
+    this.onSelectionMaskOptionsChanged,
     this.selectionCommands,
   });
 
@@ -25,6 +28,11 @@ class ToolSettingsPanel extends StatelessWidget {
   final ValueChanged<BrushToolState> onChanged;
   final FloodFillOptions fillOptions;
   final ValueChanged<FloodFillOptions> onFillOptionsChanged;
+
+  /// R26 (C2): the Select tool's lift-time mask knobs (grow/shrink,
+  /// inward feather, edge AA).
+  final SelectionMaskOptions selectionMaskOptions;
+  final ValueChanged<SelectionMaskOptions>? onSelectionMaskOptionsChanged;
 
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
@@ -48,7 +56,12 @@ class ToolSettingsPanel extends StatelessWidget {
         );
       case CanvasTool.selectRect:
       case CanvasTool.lasso:
-        return _SelectionSettings(state: state, onChanged: onChanged);
+        return _SelectionSettings(
+          state: state,
+          onChanged: onChanged,
+          maskOptions: selectionMaskOptions,
+          onMaskOptionsChanged: onSelectionMaskOptionsChanged,
+        );
       case CanvasTool.move:
         return _MoveSettings(selectionCommands: selectionCommands);
     }
@@ -56,15 +69,25 @@ class ToolSettingsPanel extends StatelessWidget {
 }
 
 /// R17-U: the selection VARIANT is a setting of the single Select tool.
+/// R26 (C2): plus the lift-time mask knobs — grow/shrink, inward
+/// feather, edge AA. Defaults keep the lift byte-preserving.
 class _SelectionSettings extends StatelessWidget {
-  const _SelectionSettings({required this.state, required this.onChanged});
+  const _SelectionSettings({
+    required this.state,
+    required this.onChanged,
+    required this.maskOptions,
+    required this.onMaskOptionsChanged,
+  });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
+  final SelectionMaskOptions maskOptions;
+  final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final onMask = onMaskOptionsChanged;
     return ListView(
       key: const ValueKey<String>('tool-settings-selection'),
       padding: const EdgeInsets.all(12),
@@ -85,6 +108,45 @@ class _SelectionSettings extends StatelessWidget {
           onSelectionChanged: (selection) =>
               onChanged(state.copyWith(tool: selection.single)),
         ),
+        if (onMask != null) ...[
+          const SizedBox(height: 8),
+          FieldSlider(
+            key: const ValueKey<String>('selection-grow-slider'),
+            min: -20,
+            max: 20,
+            divisions: 40,
+            value: maskOptions.growPx.toDouble().clamp(-20, 20),
+            label: 'Grow/Shrink',
+            valueText: maskOptions.growPx == 0
+                ? 'off'
+                : '${maskOptions.growPx > 0 ? '+' : ''}${maskOptions.growPx} px',
+            onChanged: (value) =>
+                onMask(maskOptions.copyWith(growPx: value.round())),
+          ),
+          const SizedBox(height: 8),
+          FieldSlider(
+            key: const ValueKey<String>('selection-feather-slider'),
+            min: 0,
+            max: 50,
+            divisions: 50,
+            value: maskOptions.featherPx.clamp(0, 50),
+            label: 'Feather',
+            valueText: maskOptions.featherPx <= 0
+                ? 'off'
+                : '${maskOptions.featherPx.round()} px',
+            onChanged: (value) =>
+                onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
+          ),
+          SwitchListTile(
+            key: const ValueKey<String>('selection-anti-alias-switch'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Anti-alias edge'),
+            value: maskOptions.antiAlias,
+            onChanged: (value) =>
+                onMask(maskOptions.copyWith(antiAlias: value)),
+          ),
+        ],
       ],
     );
   }
