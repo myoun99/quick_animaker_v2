@@ -1,35 +1,11 @@
 import '../models/bitmap_surface.dart';
-import '../models/brush_dab.dart';
 import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
-import '../models/brush_paint_command.dart';
-import '../models/brush_paint_command_id.dart';
-import '../models/brush_paint_command_state.dart';
-import '../models/canvas_point.dart';
 import '../models/cut_id.dart';
 import '../models/dirty_tile_set.dart';
-import '../models/layer_id.dart';
-import '../models/undo_payload_ref.dart';
 import 'bitmap_surface_geometry.dart';
-
-class BrushFrameFlushResult {
-  const BrushFrameFlushResult({
-    required this.frameKey,
-    required this.deferredCommands,
-  });
-
-  final BrushFrameKey frameKey;
-  final List<BrushPaintCommand> deferredCommands;
-}
-
-class BrushLayerFlushPlan {
-  const BrushLayerFlushPlan({required this.layerId, required this.frames});
-
-  final LayerId layerId;
-  final List<BrushFrameFlushResult> frames;
-}
 
 class BrushFrameStore {
   BrushFrameStore();
@@ -96,31 +72,11 @@ class BrushFrameStore {
     _bakedSurfaces[key] = surface;
   }
 
-  /// Every baked cel for the .qap v2 save payload. Cels that only have
-  /// legacy in-session commands (opened from v1 and never edited) bake
-  /// here on the way out via [materialize].
-  Map<BrushFrameKey, BitmapSurface> bakedSnapshotForSave({
-    required BitmapSurface Function(
-      BrushFrameKey key,
-      List<BrushPaintCommand> commands,
-    )
-    materialize,
-  }) {
-    final snapshot = <BrushFrameKey, BitmapSurface>{..._bakedSurfaces};
-    for (final entry in _frames.entries) {
-      if (snapshot.containsKey(entry.key)) {
-        continue;
-      }
-      final commands = entry.value.allPaintCommandsInDisplayOrder;
-      if (commands.isEmpty) {
-        continue;
-      }
-      final surface = materialize(entry.key, commands);
-      if (surface.tiles.isNotEmpty) {
-        snapshot[entry.key] = surface;
-      }
-    }
-    return snapshot;
+  /// Every baked cel for the .qap v2 save payload — a reference-cheap map
+  /// copy: the baked truth is ALWAYS current (every commit and snapshot
+  /// restore donates into it), so the save payload is simply the truth.
+  Map<BrushFrameKey, BitmapSurface> bakedSnapshotForSave() {
+    return {..._bakedSurfaces};
   }
 
   /// Replaces the WHOLE store with loaded baked cels (v2 project open):
@@ -141,27 +97,16 @@ class BrushFrameStore {
     }
   }
 
-  /// Whether the cel shows ANY picture content: baked raster truth (v2
-  /// opens, donations) or visible paint commands (this-session strokes).
-  /// The composite/export/fill resolvers' emptiness oracle — a command
-  /// check alone calls every OPENED cel empty (bake-only opens carry no
-  /// commands; the picture is the raster).
-  bool celHasRenderableContent(BrushFrameKey key) {
-    if (_bakedSurfaces.containsKey(key)) {
-      return true;
-    }
-    final frame = _frames[key];
-    return frame != null && frame.allPaintCommandsInDisplayOrder.isNotEmpty;
-  }
+  /// Whether the cel shows ANY picture content — the composite/export/
+  /// fill resolvers' emptiness oracle. R19 P3b: the baked raster IS the
+  /// content (commands retired; donations keep it current through every
+  /// commit, undo and redo).
+  bool celHasRenderableContent(BrushFrameKey key) =>
+      _bakedSurfaces.containsKey(key);
 
-  /// The cel's current pixels WITHOUT a command replay, or null when only
-  /// a replay can produce them (a legacy command cel whose cache went
-  /// stale) or the cel is empty:
-  /// - a VALID display cache at [canvasSize] (donations keep it fresh
-  ///   across every commit/undo/redo);
-  /// - else the baked truth, when no commands exist that could have
-  ///   diverged from it (raw check — an all-hidden cel must NOT serve a
-  ///   stale raster).
+  /// The cel's current pixels: a VALID display cache at [canvasSize]
+  /// first (donations keep it fresh), else the baked truth. Null = the
+  /// cel is empty (or sized for another canvas — resize flows reseed).
   BitmapSurface? currentSurfaceWithoutReplay(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
@@ -169,10 +114,6 @@ class BrushFrameStore {
     final cached = validPreviewSurfaceOrNull(key);
     if (cached != null && cached.canvasSize == canvasSize) {
       return cached;
-    }
-    final frame = _frames[key];
-    if (frame != null && frame.paintCommands.isNotEmpty) {
-      return null;
     }
     final baked = _bakedSurfaces[key];
     if (baked != null && baked.canvasSize == canvasSize) {
@@ -203,10 +144,10 @@ class BrushFrameStore {
     }
   }
 
-  /// Shifts every stored stroke of [cutId]'s frames by ([dx], [dy]) in canvas
-  /// space, for canvas resizes anchored anywhere but the top-left corner.
-  /// Coordinates are doubles, so the inverse translation restores them
-  /// exactly (used by resize undo).
+  /// Shifts every cel of [cutId] by ([dx], [dy]) in canvas space, for
+  /// canvas resizes anchored anywhere but the top-left corner. R19: a
+  /// raster blit of the baked truth (anchors produce whole-pixel offsets;
+  /// the resize command's reference snapshot covers the exact undo).
   void translateCutContent({
     required CutId cutId,
     required double dx,
@@ -215,40 +156,17 @@ class BrushFrameStore {
     if (dx == 0 && dy == 0) {
       return;
     }
-    for (final key in _frames.keys.toList()) {
+    for (final key in _bakedSurfaces.keys.toList()) {
       if (key.cutId != cutId) {
         continue;
       }
-      _update(key, (state) {
-        final commands = state.paintCommands
-            .map(
-              (command) => command.copyWith(
-                sourceDabs: [
-                  for (final dab in command.sourceDabs)
-                    dab.copyWith(
-                      center: CanvasPoint(
-                        x: dab.center.x + dx,
-                        y: dab.center.y + dy,
-                      ),
-                    ),
-                ],
-              ),
-            )
-            .toList();
-        return _markCacheDirty(state.copyWith(paintCommands: commands));
-      });
-      // The baked truth shifts as a raster blit (R19): anchored resizes
-      // move content by whole pixels, so the round matches the command
-      // shift exactly for the integer offsets resize anchors produce.
-      final baked = _bakedSurfaces[key];
-      if (baked != null) {
-        _bakedSurfaces[key] = translateBitmapSurface(
-          baked,
-          dx: dx.round(),
-          dy: dy.round(),
-          canvasSize: baked.canvasSize,
-        );
-      }
+      _bakedSurfaces[key] = translateBitmapSurface(
+        _bakedSurfaces[key]!,
+        dx: dx.round(),
+        dy: dy.round(),
+        canvasSize: _bakedSurfaces[key]!.canvasSize,
+      );
+      markCelEdited(key);
     }
   }
 
@@ -288,30 +206,6 @@ class BrushFrameStore {
     }
   }
 
-  /// Rewrites the given commands' dabs IN PLACE (P9 selection transform):
-  /// same ids, same list positions, so the frame's stroke z-order is
-  /// untouched. Whole-frame cache dirty — an arbitrary rewrite has no
-  /// incremental tile delta.
-  BrushFrameDrawingState replacePaintCommandDabs(
-    BrushFrameKey key,
-    Map<BrushPaintCommandId, List<BrushDab>> dabsById,
-  ) {
-    return _update(key, (state) {
-      final commands = state.paintCommands
-          .map(
-            (command) => dabsById.containsKey(command.id)
-                ? command.copyWith(
-                    sourceDabs: List<BrushDab>.unmodifiable(
-                      dabsById[command.id]!,
-                    ),
-                  )
-                : command,
-          )
-          .toList();
-      return _markCacheDirty(state.copyWith(paintCommands: commands));
-    });
-  }
-
   BrushFrameDisplayCache storeRebuiltDisplayCache({
     required BrushFrameKey key,
     required BitmapSurface previewSurface,
@@ -331,128 +225,18 @@ class BrushFrameStore {
     return cache;
   }
 
-  /// Resolves the production-facing user undo payload reference back to the
-  /// frame-local brush command payload owned by this store.
-  ///
-  /// Internal bitmap materialization history is intentionally not consulted
-  /// here; it is a session-local bridge below the public coordinator/store
-  /// boundary, not user-facing undo history.
-  BrushPaintCommand? paintCommandForUndoPayload(UndoPayloadRef payloadRef) {
-    if (!payloadRef.isPaintCommand || payloadRef.targetKey == null) {
-      return null;
-    }
-    return frameOrNull(
-      payloadRef.targetKey!,
-    )?.commandById(payloadRef.paintCommandId);
-  }
-
-  BrushFrameDrawingState addLivePaintCommand(
-    BrushFrameKey key,
-    BrushPaintCommand command, {
-    DirtyTileSet? dirtyTiles,
-  }) {
-    final live = command.copyWith(state: BrushPaintCommandState.live);
-    return _update(
-      key,
-      (state) => _markCacheDirty(
-        state.copyWith(paintCommands: [...state.paintCommands, live]),
-        dirtyTiles: dirtyTiles,
-      ),
-    );
-  }
-
-  BrushFrameDrawingState markPaintCommandHiddenByUndo(
-    BrushFrameKey key,
-    BrushPaintCommandId id, {
+  /// Records a pixel edit on the cel (R19 P3b — commands retired, this
+  /// is the ONLY mutation signal): bumps the source revision so playback
+  /// image caches invalidate, and dirties the display-cache bookkeeping
+  /// until the follow-up donation refreshes it.
+  BrushFrameDrawingState markCelEdited(
+    BrushFrameKey key, {
     DirtyTileSet? dirtyTiles,
   }) {
     return _update(
       key,
-      (state) => _markCacheDirty(
-        state.copyWith(hiddenCommandIds: {...state.hiddenCommandIds, id}),
-        dirtyTiles: dirtyTiles,
-      ),
+      (state) => _markCacheDirty(state, dirtyTiles: dirtyTiles),
     );
-  }
-
-  BrushFrameDrawingState restorePaintCommandFromUndo(
-    BrushFrameKey key,
-    BrushPaintCommandId id, {
-    DirtyTileSet? dirtyTiles,
-  }) {
-    return _update(
-      key,
-      (state) => _markCacheDirty(
-        state.copyWith(
-          hiddenCommandIds: {...state.hiddenCommandIds}..remove(id),
-        ),
-        dirtyTiles: dirtyTiles,
-      ),
-    );
-  }
-
-  BrushFrameDrawingState movePaintCommandToDeferredBake(
-    BrushFrameKey key,
-    BrushPaintCommandId id,
-  ) {
-    return _move(key, id, BrushPaintCommandState.deferredBake);
-  }
-
-  BrushFrameFlushResult flushFrame(BrushFrameKey key) {
-    final state = getOrCreateFrame(key);
-    return BrushFrameFlushResult(
-      frameKey: key,
-      deferredCommands: state.deferredBakePaintCommands,
-    );
-  }
-
-  BrushFrameDrawingState markDeferredCommandsBaked(BrushFrameKey key) {
-    return _update(key, (state) {
-      final deferredIds = state.deferredBakePaintCommands
-          .map((command) => command.id)
-          .toSet();
-      final commands = state.paintCommands
-          .map(
-            (command) => command.state == BrushPaintCommandState.deferredBake
-                ? command.copyWith(state: BrushPaintCommandState.baked)
-                : command,
-          )
-          .toList();
-      return _markCacheDirty(
-        state.copyWith(
-          paintCommands: commands,
-          bakedPaintCommandIds: {...state.bakedPaintCommandIds, ...deferredIds},
-        ),
-      );
-    });
-  }
-
-  BrushLayerFlushPlan flushLayer(LayerId layerId) {
-    final frames = _frames.values
-        .where((state) => state.key.layerId == layerId)
-        .map((state) => flushFrame(state.key))
-        .toList();
-    return BrushLayerFlushPlan(layerId: layerId, frames: frames);
-  }
-
-  BrushFrameDrawingState _move(
-    BrushFrameKey key,
-    BrushPaintCommandId id,
-    BrushPaintCommandState nextState, {
-    DirtyTileSet? dirtyTiles,
-  }) {
-    return _update(key, (state) {
-      final commands = state.paintCommands
-          .map(
-            (command) =>
-                command.id == id ? command.copyWith(state: nextState) : command,
-          )
-          .toList();
-      return _markCacheDirty(
-        state.copyWith(paintCommands: commands),
-        dirtyTiles: dirtyTiles,
-      );
-    });
   }
 
   BrushFrameDrawingState _markCacheDirty(

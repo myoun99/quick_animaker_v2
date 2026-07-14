@@ -36,33 +36,9 @@ class QapFileService {
     required BrushFrameStore brushFrameStore,
     required String filePath,
   }) async {
-    // R19 bake-only: the save payload is the baked raster truth. Cels
-    // that only carry legacy in-session commands (opened from v1 and
-    // untouched since... which cannot happen anymore — opens bake — but
-    // kept as a belt-and-braces path) materialize on the way out.
-    final cutCanvasSizes = {
-      for (final track in project.tracks)
-        for (final cut in track.cuts) cut.id: cut.canvasSize,
-    };
-    final baked = brushFrameStore.bakedSnapshotForSave(
-      materialize: (key, commands) {
-        var surface = BitmapSurface(
-          canvasSize:
-              cutCanvasSizes[key.cutId] ??
-              project.tracks.first.cuts.first.canvasSize,
-        );
-        for (final command in commands) {
-          if (command.sourceDabs.isEmpty) {
-            continue;
-          }
-          surface = materializeBrushDabSequenceOnBitmapSurface(
-            surface: surface,
-            sequence: BrushDabSequence(command.sourceDabs),
-          ).surface;
-        }
-        return surface;
-      },
-    );
+    // R19 bake-only: the save payload IS the baked raster truth (every
+    // commit and undo donates into it; opens bake v1 files on the way in).
+    final baked = brushFrameStore.bakedSnapshotForSave();
     final cels = [
       for (final entry in baked.entries)
         QapCelEntry(key: entry.key, surface: entry.value),

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -40,7 +40,6 @@ import '../models/timeline_coverage.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../services/brush_frame_display_cache_renderer.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
@@ -986,29 +985,13 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layer.id,
       frameId: frame.id,
     );
-    // Content oracle, not a command check (R19 P3a): an OPENED cel's
-    // picture is its baked raster with no commands — the old guard made
-    // fill compose and the eyedropper treat every loaded cel as empty.
-    if (!brushFrameStore.celHasRenderableContent(frameKey)) {
-      return null;
-    }
-    final direct = brushFrameStore.currentSurfaceWithoutReplay(
+    // R19 P3b: the baked raster is the truth — the resolver is a plain
+    // reference read (valid display cache first, else baked). No replay
+    // exists anymore.
+    return brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
       canvasSize: activeCut.canvasSize,
     );
-    if (direct != null) {
-      return direct;
-    }
-    final drawing = brushFrameStore.frameOrNull(frameKey);
-    if (drawing == null) {
-      return null;
-    }
-    final rebuilt = BrushFrameDisplayCacheRenderer(
-      canvasSize: activeCut.canvasSize,
-    ).rebuildPreview(drawing);
-    return brushFrameStore
-        .storeRebuiltDisplayCache(key: frameKey, previewSurface: rebuilt)
-        .previewSurface;
   }
 
   /// The resolved camera pose at the current playhead frame (keyframe,

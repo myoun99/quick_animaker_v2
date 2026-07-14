@@ -1,4 +1,4 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
@@ -10,7 +10,6 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../services/brush_frame_display_cache_renderer.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../camera/camera_frame_render_service.dart';
 import '../canvas/layer_pose_paint.dart';
@@ -49,32 +48,14 @@ class ExportFrameRenderer {
     }
     return _surfaces.putIfAbsent((layer.id, frame.id), () {
       final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
-      final store = session.brushFrameStore;
-      // Content oracle, not a command check (R19 P3a): an OPENED cel's
-      // picture is its baked raster with no commands — the old guard
-      // exported every loaded cel BLANK.
-      if (!store.celHasRenderableContent(frameKey)) {
-        return null;
-      }
-      // Valid display cache or the baked truth, READ-ONLY (the coordinator
-      // donates on every commit/undo/redo, so this is usually the exact
-      // pixels already). Nothing is stored back, so batch exports don't
-      // grow the shared cache. Replay stays the cold fallback for legacy
-      // this-session command cels whose cache went stale.
-      final direct = store.currentSurfaceWithoutReplay(
+      // R19 P3b: the baked raster is the truth — a READ-ONLY reference
+      // (valid display cache first, else baked; the coordinator donates
+      // on every commit, undo and redo). Nothing is stored back, so
+      // batch exports don't grow the shared cache; null = an empty cel.
+      return session.brushFrameStore.currentSurfaceWithoutReplay(
         frameKey,
         canvasSize: cut.canvasSize,
       );
-      if (direct != null) {
-        return direct;
-      }
-      final drawing = store.frameOrNull(frameKey);
-      if (drawing == null) {
-        return null;
-      }
-      return BrushFrameDisplayCacheRenderer(
-        canvasSize: cut.canvasSize,
-      ).rebuildPreview(drawing);
     });
   }
 

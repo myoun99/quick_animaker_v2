@@ -6,6 +6,14 @@ abstract class Command {
   void undo();
 }
 
+/// Commands that retain SURFACE SNAPSHOTS as their undo payload (R19
+/// P3b) report their approximate weight so the history stack can
+/// byte-trim its deep end — a run of full-canvas fills at 8000² retains
+/// ~256MB per entry, which the entry-count cap alone would never bound.
+abstract interface class RetainedBytesCommand {
+  int get estimatedRetainedBytes;
+}
+
 /// Several commands as ONE undo step: executes in order, undoes in
 /// reverse. For flows where one user action legitimately touches two
 /// stores (e.g. adding an instruction also writes its memo shorthand into

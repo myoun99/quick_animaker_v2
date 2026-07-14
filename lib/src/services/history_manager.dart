@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 
 import 'command.dart';
 
@@ -18,6 +18,12 @@ class HistoryManager extends ChangeNotifier {
   /// anyway.
   static const int defaultMaxEntries = 200;
 
+  /// Byte cap for the surface snapshots the stack's [RetainedBytesCommand]
+  /// entries retain (R19 P3b): undo pixels are bounded even when every
+  /// entry is a full-canvas fill — the deepest entries fall off first,
+  /// PS-style, and the newest entry always survives.
+  static const int retainedByteBudget = 512 * 1024 * 1024;
+
   final int maxEntries;
 
   final List<Command> _undoStack = <Command>[];
@@ -31,6 +37,18 @@ class HistoryManager extends ChangeNotifier {
 
   int get redoCount => _redoStack.length;
 
+  /// Bytes the undo stack's snapshot entries currently report
+  /// (accumulation-guard oracle).
+  int get retainedBytes {
+    var total = 0;
+    for (final command in _undoStack) {
+      if (command is RetainedBytesCommand) {
+        total += (command as RetainedBytesCommand).estimatedRetainedBytes;
+      }
+    }
+    return total;
+  }
+
   void execute(Command command) {
     command.execute();
     _undoStack.add(command);
@@ -38,8 +56,24 @@ class HistoryManager extends ChangeNotifier {
       // The oldest commands fall off the deep end, PS-style.
       _undoStack.removeRange(0, _undoStack.length - maxEntries);
     }
+    _trimRetainedBytes();
     _redoStack.clear();
     notifyListeners();
+  }
+
+  void _trimRetainedBytes() {
+    var total = retainedBytes;
+    var dropCount = 0;
+    while (total > retainedByteBudget && _undoStack.length - dropCount > 1) {
+      final command = _undoStack[dropCount];
+      if (command is RetainedBytesCommand) {
+        total -= (command as RetainedBytesCommand).estimatedRetainedBytes;
+      }
+      dropCount += 1;
+    }
+    if (dropCount > 0) {
+      _undoStack.removeRange(0, dropCount);
+    }
   }
 
   /// Called before undo/redo touches the stacks (R16-①): the selection
