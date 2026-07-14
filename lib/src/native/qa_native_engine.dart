@@ -31,9 +31,10 @@ class QaNativeEngine {
     this._tileFree,
     this._tileFreePointer,
     this._tilePoolCachedBytes,
+    this._fillGapCloseRun,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 10;
+  static const int _abiVersion = 11;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
@@ -78,6 +79,108 @@ class QaNativeEngine {
 
   /// Bytes currently parked in the C free lists (tests/diagnostics).
   int debugTilePoolCachedBytes() => _tilePoolCachedBytes();
+
+  final int Function(
+    Pointer<Uint8> rgb,
+    int width,
+    int height,
+    int seedX,
+    int seedY,
+    int seedR,
+    int seedG,
+    int seedB,
+    int tolerance,
+    int gapPx,
+    Pointer<Uint8> fillable,
+    Pointer<Uint16> dist,
+    Pointer<Uint8> filled,
+    Pointer<Int32> stack,
+    int stackCapacity,
+    Pointer<Int32> bounds,
+  )
+  _fillGapCloseRun;
+
+  // Grow-only work buffers for the close-gap fill (R20-C1).
+  Pointer<Uint8> _gapFillable = nullptr;
+  int _gapFillableLength = 0;
+  Pointer<Uint16> _gapDist = nullptr;
+  int _gapDistLength = 0;
+  Pointer<Int32> _gapStack = nullptr;
+  static const int _gapStackCapacity = 4 * 1024 * 1024;
+
+  /// Runs the whole close-gap fill in C over the composed native raster
+  /// (the caller composed EVERY tile first). Returns the filled bounds,
+  /// `empty: true` when nothing fills, or null on kernel stack overflow —
+  /// the caller then falls back to the Dart reference. The filled mask
+  /// lands in the SAME engine buffer [finishFillMask] reads.
+  ({int minX, int maxX, int minY, int maxY, bool empty})? gapCloseFillRun({
+    required QaFloodNativeHandles handles,
+    required int seedX,
+    required int seedY,
+    required int seedR,
+    required int seedG,
+    required int seedB,
+    required int tolerance,
+    required int gapClosePx,
+  }) {
+    final width = handles.width;
+    final height = handles.height;
+    final pixelCount = width * height;
+    _floodFilled = _ensureUint8(_floodFilled, _floodFilledLength, pixelCount);
+    if (_floodFilledLength < pixelCount) {
+      _floodFilledLength = pixelCount;
+    }
+    _gapFillable = _ensureUint8(_gapFillable, _gapFillableLength, pixelCount);
+    if (_gapFillableLength < pixelCount) {
+      _gapFillableLength = pixelCount;
+    }
+    if (_gapDistLength < pixelCount) {
+      if (_gapDist != nullptr) {
+        calloc.free(_gapDist);
+      }
+      _gapDist = calloc<Uint16>(pixelCount);
+      _gapDistLength = pixelCount;
+    }
+    if (_gapStack == nullptr) {
+      _gapStack = calloc<Int32>(_gapStackCapacity);
+    }
+    if (_floodStackSize == nullptr) {
+      _floodStackSize = calloc<Int32>(1);
+      _floodBounds = calloc<Int32>(4);
+    }
+    final gap = _fillGapCloseRun(
+      _floodRgb,
+      width,
+      height,
+      seedX,
+      seedY,
+      seedR,
+      seedG,
+      seedB,
+      tolerance,
+      gapClosePx,
+      _gapFillable,
+      _gapDist,
+      _floodFilled,
+      _gapStack,
+      _gapStackCapacity,
+      _floodBounds,
+    );
+    if (gap == -1) {
+      return null;
+    }
+    if (gap == -2) {
+      return (minX: 0, maxX: -1, minY: 0, maxY: -1, empty: true);
+    }
+    final bounds = _floodBounds.asTypedList(4);
+    return (
+      minX: bounds[0],
+      maxX: bounds[1],
+      minY: bounds[2],
+      maxY: bounds[3],
+      empty: false,
+    );
+  }
 
   final int Function(
     Pointer<Uint8> rgb,
@@ -421,6 +524,45 @@ class QaNativeEngine {
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_tile_pool_cached_bytes',
           );
+      final fillGapCloseRun = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+              Pointer<Uint16>,
+              Pointer<Uint8>,
+              Pointer<Int32>,
+              Int32,
+              Pointer<Int32>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+              Pointer<Uint16>,
+              Pointer<Uint8>,
+              Pointer<Int32>,
+              int,
+              Pointer<Int32>,
+            )
+          >('qa_fill_gap_close_run');
       return QaNativeEngine._(
         premultiplyRgba,
         floodFillStep,
@@ -435,6 +577,7 @@ class QaNativeEngine {
         tileFree,
         tileFreePointer,
         tilePoolCachedBytes,
+        fillGapCloseRun,
       );
     } on Object {
       return null;

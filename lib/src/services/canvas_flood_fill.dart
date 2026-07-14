@@ -21,6 +21,7 @@ class FloodFillOptions {
     this.tolerance = 32,
     this.expandPx = 1,
     this.antiAlias = true,
+    this.gapClosePx = 0,
   });
 
   /// Max per-channel distance from the seed color that still fills.
@@ -33,11 +34,24 @@ class FloodFillOptions {
   /// One soft pass over the mask edge.
   final bool antiAlias;
 
-  FloodFillOptions copyWith({int? tolerance, int? expandPx, bool? antiAlias}) {
+  /// Close-gap fill (R20-C1, the CSP "틈 닫기"): barriers act as if
+  /// thickened by this radius, so the fill cannot leak through line-art
+  /// gaps narrower than ~2× this value; the region then grows back to
+  /// the REAL barriers. 0 = off. Forces a full compose (the leak search
+  /// needs the whole picture), so it costs more than a plain fill.
+  final int gapClosePx;
+
+  FloodFillOptions copyWith({
+    int? tolerance,
+    int? expandPx,
+    bool? antiAlias,
+    int? gapClosePx,
+  }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
       expandPx: expandPx ?? this.expandPx,
       antiAlias: antiAlias ?? this.antiAlias,
+      gapClosePx: gapClosePx ?? this.gapClosePx,
     );
   }
 
@@ -46,10 +60,11 @@ class FloodFillOptions {
       other is FloodFillOptions &&
       other.tolerance == tolerance &&
       other.expandPx == expandPx &&
-      other.antiAlias == antiAlias;
+      other.antiAlias == antiAlias &&
+      other.gapClosePx == gapClosePx;
 
   @override
-  int get hashCode => Object.hash(tolerance, expandPx, antiAlias);
+  int get hashCode => Object.hash(tolerance, expandPx, antiAlias, gapClosePx);
 }
 
 /// The filled region as a coverage mask in canvas coordinates.
@@ -338,6 +353,69 @@ FloodFillRegion? floodFillRegion({
   final seedB = rgb[seedIndex + 2];
   final tolerance = options.tolerance;
 
+  // R20-C1 close-gap fill: barriers thickened by the gap radius (chamfer
+  // distance-transform erosion of the fillable field), flood, then grow
+  // back to the real barriers. Needs the WHOLE picture composed — the
+  // leak search is global by nature.
+  if (options.gapClosePx > 0) {
+    if (ensureComposed != null) {
+      const composeTile = 256;
+      for (var ty = 0; ty < height; ty += composeTile) {
+        final rowStart = ty * width;
+        for (var tx = 0; tx < width; tx += composeTile) {
+          ensureComposed(rowStart + tx);
+        }
+      }
+    }
+    final native = QaNativeEngine.instance;
+    if (native != null && nativeHandles != null) {
+      final result = native.gapCloseFillRun(
+        handles: nativeHandles,
+        seedX: seedX,
+        seedY: seedY,
+        seedR: seedR,
+        seedG: seedG,
+        seedB: seedB,
+        tolerance: tolerance,
+        gapClosePx: options.gapClosePx,
+      );
+      if (result != null) {
+        final cropLeft = math.max(0, result.minX - options.expandPx);
+        final cropTop = math.max(0, result.minY - options.expandPx);
+        final cropRight = math.min(width - 1, result.maxX + options.expandPx);
+        final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+        return FloodFillRegion(
+          left: cropLeft,
+          top: cropTop,
+          width: cropRight - cropLeft + 1,
+          height: cropBottom - cropTop + 1,
+          mask: native.finishFillMask(
+            canvasWidth: width,
+            cropLeft: cropLeft,
+            cropTop: cropTop,
+            regionWidth: cropRight - cropLeft + 1,
+            regionHeight: cropBottom - cropTop + 1,
+            expandPx: options.expandPx,
+            antiAlias: options.antiAlias,
+          ),
+        );
+      }
+      // Stack overflow inside the kernel (pathological run counts) —
+      // fall through to the Dart reference, which grows freely.
+    }
+    return _gapCloseFloodRegion(
+      rgb: rgb,
+      width: width,
+      height: height,
+      seedX: seedX,
+      seedY: seedY,
+      seedR: seedR,
+      seedG: seedG,
+      seedB: seedB,
+      options: options,
+    );
+  }
+
   // R18 A-2b: with a native-backed raster the C stepper runs the flood
   // (frontier-stepped around the lazy compose; result set identical by
   // construction — parity-pinned). The Dart loop below stays as the
@@ -551,6 +629,224 @@ FloodFillRegion _cropAndFinishFloodRegion({
     height: regionHeight,
     mask: mask,
   );
+}
+
+/// The close-gap fill reference pipeline (R20-C1) — the C kernel
+/// reproduces this EXACTLY (integer chamfer math throughout; parity is
+/// pinned):
+///
+/// 1. fillable = per-pixel tolerance test against the seed color;
+/// 2. chamfer 3-4 distance transform to the nearest barrier;
+/// 3. erode: only pixels farther than `3 × gap` chamfer units fill —
+///    a leak through a gap narrower than ~2×gap can't survive. If the
+///    seed itself sits closer than that to a barrier, the gap HALVES
+///    until the seed survives (deterministic; gap 0 degenerates to the
+///    plain fill);
+/// 4. scanline flood over the eroded field;
+/// 5. grow back: a second distance transform from the flooded set,
+///    keeping fillable pixels within `3 × gap` — the region reaches the
+///    REAL barriers again (and slightly into the gap mouths, like CSP).
+FloodFillRegion? _gapCloseFloodRegion({
+  required Uint8List rgb,
+  required int width,
+  required int height,
+  required int seedX,
+  required int seedY,
+  required int seedR,
+  required int seedG,
+  required int seedB,
+  required FloodFillOptions options,
+}) {
+  const infinity = 60000;
+  final pixelCount = width * height;
+  final tolerance = options.tolerance;
+
+  final fillable = Uint8List(pixelCount);
+  for (var index = 0, base = 0; index < pixelCount; index += 1, base += 3) {
+    if ((rgb[base] - seedR).abs() <= tolerance &&
+        (rgb[base + 1] - seedG).abs() <= tolerance &&
+        (rgb[base + 2] - seedB).abs() <= tolerance) {
+      fillable[index] = 1;
+    }
+  }
+
+  final dist = Uint16List(pixelCount);
+  _chamferDistance(
+    dist,
+    from: fillable,
+    zeroWhen: 0,
+    width: width,
+    height: height,
+    infinity: infinity,
+  );
+
+  // Seed survival: halve the gap until the seed escapes erosion.
+  var gap = options.gapClosePx;
+  final seedIndex = seedY * width + seedX;
+  while (gap > 0 && dist[seedIndex] <= 3 * gap) {
+    gap ~/= 2;
+  }
+  final erodeThreshold = 3 * gap;
+
+  // Scanline flood over the eroded field.
+  final filled = Uint8List(pixelCount);
+  final stack = <int>[seedIndex];
+  filled[seedIndex] = 255;
+  bool eroded(int index) => dist[index] > erodeThreshold;
+  if (!eroded(seedIndex)) {
+    return null; // The seed is a barrier pixel (gap already 0 here).
+  }
+  while (stack.isNotEmpty) {
+    final index = stack.removeLast();
+    final y = index ~/ width;
+    final rowStart = y * width;
+    var left = index - rowStart;
+    while (left > 0 &&
+        filled[rowStart + left - 1] == 0 &&
+        eroded(rowStart + left - 1)) {
+      left -= 1;
+      filled[rowStart + left] = 255;
+    }
+    var right = index - rowStart;
+    while (right < width - 1 &&
+        filled[rowStart + right + 1] == 0 &&
+        eroded(rowStart + right + 1)) {
+      right += 1;
+      filled[rowStart + right] = 255;
+    }
+    for (final dy in const [-1, 1]) {
+      final neighborY = y + dy;
+      if (neighborY < 0 || neighborY >= height) {
+        continue;
+      }
+      final neighborRow = neighborY * width;
+      var runOpen = false;
+      for (var x = left; x <= right; x += 1) {
+        final neighborIndex = neighborRow + x;
+        if (filled[neighborIndex] == 0 && eroded(neighborIndex)) {
+          if (!runOpen) {
+            filled[neighborIndex] = 255;
+            stack.add(neighborIndex);
+            runOpen = true;
+          }
+        } else {
+          runOpen = false;
+        }
+      }
+    }
+  }
+
+  // Grow back to the real barriers: distance from the flooded set.
+  final growDist = Uint16List(pixelCount);
+  _chamferDistance(
+    growDist,
+    from: filled,
+    zeroWhen: 255,
+    width: width,
+    height: height,
+    infinity: infinity,
+  );
+  var minX = width, maxX = -1, minY = height, maxY = -1;
+  for (var index = 0; index < pixelCount; index += 1) {
+    if (fillable[index] != 0 && growDist[index] <= erodeThreshold) {
+      filled[index] = 255;
+      final x = index % width;
+      final y = index ~/ width;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    } else {
+      filled[index] = 0;
+    }
+  }
+  if (maxX < 0) {
+    return null;
+  }
+
+  return _cropAndFinishFloodRegion(
+    filled: filled,
+    width: width,
+    height: height,
+    minX: minX,
+    maxX: maxX,
+    minY: minY,
+    maxY: maxY,
+    options: options,
+  );
+}
+
+/// Two-pass 3-4 chamfer distance transform: [target] receives the
+/// distance (orthogonal step 3, diagonal 4, saturated at [infinity])
+/// from every pixel to the nearest SOURCE pixel, where source means
+/// `from[i] == zeroWhen`. Off-canvas neighbors are ignored (the canvas
+/// edge is NOT a barrier). Integer math only — the C kernel mirrors it
+/// exactly.
+void _chamferDistance(
+  Uint16List target, {
+  required Uint8List from,
+  required int zeroWhen,
+  required int width,
+  required int height,
+  required int infinity,
+}) {
+  for (var index = 0; index < target.length; index += 1) {
+    target[index] = from[index] == zeroWhen ? 0 : infinity;
+  }
+  // Forward pass (top-left → bottom-right).
+  for (var y = 0; y < height; y += 1) {
+    final row = y * width;
+    for (var x = 0; x < width; x += 1) {
+      final index = row + x;
+      var best = target[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x > 0 && target[index - 1] + 3 < best) {
+        best = target[index - 1] + 3;
+      }
+      if (y > 0) {
+        final up = index - width;
+        if (target[up] + 3 < best) {
+          best = target[up] + 3;
+        }
+        if (x > 0 && target[up - 1] + 4 < best) {
+          best = target[up - 1] + 4;
+        }
+        if (x < width - 1 && target[up + 1] + 4 < best) {
+          best = target[up + 1] + 4;
+        }
+      }
+      target[index] = best > infinity ? infinity : best;
+    }
+  }
+  // Backward pass (bottom-right → top-left).
+  for (var y = height - 1; y >= 0; y -= 1) {
+    final row = y * width;
+    for (var x = width - 1; x >= 0; x -= 1) {
+      final index = row + x;
+      var best = target[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x < width - 1 && target[index + 1] + 3 < best) {
+        best = target[index + 1] + 3;
+      }
+      if (y < height - 1) {
+        final down = index + width;
+        if (target[down] + 3 < best) {
+          best = target[down] + 3;
+        }
+        if (x < width - 1 && target[down + 1] + 4 < best) {
+          best = target[down + 1] + 4;
+        }
+        if (x > 0 && target[down - 1] + 4 < best) {
+          best = target[down - 1] + 4;
+        }
+      }
+      target[index] = best > infinity ? infinity : best;
+    }
+  }
 }
 
 /// The whole P6 tap: compose → fill from [point] → the region as ONE
