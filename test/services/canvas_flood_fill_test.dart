@@ -28,10 +28,10 @@ void main() {
 
   /// A white 8×8 RGB raster with [black] pixels inked.
   Uint8List rasterWithInk(Set<(int, int)> black) {
-    final rgb = Uint8List(8 * 8 * 3);
+    final rgb = Uint8List(8 * 8 * 4);
     rgb.fillRange(0, rgb.length, 255);
     for (final (x, y) in black) {
-      final base = (y * 8 + x) * 3;
+      final base = (y * 8 + x) * 4;
       rgb[base] = 0;
       rgb[base + 1] = 0;
       rgb[base + 2] = 0;
@@ -69,7 +69,7 @@ void main() {
     test('tolerance gates which neighbors join the region', () {
       // A near-white pixel 40/channel away from the white seed.
       final rgb = rasterWithInk(const {});
-      final base = (3 * 8 + 4) * 3;
+      final base = (3 * 8 + 4) * 4;
       rgb[base] = 215;
       rgb[base + 1] = 215;
       rgb[base + 2] = 215;

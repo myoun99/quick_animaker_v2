@@ -32,10 +32,10 @@ void main() {
     required int height,
     required int gap,
   }) {
-    final rgb = Uint8List(width * height * 3);
+    final rgb = Uint8List(width * height * 4);
     rgb.fillRange(0, rgb.length, 255);
     void black(int x, int y) {
-      final base = (y * width + x) * 3;
+      final base = (y * width + x) * 4;
       rgb[base] = 0;
       rgb[base + 1] = 0;
       rgb[base + 2] = 0;
@@ -128,12 +128,12 @@ void main() {
   test('a seed in a corridor narrower than the gap radius still fills '
       '(deterministic gap halving)', () {
     const width = 32, height = 32;
-    final rgb = Uint8List(width * height * 3);
+    final rgb = Uint8List(width * height * 4);
     rgb.fillRange(0, rgb.length, 255);
     // Two horizontal walls 3px apart around the seed row.
     for (var x = 0; x < width; x += 1) {
       for (final y in [14, 18]) {
-        final base = (y * width + x) * 3;
+        final base = (y * width + x) * 4;
         rgb[base] = 0;
         rgb[base + 1] = 0;
         rgb[base + 2] = 0;
@@ -172,7 +172,7 @@ void main() {
     for (var round = 0; round < 8; round += 1) {
       final width = 48 + random.nextInt(40);
       final height = 48 + random.nextInt(40);
-      final rgb = Uint8List(width * height * 3);
+      final rgb = Uint8List(width * height * 4);
       rgb.fillRange(0, rgb.length, 255);
       // Random walls with random holes.
       for (var wall = 0; wall < 6; wall += 1) {
@@ -188,7 +188,7 @@ void main() {
           }
           final x = vertical ? position : along;
           final y = vertical ? along : position;
-          final base = (y * width + x) * 3;
+          final base = (y * width + x) * 4;
           rgb[base] = 0;
           rgb[base + 1] = 0;
           rgb[base + 2] = 0;

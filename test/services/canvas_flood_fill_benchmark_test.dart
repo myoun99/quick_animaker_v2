@@ -14,12 +14,12 @@ void main() {
     const height = 1600;
     // White canvas with a black border ring — seed center fills the whole
     // interior (~2.5M pixels).
-    final rgb = Uint8List(width * height * 3);
+    final rgb = Uint8List(width * height * 4);
     for (var i = 0; i < rgb.length; i += 1) {
       rgb[i] = 255;
     }
     void ink(int x, int y) {
-      final base = (y * width + x) * 3;
+      final base = (y * width + x) * 4;
       rgb[base] = 0;
       rgb[base + 1] = 0;
       rgb[base + 2] = 0;

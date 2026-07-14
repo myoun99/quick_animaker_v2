@@ -131,7 +131,7 @@ class LazyCanvasRasterRgb {
        height = cut.canvasSize.height,
        rgb =
            handles?.rgbView ??
-           Uint8List(cut.canvasSize.width * cut.canvasSize.height * 3),
+           Uint8List(cut.canvasSize.width * cut.canvasSize.height * 4),
        _paperR = (paperColor >> 16) & 0xFF,
        _paperG = (paperColor >> 8) & 0xFF,
        _paperB = paperColor & 0xFF,
@@ -176,8 +176,9 @@ class LazyCanvasRasterRgb {
   final int width;
   final int height;
 
-  /// `width*height*3` bytes; only composed tiles hold real pixels — read
-  /// through [ensureComposedAt].
+  /// `width*height*4` RGBX bytes (X always 0 — R22-D SIMD contract);
+  /// only composed tiles hold real pixels — read through
+  /// [ensureComposedAt].
   final Uint8List rgb;
 
   final int _paperR;
@@ -258,12 +259,15 @@ class LazyCanvasRasterRgb {
     }
 
     for (var y = top; y < bottom; y += 1) {
-      var target = (y * width + left) * 3;
+      // RGBX (R22-D): X writes 0 so the raster matches the native
+      // kernels byte for byte.
+      var target = (y * width + left) * 4;
       for (var x = left; x < right; x += 1) {
         rgb[target] = _paperR;
         rgb[target + 1] = _paperG;
         rgb[target + 2] = _paperB;
-        target += 3;
+        rgb[target + 3] = 0;
+        target += 4;
       }
     }
     for (final layer in _layers) {
@@ -299,7 +303,7 @@ class LazyCanvasRasterRgb {
           for (var y = clipTop; y < clipBottom; y += 1) {
             var source =
                 ((y - baseY) * surfaceTileSize + (clipLeft - baseX)) * 4;
-            var target = (y * width + clipLeft) * 3;
+            var target = (y * width + clipLeft) * 4;
             for (var x = clipLeft; x < clipRight; x += 1) {
               final alphaByte = pixels[source + 3];
               if (alphaByte != 0) {
@@ -322,7 +326,7 @@ class LazyCanvasRasterRgb {
                     255;
               }
               source += 4;
-              target += 3;
+              target += 4;
             }
           }
         }
@@ -356,7 +360,7 @@ FloodFillRegion? floodFillRegion({
     return null;
   }
   ensureComposed?.call(seedY * width + seedX);
-  final seedIndex = (seedY * width + seedX) * 3;
+  final seedIndex = (seedY * width + seedX) * 4;
   final seedR = rgb[seedIndex];
   final seedG = rgb[seedIndex + 1];
   final seedB = rgb[seedIndex + 2];
@@ -469,7 +473,7 @@ FloodFillRegion? floodFillRegion({
   // Pure byte compare — the caller guarantees the pixel's compose tile via
   // the crossing checks below (one ensure per 256px boundary).
   bool matchesComposed(int index) {
-    final base = index * 3;
+    final base = index * 4;
     return (rgb[base] - seedR).abs() <= tolerance &&
         (rgb[base + 1] - seedG).abs() <= tolerance &&
         (rgb[base + 2] - seedB).abs() <= tolerance;
@@ -671,7 +675,7 @@ FloodFillRegion? _gapCloseFloodRegion({
   final tolerance = options.tolerance;
 
   final fillable = Uint8List(pixelCount);
-  for (var index = 0, base = 0; index < pixelCount; index += 1, base += 3) {
+  for (var index = 0, base = 0; index < pixelCount; index += 1, base += 4) {
     if ((rgb[base] - seedR).abs() <= tolerance &&
         (rgb[base + 1] - seedG).abs() <= tolerance &&
         (rgb[base + 2] - seedB).abs() <= tolerance) {

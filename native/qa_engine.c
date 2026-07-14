@@ -606,8 +606,53 @@ QA_EXPORT void qa_copy_bytes(
 }
 
 // ---------------------------------------------------------------------------
-// Flood fill, frontier-stepped (R18 A-2b).
+// Flood fill, frontier-stepped (R18 A-2b; RGBX + SSE2 R22-D).
 //
+// R22-D: the fill raster is RGBX - 4 bytes per pixel, X always 0 (the
+// paper fill writes whole words and the compose never touches byte 3).
+// One pixel is one 32-bit word and four pixels fill an SSE2 register,
+// so the span loops below test 4 px per step; scalar tails keep every
+// DECISION byte-identical to the Dart reference (which stays scalar
+// RGBX - the parity suite pins identical filled sets).
+
+#if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__) || \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#define QA_FLOOD_SSE2 1
+#include <emmintrin.h>
+#endif
+
+// One-pixel tolerance test against the seed color (RGBX layout).
+static inline int qa_tol_ok1(
+    const uint8_t* px,
+    int32_t seed_r,
+    int32_t seed_g,
+    int32_t seed_b,
+    int32_t tolerance) {
+  const int32_t dr = (int32_t)px[0] - seed_r;
+  const int32_t dg = (int32_t)px[1] - seed_g;
+  const int32_t db = (int32_t)px[2] - seed_b;
+  return dr <= tolerance && -dr <= tolerance && dg <= tolerance &&
+         -dg <= tolerance && db <= tolerance && -db <= tolerance;
+}
+
+#ifdef QA_FLOOD_SSE2
+// Bit i (0..3) set = pixel i of the 16-byte RGBX block is within
+// tolerance of the seed on R, G and B. The X lane is MASKED OUT of the
+// abs-diff, so the test matches the scalar compare under ANY X bytes -
+// no hidden "X must be 0" contract. The per-byte |p-seed| <= tol via
+// saturating unsigned abs-diff is exact for the integer compare above.
+static inline int qa_tol_ok4(const uint8_t* rgbx, __m128i seed4, __m128i tol4) {
+  const __m128i p = _mm_loadu_si128((const __m128i*)rgbx);
+  const __m128i d = _mm_and_si128(
+      _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p)),
+      _mm_set1_epi32(0x00FFFFFF));
+  const __m128i ok8 =
+      _mm_cmpeq_epi8(_mm_subs_epu8(d, tol4), _mm_setzero_si128());
+  const __m128i ok32 = _mm_cmpeq_epi32(ok8, _mm_set1_epi32(-1));
+  return _mm_movemask_ps(_mm_castsi128_ps(ok32));
+}
+#endif
+
 // EXACT port of the Dart scanline flood (floodFillRegion): expand each
 // popped run left/right, seed the rows above/below once per contiguous
 // matching run. The Dart original composes raster tiles LAZILY through a
@@ -652,6 +697,14 @@ QA_EXPORT int32_t qa_flood_fill_step(
   int32_t max_x = bounds[1];
   int32_t min_y = bounds[2];
   int32_t max_y = bounds[3];
+#ifdef QA_FLOOD_SSE2
+  const __m128i seed4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+                ((uint32_t)seed_b << 16)));
+  const __m128i tol4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+                ((uint32_t)tolerance << 16)));
+#endif
 
   while (*stack_size > 0) {
     if (candidate_count + candidate_margin > candidates_capacity ||
@@ -666,45 +719,106 @@ QA_EXPORT int32_t qa_flood_fill_step(
 
     // Expand the scanline run left and right; an uncomposed tile is a
     // candidate + run boundary (the driver re-seeds it after compose).
+    // Scans run per compose-tile SEGMENT (composed[] is constant inside
+    // one), 4 px per SSE2 step with a scalar tail owning every edge
+    // decision - identical stop points to the plain loop.
     int32_t left = index - row_start;
-    while (left > 0 && filled[row_start + left - 1] == 0) {
+    for (;;) {
+      if (left <= 0 || filled[row_start + left - 1] != 0) {
+        break;
+      }
       const int32_t px = left - 1;
-      const int32_t p = row_start + px;
       if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = p;
+        candidates[candidate_count] = row_start + px;
         candidate_count += 1;
         break;
       }
-      const int32_t base = p * 3;
-      const int32_t dr = (int32_t)rgb[base] - seed_r;
-      const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
-      const int32_t db = (int32_t)rgb[base + 2] - seed_b;
-      if (dr > tolerance || -dr > tolerance || dg > tolerance ||
-          -dg > tolerance || db > tolerance || -db > tolerance) {
+      const int32_t seg_start = (px >> compose_tile_shift)
+                                << compose_tile_shift;
+      int32_t x = px;
+      int32_t stop = 0;
+#ifdef QA_FLOOD_SSE2
+      while (x - 3 >= seg_start) {
+        uint32_t f4;
+        memcpy(&f4, filled + row_start + x - 3, 4);
+        if (f4 != 0) {
+          break;
+        }
+        if (qa_tol_ok4(
+                rgb + ((ptrdiff_t)(row_start + x - 3) << 2), seed4, tol4) !=
+            0xF) {
+          break;
+        }
+        memset(filled + row_start + x - 3, 255, 4);
+        x -= 4;
+      }
+#endif
+      while (x >= seg_start) {
+        const int32_t p = row_start + x;
+        if (filled[p] != 0 ||
+            !qa_tol_ok1(
+                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                tolerance)) {
+          stop = 1;
+          break;
+        }
+        filled[p] = 255;
+        x -= 1;
+      }
+      left = x + 1;
+      if (stop) {
         break;
       }
-      left -= 1;
-      filled[row_start + left] = 255;
     }
     int32_t right = index - row_start;
-    while (right < width - 1 && filled[row_start + right + 1] == 0) {
+    for (;;) {
+      if (right >= width - 1 || filled[row_start + right + 1] != 0) {
+        break;
+      }
       const int32_t px = right + 1;
-      const int32_t p = row_start + px;
       if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = p;
+        candidates[candidate_count] = row_start + px;
         candidate_count += 1;
         break;
       }
-      const int32_t base = p * 3;
-      const int32_t dr = (int32_t)rgb[base] - seed_r;
-      const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
-      const int32_t db = (int32_t)rgb[base + 2] - seed_b;
-      if (dr > tolerance || -dr > tolerance || dg > tolerance ||
-          -dg > tolerance || db > tolerance || -db > tolerance) {
+      int32_t seg_end =
+          ((((px >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
+      if (seg_end > width - 1) {
+        seg_end = width - 1;
+      }
+      int32_t x = px;
+      int32_t stop = 0;
+#ifdef QA_FLOOD_SSE2
+      while (x + 3 <= seg_end) {
+        uint32_t f4;
+        memcpy(&f4, filled + row_start + x, 4);
+        if (f4 != 0) {
+          break;
+        }
+        if (qa_tol_ok4(rgb + ((ptrdiff_t)(row_start + x) << 2), seed4, tol4) !=
+            0xF) {
+          break;
+        }
+        memset(filled + row_start + x, 255, 4);
+        x += 4;
+      }
+#endif
+      while (x <= seg_end) {
+        const int32_t p = row_start + x;
+        if (filled[p] != 0 ||
+            !qa_tol_ok1(
+                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                tolerance)) {
+          stop = 1;
+          break;
+        }
+        filled[p] = 255;
+        x += 1;
+      }
+      right = x - 1;
+      if (stop) {
         break;
       }
-      right += 1;
-      filled[row_start + right] = 255;
     }
     if (left < min_x) min_x = left;
     if (right > max_x) max_x = right;
@@ -713,7 +827,11 @@ QA_EXPORT int32_t qa_flood_fill_step(
 
     // Seed the rows above and below across the run - ONE seed per
     // contiguous matching run; uncomposed pixels are candidates and
-    // close the current run exactly like a non-match.
+    // close the current run exactly like a non-match. The composed
+    // check hoists per segment; the SSE2 block computes a 4-px match
+    // mask (unfilled AND within tolerance) and a scalar walk over the
+    // bits runs the run_open state machine - decision-identical to the
+    // plain loop.
     for (int32_t direction = 0; direction < 2; direction += 1) {
       const int32_t neighbor_y = direction == 0 ? y - 1 : y + 1;
       if (neighbor_y < 0 || neighbor_y >= height) {
@@ -723,31 +841,73 @@ QA_EXPORT int32_t qa_flood_fill_step(
       const int32_t neighbor_tile_row =
           (neighbor_y >> compose_tile_shift) * tiles_x;
       int32_t run_open = 0;
-      for (int32_t x = left; x <= right; x += 1) {
-        const int32_t p = neighbor_row + x;
+      int32_t x = left;
+      while (x <= right) {
         if (composed[neighbor_tile_row + (x >> compose_tile_shift)] == 0) {
-          candidates[candidate_count] = p;
+          candidates[candidate_count] = neighbor_row + x;
           candidate_count += 1;
           run_open = 0;
+          x += 1;
           continue;
         }
-        if (filled[p] == 0) {
-          const int32_t base = p * 3;
-          const int32_t dr = (int32_t)rgb[base] - seed_r;
-          const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
-          const int32_t db = (int32_t)rgb[base + 2] - seed_b;
-          if (dr <= tolerance && -dr <= tolerance && dg <= tolerance &&
-              -dg <= tolerance && db <= tolerance && -db <= tolerance) {
+        int32_t seg_end =
+            ((((x >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
+        if (seg_end > right) {
+          seg_end = right;
+        }
+#ifdef QA_FLOOD_SSE2
+        while (x + 3 <= seg_end) {
+          const int32_t p0 = neighbor_row + x;
+          uint32_t f4;
+          memcpy(&f4, filled + p0, 4);
+          int32_t match =
+              qa_tol_ok4(rgb + ((ptrdiff_t)p0 << 2), seed4, tol4);
+          // Clear match bits for already-filled pixels (they close a
+          // run exactly like a non-match in the reference loop).
+          if (f4 != 0) {
+            if (f4 & 0xFFu) match &= ~1;
+            if (f4 & 0xFF00u) match &= ~2;
+            if (f4 & 0xFF0000u) match &= ~4;
+            if (f4 & 0xFF000000u) match &= ~8;
+          }
+          if (match == 0) {
+            run_open = 0;
+            x += 4;
+            continue;
+          }
+          for (int32_t i = 0; i < 4; i += 1) {
+            if (match & (1 << i)) {
+              if (!run_open) {
+                const int32_t p = p0 + i;
+                filled[p] = 255;
+                stack[*stack_size] = p;
+                *stack_size += 1;
+                run_open = 1;
+              }
+            } else {
+              run_open = 0;
+            }
+          }
+          x += 4;
+        }
+#endif
+        while (x <= seg_end) {
+          const int32_t p = neighbor_row + x;
+          if (filled[p] == 0 &&
+              qa_tol_ok1(
+                  rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                  tolerance)) {
             if (!run_open) {
               filled[p] = 255;
               stack[*stack_size] = p;
               *stack_size += 1;
               run_open = 1;
             }
-            continue;
+          } else {
+            run_open = 0;
           }
+          x += 1;
         }
-        run_open = 0;
       }
     }
   }
@@ -766,7 +926,9 @@ QA_EXPORT int32_t qa_flood_fill_step(
 // most of what remains inside the fill.flood probe now that the flood
 // itself is native.
 
-// Fills a raster rect with the paper color (RGB, 3 bytes per pixel).
+// Fills a raster rect with the paper color (RGBX, 4 bytes per pixel;
+// X writes 0 for determinism - the SIMD tolerance compare masks the X
+// lane out, so nothing depends on it).
 QA_EXPORT void qa_fill_paper_rect(
     uint8_t* rgb,
     int32_t raster_width,
@@ -777,19 +939,22 @@ QA_EXPORT void qa_fill_paper_rect(
     int32_t paper_r,
     int32_t paper_g,
     int32_t paper_b) {
+  const uint32_t paper = (uint32_t)paper_r | ((uint32_t)paper_g << 8) |
+                         ((uint32_t)paper_b << 16);
   for (int32_t y = top; y < bottom_exclusive; y += 1) {
-    uint8_t* dst = rgb + ((ptrdiff_t)y * raster_width + left) * 3;
+    uint32_t* dst =
+        (uint32_t*)(rgb + (((ptrdiff_t)y * raster_width + left) << 2));
     for (int32_t x = left; x < right_exclusive; x += 1) {
-      dst[0] = (uint8_t)paper_r;
-      dst[1] = (uint8_t)paper_g;
-      dst[2] = (uint8_t)paper_b;
-      dst += 3;
+      *dst = paper;
+      dst += 1;
     }
   }
 }
 
-// Integer source-over of one RGBA surface-tile clip onto the RGB raster
-// (byte-rounded, exactly the Dart loop: effective = (a*o+127)/255 etc.).
+// Integer source-over of one RGBA surface-tile clip onto the RGBX
+// raster (byte-rounded, exactly the Dart loop: effective =
+// (a*o+127)/255 etc.). The X byte stays untouched (0 from the paper
+// fill).
 QA_EXPORT void qa_fill_compose_tile(
     uint8_t* rgb,
     int32_t raster_width,
@@ -806,7 +971,7 @@ QA_EXPORT void qa_fill_compose_tile(
     const uint8_t* src =
         tile_pixels +
         ((ptrdiff_t)(y - base_y) * tile_size + (clip_left - base_x)) * 4;
-    uint8_t* dst = rgb + ((ptrdiff_t)y * raster_width + clip_left) * 3;
+    uint8_t* dst = rgb + (((ptrdiff_t)y * raster_width + clip_left) << 2);
     for (int32_t x = clip_left; x < clip_right_exclusive; x += 1) {
       const int32_t alpha = src[3];
       if (alpha != 0) {
@@ -817,7 +982,7 @@ QA_EXPORT void qa_fill_compose_tile(
         dst[2] = (uint8_t)((src[2] * effective + dst[2] * inverse + 127) / 255);
       }
       src += 4;
-      dst += 3;
+      dst += 4;
     }
   }
 }
@@ -982,16 +1147,29 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
     int32_t stack_capacity,
     int32_t* bounds_out) {
   const int64_t count = (int64_t)width * height;
-  for (int64_t i = 0, base = 0; i < count; i += 1, base += 3) {
-    const int32_t dr = (int32_t)rgb[base] - seed_r;
-    const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
-    const int32_t db = (int32_t)rgb[base + 2] - seed_b;
-    fillable[i] =
-        (dr < 0 ? -dr : dr) <= tolerance &&
-        (dg < 0 ? -dg : dg) <= tolerance &&
-        (db < 0 ? -db : db) <= tolerance
-            ? 1
-            : 0;
+  int64_t i = 0;
+#ifdef QA_FLOOD_SSE2
+  // Full-canvas tolerance mask, 4 px per step (RGBX) - at 8K this pass
+  // alone walks 132MB.
+  const __m128i seed4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+                ((uint32_t)seed_b << 16)));
+  const __m128i tol4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+                ((uint32_t)tolerance << 16)));
+  for (; i + 4 <= count; i += 4) {
+    const int32_t ok = qa_tol_ok4(rgb + (i << 2), seed4, tol4);
+    fillable[i] = (uint8_t)(ok & 1);
+    fillable[i + 1] = (uint8_t)((ok >> 1) & 1);
+    fillable[i + 2] = (uint8_t)((ok >> 2) & 1);
+    fillable[i + 3] = (uint8_t)((ok >> 3) & 1);
+  }
+#endif
+  for (; i < count; i += 1) {
+    fillable[i] = qa_tol_ok1(
+                      rgb + (i << 2), seed_r, seed_g, seed_b, tolerance)
+                      ? 1
+                      : 0;
   }
   qa_chamfer_distance(dist, fillable, 0, width, height);
 
@@ -1470,4 +1648,5 @@ QA_EXPORT void qa_tile_pool_trim(void) {
 }
 
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 11; }
+// v12: fill raster RGB -> RGBX (R22-D flood SIMD).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 12; }
