@@ -5,11 +5,16 @@ import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
 
 Widget _panel({
   CanvasTool tool = CanvasTool.brush,
+  CanvasTool selectionVariant = CanvasTool.selectRect,
   ValueChanged<CanvasTool>? onToolChanged,
 }) {
   return MaterialApp(
     home: Scaffold(
-      body: ToolsPanel(tool: tool, onToolChanged: onToolChanged ?? (_) {}),
+      body: ToolsPanel(
+        tool: tool,
+        selectionVariant: selectionVariant,
+        onToolChanged: onToolChanged ?? (_) {},
+      ),
     ),
   );
 }
@@ -84,6 +89,59 @@ void main() {
       );
       expect(eraser.isSelected, isTrue);
       expect(brush.isSelected, isFalse);
+    });
+
+    testWidgets('ONE Select button (R17-U): activates the remembered '
+        'variant and highlights for both variants', (tester) async {
+      final selected = <CanvasTool>[];
+      await tester.pumpWidget(
+        _panel(selectionVariant: CanvasTool.lasso, onToolChanged: selected.add),
+      );
+
+      // The old per-variant buttons are gone.
+      expect(
+        find.byKey(const ValueKey<String>('tool-select-rect-button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('tool-lasso-button')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('tool-select-button')),
+      );
+      expect(selected, [CanvasTool.lasso], reason: 'remembered variant');
+
+      // Selected state covers BOTH variants.
+      await tester.pumpWidget(_panel(tool: CanvasTool.lasso));
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey<String>('tool-select-button')),
+            )
+            .isSelected,
+        isTrue,
+      );
+    });
+
+    testWidgets('pressing Select while a variant is ACTIVE keeps it', (
+      tester,
+    ) async {
+      final selected = <CanvasTool>[];
+      await tester.pumpWidget(
+        _panel(
+          tool: CanvasTool.lasso,
+          selectionVariant: CanvasTool.selectRect,
+          onToolChanged: selected.add,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('tool-select-button')),
+      );
+
+      expect(selected, [CanvasTool.lasso]);
     });
   });
 }

@@ -1,12 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../services/canvas_selection.dart';
+
+/// The live transform box's numeric state (R17-U tool settings inputs).
+typedef SelectionTransformValues = ({
+  double tx,
+  double ty,
+  double rotationDegrees,
+  double scale,
+});
 
 /// The imperative selection channel (P9): the app-level shortcuts
 /// (Ctrl+D deselect, arrow nudges) call in; the mounted selection layer
 /// binds the handlers. Unbound calls are no-ops and [hasSelection] is
 /// false — the arrow keys then keep their frame-flipping meaning.
-class CanvasSelectionCommands {
+///
+/// R17-U: also a [ChangeNotifier] — the layer pings [notifySessionChanged]
+/// on selection/transform mutations so the tool settings panel's numeric
+/// fields track handle drags live (notification is coalesced and deferred
+/// a microtask: mutations fire inside build/gesture phases).
+class CanvasSelectionCommands extends ChangeNotifier {
   bool Function()? _hasSelection;
   void Function(double dx, double dy)? _nudge;
   VoidCallback? _deselect;
@@ -18,6 +33,16 @@ class CanvasSelectionCommands {
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
   VoidCallback? _revertPendingMove;
+  SelectionTransformValues? Function()? _transformValues;
+  void Function({
+    required double tx,
+    required double ty,
+    required double rotationDegrees,
+    required double scale,
+  })?
+  _setTransformValues;
+
+  bool _notifyScheduled = false;
 
   void bind({
     required bool Function() hasSelection,
@@ -31,6 +56,14 @@ class CanvasSelectionCommands {
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
     VoidCallback? revertPendingMove,
+    SelectionTransformValues? Function()? transformValues,
+    void Function({
+      required double tx,
+      required double ty,
+      required double rotationDegrees,
+      required double scale,
+    })?
+    setTransformValues,
   }) {
     _hasSelection = hasSelection;
     _nudge = nudge;
@@ -43,6 +76,9 @@ class CanvasSelectionCommands {
     _movePending = movePending;
     _confirmPendingMove = confirmPendingMove;
     _revertPendingMove = revertPendingMove;
+    _transformValues = transformValues;
+    _setTransformValues = setTransformValues;
+    notifySessionChanged();
   }
 
   void unbind() {
@@ -57,6 +93,23 @@ class CanvasSelectionCommands {
     _movePending = null;
     _confirmPendingMove = null;
     _revertPendingMove = null;
+    _transformValues = null;
+    _setTransformValues = null;
+    notifySessionChanged();
+  }
+
+  /// Coalesced, microtask-deferred change ping — safe to call from any
+  /// phase (the layer mutates state inside builds and gesture handlers,
+  /// where a synchronous notifyListeners could re-enter the build).
+  void notifySessionChanged() {
+    if (_notifyScheduled) {
+      return;
+    }
+    _notifyScheduled = true;
+    scheduleMicrotask(() {
+      _notifyScheduled = false;
+      notifyListeners();
+    });
   }
 
   /// Pushes a committed region into the mounted layer — the
@@ -73,7 +126,7 @@ class CanvasSelectionCommands {
 
   void deselect() => _deselect?.call();
 
-  /// Whether a Ctrl+T free-transform session is open (Enter/Escape then
+  /// Whether a free-transform session is open (Enter/Escape then
   /// commit/cancel it instead of their usual meanings).
   bool get transformActive => _transformActive?.call() ?? false;
 
@@ -98,4 +151,23 @@ class CanvasSelectionCommands {
   /// session found them (a fresh lift disappears entirely), no history
   /// entry. The "되돌리기" choice in the R17-① confirm prompt.
   void revertPendingMove() => _revertPendingMove?.call();
+
+  /// The open transform box's numeric state, or null when no box is up
+  /// (the settings fields then show the identity).
+  SelectionTransformValues? get transformValues => _transformValues?.call();
+
+  /// Applies numeric transform values to the live selection (R17-U): the
+  /// layer opens a session if none is up, sets the affine, and shows the
+  /// result on the float — Enter confirms, Escape reverts, as always.
+  void setTransformValues({
+    required double tx,
+    required double ty,
+    required double rotationDegrees,
+    required double scale,
+  }) => _setTransformValues?.call(
+    tx: tx,
+    ty: ty,
+    rotationDegrees: rotationDegrees,
+    scale: scale,
+  );
 }

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/gestures.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -46,7 +46,14 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.onMoveSessionPendingChanged,
+    this.alwaysShowTransformBox = false,
   });
+
+  /// R17-U (이동+Ctrl+T 통합, 핸들 상시): with the MOVE tool a selection
+  /// shows its transform box immediately — grabbing a scale/rotate handle
+  /// opens the session on the spot (the lift happens at that first
+  /// interaction, never on mere display). Ctrl+T still works everywhere.
+  final bool alwaysShowTransformBox;
 
   /// Which selection tool draws new regions (selectRect or lasso).
   final CanvasSelectionTool tool;
@@ -91,14 +98,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// Raw landing of the floating stamp at its pending position (no
   /// history entry) — the abandon fallback so a reset can never lose the
   /// float's pixels.
-  final void Function(int liftToken, BrushDab stampDab)?
-  onLiftLanded;
+  final void Function(int liftToken, BrushDab stampDab)? onLiftLanded;
 
   /// CONFIRM of a move session (R16-①): the host lands [stampDab] and
   /// adopts the whole session (raw lift + landed stamp) as ONE history
   /// entry (BrushLiftMoveHistoryCommand).
-  final void Function(int liftToken, BrushDab stampDab)?
-  onLiftConfirmed;
+  final void Function(int liftToken, BrushDab stampDab)? onLiftConfirmed;
 
   /// REVERT (R17-①): the host restores the pre-lift picture byte-exactly;
   /// nothing lands in history.
@@ -429,7 +434,48 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       movePending: () => _movePending,
       confirmPendingMove: _confirmMoveSession,
       revertPendingMove: _revertMoveSession,
+      transformValues: () {
+        final transform = _transform;
+        if (transform == null) {
+          return null;
+        }
+        return (
+          tx: transform.tx,
+          ty: transform.ty,
+          rotationDegrees: transform.rotationDegrees,
+          scale: transform.sx,
+        );
+      },
+      setTransformValues: _setTransformValues,
     );
+  }
+
+  /// Numeric transform input (R17-U tool settings): opens the session if
+  /// none is up (Ctrl+T semantics — lift + box), then sets the affine
+  /// outright. Enter/Escape keep their commit/revert meanings.
+  void _setTransformValues({
+    required double tx,
+    required double ty,
+    required double rotationDegrees,
+    required double scale,
+  }) {
+    if (_transform == null) {
+      _beginTransform();
+    }
+    final transform = _transform;
+    if (transform == null) {
+      return;
+    }
+    setState(() {
+      _transform = transform.copyWith(
+        tx: tx,
+        ty: ty,
+        rotationDegrees: rotationDegrees,
+        sx: scale,
+        sy: scale,
+      );
+    });
+    _syncAnts();
   }
 
   void _resetAll({bool deferDragNotify = false}) {
@@ -554,6 +600,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     } else if (!animate && _ants.isAnimating) {
       _ants.stop();
     }
+    // Every mutation path funnels through here — the settings panel's
+    // numeric fields track the session via this (deferred) ping.
+    widget.selectionCommands?.notifySessionChanged();
   }
 
   void _deselect() {
@@ -650,11 +699,48 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final canvasPoint = _toCanvas(event.localPosition);
-    final transform = _transform;
+    var transform = _transform;
+    // R17-U 핸들 상시: with the always-on box (Move tool), grabbing a
+    // scale/rotate HANDLE promotes the implicit box into a real session
+    // on the spot — the lift happens here, at the first interaction.
+    if (transform == null &&
+        widget.alwaysShowTransformBox &&
+        widget.tool == CanvasSelectionTool.move &&
+        _shape != null &&
+        widget.onLiftRequested != null) {
+      final implicitShape = _shape!;
+      final box = _shapeBounds(implicitShape);
+      _baseBoxWidth = box.width;
+      _baseBoxHeight = box.height;
+      final implicit = SelectionAffine(pivot: box.center);
+      final handle = _hitTestTransformHandle(event.localPosition, implicit);
+      if (handle != null && handle != _TransformHandle.inside) {
+        final hadPendingLift = _pendingLiftStamp != null;
+        if (!_ensureLifted(implicitShape)) {
+          _baseBoxWidth = 0;
+          _baseBoxHeight = 0;
+          return;
+        }
+        setState(() {
+          _transformOpenedLift = !hadPendingLift;
+          _transform = implicit;
+          _floatSurface = _buildFloatSurface();
+        });
+        transform = implicit;
+      } else {
+        // Inside/miss: fall through to the ordinary move-drag flow.
+        _baseBoxWidth = 0;
+        _baseBoxHeight = 0;
+      }
+    }
     if (transform != null) {
-      // Ctrl+T is modal: only the box's handles/inside react; clicks
-      // elsewhere are inert until Enter/Escape closes the session.
-      final handle = _hitTestTransformHandle(event.localPosition, transform);
+      // The open box is modal: only the box's handles/inside react;
+      // clicks elsewhere are inert until Enter/Escape closes the session.
+      final openTransform = transform;
+      final handle = _hitTestTransformHandle(
+        event.localPosition,
+        openTransform,
+      );
       if (handle == null) {
         return;
       }
@@ -662,10 +748,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(() {
         _dragMode = _DragMode.transform;
         _transformDragHandle = handle;
-        _transformDragStart = transform;
+        _transformDragStart = openTransform;
         _transformDragStartPointer = canvasPoint;
         if (handle == _TransformHandle.rotate) {
-          _transformLastAngle = _pointerAngleAbout(canvasPoint, transform);
+          _transformLastAngle = _pointerAngleAbout(canvasPoint, openTransform);
         }
       });
       widget.onDragActiveChanged?.call(true);
@@ -1017,10 +1103,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _TransformHandle.leftEdge,
   ];
 
-  Offset _rotateKnobOffset(SelectionAffine affine) {
+  Offset _rotateKnobOffset(SelectionAffine affine) =>
+      _rotateKnobOffsetFor(affine, _baseBoxHeight);
+
+  Offset _rotateKnobOffsetFor(SelectionAffine affine, double boxHeight) {
     final topMid = _mapLocalToViewport(
       affine,
-      CanvasPoint(x: 0, y: -_baseBoxHeight / 2),
+      CanvasPoint(x: 0, y: -boxHeight / 2),
     );
     final centerMapped = widget.viewport.canvasToViewport(
       affine.apply(affine.pivot),
@@ -1032,13 +1121,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// The transformed box as a canvas-space polygon (inside = translate).
-  CanvasSelectionShape _transformedBoxShape(SelectionAffine affine) {
+  CanvasSelectionShape _transformedBoxShape(SelectionAffine affine) =>
+      _boxShapeFor(affine, _baseBoxWidth, _baseBoxHeight);
+
+  CanvasSelectionShape _boxShapeFor(
+    SelectionAffine affine,
+    double width,
+    double height,
+  ) {
     return CanvasSelectionShape([
       for (final corner in [
-        CanvasPoint(x: -_baseBoxWidth / 2, y: -_baseBoxHeight / 2),
-        CanvasPoint(x: _baseBoxWidth / 2, y: -_baseBoxHeight / 2),
-        CanvasPoint(x: _baseBoxWidth / 2, y: _baseBoxHeight / 2),
-        CanvasPoint(x: -_baseBoxWidth / 2, y: _baseBoxHeight / 2),
+        CanvasPoint(x: -width / 2, y: -height / 2),
+        CanvasPoint(x: width / 2, y: -height / 2),
+        CanvasPoint(x: width / 2, y: height / 2),
+        CanvasPoint(x: -width / 2, y: height / 2),
       ])
         affine.apply(
           CanvasPoint(
@@ -1047,6 +1143,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ),
         ),
     ]);
+  }
+
+  /// The shape's axis-aligned bounds (box geometry for the transform
+  /// chrome — R17-U always-on handles use it without opening a session).
+  ({double width, double height, CanvasPoint center}) _shapeBounds(
+    CanvasSelectionShape shape,
+  ) {
+    var minX = shape.points.first.x, maxX = shape.points.first.x;
+    var minY = shape.points.first.y, maxY = shape.points.first.y;
+    for (final point in shape.points.skip(1)) {
+      minX = math.min(minX, point.x);
+      maxX = math.max(maxX, point.x);
+      minY = math.min(minY, point.y);
+      maxY = math.max(maxY, point.y);
+    }
+    return (
+      width: math.max(maxX - minX, 1),
+      height: math.max(maxY - minY, 1),
+      center: CanvasPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+    );
   }
 
   _TransformHandle? _hitTestTransformHandle(
@@ -1116,21 +1232,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final displayShape = transform != null && shape != null
         ? transformShape(shape, transform)
         : shape;
-    final chrome = transform == null
+    // R17-U 핸들 상시: with the Move tool a selection shows its box
+    // chrome even before any session opens (identity affine around the
+    // shape bounds; grabbing a handle opens the session at that moment).
+    var chromeAffine = transform;
+    var chromeWidth = _baseBoxWidth;
+    var chromeHeight = _baseBoxHeight;
+    if (chromeAffine == null &&
+        widget.alwaysShowTransformBox &&
+        widget.tool == CanvasSelectionTool.move &&
+        shape != null &&
+        _dragMode == _DragMode.none) {
+      final bounds = _shapeBounds(shape);
+      chromeAffine = SelectionAffine(pivot: bounds.center);
+      chromeWidth = bounds.width;
+      chromeHeight = bounds.height;
+    }
+    final chrome = chromeAffine == null
         ? null
         : (
             box: [
-              for (final point in _transformedBoxShape(transform).points)
+              for (final point in _boxShapeFor(
+                chromeAffine,
+                chromeWidth,
+                chromeHeight,
+              ).points)
                 _mapCanvasToViewportOffset(point),
             ],
             handles: [
               for (final handle in _scaleHandles)
                 _mapLocalToViewport(
-                  transform,
-                  _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
+                  chromeAffine,
+                  _handleLocal(handle, chromeWidth, chromeHeight)!,
                 ),
             ],
-            knob: _rotateKnobOffset(transform),
+            knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight),
           );
     return Listener(
       key: const ValueKey<String>('canvas-selection-layer'),

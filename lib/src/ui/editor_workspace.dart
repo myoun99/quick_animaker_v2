@@ -212,6 +212,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final ValueNotifier<BrushToolState> _brushTool =
       widget.brushTool ?? PaintToolStateNotifier(BrushToolState.defaults);
 
+  /// The last selection VARIANT used (R17-U: rectangle/lasso are one
+  /// toolbar tool; the single Select button re-activates this).
+  CanvasTool _lastSelectionVariant = CanvasTool.selectRect;
+
+  void _rememberSelectionVariant() {
+    final tool = _brushTool.value.tool;
+    if (tool == CanvasTool.selectRect || tool == CanvasTool.lasso) {
+      _lastSelectionVariant = tool;
+    }
+  }
+
   /// Which preset is highlighted PER painting tool (R11-④: the brush and
   /// the eraser keep separate selections; their settings live in
   /// [PaintToolStateNotifier]'s bank).
@@ -339,6 +350,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // Recent colors record on COMMITTED work (history changes) — the color
     // actually drawn with, not every wheel drag sample (P4).
     widget.session.historyManager.addListener(_recordRecentColor);
+    _brushTool.addListener(_rememberSelectionVariant);
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.cacheInvalidationHub,
@@ -457,6 +469,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   @override
   void dispose() {
+    _brushTool.removeListener(_rememberSelectionVariant);
     widget.session.historyManager.removeListener(_recordRecentColor);
     _colorPalette.dispose();
     _storyboardThumbnails.dispose();
@@ -582,6 +595,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 slice: (state) => state.tool,
                 builder: (context, toolState) => ToolsPanel(
                   tool: toolState.tool,
+                  selectionVariant: _lastSelectionVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
                 ),
@@ -694,6 +708,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           fillOptions: fillOptions,
                           onFillOptionsChanged: (options) =>
                               _fillOptions.value = options,
+                          selectionCommands: widget.canvasSelectionCommands,
                         ),
                       ),
                 ),
