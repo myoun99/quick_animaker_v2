@@ -903,6 +903,183 @@ QA_EXPORT void qa_fill_finish_mask(
 }
 
 // ---------------------------------------------------------------------------
+// Close-gap fill (R20-C1) - mirrors the Dart reference pipeline in
+// canvas_flood_fill.dart EXACTLY (integer chamfer math; parity-pinned):
+// tolerance mask, 3-4 chamfer distance transform, erode by 3*gap, flood,
+// grow back by 3*gap clipped to fillable.
+
+static void qa_chamfer_distance(
+    uint16_t* dist,
+    const uint8_t* from,
+    uint8_t zero_when,
+    int32_t width,
+    int32_t height) {
+  const int32_t infinity = 60000;
+  const int64_t count = (int64_t)width * height;
+  for (int64_t i = 0; i < count; i += 1) {
+    dist[i] = from[i] == zero_when ? 0 : (uint16_t)infinity;
+  }
+  for (int32_t y = 0; y < height; y += 1) {
+    const int64_t row = (int64_t)y * width;
+    for (int32_t x = 0; x < width; x += 1) {
+      const int64_t index = row + x;
+      int32_t best = dist[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x > 0 && dist[index - 1] + 3 < best) best = dist[index - 1] + 3;
+      if (y > 0) {
+        const int64_t up = index - width;
+        if (dist[up] + 3 < best) best = dist[up] + 3;
+        if (x > 0 && dist[up - 1] + 4 < best) best = dist[up - 1] + 4;
+        if (x < width - 1 && dist[up + 1] + 4 < best) best = dist[up + 1] + 4;
+      }
+      dist[index] = (uint16_t)(best > infinity ? infinity : best);
+    }
+  }
+  for (int32_t y = height - 1; y >= 0; y -= 1) {
+    const int64_t row = (int64_t)y * width;
+    for (int32_t x = width - 1; x >= 0; x -= 1) {
+      const int64_t index = row + x;
+      int32_t best = dist[index];
+      if (best == 0) {
+        continue;
+      }
+      if (x < width - 1 && dist[index + 1] + 3 < best) {
+        best = dist[index + 1] + 3;
+      }
+      if (y < height - 1) {
+        const int64_t down = index + width;
+        if (dist[down] + 3 < best) best = dist[down] + 3;
+        if (x < width - 1 && dist[down + 1] + 4 < best) {
+          best = dist[down + 1] + 4;
+        }
+        if (x > 0 && dist[down - 1] + 4 < best) best = dist[down - 1] + 4;
+      }
+      dist[index] = (uint16_t)(best > infinity ? infinity : best);
+    }
+  }
+}
+
+// Returns the EFFECTIVE gap used (>= 0; seed-survival may have halved
+// it), -1 on stack overflow (caller falls back to the Dart reference),
+// -2 when nothing fills. bounds_out = {minX, maxX, minY, maxY}.
+QA_EXPORT int32_t qa_fill_gap_close_run(
+    const uint8_t* rgb,
+    int32_t width,
+    int32_t height,
+    int32_t seed_x,
+    int32_t seed_y,
+    int32_t seed_r,
+    int32_t seed_g,
+    int32_t seed_b,
+    int32_t tolerance,
+    int32_t gap_px,
+    uint8_t* fillable,
+    uint16_t* dist,
+    uint8_t* filled,
+    int32_t* stack,
+    int32_t stack_capacity,
+    int32_t* bounds_out) {
+  const int64_t count = (int64_t)width * height;
+  for (int64_t i = 0, base = 0; i < count; i += 1, base += 3) {
+    const int32_t dr = (int32_t)rgb[base] - seed_r;
+    const int32_t dg = (int32_t)rgb[base + 1] - seed_g;
+    const int32_t db = (int32_t)rgb[base + 2] - seed_b;
+    fillable[i] =
+        (dr < 0 ? -dr : dr) <= tolerance &&
+        (dg < 0 ? -dg : dg) <= tolerance &&
+        (db < 0 ? -db : db) <= tolerance
+            ? 1
+            : 0;
+  }
+  qa_chamfer_distance(dist, fillable, 0, width, height);
+
+  int32_t gap = gap_px;
+  const int64_t seed_index = (int64_t)seed_y * width + seed_x;
+  while (gap > 0 && dist[seed_index] <= 3 * gap) {
+    gap /= 2;
+  }
+  const int32_t threshold = 3 * gap;
+
+  memset(filled, 0, (size_t)count);
+  if (dist[seed_index] <= threshold) {
+    return -2;
+  }
+  int32_t stack_size = 0;
+  filled[seed_index] = 255;
+  stack[stack_size++] = (int32_t)seed_index;
+  while (stack_size > 0) {
+    const int32_t index = stack[--stack_size];
+    const int32_t y = index / width;
+    const int32_t row = y * width;
+    int32_t left = index - row;
+    while (left > 0 && filled[row + left - 1] == 0 &&
+           dist[row + left - 1] > threshold) {
+      left -= 1;
+      filled[row + left] = 255;
+    }
+    int32_t right = index - row;
+    while (right < width - 1 && filled[row + right + 1] == 0 &&
+           dist[row + right + 1] > threshold) {
+      right += 1;
+      filled[row + right] = 255;
+    }
+    for (int32_t dy = -1; dy <= 1; dy += 2) {
+      const int32_t neighbor_y = y + dy;
+      if (neighbor_y < 0 || neighbor_y >= height) {
+        continue;
+      }
+      const int32_t neighbor_row = neighbor_y * width;
+      int32_t run_open = 0;
+      for (int32_t x = left; x <= right; x += 1) {
+        const int32_t neighbor = neighbor_row + x;
+        if (filled[neighbor] == 0 && dist[neighbor] > threshold) {
+          if (!run_open) {
+            if (stack_size >= stack_capacity) {
+              return -1;
+            }
+            filled[neighbor] = 255;
+            stack[stack_size++] = neighbor;
+            run_open = 1;
+          }
+        } else {
+          run_open = 0;
+        }
+      }
+    }
+  }
+
+  // Grow back to the real barriers (dist reused for the second
+  // transform, sourced from the flooded set this time).
+  qa_chamfer_distance(dist, filled, 255, width, height);
+  int32_t min_x = width, max_x = -1, min_y = height, max_y = -1;
+  for (int32_t y = 0; y < height; y += 1) {
+    const int32_t row = y * width;
+    for (int32_t x = 0; x < width; x += 1) {
+      const int32_t i = row + x;
+      if (fillable[i] != 0 && dist[i] <= threshold) {
+        filled[i] = 255;
+        if (x < min_x) min_x = x;
+        if (x > max_x) max_x = x;
+        if (y < min_y) min_y = y;
+        if (y > max_y) max_y = y;
+      } else {
+        filled[i] = 0;
+      }
+    }
+  }
+  if (max_x < 0) {
+    return -2;
+  }
+  bounds_out[0] = min_x;
+  bounds_out[1] = max_x;
+  bounds_out[2] = min_y;
+  bounds_out[3] = max_y;
+  return gap;
+}
+
+// ---------------------------------------------------------------------------
 // Stamp blend, whole tile span (R18 F-1): the Dart driver used to make
 // one FFI call PER ROW - a full-canvas fill stamp was ~10k calls whose
 // call overhead dwarfed the blend (commit.edit 55-95ms warm). One call
@@ -1293,4 +1470,4 @@ QA_EXPORT void qa_tile_pool_trim(void) {
 }
 
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 10; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 11; }

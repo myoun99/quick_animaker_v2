@@ -316,6 +316,19 @@ class _FillSettings extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.copyWith(expandPx: value.round())),
         ),
+        Text(
+          'Gap Close ${options.gapClosePx == 0 ? 'off' : '${options.gapClosePx}px'}',
+          style: theme.textTheme.labelMedium,
+        ),
+        Slider(
+          key: const ValueKey<String>('fill-gap-close-slider'),
+          min: 0,
+          max: 8,
+          divisions: 8,
+          value: options.gapClosePx.toDouble().clamp(0, 8),
+          onChanged: (value) =>
+              onChanged(options.copyWith(gapClosePx: value.round())),
+        ),
         SwitchListTile(
           key: const ValueKey<String>('fill-anti-alias-switch'),
           dense: true,
