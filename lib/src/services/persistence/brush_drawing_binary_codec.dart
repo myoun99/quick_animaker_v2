@@ -310,11 +310,50 @@ double _u16ToUnit(int value) => value / 65535;
 /// One cel's BAKED raster — the persistence TRUTH from .qap format v2 on
 /// (R19 bake-only): what you saved is exactly what reopens, byte for
 /// byte, with no re-materialization ever.
+///
+/// R19-Z: this is a PLAIN-BYTES snapshot ((coordX, coordY, rgba) records),
+/// not a [BitmapSurface] — native-backed tiles are Finalizable and cannot
+/// cross the save/open isolate boundary, so the boundary ships bytes and
+/// each side converts with [QapCelEntry.fromSurface]/[toSurface].
 class QapCelEntry {
-  const QapCelEntry({required this.key, required this.surface});
+  const QapCelEntry({
+    required this.key,
+    required this.canvasSize,
+    required this.tileSize,
+    required this.tiles,
+  });
+
+  factory QapCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
+    return QapCelEntry(
+      key: key,
+      canvasSize: surface.canvasSize,
+      tileSize: surface.tileSize,
+      tiles: [
+        for (final tile in surface.tiles.values)
+          (x: tile.coord.x, y: tile.coord.y, pixels: tile.pixels),
+      ],
+    );
+  }
 
   final BrushFrameKey key;
-  final BitmapSurface surface;
+  final CanvasSize canvasSize;
+  final int tileSize;
+  final List<({int x, int y, Uint8List pixels})> tiles;
+
+  BitmapSurface toSurface() {
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: {
+        for (final tile in tiles)
+          TileCoord(x: tile.x, y: tile.y): BitmapTile(
+            coord: TileCoord(x: tile.x, y: tile.y),
+            size: tileSize,
+            pixels: tile.pixels,
+          ),
+      },
+    );
+  }
 }
 
 const int qapCelBinaryVersion = 1;
@@ -323,7 +362,6 @@ const int qapCelBinaryVersion = 1;
 /// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
 /// line art extremely well — no inner compression layer).
 Uint8List encodeCelEntry(QapCelEntry entry) {
-  final surface = entry.surface;
   final writer = _ByteWriter()
     ..u8(qapCelBinaryVersion)
     ..string(entry.key.projectId.value)
@@ -331,14 +369,14 @@ Uint8List encodeCelEntry(QapCelEntry entry) {
     ..string(entry.key.cutId.value)
     ..string(entry.key.layerId.value)
     ..string(entry.key.frameId.value)
-    ..u32(surface.canvasSize.width)
-    ..u32(surface.canvasSize.height)
-    ..u16(surface.tileSize)
-    ..u32(surface.tiles.length);
-  for (final tile in surface.tiles.values) {
+    ..u32(entry.canvasSize.width)
+    ..u32(entry.canvasSize.height)
+    ..u16(entry.tileSize)
+    ..u32(entry.tiles.length);
+  for (final tile in entry.tiles) {
     writer
-      ..u32(tile.coord.x)
-      ..u32(tile.coord.y)
+      ..u32(tile.x)
+      ..u32(tile.y)
       ..bytes(tile.pixels);
   }
   return writer.takeBytes();
@@ -362,22 +400,18 @@ QapCelEntry decodeCelEntry(Uint8List bytes) {
   final tileSize = reader.u16();
   final tileCount = reader.u32();
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
-  final tiles = <TileCoord, BitmapTile>{};
-  for (var i = 0; i < tileCount; i += 1) {
-    final coord = TileCoord(x: reader.u32(), y: reader.u32());
-    tiles[coord] = BitmapTile(
-      coord: coord,
-      size: tileSize,
-      pixels: reader.bytes(tileByteLength),
-    );
-  }
   return QapCelEntry(
     key: key,
-    surface: BitmapSurface(
-      canvasSize: CanvasSize(width: width, height: height),
-      tileSize: tileSize,
-      tiles: tiles,
-    ),
+    canvasSize: CanvasSize(width: width, height: height),
+    tileSize: tileSize,
+    tiles: [
+      for (var i = 0; i < tileCount; i += 1)
+        (
+          x: reader.u32(),
+          y: reader.u32(),
+          pixels: reader.bytes(tileByteLength),
+        ),
+    ],
   );
 }
 

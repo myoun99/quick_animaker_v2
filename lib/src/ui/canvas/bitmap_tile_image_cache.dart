@@ -185,15 +185,18 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// colors. Shared with the tiled surface compose path so every tile
   /// upload in the app rounds identically.
   static Uint8List premultipliedTilePixels(BitmapTile tile) {
-    final pixels = tile.pixels;
-    // R18 A-2a: the native kernel runs the same integer math in place —
-    // byte-identical (parity-pinned); the Dart loop below remains the
-    // reference and the fallback.
+    // R18 A-2a / R19-Z: the fused native kernel reads the tile's NATIVE
+    // buffer directly and premultiplies in one pass — byte-identical to
+    // the Dart reference below (parity-pinned), one VM copy instead of
+    // three per decode start.
     final native = QaNativeEngine.instance;
     if (native != null) {
-      native.premultiplyRgba(pixels);
-      return pixels;
+      return native.premultipliedCopyFromNative(
+        tile.nativePixels,
+        tile.size * tile.size * BitmapTile.bytesPerPixel,
+      );
     }
+    final pixels = tile.pixels;
     for (var offset = 0; offset < pixels.length; offset += 4) {
       final alpha = pixels[offset + 3];
       if (alpha == 255) {
