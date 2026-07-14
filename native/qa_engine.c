@@ -1164,5 +1164,133 @@ QA_EXPORT void qa_stamp_blend_tiles(
   qa_pool_run(qa_stamp_batch_item, &context, tile_count);
 }
 
+// --- Tile allocator (R20-E1) -----------------------------------------------
+//
+// Exact-size free-list recycler for tile pixel buffers. Tiles churn hard:
+// every commit ADOPTS its scratch buffers as finished tiles (R19-Z), so
+// buffers leave the acquire/release cycle and only come back when the GC
+// finalizes old tiles - with plain malloc that meant ~1024 fresh mallocs
+// per full-canvas 8K fill. Freed tile blocks now park on per-size free
+// lists and are handed straight back to the next allocation.
+//
+// qa_tile_free doubles as the Dart NativeFinalizer callback, which runs
+// on GC threads - all pool state is mutex-guarded.
+
+#include <stdlib.h>
+
+#if defined(_WIN32)
+static SRWLOCK g_tile_pool_lock = SRWLOCK_INIT;
+#define QA_TILE_LOCK() AcquireSRWLockExclusive(&g_tile_pool_lock)
+#define QA_TILE_UNLOCK() ReleaseSRWLockExclusive(&g_tile_pool_lock)
+#else
+#include <pthread.h>
+static pthread_mutex_t g_tile_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+#define QA_TILE_LOCK() pthread_mutex_lock(&g_tile_pool_lock)
+#define QA_TILE_UNLOCK() pthread_mutex_unlock(&g_tile_pool_lock)
+#endif
+
+typedef struct qa_tile_block {
+  struct qa_tile_block* next;  // free-list link (meaningful only while free)
+  int64_t size;                // user-visible byte length
+} qa_tile_block;  // 16-byte header keeps the user data 16-byte aligned
+
+#define QA_TILE_BUCKETS 8
+// Total bytes allowed to park across all buckets: one full 8K frame of
+// tiles (256MB) plus headroom for a previous frame still draining.
+#define QA_TILE_POOL_BYTE_CAP (512ll * 1024 * 1024)
+
+static int64_t g_tile_bucket_sizes[QA_TILE_BUCKETS];
+static qa_tile_block* g_tile_bucket_heads[QA_TILE_BUCKETS];
+static int64_t g_tile_pool_cached_bytes = 0;
+
+QA_EXPORT void* qa_tile_alloc(int64_t size) {
+  if (size <= 0) {
+    return NULL;
+  }
+  QA_TILE_LOCK();
+  for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
+    if (g_tile_bucket_sizes[i] == size && g_tile_bucket_heads[i] != NULL) {
+      qa_tile_block* block = g_tile_bucket_heads[i];
+      g_tile_bucket_heads[i] = block->next;
+      g_tile_pool_cached_bytes -= size;
+      QA_TILE_UNLOCK();
+      return (void*)(block + 1);
+    }
+  }
+  QA_TILE_UNLOCK();
+  qa_tile_block* block =
+      (qa_tile_block*)malloc(sizeof(qa_tile_block) + (size_t)size);
+  if (block == NULL) {
+    return NULL;
+  }
+  block->next = NULL;
+  block->size = size;
+  return (void*)(block + 1);
+}
+
+// Parks the block for reuse, or frees it past the byte cap. The signature
+// is exactly Dart's NativeFinalizerFunction: tile finalizers call this
+// directly. Only pointers returned by qa_tile_alloc may be passed.
+QA_EXPORT void qa_tile_free(void* pixels) {
+  if (pixels == NULL) {
+    return;
+  }
+  qa_tile_block* block = ((qa_tile_block*)pixels) - 1;
+  const int64_t size = block->size;
+  QA_TILE_LOCK();
+  if (g_tile_pool_cached_bytes + size <= QA_TILE_POOL_BYTE_CAP) {
+    int slot = -1;
+    for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
+      if (g_tile_bucket_sizes[i] == size) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0) {
+      // Claim an idle bucket for this size (empty lists can be re-keyed).
+      for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
+        if (g_tile_bucket_heads[i] == NULL) {
+          g_tile_bucket_sizes[i] = size;
+          slot = i;
+          break;
+        }
+      }
+    }
+    if (slot >= 0) {
+      block->next = g_tile_bucket_heads[slot];
+      g_tile_bucket_heads[slot] = block;
+      g_tile_pool_cached_bytes += size;
+      QA_TILE_UNLOCK();
+      return;
+    }
+  }
+  QA_TILE_UNLOCK();
+  free(block);
+}
+
+QA_EXPORT int64_t qa_tile_pool_cached_bytes(void) {
+  QA_TILE_LOCK();
+  const int64_t bytes = g_tile_pool_cached_bytes;
+  QA_TILE_UNLOCK();
+  return bytes;
+}
+
+// Releases every parked block (diagnostics / tests).
+QA_EXPORT void qa_tile_pool_trim(void) {
+  QA_TILE_LOCK();
+  for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
+    qa_tile_block* block = g_tile_bucket_heads[i];
+    while (block != NULL) {
+      qa_tile_block* next = block->next;
+      free(block);
+      block = next;
+    }
+    g_tile_bucket_heads[i] = NULL;
+    g_tile_bucket_sizes[i] = 0;
+  }
+  g_tile_pool_cached_bytes = 0;
+  QA_TILE_UNLOCK();
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 9; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 10; }

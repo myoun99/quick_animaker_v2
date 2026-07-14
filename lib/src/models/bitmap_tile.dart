@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../core/collection_equality.dart';
+import '../native/qa_native_engine.dart';
 import 'tile_coord.dart';
 
 /// One immutable 4-byte-RGBA tile whose pixels live in NATIVE memory
@@ -19,6 +20,9 @@ import 'tile_coord.dart';
 ///
 /// Lifetime: a [NativeFinalizer] frees the buffer when the tile is
 /// collected; [externalSize] keeps the GC honest about the real weight.
+/// With the engine loaded, buffers come from the C free-list allocator
+/// (R20-E1) and the finalizer parks them for reuse — tile churn (decode,
+/// commit adoption, undo drops) recycles instead of malloc/freeing.
 /// NOTE — Finalizable objects cannot cross isolates: the .qap save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
@@ -29,7 +33,7 @@ class BitmapTile implements Finalizable {
   }) {
     _validateSize(size);
     _validatePixelLength(pixels.length, size);
-    final buffer = malloc<Uint8>(pixels.length);
+    final buffer = _allocate(pixels.length);
     buffer.asTypedList(pixels.length).setAll(0, pixels);
     return BitmapTile._adopt(coord, size, buffer);
   }
@@ -37,15 +41,20 @@ class BitmapTile implements Finalizable {
   factory BitmapTile.blank({required TileCoord coord, required int size}) {
     _validateSize(size);
     final length = size * size * bytesPerPixel;
-    final buffer = malloc<Uint8>(length);
+    final buffer = _allocate(length);
     buffer.asTypedList(length).fillRange(0, length, 0);
     return BitmapTile._adopt(coord, size, buffer);
   }
 
-  /// Adopts a malloc-family NATIVE buffer as this tile's pixels WITHOUT
-  /// copying — ownership transfers to the tile (freed by its finalizer).
-  /// The commit hot path hands its blend scratch over through this: a
-  /// full-canvas commit materializes with zero pixel copies out.
+  /// Adopts a NATIVE buffer as this tile's pixels WITHOUT copying —
+  /// ownership transfers to the tile (freed by its finalizer). The commit
+  /// hot path hands its blend scratch over through this: a full-canvas
+  /// commit materializes with zero pixel copies out.
+  ///
+  /// Allocation contract: the buffer must come from
+  /// [QaNativeEngine.tileAlloc] when the engine is loaded (the commit
+  /// scratch does), from `malloc` otherwise — the finalizer choice below
+  /// mirrors exactly that.
   factory BitmapTile.adoptNative({
     required TileCoord coord,
     required int size,
@@ -58,7 +67,8 @@ class BitmapTile implements Finalizable {
   BitmapTile._adopt(this.coord, this.size, Pointer<Uint8> pixels)
     : _pixels = pixels,
       _view = pixels.asTypedList(size * size * bytesPerPixel) {
-    _finalizer.attach(
+    final engine = QaNativeEngine.instance;
+    (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
       this,
       pixels.cast(),
       detach: this,
@@ -66,7 +76,17 @@ class BitmapTile implements Finalizable {
     );
   }
 
-  static final NativeFinalizer _finalizer = NativeFinalizer(malloc.nativeFree);
+  static Pointer<Uint8> _allocate(int byteLength) {
+    final engine = QaNativeEngine.instance;
+    if (engine != null) {
+      return engine.tileAlloc(byteLength);
+    }
+    return malloc<Uint8>(byteLength);
+  }
+
+  static final NativeFinalizer _mallocFinalizer = NativeFinalizer(
+    malloc.nativeFree,
+  );
 
   static const int bytesPerPixel = 4;
 
