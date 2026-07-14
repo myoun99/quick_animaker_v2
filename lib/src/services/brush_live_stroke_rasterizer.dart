@@ -95,6 +95,28 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _blendedDabCount = 0;
   }
 
+  /// R25: the overlay's FUSED display path. Overlay tiles are the same
+  /// 128px grid as the stroke tiles, so a full tile's snapshot +
+  /// premultiply collapses into ONE C call over the native buffer (the
+  /// per-move Dart row-copy + pixel loop across ~256 tiles was the
+  /// 2000px-brush stall and the visible pre-stroke tiles). Null when
+  /// the tile is untouched (transparent — caller's copyRow path reads
+  /// zeros) or the engine/native backing is absent.
+  QaStampScratch? premultipliedOverlayTile(int tileX, int tileY) {
+    final native = _native;
+    if (native == null) {
+      return null;
+    }
+    final buffer = _nativeBuffers[tileY * _tilesPerRow + tileX];
+    if (buffer == null) {
+      return null;
+    }
+    return native.premultipliedTileScratch(
+      buffer.pointer,
+      tileSize * tileSize,
+    );
+  }
+
   Uint8List _tileBuffer(int tileX, int tileY) {
     return _tiles.putIfAbsent(tileY * _tilesPerRow + tileX, () {
       final native = _native;
