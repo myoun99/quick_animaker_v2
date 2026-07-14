@@ -252,12 +252,13 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-
-        // Pointer-up is processed synchronously: the stroke committed and
-        // the overlay entered settling — still visible, with the PRE-stroke
-        // tiles pinned for the touched coordinates so progressive
-        // post-commit decodes never double-blend with the overlay (fresh
-        // canvas: every touched coordinate was empty).
+        // R25-④: the commit DEFERS one frame past pen-up (the
+        // synchronous materialize was the stroke-end hitch); the
+        // overlay stays visible throughout and settling starts inside
+        // the deferred flush, with the PRE-stroke tiles pinned so
+        // progressive post-commit decodes never double-blend with the
+        // overlay (fresh canvas: every touched coordinate was empty).
+        await tester.pump();
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
@@ -312,7 +313,11 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-        // Let the settling window elapse before checking the cleared state.
+        // R25-④: the deferred commit lands one frame after pen-up,
+        // settling releases on the following frame; then let the
+        // settling window elapse before checking the cleared state.
+        await tester.pump();
+        await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
 
         canvasView = tester.widget<BrushEditCanvasView>(

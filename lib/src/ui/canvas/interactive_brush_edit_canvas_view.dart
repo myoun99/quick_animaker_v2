@@ -257,6 +257,10 @@ class _InteractiveBrushEditCanvasViewState
     _settlingFallbackTimer?.cancel();
     _overlayModel.dispose();
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
+    // A pending pen-up commit at dispose (app teardown mid-frame): the
+    // native tiles still return to the engine's free list.
+    _pendingPenUp?.rasterizer?.clear();
+    _pendingPenUp = null;
     super.dispose();
   }
 
@@ -305,6 +309,11 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    // R25-④: a previous stroke's DEFERRED commit still one frame away —
+    // land it before any new input state, so strokes can never
+    // interleave or get lost (the rare fast-restroke pays the old
+    // synchronous cost).
+    _flushPendingStrokeCommit();
     if (event.kind == PointerDeviceKind.touch) {
       _activeTouchPointers.add(event.pointer);
       if (_activeTouchPointers.length >= 2) {
@@ -577,26 +586,57 @@ class _InteractiveBrushEditCanvasViewState
           bounds: _settlingBounds,
         ),
       );
-      widget.onSourceStrokeCommitted(
-        BrushStrokeCommitData(
-          sourceDabs: _collectedDabs,
-          // Bounds-local row-major buffer (stride = bounds width): its
-          // allocation scales with the stroke, never the canvas.
-          strokePixels: rasterizer?.strokePixelsWithinBounds(),
-          strokeBounds: rasterizer?.strokeBounds,
-        ),
-      );
+      // R25-④: the commit DEFERS one frame past pen-up (the synchronous
+      // materialize was the reported stroke-END hitch). The rasterizer
+      // DETACHES here — the next stroke builds a fresh one, so the
+      // deferred commit's pixel source can never be reset under it; a
+      // new pointer-down (or a frame/layer switch, or dispose) flushes
+      // synchronously first, so a stroke can never be lost.
+      _pendingPenUp = (dabs: List.of(_collectedDabs), rasterizer: rasterizer);
+      _liveRasterizer = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _flushPendingStrokeCommit();
+      });
+      SchedulerBinding.instance.ensureVisualUpdate();
     }
 
     // Keep the overlay visible until the committed tiles decode so the
     // stroke never flashes away during the switch to the materialized
-    // bitmap; the input bookkeeping is cleared immediately.
+    // bitmap; the input bookkeeping is cleared immediately (settling
+    // starts inside the deferred flush, AFTER the commit — checking the
+    // pre-commit surface would release the overlay instantly).
     _endStrokeInput();
-    if (hadDabs) {
-      _beginSettling();
-    } else {
+    if (!hadDabs) {
       _resetOverlay();
     }
+  }
+
+  ({List<BrushDab> dabs, BrushLiveStrokeRasterizer? rasterizer})?
+  _pendingPenUp;
+
+  void _flushPendingStrokeCommit({
+    void Function(BrushStrokeCommitData data)? commit,
+  }) {
+    final pending = _pendingPenUp;
+    if (pending == null) {
+      return;
+    }
+    _pendingPenUp = null;
+    if (!mounted && commit == null) {
+      pending.rasterizer?.clear();
+      return;
+    }
+    (commit ?? widget.onSourceStrokeCommitted)(
+      BrushStrokeCommitData(
+        sourceDabs: pending.dabs,
+        // Bounds-local row-major buffer (stride = bounds width): its
+        // allocation scales with the stroke, never the canvas.
+        strokePixels: pending.rasterizer?.strokePixelsWithinBounds(),
+        strokeBounds: pending.rasterizer?.strokeBounds,
+      ),
+    );
+    pending.rasterizer?.clear();
+    _beginSettling();
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {

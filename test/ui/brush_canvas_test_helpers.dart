@@ -47,6 +47,8 @@ Future<void> tapCanvas(
   await tester.pump();
   await gesture.up();
   await tester.pump();
+  // R25-④: the pen-up commit lands one frame AFTER pen-up.
+  await tester.pump();
 }
 
 Future<void> dragCanvas(
@@ -68,5 +70,7 @@ Future<void> dragCanvas(
   }
 
   await gesture.up();
+  await tester.pump();
+  // R25-④: the pen-up commit lands one frame AFTER pen-up.
   await tester.pump();
 }
