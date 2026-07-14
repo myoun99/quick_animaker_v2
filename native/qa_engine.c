@@ -1632,6 +1632,538 @@ QA_EXPORT void qa_stamp_blend_tiles(
   qa_pool_run(qa_stamp_batch_item, &context, tile_count);
 }
 
+// ---------------------------------------------------------------------------
+// Parallel flood fill (R22-E3): wave-parallel connected growth.
+//
+// The sequential stepper (qa_flood_fill_step) grows the region pixel by
+// pixel; at 64MP it is the app's dominant fill term. This engine keeps
+// the SAME lazy-compose protocol with the Dart driver (uncomposed
+// pixels come back as candidates) but grows the region one compose-tile
+// WAVE at a time: every tile with pending seeds floods LOCALLY (scan-
+// line + the SSE2 tolerance spans, no composed checks inside a tile) in
+// parallel across the worker pool; tiles write only their own filled
+// pixels and their own outgoing edge-crossing buffers, so there is no
+// shared-write anywhere in the parallel phase. A serial routing phase
+// moves crossings into neighbor pending lists (composed) or the
+// caller's candidate buffer (uncomposed), then the next wave runs.
+//
+// Determinism: the final filled set is "the seed's connected component
+// of within-tolerance pixels" - a SET, independent of tile visit order
+// and worker count, so the mask and bounds are byte-identical to the
+// sequential reference (the randomized parity suite pins this against
+// the permanent Dart oracle).
+//
+// Buffer bounds (why nothing can overflow): a pixel fills exactly once
+// per fill, and only edge pixels emit crossings - so a tile's outgoing
+// buffer per edge is capped by the edge length, and a tile's pending
+// intake is capped by its own perimeter (from neighbors and from the
+// driver's candidate re-seeds, which are exactly edge crossings) plus
+// the original seed. Local stacks are capped by the per-tile run count
+// (checkerboard worst case = tile_size^2/2). Every cap is enforced with
+// an error flag anyway; any failure returns -1 and the caller redoes
+// the fill on the sequential path from clean state.
+
+#if defined(_MSC_VER)
+#define QA_THREAD_LOCAL __declspec(thread)
+#else
+#define QA_THREAD_LOCAL __thread
+#endif
+
+enum { QA_WAVE_LEFT = 0, QA_WAVE_RIGHT = 1, QA_WAVE_UP = 2, QA_WAVE_DOWN = 3 };
+
+typedef struct {
+  int32_t px0, py0, px1, py1; // Inclusive pixel bounds of the tile.
+  int32_t min_x, max_x, min_y, max_y; // Filled bounds inside this tile.
+  int32_t pending_count;
+  int32_t pending_taken;
+  int32_t out_count[4];
+  int32_t out_routed[4];
+  uint8_t in_wave;
+  uint8_t queued; // On the new-pending list for the next wave scan.
+  uint8_t error;
+} qa_wave_tile;
+
+static struct {
+  int32_t tile_capacity; // Allocated tile slots.
+  int32_t pending_capacity_per_tile;
+  int32_t out_capacity_per_edge;
+  qa_wave_tile* tiles;
+  int32_t* pending;   // tile_capacity * pending_capacity_per_tile
+  int32_t* outgoing;  // tile_capacity * 4 * out_capacity_per_edge
+  int32_t* wave_list; // tile ids in the current wave
+  int32_t* queue_list; // tile ids with new pending (next wave scan)
+} g_wave;
+
+// Shared per-call view for the parallel job (read-only except the
+// per-tile-owned fields documented above).
+static struct {
+  const uint8_t* rgb;
+  uint8_t* filled;
+  int32_t width;
+  int32_t height;
+  int32_t seed_r, seed_g, seed_b, tolerance;
+} g_wave_job;
+
+// Worker-local scanline stack, lazily allocated per thread and kept.
+#define QA_WAVE_LOCAL_STACK (1 << 17)
+static QA_THREAD_LOCAL int32_t* g_wave_local_stack;
+
+static int qa_wave_arena_ensure(int32_t tile_count, int32_t tile_size) {
+  // Intake per tile per call: driver re-seeds (<= perimeter) + their
+  // routed cross-tile crossings + neighbor wave crossings (<= 4 edges).
+  const int32_t pending_cap = 16 * tile_size + 64;
+  const int32_t out_cap = tile_size;
+  if (g_wave.tile_capacity >= tile_count &&
+      g_wave.pending_capacity_per_tile >= pending_cap &&
+      g_wave.out_capacity_per_edge >= out_cap) {
+    return 1;
+  }
+  free(g_wave.tiles);
+  free(g_wave.pending);
+  free(g_wave.outgoing);
+  free(g_wave.wave_list);
+  free(g_wave.queue_list);
+  g_wave.tiles = (qa_wave_tile*)malloc(sizeof(qa_wave_tile) * tile_count);
+  g_wave.pending =
+      (int32_t*)malloc(sizeof(int32_t) * (size_t)tile_count * pending_cap);
+  g_wave.outgoing =
+      (int32_t*)malloc(sizeof(int32_t) * (size_t)tile_count * 4 * out_cap);
+  g_wave.wave_list = (int32_t*)malloc(sizeof(int32_t) * tile_count);
+  g_wave.queue_list = (int32_t*)malloc(sizeof(int32_t) * tile_count);
+  if (g_wave.tiles == NULL || g_wave.pending == NULL ||
+      g_wave.outgoing == NULL || g_wave.wave_list == NULL ||
+      g_wave.queue_list == NULL) {
+    free(g_wave.tiles);
+    free(g_wave.pending);
+    free(g_wave.outgoing);
+    free(g_wave.wave_list);
+    free(g_wave.queue_list);
+    memset(&g_wave, 0, sizeof(g_wave));
+    return 0;
+  }
+  g_wave.tile_capacity = tile_count;
+  g_wave.pending_capacity_per_tile = pending_cap;
+  g_wave.out_capacity_per_edge = out_cap;
+  return 1;
+}
+
+static inline int32_t* qa_wave_pending_of(int32_t tile) {
+  return g_wave.pending + (size_t)tile * g_wave.pending_capacity_per_tile;
+}
+
+static inline int32_t* qa_wave_out_of(int32_t tile, int edge) {
+  return g_wave.outgoing +
+         ((size_t)tile * 4 + edge) * g_wave.out_capacity_per_edge;
+}
+
+// Emits the crossing NEIGHBOR pixel for a filled edge pixel. Called
+// only from the tile that owns (x, y) - single-writer per buffer.
+static inline void qa_wave_emit(
+    qa_wave_tile* t, int32_t tile_id, int edge, int32_t neighbor_index) {
+  if (t->out_count[edge] >= g_wave.out_capacity_per_edge) {
+    t->error = 1; // Unreachable by the perimeter bound; belt only.
+    return;
+  }
+  qa_wave_out_of(tile_id, edge)[t->out_count[edge]] = neighbor_index;
+  t->out_count[edge] += 1;
+}
+
+// Fills one pixel of the tile, with edge-crossing emission. Vector
+// fast paths may bypass this ONLY for pixels strictly inside the tile
+// (no crossings possible); bounds are tracked at run granularity by
+// the caller.
+static inline void qa_wave_fill_px(
+    qa_wave_tile* t, int32_t tile_id, int32_t x, int32_t y) {
+  const int32_t width = g_wave_job.width;
+  g_wave_job.filled[(size_t)y * width + x] = 255;
+  if (x == t->px0 && x > 0) {
+    qa_wave_emit(t, tile_id, QA_WAVE_LEFT, y * width + x - 1);
+  }
+  if (x == t->px1 && x < width - 1) {
+    qa_wave_emit(t, tile_id, QA_WAVE_RIGHT, y * width + x + 1);
+  }
+  if (y == t->py0 && y > 0) {
+    qa_wave_emit(t, tile_id, QA_WAVE_UP, (y - 1) * width + x);
+  }
+  if (y == t->py1 && y < g_wave_job.height - 1) {
+    qa_wave_emit(t, tile_id, QA_WAVE_DOWN, (y + 1) * width + x);
+  }
+}
+
+// Pool job adapter: item index -> current wave's tile id.
+static void qa_wave_flood_wave_item(int32_t item_index, void* context);
+
+// Local scanline flood of ONE tile: consumes the tile's fresh pending
+// seeds, never reads outside [px0..px1]x[py0..py1]. Runs inside one
+// pool worker; everything it writes is tile-owned.
+static void qa_wave_flood_tile(int32_t tile_id, void* context) {
+  (void)context;
+  qa_wave_tile* t = &g_wave.tiles[tile_id];
+  const uint8_t* rgb = g_wave_job.rgb;
+  uint8_t* filled = g_wave_job.filled;
+  const int32_t width = g_wave_job.width;
+  const int32_t seed_r = g_wave_job.seed_r;
+  const int32_t seed_g = g_wave_job.seed_g;
+  const int32_t seed_b = g_wave_job.seed_b;
+  const int32_t tolerance = g_wave_job.tolerance;
+#ifdef QA_FLOOD_SSE2
+  const __m128i seed4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+                ((uint32_t)seed_b << 16)));
+  const __m128i tol4 = _mm_set1_epi32(
+      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+                ((uint32_t)tolerance << 16)));
+#endif
+
+  if (g_wave_local_stack == NULL) {
+    g_wave_local_stack =
+        (int32_t*)malloc(sizeof(int32_t) * QA_WAVE_LOCAL_STACK);
+    if (g_wave_local_stack == NULL) {
+      t->error = 1;
+      return;
+    }
+  }
+  int32_t* stack = g_wave_local_stack;
+  int32_t stack_size = 0;
+
+  const int32_t* pending = qa_wave_pending_of(tile_id);
+  const int32_t pending_end = t->pending_count;
+  for (int32_t i = t->pending_taken; i < pending_end; i += 1) {
+    const int32_t p = pending[i];
+    if (filled[p] == 0) {
+      if (!qa_tol_ok1(
+              rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b, tolerance)) {
+        continue;
+      }
+      const int32_t x = p % width;
+      const int32_t y = p / width;
+      qa_wave_fill_px(t, tile_id, x, y);
+      if (x < t->min_x) t->min_x = x;
+      if (x > t->max_x) t->max_x = x;
+      if (y < t->min_y) t->min_y = y;
+      if (y > t->max_y) t->max_y = y;
+    }
+    if (stack_size >= QA_WAVE_LOCAL_STACK) {
+      t->error = 1;
+      return;
+    }
+    stack[stack_size] = p;
+    stack_size += 1;
+  }
+  t->pending_taken = pending_end;
+
+  while (stack_size > 0) {
+    stack_size -= 1;
+    const int32_t index = stack[stack_size];
+    const int32_t y = index / width;
+    const int32_t row_start = y * width;
+
+    // Expand the run left/right WITHIN the tile (SSE2 on the interior;
+    // scalar owns edge pixels so crossings always emit).
+    int32_t left = index - row_start;
+    {
+      int32_t x = left - 1;
+#ifdef QA_FLOOD_SSE2
+      if (y > t->py0 && y < t->py1) {
+        while (x - 3 > t->px0) {
+          uint32_t f4;
+          memcpy(&f4, filled + row_start + x - 3, 4);
+          if (f4 != 0) {
+            break;
+          }
+          if (qa_tol_ok4(
+                  rgb + ((ptrdiff_t)(row_start + x - 3) << 2), seed4, tol4) !=
+              0xF) {
+            break;
+          }
+          memset(filled + row_start + x - 3, 255, 4);
+          x -= 4;
+        }
+      }
+#endif
+      while (x >= t->px0) {
+        const int32_t p = row_start + x;
+        if (filled[p] != 0 ||
+            !qa_tol_ok1(
+                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                tolerance)) {
+          break;
+        }
+        qa_wave_fill_px(t, tile_id, x, y);
+        x -= 1;
+      }
+      left = x + 1;
+    }
+    int32_t right = index - row_start;
+    {
+      int32_t x = right + 1;
+#ifdef QA_FLOOD_SSE2
+      if (y > t->py0 && y < t->py1) {
+        while (x + 3 < t->px1) {
+          uint32_t f4;
+          memcpy(&f4, filled + row_start + x, 4);
+          if (f4 != 0) {
+            break;
+          }
+          if (qa_tol_ok4(
+                  rgb + ((ptrdiff_t)(row_start + x) << 2), seed4, tol4) !=
+              0xF) {
+            break;
+          }
+          memset(filled + row_start + x, 255, 4);
+          x += 4;
+        }
+      }
+#endif
+      while (x <= t->px1) {
+        const int32_t p = row_start + x;
+        if (filled[p] != 0 ||
+            !qa_tol_ok1(
+                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                tolerance)) {
+          break;
+        }
+        qa_wave_fill_px(t, tile_id, x, y);
+        x += 1;
+      }
+      right = x - 1;
+    }
+    if (left < t->min_x) t->min_x = left;
+    if (right > t->max_x) t->max_x = right;
+    if (y < t->min_y) t->min_y = y;
+    if (y > t->max_y) t->max_y = y;
+
+    // Seed the rows above/below WITHIN the tile (crossings to the rows
+    // outside were already emitted when the edge-row pixels filled).
+    for (int32_t direction = 0; direction < 2; direction += 1) {
+      const int32_t neighbor_y = direction == 0 ? y - 1 : y + 1;
+      if (neighbor_y < t->py0 || neighbor_y > t->py1) {
+        continue;
+      }
+      const int32_t neighbor_row = neighbor_y * width;
+      int32_t run_open = 0;
+      for (int32_t x = left; x <= right; x += 1) {
+        const int32_t p = neighbor_row + x;
+        if (filled[p] == 0 &&
+            qa_tol_ok1(
+                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                tolerance)) {
+          if (!run_open) {
+            qa_wave_fill_px(t, tile_id, x, neighbor_y);
+            if (stack_size >= QA_WAVE_LOCAL_STACK) {
+              t->error = 1;
+              return;
+            }
+            stack[stack_size] = p;
+            stack_size += 1;
+            run_open = 1;
+          }
+        } else {
+          run_open = 0;
+        }
+      }
+    }
+  }
+}
+
+static void qa_wave_flood_wave_item(int32_t item_index, void* context) {
+  (void)context;
+  qa_wave_flood_tile(g_wave.wave_list[item_index], NULL);
+}
+
+// One full lazy-protocol round: floods EVERYTHING reachable through
+// currently-composed tiles (wave-parallel), returns crossings into
+// uncomposed tiles as candidates (same contract as the sequential
+// stepper: the driver composes them, re-seeds the matches, re-enters).
+// stack in: the driver's seeds; out: always fully consumed (0).
+// Returns the candidate count, or -1 on any allocation/bound failure -
+// the caller redoes the fill on the sequential path from clean state.
+QA_EXPORT int32_t qa_flood_fill_wave(
+    const uint8_t* rgb,
+    uint8_t* filled,
+    const uint8_t* composed,
+    int32_t width,
+    int32_t height,
+    int32_t compose_tile_shift,
+    int32_t tiles_x,
+    int32_t seed_r,
+    int32_t seed_g,
+    int32_t seed_b,
+    int32_t tolerance,
+    int32_t* stack,
+    int32_t* stack_size,
+    int32_t* candidates,
+    int32_t candidates_capacity,
+    int32_t* bounds) {
+  const int32_t tile_size = 1 << compose_tile_shift;
+  const int32_t tiles_y = (height + tile_size - 1) >> compose_tile_shift;
+  const int32_t tile_count = tiles_x * tiles_y;
+  if (!qa_wave_arena_ensure(tile_count, tile_size)) {
+    return -1;
+  }
+
+  // Per-call reset of tile bookkeeping (geometry + counters).
+  for (int32_t ty = 0; ty < tiles_y; ty += 1) {
+    for (int32_t tx = 0; tx < tiles_x; tx += 1) {
+      qa_wave_tile* t = &g_wave.tiles[ty * tiles_x + tx];
+      t->px0 = tx << compose_tile_shift;
+      t->py0 = ty << compose_tile_shift;
+      t->px1 = t->px0 + tile_size - 1;
+      if (t->px1 > width - 1) t->px1 = width - 1;
+      t->py1 = t->py0 + tile_size - 1;
+      if (t->py1 > height - 1) t->py1 = height - 1;
+      t->min_x = width;
+      t->max_x = -1;
+      t->min_y = height;
+      t->max_y = -1;
+      t->pending_count = 0;
+      t->pending_taken = 0;
+      t->out_count[0] = t->out_count[1] = t->out_count[2] = t->out_count[3] =
+          0;
+      t->out_routed[0] = t->out_routed[1] = t->out_routed[2] =
+          t->out_routed[3] = 0;
+      t->in_wave = 0;
+      t->queued = 0;
+      t->error = 0;
+    }
+  }
+
+  int32_t candidate_count = 0;
+  int32_t queue_count = 0;
+
+  // Route one pixel to its tile's pending list (composed) or to the
+  // candidate buffer (uncomposed). Serial phases only.
+#define QA_WAVE_ROUTE(pixel_index)                                          \
+  do {                                                                      \
+    const int32_t rp_ = (pixel_index);                                      \
+    const int32_t rx_ = rp_ % width;                                        \
+    const int32_t ry_ = rp_ / width;                                        \
+    const int32_t rt_ = (ry_ >> compose_tile_shift) * tiles_x +             \
+                        (rx_ >> compose_tile_shift);                        \
+    if (composed[rt_] == 0) {                                               \
+      if (candidate_count >= candidates_capacity) {                         \
+        return -1;                                                          \
+      }                                                                     \
+      candidates[candidate_count] = rp_;                                    \
+      candidate_count += 1;                                                 \
+    } else {                                                                \
+      qa_wave_tile* rtile_ = &g_wave.tiles[rt_];                            \
+      if (rtile_->pending_count >= g_wave.pending_capacity_per_tile) {      \
+        return -1;                                                          \
+      }                                                                     \
+      qa_wave_pending_of(rt_)[rtile_->pending_count] = rp_;                 \
+      rtile_->pending_count += 1;                                           \
+      if (!rtile_->queued) {                                                \
+        rtile_->queued = 1;                                                 \
+        g_wave.queue_list[queue_count] = rt_;                               \
+        queue_count += 1;                                                   \
+      }                                                                     \
+    }                                                                       \
+  } while (0)
+
+  // Distribute the driver's seeds. Seeds the DRIVER filled (the
+  // original seed and re-seeded candidates) never went through the
+  // engine's fill-time crossing emission, so a driver-filled seed
+  // sitting on a tile edge routes its cross-tile 4-neighbors here
+  // directly (serial phase; in-tile neighbors are covered by the
+  // seed's own expansion).
+  const int32_t tile_mask = tile_size - 1;
+  for (int32_t i = 0; i < *stack_size; i += 1) {
+    const int32_t p = stack[i];
+    QA_WAVE_ROUTE(p);
+    if (filled[p] != 0) {
+      const int32_t x = p % width;
+      const int32_t y = p / width;
+      if ((x & tile_mask) == 0 && x > 0) {
+        QA_WAVE_ROUTE(p - 1);
+      }
+      if ((x & tile_mask) == tile_mask && x < width - 1) {
+        QA_WAVE_ROUTE(p + 1);
+      }
+      if ((y & tile_mask) == 0 && y > 0) {
+        QA_WAVE_ROUTE(p - width);
+      }
+      if ((y & tile_mask) == tile_mask && y < height - 1) {
+        QA_WAVE_ROUTE(p + width);
+      }
+    }
+  }
+  *stack_size = 0;
+
+  g_wave_job.rgb = rgb;
+  g_wave_job.filled = filled;
+  g_wave_job.width = width;
+  g_wave_job.height = height;
+  g_wave_job.seed_r = seed_r;
+  g_wave_job.seed_g = seed_g;
+  g_wave_job.seed_b = seed_b;
+  g_wave_job.tolerance = tolerance;
+
+  while (queue_count > 0) {
+    // Wave = every queued tile (all are composed by routing).
+    int32_t wave_count = 0;
+    for (int32_t i = 0; i < queue_count; i += 1) {
+      const int32_t tile_id = g_wave.queue_list[i];
+      qa_wave_tile* t = &g_wave.tiles[tile_id];
+      t->queued = 0;
+      if (t->pending_taken < t->pending_count) {
+        g_wave.wave_list[wave_count] = tile_id;
+        wave_count += 1;
+      }
+    }
+    queue_count = 0;
+    if (wave_count == 0) {
+      break;
+    }
+
+    // Parallel local floods (tile-owned writes only).
+    if (wave_count == 1) {
+      qa_wave_flood_tile(g_wave.wave_list[0], NULL);
+    } else {
+      qa_pool_run(qa_wave_flood_wave_item, NULL, wave_count);
+    }
+
+    // Serial routing of the new crossings.
+    for (int32_t i = 0; i < wave_count; i += 1) {
+      const int32_t tile_id = g_wave.wave_list[i];
+      qa_wave_tile* t = &g_wave.tiles[tile_id];
+      if (t->error) {
+        return -1;
+      }
+      for (int edge = 0; edge < 4; edge += 1) {
+        const int32_t* out = qa_wave_out_of(tile_id, edge);
+        for (int32_t j = t->out_routed[edge]; j < t->out_count[edge];
+             j += 1) {
+          QA_WAVE_ROUTE(out[j]);
+        }
+        t->out_routed[edge] = t->out_count[edge];
+      }
+    }
+  }
+#undef QA_WAVE_ROUTE
+
+  // Merge per-tile bounds.
+  int32_t min_x = bounds[0];
+  int32_t max_x = bounds[1];
+  int32_t min_y = bounds[2];
+  int32_t max_y = bounds[3];
+  for (int32_t i = 0; i < tile_count; i += 1) {
+    const qa_wave_tile* t = &g_wave.tiles[i];
+    if (t->max_x < 0) {
+      continue;
+    }
+    if (t->min_x < min_x) min_x = t->min_x;
+    if (t->max_x > max_x) max_x = t->max_x;
+    if (t->min_y < min_y) min_y = t->min_y;
+    if (t->max_y > max_y) max_y = t->max_y;
+  }
+  bounds[0] = min_x;
+  bounds[1] = max_x;
+  bounds[2] = min_y;
+  bounds[3] = max_y;
+  return candidate_count;
+}
+
 // --- Tile allocator (R20-E1) -----------------------------------------------
 //
 // Exact-size free-list recycler for tile pixel buffers. Tiles churn hard:
@@ -1762,4 +2294,5 @@ QA_EXPORT void qa_tile_pool_trim(void) {
 
 // Engine ABI version - the Dart loader refuses a mismatched binary.
 // v12: fill raster RGB -> RGBX (R22-D flood SIMD).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 12; }
+// v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 13; }
