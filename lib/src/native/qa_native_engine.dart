@@ -738,7 +738,7 @@ class QaNativeEngine {
     for (final candidate in [
       if (overridePath != null && overridePath.isNotEmpty) overridePath,
       if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux) 'libqa_engine.so',
+      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
       if (Platform.isMacOS) 'libqa_engine.dylib',
     ]) {
       try {

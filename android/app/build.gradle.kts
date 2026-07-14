@@ -28,6 +28,21 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // B1 (R24): arm64 first — the shipping tablet ABI (the engine's
+        // pthread pool + scalar kernels are NDK-compile-verified).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    // B1: the native brush engine rides the SAME portable C source every
+    // desktop build uses; libqa_engine.so lands in the APK and the Dart
+    // loader picks it up (engine-less devices keep the Dart fallback).
+    externalNativeBuild {
+        cmake {
+            path = file("../../native/CMakeLists.txt")
+        }
     }
 
     buildTypes {
