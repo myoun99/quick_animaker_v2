@@ -17,13 +17,14 @@ import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:quick_animaker_v2/src/services/persistence/qap_file_service.dart';
 
-/// R20 verdict lab (400-cut scenario): the cold-cel tier must hold a
-/// TV-scale project — 400 HD cels — with bounded RAM, archive-speed
-/// opens (zero pixel decode) and pass-through saves. Prints measured
-/// wall times; assertions pin the architecture, not the clock.
+/// R22-C verdict lab (400-cut scenario): a TV-scale project — 400 HD
+/// cels — must full-save fast, open at archive speed (zero pixel decode,
+/// every cel FILE-BACKED with near-zero RAM), and above all INCREMENTAL-
+/// save in time proportional to the EDIT, not the project. Prints
+/// measured wall times; assertions pin the architecture, not the clock.
 void main() {
   test(
-    '400 HD cels: cold landing, spill, save pass-through, lazy open',
+    '400 HD cels: full save, file-backed open, one-cel incremental save',
     () async {
       const cels = 400;
       const canvasSize = CanvasSize(width: 1920, height: 1080);
@@ -70,55 +71,81 @@ void main() {
         blobBytes += blob.bytes.length;
       }
 
-      // COLD LANDING (the open path's store side): must be near-instant.
+      // COLD LANDING (store side): must be near-instant, zero decode.
       final store = BrushFrameStore();
       final landWatch = Stopwatch()..start();
       store.restoreBaked(blobs);
       landWatch.stop();
-      expect(store.coldCelKeys.length + store.scratchCelKeys.length, cels);
-      expect(store.hotBakedBytes, 0, reason: 'no pixel decode on open');
+      expect(store.coldCelKeys.length, cels);
+      expect(store.hotBakedBytes, 0, reason: 'no pixel decode on landing');
 
-      // SPILL: force the whole cold set to disk (theatrical-scale RAM cap).
-      // Re-land under a zero budget — restoreBaked schedules the spill.
-      store.coldCelByteBudget = 0;
-      final spillWatch = Stopwatch()..start();
-      store.restoreBaked(blobs);
-      await store.drainTiering();
-      spillWatch.stop();
-      expect(store.scratchCelKeys.length, cels);
-
-      // SAVE: spilled cels stream from disk inside the save isolate.
+      // FULL SAVE: cold blobs pass through byte-identically; afterwards
+      // every cel is FILE-BACKED (the .qap is the disk tier) and the RAM
+      // blobs are gone.
       final path = '${directory.path}/tv400.qap';
+      final project = createDefaultProject();
       final saveWatch = Stopwatch()..start();
       await const QapFileService().save(
-        project: createDefaultProject(),
+        project: project,
         brushFrameStore: store,
         filePath: path,
       );
       saveWatch.stop();
       final fileBytes = await File(path).length();
+      expect(store.fileCelKeys.length, cels);
+      expect(store.coldBakedBytes, 0, reason: 'refs replace the RAM blobs');
 
-      // OPEN: archive parse only — cels come back cold.
+      // INCREMENTAL SAVE: edit ONE cel — the save must append that cel
+      // (+ project.json), not rewrite 400.
+      store.storeBakedSurface(key(3), inked(9999));
+      expect(store.dirtyCelKeysSinceSave.length, 1);
+      final incrementalWatch = Stopwatch()..start();
+      await const QapFileService().save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      );
+      incrementalWatch.stop();
+      final incrementalBytes = await File(path).length();
+      expect(store.dirtyCelKeysSinceSave, isEmpty);
+      expect(
+        incrementalBytes - fileBytes,
+        lessThan(blobBytes ~/ 10),
+        reason:
+            'the append is one cel + project.json + directory, nowhere '
+            'near a rewrite of 400 cels',
+      );
+
+      // OPEN: central-directory walk + per-cel header reads — cels come
+      // back file-backed, still zero pixel decode.
       final openWatch = Stopwatch()..start();
       final result = await const QapFileService().open(filePath: path);
       openWatch.stop();
       expect(result.cels.length, cels);
 
-      // First-access materialization stays per-cel cheap.
-      final store2 = BrushFrameStore()..restoreBaked(result.cels);
+      final store2 = BrushFrameStore()..restoreFromFile(result.cels);
+      expect(store2.hotBakedBytes, 0);
+      expect(store2.coldBakedBytes, 0, reason: 'open holds refs, not bytes');
+
+      // First-access materialization stays per-cel cheap and reads the
+      // EDITED pixels for the incrementally saved cel.
       final touchWatch = Stopwatch()..start();
-      final surface = store2.bakedSurfaceOrNull(key(7))!;
+      final surface = store2.bakedSurfaceOrNull(key(3))!;
       touchWatch.stop();
-      expect(surface.tiles.length, 1);
+      expect(
+        surface.tiles[TileCoord(x: 2, y: 2)]!.pixels,
+        inked(9999).tiles[TileCoord(x: 2, y: 2)]!.pixels,
+        reason: 'the shadowing entry is the one that opens',
+      );
 
       // ignore: avoid_print
       print(
         'LAB400: cels=$cels encode=${encodeWatch.elapsedMilliseconds}ms '
         'blobBytes=${(blobBytes / 1024).round()}KB '
         'coldLand=${landWatch.elapsedMilliseconds}ms '
-        'spillAll=${spillWatch.elapsedMilliseconds}ms '
-        'save=${saveWatch.elapsedMilliseconds}ms '
+        'fullSave=${saveWatch.elapsedMilliseconds}ms '
         'file=${(fileBytes / 1024).round()}KB '
+        'incrementalSave=${incrementalWatch.elapsedMilliseconds}ms '
         'open=${openWatch.elapsedMilliseconds}ms '
         'firstTouch=${touchWatch.elapsedMicroseconds}us',
       );
