@@ -113,6 +113,83 @@ QapZipLayout parseQapZipLayout(Uint8List bytes) {
   return QapZipLayout(entries: entries, centralDirectoryOffset: centralOffset);
 }
 
+/// Parses the layout straight from the FILE with tail-only reads (EOCD
+/// scan window + central directory + 4 bytes per local header) — a
+/// multi-gigabyte project must never load whole just to append a few
+/// cels or list its entries.
+QapZipLayout parseQapZipLayoutFile(String path) {
+  final raf = File(path).openSync();
+  try {
+    final fileLength = raf.lengthSync();
+    if (fileLength < 22) {
+      throw const FormatException('No ZIP end-of-central-directory found.');
+    }
+    final tailLength = fileLength < 22 + 65535 ? fileLength : 22 + 65535;
+    raf.setPositionSync(fileLength - tailLength);
+    final tail = raf.readSync(tailLength);
+    final tailData = ByteData.sublistView(tail);
+    var eocd = -1;
+    for (var i = tail.length - 22; i >= 0; i -= 1) {
+      if (tailData.getUint32(i, Endian.little) == _eocdSignature) {
+        eocd = i;
+        break;
+      }
+    }
+    if (eocd < 0) {
+      throw const FormatException('No ZIP end-of-central-directory found.');
+    }
+    final entryCount = tailData.getUint16(eocd + 10, Endian.little);
+    final centralOffset = tailData.getUint32(eocd + 16, Endian.little);
+    final eocdAbsolute = fileLength - tailLength + eocd;
+    if (centralOffset > eocdAbsolute) {
+      throw const FormatException('Corrupt central directory.');
+    }
+
+    raf.setPositionSync(centralOffset);
+    final central = raf.readSync(eocdAbsolute - centralOffset);
+    final data = ByteData.sublistView(central);
+    final entries = <QapZipEntry>[];
+    var cursor = 0;
+    for (var i = 0; i < entryCount; i += 1) {
+      if (cursor + 46 > central.length ||
+          data.getUint32(cursor, Endian.little) != _centralSignature) {
+        throw const FormatException('Corrupt central directory.');
+      }
+      final crc = data.getUint32(cursor + 16, Endian.little);
+      final compressedSize = data.getUint32(cursor + 20, Endian.little);
+      final nameLength = data.getUint16(cursor + 28, Endian.little);
+      final extraLength = data.getUint16(cursor + 30, Endian.little);
+      final commentLength = data.getUint16(cursor + 32, Endian.little);
+      final localOffset = data.getUint32(cursor + 42, Endian.little);
+      final name = String.fromCharCodes(
+        central.sublist(cursor + 46, cursor + 46 + nameLength),
+      );
+      raf.setPositionSync(localOffset + 26);
+      final localLengths = ByteData.sublistView(raf.readSync(4));
+      entries.add(
+        QapZipEntry(
+          name: name,
+          localHeaderOffset: localOffset,
+          dataOffset:
+              localOffset +
+              30 +
+              localLengths.getUint16(0, Endian.little) +
+              localLengths.getUint16(2, Endian.little),
+          length: compressedSize,
+          crc32: crc,
+        ),
+      );
+      cursor += 46 + nameLength + extraLength + commentLength;
+    }
+    return QapZipLayout(
+      entries: entries,
+      centralDirectoryOffset: centralOffset,
+    );
+  } finally {
+    raf.closeSync();
+  }
+}
+
 /// CRC-32 (ZIP polynomial), table-driven.
 final Uint32List _crcTable = _buildCrcTable();
 
@@ -139,19 +216,25 @@ int qapCrc32(Uint8List bytes) {
 /// Appends [newEntries] ({name: raw bytes, STORE'd}) to the .qap at
 /// [path] IN PLACE: new locals write from the old central directory's
 /// offset, then the merged central directory (old actives minus shadowed
-/// names, plus the new entries) and a fresh EOCD close the file.
-/// Returns the resulting layout (offsets valid for the rewritten file).
+/// names minus [removeNames], plus the new entries) and a fresh EOCD
+/// close the file. [removeNames] deletes entries outright (a cel that
+/// became empty or moved away) — their bytes turn to garbage like any
+/// shadowed entry, reclaimed at the next compaction. Returns the
+/// resulting layout (offsets valid for the rewritten file).
 QapZipLayout appendQapEntries({
   required String path,
   required Map<String, Uint8List> newEntries,
+  Set<String> removeNames = const {},
 }) {
   final file = File(path);
-  final existing = Uint8List.fromList(file.readAsBytesSync());
-  final layout = parseQapZipLayout(existing);
+  // Tail-only parse: the append must not scale with file size.
+  final layout = parseQapZipLayoutFile(path);
 
   final survivors = [
     for (final entry in layout.entries)
-      if (!newEntries.containsKey(entry.name)) entry,
+      if (!newEntries.containsKey(entry.name) &&
+          !removeNames.contains(entry.name))
+        entry,
   ];
 
   final builder = BytesBuilder(copy: false);

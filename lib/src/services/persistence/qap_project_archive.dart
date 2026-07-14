@@ -12,6 +12,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 
 import '../../models/audio_clip.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
 import 'brush_drawing_binary_codec.dart';
 
@@ -41,12 +42,29 @@ class QapArchiveContents {
   final Map<String, String> mediaRelativePaths;
 }
 
-/// Builds the .qap bytes. [saveDirectory] (the file's parent, normalized
-/// with forward slashes) keys the relative-path manifest: media living
-/// under it is recorded relative, everything else stays absolute-only.
-Uint8List buildQapArchiveBytes({
+/// The cel's STABLE archive entry name (R22-C): derived from the key
+/// alone, so an incremental append of the same cel SHADOWS its previous
+/// entry by name. Base64url over the NUL-joined key parts — reversible,
+/// collision-free, and filename-safe regardless of what the ids contain.
+String qapCelEntryName(BrushFrameKey key) {
+  final joined = [
+    key.projectId.value,
+    key.trackId.value,
+    key.cutId.value,
+    key.layerId.value,
+    key.frameId.value,
+  ].join('\u0000');
+  final encoded = base64Url.encode(utf8.encode(joined)).replaceAll('=', '');
+  return 'cels/$encoded.celz';
+}
+
+/// The `project.json` payload bytes — shared verbatim by the full-archive
+/// builder and the incremental appender so both save paths write the
+/// identical entry. [saveDirectory] (the file's parent, normalized with
+/// forward slashes) keys the relative-path manifest: media living under
+/// it is recorded relative, everything else stays absolute-only.
+Uint8List buildQapProjectJsonBytes({
   required Project project,
-  required List<QapCelBlob> cels,
   String? saveDirectory,
 }) {
   final mediaRelativePaths = <String, String>{};
@@ -58,23 +76,38 @@ Uint8List buildQapArchiveBytes({
       }
     }
   }
+  return Uint8List.fromList(
+    utf8.encode(
+      jsonEncode({
+        'formatVersion': qapFormatVersion,
+        'project': project.toJson(),
+        if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
+      }),
+    ),
+  );
+}
 
+/// Builds the .qap bytes whole (full save / compaction).
+Uint8List buildQapArchiveBytes({
+  required Project project,
+  required List<QapCelBlob> cels,
+  String? saveDirectory,
+}) {
+  // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
+  // tier) address raw bytes by {offset, length} without inflating.
   final archive = Archive()
     ..add(
-      ArchiveFile.string(
+      ArchiveFile.bytes(
         'project.json',
-        jsonEncode({
-          'formatVersion': qapFormatVersion,
-          'project': project.toJson(),
-          if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
-        }),
-      ),
+        buildQapProjectJsonBytes(project: project, saveDirectory: saveDirectory),
+      )..compression = CompressionType.none,
     );
   // v3: cel blobs are already deflated — STORE them as-is (an inner
-  // deflate-of-deflate would only burn CPU).
-  for (var i = 0; i < cels.length; i += 1) {
+  // deflate-of-deflate would only burn CPU). Entry names are stable per
+  // key so later incremental appends shadow them.
+  for (final cel in cels) {
     archive.add(
-      ArchiveFile.bytes('cels/$i.celz', cels[i].bytes)
+      ArchiveFile.bytes(qapCelEntryName(cel.key), cel.bytes)
         ..compression = CompressionType.none,
     );
   }

@@ -157,6 +157,24 @@ class QapCelBlob {
     _deflatedOffset = reader.offset;
   }
 
+  /// Rewrites ONLY the header's key label, splicing the deflate stream
+  /// through untouched — a rekeyed cel (cross-layer block move) has
+  /// identical pixels, so re-encoding them would be pure waste (R22-C).
+  factory QapCelBlob.reKeyed(QapCelBlob source, BrushFrameKey key) {
+    final writer = _ByteWriter()
+      ..u8(_qapCelBlobVersion)
+      ..string(key.projectId.value)
+      ..string(key.trackId.value)
+      ..string(key.cutId.value)
+      ..string(key.layerId.value)
+      ..string(key.frameId.value)
+      ..u32(source.canvasSize.width)
+      ..u32(source.canvasSize.height)
+      ..u16(source.tileSize)
+      ..bytes(Uint8List.sublistView(source.bytes, source._deflatedOffset));
+    return QapCelBlob(writer.takeBytes());
+  }
+
   factory QapCelBlob.encode(QapCelEntry entry) {
     final body = encodeCelEntry(entry);
     final deflated = ZLibEncoder().convert(body);

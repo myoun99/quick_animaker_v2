@@ -180,121 +180,336 @@ void main() {
     expect(store.bakedSurfaceOrNull(to), isNotNull);
   });
 
-  test('over-budget COLD blobs SPILL to scratch files and read back '
-      'byte-exactly (R20-A2)', () async {
-    final store = BrushFrameStore()..coldCelByteBudget = 0;
-    final k1 = key(frame: 'f1');
-    final k2 = key(frame: 'f2');
-    final s1 = inkSurface(seed: 11);
-    store.restoreBaked({k1: blobOf(k1, s1), k2: blobOf(k2, inkSurface())});
-    await store.drainTiering();
+  test('a FILE-BACKED cel counts as content, materializes byte-exactly, '
+      'keeps its ref through the clean promotion, and re-cools for FREE '
+      '(no encode, no cold blob) — R22-C', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-fileref');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = BrushFrameStore();
+    final k = key(frame: 'f1');
+    final s = inkSurface(seed: 19);
+    final blob = blobOf(k, s);
+    final path = '${directory.path}/cel.bin';
+    File(path).writeAsBytesSync(blob.bytes);
+    store.restoreFromFile({
+      k: QapCelFileRef(
+        filePath: path,
+        dataOffset: 0,
+        length: blob.bytes.length,
+        canvasSize: canvasSize,
+        tileSize: blob.tileSize,
+      ),
+    });
 
-    expect(store.isCelSpilled(k1), isTrue);
-    expect(store.isCelSpilled(k2), isTrue);
-    expect(store.coldBakedBytes, 0, reason: 'RAM holds nothing spilled');
-    expect(store.celHasRenderableContent(k1), isTrue);
+    expect(store.celHasRenderableContent(k), isTrue);
+    expect(store.isCelFileBacked(k), isTrue);
+    expect(store.hotBakedBytes, 0);
+    expect(store.dirtyCelKeysSinceSave, isEmpty);
     expect(
       store.currentSurfaceWithoutReplay(
-        k1,
+        k,
         canvasSize: const CanvasSize(width: 99, height: 99),
       ),
       isNull,
-      reason: 'the scratch ref carries the size — no disk read to reject',
+      reason: 'the ref carries the size — no disk read to reject',
     );
-    expect(store.isCelSpilled(k1), isTrue);
 
-    final back = store.bakedSurfaceOrNull(k1)!;
-    expect(store.isCelSpilled(k1), isFalse, reason: 'read back promotes');
+    final surface = store.bakedSurfaceOrNull(k)!;
     expect(
-      back.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-      s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-      reason: 'cold → disk → hot round trip is byte-exact',
+      surface.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'file → hot round trip is byte-exact',
     );
-  });
-
-  test('the full ladder: hot → cold → scratch under zero budgets, and '
-      'save snapshot exposes every tier', () async {
-    final store = BrushFrameStore()
-      ..hotCelByteBudget = 0
-      ..coldCelByteBudget = 0;
-    final k1 = key(frame: 'f1');
-    final k2 = key(frame: 'f2');
-    store.storeBakedSurface(k1, inkSurface(seed: 2));
-    store.storeBakedSurface(k2, inkSurface(seed: 4));
-    await store.drainTiering();
-
     expect(
-      store.isCelSpilled(k1),
+      store.isCelFileBacked(k),
       isTrue,
-      reason: 'cooled blob immediately exceeds the zero cold budget',
-    );
-    expect(store.isCelCold(k1), isFalse);
-    expect(
-      store.isCelSpilled(k2),
-      isFalse,
-      reason: 'the most recent cel stays hot end to end',
+      reason: 'a CLEAN promotion keeps the ref — the file bytes still match',
     );
 
-    final snapshot = store.bakedSnapshotForSave();
-    expect(snapshot.hot.containsKey(k2), isTrue);
-    expect(snapshot.scratch.containsKey(k1), isTrue);
+    // Re-cooling the clean cel drops the hot bytes for free.
+    store.hotCelByteBudget = 0;
+    final k2 = key(frame: 'f2');
+    store.storeBakedSurface(k2, inkSurface(seed: 21));
+    await store.drainCooling();
+    expect(store.isCelCold(k), isFalse, reason: 'free drop — no cold blob');
+    expect(store.isCelFileBacked(k), isTrue);
+    expect(store.celHasRenderableContent(k), isTrue);
+    expect(
+      store.bakedSurfaceOrNull(k)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'the dropped cel reads back from the file byte-exactly',
+    );
   });
 
-  test(
-    'scratch file deletion DEFERS while locked (the save-read window)',
-    () async {
-      final store = BrushFrameStore()..coldCelByteBudget = 0;
-      final k = key();
-      final s = inkSurface(seed: 13);
-      store.restoreBaked({k: blobOf(k, s)});
-      await store.drainTiering();
-      final ref = store.bakedSnapshotForSave().scratch[k]!;
+  test('edits mark cels dirty, adoptSavedFile clears and refs them, and '
+      'a re-edit kills the stale ref', () {
+    final store = BrushFrameStore();
+    final k = key();
+    store.storeBakedSurface(k, inkSurface());
+    expect(store.dirtyCelKeysSinceSave, {k});
 
-      store.lockScratchFiles();
-      // Materialization normally deletes the file — the lock must defer it.
-      final surface = store.bakedSurfaceOrNull(k)!;
-      expect(
-        surface.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-        s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-      );
-      expect(
-        File(ref.filePath).existsSync(),
-        isTrue,
-        reason: 'a concurrent save may still be reading this file',
-      );
-      store.unlockScratchFiles();
-      // Deletion is async best-effort after unlock; poll briefly.
-      for (var i = 0; i < 50 && File(ref.filePath).existsSync(); i += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(File(ref.filePath).existsSync(), isFalse);
-    },
-  );
+    store.adoptSavedFile({
+      k: QapCelFileRef(
+        filePath: 'unused.qap',
+        dataOffset: 0,
+        length: 1,
+        canvasSize: canvasSize,
+        tileSize: 8,
+      ),
+    });
+    expect(store.dirtyCelKeysSinceSave, isEmpty);
+    expect(store.isCelFileBacked(k), isTrue);
+    expect(
+      store.bakedSurfaceOrNull(k),
+      isNotNull,
+      reason: 'the hot surface stays resident through adoption',
+    );
 
-  test('a SPILLED cel saves through the .qap byte-exactly (the save '
-      'isolate reads the scratch file itself)', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-spill-save');
+    // Session seeding re-donates the IDENTICAL surface on every cel
+    // view — that must stay a clean no-op or every viewed cel would
+    // re-save.
+    store.storeBakedSurface(k, store.bakedSurfaceOrNull(k)!);
+    expect(store.dirtyCelKeysSinceSave, isEmpty);
+    expect(store.isCelFileBacked(k), isTrue);
+
+    store.storeBakedSurface(k, inkSurface(seed: 3));
+    expect(store.dirtyCelKeysSinceSave, {k});
+    expect(
+      store.isCelFileBacked(k),
+      isFalse,
+      reason: 'an edit invalidates the saved bytes',
+    );
+  });
+
+  test('FULL save adopts file refs and OPEN lands every cel file-backed, '
+      'byte-exact on first access', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-full-save');
     addTearDown(() => directory.delete(recursive: true));
-    final store = BrushFrameStore()..coldCelByteBudget = 0;
+    final store = BrushFrameStore();
     final k = key();
     final s = inkSurface(seed: 17);
     store.restoreBaked({k: blobOf(k, s)});
-    await store.drainTiering();
-    expect(store.isCelSpilled(k), isTrue);
 
-    final path = '${directory.path}/spill.qap';
+    final path = '${directory.path}/full.qap';
     await const QapFileService().save(
       project: createDefaultProject(),
       brushFrameStore: store,
       filePath: path,
     );
-    final result = await const QapFileService().open(filePath: path);
-
-    expect(result.cels.keys, [k]);
     expect(
-      result.cels[k]!.decode().toSurface().tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      store.isCelFileBacked(k),
+      isTrue,
+      reason: 'the saved .qap IS the disk tier now',
+    );
+    expect(store.isCelCold(k), isFalse, reason: 'the RAM blob is redundant');
+    expect(store.dirtyCelKeysSinceSave, isEmpty);
+
+    final result = await const QapFileService().open(filePath: path);
+    expect(result.cels.keys, [k]);
+    final store2 = BrushFrameStore()..restoreFromFile(result.cels);
+    expect(store2.isCelFileBacked(k), isTrue);
+    expect(
+      store2.bakedSurfaceOrNull(k)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
       s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-      reason: 'disk-tier cels reach the archive byte-exactly',
+      reason: 'save → open → materialize is byte-exact',
+    );
+  });
+
+  test('INCREMENTAL save appends ONLY the dirty cel: the clean cel keeps '
+      'its exact data offset and the file grows (garbage retained)', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-incr-save');
+    addTearDown(() => directory.delete(recursive: true));
+    const service = QapFileService();
+    final store = BrushFrameStore();
+    final k1 = key(frame: 'f1');
+    final k2 = key(frame: 'f2');
+    final s1 = inkSurface(seed: 5);
+    store.storeBakedSurface(k1, s1);
+    store.storeBakedSurface(k2, inkSurface(seed: 7));
+
+    final path = '${directory.path}/incr.qap';
+    final project = createDefaultProject();
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    final firstRefs = store.bakedSnapshotForSave().fileRefs;
+    final firstLength = File(path).lengthSync();
+
+    final s2Edited = inkSurface(seed: 9);
+    store.storeBakedSurface(k2, s2Edited);
+    expect(store.dirtyCelKeysSinceSave, {k2});
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    final secondRefs = store.bakedSnapshotForSave().fileRefs;
+    expect(
+      secondRefs[k1]!.dataOffset,
+      firstRefs[k1]!.dataOffset,
+      reason: 'an append never moves existing entry data',
+    );
+    expect(
+      secondRefs[k2]!.dataOffset,
+      isNot(firstRefs[k2]!.dataOffset),
+      reason: 'the dirty cel re-wrote as a NEW shadowing entry',
+    );
+    expect(
+      File(path).lengthSync(),
+      greaterThan(firstLength + 500),
+      reason:
+          'incremental = append (shadowed entry retained as garbage) — a '
+          'silent full rewrite would land near the original size',
+    );
+
+    final result = await const QapFileService().open(filePath: path);
+    final store2 = BrushFrameStore()..restoreFromFile(result.cels);
+    expect(
+      store2.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+    );
+    expect(
+      store2.bakedSurfaceOrNull(k2)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s2Edited.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'the reader sees the LATEST shadowing entry',
+    );
+  });
+
+  test('a removed cel vanishes from the file on the next incremental '
+      'save', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-remove-save');
+    addTearDown(() => directory.delete(recursive: true));
+    const service = QapFileService();
+    final store = BrushFrameStore();
+    final k1 = key(frame: 'f1');
+    final k2 = key(frame: 'f2');
+    store.storeBakedSurface(k1, inkSurface(seed: 5));
+    store.storeBakedSurface(k2, inkSurface(seed: 7));
+    final path = '${directory.path}/remove.qap';
+    final project = createDefaultProject();
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    // An empty donation IS the removal signal (undo of a first stroke).
+    store.storeBakedSurface(
+      k1,
+      BitmapSurface(canvasSize: canvasSize, tileSize: 8, tiles: const {}),
+    );
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    final result = await service.open(filePath: path);
+    expect(result.cels.keys, [k2]);
+  });
+
+  test('a REKEYED cel re-labels in the file across an incremental save '
+      'with its pixels intact', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-rekey-save');
+    addTearDown(() => directory.delete(recursive: true));
+    const service = QapFileService();
+    final store = BrushFrameStore();
+    final from = key(layer: 'a');
+    final to = key(layer: 'b');
+    final s = inkSurface(seed: 23);
+    store.storeBakedSurface(from, s);
+    final path = '${directory.path}/rekey.qap';
+    final project = createDefaultProject();
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    store.rekeyFrames([(from, to)]);
+    expect(store.dirtyCelKeysSinceSave, {from, to});
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    final result = await service.open(filePath: path);
+    expect(result.cels.keys, [to], reason: 'old label gone, new label in');
+    final store2 = BrushFrameStore()..restoreFromFile(result.cels);
+    expect(
+      store2.bakedSurfaceOrNull(to)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'rekey re-splices the header — pixels never re-encode',
+    );
+  });
+
+  test('garbage past the threshold forces COMPACTION: the file shrinks '
+      'and every ref stays valid', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-compact');
+    addTearDown(() => directory.delete(recursive: true));
+    const service = QapFileService();
+    final store = BrushFrameStore();
+    final k = key();
+
+    // Incompressible-ish pixels so the cel dominates project.json and
+    // the garbage ratio is deterministic.
+    BitmapSurface noisySurface(int seed) {
+      final pixels = Uint8List(32 * 32 * 4);
+      var state = seed * 2654435761 & 0x7FFFFFFF;
+      for (var i = 0; i < pixels.length; i += 1) {
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF;
+        pixels[i] = (state >> 16) & 0xFF;
+      }
+      return BitmapSurface(
+        canvasSize: const CanvasSize(width: 32, height: 32),
+        tileSize: 32,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            coord: TileCoord(x: 0, y: 0),
+            size: 32,
+            pixels: pixels,
+          ),
+        },
+      );
+    }
+
+    final path = '${directory.path}/compact.qap';
+    final project = createDefaultProject();
+    final lengths = <int>[];
+    var latestSeed = 0;
+    for (var i = 0; i < 4; i += 1) {
+      latestSeed = 100 + i;
+      store.storeBakedSurface(k, noisySurface(latestSeed));
+      await service.save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      );
+      lengths.add(File(path).lengthSync());
+    }
+
+    var shrank = false;
+    for (var i = 1; i < lengths.length; i += 1) {
+      shrank = shrank || lengths[i] < lengths[i - 1];
+    }
+    expect(
+      shrank,
+      isTrue,
+      reason:
+          'some save must have compacted (shrunk) the file: $lengths — '
+          'appends alone only ever grow it',
+    );
+
+    final result = await service.open(filePath: path);
+    final store2 = BrushFrameStore()..restoreFromFile(result.cels);
+    expect(
+      store2.bakedSurfaceOrNull(k)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      noisySurface(latestSeed).tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'compaction preserves the latest pixels',
     );
   });
 
