@@ -20,6 +20,7 @@ import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
+import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
@@ -361,10 +362,15 @@ class _InteractiveBrushEditCanvasViewState
     if (initialDabs.isNotEmpty) {
       _previousBaseDab = initialDabs.last;
     }
-    final emitted = _strokeDynamics!.apply(
-      initialDabs,
-      firstSequence: _nextSequence,
-      directionDegrees: null,
+    // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
+    // — the overlay, the commit, undo replay and the .qap all see the
+    // same resolved (quantized, prerotated-mask) dabs.
+    final emitted = BrushTipStampCache.instance.resolveDabs(
+      _strokeDynamics!.apply(
+        initialDabs,
+        firstSequence: _nextSequence,
+        directionDegrees: null,
+      ),
     );
     _collectedDabs.addAll(emitted);
     _queueOverlayDabs(emitted);
@@ -450,13 +456,14 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees =
         strokeDirectionDegrees(from: previousRaw, to: canvasPosition) ??
         _lastDirectionDegrees;
-    final emitted =
-        _strokeDynamics?.apply(
+    final emitted = BrushTipStampCache.instance.resolveDabs(
+      _strokeDynamics?.apply(
+            baseDabs,
+            firstSequence: _nextSequence,
+            directionDegrees: _lastDirectionDegrees,
+          ) ??
           baseDabs,
-          firstSequence: _nextSequence,
-          directionDegrees: _lastDirectionDegrees,
-        ) ??
-        baseDabs;
+    );
 
     // No setState: pointer moves only QUEUE the new dabs (this runs at
     // pointer-sample frequency); the per-frame flush rasterizes the batch
