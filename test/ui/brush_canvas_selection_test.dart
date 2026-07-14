@@ -216,6 +216,42 @@ void main() {
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
   });
 
+  testWidgets('Mesh Warp (R20-D3): the control grid opens on the '
+      'selection, a dragged point + Enter commits ONE warped entry', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+
+    env.commands.beginMeshTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+    expect(
+      env.commands.transformValues,
+      isNull,
+      reason: 'a mesh has no affine channels — the fields blank out',
+    );
+
+    // Drag an interior control point (stamp rect (20,20)-(71,71), 3×3
+    // cells → pitch 17: the (1,1) point sits at (37,37)).
+    await dragOnLayer(tester, const Offset(37, 37), const Offset(31, 42));
+
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+    expect(env.history.undoCount, entriesBefore + 1);
+
+    env.history.undo();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
+      reason: 'one undo restores the pre-lift picture',
+    );
+  });
+
   testWidgets('the session floats through the WHOLE interaction: the base '
       'holds only the erase until the confirm; a zero-move confirm is a '
       'byte-identical landing (R16-①)', (tester) async {

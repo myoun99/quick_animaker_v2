@@ -27,6 +27,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _deselect;
   bool Function()? _transformActive;
   VoidCallback? _beginTransform;
+  VoidCallback? _beginMeshTransform;
   VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
   void Function(CanvasSelectionShape? shape)? _applyShape;
@@ -50,6 +51,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     required VoidCallback deselect,
     bool Function()? transformActive,
     VoidCallback? beginTransform,
+    VoidCallback? beginMeshTransform,
     VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
     void Function(CanvasSelectionShape? shape)? applyShape,
@@ -70,6 +72,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _deselect = deselect;
     _transformActive = transformActive;
     _beginTransform = beginTransform;
+    _beginMeshTransform = beginMeshTransform;
     _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
     _applyShape = applyShape;
@@ -87,6 +90,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _deselect = null;
     _transformActive = null;
     _beginTransform = null;
+    _beginMeshTransform = null;
     _commitTransform = null;
     _cancelTransform = null;
     _applyShape = null;
@@ -132,6 +136,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// Ctrl+T: opens the free-transform box on the live selection.
   void beginTransform() => _beginTransform?.call();
+
+  /// Opens the MESH-warp session (R20-D3) on the live selection: a 3×3
+  /// control grid over the lifted pixels; Enter commits the triangulated
+  /// warp as one undo entry.
+  void beginMeshTransform() => _beginMeshTransform?.call();
 
   /// Enter: commits the open transform as one undo entry.
   void commitTransform() => _commitTransform?.call();

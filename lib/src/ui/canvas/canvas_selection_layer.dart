@@ -422,6 +422,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       deselect: _deselect,
       transformActive: () => _transform != null,
       beginTransform: _beginTransform,
+      beginMeshTransform: _beginMeshTransform,
       // Enter: an open Ctrl+T commits; otherwise a pending move confirms
       // (R16-①'s keyboard confirm).
       commitTransform: () {
@@ -438,9 +439,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       revertPendingMove: _revertMoveSession,
       transformValues: () {
         final transform = _transform;
-        // A quad session has no affine channels (R20-D2) — the numeric
-        // fields blank out rather than lie.
-        if (transform == null || _warpCorners != null) {
+        // A quad/mesh session has no affine channels (R20-D2/D3) — the
+        // numeric fields blank out rather than lie.
+        if (transform == null || _warpCorners != null || _meshPoints != null) {
           return null;
         }
         return (
@@ -463,8 +464,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required double rotationDegrees,
     required double scale,
   }) {
-    if (_warpCorners != null) {
-      return; // Quad mode: the corners are the only channels (R20-D2).
+    if (_warpCorners != null || _meshPoints != null) {
+      // Quad/mesh mode: the control points are the only channels.
+      return;
     }
     if (_transform == null) {
       _beginTransform();
@@ -556,6 +558,76 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
+  // --- Mesh warp session (R20-D3) --------------------------------------
+  //
+  // Non-null = the open box is a MESH: a 3×3-cell control grid over the
+  // lifted stamp's rect; points drag freely, Enter commits through
+  // [transformStampDabMesh] (the SAME fixed-diagonal triangulation).
+  List<CanvasPoint>? _meshPoints;
+  static const int _meshColumns = 3;
+  static const int _meshRows = 3;
+  int? _meshDragIndex; // null while dragging inside = translate all.
+  List<CanvasPoint>? _meshDragStartPoints;
+
+  /// Opens the mesh session (tool settings' Mesh Warp button): rides the
+  /// ordinary transform open (lift + box), then swaps the chrome to the
+  /// control grid.
+  void _beginMeshTransform() {
+    if (_transform == null) {
+      _beginTransform();
+    }
+    if (_transform == null || _meshPoints != null) {
+      return;
+    }
+    final base = _stampRectCorners();
+    if (base == null) {
+      return;
+    }
+    final left = base[0].x, top = base[0].y;
+    final width = base[1].x - base[0].x;
+    final height = base[3].y - base[0].y;
+    setState(() {
+      _warpCorners = null;
+      _meshPoints = [
+        for (var row = 0; row <= _meshRows; row += 1)
+          for (var column = 0; column <= _meshColumns; column += 1)
+            CanvasPoint(
+              x: left + column * width / _meshColumns,
+              y: top + row * height / _meshRows,
+            ),
+      ];
+    });
+    _syncAnts();
+  }
+
+  int? _hitTestMeshPoint(Offset local) {
+    final points = _meshPoints;
+    if (points == null) {
+      return null;
+    }
+    for (var i = 0; i < points.length; i += 1) {
+      final mapped = widget.viewport.canvasToViewport(points[i]);
+      if ((local - Offset(mapped.x, mapped.y)).distance <= _handleHitRadius) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /// The mesh's outer boundary ring (top row → right column → bottom row
+  /// reversed → left column reversed) — the warped region polygon.
+  List<CanvasPoint> _meshBoundary(List<CanvasPoint> points) {
+    CanvasPoint at(int column, int row) =>
+        points[row * (_meshColumns + 1) + column];
+    return [
+      for (var column = 0; column <= _meshColumns; column += 1) at(column, 0),
+      for (var row = 1; row <= _meshRows; row += 1) at(_meshColumns, row),
+      for (var column = _meshColumns - 1; column >= 0; column -= 1)
+        at(column, _meshRows),
+      for (var row = _meshRows - 1; row >= 1; row -= 1) at(0, row),
+    ];
+  }
+
   void _clearTransform() {
     _transform = null;
     _transformOpenedLift = false;
@@ -567,6 +639,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _warpCorners = null;
     _warpDragCorner = null;
     _warpDragStartCorners = null;
+    _meshPoints = null;
+    _meshDragIndex = null;
+    _meshDragStartPoints = null;
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
     _floatSurface = _movePending ? _buildFloatSurface() : null;
@@ -621,6 +696,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final shape = _shape;
     final pending = _pendingLiftStamp;
     if (affine == null || shape == null) {
+      return;
+    }
+    // R20-D3: an open mesh resamples through the triangulated warp.
+    final meshPoints = _meshPoints;
+    if (meshPoints != null && pending != null) {
+      final warped = transformStampDabMesh(
+        pending,
+        columns: _meshColumns,
+        rows: _meshRows,
+        points: meshPoints,
+      );
+      if (identical(warped, pending)) {
+        setState(_clearTransform);
+        _syncAnts();
+        return;
+      }
+      final boundary = _meshBoundary(meshPoints);
+      setState(() {
+        _pendingLiftStamp = warped;
+        _shape = CanvasSelectionShape(boundary);
+        _moveSessionDirty = true;
+        _clearTransform();
+      });
+      _confirmMoveSession();
       return;
     }
     // R20-D2: an open quad resamples through the homography instead.
@@ -822,6 +921,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // The open box is modal: only the box's handles/inside react;
       // clicks elsewhere are inert until Enter/Escape closes the session.
       final openTransform = transform;
+      // R20-D3: an open MESH session hit-tests its control points +
+      // inside the boundary only.
+      final meshPoints = _meshPoints;
+      if (meshPoints != null) {
+        final pointIndex = _hitTestMeshPoint(event.localPosition);
+        if (pointIndex == null &&
+            !CanvasSelectionShape(
+              _meshBoundary(meshPoints),
+            ).containsPoint(canvasPoint)) {
+          return;
+        }
+        _activePointer = event.pointer;
+        setState(() {
+          _dragMode = _DragMode.transform;
+          _meshDragIndex = pointIndex;
+          _meshDragStartPoints = List.of(meshPoints);
+          _transformDragStartPointer = canvasPoint;
+        });
+        widget.onDragActiveChanged?.call(true);
+        return;
+      }
       // R20-D2: an open QUAD session hit-tests its corners + inside only
       // (rotate/edge handles have no meaning on a free quad).
       final warpCorners = _warpCorners;
@@ -946,6 +1066,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _updateTransformDrag(CanvasPoint pointer) {
+    // R20-D3 mesh drag: one control point follows the pointer, or
+    // (inside) the whole grid translates.
+    final meshStart = _meshDragStartPoints;
+    if (_meshPoints != null && meshStart != null) {
+      final startPointer = _transformDragStartPointer;
+      if (startPointer == null) {
+        return;
+      }
+      final dx = pointer.x - startPointer.x;
+      final dy = pointer.y - startPointer.y;
+      final index = _meshDragIndex;
+      setState(() {
+        _meshPoints = [
+          for (var i = 0; i < meshStart.length; i += 1)
+            index == null || index == i
+                ? CanvasPoint(x: meshStart[i].x + dx, y: meshStart[i].y + dy)
+                : meshStart[i],
+        ];
+      });
+      _syncAnts();
+      return;
+    }
     // R20-D2 quad drag: one corner follows the pointer, or (inside) all
     // four translate together.
     final warpStart = _warpDragStartCorners;
@@ -1439,6 +1581,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final point in shape.points) _applyHomography(h, point),
             ]);
     }
+    final meshPoints = _meshPoints;
+    if (meshPoints != null) {
+      // Mesh session: the ants trace the grid's warped boundary.
+      displayShape = CanvasSelectionShape(_meshBoundary(meshPoints));
+    }
     // R17-U 핸들 상시: with the Move tool a selection shows its box
     // chrome even before any session opens (identity affine around the
     // shape bounds; grabbing a handle opens the session at that moment).
@@ -1455,9 +1602,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       chromeWidth = bounds.width;
       chromeHeight = bounds.height;
     }
+    // Mesh chrome (R20-D3): the warped boundary with EVERY control point
+    // as a handle. The float previews unwarped in v1 — the grid + ants
+    // carry the warp read; Enter shows the exact result (the commit and
+    // any future drawVertices preview share the same triangulation).
     // Quad chrome (R20-D2): the free quadrilateral with its four corner
     // handles only — edges and the rotate knob have no quad meaning.
-    final chrome = warpCorners != null
+    final chrome = meshPoints != null
+        ? (
+            box: [
+              for (final point in _meshBoundary(meshPoints))
+                _mapCanvasToViewportOffset(point),
+            ],
+            handles: [
+              for (final point in meshPoints) _mapCanvasToViewportOffset(point),
+            ],
+            knob: null as Offset?,
+          )
+        : warpCorners != null
         ? (
             box: [
               for (final point in warpCorners)
