@@ -186,6 +186,130 @@ CanvasSelectionShape transformShape(
   ]);
 }
 
+/// The lifted stamp through [affine] as a RESAMPLED bitmap stamp (R19
+/// pixel selection — Ctrl+T on raster truth):
+///
+/// - identity returns the dab untouched;
+/// - a pure translation only moves the center — byte-exact, the same
+///   arithmetic as a drag move;
+/// - anything else bilinearly resamples the stamp's straight-alpha RGBA
+///   into the transformed region's axis-aligned bounding box (raster
+///   semantics — the same rule as Photoshop's free transform). Sampling
+///   is alpha-weighted so transparent texels never bleed dark fringes.
+BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
+  final stamp = stampDab.stamp;
+  if (stamp == null || affine.isIdentity) {
+    return stampDab;
+  }
+  if (affine.sx == 1 && affine.sy == 1 && affine.rotationDegrees == 0) {
+    return stampDab.copyWith(
+      center: CanvasPoint(
+        x: stampDab.center.x + affine.tx,
+        y: stampDab.center.y + affine.ty,
+      ),
+    );
+  }
+
+  // The stamp draws 1:1 about its center: its canvas-space source rect.
+  final srcLeft = stampDab.center.x - stamp.width / 2;
+  final srcTop = stampDab.center.y - stamp.height / 2;
+
+  // Output AABB = the transformed source corners.
+  final corners = [
+    affine.apply(CanvasPoint(x: srcLeft, y: srcTop)),
+    affine.apply(CanvasPoint(x: srcLeft + stamp.width, y: srcTop)),
+    affine.apply(
+      CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
+    ),
+    affine.apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
+  ];
+  var minX = corners.first.x, maxX = corners.first.x;
+  var minY = corners.first.y, maxY = corners.first.y;
+  for (final corner in corners.skip(1)) {
+    minX = math.min(minX, corner.x);
+    maxX = math.max(maxX, corner.x);
+    minY = math.min(minY, corner.y);
+    maxY = math.max(maxY, corner.y);
+  }
+  final outLeft = minX.floor();
+  final outTop = minY.floor();
+  final outWidth = math.max(1, maxX.ceil() - outLeft);
+  final outHeight = math.max(1, maxY.ceil() - outTop);
+
+  // Inverse mapping: q = R·S·(p − pivot) + pivot + t
+  //              ⇒  p = S⁻¹·R⁻¹·(q − pivot − t) + pivot.
+  final radians = affine.rotationDegrees * math.pi / 180;
+  final cos = math.cos(radians);
+  final sin = math.sin(radians);
+  final invSx = 1 / affine.sx;
+  final invSy = 1 / affine.sy;
+
+  final source = stamp.rgba;
+  final bytes = Uint8List(outWidth * outHeight * 4);
+  for (var oy = 0; oy < outHeight; oy += 1) {
+    final qy = outTop + oy + 0.5 - affine.pivot.y - affine.ty;
+    for (var ox = 0; ox < outWidth; ox += 1) {
+      final qx = outLeft + ox + 0.5 - affine.pivot.x - affine.tx;
+      // R(−θ) then S⁻¹, back into stamp pixel space.
+      final px = (qx * cos + qy * sin) * invSx + affine.pivot.x;
+      final py = (-qx * sin + qy * cos) * invSy + affine.pivot.y;
+      final sampleX = px - srcLeft - 0.5;
+      final sampleY = py - srcTop - 0.5;
+      final x0 = sampleX.floor();
+      final y0 = sampleY.floor();
+      final fx = sampleX - x0;
+      final fy = sampleY - y0;
+
+      var alphaAcc = 0.0;
+      var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
+      for (var tap = 0; tap < 4; tap += 1) {
+        final tapX = x0 + (tap & 1);
+        final tapY = y0 + (tap >> 1);
+        if (tapX < 0 ||
+            tapY < 0 ||
+            tapX >= stamp.width ||
+            tapY >= stamp.height) {
+          continue;
+        }
+        final weight =
+            ((tap & 1) == 0 ? 1 - fx : fx) * ((tap >> 1) == 0 ? 1 - fy : fy);
+        if (weight == 0) {
+          continue;
+        }
+        final offset = (tapY * stamp.width + tapX) * 4;
+        final alpha = source[offset + 3];
+        if (alpha == 0) {
+          continue;
+        }
+        final weightedAlpha = weight * alpha;
+        alphaAcc += weightedAlpha;
+        redAcc += weightedAlpha * source[offset];
+        greenAcc += weightedAlpha * source[offset + 1];
+        blueAcc += weightedAlpha * source[offset + 2];
+      }
+      if (alphaAcc <= 0) {
+        continue;
+      }
+      final offset = (oy * outWidth + ox) * 4;
+      bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
+      bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+    }
+  }
+
+  return stampDab.copyWith(
+    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
+    size: math.max(outWidth, outHeight).toDouble(),
+    stamp: BrushStampImage(
+      id: '${stamp.id}-t${DateTime.now().microsecondsSinceEpoch}',
+      width: outWidth,
+      height: outHeight,
+      rgba: bytes,
+    ),
+  );
+}
+
 /// The bitmap-lift pair (R14-④): an erase mask dab that cuts the
 /// selection's pixels out of the layer at their origin, and a stamp dab
 /// carrying those exact pixels — the Move tool commits the pair (origin
@@ -282,8 +406,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
       if (pixels == null) {
         continue;
       }
-      final sourceOffset =
-          ((y % tileSize) * tileSize + (x % tileSize)) * 4;
+      final sourceOffset = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
       if (pixels[sourceOffset + 3] == 0) {
         continue;
       }

@@ -90,7 +90,7 @@ void main() {
       .visibleActivePaintCommands;
 
   List<BrushDab> strokeDabs(BrushFrameEditingCoordinator coordinator) =>
-      frameCommands(coordinator).single.sourceDabs;
+      frameCommands(coordinator).first.sourceDabs;
 
   /// The lift command's STAMP dab (R14-④: the Move tool's first
   /// interaction commits [erase, stamp]; moves translate the stamp).
@@ -239,10 +239,7 @@ void main() {
       reason: 'the raw lift pops off — pre-lift picture, byte-exact',
     );
     expect(env.history.undoCount, entriesBefore, reason: 'nothing recorded');
-    expect(
-      strokeDabs(env.coordinator).first.center,
-      CanvasPoint(x: 30, y: 30),
-    );
+    expect(strokeDabs(env.coordinator).first.center, CanvasPoint(x: 30, y: 30));
   });
 
   testWidgets('selecting and deselecting are undoable steps (R11-⑧)', (
@@ -324,8 +321,9 @@ void main() {
     expect(env.commands.hasSelection, isFalse);
   });
 
-  group('Ctrl+T free transform (P9b)', () {
-    testWidgets('inside-drag translates; Enter commits one undo entry', (
+  group('Ctrl+T free transform (R19 pixel model: lift + stamp resample)', () {
+    testWidgets('inside-drag translates; Enter confirms the session as one '
+        'undo entry — the STAMP moves, the source stroke never does', (
       tester,
     ) async {
       final env = await pumpSelectionPanel(tester);
@@ -334,35 +332,39 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
       expect(env.commands.transformActive, isTrue);
+      // The Ctrl+T opened a lift session: [stroke, lift] committed, the
+      // stamp floating.
+      expect(frameCommands(env.coordinator).length, 2);
 
       // Drag inside the box: rides the session (nothing committed yet —
       // the history holds only the marquee's Select entry).
       final undoDepthBefore = env.history.undoCount;
       await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 48));
       expect(env.history.undoCount, undoDepthBefore);
-      expect(
-        strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 30, y: 30),
-      );
 
       env.commands.commitTransform();
       await tester.pump();
       expect(env.commands.transformActive, isFalse);
+      // Shape bbox (20,20)..(70,70) = a 51×51 stamp centered (45.5,45.5);
+      // the pure translation (+10,+3) moves it byte-exactly.
+      expect(liftStampDab(env.coordinator).center.x, closeTo(55.5, 0.001));
+      expect(liftStampDab(env.coordinator).center.y, closeTo(48.5, 0.001));
       expect(
         strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 40, y: 33),
+        CanvasPoint(x: 30, y: 30),
+        reason: 'the source stroke command is pixel-lifted, never rewritten',
       );
       expect(env.history.canUndo, isTrue);
       env.history.undo();
       expect(
-        strokeDabs(env.coordinator).first.center,
-        CanvasPoint(x: 30, y: 30),
+        frameCommands(env.coordinator).length,
+        1,
+        reason: 'one Ctrl+Z retires the whole lift session',
       );
     });
 
-    testWidgets('a corner drag scales anchored on the opposite corner', (
-      tester,
-    ) async {
+    testWidgets('a corner drag scales anchored on the opposite corner: the '
+        'stamp RESAMPLES to the scaled footprint', (tester) async {
       final env = await pumpSelectionPanel(tester);
       // Selection box (20,20)..(70,70): pivot (45,45), BR handle at (70,70).
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
@@ -374,18 +376,21 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      final dabs = strokeDabs(env.coordinator);
-      expect(dabs[0].center.x, closeTo(35, 0.001));
-      expect(dabs[0].center.y, closeTo(35, 0.001));
-      expect(dabs[2].center.x, closeTo(80, 0.001));
-      expect(dabs[2].center.y, closeTo(80, 0.001));
-      // Dab size scales by √|1.5·1.5| = 1.5.
-      expect(dabs[0].size, closeTo(6, 0.001));
+      // Source stamp rect [20,71]² × 1.5 about the fixed TL → [20,96.5]²:
+      // a 77×77 resample centered (58.5,58.5).
+      final stampDab = liftStampDab(env.coordinator);
+      expect(stampDab.stamp!.width, 77);
+      expect(stampDab.stamp!.height, 77);
+      expect(stampDab.center.x, closeTo(58.5, 0.001));
+      expect(stampDab.center.y, closeTo(58.5, 0.001));
+      expect(
+        strokeDabs(env.coordinator).first.center,
+        CanvasPoint(x: 30, y: 30),
+      );
     });
 
-    testWidgets('Alt scales about the center; Escape discards everything', (
-      tester,
-    ) async {
+    testWidgets('Alt scales about the center; Escape reverts a fresh '
+        'Ctrl+T lift byte-exactly', (tester) async {
       final env = await pumpSelectionPanel(tester);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       env.commands.beginTransform();
@@ -398,27 +403,30 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      final dabs = strokeDabs(env.coordinator);
-      expect(dabs[0].center.x, closeTo(15, 0.001));
-      expect(dabs[1].center.x, closeTo(45, 0.001));
-      expect(dabs[2].center.x, closeTo(75, 0.001));
+      // Source rect [20,71]² × 2 about (45,45) → [−5,97]²: 102×102
+      // centered (46,46).
+      final stampDab = liftStampDab(env.coordinator);
+      expect(stampDab.stamp!.width, 102);
+      expect(stampDab.center.x, closeTo(46, 0.001));
+      final commandsAfterFirst = frameCommands(env.coordinator).length;
 
-      // A second session cancelled with Escape leaves no trace.
+      // A second session cancelled with Escape leaves no trace: the
+      // fresh lift it opened reverts whole.
       env.commands.beginTransform();
       await tester.pump();
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+      await dragOnLayer(tester, const Offset(46, 46), const Offset(60, 60));
       env.commands.cancelTransform();
       await tester.pump();
-      expect(strokeDabs(env.coordinator)[0].center.x, closeTo(15, 0.001));
       expect(env.commands.transformActive, isFalse);
+      expect(frameCommands(env.coordinator).length, commandsAfterFirst);
+      expect(liftStampDab(env.coordinator).center.x, closeTo(46, 0.001));
     });
 
-    testWidgets('the rotate knob turns the selection about its center', (
-      tester,
-    ) async {
+    testWidgets('the rotate knob turns the selection about its center: the '
+        'stamp resamples into the rotated footprint', (tester) async {
       final env = await pumpSelectionPanel(tester);
-      // Lower box (20,40)..(70,90): 2/3 of the stroke's dabs inside (45,45)
-      // and (60,60) — selected by the 60% rule; the knob stays on-layer.
+      // Lower box (20,40)..(70,90): only the shape's PIXELS lift — the
+      // (30,30) dab's pixels stay in the base untouched.
       await dragOnLayer(tester, const Offset(20, 40), const Offset(70, 90));
       expect(env.commands.hasSelection, isTrue);
       env.commands.beginTransform();
@@ -430,16 +438,18 @@ void main() {
       env.commands.commitTransform();
       await tester.pump();
 
-      // Selection is COMMAND-level: the whole stroke turns (all 3 dabs).
-      final dabs = strokeDabs(env.coordinator);
-      // (45,45): local (0,−20) → R90 → (20,0) → (65,65).
-      expect(dabs[1].center.x, closeTo(65, 0.01));
-      expect(dabs[1].center.y, closeTo(65, 0.01));
-      // (30,30): local (−15,−35) → R90 → (35,−15) → (80,50).
-      expect(dabs[0].center.x, closeTo(80, 0.01));
-      expect(dabs[0].center.y, closeTo(50, 0.01));
-      // The tip angle turned with the selection.
-      expect(dabs[1].angleDegrees, closeTo(90, 0.01));
+      // Source stamp rect [20,71]×[40,91] rotated 90° about (45,65) →
+      // AABB [19,70]×[40,91]: 51×51 centered (44.5,65.5).
+      final stampDab = liftStampDab(env.coordinator);
+      expect(stampDab.stamp!.width, 51);
+      expect(stampDab.stamp!.height, 51);
+      expect(stampDab.center.x, closeTo(44.5, 0.01));
+      expect(stampDab.center.y, closeTo(65.5, 0.01));
+      expect(
+        strokeDabs(env.coordinator).first.center,
+        CanvasPoint(x: 30, y: 30),
+        reason: 'the unlifted dab pixels stay put; commands never rewrite',
+      );
     });
   });
 

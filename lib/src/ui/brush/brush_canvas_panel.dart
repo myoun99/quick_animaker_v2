@@ -15,7 +15,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/commands/brush_lift_move_history_command.dart';
-import '../../services/commands/brush_selection_transform_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
@@ -373,8 +372,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// seek, tool switch, drag-preview notify). Their inputs are only the
   /// viewport geometry — memo by token, reuse the identical instances so
   /// the element tree prunes the whole subtree.
-  ({CanvasViewport viewport, Size viewportSize, CanvasSize canvasSize,
-      bool rotation, String title})? _shellBarsToken;
+  ({
+    CanvasViewport viewport,
+    Size viewportSize,
+    CanvasSize canvasSize,
+    bool rotation,
+    String title,
+  })?
+  _shellBarsToken;
   Widget? _memoRightStripBar;
   Widget? _memoBottomBar;
 
@@ -644,15 +649,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         canvasSize: widget.canvasSize,
                                         frameToken:
                                             widget.coordinator!.activeFrameKey,
-                                        visibleCommands: () => widget
-                                            .coordinator!
-                                            .frameStore
-                                            .getOrCreateFrame(
-                                              widget
-                                                  .coordinator!
-                                                  .activeFrameKey,
-                                            )
-                                            .visibleActivePaintCommands,
                                         selectionCommands:
                                             widget.selectionCommands,
                                         onDragActiveChanged: (active) {
@@ -665,22 +661,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             );
                                           }
                                         },
-                                        onTransformCommitted:
-                                            _handleSelectionTransform,
                                         // R14-④: the Move tool lifts the
                                         // selection's PIXELS (never whole
                                         // strokes) — 유저 direction ⑧b.
                                         onLiftRequested: _handleSelectionLift,
-                                        onLiftDabsRewritten:
-                                            _handleLiftDabsRewritten,
+                                        onLiftLanded: _handleLiftLanded,
                                         onLiftConfirmed: _handleLiftConfirmed,
                                         onLiftReverted: _handleLiftReverted,
                                         // Pending move sessions hold the
                                         // session's edit lock (seeks
                                         // refused) WITHOUT locking
                                         // viewport navigation.
-                                        onMoveSessionPendingChanged:
-                                            widget.onSelectionInteractionChanged,
+                                        onMoveSessionPendingChanged: widget
+                                            .onSelectionInteractionChanged,
                                       ),
                                     ),
                                 ],
@@ -958,14 +951,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     return (commandId: command.id, stampDab: lift.stampDab);
   }
 
-  /// R16-① confirm: adopts the whole move session (raw lift + landed
-  /// stamp) into app history as ONE undo entry.
-  void _handleLiftConfirmed(
+  /// The lift command's dabs with the floating [stampDab] LANDED at its
+  /// pending position (R19 pixel model: the layer only knows the stamp;
+  /// the command's erase dabs live here in the store).
+  List<BrushDab>? _liftDabsWithStamp(
     BrushPaintCommandId commandId,
-    List<BrushDab> dabs,
+    BrushDab stampDab,
   ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
+      return null;
+    }
+    final command = coordinator.frameStore
+        .frameOrNull(coordinator.activeFrameKey)
+        ?.commandById(commandId);
+    if (command == null) {
+      return null;
+    }
+    return [
+      for (final dab in command.sourceDabs)
+        if (dab.erase || dab.stamp == null) dab,
+      stampDab,
+    ];
+  }
+
+  /// R16-① confirm: adopts the whole move session (raw lift + landed
+  /// stamp) into app history as ONE undo entry.
+  void _handleLiftConfirmed(BrushPaintCommandId commandId, BrushDab stampDab) {
+    final coordinator = widget.coordinator;
+    final dabs = _liftDabsWithStamp(commandId, stampDab);
+    if (coordinator == null || dabs == null) {
       return;
     }
     // The setState rebuilds the interactive view onto the post-confirm
@@ -976,10 +991,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     void run() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
-        coordinator.rewritePaintCommandDabs(
-          {commandId: dabs},
-          cacheInvalidationSink: widget.cacheInvalidationSink,
-        );
+        coordinator.rewritePaintCommandDabs({
+          commandId: dabs,
+        }, cacheInvalidationSink: widget.cacheInvalidationSink);
         return;
       }
       historyManager.execute(
@@ -999,7 +1013,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  /// REVERT of a fresh session (R17-①): the raw lift is the coordinator
+  /// REVERT of a session (R17-①): the raw lift is the coordinator
   /// stack's newest entry (drawing and seeks are locked while pending),
   /// so popping it restores the pre-lift picture byte-exactly.
   void _handleLiftReverted(BrushPaintCommandId commandId) {
@@ -1016,20 +1030,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  /// Raw lift-command dab rewrite (no history entry) — the drag lifecycle
-  /// suppresses/restores the floating stamp through this. The setState
+  /// Raw landing of the floating stamp (no history entry) — the abandon
+  /// fallback so a reset never loses the float's pixels. The setState
   /// matters: a rewrite swaps the session surface WITHOUT a session
   /// notify, and the interactive view must rebuild onto the new surface
   /// (R17-①b: the confirmed stamp was invisible until a frame roundtrip).
-  void _handleLiftDabsRewritten(
-    BrushPaintCommandId commandId,
-    List<BrushDab> dabs,
-  ) {
+  void _handleLiftLanded(BrushPaintCommandId commandId, BrushDab stampDab) {
+    final dabs = _liftDabsWithStamp(commandId, stampDab);
+    if (dabs == null) {
+      return;
+    }
     void run() {
-      widget.coordinator?.rewritePaintCommandDabs(
-        {commandId: dabs},
-        cacheInvalidationSink: widget.cacheInvalidationSink,
-      );
+      widget.coordinator?.rewritePaintCommandDabs({
+        commandId: dabs,
+      }, cacheInvalidationSink: widget.cacheInvalidationSink);
     }
 
     if (mounted) {
@@ -1061,27 +1075,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           cacheInvalidationSink: widget.cacheInvalidationSink,
         ),
       );
-    });
-  }
-
-  /// One finished selection move (P9): ONE app-level undo entry via the
-  /// in-place dab rewrite.
-  void _handleSelectionTransform(CanvasSelectionTransform transform) {
-    final coordinator = widget.coordinator!;
-    final command = BrushSelectionTransformHistoryCommand(
-      coordinator: coordinator,
-      frameKey: coordinator.activeFrameKey,
-      before: transform.before,
-      after: transform.after,
-      cacheInvalidationSink: widget.cacheInvalidationSink,
-    );
-    setState(() {
-      final historyManager = widget.historyManager;
-      if (historyManager == null) {
-        command.execute();
-        return;
-      }
-      historyManager.execute(command);
     });
   }
 }
