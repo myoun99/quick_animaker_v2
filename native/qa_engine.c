@@ -1302,9 +1302,10 @@ QA_EXPORT int32_t qa_stamp_blend_tile(
 // kernels, so results are byte-identical regardless of worker count -
 // the parity suites keep pinning the whole path.
 //
-// Windows-only for now (the only shipping target); elsewhere batches run
-// inline on the caller, which is the same bytes at single-thread speed.
-// QA_ENGINE_THREADS caps the worker count (0 or 1 disables the pool).
+// Windows uses event-pair workers; every other platform runs the
+// pthread mirror below (R22-E2) - same dynamic atomic distribution,
+// same byte-identical contract. QA_ENGINE_THREADS caps the TOTAL
+// thread count including the caller (0 or 1 disables the pool).
 
 // One tile's span of a batch job. Field order/types MUST match the Dart
 // QaTileSpanStruct exactly; the loader cross-checks qa_tile_span_sizeof.
@@ -1325,13 +1326,17 @@ QA_EXPORT int32_t qa_tile_span_sizeof(void) {
 
 typedef void (*qa_job_fn)(int32_t item_index, void* context);
 
+// R22-E1: cap raised 8 -> 32 for future many-core CPUs. Default stays
+// "logical cores - 1, clamped"; past ~8 workers the tile kernels go
+// memory-bandwidth-bound and scale sublinearly - expected, recorded in
+// the lab notes, not a regression.
+#define QA_MAX_WORKERS 32
+
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <process.h>
 #include <stdlib.h>
-
-#define QA_MAX_WORKERS 8
 
 static struct {
   int initialized;
@@ -1427,12 +1432,120 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
   }
 }
 
-#else  // !_WIN32: inline fallback, same bytes at single-thread speed.
+#else  // !_WIN32: pthread mirror of the Windows pool (R22-E2).
+// Structure-identical: persistent workers, dynamic atomic item counter
+// (P/E-hybrid friendly), caller participates, byte-identical results by
+// construction. Auto-reset event pairs become a token count + two
+// condition variables (macOS has no unnamed semaphores, so mutex+cond
+// is the portable pair). This lock is DISTINCT from the tile-pool lock
+// (qa_tile_free on the GC thread) - no ordering between them.
 
-static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
-  for (int32_t i = 0; i < item_count; i += 1) {
-    job_fn(i, context);
+#include <pthread.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+static struct {
+  int initialized;
+  int worker_count;
+  pthread_t threads[QA_MAX_WORKERS];
+  pthread_mutex_t lock;
+  pthread_cond_t ready_cond;
+  pthread_cond_t done_cond;
+  int ready_tokens;
+  int done_count;
+  qa_job_fn job_fn;
+  void* job_context;
+  volatile int32_t next_item;
+  int32_t item_count;
+} g_pool;
+
+static void qa_pool_run_items(void) {
+  for (;;) {
+    const int32_t item =
+        __atomic_fetch_add(&g_pool.next_item, 1, __ATOMIC_RELAXED);
+    if (item >= g_pool.item_count) {
+      return;
+    }
+    g_pool.job_fn(item, g_pool.job_context);
   }
+}
+
+static void* qa_pool_worker(void* arg) {
+  (void)arg;
+  for (;;) {
+    pthread_mutex_lock(&g_pool.lock);
+    while (g_pool.ready_tokens == 0) {
+      pthread_cond_wait(&g_pool.ready_cond, &g_pool.lock);
+    }
+    g_pool.ready_tokens -= 1;
+    pthread_mutex_unlock(&g_pool.lock);
+    qa_pool_run_items();
+    pthread_mutex_lock(&g_pool.lock);
+    g_pool.done_count += 1;
+    pthread_cond_signal(&g_pool.done_cond);
+    pthread_mutex_unlock(&g_pool.lock);
+  }
+  return NULL;
+}
+
+static void qa_pool_init_once(void) {
+  if (g_pool.initialized) {
+    return;
+  }
+  g_pool.initialized = 1;
+  pthread_mutex_init(&g_pool.lock, NULL);
+  pthread_cond_init(&g_pool.ready_cond, NULL);
+  pthread_cond_init(&g_pool.done_cond, NULL);
+  int workers = (int)sysconf(_SC_NPROCESSORS_ONLN) - 1;
+  const char* override_text = getenv("QA_ENGINE_THREADS");
+  if (override_text != NULL) {
+    const int override_value = atoi(override_text);
+    // The override is TOTAL threads including the caller.
+    workers = override_value - 1;
+  }
+  if (workers > QA_MAX_WORKERS) workers = QA_MAX_WORKERS;
+  if (workers < 0) workers = 0;
+  g_pool.worker_count = 0;
+  for (int i = 0; i < workers; i += 1) {
+    if (pthread_create(&g_pool.threads[i], NULL, qa_pool_worker, NULL) != 0) {
+      break;
+    }
+    g_pool.worker_count += 1;
+  }
+}
+
+// Runs job_fn(0..item_count-1, context) across the pool + the caller;
+// returns only when every item completed.
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
+  if (item_count <= 0) {
+    return;
+  }
+  qa_pool_init_once();
+  if (g_pool.worker_count == 0 || item_count == 1) {
+    for (int32_t i = 0; i < item_count; i += 1) {
+      job_fn(i, context);
+    }
+    return;
+  }
+  g_pool.job_fn = job_fn;
+  g_pool.job_context = context;
+  g_pool.item_count = item_count;
+  g_pool.next_item = 0;
+  int engaged = g_pool.worker_count;
+  if (engaged > item_count - 1) {
+    engaged = (int)item_count - 1;
+  }
+  pthread_mutex_lock(&g_pool.lock);
+  g_pool.done_count = 0;
+  g_pool.ready_tokens = engaged;
+  pthread_cond_broadcast(&g_pool.ready_cond);
+  pthread_mutex_unlock(&g_pool.lock);
+  qa_pool_run_items();
+  pthread_mutex_lock(&g_pool.lock);
+  while (g_pool.done_count < engaged) {
+    pthread_cond_wait(&g_pool.done_cond, &g_pool.lock);
+  }
+  pthread_mutex_unlock(&g_pool.lock);
 }
 
 #endif
