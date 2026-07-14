@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -1633,28 +1634,23 @@ class _LayerHeader extends StatelessWidget {
                         ),
                       // The camera column's slider drives the camera-view DIM
                       // opacity (unified layer controls).
-                      if (layerKindShowsOpacityControl(layer.kind)) ...[
+                      if (layerKindShowsOpacityControl(layer.kind))
                         Expanded(
-                          child: Slider(
+                          child: FieldSlider(
                             key: ValueKey<String>(
                               'xsheet-layer-opacity-${layer.id}',
                             ),
                             min: 0,
                             max: 1,
                             value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                            valueText: '${(layer.opacity * 100).round()}%',
+                            displayFactor: 100,
+                            height: 18,
                             onChanged: (opacity) =>
                                 onLayerOpacityChanged(layer.id, opacity),
                           ),
-                        ),
-                        SizedBox(
-                          width: 34,
-                          child: Text(
-                            '${(layer.opacity * 100).round()}%',
-                            textAlign: TextAlign.right,
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ),
-                      ] else
+                        )
+                      else
                         const Spacer(),
                     ],
                   ),

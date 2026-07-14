@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_tip_shape.dart';
 import '../panels/editor_panel_frame.dart';
+import '../widgets/field_slider.dart';
 import 'brush_tool_color_swatch.dart';
 import 'brush_tool_state.dart';
 
@@ -48,6 +49,9 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampSize(state.size),
             min: BrushToolState.minSize,
             max: BrushToolState.maxSize,
+            // Log mapping: the track's left half covers the small sizes
+            // where precision matters (CSP-style 1..2000 px range).
+            scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-size-slider',
             onChanged: (value) => onChanged(state.copyWith(size: value)),
           ),
@@ -57,6 +61,7 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampOpacity(state.opacity),
             min: 0,
             max: 1,
+            displayFactor: 100,
             keyValue: 'brush-tool-opacity-slider',
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
           ),
@@ -66,6 +71,7 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampUnit(state.hardness),
             min: 0,
             max: 1,
+            displayFactor: 100,
             keyValue: 'brush-tool-hardness-slider',
             onChanged: (value) => onChanged(state.copyWith(hardness: value)),
           ),
@@ -75,6 +81,7 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampUnit(state.flow),
             min: 0,
             max: 1,
+            displayFactor: 100,
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
           ),
@@ -84,6 +91,8 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampSpacing(state.spacing),
             min: BrushToolState.minSpacing,
             max: BrushToolState.maxSpacing,
+            scale: FieldSliderScale.exponential,
+            displayFactor: 100,
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),
           ),
@@ -133,6 +142,7 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampRoundness(state.roundness),
             min: BrushToolState.minRoundness,
             max: 1,
+            displayFactor: 100,
             keyValue: 'brush-tool-roundness-slider',
             onChanged: (value) => onChanged(state.copyWith(roundness: value)),
           ),
@@ -195,6 +205,8 @@ class _PanelSlider extends StatelessWidget {
     required this.max,
     required this.keyValue,
     required this.onChanged,
+    this.scale = FieldSliderScale.linear,
+    this.displayFactor = 1,
   });
 
   final String label;
@@ -204,29 +216,24 @@ class _PanelSlider extends StatelessWidget {
   final double max;
   final String keyValue;
   final ValueChanged<double> onChanged;
+  final FieldSliderScale scale;
+  final double displayFactor;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-            ),
-            Text(valueLabel, style: Theme.of(context).textTheme.labelSmall),
-          ],
-        ),
-        Slider(
-          key: ValueKey<String>(keyValue),
-          value: value,
-          min: min,
-          max: max,
-          onChanged: onChanged,
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: value,
+        min: min,
+        max: max,
+        label: label,
+        valueText: valueLabel,
+        scale: scale,
+        displayFactor: displayFactor,
+        onChanged: onChanged,
+      ),
     );
   }
 }

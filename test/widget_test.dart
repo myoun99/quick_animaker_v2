@@ -4,6 +4,7 @@ import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
+import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
@@ -567,7 +568,7 @@ void main() {
 
     Future<void> zoomTo(double pixelsPerFrame) async {
       tester
-          .widget<Slider>(
+          .widget<FieldSlider>(
             find.byKey(const ValueKey<String>('timeline-zoom-slider')),
           )
           .onChanged!(pixelsPerFrame);
@@ -601,7 +602,7 @@ void main() {
 
     // The X-sheet row height tracks the slider proportionally (36 at 48).
     tester
-        .widget<Slider>(
+        .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
         .onChanged!(72);

@@ -23,6 +23,7 @@ import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'timeline/transform_lane_editing.dart';
+import 'widgets/field_slider.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -351,7 +352,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           Icon(Icons.zoom_out, size: 16, color: colorScheme.onSurfaceVariant),
           SizedBox(
             width: 140,
-            child: Slider(
+            child: FieldSlider(
               key: const ValueKey<String>('timeline-zoom-slider'),
               min: TimelinePanel.minPixelsPerFrame,
               max: TimelinePanel.maxPixelsPerFrame,
@@ -359,6 +360,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 TimelinePanel.minPixelsPerFrame,
                 TimelinePanel.maxPixelsPerFrame,
               ),
+              // Zoom reads as percent of the default frame width.
+              valueText:
+                  '${(widget.pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
+              displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
+              height: 18,
               onChanged: widget.onPixelsPerFrameChanged,
             ),
           ),

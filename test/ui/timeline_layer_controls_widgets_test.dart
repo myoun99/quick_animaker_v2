@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
 void main() {
   group('TimelineLayerControlsHeader', () {
@@ -134,7 +135,7 @@ void main() {
         ),
       );
 
-      final slider = tester.widget<Slider>(
+      final slider = tester.widget<FieldSlider>(
         find.byKey(ValueKey<String>('timeline-layer-opacity-${layer.id}')),
       );
       slider.onChanged?.call(0.25);

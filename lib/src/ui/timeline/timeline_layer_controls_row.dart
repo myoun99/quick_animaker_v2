@@ -4,6 +4,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -263,30 +264,24 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               // The camera row's slider drives the camera-view DIM opacity
-              // (unified layer controls). 56+30: the SE rows' mute slot
-              // needs the 12px back — every row shrinks alike so the
-              // control columns stay aligned.
-              if (layerKindShowsOpacityControl(layer.kind)) ...[
+              // (unified layer controls). 86 = the old slider+text slots
+              // fused into one micro field bar; every row shrinks alike so
+              // the control columns stay aligned.
+              if (layerKindShowsOpacityControl(layer.kind))
                 SizedBox(
-                  width: 56,
-                  child: Slider(
+                  width: 86,
+                  child: FieldSlider(
                     key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
                     min: 0,
                     max: 1,
                     value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    valueText: '${(layer.opacity * 100).round()}%',
+                    displayFactor: 100,
+                    height: 18,
                     onChanged: (opacity) =>
                         onLayerOpacityChanged(layer.id, opacity),
                   ),
                 ),
-                SizedBox(
-                  width: 30,
-                  child: Text(
-                    '${(layer.opacity * 100).round()}%',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
