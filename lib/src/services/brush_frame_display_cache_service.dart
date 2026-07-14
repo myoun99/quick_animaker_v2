@@ -16,8 +16,24 @@ class BrushFrameDisplayCacheService {
   BrushFrameDisplayCache prepareFramePreview(BrushFrameKey key) {
     final drawing = frameStore.getOrCreateFrame(key);
     final existing = frameStore.displayCacheOrNull(key);
-    if (existing != null && existing.isValid) {
+    if (existing != null &&
+        existing.isValid &&
+        existing.previewSurface.canvasSize == renderer.canvasSize) {
       return existing;
+    }
+
+    // R19 bake-only: the baked raster serves directly when no commands
+    // could have diverged from it — an OPENED cel has no commands at all,
+    // and the command replay below would wrongly rebuild it BLANK.
+    final baked = frameStore.currentSurfaceWithoutReplay(
+      key,
+      canvasSize: renderer.canvasSize,
+    );
+    if (baked != null) {
+      return frameStore.storeRebuiltDisplayCache(
+        key: key,
+        previewSurface: baked,
+      );
     }
 
     final preview = renderer.rebuildPreview(drawing);

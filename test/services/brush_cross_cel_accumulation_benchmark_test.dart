@@ -88,9 +88,8 @@ void main() {
           coordinator.selectFrame(celKey(cel));
           for (var s = 0; s < strokesPerCel; s += 1) {
             final dabs = strokeDabs(strokeIndex++);
-            final rasterizer = BrushLiveStrokeRasterizer(
-              canvasSize: canvasSize,
-            )..blendFrom(dabs);
+            final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize)
+              ..blendFrom(dabs);
             final data = BrushStrokeCommitData(
               sourceDabs: dabs,
               strokePixels: rasterizer.strokePixelsWithinBounds(),
@@ -113,7 +112,6 @@ void main() {
           '(${(bucket + 1) * celsPerBucket * strokesPerCel} strokes): '
           '${(watch.elapsedMicroseconds / 1000.0 / (celsPerBucket * strokesPerCel)).toStringAsFixed(2)}ms/commit '
           '| live sessions ${sessionStore.sessionCount} '
-          '| display caches ${(store.displayCacheBytes / (1024 * 1024)).toStringAsFixed(0)}MB '
           '| rss ${(ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(0)}MB',
         );
       }

@@ -32,30 +32,17 @@ class BrushLayerFlushPlan {
 }
 
 class BrushFrameStore {
-  BrushFrameStore({this.displayCacheByteBudget = defaultDisplayCacheByteBudget})
-    : assert(displayCacheByteBudget > 0);
-
-  /// Default byte cap for the derived preview surfaces (R13): they are
-  /// replay-avoidance caches, one full-resolution tile map PER CEL ever
-  /// drawn, and without a cap a long animation session accumulated them
-  /// forever — the third "the more I draw, the slower everything gets"
-  /// term (after the session store and the stale-tile pins). ≈ 20 fully
-  /// painted default-size cels; light sketch cels fit hundreds.
-  static const int defaultDisplayCacheByteBudget = 320 * 1024 * 1024;
-
-  final int displayCacheByteBudget;
-  int _displayCacheBytes = 0;
+  BrushFrameStore();
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
-  /// Insertion order doubles as recency (reads re-insert): eviction beyond
-  /// [displayCacheByteBudget] drops from the least-recent end. An evicted
-  /// cel rebuilds on demand through the command replay — correct, just
-  /// slower, and only for cels colder than the whole retained set.
+  /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
+  /// baked-seeded entry ALIASES the cel's [_bakedSurfaces] truth (the same
+  /// immutable surface object), so evicting one freed nothing — the old
+  /// budget/LRU/protected-cut machinery (R13/R16-⑤) only ever caused
+  /// rebuild storms. Replay-built entries (legacy this-session command
+  /// cels) are superseded by donations on the next edit.
   final Map<BrushFrameKey, BrushFrameDisplayCache> _displayCaches = {};
-
-  /// Retained preview-surface bytes (eviction-guard oracle).
-  int get displayCacheBytes => _displayCacheBytes;
 
   BrushFrameDrawingState getOrCreateFrame(BrushFrameKey key) {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
@@ -63,15 +50,8 @@ class BrushFrameStore {
 
   BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
 
-  BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) {
-    final cache = _displayCaches.remove(key);
-    if (cache == null) {
-      return null;
-    }
-    // Re-insert: reads count as uses for the LRU order.
-    _displayCaches[key] = cache;
-    return cache;
-  }
+  BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
+      _displayCaches[key];
 
   bool hasValidDisplayCache(BrushFrameKey key) =>
       displayCacheOrNull(key)?.isValid ?? false;
@@ -81,52 +61,14 @@ class BrushFrameStore {
     return cache != null && cache.isValid ? cache.previewSurface : null;
   }
 
-  static int _displayCacheBytesOf(BrushFrameDisplayCache cache) {
-    final surface = cache.previewSurface;
-    return surface.tiles.length * surface.tileSize * surface.tileSize * 4;
-  }
-
-  /// Cut whose cels the byte-budget eviction must NEVER touch (R16-⑤,
-  /// measured): flipping inside the working cut after an eviction forced
-  /// a cold full-history replay ON the UI thread — multi-second freezes
-  /// with heavy brushes. The session updates this on every cut switch;
-  /// the working set stays warm and eviction spends the budget on other
-  /// cuts' cels.
-  CutId? protectedCutId;
-
-  bool _isProtected(BrushFrameKey key) =>
-      protectedCutId != null && key.cutId == protectedCutId;
-
   void _putDisplayCache(BrushFrameKey key, BrushFrameDisplayCache cache) {
-    final previous = _displayCaches.remove(key);
-    if (previous != null) {
-      _displayCacheBytes -= _displayCacheBytesOf(previous);
-    }
     _displayCaches[key] = cache;
-    _displayCacheBytes += _displayCacheBytesOf(cache);
-    if (_displayCacheBytes <= displayCacheByteBudget) {
-      return;
-    }
-    for (final candidate in _displayCaches.keys.toList()) {
-      if (_displayCacheBytes <= displayCacheByteBudget) {
-        break;
-      }
-      if (candidate == key || _isProtected(candidate)) {
-        // The just-stored cache is never its own eviction victim (a giant
-        // single cel must still display without replaying every stroke),
-        // and the active cut's cels are pinned — see [protectedCutId].
-        continue;
-      }
-      final removed = _displayCaches.remove(candidate)!;
-      _displayCacheBytes -= _displayCacheBytesOf(removed);
-    }
   }
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.
   void clearDisplayCaches() {
     _displayCaches.clear();
-    _displayCacheBytes = 0;
   }
 
   // -------------------------------------------------------------------
@@ -199,33 +141,44 @@ class BrushFrameStore {
     }
   }
 
-  /// Every drawn frame's VISIBLE commands (source dabs included) — the
-  /// .qap save payload (P3). The same command list export replays
-  /// (allPaintCommandsInDisplayOrder), so a saved file reproduces exactly
-  /// the picture on screen; hidden-by-undo and bake bookkeeping stay
-  /// session-local.
-  Map<BrushFrameKey, List<BrushPaintCommand>> drawingsSnapshotForSave() {
-    return {
-      for (final entry in _frames.entries)
-        if (entry.value.allPaintCommandsInDisplayOrder.isNotEmpty)
-          entry.key: entry.value.allPaintCommandsInDisplayOrder,
-    };
+  /// Whether the cel shows ANY picture content: baked raster truth (v2
+  /// opens, donations) or visible paint commands (this-session strokes).
+  /// The composite/export/fill resolvers' emptiness oracle — a command
+  /// check alone calls every OPENED cel empty (bake-only opens carry no
+  /// commands; the picture is the raster).
+  bool celHasRenderableContent(BrushFrameKey key) {
+    if (_bakedSurfaces.containsKey(key)) {
+      return true;
+    }
+    final frame = _frames[key];
+    return frame != null && frame.allPaintCommandsInDisplayOrder.isNotEmpty;
   }
 
-  /// Replaces the WHOLE store with loaded drawings (project open): every
-  /// frame reseeds live at sourceRevision 1, so pre-load display caches and
-  /// composite signatures can never match stale content.
-  void restoreDrawings(Map<BrushFrameKey, List<BrushPaintCommand>> drawings) {
-    _frames.clear();
-    clearDisplayCaches();
-    _bakedSurfaces.clear();
-    for (final entry in drawings.entries) {
-      _frames[entry.key] = BrushFrameDrawingState(
-        key: entry.key,
-        paintCommands: entry.value,
-        sourceRevision: 1,
-      );
+  /// The cel's current pixels WITHOUT a command replay, or null when only
+  /// a replay can produce them (a legacy command cel whose cache went
+  /// stale) or the cel is empty:
+  /// - a VALID display cache at [canvasSize] (donations keep it fresh
+  ///   across every commit/undo/redo);
+  /// - else the baked truth, when no commands exist that could have
+  ///   diverged from it (raw check — an all-hidden cel must NOT serve a
+  ///   stale raster).
+  BitmapSurface? currentSurfaceWithoutReplay(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
+    final cached = validPreviewSurfaceOrNull(key);
+    if (cached != null && cached.canvasSize == canvasSize) {
+      return cached;
     }
+    final frame = _frames[key];
+    if (frame != null && frame.paintCommands.isNotEmpty) {
+      return null;
+    }
+    final baked = _bakedSurfaces[key];
+    if (baked != null && baked.canvasSize == canvasSize) {
+      return baked;
+    }
+    return null;
   }
 
   /// Re-homes stored drawings under new keys (a cross-layer block move,
