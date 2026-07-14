@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
+import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
@@ -338,37 +340,26 @@ class _InteractiveBrushEditCanvasViewState
       return;
     }
 
-    // FILL tap (R22-A): the flood's stamp dab runs through the STROKE
-    // pipeline — overlay next frame, commit through the same funnel,
-    // settling holds the overlay until the committed tiles decode.
+    // FILL tap (R22-A / R23): the flood's stamp becomes ONE overlay
+    // image at the commit's exact placement, and the commit itself
+    // DEFERS past the tap frame — the finished fill shows while the
+    // heavy commit (~0.5s at 8K) runs behind a complete-looking
+    // picture; settling then holds the overlay until the committed
+    // tiles decode. (The R22-A live-raster blend re-snapshotted and
+    // re-decoded thousands of 128px overlay tiles — the 8K
+    // settle-frame stall.)
     final fillDabAt = widget.fillDabAt;
     if (fillDabAt != null) {
-      if (!startsInsideSurface) {
+      if (!startsInsideSurface || _pendingFillCommitDab != null) {
+        // A deferred fill commit is one frame away — a second tap in
+        // that window would interleave with it.
         return;
       }
       final dab = fillDabAt(canvasPosition, widget.inputSettings.color);
       if (dab == null) {
         return;
       }
-      _prepareLiveRasterizer();
-      _resetOverlay();
-      _overlayModel.erase = false;
-      _collectedDabs
-        ..clear()
-        ..add(dab);
-      _queueOverlayDabs([dab]);
-      _flushPendingOverlayDabs();
-      final rasterizer = _liveRasterizer;
-      _settlingBounds = rasterizer?.strokeBounds;
-      _overlayModel.holdPreStrokeTiles(
-        preStrokeHoldTiles(
-          surface: widget.sessionState.canvasState.currentSurface,
-          bounds: _settlingBounds,
-        ),
-      );
-      widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
-      _collectedDabs.clear();
-      _beginSettling();
+      _handleFillDab(dab);
       return;
     }
 
@@ -748,6 +739,10 @@ class _InteractiveBrushEditCanvasViewState
     _settlingBounds = null;
     _settlingFallbackTimer?.cancel();
     _settlingFallbackTimer = null;
+    // Invalidate any in-flight fill stamp decode (R23): applying it
+    // after this reset would leave a ghost overlay with no settling to
+    // clear it.
+    _fillOverlayToken += 1;
     _overlayModel.reset();
   }
 
@@ -858,6 +853,121 @@ class _InteractiveBrushEditCanvasViewState
   /// same premultiply + `decodeImageFromPixels` pipeline as the committed
   /// tiles, so the on-screen stroke rasterizes exactly like it will after
   /// commit; decode completions repaint the canvas painter directly.
+  BrushDab? _pendingFillCommitDab;
+  int _fillOverlayToken = 0;
+
+  void _handleFillDab(BrushDab dab) {
+    final stamp = dab.stamp;
+    _resetOverlay();
+    _overlayModel.erase = false;
+    final surface = widget.sessionState.canvasState.currentSurface;
+    if (stamp != null) {
+      final stampLeft = (dab.center.x - stamp.width / 2).round();
+      final stampTop = (dab.center.y - stamp.height / 2).round();
+      _settlingBounds = DirtyRegion(
+        left: math.max(0, stampLeft),
+        top: math.max(0, stampTop),
+        rightExclusive: math.min(
+          surface.canvasSize.width,
+          stampLeft + stamp.width,
+        ),
+        bottomExclusive: math.min(
+          surface.canvasSize.height,
+          stampTop + stamp.height,
+        ),
+      );
+      // The stamp is straight-alpha; the overlay pipeline (like the
+      // tile images) uploads premultiplied. The fused C kernel does
+      // 64MP in one pass — the same loop in Dart was seconds. The
+      // scratch buffer is fresh per fill; the decode callback frees it.
+      final engine = QaNativeEngine.instance;
+      final Uint8List premultiplied;
+      QaStampScratch? scratch;
+      if (engine != null) {
+        scratch = engine.premultipliedStampCopy(stamp.rgba);
+        premultiplied = scratch.view;
+      } else {
+        premultiplied = _premultipliedCopyDart(stamp.rgba);
+      }
+      final token = _fillOverlayToken;
+      ui.decodeImageFromPixels(
+        premultiplied,
+        stamp.width,
+        stamp.height,
+        ui.PixelFormat.rgba8888,
+        (image) {
+          scratch?.free();
+          if (!mounted || token != _fillOverlayToken) {
+            // The overlay was reset (settle handoff, frame switch, next
+            // fill) before this decode landed — never painted, safe to
+            // dispose directly.
+            image.dispose();
+            return;
+          }
+          _overlayModel.setStampOverlay(
+            image,
+            Offset(stampLeft.toDouble(), stampTop.toDouble()),
+          );
+        },
+      );
+    } else {
+      // A stampless fill dab (synthetic/test): no overlay preview —
+      // the deferred commit below still lands it identically.
+      _settlingBounds = null;
+    }
+    // Pin the pre-fill tiles NOW: until the stamp image decodes the
+    // canvas keeps showing the pre-fill picture (no flash), then the
+    // overlay pops in complete.
+    _overlayModel.holdPreStrokeTiles(
+      preStrokeHoldTiles(surface: surface, bounds: _settlingBounds),
+    );
+
+    // Commit AFTER the tap frame renders: unconditional (never gated on
+    // the decode callback — a fill must land even if the engine drops
+    // the image), so the reveal and the commit jank overlap instead of
+    // stacking.
+    _pendingFillCommitDab = dab;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runPendingFillCommit();
+    });
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
+
+  void _runPendingFillCommit() {
+    final dab = _pendingFillCommitDab;
+    _pendingFillCommitDab = null;
+    if (dab == null || !mounted) {
+      return;
+    }
+    widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
+    _beginSettling();
+  }
+
+  /// Fallback premultiply (engine absent) — same bytes as the overlay
+  /// tile path: mul-div-255 rounding, alpha 0 zeroes the color.
+  static Uint8List _premultipliedCopyDart(Uint8List rgba) {
+    final bytes = Uint8List.fromList(rgba);
+    for (var offset = 0; offset < bytes.length; offset += 4) {
+      final alpha = bytes[offset + 3];
+      if (alpha == 255) {
+        continue;
+      }
+      if (alpha == 0) {
+        bytes[offset] = 0;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        continue;
+      }
+      var product = bytes[offset] * alpha + 128;
+      bytes[offset] = (product + (product >> 8)) >> 8;
+      product = bytes[offset + 1] * alpha + 128;
+      bytes[offset + 1] = (product + (product >> 8)) >> 8;
+      product = bytes[offset + 2] * alpha + 128;
+      bytes[offset + 2] = (product + (product >> 8)) >> 8;
+    }
+    return bytes;
+  }
+
   void _appendOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {
       return;

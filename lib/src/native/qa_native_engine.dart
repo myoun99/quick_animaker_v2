@@ -646,6 +646,19 @@ class QaNativeEngine {
     return pointer;
   }
 
+  /// R23: straight-alpha stamp RGBA → PREMULTIPLIED bytes for the fill
+  /// overlay image, through the fused C kernel (a 64MP Dart premultiply
+  /// loop was seconds). The upload is the identity-cached stamp upload,
+  /// so the commit's stamp blend right after reuses it for free. The
+  /// returned scratch is FRESH (never aliased by a later call); free it
+  /// once the image decode has consumed the view.
+  QaStampScratch premultipliedStampCopy(Uint8List rgba) {
+    final source = uploadStampBytes(rgba);
+    final buffer = malloc<Uint8>(rgba.length);
+    _premultiplyRgbaCopy(buffer, source, rgba.length ~/ 4);
+    return QaStampScratch._(buffer.asTypedList(rgba.length), buffer);
+  }
+
   // -------------------------------------------------------------------
   // Flood fill (R18 A-2b): engine-persistent, grow-only buffers. ONE
   // fill runs at a time (a fill tap is synchronous and single-shot), so
@@ -1388,6 +1401,20 @@ class QaNativeTileBuffer {
 
   final Pointer<Uint8> pointer;
   final Uint8List view;
+}
+
+/// A fresh premultiplied stamp buffer (R23 fill overlay): [view] feeds
+/// `ui.decodeImageFromPixels`; call [free] in the decode callback (the
+/// engine has consumed the bytes by then).
+class QaStampScratch {
+  QaStampScratch._(this.view, this._buffer);
+
+  final Uint8List view;
+  final Pointer<Uint8> _buffer;
+
+  void free() {
+    malloc.free(_buffer);
+  }
 }
 
 /// The lazy fill raster's shared native buffers (R18 A-2b): the raster
