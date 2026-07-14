@@ -327,7 +327,17 @@ class QapFileService {
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
     final (:projectJsonBytes, :cels) = await Isolate.run(() {
-      final layout = parseQapZipLayoutFile(filePath);
+      QapZipLayout layout;
+      try {
+        layout = parseQapZipLayoutFile(filePath);
+      } on FormatException {
+        // Torn tail (an append crashed mid-rewrite): reconstruct from
+        // the intact local entries (R24-D1). The file stays torn on
+        // disk until the next save — which the service forces down the
+        // FULL path (the incremental precondition re-parses this same
+        // tail and fails) — so opening is enough to heal on save.
+        layout = recoverQapZipLayoutFile(filePath);
+      }
       final projectEntry = layout.entryNamed('project.json');
       if (projectEntry == null) {
         throw const FormatException('Not a QuickAnimaker project (.qap).');
