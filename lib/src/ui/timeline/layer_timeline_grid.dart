@@ -67,6 +67,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
+    this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.commaDrag,
     this.blockMove,
@@ -158,6 +159,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerFillReference;
 
   /// SE rows' speaker button (mute); null hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
@@ -438,6 +442,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onToggleLayerFx: widget.onToggleLayerFx,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerFillReference: widget.onToggleLayerFillReference,
       onToggleLayerMuted: widget.onToggleLayerMuted,
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),

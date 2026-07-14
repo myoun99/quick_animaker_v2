@@ -409,6 +409,17 @@ class ProjectRepository {
     );
   }
 
+  void updateLayerFillReference({
+    required CutId cutId,
+    required LayerId layerId,
+    required bool isFillReference,
+  }) {
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(isFillReference: isFillReference),
+    );
+  }
+
   void updateLayerMark({
     required CutId cutId,
     required LayerId layerId,

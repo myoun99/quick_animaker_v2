@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
@@ -225,6 +225,75 @@ void main() {
         ),
         isNull,
       );
+    });
+
+    test('REFERENCE layers gate the fill source (R20-C2): a flagged line '
+        'layer wins over paint layers; no flag = fill what you see', () {
+      // A paint layer whose opaque blob covers the whole canvas — without
+      // the reference filter it becomes the seed color and the barrier
+      // box on the ink layer is invisible to the fill.
+      final blobTiles = <TileCoord, BitmapTile>{};
+      for (var ty = 0; ty < 2; ty += 1) {
+        for (var tx = 0; tx < 2; tx += 1) {
+          final pixels = Uint8List(4 * 4 * 4);
+          for (var i = 0; i < pixels.length; i += 4) {
+            pixels[i] = 200; // opaque red-ish everywhere
+            pixels[i + 3] = 255;
+          }
+          blobTiles[TileCoord(x: tx, y: ty)] = BitmapTile(
+            coord: TileCoord(x: tx, y: ty),
+            size: 4,
+            pixels: pixels,
+          );
+        }
+      }
+      final blobSurface = BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: blobTiles,
+      );
+      final inkSurface = outlineSurface();
+      final paintLayer = Layer(
+        id: const LayerId('paint'),
+        name: 'Paint',
+        frames: [frame('paint-frame')],
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('paint-frame'), length: 1),
+        },
+      );
+      BitmapSurface? resolve(Layer layer, Frame _) =>
+          layer.id == const LayerId('ink') ? inkSurface : blobSurface;
+
+      // No reference flag: the blob hides the box → the fill floods the
+      // whole canvas (fill what you see).
+      final unflagged = buildFillDab(
+        cut: cutWith([inkLayer(), paintLayer]),
+        frameIndex: 0,
+        surfaceResolver: resolve,
+        point: CanvasPoint(x: 3, y: 3),
+        color: 0xFF3366CC,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+      expect(unflagged.stamp!.width, 8, reason: 'blob = one flat region');
+
+      // Ink flagged as fill reference: the fill reads ONLY the ink layer
+      // — the box contains it exactly like the single-layer case.
+      final flagged = buildFillDab(
+        cut: cutWith([inkLayer().copyWith(isFillReference: true), paintLayer]),
+        frameIndex: 0,
+        surfaceResolver: resolve,
+        point: CanvasPoint(x: 3, y: 3),
+        color: 0xFF3366CC,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+      expect((flagged.stamp!.width, flagged.stamp!.height), (2, 2));
+
+      // The flag itself persists through the layer's JSON.
+      final reopened = Layer.fromJson(
+        inkLayer().copyWith(isFillReference: true).toJson(),
+      );
+      expect(reopened.isFillReference, isTrue);
+      expect(Layer.fromJson(inkLayer().toJson()).isFillReference, isFalse);
     });
 
     test(

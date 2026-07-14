@@ -81,6 +81,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
+    this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.commaDrag,
     this.blockMove,
@@ -173,6 +174,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// The AE-style layer fx switch (session view state); null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerFillReference;
 
   /// SE columns' speaker button (mute); null hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
@@ -817,6 +821,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     widget.onToggleLayerFx,
                                                 onLayerMarkSelected:
                                                     widget.onLayerMarkSelected,
+                                                onToggleLayerFillReference: widget
+                                                    .onToggleLayerFillReference,
                                                 onToggleLayerMuted:
                                                     widget.onToggleLayerMuted,
                                                 hasLanes: _lanesFor(
@@ -1404,6 +1410,7 @@ class _LayerHeader extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     required this.metrics,
+    this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.sectionStart = false,
     this.hasLanes = false,
@@ -1422,6 +1429,9 @@ class _LayerHeader extends StatelessWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// Drawing columns' fill-reference toggle (R20-C2); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerFillReference;
 
   /// SE columns' speaker button (mute); null hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
@@ -1467,141 +1477,187 @@ class _LayerHeader extends StatelessWidget {
           key: active ? const ValueKey<String>('xsheet-selected-layer') : null,
           label: active ? 'selected layer' : 'layer',
           container: true,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
             children: [
-              Row(
-                children: [
-                  if (showLaneToggle)
-                    InkWell(
-                      key: ValueKey<String>('xsheet-lane-toggle-${layer.id}'),
-                      onTap: () => onToggleLanes!(layer.id),
-                      child: SizedBox(
-                        width: 16,
-                        height: 24,
-                        child: Icon(
-                          lanesExpanded
-                              ? Icons.arrow_drop_down
-                              : Icons.arrow_right,
-                          size: 16,
-                        ),
-                      ),
-                    ),
-                  // Timesheet + mark chips lead the name; ineligible layers
-                  // keep empty slots so names align across columns.
-                  if (layerKindEligibleForTimesheetToggle(layer.kind))
-                    LayerTimesheetToggleButton(
-                      keyPrefix: 'xsheet',
-                      layerId: layer.id,
-                      onTimesheet: layer.onTimesheet,
-                      onToggle: onToggleLayerTimesheet,
-                    )
-                  else
-                    const SizedBox(width: layerTimesheetSlotWidth),
-                  const SizedBox(width: 4),
-                  LayerMarkChip(
-                    keyPrefix: 'xsheet',
-                    layerId: layer.id,
-                    mark: layer.mark,
-                    onMarkSelected: onLayerMarkSelected,
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
-                      onTap: () => onSelectLayer(layer.id),
-                      child: Text(
-                        layer.name,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontWeight: active ? FontWeight.bold : null,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Balance the leading chips so the name stays centered.
-                  SizedBox(
-                    width:
-                        layerTimesheetSlotWidth +
-                        layerMarkSlotWidth +
-                        4 +
-                        (showLaneToggle ? 16 : 0),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  if (onToggleLayerFx != null &&
-                      layerKindShowsFxToggle(layer.kind))
-                    LayerFxToggleButton(
-                      keyPrefix: 'xsheet',
-                      layerId: layer.id,
-                      fxEnabled: fxEnabled,
-                      onToggle: onToggleLayerFx!,
-                    ),
-                  IconButton(
+              // Fill-reference toggle (R20-C2): OVERLAID top-right over the
+              // name row's balance slot — the fixed-height header column
+              // has no layout row to spare (adding it inline overflowed).
+              // Drawing columns only; selection reads by COLOR.
+              if (onToggleLayerFillReference != null &&
+                  layer.kind == LayerKind.animation)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton(
                     key: ValueKey<String>(
-                      'xsheet-layer-visibility-${layer.id}',
+                      'xsheet-layer-fill-reference-${layer.id}',
                     ),
-                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    tooltip: layer.isFillReference
+                        ? 'Fill reference layer (on)'
+                        : 'Fill reference layer',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints.tightFor(
-                      width: 28,
-                      height: 28,
+                      width: 20,
+                      height: 20,
                     ),
                     icon: Icon(
-                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                      size: 16,
+                      Icons.format_color_fill,
+                      size: 13,
+                      color: layer.isFillReference
+                          ? colorScheme.primary
+                          : colorScheme.outline.withValues(alpha: 0.45),
                     ),
-                    onPressed: () => onToggleLayerVisibility(layer.id),
+                    onPressed: () => onToggleLayerFillReference!(layer.id),
                   ),
-                  // SE columns carry the mute speaker beside the eye. Tight
-                  // SizedBox: the M3 IconButton otherwise inflates to the
-                  // 48px tap target, overflowing the header column.
-                  if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
-                    SizedBox(
-                      width: 24,
-                      height: 28,
-                      child: IconButton(
-                        key: ValueKey<String>('xsheet-layer-mute-${layer.id}'),
-                        tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                ),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      if (showLaneToggle)
+                        InkWell(
+                          key: ValueKey<String>(
+                            'xsheet-lane-toggle-${layer.id}',
+                          ),
+                          onTap: () => onToggleLanes!(layer.id),
+                          child: SizedBox(
+                            width: 16,
+                            height: 24,
+                            child: Icon(
+                              lanesExpanded
+                                  ? Icons.arrow_drop_down
+                                  : Icons.arrow_right,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      // Timesheet + mark chips lead the name; ineligible layers
+                      // keep empty slots so names align across columns.
+                      if (layerKindEligibleForTimesheetToggle(layer.kind))
+                        LayerTimesheetToggleButton(
+                          keyPrefix: 'xsheet',
+                          layerId: layer.id,
+                          onTimesheet: layer.onTimesheet,
+                          onToggle: onToggleLayerTimesheet,
+                        )
+                      else
+                        const SizedBox(width: layerTimesheetSlotWidth),
+                      const SizedBox(width: 4),
+                      LayerMarkChip(
+                        keyPrefix: 'xsheet',
+                        layerId: layer.id,
+                        mark: layer.mark,
+                        onMarkSelected: onLayerMarkSelected,
+                      ),
+                      Expanded(
+                        child: InkWell(
+                          key: ValueKey<String>(
+                            'xsheet-layer-name-${layer.id}',
+                          ),
+                          onTap: () => onSelectLayer(layer.id),
+                          child: Text(
+                            layer.name,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontWeight: active ? FontWeight.bold : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Balance the leading chips so the name stays centered.
+                      SizedBox(
+                        width:
+                            layerTimesheetSlotWidth +
+                            layerMarkSlotWidth +
+                            4 +
+                            (showLaneToggle ? 16 : 0),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      if (onToggleLayerFx != null &&
+                          layerKindShowsFxToggle(layer.kind))
+                        LayerFxToggleButton(
+                          keyPrefix: 'xsheet',
+                          layerId: layer.id,
+                          fxEnabled: fxEnabled,
+                          onToggle: onToggleLayerFx!,
+                        ),
+                      IconButton(
+                        key: ValueKey<String>(
+                          'xsheet-layer-visibility-${layer.id}',
+                        ),
+                        tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints.tightFor(
-                          width: 24,
+                          width: 28,
                           height: 28,
                         ),
                         icon: Icon(
-                          layer.muted ? Icons.volume_off : Icons.volume_up,
+                          layer.isVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                           size: 16,
                         ),
-                        onPressed: () => onToggleLayerMuted!(layer.id),
+                        onPressed: () => onToggleLayerVisibility(layer.id),
                       ),
-                    ),
-                  // The camera column's slider drives the camera-view DIM
-                  // opacity (unified layer controls).
-                  if (layerKindShowsOpacityControl(layer.kind)) ...[
-                    Expanded(
-                      child: Slider(
-                        key: ValueKey<String>(
-                          'xsheet-layer-opacity-${layer.id}',
+                      // SE columns carry the mute speaker beside the eye. Tight
+                      // SizedBox: the M3 IconButton otherwise inflates to the
+                      // 48px tap target, overflowing the header column.
+                      if (layer.kind == LayerKind.se &&
+                          onToggleLayerMuted != null)
+                        SizedBox(
+                          width: 24,
+                          height: 28,
+                          child: IconButton(
+                            key: ValueKey<String>(
+                              'xsheet-layer-mute-${layer.id}',
+                            ),
+                            tooltip: layer.muted
+                                ? 'Unmute layer'
+                                : 'Mute layer',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 24,
+                              height: 28,
+                            ),
+                            icon: Icon(
+                              layer.muted ? Icons.volume_off : Icons.volume_up,
+                              size: 16,
+                            ),
+                            onPressed: () => onToggleLayerMuted!(layer.id),
+                          ),
                         ),
-                        min: 0,
-                        max: 1,
-                        value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                        onChanged: (opacity) =>
-                            onLayerOpacityChanged(layer.id, opacity),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 34,
-                      child: Text(
-                        '${(layer.opacity * 100).round()}%',
-                        textAlign: TextAlign.right,
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ),
-                  ] else
-                    const Spacer(),
+                      // The camera column's slider drives the camera-view DIM
+                      // opacity (unified layer controls).
+                      if (layerKindShowsOpacityControl(layer.kind)) ...[
+                        Expanded(
+                          child: Slider(
+                            key: ValueKey<String>(
+                              'xsheet-layer-opacity-${layer.id}',
+                            ),
+                            min: 0,
+                            max: 1,
+                            value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                            onChanged: (opacity) =>
+                                onLayerOpacityChanged(layer.id, opacity),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 34,
+                          child: Text(
+                            '${(layer.opacity * 100).round()}%',
+                            textAlign: TextAlign.right,
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                    ],
+                  ),
                 ],
               ),
             ],

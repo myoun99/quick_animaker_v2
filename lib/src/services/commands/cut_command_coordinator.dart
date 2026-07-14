@@ -52,6 +52,7 @@ import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
+import 'update_layer_fill_reference_command.dart';
 import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
@@ -502,6 +503,26 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         onTimesheet: onTimesheet,
+      ),
+    );
+  }
+
+  void setLayerFillReference({
+    required CutId cutId,
+    required LayerId layerId,
+    required bool isFillReference,
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (layer.isFillReference == isFillReference) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerFillReferenceCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        isFillReference: isFillReference,
       ),
     );
   }

@@ -47,6 +47,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
+    this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
@@ -144,6 +145,9 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
+
+  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
+  final ValueChanged<LayerId>? onToggleLayerFillReference;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// The AE-style layer fx switch (session view state), both orientations;
@@ -356,6 +360,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
+                    onToggleLayerFillReference:
+                        widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
@@ -398,6 +404,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
+                    onToggleLayerFillReference:
+                        widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,

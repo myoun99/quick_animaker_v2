@@ -739,6 +739,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         onToggleLayerVisibility: _toggleLayerVisibility,
         onLayerOpacityChanged: _setLayerOpacity,
         onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+        onToggleLayerFillReference: _session.toggleLayerFillReference,
         onLayerMarkSelected: _session.setLayerMark,
         // The AE-style fx switch: bypasses the layer's transform/FX on
         // every composite route (session view state).
