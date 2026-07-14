@@ -190,6 +190,93 @@ QapZipLayout parseQapZipLayoutFile(String path) {
   }
 }
 
+/// Torn-tail RECOVERY (R24-D1): an append crash destroys only the tail
+/// (the central directory + EOCD are rewritten last), never entry data
+/// — so the file is reconstructable by walking LOCAL headers from the
+/// front. Same-name entries resolve last-wins (the shadowing rule the
+/// central directory encodes), a torn final entry is dropped, and the
+/// LAST complete entry is CRC-verified (the only one a torn write can
+/// have half-filled; verifying every entry would read whole gigabytes).
+/// Entries deleted by removeNames may resurrect (their old locals still
+/// exist) — for crash recovery, too much beats lost.
+///
+/// The returned centralDirectoryOffset is the end of the last complete
+/// entry, so the file stays append-able; the next FULL save (which the
+/// service forces because the tail no longer parses) rewrites the file
+/// whole and heals it.
+QapZipLayout recoverQapZipLayoutFile(String path) {
+  final raf = File(path).openSync();
+  try {
+    final fileLength = raf.lengthSync();
+    final byName = <String, QapZipEntry>{};
+    final order = <String>[];
+    var cursor = 0;
+    var lastCompleteEnd = 0;
+    String? lastName;
+    QapZipEntry? shadowedByLast;
+    while (cursor + 30 <= fileLength) {
+      raf.setPositionSync(cursor);
+      final header = raf.readSync(30);
+      final data = ByteData.sublistView(header);
+      if (data.getUint32(0, Endian.little) != _localSignature) {
+        break; // Central-directory remnant or torn garbage: stop.
+      }
+      final crc = data.getUint32(14, Endian.little);
+      final compressedSize = data.getUint32(18, Endian.little);
+      final nameLength = data.getUint16(26, Endian.little);
+      final extraLength = data.getUint16(28, Endian.little);
+      final dataOffset = cursor + 30 + nameLength + extraLength;
+      final entryEnd = dataOffset + compressedSize;
+      if (entryEnd > fileLength) {
+        break; // Torn final entry: its data never fully landed.
+      }
+      final name = String.fromCharCodes(raf.readSync(nameLength));
+      if (!byName.containsKey(name)) {
+        order.add(name);
+      }
+      shadowedByLast = byName[name];
+      byName[name] = QapZipEntry(
+        name: name,
+        localHeaderOffset: cursor,
+        dataOffset: dataOffset,
+        length: compressedSize,
+        crc32: crc,
+      );
+      lastName = name;
+      lastCompleteEnd = entryEnd;
+      cursor = entryEnd;
+    }
+    // The last complete entry is the only one a torn write can have
+    // corrupted content-wise (data lands before the tail rewrite);
+    // verify it and drop on mismatch.
+    if (lastName != null) {
+      final last = byName[lastName]!;
+      if (last.localHeaderOffset + 30 <= fileLength &&
+          last.dataOffset + last.length == lastCompleteEnd) {
+        raf.setPositionSync(last.dataOffset);
+        final bytes = raf.readSync(last.length);
+        if (qapCrc32(bytes) != last.crc32) {
+          // Corrupt final entry: its earlier shadowed version (if any)
+          // wins again, exactly as if the torn append never happened.
+          if (shadowedByLast != null) {
+            byName[lastName] = shadowedByLast;
+          } else {
+            byName.remove(lastName);
+            order.remove(lastName);
+          }
+          lastCompleteEnd = last.localHeaderOffset;
+        }
+      }
+    }
+    return QapZipLayout(
+      entries: [for (final name in order) byName[name]!],
+      centralDirectoryOffset: lastCompleteEnd,
+    );
+  } finally {
+    raf.closeSync();
+  }
+}
+
 /// CRC-32 (ZIP polynomial), table-driven.
 final Uint32List _crcTable = _buildCrcTable();
 
