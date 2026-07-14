@@ -33,6 +33,7 @@ class Layer {
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
+    this.isFillReference = false,
     TransformTrack? transformTrack,
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
@@ -72,6 +73,13 @@ class Layer {
   /// Organizational color label; see [LayerMark].
   final LayerMark mark;
 
+  /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse):
+  /// when any visible layer of the cut carries this flag, fills read
+  /// ONLY the flagged layers as their source picture — paint on a color
+  /// layer never blocks or leaks a fill traced against the line art.
+  /// Display/export composite untouched.
+  final bool isFillReference;
+
   /// The layer's keyframed transform (the AE Transform group), applied at
   /// COMPOSITE time — playback, export, thumbnails and the editing canvas's
   /// layer stack — never baked into the artwork. Empty = identity (the
@@ -110,6 +118,7 @@ class Layer {
     LayerKind? kind,
     bool? onTimesheet,
     LayerMark? mark,
+    bool? isFillReference,
     TransformTrack? transformTrack,
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
@@ -129,6 +138,7 @@ class Layer {
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
+      isFillReference: isFillReference ?? this.isFillReference,
       transformTrack: transformTrack ?? this.transformTrack,
       // Detaching is not expressible here (attach rows are created and
       // deleted whole); copyWith only carries the linkage along.
@@ -155,6 +165,7 @@ class Layer {
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
+    if (isFillReference) 'fillReference': true,
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     if (attachedToLayerId != null) ...{
       'attachedTo': attachedToLayerId!.toJson(),
@@ -225,6 +236,7 @@ class Layer {
       mark: json.containsKey('mark')
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
+      isFillReference: json['fillReference'] as bool? ?? false,
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
@@ -262,6 +274,7 @@ class Layer {
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
+          other.isFillReference == isFillReference &&
           other.transformTrack == transformTrack &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
@@ -285,6 +298,7 @@ class Layer {
     kind,
     onTimesheet,
     mark,
+    isFillReference,
     transformTrack,
     attachedToLayerId,
     attachedPlacement,

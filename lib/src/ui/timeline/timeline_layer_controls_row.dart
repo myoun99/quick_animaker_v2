@@ -18,6 +18,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onLayerOpacityChanged,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.sectionStart = false,
     this.hasLanes = false,
@@ -35,6 +36,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
+
+  /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
+  /// null hides it.
+  final ValueChanged<LayerId>? onToggleLayerFillReference;
 
   /// SE rows' speaker button (the audio counterpart of visibility); null
   /// hides it.
@@ -172,6 +177,35 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
+              // Fill-reference toggle (R20-C2): drawing rows only —
+              // selection reads by COLOR (user rule: no checkmarks).
+              if (onToggleLayerFillReference != null &&
+                  layer.kind == LayerKind.animation)
+                SizedBox(
+                  width: 26,
+                  height: 32,
+                  child: IconButton(
+                    key: ValueKey<String>(
+                      'timeline-layer-fill-reference-${layer.id}',
+                    ),
+                    tooltip: layer.isFillReference
+                        ? 'Fill reference layer (on)'
+                        : 'Fill reference layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 26,
+                      height: 32,
+                    ),
+                    icon: Icon(
+                      Icons.format_color_fill,
+                      size: 16,
+                      color: layer.isFillReference
+                          ? colorScheme.primary
+                          : colorScheme.outline.withValues(alpha: 0.45),
+                    ),
+                    onPressed: () => onToggleLayerFillReference!(layer.id),
+                  ),
+                ),
               // Attach rows hide the fx switch — the BASE's switch governs
               // the shared transform/opacity lanes (W5 fx sharing).
               if (onToggleLayerFx != null &&

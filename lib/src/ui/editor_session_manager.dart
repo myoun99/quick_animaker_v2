@@ -1673,6 +1673,20 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse):
+  /// while any visible layer of the cut carries it, fills read ONLY the
+  /// flagged layers as their source picture. One undo step; the display
+  /// composite never changes.
+  void toggleLayerFillReference(LayerId layerId) {
+    final layer = layers.firstWhere((layer) => layer.id == layerId);
+    _cutCommandCoordinator.setLayerFillReference(
+      cutId: _editingSession.activeCutId,
+      layerId: layerId,
+      isFillReference: !layer.isFillReference,
+    );
+    notifyListeners();
+  }
+
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
   TimesheetInfo get timesheetInfo => _repository.requireProject().timesheetInfo;

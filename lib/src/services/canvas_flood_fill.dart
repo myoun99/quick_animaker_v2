@@ -143,12 +143,21 @@ class LazyCanvasRasterRgb {
                  ((cut.canvasSize.height + _tileSize - 1) ~/ _tileSize),
            ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
-    for (final entry in resolveCutFrameCompositeEntries(
-      cut: cut,
-      frameIndex: frameIndex,
-      fxBypassedLayerIds: fxBypassedLayerIds,
-    )) {
-      if (entry.pose != null) {
+    final entries = [
+      for (final entry in resolveCutFrameCompositeEntries(
+        cut: cut,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      ))
+        if (entry.pose == null) entry,
+    ];
+    // R20-C2 reference layers (the CSP lighthouse): when any visible
+    // layer carries the fill-reference flag, the fill reads ONLY the
+    // flagged layers — paint layers stop blocking or leaking fills
+    // traced against the line art. No flag = today's fill-what-you-see.
+    final hasReference = entries.any((entry) => entry.layer.isFillReference);
+    for (final entry in entries) {
+      if (hasReference && !entry.layer.isFillReference) {
         continue;
       }
       final surface = surfaceResolver(entry.layer, entry.frame);
