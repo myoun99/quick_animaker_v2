@@ -191,6 +191,12 @@ class BitmapSurfacePainter extends CustomPainter {
           overlayPaint,
         );
       }
+      // R23: a fill tap's overlay is ONE pre-decoded stamp image at the
+      // commit's exact placement (never coexists with stroke tiles).
+      final stampImage = overlay.stampImage;
+      if (stampImage != null) {
+        canvas.drawImage(stampImage, overlay.stampOffset, overlayPaint);
+      }
     }
 
     if (eraseOverlayLayer) {

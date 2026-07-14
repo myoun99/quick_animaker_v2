@@ -65,7 +65,34 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   );
 
   /// Whether the overlay currently has stroke content to draw.
-  bool get hasStrokeContent => _tileImages.isNotEmpty;
+  bool get hasStrokeContent => _tileImages.isNotEmpty || _stampImage != null;
+
+  ui.Image? _stampImage;
+  ui.Offset _stampOffset = ui.Offset.zero;
+
+  /// R23: a FILL tap's overlay is ONE pre-decoded image at its stamp
+  /// rect. The flood already produced the full stamp RGBA, so blending
+  /// it into the live-raster tiles only to re-snapshot and re-decode
+  /// thousands of 128px overlay tiles (the 8K settle-frame stall) was
+  /// pure waste — one image, one decode, one draw.
+  ui.Image? get stampImage => _stampImage;
+
+  /// Canvas-space top-left of [stampImage] (the commit's exact
+  /// `(center - size/2).round()` placement, so overlay and committed
+  /// pixels land identically).
+  ui.Offset get stampOffset => _stampOffset;
+
+  /// Shows [image] as the whole overlay (fills never erase, tiles and
+  /// stamp never coexist — [reset] runs before every fill tap).
+  void setStampOverlay(ui.Image image, ui.Offset offset) {
+    final previous = _stampImage;
+    if (previous != null) {
+      DeferredImageDisposer.instance.retire(previous);
+    }
+    _stampImage = image;
+    _stampOffset = offset;
+    notifyListeners();
+  }
 
   Map<TileCoord, BitmapTile?>? _settleHoldTiles;
 
@@ -224,6 +251,11 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _tileImages.clear();
     _decoding.clear();
     _dirtyWhileDecoding.clear();
+    final stamp = _stampImage;
+    if (stamp != null) {
+      DeferredImageDisposer.instance.retire(stamp);
+      _stampImage = null;
+    }
   }
 
   /// Skia's `SkMulDiv255Round`: round(value * alpha / 255) for bytes.
