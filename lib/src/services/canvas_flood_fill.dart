@@ -1,3 +1,4 @@
+import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -200,6 +201,114 @@ class LazyCanvasRasterRgb {
     _composeTile((x ~/ _tileSize) * _tileSize, (y ~/ _tileSize) * _tileSize);
   }
 
+  /// R25-③: composes every still-uncomposed tile that [pixelIndices]
+  /// touch through ONE pooled native call — within a tile the paper +
+  /// layer order is preserved (bytes identical to [ensureComposedAt]);
+  /// tiles fan out across the worker pool. Engine-less falls back to
+  /// the per-tile path.
+  void ensureComposedBatch(Int32List pixelIndices) {
+    final native = QaNativeEngine.instance;
+    final handles = nativeHandles;
+    if (native == null || handles == null) {
+      for (final index in pixelIndices) {
+        ensureComposedAt(index);
+      }
+      return;
+    }
+    final tiles =
+        <
+          ({
+            int left,
+            int top,
+            int rightExclusive,
+            int bottomExclusive,
+            int firstBlend,
+            int blendCount,
+          })
+        >[];
+    final blends =
+        <
+          ({
+            Pointer<Uint8> pixels,
+            int tileSize,
+            int baseX,
+            int baseY,
+            int clipLeft,
+            int clipTop,
+            int clipRightExclusive,
+            int clipBottomExclusive,
+            int opacityInt,
+          })
+        >[];
+    for (final index in pixelIndices) {
+      final x = index % width;
+      final y = index ~/ width;
+      final tileIndex = (y ~/ _tileSize) * _tilesX + (x ~/ _tileSize);
+      if (_composed[tileIndex] != 0) {
+        continue;
+      }
+      _composed[tileIndex] = 1;
+      final left = (x ~/ _tileSize) * _tileSize;
+      final top = (y ~/ _tileSize) * _tileSize;
+      final right = math.min(left + _tileSize, width);
+      final bottom = math.min(top + _tileSize, height);
+      final firstBlend = blends.length;
+      for (final layer in _layers) {
+        final surface = layer.surface;
+        final opacityInt = (layer.opacity * 255).round();
+        final surfaceTileSize = surface.tileSize;
+        for (
+          var ty = top ~/ surfaceTileSize;
+          ty <= (bottom - 1) ~/ surfaceTileSize;
+          ty += 1
+        ) {
+          for (
+            var tx = left ~/ surfaceTileSize;
+            tx <= (right - 1) ~/ surfaceTileSize;
+            tx += 1
+          ) {
+            final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+            if (tile == null) {
+              continue;
+            }
+            final baseX = tx * surfaceTileSize;
+            final baseY = ty * surfaceTileSize;
+            blends.add((
+              pixels: tile.nativePixels,
+              tileSize: tile.size,
+              baseX: baseX,
+              baseY: baseY,
+              clipLeft: math.max(left, baseX),
+              clipTop: math.max(top, baseY),
+              clipRightExclusive: math.min(right, baseX + surfaceTileSize),
+              clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
+              opacityInt: opacityInt,
+            ));
+          }
+        }
+      }
+      tiles.add((
+        left: left,
+        top: top,
+        rightExclusive: right,
+        bottomExclusive: bottom,
+        firstBlend: firstBlend,
+        blendCount: blends.length - firstBlend,
+      ));
+    }
+    if (tiles.isEmpty) {
+      return;
+    }
+    native.fillComposeBatch(
+      rasterWidth: width,
+      paperR: _paperR,
+      paperG: _paperG,
+      paperB: _paperB,
+      tiles: tiles,
+      blends: blends,
+    );
+  }
+
   void _composeTile(int left, int top) {
     final right = math.min(left + _tileSize, width);
     final bottom = math.min(top + _tileSize, height);
@@ -354,6 +463,7 @@ FloodFillRegion? floodFillRegion({
   required int seedY,
   FloodFillOptions options = const FloodFillOptions(),
   void Function(int index)? ensureComposed,
+  void Function(Int32List pixelIndices)? ensureComposedBatch,
   QaFloodNativeHandles? nativeHandles,
 }) {
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) {
@@ -445,6 +555,7 @@ FloodFillRegion? floodFillRegion({
       seedB: seedB,
       tolerance: tolerance,
       ensureComposed: ensureComposed,
+      ensureComposedBatch: ensureComposedBatch,
     );
     if (result != null) {
       // The finish (crop + expand + anti-alias) runs natively too
@@ -902,6 +1013,7 @@ BrushDab? buildFillDab({
       seedY: point.y.floor(),
       options: options,
       ensureComposed: raster.ensureComposedAt,
+      ensureComposedBatch: raster.ensureComposedBatch,
       nativeHandles: raster.nativeHandles,
     ),
   );

@@ -1147,6 +1147,94 @@ QA_EXPORT void qa_fill_finish_mask(
 }
 
 // ---------------------------------------------------------------------------
+// Batched fill compose (R25-3): the lazy raster used to compose each
+// 256px tile through per-tile serial FFI calls (paper rect + one call
+// per intersecting layer tile). One batch call now fans compose TILES
+// across the worker pool; within one tile the paper fill and the layer
+// blends run sequentially in order (source-over order IS the bytes),
+// and tiles are disjoint - so the result is byte-identical to the
+// serial path while the wall time divides by cores.
+
+// One layer-tile blend of a batch. Field order/types MUST match the
+// Dart QaComposeBlendStruct exactly; the loader cross-checks sizeof.
+typedef struct {
+  uint8_t* tile_pixels;
+  int32_t tile_size;
+  int32_t base_x;
+  int32_t base_y;
+  int32_t clip_left;
+  int32_t clip_top;
+  int32_t clip_right_exclusive;
+  int32_t clip_bottom_exclusive;
+  int32_t opacity_int;
+  int32_t reserved;
+} qa_compose_blend;
+
+QA_EXPORT int32_t qa_compose_blend_sizeof(void) {
+  return (int32_t)sizeof(qa_compose_blend);
+}
+
+// One compose TILE of a batch: paper-fill its rect, then run its slice
+// of the shared blend array in order. Mirrors QaComposeTileItemStruct.
+typedef struct {
+  int32_t tile_left;
+  int32_t tile_top;
+  int32_t tile_right_exclusive;
+  int32_t tile_bottom_exclusive;
+  int32_t first_blend;
+  int32_t blend_count;
+} qa_compose_tile_item;
+
+QA_EXPORT int32_t qa_compose_tile_item_sizeof(void) {
+  return (int32_t)sizeof(qa_compose_tile_item);
+}
+
+static struct {
+  uint8_t* rgb;
+  int32_t raster_width;
+  int32_t paper_r, paper_g, paper_b;
+  const qa_compose_tile_item* items;
+  const qa_compose_blend* blends;
+} g_compose_job;
+
+static void qa_compose_batch_item(int32_t item_index, void* context) {
+  (void)context;
+  const qa_compose_tile_item* item = &g_compose_job.items[item_index];
+  qa_fill_paper_rect(
+      g_compose_job.rgb, g_compose_job.raster_width, item->tile_left,
+      item->tile_top, item->tile_right_exclusive, item->tile_bottom_exclusive,
+      g_compose_job.paper_r, g_compose_job.paper_g, g_compose_job.paper_b);
+  for (int32_t i = 0; i < item->blend_count; i += 1) {
+    const qa_compose_blend* blend =
+        &g_compose_job.blends[item->first_blend + i];
+    qa_fill_compose_tile(
+        g_compose_job.rgb, g_compose_job.raster_width, blend->tile_pixels,
+        blend->tile_size, blend->base_x, blend->base_y, blend->clip_left,
+        blend->clip_top, blend->clip_right_exclusive,
+        blend->clip_bottom_exclusive, blend->opacity_int);
+  }
+}
+
+QA_EXPORT void qa_fill_compose_batch(
+    uint8_t* rgb,
+    int32_t raster_width,
+    int32_t paper_r,
+    int32_t paper_g,
+    int32_t paper_b,
+    const qa_compose_tile_item* items,
+    int32_t item_count,
+    const qa_compose_blend* blends) {
+  g_compose_job.rgb = rgb;
+  g_compose_job.raster_width = raster_width;
+  g_compose_job.paper_r = paper_r;
+  g_compose_job.paper_g = paper_g;
+  g_compose_job.paper_b = paper_b;
+  g_compose_job.items = items;
+  g_compose_job.blends = blends;
+  qa_pool_run(qa_compose_batch_item, NULL, item_count);
+}
+
+// ---------------------------------------------------------------------------
 // Close-gap fill (R20-C1) - mirrors the Dart reference pipeline in
 // canvas_flood_fill.dart EXACTLY (integer chamfer math; parity-pinned):
 // tolerance mask, 3-4 chamfer distance transform, erode by 3*gap, flood,
@@ -2374,4 +2462,5 @@ QA_EXPORT void qa_tile_pool_trim(void) {
 // Engine ABI version - the Dart loader refuses a mismatched binary.
 // v12: fill raster RGB -> RGBX (R22-D flood SIMD).
 // v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 13; }
+// v14: qa_fill_compose_batch - pooled fill compose (R25-3).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 14; }
