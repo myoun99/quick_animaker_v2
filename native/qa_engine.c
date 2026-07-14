@@ -559,6 +559,52 @@ QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
   }
 }
 
+// Fused copy + premultiply (R19-Z): reads straight-alpha [src], writes
+// premultiplied bytes into [dst] in one pass - the decode-start path
+// used to pay a copy AND an in-place premultiply. Same SkMulDiv255Round
+// math as qa_premultiply_rgba (byte-identical output by construction).
+QA_EXPORT void qa_premultiply_rgba_copy(
+    uint8_t* dst,
+    const uint8_t* src,
+    int32_t pixel_count) {
+  for (int32_t i = 0; i < pixel_count; i += 1) {
+    const uint8_t* s = src + (ptrdiff_t)i * 4;
+    uint8_t* d = dst + (ptrdiff_t)i * 4;
+    const int32_t alpha = s[3];
+    if (alpha == 255) {
+      d[0] = s[0];
+      d[1] = s[1];
+      d[2] = s[2];
+      d[3] = 255;
+      continue;
+    }
+    if (alpha == 0) {
+      d[0] = 0;
+      d[1] = 0;
+      d[2] = 0;
+      d[3] = 0;
+      continue;
+    }
+    int32_t product = s[0] * alpha + 128;
+    d[0] = (uint8_t)((product + (product >> 8)) >> 8);
+    product = s[1] * alpha + 128;
+    d[1] = (uint8_t)((product + (product >> 8)) >> 8);
+    product = s[2] * alpha + 128;
+    d[2] = (uint8_t)((product + (product >> 8)) >> 8);
+    d[3] = (uint8_t)alpha;
+  }
+}
+
+// Plain memcpy exposed to Dart (R19-Z): native-to-native tile staging at
+// true memcpy speed - the VM's typed-data setRange was several times
+// slower in debug builds, and staging copies 256KB per touched tile.
+QA_EXPORT void qa_copy_bytes(
+    uint8_t* dst,
+    const uint8_t* src,
+    int64_t length) {
+  memcpy(dst, src, (size_t)length);
+}
+
 // ---------------------------------------------------------------------------
 // Flood fill, frontier-stepped (R18 A-2b).
 //
@@ -1119,4 +1165,4 @@ QA_EXPORT void qa_stamp_blend_tiles(
 }
 
 // Engine ABI version - the Dart loader refuses a mismatched binary.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 8; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 9; }

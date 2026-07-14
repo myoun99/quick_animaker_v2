@@ -49,12 +49,12 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   // returns a defensive copy, so it can be mutated freely; blank tiles start
   // as zeroed buffers without allocating a BitmapTile.
   //
-  // With the native engine loaded (R18 A-1) the scratch lives in pooled
-  // NATIVE memory: Dart works through a typed-data view (the fallback and
-  // stamp loops run unchanged) while the kernel gets the raw pointer — the
-  // whole dab sequence blends with zero tile copies. BitmapTile's
-  // constructor copies, so handing the view to putTile below stays safe
-  // after the buffers return to the pool.
+  // With the native engine loaded (R18 A-1 / R19-Z) the scratch lives in
+  // pooled NATIVE memory: staging is a C memcpy from the tile's native
+  // buffer, Dart works through a typed-data view (the fallback and stamp
+  // loops run unchanged) while the kernel gets the raw pointer, and the
+  // commit tail ADOPTS the changed buffers as the finished tiles — the
+  // whole sequence materializes with zero pixel copies out.
   final native = QaNativeEngine.instance;
   final nativeTiles = native == null ? null : <TileCoord, QaNativeTileBuffer>{};
   final scratchBuffers = <TileCoord, Uint8List>{};
@@ -70,7 +70,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
         );
         nativeTiles[coord] = buffer;
         if (tile != null) {
-          tile.copyPixelsInto(buffer.view);
+          native.copyBytes(buffer.pointer, tile.nativePixels, tileByteLength);
         }
         return buffer.view;
       }
@@ -586,17 +586,25 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   var updatedSurface = surface;
   var dirtyTiles = DirtyTileSet.empty();
   labProbe('commit.putTiles', () {
-    // BitmapTile's constructor copies the bytes, so native-backed scratch
-    // views are safe to hand over before the buffers return to the pool.
-    // ONE batched put: per-tile putTile copied the whole tile map each
-    // time — O(n²) across a full-canvas commit.
+    // R19-Z: the CHANGED scratch buffers become the finished tiles — the
+    // tile ADOPTS the native buffer (ownership leaves the pool; the
+    // tile's finalizer frees it), so a full-canvas commit writes zero
+    // pixel copies out. Untouched staged buffers still return to the
+    // pool below; the Dart fallback keeps the constructor copy.
     updatedSurface = updatedSurface.putTiles([
       for (final coord in sortedCoords)
-        BitmapTile(
-          coord: coord,
-          size: tileSize,
-          pixels: scratchBuffers[coord]!,
-        ),
+        if (nativeTiles != null)
+          BitmapTile.adoptNative(
+            coord: coord,
+            size: tileSize,
+            pixels: nativeTiles.remove(coord)!.pointer,
+          )
+        else
+          BitmapTile(
+            coord: coord,
+            size: tileSize,
+            pixels: scratchBuffers[coord]!,
+          ),
     ]);
     for (final coord in sortedCoords) {
       dirtyTiles = dirtyTiles.add(coord);

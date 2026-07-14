@@ -144,7 +144,7 @@ void main() {
 
     final bytes = buildQapArchiveBytes(
       project: project,
-      cels: [QapCelEntry(key: key, surface: surface)],
+      cels: [QapCelEntry.fromSurface(key, surface)],
       saveDirectory: r'D:\work\proj',
     );
     final contents = parseQapArchiveBytes(bytes);
@@ -152,7 +152,7 @@ void main() {
     expect(contents.project, project);
     expect(contents.cels, hasLength(1));
     expect(contents.cels.single.key, key);
-    final reopened = contents.cels.single.surface;
+    final reopened = contents.cels.single.toSurface();
     expect(reopened.canvasSize, surface.canvasSize);
     expect(reopened.tileSize, 8);
     expect(

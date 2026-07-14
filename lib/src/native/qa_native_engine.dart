@@ -27,11 +27,25 @@ class QaNativeEngine {
     this._fillFinishMask,
     this._dabBlendTiles,
     this._stampBlendTiles,
+    this._premultiplyRgbaCopy,
+    this._copyBytes,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 8;
+  static const int _abiVersion = 9;
 
   final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
+
+  final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
+  _premultiplyRgbaCopy;
+
+  final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int length)
+  _copyBytes;
+
+  /// Native-to-native memcpy at full speed (R19-Z tile staging — the
+  /// VM's typed-data setRange ran several times slower in debug).
+  void copyBytes(Pointer<Uint8> dst, Pointer<Uint8> src, int length) {
+    _copyBytes(dst, src, length);
+  }
 
   final int Function(
     Pointer<Uint8> rgb,
@@ -349,6 +363,16 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_stamp_blend_tiles');
+      final premultiplyRgbaCopy = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
+            void Function(Pointer<Uint8>, Pointer<Uint8>, int)
+          >('qa_premultiply_rgba_copy');
+      final copyBytes = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
+            void Function(Pointer<Uint8>, Pointer<Uint8>, int)
+          >('qa_copy_bytes');
       return QaNativeEngine._(
         premultiplyRgba,
         floodFillStep,
@@ -357,6 +381,8 @@ class QaNativeEngine {
         fillFinishMask,
         dabBlendTiles,
         stampBlendTiles,
+        premultiplyRgbaCopy,
+        copyBytes,
       );
     } on Object {
       return null;
@@ -765,17 +791,32 @@ class QaNativeEngine {
   /// mul-div-255 rounding). Two memcpys through a persistent scratch
   /// replace the 65k-iteration Dart loop per tile (A-2a).
   void premultiplyRgba(Uint8List pixels) {
-    if (_premultiplyScratchLength < pixels.length) {
-      if (_premultiplyScratch != nullptr) {
-        calloc.free(_premultiplyScratch);
-      }
-      _premultiplyScratch = calloc<Uint8>(pixels.length);
-      _premultiplyScratchLength = pixels.length;
-    }
+    _ensurePremultiplyScratch(pixels.length);
     final view = _premultiplyScratch.asTypedList(pixels.length);
     view.setAll(0, pixels);
     _premultiplyRgba(_premultiplyScratch, pixels.length ~/ 4);
     pixels.setAll(0, view);
+  }
+
+  /// Premultiplied COPY straight from a native tile buffer (R19-Z): the
+  /// fused kernel reads [source] and writes premultiplied bytes into the
+  /// scratch in ONE pass, and the single VM copy out builds the result —
+  /// the decode-start path used to pay three VM copies per tile.
+  /// Byte-identical to [premultiplyRgba] on the same input.
+  Uint8List premultipliedCopyFromNative(Pointer<Uint8> source, int length) {
+    _ensurePremultiplyScratch(length);
+    _premultiplyRgbaCopy(_premultiplyScratch, source, length ~/ 4);
+    return Uint8List.fromList(_premultiplyScratch.asTypedList(length));
+  }
+
+  void _ensurePremultiplyScratch(int length) {
+    if (_premultiplyScratchLength < length) {
+      if (_premultiplyScratch != nullptr) {
+        calloc.free(_premultiplyScratch);
+      }
+      _premultiplyScratch = calloc<Uint8>(length);
+      _premultiplyScratchLength = length;
+    }
   }
 
   /// Grow-only batch buffers (R18 A-3a): the tile spans of one dab and

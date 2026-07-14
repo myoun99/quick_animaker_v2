@@ -38,10 +38,13 @@ class QapFileService {
   }) async {
     // R19 bake-only: the save payload IS the baked raster truth (every
     // commit and undo donates into it; opens bake v1 files on the way in).
+    // R19-Z: snapshot to plain BYTES here — native-backed tiles are
+    // Finalizable and cannot cross the encode isolate (the old implicit
+    // graph copy cost the same, so this is not a new copy).
     final baked = brushFrameStore.bakedSnapshotForSave();
     final cels = [
       for (final entry in baked.entries)
-        QapCelEntry(key: entry.key, surface: entry.value),
+        QapCelEntry.fromSurface(entry.key, entry.value),
     ];
     final saveDirectory = _parentDirectory(filePath);
     // Encode + deflate OFF the UI isolate: the archive build cost grows
@@ -71,14 +74,17 @@ class QapFileService {
     // the one-time bake that turns an old command file into raster truth
     // (rides the Dart reference materializer: the C engine is per-isolate
     // and byte-identical anyway).
-    final (:project, :cels, :mediaRelativePaths) = await Isolate.run(() {
+    final (:project, :celEntries, :mediaRelativePaths) = await Isolate.run(() {
       final contents = parseQapArchiveBytes(bytes);
       final cutCanvasSizes = {
         for (final track in contents.project.tracks)
           for (final cut in track.cuts) cut.id: cut.canvasSize,
       };
-      final baked = <BrushFrameKey, BitmapSurface>{
-        for (final cel in contents.cels) cel.key: cel.surface,
+      // R19-Z: the isolate boundary ships PLAIN-BYTES cel entries (native
+      // tiles are Finalizable = unsendable); v1 drawings materialize here
+      // and snapshot to bytes the same way.
+      final baked = <BrushFrameKey, QapCelEntry>{
+        for (final cel in contents.cels) cel.key: cel,
       };
       for (final drawing in contents.drawings) {
         if (baked.containsKey(drawing.key)) {
@@ -99,15 +105,16 @@ class QapFileService {
           ).surface;
         }
         if (surface.tiles.isNotEmpty) {
-          baked[drawing.key] = surface;
+          baked[drawing.key] = QapCelEntry.fromSurface(drawing.key, surface);
         }
       }
       return (
         project: contents.project,
-        cels: baked,
+        celEntries: baked.values.toList(),
         mediaRelativePaths: contents.mediaRelativePaths,
       );
     });
+    final cels = {for (final entry in celEntries) entry.key: entry.toSurface()};
 
     // Relative media resolution: an entry whose relative path exists next
     // to the .qap wins (the folder traveled whole); otherwise the stored
