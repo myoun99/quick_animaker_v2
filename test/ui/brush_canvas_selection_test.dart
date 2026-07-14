@@ -401,6 +401,50 @@ void main() {
       );
     });
 
+    testWidgets('R17-U 핸들 상시: with the MOVE tool a corner drag scales '
+        'WITHOUT Ctrl+T — the grab itself opens the session', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      expect(env.commands.transformActive, isFalse);
+
+      // Grab the BR corner handle of the ALWAYS-ON box and drag to
+      // (95,95): 1.5× about the anchored TL corner.
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+      expect(
+        env.commands.transformActive,
+        isTrue,
+        reason: 'the handle grab promoted the implicit box into a session',
+      );
+
+      env.commands.commitTransform();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 35, 35), isNonZero);
+      expect(inkAt(env.coordinator, 80, 80), isNonZero);
+    });
+
+    testWidgets('numeric transform input (tool settings) applies through '
+        'the selection channel', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+
+      env.commands.setTransformValues(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        scale: 1,
+      );
+      await tester.pump();
+      expect(env.commands.transformActive, isTrue);
+      expect(env.commands.transformValues?.tx, 10);
+
+      env.commands.commitTransform();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 40, 35), isNonZero);
+      expect(inkAt(env.coordinator, 28, 28), 0);
+    });
+
     testWidgets('the rotate knob turns the selection about its center: '
         'only the shape\'s PIXELS rotate, unlifted content stays', (
       tester,

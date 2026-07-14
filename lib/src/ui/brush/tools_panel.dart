@@ -13,10 +13,16 @@ class ToolsPanel extends StatelessWidget {
     super.key,
     required this.tool,
     required this.onToolChanged,
+    this.selectionVariant = CanvasTool.selectRect,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
+
+  /// Which selection VARIANT the single Select button activates (R17-U:
+  /// rectangle/lasso are one toolbar tool — the variant lives in the tool
+  /// settings; the host remembers the last-used one).
+  final CanvasTool selectionVariant;
 
   /// The edge dock width this panel is designed for (fits the compact
   /// tools tab with its close/lock glyphs plus the tool buttons).
@@ -66,25 +72,23 @@ class ToolsPanel extends StatelessWidget {
             onPressed: () => onToolChanged(CanvasTool.fill),
           ),
           const SizedBox(height: 4),
+          // R17-U: ONE selection tool — the rectangle/lasso variant is a
+          // tool SETTING, not a separate toolbar entry (유저 채택 설계).
           _ToolButton(
-            keyValue: 'tool-select-rect-button',
-            tooltip: 'Rectangle Select Tool',
+            keyValue: 'tool-select-button',
+            tooltip: 'Select Tool',
             icon: Icons.highlight_alt_outlined,
-            selected: tool == CanvasTool.selectRect,
-            onPressed: () => onToolChanged(CanvasTool.selectRect),
-          ),
-          const SizedBox(height: 4),
-          _ToolButton(
-            keyValue: 'tool-lasso-button',
-            tooltip: 'Lasso Select Tool',
-            icon: Icons.gesture,
-            selected: tool == CanvasTool.lasso,
-            onPressed: () => onToolChanged(CanvasTool.lasso),
+            selected: tool == CanvasTool.selectRect || tool == CanvasTool.lasso,
+            onPressed: () => onToolChanged(
+              tool == CanvasTool.selectRect || tool == CanvasTool.lasso
+                  ? tool
+                  : selectionVariant,
+            ),
           ),
           const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-move-button',
-            tooltip: 'Move Tool',
+            tooltip: 'Move / Transform Tool',
             icon: Icons.open_with,
             selected: tool == CanvasTool.move,
             onPressed: () => onToolChanged(CanvasTool.move),

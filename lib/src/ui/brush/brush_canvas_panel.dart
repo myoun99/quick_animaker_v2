@@ -631,6 +631,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             CanvasSelectionTool.move,
                                           _ => CanvasSelectionTool.rect,
                                         },
+                                        // R17-U: Move = 이동+변형 통합 툴
+                                        // — 핸들 상시.
+                                        alwaysShowTransformBox:
+                                            widget.brushToolState.tool ==
+                                            CanvasTool.move,
                                         onShapeCommitted:
                                             widget.historyManager == null ||
                                                 widget.selectionCommands == null
