@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -30,6 +31,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerFx,
     this.sectionLabel,
     this.sectionFlyoutEntries,
+    this.opacityDragPreview,
   });
 
   final Layer layer;
@@ -74,6 +76,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final String? sectionLabel;
   final List<PanelFlyoutEntry> Function()? sectionFlyoutEntries;
 
+  /// The session's live opacity-drag preview (UI-R6 #2): while the master
+  /// bar (or another surface) drags THIS layer's opacity, the row's slider
+  /// follows live instead of waiting for the release commit.
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -86,7 +94,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
         // The section bracket occupies the leading gutter beside the rail.
         width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
         height: metrics.layerRowHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        // The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
+        // breathing room moves between the band and the lane chevron.
+        padding: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           color: active ? activeColor : colorScheme.surface,
           border: Border.all(
@@ -103,40 +113,41 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
-              // The inline section tag (UI-R5): label on the section's
-              // first row, empty slot everywhere else.
-              if (sectionLabel != null)
-                SizedBox(
-                  width: layerSectionLabelSlotWidth,
-                  height: 26,
-                  child: Builder(
-                    builder: (anchorContext) => InkWell(
-                      key: ValueKey<String>('timeline-section-tag-${layer.id}'),
-                      onTap: sectionFlyoutEntries == null
-                          ? null
-                          : () => showPanelFlyout(
-                              anchorContext,
-                              entries: sectionFlyoutEntries!(),
+              // The inline section BAND (UI-R5/R6 #5): a tinted vertical
+              // zone on every row; the section's first row carries its
+              // label inside it.
+              LayerSectionBandCell(
+                child: sectionLabel == null
+                    ? null
+                    : Builder(
+                        builder: (anchorContext) => InkWell(
+                          key: ValueKey<String>(
+                            'timeline-section-tag-${layer.id}',
+                          ),
+                          onTap: sectionFlyoutEntries == null
+                              ? null
+                              : () => showPanelFlyout(
+                                  anchorContext,
+                                  entries: sectionFlyoutEntries!(),
+                                ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              sectionLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.clip,
+                              style: TextStyle(
+                                fontSize: 8,
+                                letterSpacing: 0.6,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          sectionLabel!,
-                          maxLines: 1,
-                          overflow: TextOverflow.clip,
-                          style: TextStyle(
-                            fontSize: 8,
-                            letterSpacing: 0.6,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: layerSectionLabelSlotWidth),
+              ),
+              const SizedBox(width: 8),
               if (hasLanes && onToggleLanes != null)
                 InkWell(
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
@@ -317,25 +328,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
               // (unified layer controls); every row shrinks alike so the
               // control columns stay aligned.
               if (layerKindShowsOpacityControl(layer.kind))
-                SizedBox(
-                  width: layerOpacitySlotWidth,
-                  child: FieldSlider(
-                    key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    valueText: '${(layer.opacity * 100).round()}%',
-                    valueTextBuilder: (value) => '${(value * 100).round()}%',
-                    displayFactor: 100,
-                    height: 18,
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged(layer.id, opacity),
-                    onChangeEnd: onLayerOpacityChangeEnd == null
-                        ? null
-                        : (opacity) =>
-                              onLayerOpacityChangeEnd!(layer.id, opacity),
-                  ),
-                )
+                SizedBox(width: layerOpacitySlotWidth, child: _opacityField())
               else
                 const SizedBox(width: layerOpacitySlotWidth),
             ],
@@ -348,6 +341,39 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // (R3 feedback #6) — the old extra 2px overlay double-lined them; the
     // gutter bracket carries the section identity.
     return row;
+  }
+
+  /// The row's opacity slider, live-following the session's drag preview
+  /// when it targets this layer (the master bar sweep, UI-R6 #2).
+  Widget _opacityField() {
+    Widget slider(double value) => FieldSlider(
+      key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
+      min: 0,
+      max: 1,
+      value: value,
+      valueText: '${(value * 100).round()}%',
+      valueTextBuilder: (next) => '${(next * 100).round()}%',
+      displayFactor: 100,
+      height: 18,
+      onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+      onChangeEnd: onLayerOpacityChangeEnd == null
+          ? null
+          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
+    );
+
+    final preview = opacityDragPreview;
+    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (preview == null) {
+      return slider(resting);
+    }
+    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
+      valueListenable: preview,
+      builder: (context, dragging, _) => slider(
+        dragging != null && dragging.layerIds.contains(layer.id)
+            ? dragging.opacity
+            : resting,
+      ),
+    );
   }
 }
 

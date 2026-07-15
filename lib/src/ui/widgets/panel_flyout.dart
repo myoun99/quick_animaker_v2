@@ -56,6 +56,11 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
 /// Shows the shared flyout anchored under [anchorContext]'s widget and runs
 /// the picked item's [PanelFlyoutItem.onSelected] after the menu closes.
+///
+/// When the space below the anchor can't fit the list, the flyout opens
+/// UPWARD instead (its bottom hugging the anchor's top) — the item order
+/// never changes (UI-R6 #1); Material's default merely clamped the menu,
+/// which read as the list growing bottom-up.
 Future<void> showPanelFlyout(
   BuildContext anchorContext, {
   required List<PanelFlyoutEntry> entries,
@@ -64,14 +69,40 @@ Future<void> showPanelFlyout(
   final overlay =
       Navigator.of(anchorContext).overlay!.context.findRenderObject()!
           as RenderBox;
+  // The entry heights are fixed (32/24/6 + the menu's 8+8 padding), so the
+  // flyout's height is known before layout.
+  var estimatedHeight = 16.0;
+  for (final entry in entries) {
+    estimatedHeight += switch (entry) {
+      PanelFlyoutHeader() => 24.0,
+      PanelFlyoutDivider() => 6.0,
+      PanelFlyoutItem() => 32.0,
+    };
+  }
+  final anchorTopLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+  final anchorBottomLeft = button.localToGlobal(
+    Offset(0, button.size.height),
+    ancestor: overlay,
+  );
+  final spaceBelow = overlay.size.height - anchorBottomLeft.dy;
+  final openUpward =
+      estimatedHeight > spaceBelow && anchorTopLeft.dy > spaceBelow;
+  final anchorRect = openUpward
+      ? Rect.fromLTWH(
+          anchorTopLeft.dx,
+          anchorTopLeft.dy - estimatedHeight,
+          button.size.width,
+          estimatedHeight,
+        )
+      : Rect.fromPoints(
+          anchorBottomLeft,
+          button.localToGlobal(
+            button.size.bottomRight(Offset.zero),
+            ancestor: overlay,
+          ),
+        );
   final position = RelativeRect.fromRect(
-    Rect.fromPoints(
-      button.localToGlobal(Offset(0, button.size.height), ancestor: overlay),
-      button.localToGlobal(
-        button.size.bottomRight(Offset.zero),
-        ancestor: overlay,
-      ),
-    ),
+    anchorRect,
     Offset.zero & overlay.size,
   );
 

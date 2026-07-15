@@ -164,6 +164,8 @@ class StoryboardPanel extends StatefulWidget {
     this.dragPreview,
     this.legend,
     this.visibilitySoloEnabled = false,
+    this.opacityDragPreview,
+    this.legendOpacityValue = 1.0,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -344,6 +346,16 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
+
+  /// The session's live opacity-drag preview (UI-R6 #2): S-row sliders
+  /// follow a master-bar sweep live instead of waiting for the release
+  /// commit.
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+
+  /// The legend master bar's RESTING value: the last value committed
+  /// through the bar (UI-R6 #2) — not an average of the rows.
+  final double legendOpacityValue;
 
   /// V-row display toggles (R9, session view state, ACTIVE-cut scoped like
   /// the S-row layer controls): the fx switch bypasses the cut-level
@@ -642,19 +654,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (layer.kind != LayerKind.camera) layer.id,
   };
 
-  double _legendDisplayedOpacity() {
-    var total = 0.0;
-    var count = 0;
-    for (final layer in _legendLayers()) {
-      if (layer.kind == LayerKind.camera) {
-        continue;
-      }
-      total += layer.opacity.clamp(0.0, 1.0);
-      count += 1;
-    }
-    return count == 0 ? 1.0 : total / count;
-  }
-
   Widget _seLabelRow(Track track, int slot, {bool showSectionTag = false}) {
     final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
@@ -687,6 +686,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxEnabledOf: widget.layerFxEnabledOf,
       onToggleLayerFx: widget.onToggleLayerFx,
+      opacityDragPreview: widget.opacityDragPreview,
     );
   }
 
@@ -1094,7 +1094,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                       displayedLayerIds: widget.legend == null
                           ? null
                           : _legendDisplayedLayerIds,
-                      displayedOpacity: _legendDisplayedOpacity(),
+                      displayedOpacity: widget.legendOpacityValue,
                     ),
                   ),
                   Expanded(
@@ -1592,6 +1592,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
     this.sectionTag,
+    this.opacityDragPreview,
   });
 
   final Track track;
@@ -1633,6 +1634,12 @@ class _StoryboardSeLabel extends StatelessWidget {
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
+  /// The session's live opacity-drag preview (UI-R6 #2): while the master
+  /// bar drags THIS row's layer, the slider follows live instead of
+  /// waiting for the release commit.
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1651,9 +1658,9 @@ class _StoryboardSeLabel extends StatelessWidget {
       child: Container(
         width: StoryboardPanel._trackLabelWidth,
         height: _seRowHeight,
-        // Horizontal 8 like the timeline rows — the legend header pads the
-        // same, so the slot columns line up (UI-R5).
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        // Right-only pad: the section band hugs the left edge (UI-R6 #5);
+        // slot columns still line up with the legend header.
+        padding: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           // The timeline row's active treatment verbatim (S-row selection,
           // W4): secondaryContainer fill + 2px secondary border.
@@ -1678,29 +1685,25 @@ class _StoryboardSeLabel extends StatelessWidget {
           // over these exact columns.
           child: Row(
             children: [
-              if (sectionTag != null)
-                SizedBox(
-                  width: layerSectionLabelSlotWidth,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      sectionTag!,
-                      key: ValueKey<String>(
-                        'storyboard-section-tag-${track.id.value}-se',
+              LayerSectionBandCell(
+                child: sectionTag == null
+                    ? null
+                    : Text(
+                        sectionTag!,
+                        key: ValueKey<String>(
+                          'storyboard-section-tag-${track.id.value}-se',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: TextStyle(
+                          fontSize: 8,
+                          letterSpacing: 0.6,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        fontSize: 8,
-                        letterSpacing: 0.6,
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: layerSectionLabelSlotWidth),
+              ),
+              const SizedBox(width: 8),
               // The timeline rows' lane chevron, storyboard-prefixed.
               if (onToggleLane != null)
                 InkWell(
@@ -1858,30 +1861,46 @@ class _StoryboardSeLabel extends StatelessWidget {
               if (layer != null && onLayerOpacityChanged != null)
                 SizedBox(
                   width: layerOpacitySlotWidth,
-                  child: FieldSlider(
-                    key: ValueKey<String>(
-                      'storyboard-layer-opacity-${layer.id}',
-                    ),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    valueText: '${(layer.opacity * 100).round()}%',
-                    valueTextBuilder: (value) => '${(value * 100).round()}%',
-                    displayFactor: 100,
-                    height: 18,
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged!(layer.id, opacity),
-                    onChangeEnd: onLayerOpacityChangeEnd == null
-                        ? null
-                        : (opacity) =>
-                              onLayerOpacityChangeEnd!(layer.id, opacity),
-                  ),
+                  child: _opacityField(layer),
                 )
               else
                 const SizedBox(width: layerOpacitySlotWidth),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// The row's opacity slider, live-following the session's drag preview
+  /// when it targets this layer (the master bar sweep, UI-R6 #2).
+  Widget _opacityField(Layer layer) {
+    Widget slider(double value) => FieldSlider(
+      key: ValueKey<String>('storyboard-layer-opacity-${layer.id}'),
+      min: 0,
+      max: 1,
+      value: value,
+      valueText: '${(value * 100).round()}%',
+      valueTextBuilder: (next) => '${(next * 100).round()}%',
+      displayFactor: 100,
+      height: 18,
+      onChanged: (opacity) => onLayerOpacityChanged!(layer.id, opacity),
+      onChangeEnd: onLayerOpacityChangeEnd == null
+          ? null
+          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
+    );
+
+    final preview = opacityDragPreview;
+    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (preview == null) {
+      return slider(resting);
+    }
+    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
+      valueListenable: preview,
+      builder: (context, dragging, _) => slider(
+        dragging != null && dragging.layerIds.contains(layer.id)
+            ? dragging.opacity
+            : resting,
       ),
     );
   }
@@ -1909,18 +1928,16 @@ class _StoryboardLaneLabel extends StatelessWidget {
       key: ValueKey<String>(laneKey),
       width: StoryboardPanel._trackLabelWidth,
       height: height,
-      // Indent past the inline section-tag slot (UI-R5) like the shared
-      // lane rows.
-      padding: const EdgeInsets.only(
-        left: 18 + layerSectionLabelSlotWidth,
-        right: 8,
-      ),
+      padding: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
+          // The rows' section band continues through lane rows (UI-R6 #5).
+          const LayerSectionBandCell(),
+          const SizedBox(width: 18),
           Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
           const SizedBox(width: 6),
           Text(
@@ -2792,36 +2809,32 @@ class _StoryboardTrackLabel extends StatelessWidget {
       key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
       width: StoryboardPanel._trackLabelWidth,
       height: StoryboardPanel._trackLaneHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
-          // The shared leading slot (UI-R5): the V row carries its inline
-          // section tag here.
-          if (sectionTag != null)
-            SizedBox(
-              width: layerSectionLabelSlotWidth,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  sectionTag!,
-                  key: ValueKey<String>(
-                    'storyboard-section-tag-${track.id.value}-v',
+          // The shared section BAND (UI-R6 #5): the V row carries its
+          // inline tag inside it.
+          LayerSectionBandCell(
+            child: sectionTag == null
+                ? null
+                : Text(
+                    sectionTag!,
+                    key: ValueKey<String>(
+                      'storyboard-section-tag-${track.id.value}-v',
+                    ),
+                    style: TextStyle(
+                      fontSize: 8,
+                      letterSpacing: 0.6,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  style: TextStyle(
-                    fontSize: 8,
-                    letterSpacing: 0.6,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: layerSectionLabelSlotWidth),
+          ),
+          const SizedBox(width: 8),
           // The timeline rows' lane chevron: twirls down the track's
           // cut-level Transform group (the V-track lanes + fade strip).
           if (onToggleLane != null)

@@ -331,6 +331,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   void _setTimelineRowFilter(TimelineRowFilter filter) {
     _timelineRowFilter.value = filter;
+    // UI-R6 #3: a non-passing active layer moves to the nearest passing
+    // layer above it (instead of lingering through the exemption).
+    if (filter.isActive) {
+      widget.session.moveSelectionToFilteredLayer(
+        (layer) => filter.allows(
+          layer,
+          fxEnabled: widget.session.isLayerFxEnabled(layer.id),
+        ),
+      );
+    }
   }
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
@@ -864,7 +874,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             listenable: Listenable.merge([
               widget.session,
               _timelineOrientation,
-              _timelinePixelsPerFrame,
+              // Zoom (_timelinePixelsPerFrame) is NOT merged here (UI-R6
+              // #4): the host scopes it to the panel subtree, so a zoom
+              // step skips this whole tab rebuild.
               _showSecondsDisplay,
               _expandedLaneLayerIds,
               _expandedTransformGroupLayerIds,
@@ -878,6 +890,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _timelineOrientation.value = orientation;
               },
               pixelsPerFrame: _timelinePixelsPerFrame.value,
+              pixelsPerFrameListenable: _timelinePixelsPerFrame,
               onPixelsPerFrameChanged: (value) {
                 _timelinePixelsPerFrame.value = value;
               },

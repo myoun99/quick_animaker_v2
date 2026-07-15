@@ -1,4 +1,5 @@
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
@@ -45,6 +46,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.orientation,
     required this.onOrientationChanged,
     required this.pixelsPerFrame,
+    this.pixelsPerFrameListenable,
     required this.onPixelsPerFrameChanged,
     required this.showSeconds,
     required this.onShowSecondsChanged,
@@ -65,6 +67,12 @@ class TimelineTabHost extends StatefulWidget {
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final double pixelsPerFrame;
+
+  /// Zoom scoping (UI-R6 #4): when provided, ONLY the panel subtree
+  /// rebuilds per zoom step (the workspace shell and this host's build
+  /// stay out of the loop). [pixelsPerFrame] is the fallback for hosts
+  /// without the notifier.
+  final ValueListenable<double>? pixelsPerFrameListenable;
   final ValueChanged<double> onPixelsPerFrameChanged;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
@@ -709,215 +717,242 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         ?widget.cameraViewEnabled,
         ?widget.cameraDimOpacity,
       ]),
-      builder: (context, _) => TimelinePanel(
-        layers: _displayLayers(),
-        activeLayerId: _session.activeLayerId,
-        // Edit drags (comma/trim) preview through the scoped channel: a
-        // step rebuilds the dragged row's gate + the cursor overlay only,
-        // never this host (the release commit is the one session notify).
-        dragPreview: _session.dragPreview,
-        frameCursor: _frameCursor,
-        cacheProgress: _session.prerenderScheduler.progress,
-        isFrameCached: _session.isPlaybackFrameCached,
-        playbackFrameCount: _session.activeCutPlaybackFrameCount,
-        exposureStateForLayer: _session.exposureStateForLayer,
-        frameNameForLayer: _session.frameNameForLayer,
-        onSelectLayer: _session.selectLayer,
-        // Ruler scrubs during playback SEEK the playback clock instead of
-        // moving the (hidden) editing playhead.
-        onSelectFrame: (frameIndex) {
-          if (_session.playback.isActive) {
-            _session.playback.seekToLocalFrame(frameIndex);
-          } else {
-            _session.selectFrameIndex(frameIndex);
-          }
-        },
-        // Ruler drags: per-move seeks ride the cursor path (value-only —
-        // the playhead and the canvas preview follow, nothing rebuilds);
-        // the release commits the selection as ONE ordinary seek.
-        onScrubFrame: (frameIndex) {
-          if (_session.playback.isActive) {
-            _session.playback.seekToLocalFrame(frameIndex);
-          } else {
-            _session.scrubFrameIndex(frameIndex);
-          }
-        },
-        onScrubEnd: () {
-          if (!_session.playback.isActive) {
-            _session.commitFrameScrub();
-          }
-        },
-        onActivateCell: _activateCellEditor,
-        instructionDefById: (instructionId) =>
-            _session.cameraInstructionSet.defById(instructionId),
-        audioPeaksFor: _session.audioPeaksStore.peaksFor,
-        onRemoveAudioClip: _session.removeAudioClipAt,
-        // Media-browser drops: link the dragged sound to the block.
-        onDropMediaAsset: (layerId, blockStartFrame, path) =>
-            _session.linkMediaAssetToSeBlock(
-              layerId: layerId,
-              blockStartFrame: blockStartFrame,
-              path: path,
-            ),
-        // The audio lane's slide edit (the clip's offset trim), edge
-        // fade handles and gain dialog. The slide previews LOCALLY in the
-        // lane span (its own painter, no session traffic per move) and
-        // commits ONE undo on release — the repo-live drag session
-        // rebuilt every panel per move and made the slide feel heavy
-        // (R5-⑧); the session drag API stays for callers that need the
-        // cross-panel mirror.
-        onSetAudioClipOffset: _session.setAudioClipOffset,
-        onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-            _session.setAudioClipFades(
-              layerId,
-              clipIndex,
-              fadeInFrames: fadeIn,
-              fadeOutFrames: fadeOut,
-            ),
-        onSetAudioClipGain: _session.setAudioClipGain,
-        onAddLayer: _session.addLayer,
-        onToggleLayerMuted: _session.toggleLayerMuted,
-        // Kind-dispatched (unified layer controls): the camera row drives
-        // the camera-view notifiers, every other row the layer flags.
-        onToggleLayerVisibility: _toggleLayerVisibility,
-        onLayerOpacityChanged: _previewLayerOpacity,
-        onLayerOpacityChangeEnd: _commitLayerOpacity,
-        onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-        onToggleLayerFillReference: _session.toggleLayerFillReference,
-        onLayerMarkSelected: _session.setLayerMark,
-        // The AE-style fx switch: bypasses the layer's transform/FX on
-        // every composite route (session view state).
-        layerFxEnabledOf: _session.isLayerFxEnabled,
-        onToggleLayerFx: _session.toggleLayerFx,
-        // Comma edge drags preview live from the session's drag-start
-        // snapshot and commit as ONE undo entry on release.
-        commaDrag: TimelineCommaDragCallbacks(
-          onBegin: (layerId, blockStartIndex, edge) =>
-              _session.beginExposureEdgeDrag(
+      builder: (context, _) {
+        // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
+        // host rebuild and reused across zoom steps — the identical
+        // instance lets its transport + ~25 buttons skip rebuilding while
+        // the ValueListenableBuilder below re-lays-out just the panel.
+        final timelineToolbar = _buildTimelineToolbar();
+        Widget buildPanel(
+          BuildContext context,
+          double pixelsPerFrame,
+          Widget? child,
+        ) => TimelinePanel(
+          layers: _displayLayers(),
+          activeLayerId: _session.activeLayerId,
+          // Edit drags (comma/trim) preview through the scoped channel: a
+          // step rebuilds the dragged row's gate + the cursor overlay only,
+          // never this host (the release commit is the one session notify).
+          dragPreview: _session.dragPreview,
+          frameCursor: _frameCursor,
+          cacheProgress: _session.prerenderScheduler.progress,
+          isFrameCached: _session.isPlaybackFrameCached,
+          playbackFrameCount: _session.activeCutPlaybackFrameCount,
+          exposureStateForLayer: _session.exposureStateForLayer,
+          frameNameForLayer: _session.frameNameForLayer,
+          onSelectLayer: _session.selectLayer,
+          // Ruler scrubs during playback SEEK the playback clock instead of
+          // moving the (hidden) editing playhead.
+          onSelectFrame: (frameIndex) {
+            if (_session.playback.isActive) {
+              _session.playback.seekToLocalFrame(frameIndex);
+            } else {
+              _session.selectFrameIndex(frameIndex);
+            }
+          },
+          // Ruler drags: per-move seeks ride the cursor path (value-only —
+          // the playhead and the canvas preview follow, nothing rebuilds);
+          // the release commits the selection as ONE ordinary seek.
+          onScrubFrame: (frameIndex) {
+            if (_session.playback.isActive) {
+              _session.playback.seekToLocalFrame(frameIndex);
+            } else {
+              _session.scrubFrameIndex(frameIndex);
+            }
+          },
+          onScrubEnd: () {
+            if (!_session.playback.isActive) {
+              _session.commitFrameScrub();
+            }
+          },
+          onActivateCell: _activateCellEditor,
+          instructionDefById: (instructionId) =>
+              _session.cameraInstructionSet.defById(instructionId),
+          audioPeaksFor: _session.audioPeaksStore.peaksFor,
+          onRemoveAudioClip: _session.removeAudioClipAt,
+          // Media-browser drops: link the dragged sound to the block.
+          onDropMediaAsset: (layerId, blockStartFrame, path) =>
+              _session.linkMediaAssetToSeBlock(
                 layerId: layerId,
-                blockStartIndex: blockStartIndex,
-                edge: edge,
+                blockStartFrame: blockStartFrame,
+                path: path,
               ),
-          onUpdate: _session.updateExposureEdgeDrag,
-          onEnd: _session.endExposureEdgeDrag,
-          onCancel: _session.cancelExposureEdgeDrag,
-        ),
-        // Whole-block moves (R10-④b): grab the block's body to slide it
-        // along the frame axis or carry it onto another drawing layer —
-        // same live-preview + one-undo discipline as the edge grips.
-        blockMove: TimelineBlockMoveCallbacks(
-          onBegin: (layerId, blockStartIndex) =>
-              _session.beginDrawingBlockMoveDrag(
-                layerId: layerId,
-                blockStartIndex: blockStartIndex,
+          // The audio lane's slide edit (the clip's offset trim), edge
+          // fade handles and gain dialog. The slide previews LOCALLY in the
+          // lane span (its own painter, no session traffic per move) and
+          // commits ONE undo on release — the repo-live drag session
+          // rebuilt every panel per move and made the slide feel heavy
+          // (R5-⑧); the session drag API stays for callers that need the
+          // cross-panel mirror.
+          onSetAudioClipOffset: _session.setAudioClipOffset,
+          onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
+              _session.setAudioClipFades(
+                layerId,
+                clipIndex,
+                fadeInFrames: fadeIn,
+                fadeOutFrames: fadeOut,
               ),
-          onUpdate: ({required frameDelta, targetLayerId}) =>
-              _session.updateDrawingBlockMoveDrag(
-                frameDelta: frameDelta,
-                targetLayerId: targetLayerId,
-              ),
-          onEnd: _session.endDrawingBlockMoveDrag,
-          onCancel: _session.cancelDrawingBlockMoveDrag,
-        ),
-        orientation: widget.orientation,
-        onOrientationChanged: widget.onOrientationChanged,
-        pixelsPerFrame: widget.pixelsPerFrame,
-        onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-        showSeconds: widget.showSeconds,
-        onShowSecondsChanged: widget.onShowSecondsChanged,
-        projectFps: _session.projectFps,
-        expandedLaneLayerIds: widget.expandedLaneLayerIds,
-        onToggleLayerLanes: widget.onToggleLayerLanes,
-        hiddenSections: widget.hiddenSections,
-        onToggleSection: widget.onToggleSection,
-        rowFilter: widget.rowFilter,
-        onSetRowFilter: widget.onSetRowFilter,
-        visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
-        // The rail legend's bulk sweeps + the section brackets' flyout —
-        // all session-backed (R-toolbar round); the R2 filter/dim/opacity
-        // facets ride the same struct.
-        legend: LayerLegendCallbacks(
-          onShowAllLayers: () => _session.setAllLayersVisibility(true),
-          onHideAllLayers: () => _session.setAllLayersVisibility(false),
-          onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
-          onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
-          onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
-          onClearAllMarks: _session.clearAllLayerMarks,
-          onClearAllFillReferences: _session.clearAllFillReferences,
-          onMuteAllSe: () => _session.setAllSeLayersMuted(true),
-          onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
-          onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
-          onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-          onToggleMarkFilter: (mark) =>
-              widget.onSetRowFilter?.call(widget.rowFilter.toggledMark(mark)),
-          onToggleKindFilter: (kind) =>
-              widget.onSetRowFilter?.call(widget.rowFilter.toggledKind(kind)),
-          onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
-            widget.rowFilter.copyWith(
-              onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
-            ),
-          ),
-          onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
-            widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
-          ),
-          onToggleFillReferenceOnlyFilter: () => widget.onSetRowFilter?.call(
-            widget.rowFilter.copyWith(
-              fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
-            ),
-          ),
-          // The legend master bar (R4 #6): preview per move, one commit.
-          onPreviewLayersOpacity: _session.previewLayersOpacity,
-          onCommitLayersOpacity: _session.commitLayersOpacity,
-        ),
-        sectionRail: widget.onToggleSection == null
-            ? null
-            : TimelineSectionRailCallbacks(
-                onToggleSection: widget.onToggleSection!,
-                onAddLayerOfKind: _session.addLayerOfKind,
-                onSetSectionLayersVisibility:
-                    _session.setSectionLayersVisibility,
-                onSoloSection: _soloSection,
-              ),
-        lanesForLayer: _lanesForLayer,
-        laneEdit: _laneEdit,
-        // The Transform group header's twirl (AE collapse).
-        onToggleLaneGroup: widget.onToggleTransformGroup == null
-            ? null
-            : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
-        // Button enablement reads the playhead, and committed seeks are no
-        // longer session notifies — the toolbar re-reads them here without
-        // the panel (or its grids) rebuilding. TOKEN-GATED (R13-2): the
-        // naive per-seek rebuild reconstructed the whole transport + ~25
-        // Material buttons on every frame flip — measured on device as
-        // the flip hitch. Seeks that land in the same enablement state
-        // (almost all of them) now rebuild nothing.
-        timelineActionToolbar: _SeekGatedTimelineToolbar(
-          session: _session,
-          builder: (context) => Row(
-            children: [
-              PlaybackTransportControls(
-                controller: _session.playback,
-                scope: PlaybackScope.activeCut,
-                quality: _session.playbackQuality,
-                onQualityChanged: _session.setPlaybackQuality,
-                playbackStartFrame: () => _session.currentFrameIndex,
-              ),
-              Expanded(
-                child: TimelineActionToolbar(
-                  session: _session,
-                  onAddLayer: _session.addLayer,
-                  onRenameLayer: _renameActiveLayer,
-                  onDeleteLayer: _deleteActiveLayer,
-                  onEditInstance: _editActiveInstance,
-                  onCreateInstance: _createActiveInstance,
-                  onImportAudio: _importAudio,
-                  hiddenSections: widget.hiddenSections,
-                  onToggleSection: widget.onToggleSection,
+          onSetAudioClipGain: _session.setAudioClipGain,
+          onAddLayer: _session.addLayer,
+          onToggleLayerMuted: _session.toggleLayerMuted,
+          // Kind-dispatched (unified layer controls): the camera row drives
+          // the camera-view notifiers, every other row the layer flags.
+          onToggleLayerVisibility: _toggleLayerVisibility,
+          onLayerOpacityChanged: _previewLayerOpacity,
+          onLayerOpacityChangeEnd: _commitLayerOpacity,
+          onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+          onToggleLayerFillReference: _session.toggleLayerFillReference,
+          onLayerMarkSelected: _session.setLayerMark,
+          // The AE-style fx switch: bypasses the layer's transform/FX on
+          // every composite route (session view state).
+          layerFxEnabledOf: _session.isLayerFxEnabled,
+          onToggleLayerFx: _session.toggleLayerFx,
+          // Comma edge drags preview live from the session's drag-start
+          // snapshot and commit as ONE undo entry on release.
+          commaDrag: TimelineCommaDragCallbacks(
+            onBegin: (layerId, blockStartIndex, edge) =>
+                _session.beginExposureEdgeDrag(
+                  layerId: layerId,
+                  blockStartIndex: blockStartIndex,
+                  edge: edge,
                 ),
-              ),
-            ],
+            onUpdate: _session.updateExposureEdgeDrag,
+            onEnd: _session.endExposureEdgeDrag,
+            onCancel: _session.cancelExposureEdgeDrag,
           ),
-        ),
+          // Whole-block moves (R10-④b): grab the block's body to slide it
+          // along the frame axis or carry it onto another drawing layer —
+          // same live-preview + one-undo discipline as the edge grips.
+          blockMove: TimelineBlockMoveCallbacks(
+            onBegin: (layerId, blockStartIndex) =>
+                _session.beginDrawingBlockMoveDrag(
+                  layerId: layerId,
+                  blockStartIndex: blockStartIndex,
+                ),
+            onUpdate: ({required frameDelta, targetLayerId}) =>
+                _session.updateDrawingBlockMoveDrag(
+                  frameDelta: frameDelta,
+                  targetLayerId: targetLayerId,
+                ),
+            onEnd: _session.endDrawingBlockMoveDrag,
+            onCancel: _session.cancelDrawingBlockMoveDrag,
+          ),
+          orientation: widget.orientation,
+          onOrientationChanged: widget.onOrientationChanged,
+          pixelsPerFrame: pixelsPerFrame,
+          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+          showSeconds: widget.showSeconds,
+          onShowSecondsChanged: widget.onShowSecondsChanged,
+          projectFps: _session.projectFps,
+          expandedLaneLayerIds: widget.expandedLaneLayerIds,
+          onToggleLayerLanes: widget.onToggleLayerLanes,
+          hiddenSections: widget.hiddenSections,
+          onToggleSection: widget.onToggleSection,
+          rowFilter: widget.rowFilter,
+          onSetRowFilter: widget.onSetRowFilter,
+          visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+          // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
+          // channel live; at rest the bar shows the last committed value.
+          opacityDragPreview: _session.opacityDragPreview,
+          masterOpacityValue: _session.lastMasterOpacity,
+          // The rail legend's bulk sweeps + the section brackets' flyout —
+          // all session-backed (R-toolbar round); the R2 filter/dim/opacity
+          // facets ride the same struct.
+          legend: LayerLegendCallbacks(
+            onShowAllLayers: () => _session.setAllLayersVisibility(true),
+            onHideAllLayers: () => _session.setAllLayersVisibility(false),
+            onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
+            onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
+            onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
+            onClearAllMarks: _session.clearAllLayerMarks,
+            onClearAllFillReferences: _session.clearAllFillReferences,
+            onMuteAllSe: () => _session.setAllSeLayersMuted(true),
+            onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
+            onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
+            onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
+            onToggleMarkFilter: (mark) =>
+                widget.onSetRowFilter?.call(widget.rowFilter.toggledMark(mark)),
+            onToggleKindFilter: (kind) =>
+                widget.onSetRowFilter?.call(widget.rowFilter.toggledKind(kind)),
+            onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
+              widget.rowFilter.copyWith(
+                onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
+              ),
+            ),
+            onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
+              widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
+            ),
+            onToggleFillReferenceOnlyFilter: () => widget.onSetRowFilter?.call(
+              widget.rowFilter.copyWith(
+                fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
+              ),
+            ),
+            // The legend master bar (R4 #6): preview per move, one commit.
+            onPreviewLayersOpacity: _session.previewLayersOpacity,
+            onCommitLayersOpacity: _session.commitLayersOpacity,
+          ),
+          sectionRail: widget.onToggleSection == null
+              ? null
+              : TimelineSectionRailCallbacks(
+                  onToggleSection: widget.onToggleSection!,
+                  onAddLayerOfKind: _session.addLayerOfKind,
+                  onSetSectionLayersVisibility:
+                      _session.setSectionLayersVisibility,
+                  onSoloSection: _soloSection,
+                ),
+          lanesForLayer: _lanesForLayer,
+          laneEdit: _laneEdit,
+          // The Transform group header's twirl (AE collapse).
+          onToggleLaneGroup: widget.onToggleTransformGroup == null
+              ? null
+              : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
+          timelineActionToolbar: timelineToolbar,
+        );
+        final zoom = widget.pixelsPerFrameListenable;
+        if (zoom == null) {
+          return buildPanel(context, widget.pixelsPerFrame, null);
+        }
+        return ValueListenableBuilder<double>(
+          valueListenable: zoom,
+          builder: buildPanel,
+        );
+      },
+    );
+  }
+
+  /// Button enablement reads the playhead, and committed seeks are no
+  /// longer session notifies — the toolbar re-reads them here without
+  /// the panel (or its grids) rebuilding. TOKEN-GATED (R13-2): the
+  /// naive per-seek rebuild reconstructed the whole transport + ~25
+  /// Material buttons on every frame flip — measured on device as
+  /// the flip hitch. Seeks that land in the same enablement state
+  /// (almost all of them) now rebuild nothing.
+  Widget _buildTimelineToolbar() {
+    return _SeekGatedTimelineToolbar(
+      session: _session,
+      builder: (context) => Row(
+        children: [
+          PlaybackTransportControls(
+            controller: _session.playback,
+            scope: PlaybackScope.activeCut,
+            quality: _session.playbackQuality,
+            onQualityChanged: _session.setPlaybackQuality,
+            playbackStartFrame: () => _session.currentFrameIndex,
+          ),
+          Expanded(
+            child: TimelineActionToolbar(
+              session: _session,
+              onAddLayer: _session.addLayer,
+              onRenameLayer: _renameActiveLayer,
+              onDeleteLayer: _deleteActiveLayer,
+              onEditInstance: _editActiveInstance,
+              onCreateInstance: _createActiveInstance,
+              onImportAudio: _importAudio,
+              hiddenSections: widget.hiddenSections,
+              onToggleSection: widget.onToggleSection,
+            ),
+          ),
+        ],
       ),
     );
   }

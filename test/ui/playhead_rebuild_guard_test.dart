@@ -4,6 +4,7 @@ import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
 
@@ -65,6 +66,64 @@ void main() {
       identical(tester.widget(find.byType(TimelineActionToolbar)), before),
       isFalse,
       reason: 'enablement changes still refresh the toolbar',
+    );
+
+    // Drain the prerender scheduler's debounced warming.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a zoom step through the listenable reaches the panel but the '
+      'toolbar instance SURVIVES it (UI-R6 #4 zoom scoping)', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final zoom = ValueNotifier<double>(24);
+    addTearDown(zoom.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineTabHost(
+            session: session,
+            orientation: TimelineOrientation.horizontal,
+            onOrientationChanged: (_) {},
+            pixelsPerFrame: zoom.value,
+            pixelsPerFrameListenable: zoom,
+            onPixelsPerFrameChanged: (value) => zoom.value = value,
+            showSeconds: false,
+            onShowSecondsChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame,
+      24,
+    );
+    final toolbarBefore = tester.widget(find.byType(TimelineActionToolbar));
+
+    // A zoom step lands WITHOUT any host/workspace rebuild…
+    zoom.value = 48;
+    await tester.pump();
+
+    expect(
+      tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame,
+      48,
+      reason: 'the panel follows the zoom listenable',
+    );
+    // …and the hoisted toolbar widget is the IDENTICAL instance, so its
+    // transport + ~25 buttons skip rebuilding on every zoom step.
+    expect(
+      identical(
+        tester.widget(find.byType(TimelineActionToolbar)),
+        toolbarBefore,
+      ),
+      isTrue,
+      reason: 'zoom steps must not reconstruct the toolbar',
     );
 
     // Drain the prerender scheduler's debounced warming.

@@ -81,6 +81,8 @@ import 'audio/audio_peaks_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/layer_timeline_display_adapter.dart'
+    show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
@@ -1815,9 +1817,14 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
+  /// The master bar's LAST committed value — the bar rests on this, not a
+  /// live average (UI-R6 #2).
+  double lastMasterOpacity = 1.0;
+
   void commitLayersOpacity(Set<LayerId> layerIds, double opacity) {
     opacityDragPreview.value = null;
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    lastMasterOpacity = clamped;
     for (final layer in layers) {
       if (layerIds.contains(layer.id) &&
           layer.kind != LayerKind.camera &&
@@ -1826,6 +1833,37 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
+  /// selection moves to the nearest PASSING layer ABOVE it on screen
+  /// (horizontal display order), falling back to the first passing layer.
+  void moveSelectionToFilteredLayer(bool Function(Layer layer) passes) {
+    final active = activeLayer;
+    if (active == null || passes(active)) {
+      return;
+    }
+    final display = horizontalLayerDisplayOrder(layers);
+    final activeIndex = display.indexWhere((layer) => layer.id == active.id);
+    Layer? target;
+    // Screen-up = earlier in horizontal display order.
+    for (var index = activeIndex - 1; index >= 0; index -= 1) {
+      if (passes(display[index])) {
+        target = display[index];
+        break;
+      }
+    }
+    if (target == null) {
+      for (final layer in display) {
+        if (passes(layer)) {
+          target = layer;
+          break;
+        }
+      }
+    }
+    if (target != null) {
+      selectLayer(target.id);
+    }
   }
 
   /// Flips whether [layerId] is recorded on the timesheet output. One undo

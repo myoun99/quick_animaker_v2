@@ -459,6 +459,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 onPreviewLayersOpacity: _session.previewLayersOpacity,
                 onCommitLayersOpacity: _session.commitLayersOpacity,
               ),
+              // Master-bar drags (UI-R6 #2): S-row sliders follow the
+              // preview channel live; the bar rests on the last committed
+              // value instead of an average.
+              opacityDragPreview: _session.opacityDragPreview,
+              legendOpacityValue: _session.lastMasterOpacity,
               // V-row display toggles (R9): cut FX bypass + picture
               // eye — session view state the playback display reads.
               cutFxEnabledOf: _session.isCutFxEnabled,
