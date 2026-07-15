@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
@@ -304,6 +305,15 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
     await _ensureRowVisible(tester, _seLayerId);
+    // Zoom to classic 48px cells: a ONE-frame span at the slim 24px default
+    // is narrower than the 32px name-box drop threshold (the overflow
+    // invariant), and this test reads the name box.
+    tester
+        .widget<FieldSlider>(
+          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+        )
+        .onChanged!(48);
+    await tester.pumpAndSettle();
 
     await _doubleTapCell(
       tester,

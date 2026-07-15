@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -66,7 +66,10 @@ import '../services/command.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
+import '../services/commands/update_layer_fill_reference_command.dart';
+import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
+import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
@@ -1511,10 +1514,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// kind, inserted directly above it, named by its section's own scheme
   /// (cel letters / S3 / CAM 2). The camera cannot be duplicated (exactly
   /// one per cut) — with it (or nothing) active, a default cel is added.
-  void addLayer() {
+  void addLayer() => addLayerOfKind(activeLayer?.kind ?? LayerKind.animation);
+
+  /// Kind-explicit Add Layer (the split button's ▾ list): the same naming
+  /// and insertion rules as [addLayer] with the requested kind.
+  void addLayerOfKind(LayerKind kind) {
     _layerSequence += 1;
     final layerId = defaultLayerIdForSequence(_layerSequence);
-    final kind = activeLayer?.kind ?? LayerKind.animation;
     switch (kind) {
       case LayerKind.se:
         // SE rows are track-owned: insert directly above the active SE row
@@ -1717,6 +1723,165 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       mark: mark,
     );
+    notifyListeners();
+  }
+
+  // --- Legend bulk commands (R-toolbar round) -----------------------------
+  //
+  // One legend-flyout action sweeps every eligible layer of the active cut.
+  // Semantics mirror the per-row toggles: visibility/mute/opacity ride the
+  // layer controller (view-ish state, not undoable — same as their single
+  // buttons), sheet/mark/fill-reference are undoable and land as ONE
+  // CompositeCommand entry.
+
+  /// Shows or hides every layer of the active cut.
+  void setAllLayersVisibility(bool visible) {
+    for (final layer in layers) {
+      if (layer.isVisible != visible) {
+        _layerController.toggleLayerVisibility(layer.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// TVPaint-style solo: only the ACTIVE layer stays visible.
+  void soloActiveLayerVisibility() {
+    final activeId = activeLayerId;
+    if (activeId == null) {
+      return;
+    }
+    for (final layer in layers) {
+      final shouldShow = layer.id == activeId;
+      if (layer.isVisible != shouldShow) {
+        _layerController.toggleLayerVisibility(layer.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Mutes/unmutes every SE layer of the active cut.
+  void setAllSeLayersMuted(bool muted) {
+    for (final layer in layers) {
+      if (layer.kind == LayerKind.se && layer.muted != muted) {
+        _layerController.toggleLayerMuted(layer.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Resets every opacity-bearing layer back to fully opaque. The camera
+  /// row's slider is the camera-view DIM (a host notifier), not layer
+  /// opacity — it stays untouched.
+  void resetAllLayersOpacity() {
+    for (final layer in layers) {
+      if (layer.kind != LayerKind.camera && layer.opacity != 1.0) {
+        _layerController.setLayerOpacity(layerId: layer.id, opacity: 1.0);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Turns the timesheet flag on/off for every eligible layer — one undo.
+  /// CUT-owned layers only: the per-layer commands resolve through the
+  /// cut-scoped [requireLayer], which track-owned SE rows are not in.
+  void setAllLayersOnTimesheet(bool onTimesheet) {
+    final cutId = _editingSession.activeCutId;
+    final commands = <Command>[
+      for (final layer in activeCut.layers)
+        if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
+          UpdateLayerTimesheetCommand(
+            repository: _repository,
+            cutId: cutId,
+            layerId: layer.id,
+            onTimesheet: onTimesheet,
+          ),
+    ];
+    if (commands.isEmpty) {
+      return;
+    }
+    _historyManager.execute(
+      CompositeCommand(
+        description: onTimesheet
+            ? 'Add all layers to timesheet'
+            : 'Remove all layers from timesheet',
+        commands: commands,
+      ),
+    );
+    notifyListeners();
+  }
+
+  /// Clears every layer mark of the active cut — one undo (cut-owned
+  /// layers, like the sheet sweep).
+  void clearAllLayerMarks() {
+    final cutId = _editingSession.activeCutId;
+    final commands = <Command>[
+      for (final layer in activeCut.layers)
+        if (layer.mark != LayerMark.none)
+          UpdateLayerMarkCommand(
+            repository: _repository,
+            cutId: cutId,
+            layerId: layer.id,
+            mark: LayerMark.none,
+          ),
+    ];
+    if (commands.isEmpty) {
+      return;
+    }
+    _historyManager.execute(
+      CompositeCommand(
+        description: 'Clear all layer marks',
+        commands: commands,
+      ),
+    );
+    notifyListeners();
+  }
+
+  /// Drops the fill-reference flag from every layer — one undo (cut-owned
+  /// layers, like the sheet sweep).
+  void clearAllFillReferences() {
+    final cutId = _editingSession.activeCutId;
+    final commands = <Command>[
+      for (final layer in activeCut.layers)
+        if (layer.isFillReference)
+          UpdateLayerFillReferenceCommand(
+            repository: _repository,
+            cutId: cutId,
+            layerId: layer.id,
+            isFillReference: false,
+          ),
+    ];
+    if (commands.isEmpty) {
+      return;
+    }
+    _historyManager.execute(
+      CompositeCommand(
+        description: 'Clear all fill references',
+        commands: commands,
+      ),
+    );
+    notifyListeners();
+  }
+
+  /// Bypasses or restores EVERY layer's fx (session view state, like the
+  /// per-row switch).
+  void setAllLayersFxBypassed(bool bypassed) {
+    if (bypassed) {
+      _fxBypassedLayerIds.addAll(layers.map((layer) => layer.id));
+    } else {
+      _fxBypassedLayerIds.clear();
+    }
+    notifyListeners();
+  }
+
+  /// Shows/hides every layer belonging to [section] (the section bracket's
+  /// flyout) — visibility semantics like [setAllLayersVisibility].
+  void setSectionLayersVisibility(TimelineSection section, bool visible) {
+    for (final layer in layers) {
+      if (timelineSectionForLayerKind(layer.kind) == section &&
+          layer.isVisible != visible) {
+        _layerController.toggleLayerVisibility(layer.id);
+      }
+    }
     notifyListeners();
   }
 

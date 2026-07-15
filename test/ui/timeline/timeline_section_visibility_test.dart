@@ -14,6 +14,8 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
 
+import '../flyout_test_helpers.dart';
+
 Layer _layer(String id, LayerKind kind) {
   return Layer(
     id: LayerId(id),
@@ -63,10 +65,11 @@ Future<void> _pump(WidgetTester tester) async {
 Finder _row(String layerId) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$layerId'));
 
-Future<void> _toggleSection(WidgetTester tester, String buttonKey) async {
-  await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
-  await tester.pumpAndSettle();
-}
+// Menu-aware (R-toolbar round): the section show/hide items live in the
+// Layer ▾ flyout (both orientations); the horizontal rail additionally
+// folds via the gutter chevrons — pinned separately below.
+Future<void> _toggleSection(WidgetTester tester, String buttonKey) =>
+    tapCommandButton(tester, ValueKey<String>(buttonKey));
 
 void main() {
   group('buildTimelineDisplayRows hiddenSections', () {

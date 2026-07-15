@@ -10,8 +10,10 @@ class TimelineGridMetrics {
     // 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
     // controls need the width, cramming them under 288 overflowed.
     this.layerControlsWidth = 312,
-    this.frameCellWidth = 48,
-    this.layerRowHeight = 52,
+    // 48×52 → 24×28 (R-toolbar slim round, CSP/TVPaint density): the frame
+    // shell reads twice as many cells and rows in the same viewport.
+    this.frameCellWidth = 24,
+    this.layerRowHeight = 28,
     this.verticalScrollbarWidth = 14,
     this.sectionLabelGutterWidth = 24,
   }) : assert(minimumVisibleFrameCells >= 0),
@@ -37,19 +39,20 @@ class TimelineGridMetrics {
   }
 
   /// Frame-number label cadence for the header/rail: every frame when cells
-  /// are wide, every Nth (nice animation steps) when they are narrow, so
-  /// labels never crowd or overflow.
+  /// are wide enough, then the paper-timesheet ladder anchored at frame 1
+  /// (user rule): 3f (1,4,7,…) → 6f (1,7,13,…) → 12f (1,13,25) → 24f
+  /// (1,25) → doubling on. Labels never crowd or overflow.
   int get frameLabelEveryFrames {
-    if (frameCellWidth >= 28) {
+    if (frameCellWidth >= 20) {
       return 1;
     }
-    const niceSteps = [2, 3, 4, 6, 12, 24, 48, 96];
-    for (final step in niceSteps) {
-      if (frameCellWidth * step >= 40) {
-        return step;
+    const strideLadder = [3, 6, 12, 24, 48, 96];
+    for (final stride in strideLadder) {
+      if (frameCellWidth * stride >= 40) {
+        return stride;
       }
     }
-    return niceSteps.last;
+    return strideLadder.last;
   }
 
   /// Minimum frame cells kept visible even when the cut has fewer frames.

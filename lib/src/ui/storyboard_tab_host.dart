@@ -7,9 +7,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/transform_track.dart';
-import 'cut/cut_note_dialog.dart';
-import 'dialogs/canvas_size_dialog.dart';
-import 'dialogs/rename_cut_dialog.dart';
+import 'cut_command_group.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
@@ -20,10 +18,8 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
-import 'timeline/timeline_frame_range_policy.dart' show timelineSecondsLabel;
-import 'timeline/timeline_panel.dart' show TimelinePanel;
+import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
-import 'widgets/field_slider.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -273,102 +269,44 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.updateLayerTransformTrack(layerId, next, description: description);
   }
 
-  Future<void> _editActiveCutNote() async {
-    final initialNote = _session.activeCutNote;
-    if (initialNote == null) {
-      return;
-    }
-
-    final nextNote = await showDialog<String>(
-      context: context,
-      builder: (context) => CutNoteDialog(initialNote: initialNote),
-    );
-    if (!mounted || nextNote == null) {
-      return;
-    }
-
-    _session.updateActiveCutNote(nextNote);
-  }
-
-  Future<void> _renameActiveCut() async {
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          RenameCutDialog(initialName: _session.activeCut.name),
-    );
-    if (!mounted || nextName == null || nextName.trim().isEmpty) {
-      return;
-    }
-
-    _session.renameActiveCut(nextName);
-  }
-
-  Future<void> _resizeActiveCutCanvas() async {
-    final request = await showDialog<CanvasResizeRequest>(
-      context: context,
-      builder: (context) =>
-          CanvasSizeDialog(initialSize: _session.activeCut.canvasSize),
-    );
-    if (!mounted || request == null) {
-      return;
-    }
-
-    _session.resizeActiveCutCanvas(request.size, anchor: request.anchor);
-  }
-
-  Widget _toolbarRow(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+  /// ONE command-bar row (timeline parity): transport + cut group left,
+  /// the shared view cluster pinned right.
+  Widget _commandBar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       child: Row(
         children: [
-          // The counter subscribes to the cursor itself (timeline parity):
-          // a scrub tick rebuilds this one Text, nothing else.
-          ValueListenableBuilder<int>(
-            valueListenable: _session.editingFrameCursor,
-            builder: (context, cursorFrame, _) => Text(
-              widget.showSeconds
-                  ? timelineSecondsLabel(cursorFrame + 1, _session.projectFps)
-                  : '${cursorFrame + 1}',
-              key: const ValueKey<String>('timeline-current-frame-counter'),
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.primary,
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PlaybackTransportControls(
+                    controller: _session.playback,
+                    scope: PlaybackScope.allCuts,
+                    quality: _session.playbackQuality,
+                    onQualityChanged: _session.setPlaybackQuality,
+                    // Play from the storyboard playhead, like the
+                    // timeline's transport does.
+                    playbackStartFrame: () =>
+                        storyboardPlayheadFrame(_session) ?? 0,
+                  ),
+                  const SizedBox(width: 8),
+                  CutCommandGroup(session: _session),
+                ],
               ),
             ),
           ),
-          const Spacer(),
-          IconButton(
-            key: const ValueKey<String>('timeline-time-display-toggle-button'),
-            tooltip: widget.showSeconds ? 'Show Frames' : 'Show Seconds',
-            onPressed: () => widget.onShowSecondsChanged(!widget.showSeconds),
-            icon: Icon(
-              widget.showSeconds ? Icons.timer : Icons.timer_outlined,
-              size: 18,
-            ),
+          const SizedBox(width: 8),
+          TimelineViewCluster(
+            frameCursor: _session.editingFrameCursor,
+            projectFps: _session.projectFps,
+            showSeconds: widget.showSeconds,
+            onShowSecondsChanged: widget.onShowSecondsChanged,
+            pixelsPerFrame: widget.pixelsPerFrame,
+            onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           ),
-          Icon(Icons.zoom_out, size: 16, color: colorScheme.onSurfaceVariant),
-          SizedBox(
-            width: 140,
-            child: FieldSlider(
-              key: const ValueKey<String>('timeline-zoom-slider'),
-              min: TimelinePanel.minPixelsPerFrame,
-              max: TimelinePanel.maxPixelsPerFrame,
-              value: widget.pixelsPerFrame.clamp(
-                TimelinePanel.minPixelsPerFrame,
-                TimelinePanel.maxPixelsPerFrame,
-              ),
-              // Zoom reads as percent of the default frame width.
-              valueText:
-                  '${(widget.pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
-              displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
-              height: 18,
-              onChanged: widget.onPixelsPerFrameChanged,
-            ),
-          ),
-          Icon(Icons.zoom_in, size: 16, color: colorScheme.onSurfaceVariant),
         ],
       ),
     );
@@ -388,16 +326,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _toolbarRow(context),
-          PlaybackTransportControls(
-            controller: _session.playback,
-            scope: PlaybackScope.allCuts,
-            quality: _session.playbackQuality,
-            onQualityChanged: _session.setPlaybackQuality,
-            // Play from the storyboard playhead, like the timeline's
-            // transport does.
-            playbackStartFrame: () => storyboardPlayheadFrame(_session) ?? 0,
-          ),
+          _commandBar(context),
           Expanded(
             // Edit drags (cut trims, SE comma drags) preview through the
             // session's scoped channel. The PANEL consumes it internally
@@ -530,21 +459,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               ),
               // The Audio lane's slide edit (active cut).
               onSetAudioClipOffset: _session.setAudioClipOffset,
-              onNewCut: _session.createCut,
-              onRenameActiveCut: _renameActiveCut,
-              onEditActiveCutNote: _editActiveCutNote,
-              onResizeActiveCutCanvas: _resizeActiveCutCanvas,
-              onDuplicateActiveCut: _session.duplicateActiveCut,
-              onMoveActiveCutLeft: _session.canMoveActiveCutLeft
-                  ? _session.moveActiveCutLeft
-                  : null,
-              onMoveActiveCutRight: _session.canMoveActiveCutRight
-                  ? _session.moveActiveCutRight
-                  : null,
-              onDeleteActiveCut: _session.deleteActiveCut,
-              onToggleActiveCutThumbnail:
-                  _session.toggleActiveCutThumbnailFrame,
-              isThumbnailPinnedHere: _session.isActiveCutThumbnailPinnedHere,
             ),
           ),
         ],

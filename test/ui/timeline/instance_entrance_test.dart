@@ -16,6 +16,8 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import '../flyout_test_helpers.dart';
+
 /// Entrance unification: EVERY layer kind opens its instance editor on
 /// double-tap, and the toolbar Add / Edit Instance buttons dispatch by
 /// kind. Fixture: a drawing layer with a named 4-frame entry, an empty SE
@@ -211,13 +213,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-cam-0')));
     await tester.pumpAndSettle();
-    // The edit group sits deep in the horizontally scrolling toolbar.
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('rename-frame-button')),
+    // Edit Instance lives in the Frame ▾ flyout (R-toolbar round).
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('rename-frame-button'),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('rename-frame-button')));
-    await tester.pumpAndSettle();
 
     expect(find.text('Camera Keys — Frame 1'), findsOneWidget);
     await tester.tap(

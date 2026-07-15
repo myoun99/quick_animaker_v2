@@ -17,6 +17,12 @@ void main() {
           viewportHeight: 104,
           visibleFrameCount: 5,
           layerCount: 3,
+          // Explicit classic geometry: the oracle numbers below assume it
+          // (the slim default is pinned in timeline_grid_metrics_test).
+          metrics: const TimelineGridMetrics(
+            frameCellWidth: 48,
+            layerRowHeight: 52,
+          ),
           frameOverscanBefore: 0,
           frameOverscanAfter: 0,
           layerOverscanBefore: 0,
@@ -42,6 +48,10 @@ void main() {
           viewportHeight: 104,
           visibleFrameCount: 40,
           layerCount: 3,
+          metrics: const TimelineGridMetrics(
+            frameCellWidth: 48,
+            layerRowHeight: 52,
+          ),
           frameOverscanBefore: 0,
           frameOverscanAfter: 0,
           layerOverscanBefore: 0,
@@ -139,11 +149,16 @@ void main() {
       );
       final scrolled = calculateLayerTimelineGridVirtualizationPlan(
         horizontalScrollOffset: 0,
+        // 156 = 3 classic 52px rows — an exact row boundary.
         verticalScrollOffset: 156,
         viewportWidth: 96,
         viewportHeight: 104,
         visibleFrameCount: 50,
         layerCount: 20,
+        metrics: const TimelineGridMetrics(
+          frameCellWidth: 48,
+          layerRowHeight: 52,
+        ),
         layerOverscanBefore: 0,
         layerOverscanAfter: 0,
       );
@@ -169,6 +184,10 @@ void main() {
         viewportHeight: 104,
         visibleFrameCount: 100000,
         layerCount: 4,
+        metrics: const TimelineGridMetrics(
+          frameCellWidth: 48,
+          layerRowHeight: 52,
+        ),
         frameOverscanBefore: 2,
         frameOverscanAfter: 2,
       );

@@ -140,14 +140,17 @@ class _FrameHeader extends StatelessWidget {
         width: metrics.frameCellWidth,
         height: metrics.layerRowHeight,
         decoration: BoxDecoration(
-          color: selected
-              ? Color.alphaBlend(
-                  timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-                  colorScheme.surface,
-                )
-              : outsidePlaybackRange
-              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
-              : colorScheme.surface,
+          color: timelineFrameBandTint(
+            frameIndex,
+            selected
+                ? Color.alphaBlend(
+                    timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+                    colorScheme.surface,
+                  )
+                : outsidePlaybackRange
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+                : colorScheme.surface,
+          ),
           border: narrow
               ? Border(
                   bottom: BorderSide(color: borderColor),

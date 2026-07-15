@@ -16,6 +16,8 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import 'flyout_test_helpers.dart';
+
 const _deleteButtonKey = ValueKey<String>('delete-layer-button');
 const _dialogKey = ValueKey<String>('delete-layer-dialog');
 const _cancelButtonKey = ValueKey<String>('delete-layer-cancel-button');
@@ -35,29 +37,30 @@ const _layerCId = LayerId('layer-c');
 const _frameId = FrameId('frame-a');
 
 void main() {
-  testWidgets('Delete Layer button is visible', (tester) async {
+  testWidgets('Delete Layer lives in the Layer flyout', (tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
+    expect(find.byKey(_deleteButtonKey), findsNothing);
+    await openOwningFlyout(tester, _deleteButtonKey.value);
     expect(find.byKey(_deleteButtonKey), findsOneWidget);
-    expect(find.byTooltip('Delete Layer'), findsOneWidget);
+    await dismissFlyout(tester);
   });
 
-  testWidgets('Delete Layer button is disabled with one layer', (tester) async {
+  testWidgets('Delete Layer is disabled with one layer', (tester) async {
     await _pumpHome(
       tester,
       project: _project(layers: [_layerModel(_layerAId, 'A')]),
     );
 
-    expect(find.byKey(_deleteButtonKey), findsOneWidget);
-    expect(_isIconButtonEnabled(tester, _deleteButtonKey), isFalse);
+    expect(await readCommandEnabled(tester, _deleteButtonKey), isFalse);
   });
 
-  testWidgets('Delete Layer button is enabled with two or more layers', (
+  testWidgets('Delete Layer is enabled with two or more layers', (
     tester,
   ) async {
     await _pumpHome(tester);
 
-    expect(_isIconButtonEnabled(tester, _deleteButtonKey), isTrue);
+    expect(await readCommandEnabled(tester, _deleteButtonKey), isTrue);
   });
 
   testWidgets('confirmation dialog opens and cancel changes nothing', (
@@ -202,13 +205,10 @@ Future<void> _pumpHome(
   );
 }
 
-Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) async {
-  final finder = find.byKey(key);
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+// Menu-aware (R-toolbar round): the layer commands live in the Layer ▾
+// flyout; direct keys pass through unchanged.
+Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
+    tapCommandButton(tester, key);
 
 Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
   await _tapKey(tester, ValueKey<String>('timeline-layer-name-$layerId'));
@@ -218,10 +218,6 @@ Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
 Future<void> _deleteActiveLayer(WidgetTester tester) async {
   await _tapKey(tester, _deleteButtonKey);
   await _tapKey(tester, _confirmButtonKey);
-}
-
-bool _isIconButtonEnabled(WidgetTester tester, ValueKey<String> key) {
-  return tester.widget<IconButton>(find.byKey(key)).onPressed != null;
 }
 
 List<String> _layerNames(ProjectRepository repository) {

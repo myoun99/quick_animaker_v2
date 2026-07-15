@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -6,10 +7,48 @@ import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
+import 'ui/flyout_test_helpers.dart' show readCommandEnabled;
+
+/// R-toolbar round: these command keys moved from standalone toolbar
+/// buttons into the Layer ▾ / Frame ▾ / Cut ▾ flyouts (same key strings, now
+/// menu items). The tap helper stays menu-aware so call sites are unchanged.
+const Map<String, String> _flyoutOwnerByItemKey = {
+  'rename-layer-button': 'timeline-layer-menu-button',
+  'duplicate-layer-button': 'timeline-layer-menu-button',
+  'copy-layer-button': 'timeline-layer-menu-button',
+  'paste-layer-button': 'timeline-layer-menu-button',
+  'delete-layer-button': 'timeline-layer-menu-button',
+  'import-audio-button': 'timeline-layer-menu-button',
+  'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
+  'toggle-art-layer-button': 'timeline-layer-menu-button',
+  'toggle-se-section-button': 'timeline-layer-menu-button',
+  'toggle-camera-section-button': 'timeline-layer-menu-button',
+  'rename-frame-button': 'timeline-frame-menu-button',
+  'copy-frame-button': 'timeline-frame-menu-button',
+  'paste-linked-frame-button': 'timeline-frame-menu-button',
+  'delete-cell-button': 'timeline-frame-menu-button',
+  'rename-cut-button': 'cut-menu-button',
+  'edit-cut-note-button': 'cut-menu-button',
+  'resize-cut-canvas-button': 'cut-menu-button',
+  'duplicate-cut-button': 'cut-menu-button',
+  'set-cut-thumbnail-button': 'cut-menu-button',
+  'move-cut-left-button': 'cut-menu-button',
+  'move-cut-right-button': 'cut-menu-button',
+  'delete-cut-button': 'cut-menu-button',
+};
+
 Future<void> _tapToolbarButton(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
+  final owner = _flyoutOwnerByItemKey[key.value];
+  if (owner != null) {
+    final menuButton = find.byKey(ValueKey<String>(owner));
+    await tester.ensureVisible(menuButton);
+    await tester.pumpAndSettle();
+    await tester.tap(menuButton);
+    await tester.pumpAndSettle();
+  }
   final button = find.byKey(key);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
@@ -348,7 +387,15 @@ Future<void> _showTimelinePanel(WidgetTester tester) async {
   );
 }
 
-bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
+Future<bool> _isActionButtonEnabled(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  // Flyout-hosted commands (R-toolbar round) read their enablement off the
+  // menu item; direct buttons keep the widget check.
+  if (_flyoutOwnerByItemKey.containsKey(key.value)) {
+    return readCommandEnabled(tester, key);
+  }
   final button = find.byKey(key);
   final widget = tester.widget(button);
 
@@ -357,6 +404,35 @@ bool _isActionButtonEnabled(WidgetTester tester, ValueKey<String> key) {
     IconButton(:final onPressed) => onPressed != null,
     _ => _isDescendantIconButtonEnabled(tester, button),
   };
+}
+
+/// Exposure ± buttons are RETIRED (the block edge grips replaced them):
+/// lengthen a block by dragging its end grip [frames] slim 24px cells (the
+/// drag's 18px slop is consumed before frames count).
+Future<void> _dragBlockEndGrip(
+  WidgetTester tester,
+  String layerId,
+  int blockOrdinal,
+  int frames,
+) async {
+  // Scroll via the RAIL row — cell/grip-level ensureVisible would
+  // over-scroll the custom frame viewport (the comma-grip test's note).
+  // Half-cell overshoot keeps the rounding away from the exact boundary.
+  await tester.ensureVisible(
+    find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
+  );
+  await tester.pumpAndSettle();
+  final grip = find.byKey(
+    ValueKey<String>('timeline-block-edge-grip-end-$layerId-$blockOrdinal'),
+  );
+  expect(grip, findsOneWidget);
+  final gesture = await tester.startGesture(tester.getCenter(grip));
+  await gesture.moveBy(const Offset(19, 0));
+  await tester.pump();
+  await gesture.moveBy(Offset(frames * 24.0 + 11, 0));
+  await tester.pumpAndSettle();
+  await gesture.up();
+  await tester.pumpAndSettle();
 }
 
 bool _isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
@@ -392,20 +468,10 @@ Future<void> _tapCutCommandButton(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
-  // Cut management actions live in the storyboard panel's toolbar: enter
-  // storyboard mode, act, and return to the timeline the tests assume.
-  // When the action opened a dialog, stay put — switching modes would tap
-  // the modal barrier and dismiss it; the dialog helpers switch back after
-  // the dialog closes.
-  await _showStoryboardPanel(tester);
-  final button = find.byKey(key);
-  await tester.ensureVisible(button);
-  await tester.pumpAndSettle();
-  await tester.tap(button);
-  await tester.pumpAndSettle();
-  if (find.byType(Dialog).evaluate().isEmpty) {
-    await _showTimelinePanel(tester);
-  }
+  // R-toolbar round: the cut command group rides BOTH tab toolbars, so no
+  // mode switching is needed — the split new-cut button is direct and the
+  // rest are Cut ▾ flyout items (the menu-aware helper handles both).
+  await _tapToolbarButton(tester, key);
 }
 
 Future<void> _tapTopBarButton(WidgetTester tester, ValueKey<String> key) async {
@@ -425,18 +491,16 @@ Future<void> _tapRedoButton(WidgetTester tester) async {
 }
 
 void _expectTimelineActionTooltips() {
+  // Direct icons only (R-toolbar round) — the rest moved into the Layer ▾ /
+  // Frame ▾ flyouts, and the exposure ± buttons are GONE (edge grips).
   expect(find.byTooltip('Add'), findsOneWidget);
   expect(find.byTooltip('Blank / X'), findsOneWidget);
   expect(find.byTooltip('Mark ●'), findsOneWidget);
-  expect(find.byTooltip('Copy Frame'), findsOneWidget);
-  expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
-  expect(find.byTooltip('Edit Instance'), findsOneWidget);
-  expect(find.byTooltip('Delete Cell'), findsOneWidget);
-  expect(find.byTooltip('Decrease Exposure'), findsOneWidget);
-  expect(find.byTooltip('Increase Exposure'), findsOneWidget);
+  expect(find.byTooltip('Decrease Exposure'), findsNothing);
+  expect(find.byTooltip('Increase Exposure'), findsNothing);
 }
 
-void _expectTimelineActionKeys() {
+Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
   expect(
     find.byKey(const ValueKey<String>('new-frame-button')),
     findsOneWidget,
@@ -449,6 +513,11 @@ void _expectTimelineActionKeys() {
     find.byKey(const ValueKey<String>('toggle-mark-button')),
     findsOneWidget,
   );
+  // The frame commands live inside the Frame ▾ flyout now.
+  await tester.tap(
+    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+  );
+  await tester.pumpAndSettle();
   expect(
     find.byKey(const ValueKey<String>('copy-frame-button')),
     findsOneWidget,
@@ -465,14 +534,17 @@ void _expectTimelineActionKeys() {
     find.byKey(const ValueKey<String>('delete-cell-button')),
     findsOneWidget,
   );
+  // The exposure ± buttons are gone outright (edge grips replaced them).
   expect(
     find.byKey(const ValueKey<String>('decrease-exposure-button')),
-    findsOneWidget,
+    findsNothing,
   );
   expect(
     find.byKey(const ValueKey<String>('increase-exposure-button')),
-    findsOneWidget,
+    findsNothing,
   );
+  await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -490,16 +562,28 @@ void main() {
     await _expectActiveCutName(tester, 'Cut 1');
     expect(find.text('New Drawing'), findsNothing);
 
-    // Cut management actions live in the storyboard panel's toolbar.
-    await _showStoryboardPanel(tester);
-    expect(find.byTooltip('New Cut'), findsOneWidget);
-    expect(find.byTooltip('Rename Cut'), findsOneWidget);
-    expect(find.byTooltip('Edit Cut Note'), findsOneWidget);
-    expect(find.byTooltip('Canvas Size'), findsOneWidget);
-    expect(find.byTooltip('Duplicate Cut'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
-    expect(find.byTooltip('Delete Cut'), findsOneWidget);
+    // Cut management rides the toolbar's cut group (R-toolbar round): a
+    // split new-cut button plus the Cut ▾ flyout with the command set.
+    expect(find.byTooltip('New cut'), findsOneWidget);
+    final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
+    await tester.ensureVisible(cutMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(cutMenu);
+    await tester.pumpAndSettle();
+    for (final item in [
+      'rename-cut-button',
+      'edit-cut-note-button',
+      'resize-cut-canvas-button',
+      'duplicate-cut-button',
+      'set-cut-thumbnail-button',
+      'move-cut-left-button',
+      'move-cut-right-button',
+      'delete-cut-button',
+    ]) {
+      expect(find.byKey(ValueKey<String>(item)), findsOneWidget);
+    }
+    await tester.tapAt(const Offset(5, 400));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('default sample cut duration is 24 frames', (
@@ -509,10 +593,11 @@ void main() {
 
     // The bottom dock runs between the two vertical tool bars, so the
     // grid viewport is 88px narrower than the window — scroll far enough
-    // for the cut's last frame header to materialize.
+    // for the cut's last frame header to materialize (24px slim cells:
+    // don't overshoot past it either).
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-      const Offset(-700, 0),
+      const Offset(-350, 0),
     );
     await tester.pumpAndSettle();
 
@@ -559,7 +644,8 @@ void main() {
     final header0 = find.byKey(
       const ValueKey<String>('timeline-frame-header-0'),
     );
-    expect(tester.getSize(header0).width, 48);
+    // 24 at 100% — the slim default (R-toolbar round).
+    expect(tester.getSize(header0).width, 24);
     // Wide cells label every frame in-cell.
     expect(
       find.descendant(of: header0, matching: find.text('1')),
@@ -578,8 +664,8 @@ void main() {
     await zoomTo(72);
     expect(tester.getSize(header0).width, 72);
 
-    await zoomTo(24);
-    expect(tester.getSize(header0).width, 24);
+    await zoomTo(12);
+    expect(tester.getSize(header0).width, 12);
     // Narrow cells move their labels to the every-Nth overlay: no in-cell
     // texts anywhere in the header cells.
     expect(
@@ -600,14 +686,15 @@ void main() {
     final row0 = find.byKey(const ValueKey<String>('xsheet-frame-row-0'));
     expect(tester.getSize(row0).height, 36);
 
-    // The X-sheet row height tracks the slider proportionally (36 at 48).
+    // The X-sheet row height tracks the slider proportionally (36 at the
+    // slim default 24, ratio 1.5).
     tester
         .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
         .onChanged!(72);
     await tester.pumpAndSettle();
-    expect(tester.getSize(row0).height, 54);
+    expect(tester.getSize(row0).height, 108);
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (
@@ -702,8 +789,22 @@ void main() {
     await _showStoryboardPanel(tester);
 
     expect(find.byTooltip('Reorder Cut'), findsNothing);
-    expect(find.byTooltip('Move Cut Left'), findsOneWidget);
-    expect(find.byTooltip('Move Cut Right'), findsOneWidget);
+    // Move commands live in the Cut ▾ flyout (R-toolbar round).
+    final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
+    await tester.ensureVisible(cutMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(cutMenu);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('move-cut-left-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('move-cut-right-button')),
+      findsOneWidget,
+    );
+    await tester.tapAt(const Offset(5, 400));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Linked Cut'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('cut-reorder-button')),
@@ -855,14 +956,14 @@ void main() {
     await _showStoryboardPanel(tester);
 
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('move-cut-left-button'),
       ),
       isFalse,
     );
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('move-cut-right-button'),
       ),
@@ -872,14 +973,14 @@ void main() {
     await _switchToCut(tester, 'cut-1');
 
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('move-cut-left-button'),
       ),
       isTrue,
     );
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('move-cut-right-button'),
       ),
@@ -1137,7 +1238,10 @@ Line 8''';
       expect(await _currentCutNoteFromDialog(tester), '');
       await _expectActiveCutName(tester, 'Cut 1');
       expect(
-        _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
+        await _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('undo-button'),
+        ),
         isFalse,
       );
     },
@@ -1155,7 +1259,10 @@ Line 8''';
     expect(find.text('Edit Cut Note'), findsNothing);
     expect(await _currentCutNoteFromDialog(tester), '');
     expect(
-      _isActionButtonEnabled(tester, const ValueKey<String>('undo-button')),
+      await _isActionButtonEnabled(
+        tester,
+        const ValueKey<String>('undo-button'),
+      ),
       isFalse,
     );
     await _expectActiveCutName(tester, 'Cut 1');
@@ -1705,10 +1812,7 @@ Line 8''';
     await _switchToCut(tester, 'cut-1');
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('increase-exposure-button'),
-    );
+    await _dragBlockEndGrip(tester, 'layer-1', 0, 1);
 
     await _tapTimelineCell(
       tester,
@@ -1773,11 +1877,11 @@ Line 8''';
       expect(startGripB, findsOneWidget);
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
-      // with B's comma preserved.
+      // with B's comma preserved (24px slim cells; 18px slop first).
       final gesture = await tester.startGesture(tester.getCenter(endGrip));
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
-      await gesture.moveBy(const Offset(144, 0));
+      await gesture.moveBy(const Offset(71, 0));
       await tester.pumpAndSettle();
       await gesture.up();
       await tester.pumpAndSettle();
@@ -1798,9 +1902,9 @@ Line 8''';
       final frontDrag = await tester.startGesture(tester.getCenter(startGripB));
       await frontDrag.moveBy(const Offset(-19, 0));
       await tester.pump();
-      await frontDrag.moveBy(const Offset(-48, 0));
+      await frontDrag.moveBy(const Offset(-24, 0));
       await tester.pumpAndSettle();
-      await frontDrag.moveBy(const Offset(-48, 0));
+      await frontDrag.moveBy(const Offset(-24, 0));
       await tester.pumpAndSettle();
       await frontDrag.up();
       await tester.pumpAndSettle();
@@ -1831,7 +1935,7 @@ Line 8''';
 
       await _expectActiveCutName(tester, 'New Cut');
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('paste-linked-frame-button'),
         ),
@@ -1844,7 +1948,7 @@ Line 8''';
       );
 
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('paste-linked-frame-button'),
         ),
@@ -1897,26 +2001,33 @@ Line 8''';
       ),
       findsOneWidget,
     );
-    _expectTimelineActionKeys();
     _expectTimelineActionTooltips();
+    await _expectTimelineActionKeys(tester);
+    // Two groups now (R-toolbar round): layer commands (split add + Layer ▾)
+    // and the frame trio + Frame ▾; the copy/edit/exposure groups folded
+    // into the flyouts or retired.
     expect(
       find.byKey(const ValueKey<String>('timeline-toolbar-layer-group')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-toolbar-create-group')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-toolbar-copy-group')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-toolbar-edit-group')),
+      find.byKey(const ValueKey<String>('timeline-toolbar-frame-group')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-toolbar-exposure-group')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-menu-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cut-menu-button')),
       findsOneWidget,
     );
   });
@@ -1972,13 +2083,10 @@ Line 8''';
 
       expect(_selectedCellStateLabel(tester), 'drawing start');
 
-      final renameButton = find.byKey(
+      await _tapToolbarButton(
+        tester,
         const ValueKey<String>('rename-frame-button'),
       );
-      await tester.ensureVisible(renameButton);
-      await tester.pumpAndSettle();
-      await tester.tap(renameButton);
-      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey<String>('rename-frame-text-field')),
         'A1',
@@ -1992,10 +2100,7 @@ Line 8''';
 
       // Marks live on held/empty cells (never on a drawing start): hold the
       // block one frame longer, then mark the held cell.
-      await _tapToolbarButton(
-        tester,
-        const ValueKey<String>('increase-exposure-button'),
-      );
+      await _dragBlockEndGrip(tester, 'default-layer-1', 0, 1);
       await _tapTimelineCell(
         tester,
         const ValueKey<String>('timeline-cell-default-layer-1-1'),
@@ -2014,16 +2119,10 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    final deleteButton = find.byKey(
-      const ValueKey<String>('delete-cell-button'),
-    );
-    final renameButton = find.byKey(
-      const ValueKey<String>('rename-frame-button'),
-    );
-    expect(deleteButton, findsOneWidget);
-    expect(renameButton, findsOneWidget);
+    // delete/rename live in the Frame ▾ flyout now; enablement reads open
+    // the menu themselves.
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('delete-cell-button'),
       ),
@@ -2037,7 +2136,7 @@ Line 8''';
     _expectCurrentFrame(tester, 2);
     expect(_selectedCellStateLabel(tester), isNull);
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('delete-cell-button'),
       ),
@@ -2056,7 +2155,7 @@ Line 8''';
     await tester.tap(newFrameButton);
     await tester.pumpAndSettle();
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('delete-cell-button'),
       ),
@@ -2064,14 +2163,7 @@ Line 8''';
     );
 
     // Hold the block across frames 1-3, then cut the hold at frame 3.
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('increase-exposure-button'),
-    );
-    await _tapToolbarButton(
-      tester,
-      const ValueKey<String>('increase-exposure-button'),
-    );
+    await _dragBlockEndGrip(tester, 'default-layer-1', 0, 2);
     await _tapTimelineCell(
       tester,
       const ValueKey<String>('timeline-cell-default-layer-1-2'),
@@ -2091,14 +2183,14 @@ Line 8''';
     );
     expect(_selectedCellStateLabel(tester), 'held exposure');
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('delete-cell-button'),
       ),
       isFalse,
     );
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('rename-frame-button'),
       ),
@@ -2191,12 +2283,6 @@ Line 8''';
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
-      final renameButton = find.byKey(
-        const ValueKey<String>('rename-frame-button'),
-      );
-      final deleteButton = find.byKey(
-        const ValueKey<String>('delete-cell-button'),
-      );
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),
       );
@@ -2204,17 +2290,15 @@ Line 8''';
         const ValueKey<String>('toggle-mark-button'),
       );
 
-      expect(renameButton, findsOneWidget);
-      expect(deleteButton, findsOneWidget);
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('rename-frame-button'),
         ),
         isFalse,
       );
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('delete-cell-button'),
         ),
@@ -2227,16 +2311,16 @@ Line 8''';
       await tester.pumpAndSettle();
 
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('rename-frame-button'),
         ),
         isTrue,
       );
-      await tester.ensureVisible(renameButton);
-      await tester.pumpAndSettle();
-      await tester.tap(renameButton);
-      await tester.pumpAndSettle();
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('rename-frame-button'),
+      );
 
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(
@@ -2264,7 +2348,7 @@ Line 8''';
       // Marks live on held/empty cells only; on a drawing start the mark
       // button is disabled under the unified model.
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('toggle-mark-button'),
         ),
@@ -2273,16 +2357,16 @@ Line 8''';
       expect(markButton, findsOneWidget);
 
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('delete-cell-button'),
         ),
         isTrue,
       );
-      await tester.ensureVisible(deleteButton);
-      await tester.pumpAndSettle();
-      await tester.tap(deleteButton);
-      await tester.pumpAndSettle();
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('delete-cell-button'),
+      );
       expect(
         find.descendant(of: layer1FirstCell, matching: find.text('A1')),
         findsNothing,
@@ -2292,14 +2376,14 @@ Line 8''';
         findsNothing,
       );
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('rename-frame-button'),
         ),
         isFalse,
       );
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('delete-cell-button'),
         ),
@@ -2413,18 +2497,15 @@ Line 8''';
     final newFrameButton = find.byKey(
       const ValueKey<String>('new-frame-button'),
     );
-    final renameButton = find.byKey(
-      const ValueKey<String>('rename-frame-button'),
-    );
 
     await tester.ensureVisible(newFrameButton);
     await tester.pumpAndSettle();
     await tester.tap(newFrameButton);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(renameButton);
-    await tester.pumpAndSettle();
-    await tester.tap(renameButton);
-    await tester.pumpAndSettle();
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('rename-frame-button'),
+    );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-frame-text-field')),
       'Cancelled',
@@ -2449,23 +2530,17 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    final copyButton = find.byKey(const ValueKey<String>('copy-frame-button'));
-    final pasteButton = find.byKey(
-      const ValueKey<String>('paste-linked-frame-button'),
-    );
-    expect(copyButton, findsOneWidget);
-    expect(pasteButton, findsOneWidget);
-    expect(find.byTooltip('Copy Frame'), findsOneWidget);
-    expect(find.byTooltip('Paste Linked Frame'), findsOneWidget);
+    // Copy/paste-linked live in the Frame ▾ flyout (R-toolbar round);
+    // enablement reads open the menu themselves.
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('copy-frame-button'),
       ),
       isFalse,
     );
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('paste-linked-frame-button'),
       ),
@@ -2475,7 +2550,7 @@ Line 8''';
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('copy-frame-button'),
       ),
@@ -2487,7 +2562,7 @@ Line 8''';
       const ValueKey<String>('copy-frame-button'),
     );
     expect(
-      _isActionButtonEnabled(
+      await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('paste-linked-frame-button'),
       ),
@@ -2540,7 +2615,7 @@ Line 8''';
         const ValueKey<String>('timeline-cell-default-layer-2-0'),
       );
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('paste-linked-frame-button'),
         ),
@@ -2594,17 +2669,21 @@ Line 8''';
     const copyKey = ValueKey<String>('copy-layer-button');
     const pasteKey = ValueKey<String>('paste-layer-button');
 
-    expect(find.byKey(copyKey), findsOneWidget);
-    expect(find.byTooltip('Copy Layer'), findsOneWidget);
-    expect(find.byKey(pasteKey), findsOneWidget);
-    expect(find.byTooltip('Paste Layer'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, copyKey), isTrue);
-    expect(_isActionButtonEnabled(tester, pasteKey), isFalse);
+    // Copy/paste live in the Layer ▾ flyout (R-toolbar round); the paste
+    // item's LABEL carries the clipboard name.
+    expect(await _isActionButtonEnabled(tester, copyKey), isTrue);
+    expect(await _isActionButtonEnabled(tester, pasteKey), isFalse);
 
     await _tapToolbarButton(tester, copyKey);
 
-    expect(find.byTooltip('Paste Layer (A)'), findsOneWidget);
-    expect(_isActionButtonEnabled(tester, pasteKey), isTrue);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Paste layer (A)'), findsOneWidget);
+    await tester.tapAt(const Offset(5, 400));
+    await tester.pumpAndSettle();
+    expect(await _isActionButtonEnabled(tester, pasteKey), isTrue);
   });
 
   testWidgets(
@@ -2692,12 +2771,8 @@ Line 8''';
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
-      final duplicateButton = find.byKey(
-        const ValueKey<String>('duplicate-layer-button'),
-      );
-      expect(duplicateButton, findsOneWidget);
       expect(
-        _isActionButtonEnabled(
+        await _isActionButtonEnabled(
           tester,
           const ValueKey<String>('duplicate-layer-button'),
         ),

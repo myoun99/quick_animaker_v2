@@ -11,9 +11,19 @@ import '../theme/app_theme.dart';
 /// ('timeline' | 'xsheet') so tests address each surface.
 
 /// Slot widths — non-eligible rows reserve the same space so kind icons and
-/// names stay column-aligned across rows.
-const double layerTimesheetSlotWidth = 24;
+/// names stay column-aligned across rows, and the rail's legend header
+/// (R-toolbar round) lines its column icons up over these exact slots.
+/// EVERY kind reserves EVERY slot (Excel-grid rule): slimmed from the old
+/// 24/26/86 so the full set still fits the 312 rail.
+const double layerTimesheetSlotWidth = 20;
 const double layerMarkSlotWidth = 14;
+const double layerLaneToggleSlotWidth = 16;
+const double layerFillReferenceSlotWidth = 22;
+const double layerFxSlotWidth = 22;
+const double layerVisibilitySlotWidth = 22;
+const double layerMuteSlotWidth = 18;
+const double layerOpacitySlotWidth = 64;
+const double layerControlChipGap = 4;
 
 /// Every layer kind carries the timesheet-output toggle — one entrance for
 /// every row (unified layer controls, user rule): cel/art/SE gate their
@@ -58,13 +68,16 @@ class LayerFxToggleButton extends StatelessWidget {
     // to the 48px minimum tap target and overflows the row (same gotcha as
     // the timesheet toggle).
     return SizedBox(
-      width: 26,
+      width: layerFxSlotWidth,
       height: 26,
       child: IconButton(
         key: ValueKey<String>('$keyPrefix-layer-fx-$layerId'),
         tooltip: fxEnabled ? 'Bypass layer FX' : 'Apply layer FX',
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+        constraints: const BoxConstraints.tightFor(
+          width: layerFxSlotWidth,
+          height: 26,
+        ),
         icon: Text(
           'fx',
           style: TextStyle(

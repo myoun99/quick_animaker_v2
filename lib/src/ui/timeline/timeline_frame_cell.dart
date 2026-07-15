@@ -85,12 +85,15 @@ class TimelineFrameCell extends StatelessWidget {
       active: active,
       selected: false,
     );
-    final backgroundColor = outsidePlaybackRange
-        ? Color.alphaBlend(
-            colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-            styleColors.background,
-          )
-        : styleColors.background;
+    final backgroundColor = timelineFrameBandTint(
+      frameIndex,
+      outsidePlaybackRange
+          ? Color.alphaBlend(
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+              styleColors.background,
+            )
+          : styleColors.background,
+    );
     final borderColor = outsidePlaybackRange
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),

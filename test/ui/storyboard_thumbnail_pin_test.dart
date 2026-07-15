@@ -124,8 +124,10 @@ void main() {
     });
   });
 
-  group('storyboard toolbar button', () {
-    testWidgets('toggles the pin and reflects it in the icon', (tester) async {
+  group('storyboard Cut flyout (R-toolbar round)', () {
+    testWidgets('toggles the pin and reflects it in the item icon', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: createDefaultProject())),
       );
@@ -136,33 +138,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final button = find.byKey(
+      final menuButton = find.byKey(const ValueKey<String>('cut-menu-button'));
+      final item = find.byKey(
         const ValueKey<String>('set-cut-thumbnail-button'),
       );
-      expect(button, findsOneWidget);
+
+      Future<void> openMenu() async {
+        await tester.tap(menuButton);
+        await tester.pumpAndSettle();
+      }
+
+      await openMenu();
+      expect(item, findsOneWidget);
       expect(
-        find.descendant(of: button, matching: find.byIcon(Icons.image)),
+        find.descendant(of: item, matching: find.byIcon(Icons.image)),
         findsNothing,
       );
 
-      await tester.tap(button);
+      await tester.tap(item);
       await tester.pumpAndSettle();
+      await openMenu();
       expect(
-        find.descendant(of: button, matching: find.byIcon(Icons.image)),
+        find.descendant(of: item, matching: find.byIcon(Icons.image)),
         findsOneWidget,
         reason: 'pinned at the playhead frame: filled icon',
       );
 
-      await tester.tap(button);
+      await tester.tap(item);
       await tester.pumpAndSettle();
+      await openMenu();
       expect(
-        find.descendant(
-          of: button,
-          matching: find.byIcon(Icons.image_outlined),
-        ),
+        find.descendant(of: item, matching: find.byIcon(Icons.image_outlined)),
         findsOneWidget,
         reason: 'pressing on the pinned frame releases the pin',
       );
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
     });
   });
 }

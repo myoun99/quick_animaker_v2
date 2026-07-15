@@ -20,10 +20,13 @@ void main() {
 
     expect(find.byType(TimelinePanel), findsOneWidget);
     expect(find.byType(LayerTimelineGrid), findsOneWidget);
+    // Add-layer moved to the HOST toolbar (R-toolbar round); the panel's
+    // own entrance is the rail legend.
     expect(
       find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.byKey(const ValueKey<String>('legend-layer')), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
       findsOneWidget,
@@ -39,7 +42,7 @@ void main() {
     expect(find.byType(XSheetTimelineGrid), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
@@ -219,13 +222,16 @@ void main() {
     expect(selectedOrientation, TimelineOrientation.vertical);
   });
 
-  testWidgets('add layer callback is forwarded', (tester) async {
+  testWidgets('add layer callback is forwarded via the rail legend', (
+    tester,
+  ) async {
     var called = false;
 
     await tester.pumpWidget(_panel(onAddLayer: () => called = true));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
+    await tester.pumpAndSettle();
 
     expect(called, isTrue);
   });

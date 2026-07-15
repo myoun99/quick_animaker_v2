@@ -11,24 +11,39 @@ import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
 void main() {
   group('TimelineLayerControlsHeader', () {
-    testWidgets('exposes the stable add layer button key', (tester) async {
+    testWidgets('the wide add-layer button is GONE — the header is the legend '
+        '(R-toolbar round) with the column cells exposed by key', (
+      tester,
+    ) async {
       await tester.pumpWidget(_header(onAddLayer: () {}));
 
       expect(
         find.byKey(const ValueKey<String>('timeline-add-layer-button')),
-        findsOneWidget,
+        findsNothing,
       );
+      for (final cell in [
+        'legend-sections',
+        'legend-sheet',
+        'legend-mark',
+        'legend-layer',
+        'legend-fill-ref',
+        'legend-fx',
+        'legend-eye',
+        'legend-mute',
+        'legend-opacity',
+      ]) {
+        expect(find.byKey(ValueKey<String>(cell)), findsOneWidget);
+      }
     });
 
-    testWidgets('tapping add layer button invokes callback once', (
-      tester,
-    ) async {
+    testWidgets('the LAYER legend flyout carries Add layer', (tester) async {
       var addLayerCount = 0;
       await tester.pumpWidget(_header(onAddLayer: () => addLayerCount += 1));
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-add-layer-button')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
+      await tester.pumpAndSettle();
 
       expect(addLayerCount, 1);
     });

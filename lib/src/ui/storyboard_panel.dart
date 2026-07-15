@@ -157,16 +157,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onSelectSeBlock,
     this.seCommaDrag,
     this.onSetAudioClipOffset,
-    this.onNewCut,
-    this.onRenameActiveCut,
-    this.onEditActiveCutNote,
-    this.onResizeActiveCutCanvas,
-    this.onDuplicateActiveCut,
-    this.onMoveActiveCutLeft,
-    this.onMoveActiveCutRight,
-    this.onDeleteActiveCut,
-    this.onToggleActiveCutThumbnail,
-    this.isThumbnailPinnedHere = false,
     this.dragPreview,
   });
 
@@ -361,34 +351,6 @@ class StoryboardPanel extends StatefulWidget {
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
-
-  // Cut management actions (the storyboard owns cut lifecycle; these were
-  // the temporary top-toolbar controls). All act on the active cut.
-  final VoidCallback? onNewCut;
-  final VoidCallback? onRenameActiveCut;
-  final VoidCallback? onEditActiveCutNote;
-  final VoidCallback? onResizeActiveCutCanvas;
-  final VoidCallback? onDuplicateActiveCut;
-  final VoidCallback? onMoveActiveCutLeft;
-  final VoidCallback? onMoveActiveCutRight;
-  final VoidCallback? onDeleteActiveCut;
-
-  /// Pins the active cut's block thumbnail to the playhead frame (pressing
-  /// on the pinned frame releases it back to the first frame);
-  /// [isThumbnailPinnedHere] drives the button's active accent.
-  final VoidCallback? onToggleActiveCutThumbnail;
-  final bool isThumbnailPinnedHere;
-
-  bool get _hasCutActions =>
-      onNewCut != null ||
-      onRenameActiveCut != null ||
-      onEditActiveCutNote != null ||
-      onResizeActiveCutCanvas != null ||
-      onDuplicateActiveCut != null ||
-      onMoveActiveCutLeft != null ||
-      onMoveActiveCutRight != null ||
-      onDeleteActiveCut != null ||
-      onToggleActiveCutThumbnail != null;
 
   @override
   State<StoryboardPanel> createState() => _StoryboardPanelState();
@@ -1104,8 +1066,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (widget._hasCutActions)
-              _StoryboardCutActionsToolbar(panel: widget),
             // PINNED RULER: the frame ruler sits ABOVE the vertical scroll
             // area (the timeline's sticky-header pattern) so it stays put
             // while tracks and SE rows scroll under it; it follows the
@@ -1338,113 +1298,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 /// storyboard owns the cut lifecycle, so new/rename/note/canvas/duplicate/
 /// move/delete live here (icon-only with tooltips, acting on the active
 /// cut). Zoom lives in the panel header's shared slider.
-class _StoryboardCutActionsToolbar extends StatelessWidget {
-  const _StoryboardCutActionsToolbar({required this.panel});
-
-  final StoryboardPanel panel;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 32,
-      child: SingleChildScrollView(
-        key: const ValueKey<String>('storyboard-cut-actions'),
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _CutActionButton(
-              key: const ValueKey<String>('new-cut-button'),
-              tooltip: 'New Cut',
-              icon: Icons.add,
-              onPressed: panel.onNewCut,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('rename-cut-button'),
-              tooltip: 'Rename Cut',
-              icon: Icons.edit_outlined,
-              onPressed: panel.onRenameActiveCut,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('edit-cut-note-button'),
-              tooltip: 'Edit Cut Note',
-              icon: Icons.note_alt_outlined,
-              onPressed: panel.onEditActiveCutNote,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('resize-cut-canvas-button'),
-              tooltip: 'Canvas Size',
-              icon: Icons.aspect_ratio,
-              onPressed: panel.onResizeActiveCutCanvas,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('duplicate-cut-button'),
-              tooltip: 'Duplicate Cut',
-              icon: Icons.content_copy,
-              onPressed: panel.onDuplicateActiveCut,
-            ),
-            // Conte-sheet picture choice: pin the block thumbnail to the
-            // playhead frame; pressing on the pinned frame releases it.
-            _CutActionButton(
-              key: const ValueKey<String>('set-cut-thumbnail-button'),
-              tooltip: panel.isThumbnailPinnedHere
-                  ? 'Unpin Thumbnail Frame'
-                  : 'Pin Thumbnail Frame',
-              icon: panel.isThumbnailPinnedHere
-                  ? Icons.image
-                  : Icons.image_outlined,
-              onPressed: panel.onToggleActiveCutThumbnail,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('move-cut-left-button'),
-              tooltip: 'Move Cut Left',
-              icon: Icons.chevron_left,
-              onPressed: panel.onMoveActiveCutLeft,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('move-cut-right-button'),
-              tooltip: 'Move Cut Right',
-              icon: Icons.chevron_right,
-              onPressed: panel.onMoveActiveCutRight,
-            ),
-            _CutActionButton(
-              key: const ValueKey<String>('delete-cut-button'),
-              tooltip: 'Delete Cut',
-              icon: Icons.delete_outline,
-              onPressed: panel.onDeleteActiveCut,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CutActionButton extends StatelessWidget {
-  const _CutActionButton({
-    required super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon),
-      iconSize: 18,
-      padding: const EdgeInsets.all(4),
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-}
-
 /// The Premiere-style frame ruler across the top of the track area: frame
 /// ticks and 1-based labels on the shared [TimelineScale], scrolling with
 /// the blocks. Tapping or dragging seeks via [onSeekGlobalFrame].

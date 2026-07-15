@@ -96,7 +96,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
                   onTap: () => onToggleLanes!(layer.id),
                   child: SizedBox(
-                    width: 16,
+                    width: layerLaneToggleSlotWidth,
                     height: 24,
                     child: Icon(
                       lanesExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
@@ -105,7 +105,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 )
               else
-                const SizedBox(width: 16),
+                const SizedBox(width: layerLaneToggleSlotWidth),
               // Timesheet + mark chips lead the label; ineligible rows keep
               // empty slots so kind icons and names stay column-aligned.
               // Attach rows (W5) hide the sheet toggle — they are display
@@ -120,14 +120,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 )
               else
                 const SizedBox(width: layerTimesheetSlotWidth),
-              const SizedBox(width: 4),
+              const SizedBox(width: layerControlChipGap),
               LayerMarkChip(
                 keyPrefix: 'timeline',
                 layerId: layer.id,
                 mark: layer.mark,
                 onMarkSelected: onLayerMarkSelected,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: layerControlChipGap),
               Expanded(
                 child: InkWell(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),
@@ -178,13 +178,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
-              // Fill-reference toggle (R20-C2): drawing rows only —
-              // selection reads by COLOR (user rule: no checkmarks).
+              // Fill-reference toggle (R20-C2): drawing rows only — every
+              // OTHER kind reserves the slot so the legend header's column
+              // icons line up over one Excel-style grid (R-toolbar round).
               if (onToggleLayerFillReference != null &&
                   layer.kind == LayerKind.animation)
                 SizedBox(
-                  width: 26,
-                  height: 32,
+                  width: layerFillReferenceSlotWidth,
+                  height: 26,
                   child: IconButton(
                     key: ValueKey<String>(
                       'timeline-layer-fill-reference-${layer.id}',
@@ -194,8 +195,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         : 'Fill reference layer',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints.tightFor(
-                      width: 26,
-                      height: 32,
+                      width: layerFillReferenceSlotWidth,
+                      height: 26,
                     ),
                     icon: Icon(
                       Icons.format_color_fill,
@@ -206,7 +207,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     ),
                     onPressed: () => onToggleLayerFillReference!(layer.id),
                   ),
-                ),
+                )
+              else
+                const SizedBox(width: layerFillReferenceSlotWidth),
               // Attach rows hide the fx switch — the BASE's switch governs
               // the shared transform/opacity lanes (W5 fx sharing).
               if (onToggleLayerFx != null &&
@@ -217,12 +220,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   layerId: layer.id,
                   fxEnabled: fxEnabled,
                   onToggle: onToggleLayerFx!,
-                ),
-              // Tight 26px slot like the fx switch: SE rows carry fx + eye
-              // + mute and the rail row has no slack for wider buttons.
+                )
+              else
+                const SizedBox(width: layerFxSlotWidth),
               SizedBox(
-                width: 26,
-                height: 32,
+                width: layerVisibilitySlotWidth,
+                height: 26,
                 child: IconButton(
                   key: ValueKey<String>(
                     'timeline-layer-visibility-${layer.id}',
@@ -230,8 +233,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints.tightFor(
-                    width: 26,
-                    height: 32,
+                    width: layerVisibilitySlotWidth,
+                    height: 26,
                   ),
                   icon: Icon(
                     layer.isVisible ? Icons.visibility : Icons.visibility_off,
@@ -246,30 +249,31 @@ class TimelineLayerControlsRow extends StatelessWidget {
               // minimum tap target, overflowing the rail row.
               if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
                 SizedBox(
-                  width: 20,
-                  height: 32,
+                  width: layerMuteSlotWidth,
+                  height: 26,
                   child: IconButton(
                     key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
                     tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints.tightFor(
-                      width: 20,
-                      height: 32,
+                      width: layerMuteSlotWidth,
+                      height: 26,
                     ),
                     icon: Icon(
                       layer.muted ? Icons.volume_off : Icons.volume_up,
-                      size: 18,
+                      size: 16,
                     ),
                     onPressed: () => onToggleLayerMuted!(layer.id),
                   ),
-                ),
+                )
+              else
+                const SizedBox(width: layerMuteSlotWidth),
               // The camera row's slider drives the camera-view DIM opacity
-              // (unified layer controls). 86 = the old slider+text slots
-              // fused into one micro field bar; every row shrinks alike so
-              // the control columns stay aligned.
+              // (unified layer controls); every row shrinks alike so the
+              // control columns stay aligned.
               if (layerKindShowsOpacityControl(layer.kind))
                 SizedBox(
-                  width: 86,
+                  width: layerOpacitySlotWidth,
                   child: FieldSlider(
                     key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
                     min: 0,
@@ -281,7 +285,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     onChanged: (opacity) =>
                         onLayerOpacityChanged(layer.id, opacity),
                   ),
-                ),
+                )
+              else
+                const SizedBox(width: layerOpacitySlotWidth),
             ],
           ),
         ),

@@ -26,6 +26,9 @@ import 'timeline/timeline_block_move_handle.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
+import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline/timeline_section_bracket_rail.dart'
+    show TimelineSectionRailCallbacks;
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
@@ -139,6 +142,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// track, every other kind its own layer track (applied at composite
   /// time; SE transforms move the canvas dialogue, instruction transforms
   /// are authored state for parity). SE layers append their audio lane.
+  /// Folds every OTHER hideable section (the bracket flyout's 'only this
+  /// section'); the target unfolds if it was hidden.
+  void _soloSection(TimelineSection section) {
+    final onToggle = widget.onToggleSection;
+    if (onToggle == null) {
+      return;
+    }
+    for (final other in TimelineSection.values) {
+      if (!timelineSectionHideable(other)) {
+        continue;
+      }
+      final shouldHide = other != section;
+      final isHidden = widget.hiddenSections.contains(other);
+      if (shouldHide != isHidden) {
+        onToggle(other);
+      }
+    }
+  }
+
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
     // Attach rows ride their BASE's transform/opacity lanes (W5 fx
     // sharing) — no lanes of their own in v1.
@@ -785,6 +807,32 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         expandedLaneLayerIds: widget.expandedLaneLayerIds,
         onToggleLayerLanes: widget.onToggleLayerLanes,
         hiddenSections: widget.hiddenSections,
+        onToggleSection: widget.onToggleSection,
+        // The rail legend's bulk sweeps + the section brackets' flyout —
+        // all session-backed (R-toolbar round).
+        legend: LayerLegendCallbacks(
+          onShowAllLayers: () => _session.setAllLayersVisibility(true),
+          onHideAllLayers: () => _session.setAllLayersVisibility(false),
+          onSoloActiveLayer: _session.soloActiveLayerVisibility,
+          onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
+          onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
+          onClearAllMarks: _session.clearAllLayerMarks,
+          onClearAllFillReferences: _session.clearAllFillReferences,
+          onMuteAllSe: () => _session.setAllSeLayersMuted(true),
+          onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
+          onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
+          onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
+          onResetAllOpacity: _session.resetAllLayersOpacity,
+        ),
+        sectionRail: widget.onToggleSection == null
+            ? null
+            : TimelineSectionRailCallbacks(
+                onToggleSection: widget.onToggleSection!,
+                onAddLayerOfKind: _session.addLayerOfKind,
+                onSetSectionLayersVisibility:
+                    _session.setSectionLayersVisibility,
+                onSoloSection: _soloSection,
+              ),
         lanesForLayer: _lanesForLayer,
         laneEdit: _laneEdit,
         // The Transform group header's twirl (AE collapse).
@@ -812,6 +860,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               Expanded(
                 child: TimelineActionToolbar(
                   session: _session,
+                  onAddLayer: _session.addLayer,
                   onRenameLayer: _renameActiveLayer,
                   onDeleteLayer: _deleteActiveLayer,
                   onEditInstance: _editActiveInstance,
