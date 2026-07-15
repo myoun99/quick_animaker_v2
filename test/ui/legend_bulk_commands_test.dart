@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
@@ -199,6 +200,59 @@ void main() {
         expect(layer.opacity, closeTo(0.3, 1e-9));
       }
     }
+  });
+
+  test('the master bar RESTS on the last committed value — previews leave '
+      'it alone (UI-R6 #2)', () {
+    final s = session();
+    expect(s.lastMasterOpacity, 1.0);
+    final targets = {
+      for (final layer in s.layers)
+        if (layer.kind != LayerKind.camera) layer.id,
+    };
+
+    s.previewLayersOpacity(targets, 0.42);
+    expect(s.lastMasterOpacity, 1.0);
+
+    s.commitLayersOpacity(targets, 0.42);
+    expect(s.lastMasterOpacity, closeTo(0.42, 1e-9));
+  });
+
+  test('filter engagement moves a FAILING active selection to the nearest '
+      'passing layer above, else the first passing (UI-R6 #3)', () {
+    final s = session();
+    final display = horizontalLayerDisplayOrder(s.layers);
+    expect(
+      display.length,
+      greaterThanOrEqualTo(4),
+      reason: 'fixture: cel + instruction + camera + 2 SE rows',
+    );
+    final activeIndex = display.indexWhere(
+      (layer) => layer.id == s.activeLayerId,
+    );
+    expect(
+      activeIndex,
+      display.length - 1,
+      reason: 'fixture: the drawing cel is the bottom row',
+    );
+
+    // Two passing rows above: the NEAREST above wins.
+    final near = display[activeIndex - 1];
+    final far = display[0];
+    s.moveSelectionToFilteredLayer(
+      (layer) => layer.id == near.id || layer.id == far.id,
+    );
+    expect(s.activeLayerId, near.id);
+
+    // Nothing above the top row: falls back to the first passing anywhere.
+    s.selectLayer(far.id);
+    final below = display[2];
+    s.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
+    expect(s.activeLayerId, below.id);
+
+    // A passing active stays put.
+    s.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
+    expect(s.activeLayerId, below.id);
   });
 
   test('fx bulk bypass/restore rides the session view state', () {

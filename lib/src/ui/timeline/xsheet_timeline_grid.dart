@@ -80,6 +80,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
+    this.opacityDragPreview,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
@@ -175,6 +176,10 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
+  /// The session's live opacity-drag preview (UI-R6 #2).
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
 
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
@@ -819,6 +824,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onLayerOpacityChanged,
                                                 onLayerOpacityChangeEnd: widget
                                                     .onLayerOpacityChangeEnd,
+                                                opacityDragPreview:
+                                                    widget.opacityDragPreview,
                                                 onToggleLayerTimesheet: widget
                                                     .onToggleLayerTimesheet,
                                                 fxEnabled:
@@ -1403,6 +1410,7 @@ class _LayerHeader extends StatelessWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
+    this.opacityDragPreview,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     required this.metrics,
@@ -1425,6 +1433,10 @@ class _LayerHeader extends StatelessWidget {
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
+  /// The session's live opacity-drag preview (UI-R6 #2).
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
 
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
@@ -1626,31 +1638,11 @@ class _LayerHeader extends StatelessWidget {
                           ),
                         ),
                       // The camera column's slider drives the camera-view DIM
-                      // opacity (unified layer controls).
+                      // opacity (unified layer controls). Wrapped in the
+                      // session's opacity-drag preview (UI-R6 #2) so a
+                      // master-bar sweep updates it live.
                       if (layerKindShowsOpacityControl(layer.kind))
-                        Expanded(
-                          child: FieldSlider(
-                            key: ValueKey<String>(
-                              'xsheet-layer-opacity-${layer.id}',
-                            ),
-                            min: 0,
-                            max: 1,
-                            value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                            valueText: '${(layer.opacity * 100).round()}%',
-                            valueTextBuilder: (value) =>
-                                '${(value * 100).round()}%',
-                            displayFactor: 100,
-                            height: 18,
-                            onChanged: (opacity) =>
-                                onLayerOpacityChanged(layer.id, opacity),
-                            onChangeEnd: onLayerOpacityChangeEnd == null
-                                ? null
-                                : (opacity) => onLayerOpacityChangeEnd!(
-                                    layer.id,
-                                    opacity,
-                                  ),
-                          ),
-                        )
+                        Expanded(child: _opacityField(layer))
                       else
                         const Spacer(),
                     ],
@@ -1667,6 +1659,39 @@ class _LayerHeader extends StatelessWidget {
     // boundary (R3 feedback #6) — the extra 2px overlay double-lined them;
     // the band above carries the section identity.
     return header;
+  }
+
+  /// The header's opacity slider, live-following the session's drag
+  /// preview when it targets this layer (UI-R6 #2).
+  Widget _opacityField(Layer layer) {
+    Widget slider(double value) => FieldSlider(
+      key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
+      min: 0,
+      max: 1,
+      value: value,
+      valueText: '${(value * 100).round()}%',
+      valueTextBuilder: (next) => '${(next * 100).round()}%',
+      displayFactor: 100,
+      height: 18,
+      onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
+      onChangeEnd: onLayerOpacityChangeEnd == null
+          ? null
+          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
+    );
+
+    final preview = opacityDragPreview;
+    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (preview == null) {
+      return slider(resting);
+    }
+    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
+      valueListenable: preview,
+      builder: (context, dragging, _) => slider(
+        dragging != null && dragging.layerIds.contains(layer.id)
+            ? dragging.opacity
+            : resting,
+      ),
+    );
   }
 }
 

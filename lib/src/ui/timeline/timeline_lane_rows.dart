@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
+import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -318,13 +319,20 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               : () => onToggleGroup(layer, lane),
           child: Padding(
             padding: widget.axis == Axis.horizontal
-                ? EdgeInsets.only(left: 10 + widget.leadingInset, right: 8)
+                ? const EdgeInsets.only(right: 8)
                 : const EdgeInsets.symmetric(horizontal: 2),
             child: Row(
               mainAxisAlignment: widget.axis == Axis.horizontal
                   ? MainAxisAlignment.start
                   : MainAxisAlignment.center,
               children: [
+                if (widget.axis == Axis.horizontal &&
+                    widget.leadingInset > 0) ...[
+                  // The rows' section band continues through lane rows
+                  // (UI-R6 #5).
+                  const LayerSectionBandCell(),
+                  const SizedBox(width: 10),
+                ],
                 Icon(
                   lane.groupExpanded
                       ? Icons.arrow_drop_down
@@ -408,7 +416,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               widget.metrics.sectionLabelGutterWidth),
       height: widget.height ?? widget.metrics.layerRowHeight,
       padding: widget.axis == Axis.horizontal
-          ? EdgeInsets.only(left: 24 + widget.leadingInset, right: 8)
+          ? (widget.leadingInset > 0
+                ? const EdgeInsets.only(right: 8)
+                : const EdgeInsets.only(left: 24, right: 8))
           : const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
@@ -417,7 +427,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       alignment: widget.axis == Axis.horizontal
           ? Alignment.centerLeft
           : Alignment.center,
-      child: content,
+      child: widget.axis == Axis.horizontal && widget.leadingInset > 0
+          ? Row(
+              children: [
+                // The rows' section band continues through lane rows
+                // (UI-R6 #5); the 24px lane indent follows it.
+                const LayerSectionBandCell(),
+                const SizedBox(width: 24),
+                Expanded(child: content),
+              ],
+            )
+          : content,
     );
   }
 }

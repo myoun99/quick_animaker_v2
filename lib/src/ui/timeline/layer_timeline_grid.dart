@@ -95,6 +95,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onSetRowFilter,
     this.visibilitySoloEnabled = false,
     this.dragPreview,
+    this.opacityDragPreview,
+    this.masterOpacityValue = 1.0,
   });
 
   final List<Layer> layers;
@@ -234,6 +236,14 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
+
+  /// The session's live opacity-drag preview (UI-R6 #2): rows follow it
+  /// while the master bar sweeps them.
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+
+  /// The master bar's resting value (the LAST committed sweep, UI-R6 #2).
+  final double masterOpacityValue;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -517,20 +527,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       if (!row.isLane && row.layer.kind != LayerKind.camera) row.layer.id,
   };
 
-  /// The master bar's resting value: the displayed rows' average opacity.
-  double _displayedOpacity(List<TimelineDisplayRow> rows) {
-    var total = 0.0;
-    var count = 0;
-    for (final row in rows) {
-      if (row.isLane || row.layer.kind == LayerKind.camera) {
-        continue;
-      }
-      total += row.layer.opacity.clamp(0.0, 1.0);
-      count += 1;
-    }
-    return count == 0 ? 1.0 : total / count;
-  }
-
   /// Whether every SE row is muted — the legend mute cell's toggle state
   /// (no SE rows reads as unmuted, so the first tap mutes).
   bool _allSeMuted() {
@@ -615,6 +611,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       sectionFlyoutEntries: section == null || widget.sectionRail == null
           ? null
           : () => timelineSectionFlyoutEntries(section, widget.sectionRail!),
+      opacityDragPreview: widget.opacityDragPreview,
     );
   }
 
@@ -741,7 +738,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 allSeMuted: _allSeMuted(),
                                 displayedLayerIds: () =>
                                     _displayedLayerIds(rows),
-                                displayedOpacity: _displayedOpacity(rows),
+                                displayedOpacity: widget.masterOpacityValue,
                                 onExpandAllLanes:
                                     widget.onToggleLayerLanes == null
                                     ? null

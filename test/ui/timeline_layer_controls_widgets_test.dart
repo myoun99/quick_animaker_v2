@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -164,6 +165,39 @@ void main() {
       expect(changedOpacity, 0.25);
     });
 
+    testWidgets('the row slider FOLLOWS a master-bar drag targeting it and '
+        'snaps back when the drag ends (UI-R6 #2)', (tester) async {
+      final layer = _layer();
+      final preview = ValueNotifier<({Set<LayerId> layerIds, double opacity})?>(
+        null,
+      );
+      addTearDown(preview.dispose);
+
+      await tester.pumpWidget(_row(layer: layer, opacityDragPreview: preview));
+      final sliderFinder = find.byKey(
+        ValueKey<String>('timeline-layer-opacity-${layer.id}'),
+      );
+      expect(tester.widget<FieldSlider>(sliderFinder).value, 1.0);
+
+      // A drag step targeting THIS layer moves the slider live.
+      preview.value = (layerIds: {layer.id}, opacity: 0.3);
+      await tester.pump();
+      expect(
+        tester.widget<FieldSlider>(sliderFinder).value,
+        closeTo(0.3, 1e-9),
+      );
+
+      // A drag targeting OTHER rows leaves it at rest.
+      preview.value = (layerIds: {const LayerId('someone-else')}, opacity: 0.7);
+      await tester.pump();
+      expect(tester.widget<FieldSlider>(sliderFinder).value, 1.0);
+
+      // Release: back to the layer's own (repo) value.
+      preview.value = null;
+      await tester.pump();
+      expect(tester.widget<FieldSlider>(sliderFinder).value, 1.0);
+    });
+
     testWidgets('active row exposes selected-layer semantic key', (
       tester,
     ) async {
@@ -308,6 +342,8 @@ Widget _row({
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
+  ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview,
 }) {
   return MaterialApp(
     home: Material(
@@ -320,6 +356,7 @@ Widget _row({
         onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
         onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
         onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
+        opacityDragPreview: opacityDragPreview,
       ),
     ),
   );

@@ -116,7 +116,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// the master opacity bar's target set (R4 #6). Null disables the bar.
   final Set<LayerId> Function()? displayedLayerIds;
 
-  /// The master bar's resting value: the displayed rows' average opacity.
+  /// The master bar's resting value: the LAST value committed through the
+  /// bar (UI-R6 #2) — not a live average of the rows.
   final double displayedOpacity;
 
   /// Hosts without a row filter (the storyboard's track-global rail,
@@ -217,10 +218,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         children: [
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.only(right: 8),
               child: Row(
                 children: [
-                  // Over the rows' inline section-tag slot (UI-R5): the
+                  // Over the rows' inline section band (UI-R5/R6 #5): the
                   // sections flyout.
                   cell(
                     keyValue: 'legend-sections',
@@ -233,6 +234,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  const SizedBox(width: 8),
                   // The lane column's header: fold/unfold EVERY layer's
                   // lanes in one tap (R3 feedback #5).
                   if (onExpandAllLanes != null && onCollapseAllLanes != null)
@@ -506,9 +508,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ),
                   // MASTER opacity bar (R4 #6): drags every DISPLAYED row's
                   // opacity (filter-passing — solo a color/kind first to
-                  // scope it). Gray at rest showing the rows' average;
-                  // accent + live % while adjusting; preview per move, ONE
-                  // write on release.
+                  // scope it). Gray at rest on the LAST committed value
+                  // (UI-R6 #2); accent + live % while adjusting; preview
+                  // per move, ONE write on release.
                   if (legend != null && displayedLayerIds != null)
                     SizedBox(
                       width: layerOpacitySlotWidth,

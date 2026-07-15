@@ -79,6 +79,8 @@ class TimelinePanel extends StatefulWidget {
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.visibilitySoloEnabled = false,
+    this.opacityDragPreview,
+    this.masterOpacityValue = 1.0,
     this.dragPreview,
   });
 
@@ -240,6 +242,12 @@ class TimelinePanel extends StatefulWidget {
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
 
+  /// The session's live opacity-drag preview + the master bar's resting
+  /// value (UI-R6 #2).
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+  final double masterOpacityValue;
+
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
 }
@@ -361,6 +369,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     rowFilter: widget.rowFilter,
                     onSetRowFilter: widget.onSetRowFilter,
                     visibilitySoloEnabled: widget.visibilitySoloEnabled,
+                    opacityDragPreview: widget.opacityDragPreview,
+                    masterOpacityValue: widget.masterOpacityValue,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -392,6 +402,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
                     onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
+                    opacityDragPreview: widget.opacityDragPreview,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,

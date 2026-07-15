@@ -20,6 +20,33 @@ import '../theme/app_theme.dart';
 /// retired); the legend header's sections cell sits over the same slot.
 const double layerSectionLabelSlotWidth = 36;
 
+/// The rows' leading SECTION band (UI-R6 #5): a tinted vertical zone with
+/// a right hairline spanning the row's full height — stacked rows read it
+/// as one continuous column, the old gutter folded INSIDE the rows.
+/// [child] carries the section label on a section's first row; every other
+/// row renders the empty band.
+class LayerSectionBandCell extends StatelessWidget {
+  const LayerSectionBandCell({super.key, this.child});
+
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: layerSectionLabelSlotWidth,
+      height: double.infinity,
+      padding: const EdgeInsets.only(left: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      alignment: Alignment.centerLeft,
+      child: child,
+    );
+  }
+}
+
 const double layerTimesheetSlotWidth = 20;
 const double layerMarkSlotWidth = 14;
 const double layerLaneToggleSlotWidth = 16;
