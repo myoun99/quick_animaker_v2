@@ -143,7 +143,6 @@ class EditorSessionManager extends ChangeNotifier {
         frameStore: brushFrameStore,
         frameKeyOf: brushFrameKeyForCut,
         fxBypassedLayerIdsOf: () => _fxBypassedLayerIds,
-        soloVisibleLayerIdOf: soloVisibleLayerIdFor,
       );
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
@@ -428,6 +427,9 @@ class EditorSessionManager extends ChangeNotifier {
       preferredFrameIndex:
           preferredFrameIndex ?? _timelineController.currentFrameIndex,
     );
+    // Layer add/delete/undo may have moved the active row: keep the solo
+    // mode following it (or exit if the command switched cuts).
+    _syncVisibilitySolo();
     _warmActiveCut();
   }
 
@@ -506,6 +508,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushInputActive.dispose();
     selectionInteractionActive.dispose();
     dragPreview.dispose();
+    opacityDragPreview.dispose();
     onionSkinSettings.dispose();
     _historyManager.dispose();
     super.dispose();
@@ -799,32 +802,42 @@ class EditorSessionManager extends ChangeNotifier {
     // layers composite at this extra factor. Applied here — never in the
     // shared composite plan — so export/thumbnails stay untouched.
     final inactiveFactor = 1.0 - _inactiveDimStrength;
-    // The legend's visibility-solo mode: the shared visit filters to the
-    // active layer's group when engaged (same override playback uses).
-    final soloId = soloVisibleLayerIdFor(cut.id);
+    // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
+    // static opacity substitutes in before the shared visit, so the canvas
+    // follows the drag without any repo write per move.
+    final preview = opacityDragPreview.value;
+    List<Layer> withOpacityPreview(List<Layer> source) => preview == null
+        ? source
+        : [
+            for (final layer in source)
+              preview.layerIds.contains(layer.id) &&
+                      layer.kind != LayerKind.camera
+                  ? layer.copyWith(opacity: preview.opacity)
+                  : layer,
+          ];
+    final stackCut = preview == null
+        ? cut
+        : cut.copyWith(layers: withOpacityPreview(cut.layers));
     // The CUT layers ride the shared composite visit (skip rules, fx
     // sharing and the W5 attach-layer expansion agree with playback by
     // construction); the split around the active layer happens here.
     final entryByLayerId = {
       for (final entry in resolveCutFrameCompositeEntries(
-        cut: cut,
+        cut: stackCut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
-        soloVisibleLayerId: soloId,
       ))
         entry.layer.id: entry,
     };
-    for (final layer in cut.layers) {
+    for (final layer in stackCut.layers) {
       // A brush-banned active layer (SE/instruction, R6-④) has no
       // interactive surface — it composites like any other stack layer so
       // its existing cels keep displaying read-only.
       if (layer.id == activeLayerId && layerKindAcceptsBrushInput(layer.kind)) {
         seenActiveLayer = true;
-        // Solo mode overrides the eye: the soloed (active) layer always
-        // displays, like the one-shot solo used to force its eye on.
-        activeLayerOpacity = soloId == null && !layer.isVisible
+        activeLayerOpacity = !layer.isVisible
             ? 0.0
-            : _stackLayerOpacity(layer, cut.layers, frameIndex);
+            : _stackLayerOpacity(layer, stackCut.layers, frameIndex);
         continue;
       }
       final entry = entryByLayerId[layer.id];
@@ -843,14 +856,9 @@ class EditorSessionManager extends ChangeNotifier {
     // Track-owned SE rows join as their cut-local display clones — they
     // composite read-only like before the ownership move (their transform
     // tracks are stripped, so the plain resolve path suffices).
-    for (final layer in trackSeDisplayLayers) {
+    for (final layer in withOpacityPreview(trackSeDisplayLayers)) {
       final fxEnabled = isLayerFxEnabled(layer.id);
-      // Solo mode replaces the eye predicate here too (an SE row can BE
-      // the soloed layer); static opacity still gates.
-      if (soloId != null ? layer.id != soloId : !layer.isVisible) {
-        continue;
-      }
-      if (layer.opacity <= 0) {
+      if (!layer.isVisible || layer.opacity <= 0) {
         continue;
       }
       final opacity = fxEnabled
@@ -1185,32 +1193,85 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Visibility solo mode (session view state, not persisted) ------------
 
-  /// The legend eye's SOLO MODE (R3 feedback #3): while ON, only the ACTIVE
-  /// layer displays and the solo FOLLOWS the active layer as it changes —
-  /// a display mode, not a one-shot eye sweep. Eyes/project state stay
-  /// untouched; export and thumbnails ignore it (work aid). The override
-  /// rides the composite signatures via [soloVisibleLayerIdFor], so
-  /// toggling the mode or switching layers self-invalidates the caches.
+  /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
+  /// engaging it snapshots every row's eye (cut layers + track SE), turns
+  /// every non-active eye OFF and the active one ON — the rows show it and
+  /// playback/fill follow naturally, exactly like clicking the eyes by
+  /// hand (view-ish controller writes, not undoable). Switching the active
+  /// layer re-solos; disengaging restores each eye from the snapshot.
+  /// Leaving the cut exits the mode (restoring first) — the snapshot is
+  /// cut-scoped.
   bool _layerVisibilitySoloEnabled = false;
+  Map<LayerId, bool>? _visibilitySoloSnapshot;
+  CutId? _visibilitySoloCutId;
 
   bool get layerVisibilitySoloEnabled => _layerVisibilitySoloEnabled;
 
   void toggleLayerVisibilitySolo() {
-    _layerVisibilitySoloEnabled = !_layerVisibilitySoloEnabled;
+    if (_layerVisibilitySoloEnabled) {
+      _exitVisibilitySolo();
+    } else {
+      _layerVisibilitySoloEnabled = true;
+      _visibilitySoloCutId = _editingSession.activeCutId;
+      _visibilitySoloSnapshot = {
+        for (final layer in layers) layer.id: layer.isVisible,
+      };
+      _applyVisibilitySolo();
+    }
     notifyListeners();
   }
 
-  /// The solo override for [cutId]'s composites: the active layer while the
-  /// mode is on and [cutId] is the active cut — other cuts (a playlist
-  /// pass) compose normally. A camera-active playhead solos nothing (the
-  /// camera row has no composite entry to solo).
-  LayerId? soloVisibleLayerIdFor(CutId cutId) {
-    if (!_layerVisibilitySoloEnabled ||
-        cutId != _editingSession.activeCutId ||
-        activeLayer?.kind == LayerKind.camera) {
-      return null;
+  /// Re-solos to the CURRENT active layer. Rows born during the solo join
+  /// the snapshot with their pre-flip eye so exiting restores them too.
+  void _applyVisibilitySolo() {
+    final activeId = activeLayerId;
+    if (activeId == null) {
+      return;
     }
-    return activeLayerId;
+    for (final layer in layers) {
+      _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
+      final shouldShow = layer.id == activeId;
+      if (layer.isVisible != shouldShow) {
+        _layerController.toggleLayerVisibility(layer.id);
+      }
+    }
+  }
+
+  void _exitVisibilitySolo() {
+    _layerVisibilitySoloEnabled = false;
+    _visibilitySoloCutId = null;
+    final snapshot = _visibilitySoloSnapshot;
+    _visibilitySoloSnapshot = null;
+    if (snapshot == null) {
+      return;
+    }
+    // Restore through the repository's anywhere seam — rows deleted during
+    // the solo have nothing to restore (skip).
+    snapshot.forEach((layerId, visible) {
+      try {
+        _repository.updateLayer(
+          layerId: layerId,
+          update: (layer) => layer.isVisible == visible
+              ? layer
+              : layer.copyWith(isVisible: visible),
+        );
+      } on StateError {
+        // Layer gone.
+      }
+    });
+  }
+
+  /// Keeps the solo mode consistent after active-layer/cut changes: same
+  /// cut → re-solo to the new active row; different cut → exit (restore).
+  void _syncVisibilitySolo() {
+    if (!_layerVisibilitySoloEnabled) {
+      return;
+    }
+    if (_editingSession.activeCutId != _visibilitySoloCutId) {
+      _exitVisibilitySolo();
+    } else {
+      _applyVisibilitySolo();
+    }
   }
 
   // --- Cut display toggles (session view state, not persisted) -------------
@@ -1291,6 +1352,10 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
+    // The visibility solo is cut-scoped: restore the eyes before leaving.
+    if (_layerVisibilitySoloEnabled) {
+      _exitVisibilitySolo();
+    }
     _editingSession.setActiveCutId(cutId);
     _copiedFrame = null;
     _rebuildActiveCutControllers();
@@ -1314,6 +1379,12 @@ class EditorSessionManager extends ChangeNotifier {
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only).
     if (!layerKindAcceptsBrushInput(activeLayer.kind)) {
+      return null;
+    }
+    // R4 #1: a hidden layer takes no strokes either — you would be drawing
+    // into something the canvas doesn't show. Flip the eye back on (or use
+    // the solo mode) to draw.
+    if (!activeLayer.isVisible) {
       return null;
     }
 
@@ -1692,6 +1763,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectLayer(LayerId layerId) {
     _layerController.selectLayer(layerId);
+    // The solo mode FOLLOWS the active layer (R4 #7).
+    _syncVisibilitySolo();
     notifyListeners();
   }
 
@@ -1710,6 +1783,52 @@ class EditorSessionManager extends ChangeNotifier {
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _layerController.setLayerOpacity(layerId: layerId, opacity: opacity);
+    notifyListeners();
+  }
+
+  // --- Opacity drag preview (R4 #4/#6) ------------------------------------
+
+  /// Live opacity-drag preview: per-move values ride this notifier into
+  /// the editing canvas only (the dragged FieldSlider echoes locally)
+  /// WITHOUT a session notify — the old per-move repo write rebuilt every
+  /// panel per pointer move and made the slider feel heavy. Release
+  /// commits ONE write + notify. The legend's master bar previews a SET of
+  /// rows through the same channel.
+  final ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
+  opacityDragPreview = ValueNotifier(null);
+
+  void previewLayerOpacity(LayerId layerId, double opacity) {
+    opacityDragPreview.value = (
+      layerIds: {layerId},
+      opacity: opacity.clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  void commitLayerOpacity(LayerId layerId, double opacity) {
+    opacityDragPreview.value = null;
+    setLayerOpacity(layerId: layerId, opacity: opacity);
+  }
+
+  /// The master-bar preview/commit (R4 #6): [layerIds] = the rows the rail
+  /// currently DISPLAYS (filter-passing), computed by the grid. Camera
+  /// stays untouched (its slider is the camera-view dim).
+  void previewLayersOpacity(Set<LayerId> layerIds, double opacity) {
+    opacityDragPreview.value = (
+      layerIds: layerIds,
+      opacity: opacity.clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  void commitLayersOpacity(Set<LayerId> layerIds, double opacity) {
+    opacityDragPreview.value = null;
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    for (final layer in layers) {
+      if (layerIds.contains(layer.id) &&
+          layer.kind != LayerKind.camera &&
+          layer.opacity != clamped) {
+        _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
+      }
+    }
     notifyListeners();
   }
 

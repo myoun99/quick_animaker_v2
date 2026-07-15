@@ -62,7 +62,6 @@ class CutFrameCompositeCache {
     required this.frameStore,
     required this.frameKeyOf,
     this.fxBypassedLayerIdsOf,
-    this.soloVisibleLayerIdOf,
   });
 
   final LayerFrameImageCache layerImages;
@@ -73,12 +72,6 @@ class CutFrameCompositeCache {
   /// it joins every signature, so flipping a switch self-invalidates the
   /// affected composites. Null = nothing bypassed.
   final Set<LayerId> Function()? fxBypassedLayerIdsOf;
-
-  /// The session's live visibility-solo view state (the legend's eye solo
-  /// mode), scoped per cut — only the ACTIVE cut solos, so a playlist pass
-  /// composes other cuts normally. Rides the signature like the fx set, so
-  /// toggling the mode or switching the active layer self-invalidates.
-  final LayerId? Function(CutId cutId)? soloVisibleLayerIdOf;
 
   final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature> _index =
       {};
@@ -100,7 +93,6 @@ class CutFrameCompositeCache {
               ?.sourceRevision ??
           0,
       fxBypassedLayerIds: fxBypassedLayerIdsOf?.call() ?? const {},
-      soloVisibleLayerId: soloVisibleLayerIdOf?.call(cut.id),
     );
   }
 

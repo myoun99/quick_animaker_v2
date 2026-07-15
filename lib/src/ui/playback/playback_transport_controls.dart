@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/playback_quality.dart';
+import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'canvas_playback_controller.dart';
 
 /// Play/stop, loop mode and quality transport row.
@@ -98,6 +99,7 @@ class PlaybackTransportControls extends StatelessWidget {
             PopupMenuButton<PlaybackQuality>(
               key: const ValueKey<String>('playback-quality-selector'),
               tooltip: 'Playback quality',
+              popUpAnimationStyle: instantMenuAnimation,
               initialValue: quality,
               onSelected: onQualityChanged,
               itemBuilder: (context) => [

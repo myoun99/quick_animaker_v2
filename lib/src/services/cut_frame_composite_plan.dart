@@ -132,16 +132,10 @@ class CutFrameCompositeEntry {
 /// Layers in [fxBypassedLayerIds] compose with their FX ignored — identity
 /// pose and no animated opacity (the layer-label fx switch, session view
 /// state).
-///
-/// A non-null [soloVisibleLayerId] REPLACES the eye predicate (the legend's
-/// visibility-solo mode, session view state): only the soloed layer — plus
-/// its attach layers, which are part of its group — contributes, eyes
-/// ignored either way. Static opacity still gates.
 List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
   Set<LayerId> fxBypassedLayerIds = const {},
-  LayerId? soloVisibleLayerId,
 }) {
   final entries = <CutFrameCompositeEntry>[];
   for (final layer in cut.layers) {
@@ -155,25 +149,13 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       // Dangling attach link (base gone): the row contributes nothing.
       continue;
     }
-    if (soloVisibleLayerId != null) {
-      // Solo mode: the soloed layer's GROUP passes (itself + attach rows
-      // riding it), everything else is hidden regardless of eyes.
-      if (layer.id != soloVisibleLayerId &&
-          (base ?? layer).id != soloVisibleLayerId) {
-        continue;
-      }
-      if (layer.opacity <= 0) {
-        continue;
-      }
-    } else {
-      // The base's eye cascades over its attach layers; each row's own eye
-      // and static opacity gate it individually.
-      if (base != null && !base.isVisible) {
-        continue;
-      }
-      if (!layer.isVisible || layer.opacity <= 0) {
-        continue;
-      }
+    // The base's eye cascades over its attach layers; each row's own eye
+    // and static opacity gate it individually.
+    if (base != null && !base.isVisible) {
+      continue;
+    }
+    if (!layer.isVisible || layer.opacity <= 0) {
+      continue;
     }
     final fxCarrier = base ?? layer;
     final fxEnabled = !fxBypassedLayerIds.contains(fxCarrier.id);
@@ -233,14 +215,12 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   Set<LayerId> fxBypassedLayerIds = const {},
-  LayerId? soloVisibleLayerId,
 }) {
   final plan = <CutFrameCompositeLayer>[];
   for (final entry in resolveCutFrameCompositeEntries(
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
-    soloVisibleLayerId: soloVisibleLayerId,
   )) {
     final surface = surfaceResolver(entry.layer, entry.frame);
     if (surface == null) {

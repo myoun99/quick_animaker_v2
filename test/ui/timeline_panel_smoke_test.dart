@@ -65,18 +65,17 @@ void main() {
       _expectKeyOnce('timeline-playhead-column');
     });
 
-    testWidgets('forwards add-layer callback from the legend flyout', (
+    testWidgets('the legend LAYER heading is plain (R4 #3): no add flyout', (
       tester,
     ) async {
-      var addLayerCallCount = 0;
-
-      await tester.pumpWidget(_panel(onAddLayer: () => addLayerCallCount += 1));
-      await tester.tap(_key('legend-layer'));
-      await tester.pumpAndSettle();
-      await tester.tap(_key('legend-layer-add'));
+      await tester.pumpWidget(_panel());
+      await tester.tap(_key('legend-layer'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
-      expect(addLayerCallCount, 1);
+      expect(
+        find.byKey(const ValueKey<String>('legend-layer-add')),
+        findsNothing,
+      );
     });
 
     testWidgets('forwards frame-selection callback from a frame cell', (

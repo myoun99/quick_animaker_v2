@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'media_asset_drag_data.dart';
 
 /// The dockable media browser (the Resolve Media Pool counterpart): every
@@ -230,6 +231,7 @@ class MediaBrowserPanel extends StatelessWidget {
           PopupMenuButton<String>(
             key: ValueKey<String>('media-asset-menu-${asset.path}'),
             tooltip: 'Media actions',
+            popUpAnimationStyle: instantMenuAnimation,
             iconSize: 16,
             onSelected: (action) {
               switch (action) {

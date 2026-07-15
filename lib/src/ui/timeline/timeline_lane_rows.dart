@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -665,6 +666,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
         globalPosition & const Size(1, 1),
         Offset.zero & overlay.size,
       ),
+      popUpAnimationStyle: instantMenuAnimation,
       items: [
         PopupMenuItem(
           key: const ValueKey<String>('lane-key-menu-hold'),

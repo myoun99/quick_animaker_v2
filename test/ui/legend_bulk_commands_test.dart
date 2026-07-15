@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -95,36 +94,111 @@ void main() {
     expect(s.layers.every((layer) => layer.isVisible), isTrue);
   });
 
-  test('visibility solo MODE follows the active layer and never touches '
-      'project eyes', () {
+  test('visibility solo MODE flips REAL eyes, follows the active layer and '
+      'restores each eye from the snapshot on exit (R4 #7)', () {
     final s = session();
-    final cutId = s.activeCut.id;
-    expect(s.layerVisibilitySoloEnabled, isFalse);
-    expect(s.soloVisibleLayerIdFor(cutId), isNull);
+    final firstActive = s.activeLayerId!;
+    // Hide one non-active row up front: exiting the solo must bring it
+    // back HIDDEN (per-row snapshot restore, not a blanket show-all).
+    final other = s.layers
+        .firstWhere(
+          (layer) => layer.id != firstActive && layer.kind != LayerKind.camera,
+        )
+        .id;
+    s.toggleLayerVisibility(other);
+    expect(
+      s.layers.firstWhere((layer) => layer.id == other).isVisible,
+      isFalse,
+    );
 
     s.toggleLayerVisibilitySolo();
     expect(s.layerVisibilitySoloEnabled, isTrue);
-    final firstActive = s.activeLayerId!;
-    expect(s.soloVisibleLayerIdFor(cutId), firstActive);
-    // Eyes stay authored state — the solo is a display override.
-    expect(s.layers.every((layer) => layer.isVisible), isTrue);
+    for (final layer in s.layers) {
+      expect(layer.isVisible, layer.id == firstActive);
+    }
 
-    // Switching the active layer re-solos WITHOUT any further command.
-    final other = s.layers
-        .firstWhere(
-          (layer) =>
-              layer.id != firstActive && layer.kind == LayerKind.animation,
-          orElse: () => s.layers.firstWhere((layer) => layer.id != firstActive),
-        )
-        .id;
+    // Switching the active layer re-solos automatically.
     s.selectLayer(other);
-    expect(s.soloVisibleLayerIdFor(cutId), other);
+    for (final layer in s.layers) {
+      expect(layer.isVisible, layer.id == other);
+    }
 
-    // Other cuts never solo (a playlist pass composes them normally).
-    expect(s.soloVisibleLayerIdFor(const CutId('some-other-cut')), isNull);
+    // Exit: every eye returns to its snapshot state ('other' was hidden).
+    s.toggleLayerVisibilitySolo();
+    expect(s.layerVisibilitySoloEnabled, isFalse);
+    for (final layer in s.layers) {
+      expect(layer.isVisible, layer.id != other);
+    }
+  });
+
+  test('switching cuts exits the visibility solo and restores eyes', () {
+    final s = session();
+    final firstCutId = s.activeCut.id;
+    s.createCut();
+    s.selectCut(firstCutId);
+    final activeId = s.activeLayerId!;
 
     s.toggleLayerVisibilitySolo();
-    expect(s.soloVisibleLayerIdFor(cutId), isNull);
+    for (final layer in s.layers) {
+      expect(layer.isVisible, layer.id == activeId);
+    }
+
+    final otherCutId = s.activeTrack.cuts
+        .firstWhere((cut) => cut.id != firstCutId)
+        .id;
+    s.selectCut(otherCutId);
+    expect(s.layerVisibilitySoloEnabled, isFalse);
+    // The first cut's eyes are restored.
+    s.selectCut(firstCutId);
+    expect(s.layers.every((layer) => layer.isVisible), isTrue);
+  });
+
+  test('a hidden active layer takes no strokes (R4 #1)', () {
+    final s = session();
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    expect(s.activeBrushEditorSelection, isNotNull);
+    s.toggleLayerVisibility(s.activeLayerId!);
+    expect(s.activeBrushEditorSelection, isNull);
+    s.toggleLayerVisibility(s.activeLayerId!);
+    expect(s.activeBrushEditorSelection, isNotNull);
+  });
+
+  test('opacity drag previews WITHOUT a session notify; the release commits '
+      'one write (R4 #4)', () {
+    final s = session();
+    var notifies = 0;
+    s.addListener(() => notifies += 1);
+    final id = s.activeLayerId!;
+
+    s.previewLayerOpacity(id, 0.5);
+    expect(notifies, 0);
+    // The repo stays untouched during the drag…
+    expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 1.0);
+    // …while the editing canvas follows the preview.
+    expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.5, 1e-9));
+
+    s.commitLayerOpacity(id, 0.5);
+    expect(notifies, 1);
+    expect(s.layers.firstWhere((layer) => layer.id == id).opacity, 0.5);
+    expect(s.opacityDragPreview.value, isNull);
+  });
+
+  test('the master bar commit writes every targeted row, camera excluded '
+      '(R4 #6)', () {
+    final s = session();
+    final targets = {
+      for (final layer in s.layers)
+        if (layer.kind != LayerKind.camera) layer.id,
+    };
+    s.commitLayersOpacity(targets, 0.3);
+    for (final layer in s.layers) {
+      if (layer.kind == LayerKind.camera) {
+        expect(layer.opacity, 1.0);
+      } else {
+        expect(layer.opacity, closeTo(0.3, 1e-9));
+      }
+    }
   });
 
   test('fx bulk bypass/restore rides the session view state', () {

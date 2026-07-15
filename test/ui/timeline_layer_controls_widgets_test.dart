@@ -15,7 +15,7 @@ void main() {
         '(R-toolbar round) with the column cells exposed by key', (
       tester,
     ) async {
-      await tester.pumpWidget(_header(onAddLayer: () {}));
+      await tester.pumpWidget(_header());
 
       expect(
         find.byKey(const ValueKey<String>('timeline-add-layer-button')),
@@ -25,6 +25,7 @@ void main() {
         'legend-sections',
         'legend-sheet',
         'legend-mark',
+        'legend-kind',
         'legend-layer',
         'legend-fill-ref',
         'legend-fx',
@@ -36,16 +37,20 @@ void main() {
       }
     });
 
-    testWidgets('the LAYER legend flyout carries Add layer', (tester) async {
-      var addLayerCount = 0;
-      await tester.pumpWidget(_header(onAddLayer: () => addLayerCount += 1));
+    testWidgets('LAYER is a plain heading now (R4 #3): no flyout, no add '
+        'entry — the command bar owns Add Layer', (tester) async {
+      await tester.pumpWidget(_header());
 
       await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
-      await tester.pumpAndSettle();
-
-      expect(addLayerCount, 1);
+      expect(
+        find.byKey(const ValueKey<String>('legend-layer-add')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('legend-lanes-expand')),
+        findsNothing,
+      );
     });
   });
 
@@ -287,13 +292,10 @@ void main() {
   });
 }
 
-Widget _header({required VoidCallback onAddLayer}) {
+Widget _header() {
   return MaterialApp(
     home: Material(
-      child: TimelineLayerControlsHeader(
-        metrics: TimelineGridMetrics.defaults,
-        onAddLayer: onAddLayer,
-      ),
+      child: TimelineLayerControlsHeader(metrics: TimelineGridMetrics.defaults),
     ),
   );
 }

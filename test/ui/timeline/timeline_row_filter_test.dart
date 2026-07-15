@@ -78,6 +78,40 @@ void main() {
       expect(withRed.markColors, {LayerMark.red});
       expect(withRed.toggledMark(LayerMark.red).markColors, isEmpty);
     });
+
+    test('kind set passes only matching kinds and ANDs with the rest '
+        '(R4 #8)', () {
+      const filter = TimelineRowFilter(kinds: {LayerKind.se});
+      expect(filter.isActive, isTrue);
+      expect(
+        filter.allows(_layer('s', kind: LayerKind.se), fxEnabled: true),
+        isTrue,
+      );
+      expect(filter.allows(_layer('a'), fxEnabled: true), isFalse);
+
+      const combined = TimelineRowFilter(
+        kinds: {LayerKind.animation},
+        markColors: {LayerMark.red},
+      );
+      expect(
+        combined.allows(_layer('a', mark: LayerMark.red), fxEnabled: true),
+        isTrue,
+      );
+      expect(
+        combined.allows(
+          _layer('s', kind: LayerKind.se, mark: LayerMark.red),
+          fxEnabled: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('toggledKind flips membership', () {
+      const filter = TimelineRowFilter();
+      final withSe = filter.toggledKind(LayerKind.se);
+      expect(withSe.kinds, {LayerKind.se});
+      expect(withSe.toggledKind(LayerKind.se).kinds, isEmpty);
+    });
   });
 
   group('buildTimelineDisplayRows rowFilter', () {

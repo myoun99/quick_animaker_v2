@@ -67,6 +67,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
@@ -164,6 +165,9 @@ class LayerTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
 
   /// The AE-style layer fx switch (session view state); null hides it.
@@ -500,6 +504,33 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       if (layer.mark != LayerMark.none) layer.mark,
   };
 
+  /// Kinds present across the current layer list — the kind-solo menu
+  /// (R4 #8) is built from these.
+  Set<LayerKind> _kindsInUse() => {
+    for (final layer in widget.layers) layer.kind,
+  };
+
+  /// The rows the rail currently DISPLAYS (layer rows only, camera
+  /// excluded) — the master opacity bar's target set (R4 #6).
+  Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {
+    for (final row in rows)
+      if (!row.isLane && row.layer.kind != LayerKind.camera) row.layer.id,
+  };
+
+  /// The master bar's resting value: the displayed rows' average opacity.
+  double _displayedOpacity(List<TimelineDisplayRow> rows) {
+    var total = 0.0;
+    var count = 0;
+    for (final row in rows) {
+      if (row.isLane || row.layer.kind == LayerKind.camera) {
+        continue;
+      }
+      total += row.layer.opacity.clamp(0.0, 1.0);
+      count += 1;
+    }
+    return count == 0 ? 1.0 : total / count;
+  }
+
   /// Whether every SE row is muted — the legend mute cell's toggle state
   /// (no SE rows reads as unmuted, so the first tap mutes).
   bool _allSeMuted() {
@@ -568,6 +599,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onToggleLayerFx: widget.onToggleLayerFx,
@@ -669,18 +701,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                             children: [
                               TimelineLayerControlsHeader(
                                 metrics: _metrics,
-                                onAddLayer: widget.onAddLayer,
                                 legend: widget.legend,
                                 hiddenSections: widget.hiddenSections,
                                 onToggleSection: widget.onToggleSection,
                                 rowFilter: widget.rowFilter,
                                 marksInUse: _marksInUse(),
+                                kindsInUse: _kindsInUse(),
                                 inactiveDimStrength: widget.inactiveDimStrength,
                                 visibilitySoloEnabled:
                                     widget.visibilitySoloEnabled,
                                 anyLanesExpanded:
                                     widget.expandedLaneLayerIds.isNotEmpty,
                                 allSeMuted: _allSeMuted(),
+                                displayedLayerIds: () =>
+                                    _displayedLayerIds(rows),
+                                displayedOpacity: _displayedOpacity(rows),
                                 onExpandAllLanes:
                                     widget.onToggleLayerLanes == null
                                     ? null

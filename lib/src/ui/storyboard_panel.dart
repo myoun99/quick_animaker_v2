@@ -147,6 +147,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleLayerVisibility,
     this.onToggleLayerMuted,
     this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
@@ -321,6 +322,10 @@ class StoryboardPanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerVisibility;
   final ValueChanged<LayerId>? onToggleLayerMuted;
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -630,6 +635,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onToggleLayerMuted: widget.onToggleLayerMuted,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxEnabledOf: widget.layerFxEnabledOf,
       onToggleLayerFx: widget.onToggleLayerFx,
@@ -1580,6 +1586,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onToggleLayerVisibility,
     this.onToggleLayerMuted,
     this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
@@ -1608,6 +1615,10 @@ class _StoryboardSeLabel extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLayerVisibility;
   final ValueChanged<LayerId>? onToggleLayerMuted;
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -1761,10 +1772,15 @@ class _StoryboardSeLabel extends StatelessWidget {
                     max: 1,
                     value: layer.opacity.clamp(0.0, 1.0).toDouble(),
                     valueText: '${(layer.opacity * 100).round()}%',
+                    valueTextBuilder: (value) => '${(value * 100).round()}%',
                     displayFactor: 100,
                     height: 16,
                     onChanged: (opacity) =>
                         onLayerOpacityChanged!(layer.id, opacity),
+                    onChangeEnd: onLayerOpacityChangeEnd == null
+                        ? null
+                        : (opacity) =>
+                              onLayerOpacityChangeEnd!(layer.id, opacity),
                   ),
                 ),
               if (onToggleWaveform != null)
@@ -2500,6 +2516,7 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
         globalPosition & const Size(1, 1),
         Offset.zero & overlay.size,
       ),
+      popUpAnimationStyle: instantMenuAnimation,
       items: [
         for (final target in CutFadeTarget.values)
           CheckedPopupMenuItem<CutFadeTarget>(

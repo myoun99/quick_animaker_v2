@@ -95,6 +95,31 @@ class LayerFxToggleButton extends StatelessWidget {
   }
 }
 
+/// The row kind icon (shared by the rail rows and the legend's kind-solo
+/// flyout, R4 #8).
+IconData layerKindIcon(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation => Icons.brush_outlined,
+    LayerKind.storyboard => Icons.auto_stories_outlined,
+    LayerKind.art => Icons.landscape_outlined,
+    LayerKind.se => Icons.music_note_outlined,
+    LayerKind.instruction => Icons.theaters_outlined,
+    LayerKind.camera => Icons.videocam_outlined,
+  };
+}
+
+/// The kind's display name for the legend's kind-solo flyout.
+String layerKindDisplayName(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation => 'Animation',
+    LayerKind.storyboard => 'Storyboard',
+    LayerKind.art => 'Art',
+    LayerKind.se => 'SE',
+    LayerKind.instruction => 'Instruction',
+    LayerKind.camera => 'Camera',
+  };
+}
+
 /// Chip color of [mark]; null for [LayerMark.none].
 Color? layerMarkColor(LayerMark mark) {
   return switch (mark) {
@@ -177,6 +202,7 @@ class LayerMarkChip extends StatelessWidget {
     return PopupMenuButton<LayerMark>(
       key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
       tooltip: 'Layer mark',
+      popUpAnimationStyle: instantMenuAnimation,
       padding: EdgeInsets.zero,
       onSelected: (selected) => onMarkSelected(layerId, selected),
       itemBuilder: (context) => [
