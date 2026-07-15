@@ -48,6 +48,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.commaDrag,
     this.blockMove,
     this.baseLayer,
+    this.seSpillsIn = false,
   });
 
   final Layer layer;
@@ -96,6 +97,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// (the block leaving for another row) never unmounts the handle that
   /// owns the live gesture (R12-③); null falls back to [layer].
   final Layer? baseLayer;
+
+  /// Track-SE rows whose display clone starts with a block spilling in
+  /// from an earlier cut (UI-R7 #6): the cut start draws the `~`
+  /// continuation and the block's start grip stands down (its real start
+  /// lives in that earlier cut).
+  final bool seSpillsIn;
 
   @override
   Widget build(BuildContext context) {
@@ -195,6 +202,20 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
           ),
+        // Cut-boundary `~` marks (UI-R7 #6): a sound running past the cut
+        // end / spilling in from the previous cut announces its other half.
+        if (layerKindUsesSeSheetCells(layer.kind))
+          ...timelineRowSeContinuationMarks(
+            layer: layer,
+            cutFrameCount: playbackFrameCount,
+            spillsInAtStart: seSpillsIn,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+          ),
         // Media-browser drops land on SE blocks (sound → block frame).
         if (layerKindUsesSeSheetCells(layer.kind) && onDropMediaAsset != null)
           ...timelineRowSeAssetDropTargets(
@@ -248,6 +269,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             commaDrag: commaDrag,
             axis: Axis.horizontal,
+            // The spill-in block's `~` replaces its start grip (UI-R7 #6).
+            suppressStartGripAtZero:
+                seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
           ),
         if (commaDrag != null && layer.kind == LayerKind.instruction)
           ...timelineRowInstructionEdgeGrips(
@@ -276,6 +300,7 @@ List<Widget> timelineRowBlockEdgeGrips({
   required double crossAxisExtent,
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
+  bool suppressStartGripAtZero = false,
 }) {
   final grips = <Widget>[];
   final blocks = drawingBlocks(layer.timeline);
@@ -300,6 +325,13 @@ List<Widget> timelineRowBlockEdgeGrips({
     );
 
     for (final edge in TimelineBlockEdge.values) {
+      // The spill-in display block's start is not editable here — its real
+      // start lives in an earlier cut (UI-R7 #6, TrackSeWindow contract).
+      if (suppressStartGripAtZero &&
+          edge == TimelineBlockEdge.start &&
+          block.startIndex == 0) {
+        continue;
+      }
       grips.add(
         TimelineBlockEdgeGrip(
           layerId: layer.id,

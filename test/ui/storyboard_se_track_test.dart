@@ -204,10 +204,111 @@ void main() {
       moreOrLessEquals(2 * pixelsPerFrame, epsilon: 0.01),
     );
 
-    // …and the crossed boundary carries the ~ continuation mark.
+    // …and NO ~ continuation mark here (UI-R7 #6): the storyboard shows
+    // the whole flow — the cut-scoped timeline view carries the marks.
     expect(
       find.byKey(const ValueKey<String>('storyboard-se-crossing-se-row-1-8')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('EVERY cut\'s SE blocks carry edge grips (UI-R7 #5) and an '
+      'end drag edits + previews LIVE on the strip (UI-R7 #7)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _project())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+
+    // The active cut is cut-1, yet the cut-2 block [10,12) has BOTH grips
+    // (the active-cut gate is retired).
+    final endGrip = find.byKey(
+      const ValueKey<String>('storyboard-se-grip-se-row-1-2-end'),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-se-grip-se-row-1-2-start')),
       findsOneWidget,
+    );
+    expect(endGrip, findsOneWidget);
+
+    final span = find.byKey(
+      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
+    );
+    final widthBefore = tester.getSize(span).width;
+
+    // Drag the end grip rightward and hold: the strip follows LIVE
+    // through the drag-preview gate (UI-R7 #7 — it used to update only
+    // on release). Stepped moves like a real pointer so the grip's
+    // recognizer wins the arena over the scroll view.
+    final gesture = await tester.startGesture(tester.getCenter(endGrip));
+    await tester.pump();
+    for (var step = 0; step < 4; step += 1) {
+      await gesture.moveBy(const Offset(15, 0));
+      await tester.pump();
+    }
+    final widthDuring = tester.getSize(span).width;
+    expect(
+      widthDuring,
+      greaterThan(widthBefore),
+      reason: 'the block stretches DURING the drag',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(span).width,
+      greaterThan(widthBefore),
+      reason: 'the release commits the global-axis edit',
+    );
+  });
+
+  testWidgets('the TIMELINE marks the crossing (UI-R7 #6): ~ at the cut '
+      'end on the owning cut, ~ at the cut start (no start grip) on the '
+      'next cut', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _project())),
+    );
+    await tester.pumpAndSettle();
+
+    // Cut-1 active: the crossing block [6,10) runs past the cut end (8).
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-crossing-se-row-1-end')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-crossing-se-row-1-start')),
+      findsNothing,
+    );
+
+    // Select cut-2 (tap its own SE block in the storyboard): the crossing
+    // block spills IN — ~ at the cut start instead of a start grip.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-se-block-select-se-row-1-10'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-crossing-se-row-1-start')),
+      findsOneWidget,
+    );
+    // The spill block's start grip stands down; its end grip (frame 1,
+    // inside cut-2) stays. The cut-2 block [10,12) keeps both.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-crossing-se-row-1-end')),
+      findsNothing,
     );
   });
 }

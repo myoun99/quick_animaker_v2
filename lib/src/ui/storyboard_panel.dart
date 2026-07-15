@@ -131,8 +131,6 @@ class StoryboardPanel extends StatefulWidget {
     this.isFrameCached,
     this.thumbnailFor,
     this.audioPeaksFor,
-    this.hiddenWaveformSeRows = const {},
-    this.onToggleSeRowWaveform,
     this.expandedSeAudioRows = const {},
     this.onToggleSeRowLane,
     this.expandedTransformTracks = const {},
@@ -263,11 +261,6 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-
-  /// S rows whose waveform display is toggled OFF (the rail's eye), keyed
-  /// by [seRowKey]. View state lives with the host.
-  final Set<String> hiddenWaveformSeRows;
-  final void Function(Track track, int slot)? onToggleSeRowWaveform;
 
   /// Twirled-down S rows ([seRowKey]): an enlarged read-only waveform lane
   /// under the row, the timeline Audio lane's storyboard sibling.
@@ -654,24 +647,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (layer.kind != LayerKind.camera) layer.id,
   };
 
-  Widget _seLabelRow(Track track, int slot, {bool showSectionTag = false}) {
+  Widget _seLabelRow(Track track, int slot) {
     final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
       track: track,
       slot: slot,
-      sectionTag: showSectionTag ? 'SE' : null,
       active:
           trackLayer != null &&
           widget.activeLayerId != null &&
           trackLayer.id == widget.activeLayerId,
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
-      waveformVisible: !widget.hiddenWaveformSeRows.contains(
-        StoryboardPanel.seRowKey(track, slot),
-      ),
-      onToggleWaveform: widget.onToggleSeRowWaveform == null
-          ? null
-          : () => widget.onToggleSeRowWaveform!(track, slot),
       laneExpanded: widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),
@@ -694,13 +680,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// rows (each with its twirled-down Audio lane and Transform group)
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
-  /// S2 above it); the section divider overlays the group's first row.
+  /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
   List<Widget> _railRowsForTrack(Track track, int index) {
     final activeCut = _activeCutOf(track);
     final topSlot = _seSlotCount(track) - 1;
-    final rows = <Widget>[
+    final seRows = <Widget>[
       for (var slot = topSlot; slot >= 0; slot--) ...[
-        _seLabelRow(track, slot, showSectionTag: slot == topSlot),
+        _seLabelRow(track, slot),
         if (widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
         )) ...[
@@ -731,10 +717,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           ),
         ],
       ],
+    ];
+    final vRows = <Widget>[
       _StoryboardTrackLabel(
         track: track,
         trackLabel: 'V${index + 1}',
-        sectionTag: 'V',
         laneExpanded: widget.expandedTransformTracks.contains(track.id.value),
         onToggleLane: widget.onToggleTrackLane == null
             ? null
@@ -756,7 +743,42 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           active: activeCut != null,
         ),
     ];
-    return rows;
+    return [
+      _sectionZoneGroup(
+        keyValue: 'storyboard-section-zone-${track.id.value}-se',
+        label: 'SE',
+        rows: seRows,
+      ),
+      _sectionZoneGroup(
+        keyValue: 'storyboard-section-zone-${track.id.value}-v',
+        label: 'V',
+        rows: vRows,
+      ),
+    ];
+  }
+
+  /// One section's rail rows with the ZONE spanning the whole group over
+  /// the rows' reserved band slots (UI-R7 #2): S1·S2 read as one SE
+  /// sub-zone, exactly like the timeline's run zones.
+  Widget _sectionZoneGroup({
+    required String keyValue,
+    required String label,
+    required List<Widget> rows,
+  }) {
+    return Stack(
+      children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: KeyedSubtree(
+            key: ValueKey<String>(keyValue),
+            child: SectionBandZone(label: label),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Per-row hairline under every STRIP row (UI-R5 storyboard unification:
@@ -826,27 +848,35 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     double width,
     TimelineScale scale,
   ) {
+    Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
+      trackIndex: index,
+      slot: slot,
+      layer: layer,
+      layoutEntries: entries,
+      width: width,
+      timelineScale: scale,
+      projectFps: widget.projectFps,
+      audioPeaksFor: widget.audioPeaksFor,
+      onSelectSeBlock: widget.onSelectSeBlock,
+      seCommaDrag: widget.seCommaDrag,
+    );
     return [
       for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
         _stripRowLine(
-          _StoryboardSeRow(
-            trackIndex: index,
-            slot: slot,
-            layer: _trackSeAt(track, slot),
-            layoutEntries: entries,
-            width: width,
-            timelineScale: scale,
-            projectFps: widget.projectFps,
-            audioPeaksFor:
-                widget.hiddenWaveformSeRows.contains(
-                  StoryboardPanel.seRowKey(track, slot),
-                )
-                ? null
-                : widget.audioPeaksFor,
-            activeCutId: widget.activeCutId,
-            onSelectSeBlock: widget.onSelectSeBlock,
-            seCommaDrag: widget.seCommaDrag,
-          ),
+          // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
+          // are built once per panel build (identical instances across
+          // cut-trim preview steps, R10-③), so without it an SE edge drag
+          // only showed on release. It resolves the GLOBAL preview form —
+          // this strip renders the track axis, not the active-cut clone.
+          switch (_trackSeAt(track, slot)) {
+            null => seRow(slot, null),
+            final globalLayer => TimelineDragPreviewRowGate(
+              dragPreview: widget.dragPreview,
+              layer: globalLayer,
+              useGlobalForm: true,
+              rowBuilder: (context, layer) => seRow(slot, layer),
+            ),
+          },
         ),
         if (widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
@@ -1570,14 +1600,11 @@ Layer? _activeSlotLayerOf(Track track, CutId activeCutId, int slot) {
 
 /// SE slot rows in the rail: the same bordered-row language as the track
 /// row above them, compact like the timeline's SE rows 窶・with the timeline
-/// rows' controls: a lane chevron (twirl-down waveform strip) and the
-/// waveform's eye toggle.
+/// rows' controls and a lane chevron (twirl-down waveform strip).
 class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
     required this.track,
     required this.slot,
-    this.waveformVisible = true,
-    this.onToggleWaveform,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeLayer,
@@ -1591,18 +1618,12 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
-    this.sectionTag,
     this.opacityDragPreview,
   });
 
   final Track track;
   final int slot;
 
-  /// The INLINE section tag ('SE' on the group's top S row, UI-R5); every
-  /// other row reserves the slot empty.
-  final String? sectionTag;
-  final bool waveformVisible;
-  final VoidCallback? onToggleWaveform;
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
@@ -1685,24 +1706,9 @@ class _StoryboardSeLabel extends StatelessWidget {
           // over these exact columns.
           child: Row(
             children: [
-              LayerSectionBandCell(
-                child: sectionTag == null
-                    ? null
-                    : Text(
-                        sectionTag!,
-                        key: ValueKey<String>(
-                          'storyboard-section-tag-${track.id.value}-se',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        style: TextStyle(
-                          fontSize: 8,
-                          letterSpacing: 0.6,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-              ),
+              // Reserved section slot — the SE zone overlays the group
+              // (UI-R7 #2).
+              const LayerSectionBandCell(),
               const SizedBox(width: 8),
               // The timeline rows' lane chevron, storyboard-prefixed.
               if (onToggleLane != null)
@@ -1772,37 +1778,11 @@ class _StoryboardSeLabel extends StatelessWidget {
                   ],
                 ),
               ),
-              // The waveform eye rides the fill-reference slot (SE rows
-              // never carry the fill flag) so the trailing columns align.
-              if (onToggleWaveform != null)
-                SizedBox(
-                  width: layerFillReferenceSlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'storyboard-se-waveform-toggle-'
-                      '${track.id.value}-${slot + 1}',
-                    ),
-                    tooltip: waveformVisible
-                        ? 'Hide Waveform'
-                        : 'Show Waveform',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerFillReferenceSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      Icons.graphic_eq,
-                      size: 14,
-                      color: waveformVisible
-                          ? AppColors.accent
-                          : colorScheme.onSurface.withValues(alpha: 0.35),
-                    ),
-                    onPressed: onToggleWaveform,
-                  ),
-                )
-              else
-                const SizedBox(width: layerFillReferenceSlotWidth),
+              // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
+              // none either — the twirled-down Audio lane is the "big
+              // waveform" view. The fill-reference slot stays reserved so
+              // the trailing columns align.
+              const SizedBox(width: layerFillReferenceSlotWidth),
               if (layer != null &&
                   onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind))
@@ -1964,7 +1944,6 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFps,
     this.audioPeaksFor,
-    this.activeCutId,
     this.onSelectSeBlock,
     this.seCommaDrag,
   });
@@ -1980,10 +1959,8 @@ class _StoryboardSeRow extends StatelessWidget {
   final int projectFps;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
-  /// Timeline parity: SE blocks tap-select (any cut) and carry the comma
-  /// edge grips on the ACTIVE cut (the session's exposure drags are
-  /// active-cut scoped).
-  final CutId? activeCutId;
+  /// Timeline parity: SE blocks tap-select (any cut) and EVERY block
+  /// carries the comma edge grips (UI-R7 #5 — global starts, any cut).
   final void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
   onSelectSeBlock;
   final TimelineCommaDragCallbacks? seCommaDrag;
@@ -2111,40 +2088,9 @@ class _StoryboardSeRow extends StatelessWidget {
           ),
         );
       }
-      // A `~` continuation mark on every cut boundary a block crosses 窶・
-      // the sound carries on into the next cut.
-      for (final block in blocks) {
-        for (final entry in layoutEntries) {
-          final boundary = entry.startFrame;
-          if (boundary <= block.startIndex ||
-              boundary >= block.endIndexExclusive) {
-            continue;
-          }
-          spans.add(
-            Positioned(
-              left: timelineScale.leftForFrame(boundary) - 7,
-              top: 0,
-              bottom: 0,
-              width: 14,
-              child: IgnorePointer(
-                key: ValueKey<String>(
-                  'storyboard-se-crossing-${layer.id}-$boundary',
-                ),
-                child: Center(
-                  child: Text(
-                    '~',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: timelineDrawingInkColor,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-      }
+      // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
+      // the WHOLE flow — blocks simply run across cut boundaries; the
+      // cut-scoped timeline view carries the continuation marks instead.
       // Timeline parity: tap zones select the block (its OWNING cut +
       // layer + the block's cut-local start 窶・the session's contract)窶ｦ
       if (onSelectSeBlock != null) {
@@ -2177,65 +2123,37 @@ class _StoryboardSeRow extends StatelessWidget {
           );
         }
       }
-      // 窶ｦand the ACTIVE cut's blocks carry the timeline's own comma edge
-      // grips (the SAME shared widget + session drag hooks; block starts
-      // pass CUT-LOCAL 窶・the session converts to the global axis). A
-      // block spilling in from an earlier cut keeps only its END grip
-      // here (its start belongs to that cut).
+      // …and EVERY block carries the timeline's own comma edge grips
+      // (UI-R7 #5: the active-cut gate is gone — the strip is the whole
+      // flow, so any cut's sound edits in place). Block starts pass
+      // GLOBAL frames; the host's callbacks flag them as such
+      // (blockStartIsGlobal) so the session skips the active-cut window.
       final seCommaDrag = this.seCommaDrag;
-      if (seCommaDrag != null && activeCutId != null) {
-        StoryboardTimelineLayoutEntry? activeEntry;
-        for (final entry in layoutEntries) {
-          if (entry.cut.id == activeCutId) {
-            activeEntry = entry;
-            break;
-          }
-        }
-        if (activeEntry != null) {
-          var ordinal = 0;
-          for (final block in blocks) {
-            final blockOrdinal = ordinal;
-            ordinal += 1;
-            final startsHere =
-                block.startIndex >= activeEntry.startFrame &&
-                block.startIndex < activeEntry.endFrame;
-            final spillsIn =
-                block.startIndex < activeEntry.startFrame &&
-                block.endIndexExclusive > activeEntry.startFrame;
-            if (!startsHere && !spillsIn) {
-              continue;
-            }
-            final localStart = startsHere
-                ? block.startIndex - activeEntry.startFrame
-                : 0;
-            final startOffset = timelineScale.leftForFrame(
-              math.max(block.startIndex, activeEntry.startFrame),
-            );
-            final endOffset = timelineScale.leftForFrame(
-              block.endIndexExclusive,
-            );
-            for (final edge in TimelineBlockEdge.values) {
-              if (edge == TimelineBlockEdge.start && spillsIn) {
-                continue;
-              }
-              spans.add(
-                TimelineBlockEdgeGrip(
-                  key: ValueKey<String>(
-                    'storyboard-se-grip-${layer.id}-$blockOrdinal'
-                    '-${edge.name}',
-                  ),
-                  layerId: layer.id,
-                  blockStartIndex: localStart,
-                  blockOrdinal: blockOrdinal,
-                  edge: edge,
-                  blockStartOffset: startOffset,
-                  blockEndOffset: endOffset,
-                  frameCellExtent: timelineScale.pixelsPerFrame,
-                  crossAxisExtent: _seRowHeight,
-                  callbacks: seCommaDrag,
+      if (seCommaDrag != null) {
+        var ordinal = 0;
+        for (final block in blocks) {
+          final blockOrdinal = ordinal;
+          ordinal += 1;
+          final startOffset = timelineScale.leftForFrame(block.startIndex);
+          final endOffset = timelineScale.leftForFrame(block.endIndexExclusive);
+          for (final edge in TimelineBlockEdge.values) {
+            spans.add(
+              TimelineBlockEdgeGrip(
+                key: ValueKey<String>(
+                  'storyboard-se-grip-${layer.id}-$blockOrdinal'
+                  '-${edge.name}',
                 ),
-              );
-            }
+                layerId: layer.id,
+                blockStartIndex: block.startIndex,
+                blockOrdinal: blockOrdinal,
+                edge: edge,
+                blockStartOffset: startOffset,
+                blockEndOffset: endOffset,
+                frameCellExtent: timelineScale.pixelsPerFrame,
+                crossAxisExtent: _seRowHeight,
+                callbacks: seCommaDrag,
+              ),
+            );
           }
         }
       }
@@ -2775,7 +2693,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   const _StoryboardTrackLabel({
     required this.track,
     required this.trackLabel,
-    this.sectionTag,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeCut,
@@ -2788,8 +2705,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   final Track track;
   final String trackLabel;
 
-  /// The INLINE section tag ('V', UI-R5) in the shared leading slot.
-  final String? sectionTag;
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
@@ -2816,24 +2731,9 @@ class _StoryboardTrackLabel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // The shared section BAND (UI-R6 #5): the V row carries its
-          // inline tag inside it.
-          LayerSectionBandCell(
-            child: sectionTag == null
-                ? null
-                : Text(
-                    sectionTag!,
-                    key: ValueKey<String>(
-                      'storyboard-section-tag-${track.id.value}-v',
-                    ),
-                    style: TextStyle(
-                      fontSize: 8,
-                      letterSpacing: 0.6,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-          ),
+          // Reserved section slot — the V zone overlays the group
+          // (UI-R7 #2).
+          const LayerSectionBandCell(),
           const SizedBox(width: 8),
           // The timeline rows' lane chevron: twirls down the track's
           // cut-level Transform group (the V-track lanes + fade strip).

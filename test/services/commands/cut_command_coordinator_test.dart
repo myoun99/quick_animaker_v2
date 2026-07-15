@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
@@ -1098,6 +1099,40 @@ void main() {
       );
     });
 
+    test('updateLayerAudioClips reaches TRACK-owned SE rows (UI-R7 #4: media '
+        'drops used to dead-end in the cut-scoped lookup)', () {
+      final trackSe = _layer(id: 'track-se-1', kind: LayerKind.se);
+      final cutA = _cut(id: 'cut-1', name: 'Cut A');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(
+              id: 'track-1',
+              name: 'Video',
+              cuts: [cutA],
+              seLayers: [trackSe],
+            ),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      const clips = [
+        AudioClip(filePath: 'foot.wav', frameId: FrameId('se-foot')),
+      ];
+
+      fixture.coordinator.updateLayerAudioClips(
+        cutId: cutA.id,
+        layerId: trackSe.id,
+        audioClips: clips,
+      );
+      expect(_layerById(fixture.project, trackSe.id).audioClips, clips);
+
+      fixture.historyManager.undo();
+      expect(_layerById(fixture.project, trackSe.id).audioClips, isEmpty);
+      fixture.historyManager.redo();
+      expect(_layerById(fixture.project, trackSe.id).audioClips, clips);
+    });
+
     test('duplicateLayer carries audio clips to the SE copy', () {
       final se = Layer(
         id: const LayerId('layer-1'),
@@ -1427,6 +1462,33 @@ void main() {
       },
     );
 
+    test('createCut names cuts with bare climbing numbers (UI-R7 #3): one '
+        'past the highest numeric name, non-numeric names ignored', () {
+      final cutA = _cut(id: 'cut-1', name: '1');
+      final cutB = _cut(id: 'cut-2', name: 'Opening');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.createCut(trackId: const TrackId('track-1'));
+      final track = fixture.project.tracks.single;
+      expect(track.cuts.last.name, '2');
+
+      fixture.coordinator.createCut(trackId: const TrackId('track-1'));
+      expect(fixture.project.tracks.single.cuts.last.name, '3');
+    });
+
+    test('the default project cut is named "1" — bare numbers, no prefix '
+        '(UI-R7 #3)', () {
+      final project = createDefaultProject();
+      expect(project.tracks.single.cuts.single.name, '1');
+    });
+
     test('duplicateCut uses caller-provided duplicate name when supplied', () {
       final sourceCut = _cut(id: 'cut-1', name: 'Source');
       final fixture = _fixture(
@@ -1507,8 +1569,9 @@ Track _track({
   required String id,
   required String name,
   List<Cut> cuts = const [],
+  List<Layer> seLayers = const [],
 }) {
-  return Track(id: TrackId(id), name: name, cuts: cuts);
+  return Track(id: TrackId(id), name: name, cuts: cuts, seLayers: seLayers);
 }
 
 Cut _cut({
@@ -1561,6 +1624,11 @@ Cut _cutById(Project project, CutId cutId) {
 
 Layer _layerById(Project project, LayerId layerId) {
   for (final track in project.tracks) {
+    for (final layer in track.seLayers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
     for (final cut in track.cuts) {
       for (final layer in cut.layers) {
         if (layer.id == layerId) {

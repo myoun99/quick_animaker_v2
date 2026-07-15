@@ -48,6 +48,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.blockMove,
     this.laneEdit,
     this.dragPreview,
+    this.seSpillInLayerIds = const {},
   });
 
   /// Display rows: layer rows interleaved with expanded property lanes.
@@ -114,6 +115,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The session's edit-drag preview channel: a drag step rebuilds ONLY the
   /// dragged layer's row (through its gate), never this body.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// Track-SE rows whose display clone starts with a spill-in block
+  /// (UI-R7 #6: `~` at the cut start, start grip stands down).
+  final Set<LayerId> seSpillInLayerIds;
 
   @override
   State<TimelineFrameRowsScrollBody> createState() =>
@@ -222,6 +227,7 @@ class _TimelineFrameRowsScrollBodyState
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,
       blockMove: widget.blockMove,
+      seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
     );
   }
 

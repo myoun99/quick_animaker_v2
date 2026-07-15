@@ -93,7 +93,6 @@ Future<void> _pumpPanel(
   bool Function(CutId cutId)? cutPictureVisibleOf,
   ValueChanged<CutId>? onToggleCutPictureVisibility,
 }) async {
-  final hiddenWaveforms = <String>{};
   final expandedAudio = <String>{};
   final expandedTransform = <String>{};
   final expandedGroups = <String>{};
@@ -108,13 +107,6 @@ Future<void> _pumpPanel(
             pixelsPerFrame: 12,
             projectFps: 24,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
-            hiddenWaveformSeRows: hiddenWaveforms,
-            onToggleSeRowWaveform: (track, slot) => setState(() {
-              final key = StoryboardPanel.seRowKey(track, slot);
-              if (!hiddenWaveforms.add(key)) {
-                hiddenWaveforms.remove(key);
-              }
-            }),
             expandedSeAudioRows: expandedAudio,
             onToggleSeRowLane: (track, slot) => setState(() {
               final key = StoryboardPanel.seRowKey(track, slot);
@@ -488,7 +480,8 @@ void main() {
     );
 
     // UI-R5: the extra 2px section divider is retired (single shared row
-    // lines); the group reads from the inline section tags instead.
+    // lines); UI-R7 #2: the group reads from the section ZONES spanning
+    // each group's rows (the old gutter bracket, inside the rows).
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-section-divider-rail-lane-track'),
@@ -497,44 +490,31 @@ void main() {
     );
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-section-tag-lane-track-se'),
+        const ValueKey<String>('storyboard-section-zone-lane-track-se'),
       ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-section-tag-lane-track-v')),
+      find.byKey(
+        const ValueKey<String>('storyboard-section-zone-lane-track-v'),
+      ),
       findsOneWidget,
     );
   });
 
-  testWidgets('the S-row eye toggles the waveform display', (tester) async {
+  testWidgets('the S-row waveform-hide eye is retired (UI-R7 #8) — the '
+      'waveform always shows, the toggle key is gone', (tester) async {
     await _pumpPanel(tester, project: _project());
 
     expect(
       find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
       findsOneWidget,
     );
-
-    await tester.tap(
+    expect(
       find.byKey(
         const ValueKey<String>('storyboard-se-waveform-toggle-lane-track-1'),
       ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
       findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-waveform-toggle-lane-track-1'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0')),
-      findsOneWidget,
     );
   });
 
@@ -854,26 +834,29 @@ void main() {
       expect(s1Strip.top, s2Strip.bottom);
     });
 
-    testWidgets('sections live INSIDE the rows (UI-R5): the inline SE tag '
-        'sits on the TOP S row, the V tag on the track row — the bracket '
-        'gutter is retired', (tester) async {
+    testWidgets('sections live INSIDE the rows as run-spanning ZONES '
+        '(UI-R7 #2): the SE zone covers S2+S1 as one vertical sub-zone, '
+        'the V zone the track row', (tester) async {
       await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
-      // The tag rides the top S row (S2 in a two-slot track).
-      final seTag = tester.getRect(
+      // The SE zone spans BOTH S rows (S1·S2 read as one section).
+      final seZone = tester.getRect(
         find.byKey(
-          const ValueKey<String>('storyboard-section-tag-lane-track-se'),
+          const ValueKey<String>('storyboard-section-zone-lane-track-se'),
         ),
       );
       final s2 = tester.getRect(
         find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-2')),
       );
-      expect(seTag.top, greaterThanOrEqualTo(s2.top));
-      expect(seTag.bottom, lessThanOrEqualTo(s2.bottom));
+      final s1 = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-1')),
+      );
+      expect(seZone.top, lessThanOrEqualTo(s2.top + 1));
+      expect(seZone.bottom, greaterThanOrEqualTo(s1.bottom - 1));
 
-      final vTag = tester.getRect(
+      final vZone = tester.getRect(
         find.byKey(
-          const ValueKey<String>('storyboard-section-tag-lane-track-v'),
+          const ValueKey<String>('storyboard-section-zone-lane-track-v'),
         ),
       );
       final vRow = tester.getRect(
@@ -881,22 +864,8 @@ void main() {
           const ValueKey<String>('storyboard-track-label-row-lane-track'),
         ),
       );
-      expect(vTag.top, greaterThanOrEqualTo(vRow.top));
-      expect(vTag.bottom, lessThanOrEqualTo(vRow.bottom));
-
-      // The old gutter brackets are gone.
-      expect(
-        find.byKey(
-          const ValueKey<String>('storyboard-section-bracket-se-lane-track'),
-        ),
-        findsNothing,
-      );
-      expect(
-        find.byKey(
-          const ValueKey<String>('storyboard-section-bracket-v-lane-track'),
-        ),
-        findsNothing,
-      );
+      expect(vZone.top, lessThanOrEqualTo(vRow.top + 1));
+      expect(vZone.bottom, greaterThanOrEqualTo(vRow.bottom - 1));
     });
   });
 }

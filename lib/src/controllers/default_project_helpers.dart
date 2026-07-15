@@ -26,7 +26,9 @@ Track createDefaultTrack({
     cuts: [
       createDefaultCut(
         cutId: const CutId('default-cut-1'),
-        name: 'Cut 1',
+        // Bare numbers, the sheet convention (UI-R7 #3): cuts are '1',
+        // '2', … — displays add no prefix.
+        name: '1',
         layerId: defaultLayerIdForSequence(1),
       ),
     ],

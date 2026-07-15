@@ -95,6 +95,79 @@ List<Widget> timelineRowSeLabelOverlays({
   return overlays;
 }
 
+/// `~` continuation marks on the CUT boundaries an SE block crosses
+/// (UI-R7 #6) — this is the cut-scoped view: a block running past the cut
+/// end marks the cut end ("something follows"), a block spilling in from
+/// an earlier cut marks the cut start ("something precedes"; its start
+/// grip stands down — the real start lives in that cut). The storyboard's
+/// track-global strip shows the whole flow and carries no marks.
+List<Widget> timelineRowSeContinuationMarks({
+  required Layer layer,
+  required int cutFrameCount,
+  required bool spillsInAtStart,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required double leadingFrameSpacerWidth,
+  required double frameCellExtent,
+  required double crossAxisExtent,
+  required Axis axis,
+  String keyPrefix = 'timeline',
+}) {
+  final marks = <Widget>[];
+  void mark(int boundaryFrame, String suffix) {
+    if (boundaryFrame < frameStartIndex ||
+        boundaryFrame > frameEndIndexExclusive) {
+      return;
+    }
+    final center = frameVisibleX(
+      frameIndex: boundaryFrame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final glyph = IgnorePointer(
+      key: ValueKey<String>('$keyPrefix-se-crossing-${layer.id}-$suffix'),
+      child: const Center(
+        child: Text(
+          '~',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: timelineDrawingInkColor,
+          ),
+        ),
+      ),
+    );
+    marks.add(switch (axis) {
+      Axis.horizontal => Positioned(
+        left: center - 7,
+        top: 0,
+        width: 14,
+        height: crossAxisExtent,
+        child: glyph,
+      ),
+      Axis.vertical => Positioned(
+        top: center - 7,
+        left: 0,
+        height: 14,
+        width: crossAxisExtent,
+        child: glyph,
+      ),
+    });
+  }
+
+  for (final block in drawingBlocks(layer.timeline)) {
+    if (spillsInAtStart && block.startIndex == 0) {
+      mark(0, 'start');
+    }
+    if (block.startIndex < cutFrameCount &&
+        block.endIndexExclusive > cutFrameCount) {
+      mark(cutFrameCount, 'end');
+    }
+  }
+  return marks;
+}
+
 /// Waveform strips for an SE row's audio, painted ABOVE the paper cells
 /// and BELOW the writing overlays (list them between the two in the
 /// Stack). Sounds are FRAME-LINKED (block = instance): each carrying block

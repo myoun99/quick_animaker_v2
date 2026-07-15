@@ -500,6 +500,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       compositeCache: session.cutFrameCompositeCache,
                       cut: session.activeCut,
                       qualityOf: () => session.playbackQuality,
+                      // Gap scrubs park per move (UI-R7 #9): the preview
+                      // shows the no-cut void, not the owner cut's last
+                      // frame.
+                      gapParking: session.gapParkingListenable,
                       // The cut pose AND fade follow the editing canvas
                       // (R9-B/C): fx-gated per cursor frame, identity when off.
                       cutPoseSampleAt: (frame) =>

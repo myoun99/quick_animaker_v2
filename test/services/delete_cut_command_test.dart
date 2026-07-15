@@ -198,7 +198,7 @@ void main() {
 
         final replacement = createDefaultCut(
           cutId: const CutId('replacement-cut'),
-          name: 'Cut 1',
+          name: '1',
           layerId: const LayerId('replacement-layer'),
         );
         expect(repository.requireProject().tracks.single.cuts, [replacement]);
@@ -386,7 +386,7 @@ void main() {
       expect(repository.requireProject().tracks.single.cuts, [
         createDefaultCut(
           cutId: const CutId('replacement-cut'),
-          name: 'Cut 1',
+          name: '1',
           layerId: const LayerId('replacement-layer'),
         ),
       ]);
