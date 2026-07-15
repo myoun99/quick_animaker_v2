@@ -513,6 +513,63 @@ void main() {
     );
   });
 
+  test('R27 DATA-LOSS PIN: resize is CUT-SCOPED — another cut\'s cels '
+      'are never clipped by a differently-sized active cut', () {
+    final store = BrushFrameStore();
+    final otherCutKey = BrushFrameKey(
+      projectId: const ProjectId('p'),
+      trackId: const TrackId('t'),
+      cutId: const CutId('other-8k-cut'),
+      layerId: const LayerId('l'),
+      frameId: const FrameId('f'),
+    );
+    // A cel with content BEYOND a smaller canvas (tile at (1,1) of a
+    // 32px canvas — outside a 16px one).
+    final pixels = Uint8List(8 * 8 * 4);
+    for (var i = 0; i < pixels.length; i += 1) {
+      pixels[i] = (i * 31 + 7) & 0xFF;
+    }
+    final big = BitmapSurface(
+      canvasSize: const CanvasSize(width: 32, height: 32),
+      tileSize: 8,
+      tiles: {
+        TileCoord(x: 3, y: 3): BitmapTile(
+          coord: TileCoord(x: 3, y: 3),
+          size: 8,
+          pixels: pixels,
+        ),
+      },
+    );
+    store.storeBakedSurface(otherCutKey, big);
+    store.adoptSavedFile({
+      otherCutKey: QapCelFileRef(
+        filePath: 'unused.qap',
+        dataOffset: 0,
+        length: 1,
+        canvasSize: const CanvasSize(width: 32, height: 32),
+        tileSize: 8,
+      ),
+    });
+
+    // The OLD bug: switching to a 16px cut ran a store-GLOBAL resize
+    // that clipped this 32px cel's outer tiles. Scoped resize of the
+    // ACTIVE (different) cut must leave it byte-identical, clean and
+    // still file-backed.
+    store.resizeBakedSurfaces(
+      const CanvasSize(width: 16, height: 16),
+      cutId: const CutId('c'),
+    );
+    final after = store.bakedSurfaceOrNull(otherCutKey)!;
+    expect(after.canvasSize, const CanvasSize(width: 32, height: 32));
+    expect(
+      after.tiles[TileCoord(x: 3, y: 3)]!.pixels,
+      pixels,
+      reason: 'the outer tile survives byte-exactly',
+    );
+    expect(store.dirtyCelKeysSinceSave, isEmpty);
+    expect(store.isCelFileBacked(otherCutKey), isTrue);
+  });
+
   test('resizeBakedSurfaces transforms cold cels WITHOUT materializing '
       'them into the hot tier', () {
     final store = BrushFrameStore();
@@ -521,7 +578,7 @@ void main() {
     store.restoreBaked({k: blobOf(k, source)});
 
     const grown = CanvasSize(width: 32, height: 32);
-    store.resizeBakedSurfaces(grown);
+    store.resizeBakedSurfaces(grown, cutId: const CutId('c'));
 
     expect(store.isCelCold(k), isTrue, reason: '1500 cels must not blow RAM');
     final resized = store.bakedSurfaceOrNull(k)!;

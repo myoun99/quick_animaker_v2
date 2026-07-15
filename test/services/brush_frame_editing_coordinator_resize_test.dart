@@ -47,7 +47,7 @@ void main() {
       c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
 
-      c.resizeCanvas(const CanvasSize(width: 12, height: 12));
+      c.resizeCanvas(const CanvasSize(width: 12, height: 12), cutId: const CutId('cut'));
 
       final surface = c.activeSessionState.canvasState.currentSurface;
       expect(surface.canvasSize, const CanvasSize(width: 12, height: 12));
@@ -62,7 +62,7 @@ void main() {
       c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
       c.commitSourceStroke(sourceDabs: [_dab(x: 6, y: 6)]);
 
-      c.resizeCanvas(const CanvasSize(width: 4, height: 4));
+      c.resizeCanvas(const CanvasSize(width: 4, height: 4), cutId: const CutId('cut'));
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
       expect(
         c.activeSessionState.canvasState.currentSurface.canvasSize,
@@ -71,7 +71,7 @@ void main() {
 
       // Growing back keeps the surviving content; the cropped tile is
       // gone (raster truth — ResizeCutCanvasCommand's undo restores it).
-      c.resizeCanvas(canvasSize);
+      c.resizeCanvas(canvasSize, cutId: const CutId('cut'));
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
     });
 
@@ -80,7 +80,7 @@ void main() {
       c.commitSourceStroke(sourceDabs: [_dab(x: 1, y: 1)]);
       final before = c.activeSessionState;
 
-      c.resizeCanvas(canvasSize);
+      c.resizeCanvas(canvasSize, cutId: const CutId('cut'));
 
       expect(identical(c.activeSessionState, before), isTrue);
     });
@@ -93,7 +93,7 @@ void main() {
       c.commitSourceStroke(sourceDabs: [_dab(x: 2, y: 2)]);
       expect(c.frameStore.hasValidDisplayCache(frameA), isTrue);
 
-      c.resizeCanvas(const CanvasSize(width: 12, height: 12));
+      c.resizeCanvas(const CanvasSize(width: 12, height: 12), cutId: const CutId('cut'));
 
       // The active frame's session rebuild immediately donates a fresh
       // preview at the NEW size…
@@ -114,7 +114,7 @@ void main() {
       c.selectFrame(key('frame-b'));
       c.commitSourceStroke(sourceDabs: [_dab(x: 2, y: 2)]);
 
-      c.resizeCanvas(const CanvasSize(width: 12, height: 12));
+      c.resizeCanvas(const CanvasSize(width: 12, height: 12), cutId: const CutId('cut'));
       c.selectFrame(key('frame-a'));
 
       expect(

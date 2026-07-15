@@ -165,7 +165,7 @@ void main() {
   test('a snapshot at the wrong canvas size is refused (no-op)', () {
     final c = coordinator();
     final outcome = c.commitSourceStroke(sourceDabs: [_dab(0)])!;
-    c.resizeCanvas(const CanvasSize(width: 4, height: 4));
+    c.resizeCanvas(const CanvasSize(width: 4, height: 4), cutId: const CutId('cut'));
 
     expect(
       () => c.restoreSurfaceSnapshot(c.activeFrameKey, outcome.postSurface),
@@ -191,7 +191,7 @@ void main() {
     c.commitSourceStroke(sourceDabs: [_dab(0)]);
     expect(alphaAt(c, 2, 2), greaterThan(0));
 
-    c.resizeCanvas(const CanvasSize(width: 12, height: 12));
+    c.resizeCanvas(const CanvasSize(width: 12, height: 12), cutId: const CutId('cut'));
 
     expect(
       c.currentSurfaceOf(c.activeFrameKey).canvasSize,

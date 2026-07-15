@@ -121,7 +121,9 @@ class TimesheetInkController extends ChangeNotifier {
     CanvasSize canvasSize,
   ) {
     if (coordinator != null) {
-      coordinator.resizeCanvas(canvasSize);
+      // Dedicated single-canvas ink store: every band/page plane shares
+      // one geometry, so the whole-store resize is the right one here.
+      coordinator.resizeCanvasAllCuts(canvasSize);
       return coordinator;
     }
     return BrushFrameEditingCoordinator(

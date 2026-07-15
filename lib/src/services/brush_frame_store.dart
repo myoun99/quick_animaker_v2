@@ -466,8 +466,32 @@ class BrushFrameStore {
   /// shrinking then growing back restores exactly). Cold cels transform
   /// one at a time through a decode→resize→re-encode round trip and STAY
   /// cold — a 1500-cel project must never materialize whole for a resize.
-  void resizeBakedSurfaces(CanvasSize canvasSize) {
+  /// Resizes EVERY cel regardless of cut — ONLY for single-canvas
+  /// dedicated stores (the timesheet ink planes, whose band keys spread
+  /// across sentinel cut ids but share one page geometry). The MAIN
+  /// canvas store must never call this: its canvas sizes are per-cut
+  /// (see [resizeBakedSurfaces]).
+  void resizeAllBakedSurfacesSingleCanvas(CanvasSize canvasSize) {
+    final cutIds = <CutId>{
+      for (final key in _bakedSurfaces.keys) key.cutId,
+      for (final key in _coldCels.keys) key.cutId,
+      for (final key in _fileCels.keys) key.cutId,
+    };
+    for (final cutId in cutIds) {
+      resizeBakedSurfaces(canvasSize, cutId: cutId);
+    }
+  }
+
+  /// R27: STRICTLY cut-scoped. Canvas sizes are PER-CUT, and the old
+  /// store-global resize ran on every cut SWITCH between different
+  /// sizes — clipping every other-sized cut's cels to the new active
+  /// size (954 of 1024 tiles of an 8K fill deleted by one visit to a
+  /// default-sized cut; the user's data-loss report).
+  void resizeBakedSurfaces(CanvasSize canvasSize, {required CutId cutId}) {
     for (final key in _bakedSurfaces.keys.toList()) {
+      if (key.cutId != cutId) {
+        continue;
+      }
       final surface = _bakedSurfaces[key]!;
       if (surface.canvasSize == canvasSize) {
         continue;
@@ -477,6 +501,9 @@ class BrushFrameStore {
       _dirtySinceSave.add(key);
     }
     for (final key in _coldCels.keys.toList()) {
+      if (key.cutId != cutId) {
+        continue;
+      }
       final cold = _coldCels[key]!;
       if (cold.canvasSize == canvasSize) {
         continue;
@@ -492,6 +519,9 @@ class BrushFrameStore {
       _dirtySinceSave.add(key);
     }
     for (final key in _fileCels.keys.toList()) {
+      if (key.cutId != cutId) {
+        continue;
+      }
       final fileRef = _fileCels[key]!;
       if (fileRef.canvasSize == canvasSize) {
         continue;

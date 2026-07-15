@@ -156,10 +156,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     super.didUpdateWidget(oldWidget);
     _frameKeys = _resolveFrameKeys();
     if (widget.canvasSize != oldWidget.canvasSize) {
-      // Keep the coordinator (and with it the paint commands and undo
-      // history); it rebuilds the session surfaces at the new size from the
-      // durable commands.
-      _coordinator?.resizeCanvas(widget.canvasSize);
+      // Keep the coordinator (undo history included); the session
+      // reseeds from the baked truth at the new size. R27: the resize
+      // is scoped to the NEWLY resolved cut — on a cut switch its cels
+      // already sit at this size (pure adoption), and other cuts' cels
+      // are never touched (the old global resize clipped them).
+      final cutId = _frameKeys.isNotEmpty ? _frameKeys.first.cutId : null;
+      if (cutId != null) {
+        _coordinator?.resizeCanvas(widget.canvasSize, cutId: cutId);
+      } else {
+        _coordinator?.adoptCanvasSize(widget.canvasSize);
+      }
     }
     _selectResolvedFrame();
   }
