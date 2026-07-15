@@ -558,8 +558,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Add'), findsOneWidget);
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutName(tester, 'default-cut-1', '1');
+    await _expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management rides the toolbar's cut group (R-toolbar round): a
@@ -839,7 +839,7 @@ void main() {
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _dragCutOnto(
@@ -849,7 +849,7 @@ void main() {
     );
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
   });
 
@@ -860,7 +860,7 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _dragCutOnto(
@@ -870,19 +870,19 @@ void main() {
     );
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapRedoButton(tester);
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
@@ -893,7 +893,7 @@ void main() {
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _tapCutCommandButton(
@@ -902,18 +902,18 @@ void main() {
     );
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
 
     await _tapRedoButton(tester);
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
   });
 
   testWidgets('move cut buttons reorder active cut right with undo and redo', (
@@ -923,7 +923,7 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
 
     await _tapCutCommandButton(
@@ -932,18 +932,18 @@ void main() {
     );
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
     await _expectCutOrder(tester, ['default-cut-1', 'cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
 
     await _tapRedoButton(tester);
 
     await _expectCutOrder(tester, ['cut-1', 'default-cut-1']);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('move cut buttons are disabled at cut list edges', (
@@ -1000,10 +1000,10 @@ void main() {
       const ValueKey<String>('new-cut-button'),
     );
 
-    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectCutName(tester, 'cut-1', '2');
     await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectActiveCutName(tester, 'New Cut');
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectActiveCutName(tester, '2');
+    await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Cut 2', 0);
   });
 
@@ -1019,12 +1019,12 @@ void main() {
       const ValueKey<String>('duplicate-cut-button'),
     );
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
-    await _expectCutName(tester, 'cut-1', 'Cut 1 Copy');
+    await _expectCutName(tester, 'default-cut-1', '1');
+    await _expectCutName(tester, 'cut-1', '1 Copy');
     await _expectCutsNamed(tester, 'Cut 2', 0);
     await _expectCutExists(tester, 'default-cut-1', exists: true);
     await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectActiveCutName(tester, 'Cut 1 Copy');
+    await _expectActiveCutName(tester, '1 Copy');
     expect(find.byTooltip('Linked Cut'), findsNothing);
   });
 
@@ -1035,8 +1035,8 @@ void main() {
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
-    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectCutName(tester, 'default-cut-1', '1');
+    await _expectCutName(tester, 'cut-1', '2');
 
     await _tapCutCommandButton(
       tester,
@@ -1046,7 +1046,7 @@ void main() {
     await _expectCutExists(tester, 'default-cut-1', exists: false);
     await _expectCutExists(tester, 'default-cut-1', exists: false);
     await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
   });
 
   testWidgets('replaces the last deleted cut through the cut command action', (
@@ -1061,8 +1061,8 @@ void main() {
 
     await _expectCutExists(tester, 'default-cut-1', exists: false);
     await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectCutName(tester, 'cut-1', 'Cut 1');
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutName(tester, 'cut-1', '1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('long multi-line cut note remains editable and savable', (
@@ -1106,7 +1106,7 @@ Line 8''';
     await _tapCutNoteSaveButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), longNote);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('different cuts keep separate cut notes', (
@@ -1142,13 +1142,13 @@ Line 8''';
     await _saveCutNote(tester, 'Cut 2 old note');
     await _saveCutNote(tester, 'Cut 2 new note');
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _tapUndoButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 old note');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
@@ -1158,7 +1158,7 @@ Line 8''';
     await _tapRedoButton(tester);
 
     expect(await _currentCutNoteFromDialog(tester), 'Cut 2 new note');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _switchToCut(tester, 'default-cut-1');
@@ -1198,26 +1198,26 @@ Line 8''';
 
       await _saveCutNote(tester, 'Old note');
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _saveCutNote(tester, 'New note');
 
       expect(find.text('Edit Cut Note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), 'New note');
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _tapUndoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
       await _tapRedoButton(tester);
 
       expect(await _currentCutNoteFromDialog(tester), 'New note');
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       expect(await _activeCutId(tester), const CutId('default-cut-1'));
     },
   );
@@ -1236,7 +1236,7 @@ Line 8''';
 
       expect(find.text('Edit Cut Note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), '');
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       expect(
         await _isActionButtonEnabled(
           tester,
@@ -1265,7 +1265,7 @@ Line 8''';
       ),
       isFalse,
     );
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('opens and cancels rename cut dialog without mutation', (
@@ -1290,7 +1290,7 @@ Line 8''';
           )
           .controller
           ?.text,
-      'Cut 1',
+      '1',
     );
 
     await tester.enterText(
@@ -1303,9 +1303,9 @@ Line 8''';
     await tester.pumpAndSettle();
 
     expect(find.text('Rename Cut'), findsNothing);
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Canceled Cut', 0);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('renames active cut and supports undo and redo', (
@@ -1316,21 +1316,21 @@ Line 8''';
     await _renameActiveCut(tester, 'Scene A');
 
     await _expectCutName(tester, 'default-cut-1', 'Scene A');
-    await _expectCutsNamed(tester, 'Cut 1', 0);
+    await _expectCutsNamed(tester, '1', 0);
     await _expectActiveCutName(tester, 'Scene A');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapUndoButton(tester);
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Scene A', 0);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapRedoButton(tester);
 
     await _expectCutName(tester, 'default-cut-1', 'Scene A');
-    await _expectCutsNamed(tester, 'Cut 1', 0);
+    await _expectCutsNamed(tester, '1', 0);
     await _expectActiveCutName(tester, 'Scene A');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
@@ -1340,8 +1340,8 @@ Line 8''';
 
     await _renameActiveCut(tester, '   ');
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectCutName(tester, 'default-cut-1', '1');
+    await _expectActiveCutName(tester, '1');
     final undoButton = tester.widget<IconButton>(
       find.byKey(const ValueKey<String>('undo-button')),
     );
@@ -1354,12 +1354,12 @@ Line 8''';
     await tester.pumpWidget(const QuickAnimakerApp());
     await _createSecondCut(tester);
 
-    await _renameActiveCut(tester, 'Cut 1');
+    await _renameActiveCut(tester, '1');
 
-    await _expectCutsNamed(tester, 'Cut 1', 2);
+    await _expectCutsNamed(tester, '1', 2);
     await _expectCutExists(tester, 'default-cut-1', exists: true);
     await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(find.textContaining('already'), findsNothing);
     expect(find.textContaining('duplicate'), findsNothing);
   });
@@ -1369,7 +1369,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
+    await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Cut 2', 0);
     _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
@@ -1384,7 +1384,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
       findsNothing,
     );
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
   });
 
   testWidgets('initial timeline layer shows animation kind icon', (
@@ -1646,16 +1646,16 @@ Line 8''';
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectCutName(tester, 'default-cut-1', 'Cut 1');
-    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectCutName(tester, 'default-cut-1', '1');
+    await _expectCutName(tester, 'cut-1', '2');
     await _expectCutsNamed(tester, 'Cut 2', 0);
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     _expectActiveLayerName('A');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await _tapStoryboardCutBlock(tester, 'cut-1');
 
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     _expectActiveLayerName('A');
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
@@ -1668,8 +1668,8 @@ Line 8''';
 
     await _tapStoryboardCutBlock(tester, 'default-cut-1');
 
-    await _expectActiveCutName(tester, 'Cut 1');
-    await _expectCutName(tester, 'cut-1', 'New Cut');
+    await _expectActiveCutName(tester, '1');
+    await _expectCutName(tester, 'cut-1', '2');
     _expectActiveLayerName('A');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
@@ -1686,7 +1686,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('storyboard-panel')),
       findsOneWidget,
     );
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
     await tester.tap(
@@ -1694,7 +1694,7 @@ Line 8''';
     );
     await tester.pumpAndSettle();
 
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _showTimelinePanel(tester);
@@ -1720,7 +1720,7 @@ Line 8''';
 
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
   });
 
@@ -1731,7 +1731,7 @@ Line 8''';
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     _expectActiveLayerName('A');
     _expectCellText('layer-1', 0, 'X');
 
@@ -1747,14 +1747,14 @@ Line 8''';
 
     await _switchToCut(tester, 'default-cut-1');
 
-    await _expectActiveCutName(tester, 'Cut 1');
+    await _expectActiveCutName(tester, '1');
     _expectActiveLayerName('A');
     _expectCellText('default-layer-1', 0, 'X');
     _expectNoCellText('default-layer-1', 1, '○');
 
     await _switchToCut(tester, 'cut-1');
 
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     _expectCellText('layer-1', 1, '○');
   });
 
@@ -1794,7 +1794,7 @@ Line 8''';
 
       await _switchToCut(tester, 'default-cut-1');
 
-      await _expectActiveCutName(tester, 'Cut 1');
+      await _expectActiveCutName(tester, '1');
       // Cut 1's layer is untouched: one empty run whose first cell reads X.
       _expectCellText('default-layer-1', 0, 'X');
       _expectNoCellText('default-layer-1', 1, 'X');
@@ -1933,7 +1933,7 @@ Line 8''';
 
       await _switchToCut(tester, 'cut-1');
 
-      await _expectActiveCutName(tester, 'New Cut');
+      await _expectActiveCutName(tester, '2');
       expect(
         await _isActionButtonEnabled(
           tester,
@@ -1974,13 +1974,13 @@ Line 8''';
 
     await _tapUndoButton(tester);
 
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     _expectActiveLayerName('A');
     _expectNoCellText('layer-1', 1, '○');
 
     await _tapRedoButton(tester);
 
-    await _expectActiveCutName(tester, 'New Cut');
+    await _expectActiveCutName(tester, '2');
     _expectCellText('layer-1', 1, '○');
   });
 
