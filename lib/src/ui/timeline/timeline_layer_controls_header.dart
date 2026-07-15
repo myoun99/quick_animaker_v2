@@ -11,56 +11,10 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
-/// A small 0–100% picker for the legend's inactive-dim and bulk-opacity
-/// items (both numeric percentages). Commits on OK; cancel leaves state.
-Future<void> _showValueDialog(
-  BuildContext context, {
-  required String title,
-  required double initial,
-  required ValueChanged<double> onCommit,
-}) async {
-  var value = initial.clamp(0.0, 1.0);
-  final result = await showDialog<double>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      content: SizedBox(
-        width: 240,
-        child: StatefulBuilder(
-          builder: (context, setState) => FieldSlider(
-            key: const ValueKey<String>('legend-value-dialog-slider'),
-            value: value,
-            min: 0,
-            max: 1,
-            label: 'Value',
-            valueText: '${(value * 100).round()}%',
-            displayFactor: 100,
-            onChanged: (next) => setState(() => value = next),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('legend-value-dialog-ok'),
-          onPressed: () => Navigator.of(context).pop(value),
-          child: const Text('OK'),
-        ),
-      ],
-    ),
-  );
-  if (result != null) {
-    onCommit(result);
-  }
-}
-
 /// The rail legend's bulk commands (session-backed; the host wires them).
 /// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
 /// view-ish ones (eye/mute/fx/opacity) mirror their per-row toggles. The
-/// R2 filter/dim/bulk-opacity facets ride the same struct.
+/// row-solo facets and the master opacity bar ride the same struct.
 class LayerLegendCallbacks {
   const LayerLegendCallbacks({
     required this.onShowAllLayers,
@@ -79,7 +33,6 @@ class LayerLegendCallbacks {
     required this.onToggleSheetOnlyFilter,
     required this.onToggleFxOnlyFilter,
     required this.onToggleFillReferenceOnlyFilter,
-    required this.onSetInactiveDim,
     required this.onPreviewLayersOpacity,
     required this.onCommitLayersOpacity,
   });
@@ -105,9 +58,6 @@ class LayerLegendCallbacks {
   final VoidCallback onToggleSheetOnlyFilter;
   final VoidCallback onToggleFxOnlyFilter;
   final VoidCallback onToggleFillReferenceOnlyFilter;
-
-  /// The lighttable dim strength (0..1).
-  final ValueChanged<double> onSetInactiveDim;
 
   /// The legend's MASTER opacity bar (R4 #6): per-move preview + one
   /// commit on release, over the rows the rail currently displays (the
@@ -135,12 +85,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.rowFilter = TimelineRowFilter.none,
     this.marksInUse = const {},
     this.kindsInUse = const {},
-    this.inactiveDimStrength = 0.0,
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
     this.allSeMuted = false,
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
+    this.showRowSolos = true,
   });
 
   final TimelineGridMetrics metrics;
@@ -169,8 +119,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// The master bar's resting value: the displayed rows' average opacity.
   final double displayedOpacity;
 
-  /// The lighttable dim strength (for the eye flyout's slider readout).
-  final double inactiveDimStrength;
+  /// Hosts without a row filter (the storyboard's track-global rail,
+  /// UI-R5) pass false: the 'Solo …' flyout entries and the kind-solo
+  /// flyout stand down while the bulk ops and the master bar keep working.
+  final bool showRowSolos;
 
   /// Whether the visibility SOLO MODE is on (eye legend state color +
   /// flyout check).
@@ -263,28 +215,24 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Corner over the section gutter: the sections flyout.
-          cell(
-            keyValue: 'legend-sections',
-            width: metrics.sectionLabelGutterWidth,
-            tooltip: 'Sections',
-            entriesBuilder: _sectionEntries,
-            child: Icon(
-              Icons.view_agenda_outlined,
-              size: 13,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: colorScheme.outlineVariant,
-          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
+                  // Over the rows' inline section-tag slot (UI-R5): the
+                  // sections flyout.
+                  cell(
+                    keyValue: 'legend-sections',
+                    width: layerSectionLabelSlotWidth,
+                    tooltip: 'Sections',
+                    entriesBuilder: _sectionEntries,
+                    child: Icon(
+                      Icons.view_agenda_outlined,
+                      size: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   // The lane column's header: fold/unfold EVERY layer's
                   // lanes in one tap (R3 feedback #5).
                   if (onExpandAllLanes != null && onCollapseAllLanes != null)
@@ -332,14 +280,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.table_chart_outlined,
                               onSelected: legend.onSheetAllOff,
                             ),
-                            const PanelFlyoutDivider(),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-filter-sheet',
-                              label: 'Solo sheet-on rows',
-                              icon: Icons.center_focus_strong_outlined,
-                              checked: rowFilter.onTimesheetOnly,
-                              onSelected: legend.onToggleSheetOnlyFilter,
-                            ),
+                            if (showRowSolos) ...[
+                              const PanelFlyoutDivider(),
+                              PanelFlyoutItem(
+                                keyValue: 'legend-filter-sheet',
+                                label: 'Solo sheet-on rows',
+                                icon: Icons.center_focus_strong_outlined,
+                                checked: rowFilter.onTimesheetOnly,
+                                onSelected: legend.onToggleSheetOnlyFilter,
+                              ),
+                            ],
                           ],
                     child: legendIcon(
                       Icons.table_chart_outlined,
@@ -360,7 +310,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.label_off_outlined,
                               onSelected: legend.onClearAllMarks,
                             ),
-                            if (marksInUse.isNotEmpty) ...[
+                            if (showRowSolos && marksInUse.isNotEmpty) ...[
                               const PanelFlyoutDivider(),
                               const PanelFlyoutHeader('Solo color'),
                               for (final mark in LayerMark.values)
@@ -389,7 +339,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     keyValue: 'legend-kind',
                     width: 18,
                     tooltip: 'Layer kind column',
-                    entriesBuilder: legend == null || kindsInUse.isEmpty
+                    entriesBuilder:
+                        legend == null || kindsInUse.isEmpty || !showRowSolos
                         ? null
                         : () => [
                             const PanelFlyoutHeader('Solo kind'),
@@ -441,15 +392,17 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.format_color_reset_outlined,
                               onSelected: legend.onClearAllFillReferences,
                             ),
-                            const PanelFlyoutDivider(),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-filter-fill-ref',
-                              label: 'Solo fill references',
-                              icon: Icons.center_focus_strong_outlined,
-                              checked: rowFilter.fillReferenceOnly,
-                              onSelected:
-                                  legend.onToggleFillReferenceOnlyFilter,
-                            ),
+                            if (showRowSolos) ...[
+                              const PanelFlyoutDivider(),
+                              PanelFlyoutItem(
+                                keyValue: 'legend-filter-fill-ref',
+                                label: 'Solo fill references',
+                                icon: Icons.center_focus_strong_outlined,
+                                checked: rowFilter.fillReferenceOnly,
+                                onSelected:
+                                    legend.onToggleFillReferenceOnlyFilter,
+                              ),
+                            ],
                           ],
                     child: legendIcon(
                       Icons.format_color_fill,
@@ -473,14 +426,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               label: 'Bypass all fx',
                               onSelected: legend.onBypassAllFx,
                             ),
-                            const PanelFlyoutDivider(),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-filter-fx',
-                              label: 'Solo fx-on rows',
-                              icon: Icons.center_focus_strong_outlined,
-                              checked: rowFilter.fxOnly,
-                              onSelected: legend.onToggleFxOnlyFilter,
-                            ),
+                            if (showRowSolos) ...[
+                              const PanelFlyoutDivider(),
+                              PanelFlyoutItem(
+                                keyValue: 'legend-filter-fx',
+                                label: 'Solo fx-on rows',
+                                icon: Icons.center_focus_strong_outlined,
+                                checked: rowFilter.fxOnly,
+                                onSelected: legend.onToggleFxOnlyFilter,
+                              ),
+                            ],
                           ],
                     child: Text(
                       'fx',
@@ -517,22 +472,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.center_focus_strong_outlined,
                               checked: visibilitySoloEnabled,
                               onSelected: legend.onToggleVisibilitySolo,
-                            ),
-                            const PanelFlyoutDivider(),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-inactive-dim',
-                              label: inactiveDimStrength > 0
-                                  ? 'Inactive dim… '
-                                        '(${(inactiveDimStrength * 100).round()}%)'
-                                  : 'Inactive dim…',
-                              icon: Icons.contrast,
-                              checked: inactiveDimStrength > 0,
-                              onSelected: () => _showValueDialog(
-                                context,
-                                title: 'Inactive layer dim',
-                                initial: inactiveDimStrength,
-                                onCommit: legend.onSetInactiveDim,
-                              ),
                             ),
                           ],
                     child: legendIcon(

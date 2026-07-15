@@ -29,12 +29,18 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.keyPrefix = 'timeline',
     this.width,
     this.height,
+    this.leadingInset = 0,
   });
 
   final Layer layer;
   final PropertyLaneRow lane;
   final TimelineGridMetrics metrics;
   final int currentFrameIndex;
+
+  /// Extra leading indent (horizontal axis only): the timeline rail's
+  /// inline section-tag slot (UI-R5) so lane labels stay aligned with
+  /// their layer row's content.
+  final double leadingInset;
   final ValueChanged<int>? onSelectFrame;
   final PropertyLaneEditCallbacks? laneEdit;
 
@@ -312,7 +318,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               : () => onToggleGroup(layer, lane),
           child: Padding(
             padding: widget.axis == Axis.horizontal
-                ? const EdgeInsets.only(left: 10, right: 8)
+                ? EdgeInsets.only(left: 10 + widget.leadingInset, right: 8)
                 : const EdgeInsets.symmetric(horizontal: 2),
             child: Row(
               mainAxisAlignment: widget.axis == Axis.horizontal
@@ -402,7 +408,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               widget.metrics.sectionLabelGutterWidth),
       height: widget.height ?? widget.metrics.layerRowHeight,
       padding: widget.axis == Axis.horizontal
-          ? const EdgeInsets.only(left: 24, right: 8)
+          ? EdgeInsets.only(left: 24 + widget.leadingInset, right: 8)
           : const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,

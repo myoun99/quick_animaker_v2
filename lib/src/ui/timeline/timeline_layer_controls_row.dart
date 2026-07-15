@@ -5,6 +5,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -27,6 +28,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLanes,
     this.fxEnabled = true,
     this.onToggleLayerFx,
+    this.sectionLabel,
+    this.sectionFlyoutEntries,
   });
 
   final Layer layer;
@@ -64,6 +67,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool fxEnabled;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
+  /// The INLINE section tag (UI-R5): the section's FIRST row carries its
+  /// label (ACTION/SE/CAM) in the leading slot; every other row reserves
+  /// the slot empty so the control columns stay aligned. Tapping the tag
+  /// opens the section flyout ([sectionFlyoutEntries]).
+  final String? sectionLabel;
+  final List<PanelFlyoutEntry> Function()? sectionFlyoutEntries;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -93,6 +103,40 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
+              // The inline section tag (UI-R5): label on the section's
+              // first row, empty slot everywhere else.
+              if (sectionLabel != null)
+                SizedBox(
+                  width: layerSectionLabelSlotWidth,
+                  height: 26,
+                  child: Builder(
+                    builder: (anchorContext) => InkWell(
+                      key: ValueKey<String>('timeline-section-tag-${layer.id}'),
+                      onTap: sectionFlyoutEntries == null
+                          ? null
+                          : () => showPanelFlyout(
+                              anchorContext,
+                              entries: sectionFlyoutEntries!(),
+                            ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          sectionLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.clip,
+                          style: TextStyle(
+                            fontSize: 8,
+                            letterSpacing: 0.6,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: layerSectionLabelSlotWidth),
               if (hasLanes && onToggleLanes != null)
                 InkWell(
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),

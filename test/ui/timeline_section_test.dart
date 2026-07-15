@@ -169,6 +169,30 @@ void main() {
       );
     });
 
+    testWidgets('horizontal: inline section tags sit on each section FIRST '
+        'row; the bracket gutter is retired (UI-R5)', (tester) async {
+      await tester.pumpWidget(panel(TimelineOrientation.horizontal));
+
+      // Display order: cam (camera section) then b, a (drawing section).
+      expect(
+        find.byKey(const ValueKey<String>('timeline-section-tag-cam')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('timeline-section-tag-b')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('timeline-section-tag-a')),
+        findsNothing,
+      );
+      // The old gutter bracket is gone.
+      expect(
+        find.byKey(const ValueKey<String>('section-bracket-camera')),
+        findsNothing,
+      );
+    });
+
     testWidgets('xsheet: camera column sits rightmost; no extra divider '
         'furniture', (tester) async {
       await tester.pumpWidget(panel(TimelineOrientation.vertical));

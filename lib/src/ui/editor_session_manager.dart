@@ -798,10 +798,6 @@ class EditorSessionManager extends ChangeNotifier {
 
     final frameIndex = _timelineController.currentFrameIndex;
     var seenActiveLayer = false;
-    // Lighttable dim (R2 view state, DISPLAY only): non-active stack
-    // layers composite at this extra factor. Applied here — never in the
-    // shared composite plan — so export/thumbnails stay untouched.
-    final inactiveFactor = 1.0 - _inactiveDimStrength;
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -847,7 +843,7 @@ class EditorSessionManager extends ChangeNotifier {
       (seenActiveLayer ? above : below).add(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, entry.layer.id, entry.frame.id),
-          opacity: entry.opacity * inactiveFactor,
+          opacity: entry.opacity,
           pose: entry.pose,
           anchorPoint: entry.anchorPoint,
         ),
@@ -874,7 +870,7 @@ class EditorSessionManager extends ChangeNotifier {
       (seenActiveLayer ? above : below).add(
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: opacity * inactiveFactor,
+          opacity: opacity,
           pose: null,
           anchorPoint: null,
         ),
@@ -1933,23 +1929,6 @@ class EditorSessionManager extends ChangeNotifier {
         _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
       }
     }
-    notifyListeners();
-  }
-
-  /// The lighttable "inactive dim" (R2 view state): while > 0, every
-  /// NON-active layer composites at (1 − dim) extra opacity in the editing
-  /// canvas display ONLY — export, thumbnails and the timesheet ignore it,
-  /// like the cut picture-hide toggle. 0 = off.
-  double _inactiveDimStrength = 0.0;
-
-  double get inactiveDimStrength => _inactiveDimStrength;
-
-  void setInactiveDimStrength(double strength) {
-    final clamped = strength.clamp(0.0, 1.0);
-    if (_inactiveDimStrength == clamped) {
-      return;
-    }
-    _inactiveDimStrength = clamped;
     notifyListeners();
   }
 

@@ -14,6 +14,7 @@ import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_panel.dart';
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
+import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
@@ -429,8 +430,35 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               onLayerOpacityChanged: _session.previewLayerOpacity,
               onLayerOpacityChangeEnd: _session.commitLayerOpacity,
               onLayerMarkSelected: _session.setLayerMark,
+              onToggleLayerTimesheet: _session.toggleLayerTimesheet,
               layerFxEnabledOf: _session.isLayerFxEnabled,
               onToggleLayerFx: _session.toggleLayerFx,
+              // The timeline's rail legend on this panel too (UI-R5): the
+              // same session-backed bulk flyouts + master opacity bar; the
+              // row solos stand down (the storyboard rail is track-global,
+              // no row filter here).
+              visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+              legend: LayerLegendCallbacks(
+                onShowAllLayers: () => _session.setAllLayersVisibility(true),
+                onHideAllLayers: () => _session.setAllLayersVisibility(false),
+                onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
+                onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
+                onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
+                onClearAllMarks: _session.clearAllLayerMarks,
+                onClearAllFillReferences: _session.clearAllFillReferences,
+                onMuteAllSe: () => _session.setAllSeLayersMuted(true),
+                onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
+                onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
+                onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
+                // Row solos stand down here (showRowSolos: false).
+                onToggleMarkFilter: (_) {},
+                onToggleKindFilter: (_) {},
+                onToggleSheetOnlyFilter: () {},
+                onToggleFxOnlyFilter: () {},
+                onToggleFillReferenceOnlyFilter: () {},
+                onPreviewLayersOpacity: _session.previewLayersOpacity,
+                onCommitLayersOpacity: _session.commitLayersOpacity,
+              ),
               // V-row display toggles (R9): cut FX bypass + picture
               // eye — session view state the playback display reads.
               cutFxEnabledOf: _session.isCutFxEnabled,

@@ -49,13 +49,15 @@ import 'timeline/timeline_frame_range_policy.dart'
         defaultEndlessRunwayFrames,
         endlessTrailingFrames,
         timelineSecondsLabel;
+import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
+import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
+import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_se_row_visual.dart' show SePaperSpan, SeSpanVisual;
 import 'timeline/timeline_zoom_anchor_policy.dart';
-import 'timeline/upright_vertical_text.dart';
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
 /// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
@@ -149,6 +151,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
     this.cutFxEnabledOf,
@@ -159,6 +162,8 @@ class StoryboardPanel extends StatefulWidget {
     this.seCommaDrag,
     this.onSetAudioClipOffset,
     this.dragPreview,
+    this.legend,
+    this.visibilitySoloEnabled = false,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -170,15 +175,13 @@ class StoryboardPanel extends StatefulWidget {
   // 140 竊・240 when the S rows gained the timeline-parity layer controls
   // (R4-竭ｨ '・・ｲｽ奝ｵ・ｼ'); the control set needs the width, like the timeline
   // rail's own widening for the fx switch.
-  static const double _trackLabelWidth = 240;
+  // 240 → the timeline rail's width (UI-R5 storyboard unification): the
+  // rail rows share the timeline's slot grid and the legend header sits
+  // on top, so the columns line up across both panels.
+  static const double _trackLabelWidth = 372;
   static const double _trackLaneHeight = 64;
   static const double _rulerHeight = 24;
 
-  /// The section-bracket gutter LEFT of the rail (timeline parity, R7-竭､):
-  /// one bracket cell per section run 窶・'SE' wrapping a track group's S
-  /// rows, 'V TRACK' wrapping its V row 窶・same width as the timeline's
-  /// gutter.
-  static const double _sectionGutterWidth = 24;
   static const double _timelineTrailingPadding = 12;
 
   final Project project;
@@ -327,8 +330,20 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+
+  /// The sheet toggle in the timeline slot (UI-R5 unification).
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// The timeline's rail legend over this panel's rail (UI-R5): same
+  /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
+  /// through the same session hooks. Null renders a display-only legend.
+  final LayerLegendCallbacks? legend;
+
+  /// Whether the visibility solo mode is engaged (legend eye state color).
+  final bool visibilitySoloEnabled;
 
   /// V-row display toggles (R9, session view state, ACTIVE-cut scoped like
   /// the S-row layer controls): the fx switch bypasses the cut-level
@@ -580,45 +595,78 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               ? null
               : (_, _) => onToggleGroup(groupKey),
           keyPrefix: 'storyboard',
+          leadingInset: layerSectionLabelSlotWidth,
         ),
     ];
   }
 
-  /// The 2px section divider overlaying the top of a track group's FIRST
-  /// rail row 窶・zero height cost, so the rail and the strips column (which
-  /// carries no divider element) stay row-for-row height-synced.
-  Widget _withRailDivider(Track track, Widget row) {
-    return Stack(
-      children: [
-        row,
-        Positioned(
-          top: 0,
-          left: 0,
-          width: StoryboardPanel._trackLabelWidth,
-          height: 2,
-          child: IgnorePointer(
-            child: Container(
-              key: ValueKey<String>(
-                'storyboard-section-divider-rail-${track.id.value}',
-              ),
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-        ),
-      ],
-    );
+  /// The layers the legend header's bulk ops act on: the ACTIVE cut's
+  /// layers plus its track's SE rows (the same set the timeline legend
+  /// sweeps through the session).
+  List<Layer> _legendLayers() {
+    for (final track in widget.project.tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == widget.activeCutId) {
+          return [...cut.layers, ...track.seLayers];
+        }
+      }
+    }
+    return const [];
   }
 
-  Widget _seLabelRow(Track track, int slot) {
+  Set<LayerMark> _legendMarksInUse() => {
+    for (final layer in _legendLayers())
+      if (layer.mark != LayerMark.none) layer.mark,
+  };
+
+  Set<LayerKind> _legendKindsInUse() => {
+    for (final layer in _legendLayers()) layer.kind,
+  };
+
+  bool _legendAllSeMuted() {
+    var sawSe = false;
+    for (final layer in _legendLayers()) {
+      if (layer.kind != LayerKind.se) {
+        continue;
+      }
+      sawSe = true;
+      if (!layer.muted) {
+        return false;
+      }
+    }
+    return sawSe;
+  }
+
+  Set<LayerId> _legendDisplayedLayerIds() => {
+    for (final layer in _legendLayers())
+      if (layer.kind != LayerKind.camera) layer.id,
+  };
+
+  double _legendDisplayedOpacity() {
+    var total = 0.0;
+    var count = 0;
+    for (final layer in _legendLayers()) {
+      if (layer.kind == LayerKind.camera) {
+        continue;
+      }
+      total += layer.opacity.clamp(0.0, 1.0);
+      count += 1;
+    }
+    return count == 0 ? 1.0 : total / count;
+  }
+
+  Widget _seLabelRow(Track track, int slot, {bool showSectionTag = false}) {
     final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
       track: track,
       slot: slot,
+      sectionTag: showSectionTag ? 'SE' : null,
       active:
           trackLayer != null &&
           widget.activeLayerId != null &&
           trackLayer.id == widget.activeLayerId,
       onSelectLayer: widget.onSelectLayer,
+      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       waveformVisible: !widget.hiddenWaveformSeRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),
@@ -649,9 +697,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// S2 above it); the section divider overlays the group's first row.
   List<Widget> _railRowsForTrack(Track track, int index) {
     final activeCut = _activeCutOf(track);
+    final topSlot = _seSlotCount(track) - 1;
     final rows = <Widget>[
-      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
-        _seLabelRow(track, slot),
+      for (var slot = topSlot; slot >= 0; slot--) ...[
+        _seLabelRow(track, slot, showSectionTag: slot == topSlot),
         if (widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
         )) ...[
@@ -685,6 +734,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       _StoryboardTrackLabel(
         track: track,
         trackLabel: 'V${index + 1}',
+        sectionTag: 'V',
         laneExpanded: widget.expandedTransformTracks.contains(track.id.value),
         onToggleLane: widget.onToggleTrackLane == null
             ? null
@@ -706,97 +756,23 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           active: activeCut != null,
         ),
     ];
-    return [_withRailDivider(track, rows.first), ...rows.skip(1)];
+    return rows;
   }
 
-  /// Pixel height of one track group's S-row section in the rail (rows
-  /// plus twirled-down lanes) 窶・the section bracket's cell must match the
-  /// rows exactly, so this mirrors [_railRowsForTrack]'s conditionals over
-  /// the same height constants (rows stack flush, R7-竭､).
-  double _seSectionExtent(Track track) {
-    final activeCut = _activeCutOf(track);
-    var extent = 0.0;
-    for (var slot = 0; slot < _seSlotCount(track); slot++) {
-      extent += _seRowHeight;
-      if (widget.expandedSeAudioRows.contains(
-        StoryboardPanel.seRowKey(track, slot),
-      )) {
-        extent += _audioLaneHeight;
-        extent +=
-            _seTransformLanes(
-              track,
-              slot,
-              activeCut,
-              _trackSeAt(track, slot),
-            ).length *
-            _transformLaneHeight;
-      }
-    }
-    return extent;
-  }
-
-  /// Pixel height of one track group's V section in the rail (the track
-  /// row plus its twirled-down Transform group) 窶・see [_seSectionExtent].
-  double _vSectionExtent(Track track) {
-    var extent = StoryboardPanel._trackLaneHeight;
-    if (widget.expandedTransformTracks.contains(track.id.value)) {
-      extent +=
-          _cutTransformLanes(track, _activeCutOf(track)).length *
-          _transformLaneHeight;
-    }
-    return extent;
-  }
-
-  /// One section-bracket cell 窶・the timeline gutter's exact visual
-  /// language (surface-low fill, outline border, upright stacked label).
-  Widget _sectionBracket({
-    required String keySuffix,
-    required String label,
-    required double height,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
+  /// Per-row hairline under every STRIP row (UI-R5 storyboard unification:
+  /// the timeline grid's row lines reach the frame area here too). Drawn
+  /// as a foreground so row heights stay untouched (rail lockstep).
+  Widget _stripRowLine(Widget row) {
     return Container(
-      key: ValueKey<String>('storyboard-section-bracket-$keySuffix'),
-      width: StoryboardPanel._sectionGutterWidth,
-      height: height,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border.all(color: colorScheme.outline, width: 1),
-      ),
-      child: Center(
-        child: ClipRect(
-          child: UprightVerticalText(
-            text: label,
-            style: TextStyle(
-              fontSize: 9,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.bold,
-              height: 1.15,
-              color: colorScheme.onSurfaceVariant,
-            ),
+      foregroundDecoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
       ),
+      child: row,
     );
-  }
-
-  /// One track group's gutter cells: the SE bracket over its S rows (when
-  /// any) and the V TRACK bracket over its track row and lanes.
-  List<Widget> _sectionBracketsForTrack(Track track) {
-    final seExtent = _seSectionExtent(track);
-    return [
-      if (seExtent > 0)
-        _sectionBracket(
-          keySuffix: 'se-${track.id.value}',
-          label: 'SE',
-          height: seExtent,
-        ),
-      _sectionBracket(
-        keySuffix: 'v-${track.id.value}',
-        label: 'V TRACK',
-        height: _vSectionExtent(track),
-      ),
-    ];
   }
 
   /// One track group's strip rows, mirroring [_railRowsForTrack] row for
@@ -814,21 +790,30 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
       ...seRows,
-      _StoryboardTrackRow(
-        track: track,
-        layoutEntries: entries,
-        activeCutId: widget.activeCutId,
-        onCutSelected: widget.onCutSelected,
-        onCutReordered: widget.onCutReordered,
-        cutTrim: widget.cutTrim,
-        cutMove: widget.cutMove,
-        thumbnailFor: widget.thumbnailFor,
-        timelineScale: scale,
-        showSeconds: widget.showSeconds,
-        projectFps: widget.projectFps,
+      _stripRowLine(
+        _StoryboardTrackRow(
+          track: track,
+          layoutEntries: entries,
+          activeCutId: widget.activeCutId,
+          onCutSelected: widget.onCutSelected,
+          onCutReordered: widget.onCutReordered,
+          cutTrim: widget.cutTrim,
+          cutMove: widget.cutMove,
+          thumbnailFor: widget.thumbnailFor,
+          timelineScale: scale,
+          showSeconds: widget.showSeconds,
+          projectFps: widget.projectFps,
+        ),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value))
-        ..._cutTransformLaneStrips(track, index, entries, width, scale),
+        for (final strip in _cutTransformLaneStrips(
+          track,
+          index,
+          entries,
+          width,
+          scale,
+        ))
+          _stripRowLine(strip),
     ];
   }
 
@@ -843,28 +828,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ) {
     return [
       for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
-        _StoryboardSeRow(
-          trackIndex: index,
-          slot: slot,
-          layer: _trackSeAt(track, slot),
-          layoutEntries: entries,
-          width: width,
-          timelineScale: scale,
-          projectFps: widget.projectFps,
-          audioPeaksFor:
-              widget.hiddenWaveformSeRows.contains(
-                StoryboardPanel.seRowKey(track, slot),
-              )
-              ? null
-              : widget.audioPeaksFor,
-          activeCutId: widget.activeCutId,
-          onSelectSeBlock: widget.onSelectSeBlock,
-          seCommaDrag: widget.seCommaDrag,
-        ),
-        if (widget.expandedSeAudioRows.contains(
-          StoryboardPanel.seRowKey(track, slot),
-        )) ...[
-          _StoryboardAudioLaneRow(
+        _stripRowLine(
+          _StoryboardSeRow(
             trackIndex: index,
             slot: slot,
             layer: _trackSeAt(track, slot),
@@ -872,11 +837,43 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             width: width,
             timelineScale: scale,
             projectFps: widget.projectFps,
-            audioPeaksFor: widget.audioPeaksFor,
+            audioPeaksFor:
+                widget.hiddenWaveformSeRows.contains(
+                  StoryboardPanel.seRowKey(track, slot),
+                )
+                ? null
+                : widget.audioPeaksFor,
             activeCutId: widget.activeCutId,
-            onSetAudioClipOffset: widget.onSetAudioClipOffset,
+            onSelectSeBlock: widget.onSelectSeBlock,
+            seCommaDrag: widget.seCommaDrag,
           ),
-          ..._seTransformLaneStrips(track, index, slot, entries, width, scale),
+        ),
+        if (widget.expandedSeAudioRows.contains(
+          StoryboardPanel.seRowKey(track, slot),
+        )) ...[
+          _stripRowLine(
+            _StoryboardAudioLaneRow(
+              trackIndex: index,
+              slot: slot,
+              layer: _trackSeAt(track, slot),
+              layoutEntries: entries,
+              width: width,
+              timelineScale: scale,
+              projectFps: widget.projectFps,
+              audioPeaksFor: widget.audioPeaksFor,
+              activeCutId: widget.activeCutId,
+              onSetAudioClipOffset: widget.onSetAudioClipOffset,
+            ),
+          ),
+          for (final strip in _seTransformLaneStrips(
+            track,
+            index,
+            slot,
+            entries,
+            width,
+            scale,
+          ))
+            _stripRowLine(strip),
         ],
       ],
     ];
@@ -1081,10 +1078,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(
-                    width:
-                        StoryboardPanel._sectionGutterWidth +
-                        StoryboardPanel._trackLabelWidth,
+                  // The timeline's legend header over the rail (UI-R5
+                  // storyboard unification): same slots, same flyouts.
+                  SizedBox(
+                    width: StoryboardPanel._trackLabelWidth,
+                    child: TimelineLayerControlsHeader(
+                      metrics: const TimelineGridMetrics(),
+                      legend: widget.legend,
+                      rowFilter: TimelineRowFilter.none,
+                      showRowSolos: false,
+                      marksInUse: _legendMarksInUse(),
+                      kindsInUse: _legendKindsInUse(),
+                      visibilitySoloEnabled: widget.visibilitySoloEnabled,
+                      allSeMuted: _legendAllSeMuted(),
+                      displayedLayerIds: widget.legend == null
+                          ? null
+                          : _legendDisplayedLayerIds,
+                      displayedOpacity: _legendDisplayedOpacity(),
+                    ),
                   ),
                   Expanded(
                     child: LayoutBuilder(
@@ -1137,20 +1148,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Section brackets lead the rail (timeline parity,
-                      // R7-竭､): 'SE' wraps each group's S rows, 'V TRACK'
-                      // its track row 窶・fixed-height cells computed from
-                      // the same constants the rows use.
-                      SizedBox(
-                        key: const ValueKey<String>('storyboard-section-rail'),
-                        width: StoryboardPanel._sectionGutterWidth,
-                        child: Column(
-                          children: [
-                            for (final track in project.tracks)
-                              ..._sectionBracketsForTrack(track),
-                          ],
-                        ),
-                      ),
+                      // Sections live INSIDE the rows now (UI-R5): the
+                      // first S row and the V row carry inline tags — no
+                      // bracket gutter beside the rail.
                       SizedBox(
                         key: const ValueKey<String>(
                           'storyboard-track-label-rail',
@@ -1588,12 +1588,18 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
+    this.sectionTag,
   });
 
   final Track track;
   final int slot;
+
+  /// The INLINE section tag ('SE' on the group's top S row, UI-R5); every
+  /// other row reserves the slot empty.
+  final String? sectionTag;
   final bool waveformVisible;
   final VoidCallback? onToggleWaveform;
   final bool laneExpanded;
@@ -1620,6 +1626,10 @@ class _StoryboardSeLabel extends StatelessWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+
+  /// Timeline parity (UI-R5): the sheet toggle in the timeline slot.
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -1641,7 +1651,9 @@ class _StoryboardSeLabel extends StatelessWidget {
       child: Container(
         width: StoryboardPanel._trackLabelWidth,
         height: _seRowHeight,
-        padding: const EdgeInsets.only(left: 2, right: 4),
+        // Horizontal 8 like the timeline rows — the legend header pads the
+        // same, so the slot columns line up (UI-R5).
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           // The timeline row's active treatment verbatim (S-row selection,
           // W4): secondaryContainer fill + 2px secondary border.
@@ -1660,8 +1672,35 @@ class _StoryboardSeLabel extends StatelessWidget {
           label: active ? 'selected layer' : 'layer',
           container: true,
           explicitChildNodes: true,
+          // The timeline rail's slot grid VERBATIM (UI-R5 unification):
+          // [section tag][chevron][sheet][mark][name][waveform-in-fill-
+          // slot][fx][eye][mute][opacity] — the legend header lines up
+          // over these exact columns.
           child: Row(
             children: [
+              if (sectionTag != null)
+                SizedBox(
+                  width: layerSectionLabelSlotWidth,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      sectionTag!,
+                      key: ValueKey<String>(
+                        'storyboard-section-tag-${track.id.value}-se',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        fontSize: 8,
+                        letterSpacing: 0.6,
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: layerSectionLabelSlotWidth),
               // The timeline rows' lane chevron, storyboard-prefixed.
               if (onToggleLane != null)
                 InkWell(
@@ -1670,7 +1709,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                   ),
                   onTap: onToggleLane,
                   child: SizedBox(
-                    width: 16,
+                    width: layerLaneToggleSlotWidth,
                     height: _seRowHeight,
                     child: Icon(
                       laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
@@ -1680,113 +1719,62 @@ class _StoryboardSeLabel extends StatelessWidget {
                   ),
                 )
               else
-                const SizedBox(width: 16),
-              Icon(
-                Icons.music_note_outlined,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                // The TRACK layer's stored name 窶・the same label the timeline
-                // row shows (S1, S3, S2 insertion order survives; W3 ordering
-                // unification).
-                trackLayer?.name ?? 'S${slot + 1}',
-                // Selection reads by COLOR only (user rule): no bold flip.
-                style: TextStyle(
-                  fontSize: 11,
-                  color: active
-                      ? colorScheme.onSurface
-                      : colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 4),
-              // Timeline-parity controls on the ACTIVE cut's slot layer:
-              // mark chip, fx (policy-gated), mute, eye and opacity 窶・the
-              // same shared widgets/session hooks the timeline rows use.
+                const SizedBox(width: layerLaneToggleSlotWidth),
+              // Timeline parity: the sheet toggle joins the storyboard S
+              // rows too (same session hook, same slot).
+              if (layer != null && onToggleLayerTimesheet != null)
+                LayerTimesheetToggleButton(
+                  keyPrefix: 'storyboard',
+                  layerId: layer.id,
+                  onTimesheet: layer.onTimesheet,
+                  onToggle: onToggleLayerTimesheet!,
+                )
+              else
+                const SizedBox(width: layerTimesheetSlotWidth),
+              const SizedBox(width: layerControlChipGap),
               if (layer != null && onLayerMarkSelected != null)
                 LayerMarkChip(
                   keyPrefix: 'storyboard',
                   layerId: layer.id,
                   mark: layer.mark,
                   onMarkSelected: onLayerMarkSelected!,
+                )
+              else
+                const SizedBox(width: layerMarkSlotWidth),
+              const SizedBox(width: layerControlChipGap),
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.music_note_outlined,
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        // The TRACK layer's stored name — the same label
+                        // the timeline row shows (W3 ordering unification).
+                        trackLayer?.name ?? 'S${slot + 1}',
+                        overflow: TextOverflow.ellipsis,
+                        // Selection reads by COLOR only (user rule).
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: active
+                              ? colorScheme.onSurface
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              const Spacer(),
-              if (layer != null &&
-                  onToggleLayerFx != null &&
-                  layerKindShowsFxToggle(layer.kind))
-                LayerFxToggleButton(
-                  keyPrefix: 'storyboard',
-                  layerId: layer.id,
-                  fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
-                  onToggle: onToggleLayerFx!,
-                ),
-              if (layer != null && onToggleLayerMuted != null)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: IconButton(
-                    key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
-                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 20,
-                      height: 20,
-                    ),
-                    icon: Icon(
-                      layer.muted ? Icons.volume_off : Icons.volume_up,
-                      size: 13,
-                    ),
-                    onPressed: () => onToggleLayerMuted!(layer.id),
-                  ),
-                ),
-              if (layer != null && onToggleLayerVisibility != null)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'storyboard-layer-visibility-${layer.id}',
-                    ),
-                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 20,
-                      height: 20,
-                    ),
-                    icon: Icon(
-                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                      size: 13,
-                    ),
-                    onPressed: () => onToggleLayerVisibility!(layer.id),
-                  ),
-                ),
-              if (layer != null && onLayerOpacityChanged != null)
-                SizedBox(
-                  width: 44,
-                  child: FieldSlider(
-                    key: ValueKey<String>(
-                      'storyboard-layer-opacity-${layer.id}',
-                    ),
-                    min: 0,
-                    max: 1,
-                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
-                    valueText: '${(layer.opacity * 100).round()}%',
-                    valueTextBuilder: (value) => '${(value * 100).round()}%',
-                    displayFactor: 100,
-                    height: 16,
-                    onChanged: (opacity) =>
-                        onLayerOpacityChanged!(layer.id, opacity),
-                    onChangeEnd: onLayerOpacityChangeEnd == null
-                        ? null
-                        : (opacity) =>
-                              onLayerOpacityChangeEnd!(layer.id, opacity),
-                  ),
-                ),
+              ),
+              // The waveform eye rides the fill-reference slot (SE rows
+              // never carry the fill flag) so the trailing columns align.
               if (onToggleWaveform != null)
                 SizedBox(
-                  width: 20,
-                  height: 20,
+                  width: layerFillReferenceSlotWidth,
+                  height: 26,
                   child: IconButton(
                     key: ValueKey<String>(
                       'storyboard-se-waveform-toggle-'
@@ -1797,21 +1785,100 @@ class _StoryboardSeLabel extends StatelessWidget {
                         : 'Show Waveform',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints.tightFor(
-                      width: 20,
-                      height: 20,
+                      width: layerFillReferenceSlotWidth,
+                      height: 26,
                     ),
                     icon: Icon(
-                      waveformVisible
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      size: 13,
+                      Icons.graphic_eq,
+                      size: 14,
                       color: waveformVisible
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
+                          ? AppColors.accent
+                          : colorScheme.onSurface.withValues(alpha: 0.35),
                     ),
                     onPressed: onToggleWaveform,
                   ),
-                ),
+                )
+              else
+                const SizedBox(width: layerFillReferenceSlotWidth),
+              if (layer != null &&
+                  onToggleLayerFx != null &&
+                  layerKindShowsFxToggle(layer.kind))
+                LayerFxToggleButton(
+                  keyPrefix: 'storyboard',
+                  layerId: layer.id,
+                  fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
+                  onToggle: onToggleLayerFx!,
+                )
+              else
+                const SizedBox(width: layerFxSlotWidth),
+              if (layer != null && onToggleLayerVisibility != null)
+                SizedBox(
+                  width: layerVisibilitySlotWidth,
+                  height: 26,
+                  child: IconButton(
+                    key: ValueKey<String>(
+                      'storyboard-layer-visibility-${layer.id}',
+                    ),
+                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: layerVisibilitySlotWidth,
+                      height: 26,
+                    ),
+                    icon: Icon(
+                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
+                      size: 16,
+                    ),
+                    onPressed: () => onToggleLayerVisibility!(layer.id),
+                  ),
+                )
+              else
+                const SizedBox(width: layerVisibilitySlotWidth),
+              if (layer != null && onToggleLayerMuted != null)
+                SizedBox(
+                  width: layerMuteSlotWidth,
+                  height: 26,
+                  child: IconButton(
+                    key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
+                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: layerMuteSlotWidth,
+                      height: 26,
+                    ),
+                    icon: Icon(
+                      layer.muted ? Icons.volume_off : Icons.volume_up,
+                      size: 14,
+                    ),
+                    onPressed: () => onToggleLayerMuted!(layer.id),
+                  ),
+                )
+              else
+                const SizedBox(width: layerMuteSlotWidth),
+              if (layer != null && onLayerOpacityChanged != null)
+                SizedBox(
+                  width: layerOpacitySlotWidth,
+                  child: FieldSlider(
+                    key: ValueKey<String>(
+                      'storyboard-layer-opacity-${layer.id}',
+                    ),
+                    min: 0,
+                    max: 1,
+                    value: layer.opacity.clamp(0.0, 1.0).toDouble(),
+                    valueText: '${(layer.opacity * 100).round()}%',
+                    valueTextBuilder: (value) => '${(value * 100).round()}%',
+                    displayFactor: 100,
+                    height: 18,
+                    onChanged: (opacity) =>
+                        onLayerOpacityChanged!(layer.id, opacity),
+                    onChangeEnd: onLayerOpacityChangeEnd == null
+                        ? null
+                        : (opacity) =>
+                              onLayerOpacityChangeEnd!(layer.id, opacity),
+                  ),
+                )
+              else
+                const SizedBox(width: layerOpacitySlotWidth),
             ],
           ),
         ),
@@ -1842,7 +1909,12 @@ class _StoryboardLaneLabel extends StatelessWidget {
       key: ValueKey<String>(laneKey),
       width: StoryboardPanel._trackLabelWidth,
       height: height,
-      padding: const EdgeInsets.only(left: 18, right: 8),
+      // Indent past the inline section-tag slot (UI-R5) like the shared
+      // lane rows.
+      padding: const EdgeInsets.only(
+        left: 18 + layerSectionLabelSlotWidth,
+        right: 8,
+      ),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border.all(color: colorScheme.outlineVariant),
@@ -2686,6 +2758,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
   const _StoryboardTrackLabel({
     required this.track,
     required this.trackLabel,
+    this.sectionTag,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeCut,
@@ -2697,6 +2770,9 @@ class _StoryboardTrackLabel extends StatelessWidget {
 
   final Track track;
   final String trackLabel;
+
+  /// The INLINE section tag ('V', UI-R5) in the shared leading slot.
+  final String? sectionTag;
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
@@ -2716,13 +2792,36 @@ class _StoryboardTrackLabel extends StatelessWidget {
       key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
       width: StoryboardPanel._trackLabelWidth,
       height: StoryboardPanel._trackLaneHeight,
-      padding: const EdgeInsets.only(left: 2, right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
+          // The shared leading slot (UI-R5): the V row carries its inline
+          // section tag here.
+          if (sectionTag != null)
+            SizedBox(
+              width: layerSectionLabelSlotWidth,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  sectionTag!,
+                  key: ValueKey<String>(
+                    'storyboard-section-tag-${track.id.value}-v',
+                  ),
+                  style: TextStyle(
+                    fontSize: 8,
+                    letterSpacing: 0.6,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: layerSectionLabelSlotWidth),
           // The timeline rows' lane chevron: twirls down the track's
           // cut-level Transform group (the V-track lanes + fade strip).
           if (onToggleLane != null)
@@ -2774,20 +2873,22 @@ class _StoryboardTrackLabel extends StatelessWidget {
               ],
             ),
           ),
-          // V-row display toggles on the ACTIVE cut (R9), in the S rows'
-          // visual language: the fx switch bypasses the cut-level
-          // Transform group (pose + fade) in the playback display, the
-          // eye hides the cut's picture there.
+          // V-row display toggles on the ACTIVE cut (R9), sitting in the
+          // shared fx/eye slots (UI-R5) so the columns line up with the S
+          // rows and the legend header; mute/opacity slots stay reserved.
+          const SizedBox(width: layerFillReferenceSlotWidth),
           if (activeCut != null && onToggleCutFx != null)
             _CutFxToggleButton(
               cutId: activeCut!.id,
               fxEnabled: cutFxEnabledOf?.call(activeCut!.id) ?? true,
               onToggle: onToggleCutFx!,
-            ),
+            )
+          else
+            const SizedBox(width: layerFxSlotWidth),
           if (activeCut != null && onToggleCutPictureVisibility != null)
             SizedBox(
-              width: 20,
-              height: 20,
+              width: layerVisibilitySlotWidth,
+              height: 26,
               child: IconButton(
                 key: ValueKey<String>(
                   'storyboard-cut-visibility-${activeCut!.id.value}',
@@ -2797,18 +2898,22 @@ class _StoryboardTrackLabel extends StatelessWidget {
                     : 'Show cut picture',
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints.tightFor(
-                  width: 20,
-                  height: 20,
+                  width: layerVisibilitySlotWidth,
+                  height: 26,
                 ),
                 icon: Icon(
                   (cutPictureVisibleOf?.call(activeCut!.id) ?? true)
                       ? Icons.visibility
                       : Icons.visibility_off,
-                  size: 13,
+                  size: 16,
                 ),
                 onPressed: () => onToggleCutPictureVisibility!(activeCut!.id),
               ),
-            ),
+            )
+          else
+            const SizedBox(width: layerVisibilitySlotWidth),
+          const SizedBox(width: layerMuteSlotWidth),
+          const SizedBox(width: layerOpacitySlotWidth),
         ],
       ),
     );
