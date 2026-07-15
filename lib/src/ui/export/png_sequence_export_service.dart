@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'png_srgb.dart';
+
 /// What one export run did: [processed] tasks were attempted (fewer than the
 /// plan when cancelled) and [written] files hit the disk ([renderImage]
 /// returning `null` skips the file, e.g. empty cels).
@@ -35,7 +37,12 @@ class PngSequenceExportService {
           );
           // File names may carry subfolders (per-cut/per-layer cel export).
           await file.parent.create(recursive: true);
-          await file.writeAsBytes(bytes!.buffer.asUint8List(), flush: true);
+          // C1-v1: delivered PNGs declare the working color space
+          // (sRGB) so downstream tools stop guessing. Pixels untouched.
+          await file.writeAsBytes(
+            tagPngAsSrgb(bytes!.buffer.asUint8List()),
+            flush: true,
+          );
           written += 1;
         } finally {
           image.dispose();
