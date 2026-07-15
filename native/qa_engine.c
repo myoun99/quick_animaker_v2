@@ -619,6 +619,25 @@ QA_EXPORT void qa_copy_bytes(
     (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #define QA_FLOOD_SSE2 1
 #include <emmintrin.h>
+typedef __m128i qa_vec4;
+static inline qa_vec4 qa_vec4_splat(uint32_t word) {
+  return _mm_set1_epi32((int32_t)word);
+}
+#elif defined(__aarch64__)
+// R28 NEON port: the ARM mirror of the SSE2 compare - same saturating
+// abs-diff (vabd), same X-lane mask, same <= tol semantics, so the
+// decisions stay byte-identical (the permanent Dart oracle pins them
+// on-device). aarch64 only (vaddvq); 32-bit ARM keeps the scalar path.
+#define QA_FLOOD_NEON 1
+#include <arm_neon.h>
+typedef uint8x16_t qa_vec4;
+static inline qa_vec4 qa_vec4_splat(uint32_t word) {
+  return vreinterpretq_u8_u32(vdupq_n_u32(word));
+}
+#endif
+
+#if defined(QA_FLOOD_SSE2) || defined(QA_FLOOD_NEON)
+#define QA_FLOOD_SIMD 1
 #endif
 
 // One-pixel tolerance test against the seed color (RGBX layout).
@@ -635,13 +654,13 @@ static inline int qa_tol_ok1(
          -dg <= tolerance && db <= tolerance && -db <= tolerance;
 }
 
-#ifdef QA_FLOOD_SSE2
+#if defined(QA_FLOOD_SSE2)
 // Bit i (0..3) set = pixel i of the 16-byte RGBX block is within
 // tolerance of the seed on R, G and B. The X lane is MASKED OUT of the
 // abs-diff, so the test matches the scalar compare under ANY X bytes -
 // no hidden "X must be 0" contract. The per-byte |p-seed| <= tol via
 // saturating unsigned abs-diff is exact for the integer compare above.
-static inline int qa_tol_ok4(const uint8_t* rgbx, __m128i seed4, __m128i tol4) {
+static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
   const __m128i p = _mm_loadu_si128((const __m128i*)rgbx);
   const __m128i d = _mm_and_si128(
       _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p)),
@@ -650,6 +669,17 @@ static inline int qa_tol_ok4(const uint8_t* rgbx, __m128i seed4, __m128i tol4) {
       _mm_cmpeq_epi8(_mm_subs_epu8(d, tol4), _mm_setzero_si128());
   const __m128i ok32 = _mm_cmpeq_epi32(ok8, _mm_set1_epi32(-1));
   return _mm_movemask_ps(_mm_castsi128_ps(ok32));
+}
+#elif defined(QA_FLOOD_NEON)
+static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
+  const uint8x16_t p = vld1q_u8(rgbx);
+  const uint8x16_t xmask = vreinterpretq_u8_u32(vdupq_n_u32(0x00FFFFFFu));
+  const uint8x16_t d = vandq_u8(vabdq_u8(p, seed4), xmask);
+  const uint8x16_t ok8 = vcleq_u8(d, tol4);
+  const uint32x4_t ok32 =
+      vceqq_u32(vreinterpretq_u32_u8(ok8), vdupq_n_u32(0xFFFFFFFFu));
+  const uint32x4_t weights = {1u, 2u, 4u, 8u};
+  return (int)vaddvq_u32(vandq_u32(ok32, weights));
 }
 #endif
 
@@ -697,13 +727,13 @@ QA_EXPORT int32_t qa_flood_fill_step(
   int32_t max_x = bounds[1];
   int32_t min_y = bounds[2];
   int32_t max_y = bounds[3];
-#ifdef QA_FLOOD_SSE2
-  const __m128i seed4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-                ((uint32_t)seed_b << 16)));
-  const __m128i tol4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-                ((uint32_t)tolerance << 16)));
+#ifdef QA_FLOOD_SIMD
+  const qa_vec4 seed4 = qa_vec4_splat(
+      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+      ((uint32_t)seed_b << 16));
+  const qa_vec4 tol4 = qa_vec4_splat(
+      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+      ((uint32_t)tolerance << 16));
 #endif
 
   while (*stack_size > 0) {
@@ -737,7 +767,7 @@ QA_EXPORT int32_t qa_flood_fill_step(
                                 << compose_tile_shift;
       int32_t x = px;
       int32_t stop = 0;
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
       while (x - 3 >= seg_start) {
         uint32_t f4;
         memcpy(&f4, filled + row_start + x - 3, 4);
@@ -788,7 +818,7 @@ QA_EXPORT int32_t qa_flood_fill_step(
       }
       int32_t x = px;
       int32_t stop = 0;
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
       while (x + 3 <= seg_end) {
         uint32_t f4;
         memcpy(&f4, filled + row_start + x, 4);
@@ -855,7 +885,7 @@ QA_EXPORT int32_t qa_flood_fill_step(
         if (seg_end > right) {
           seg_end = right;
         }
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
         while (x + 3 <= seg_end) {
           const int32_t p0 = neighbor_row + x;
           uint32_t f4;
@@ -1315,15 +1345,15 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
     int32_t* bounds_out) {
   const int64_t count = (int64_t)width * height;
   int64_t i = 0;
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
   // Full-canvas tolerance mask, 4 px per step (RGBX) - at 8K this pass
   // alone walks 132MB.
-  const __m128i seed4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-                ((uint32_t)seed_b << 16)));
-  const __m128i tol4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-                ((uint32_t)tolerance << 16)));
+  const qa_vec4 seed4 = qa_vec4_splat(
+      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+      ((uint32_t)seed_b << 16));
+  const qa_vec4 tol4 = qa_vec4_splat(
+      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+      ((uint32_t)tolerance << 16));
   for (; i + 4 <= count; i += 4) {
     const int32_t ok = qa_tol_ok4(rgb + (i << 2), seed4, tol4);
     fillable[i] = (uint8_t)(ok & 1);
@@ -1973,13 +2003,13 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
   const int32_t seed_g = g_wave_job.seed_g;
   const int32_t seed_b = g_wave_job.seed_b;
   const int32_t tolerance = g_wave_job.tolerance;
-#ifdef QA_FLOOD_SSE2
-  const __m128i seed4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-                ((uint32_t)seed_b << 16)));
-  const __m128i tol4 = _mm_set1_epi32(
-      (int32_t)((uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-                ((uint32_t)tolerance << 16)));
+#ifdef QA_FLOOD_SIMD
+  const qa_vec4 seed4 = qa_vec4_splat(
+      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
+      ((uint32_t)seed_b << 16));
+  const qa_vec4 tol4 = qa_vec4_splat(
+      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
+      ((uint32_t)tolerance << 16));
 #endif
 
   if (g_wave_local_stack == NULL) {
@@ -2030,7 +2060,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
     int32_t left = index - row_start;
     {
       int32_t x = left - 1;
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
       if (y > t->py0 && y < t->py1) {
         while (x - 3 > t->px0) {
           uint32_t f4;
@@ -2064,7 +2094,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
     int32_t right = index - row_start;
     {
       int32_t x = right + 1;
-#ifdef QA_FLOOD_SSE2
+#ifdef QA_FLOOD_SIMD
       if (y > t->py0 && y < t->py1) {
         while (x + 3 < t->px1) {
           uint32_t f4;
