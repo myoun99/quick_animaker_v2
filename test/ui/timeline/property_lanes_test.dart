@@ -873,8 +873,9 @@ void main() {
       );
       await expand(tester);
 
-      // Default zoom = 48px per frame: +96px = +2 frames.
-      await tester.drag(_laneKey('position', 8), const Offset(96, 0));
+      // Default zoom = 24px per frame (slim round): the drag's 18px touch
+      // slop is consumed first, so 18 + 2×24 = +2 frames.
+      await tester.drag(_laneKey('position', 8), const Offset(66, 0));
       await tester.pumpAndSettle();
 
       expect(_laneKey('position', 8), findsNothing);

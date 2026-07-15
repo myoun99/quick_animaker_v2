@@ -30,6 +30,17 @@ bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
   return exposureState.isCovered;
 }
 
+/// 6f column band (Japanese-timesheet rhythm, R-toolbar slim round): odd
+/// 6-frame groups get a whisper-level lift so the frame axis reads its
+/// quarter-second beat without counting cells. Applied over the resolved
+/// cell/header background — near-white paper blocks absorb it invisibly.
+Color timelineFrameBandTint(int frameIndex, Color base) {
+  if ((frameIndex ~/ 6).isOdd) {
+    return Color.alphaBlend(const Color(0x0AFFFFFF), base);
+  }
+  return base;
+}
+
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
   required TimelineCellExposureState exposureState,

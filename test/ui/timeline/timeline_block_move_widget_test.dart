@@ -40,7 +40,11 @@ void main() {
     required List<Layer> layers,
     required ValueNotifier<int> cursor,
     TimelineBlockMoveCallbacks? blockMove,
-    TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
+    // Classic geometry: this file's pan distances assume 48×52 cells.
+    TimelineGridMetrics metrics = const TimelineGridMetrics(
+      frameCellWidth: 48,
+      layerRowHeight: 52,
+    ),
     ValueNotifier<TimelineDragPreview?>? dragPreview,
   }) {
     return MaterialApp(

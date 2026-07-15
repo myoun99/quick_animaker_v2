@@ -25,6 +25,8 @@ import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import 'flyout_test_helpers.dart';
+
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
 const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
 const _artToggleKey = ValueKey<String>('toggle-art-layer-button');
@@ -56,21 +58,16 @@ CutId? _mainCanvasCutId(WidgetTester tester) {
   return host.selection?.cutId;
 }
 
-Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) async {
-  final finder = find.byKey(key);
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+// Menu-aware (R-toolbar round): kind toggles live in the Layer ▾ flyout.
+Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
+    tapCommandButton(tester, key);
 
 Layer _layer(ProjectRepository repository) {
   return repository.requireProject().tracks.single.cuts.single.layers.single;
 }
 
-bool _isIconButtonEnabled(WidgetTester tester, ValueKey<String> key) {
-  return tester.widget<IconButton>(find.byKey(key)).onPressed != null;
-}
+Future<bool> _isCommandEnabled(WidgetTester tester, ValueKey<String> key) =>
+    readCommandEnabled(tester, key);
 
 Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
   return Project(
@@ -158,11 +155,15 @@ Project _projectWithNoLayers() {
 }
 
 void main() {
-  testWidgets('toggle button is visible', (tester) async {
+  testWidgets('toggle lives in the Layer flyout', (tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
+    // Not a standalone toolbar button anymore (R-toolbar round)…
+    expect(find.byKey(_toggleKey), findsNothing);
+    // …but the Layer ▾ flyout carries it under the same key.
+    await openOwningFlyout(tester, _toggleKey.value);
     expect(find.byKey(_toggleKey), findsOneWidget);
-    expect(find.byTooltip('Toggle Storyboard Layer'), findsOneWidget);
+    await dismissFlyout(tester);
   });
 
   testWidgets('toggles animation layer to storyboard', (tester) async {
@@ -243,8 +244,7 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
 
-    expect(find.byKey(_toggleKey), findsOneWidget);
-    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
     expect(
       repository.requireProject().tracks.single.cuts.single.layers,
       isEmpty,
@@ -284,7 +284,7 @@ void main() {
     await _pumpHome(tester, project: _projectWithLayer(kind: LayerKind.se));
 
     expect(find.byKey(_seToggleKey), findsNothing);
-    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
   });
 
   testWidgets('art toggle flips animation to art and back with undo', (
@@ -293,14 +293,12 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
-    expect(find.byTooltip('Toggle Art Layer'), findsOneWidget);
-
     await _tapKey(tester, _artToggleKey);
 
     expect(_layer(repository).kind, LayerKind.art);
     expect(find.bySemanticsLabel('Art layer'), findsOneWidget);
     // Art rows use their own toggle; the storyboard toggle stays off.
-    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
+    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
 
     await _tapKey(tester, _undoKey);
     expect(_layer(repository).kind, LayerKind.animation);
@@ -342,8 +340,8 @@ void main() {
     expect(layers[1].kind, LayerKind.instruction);
     expect(layers[1].name, 'CAM 1');
     // No kind toggle applies to instruction rows.
-    expect(_isIconButtonEnabled(tester, _toggleKey), isFalse);
-    expect(_isIconButtonEnabled(tester, _artToggleKey), isFalse);
+    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
+    expect(await _isCommandEnabled(tester, _artToggleKey), isFalse);
   });
 
   testWidgets('Add Layer with an SE row active adds the next S-numbered '

@@ -64,9 +64,11 @@ void main() {
     final scrubArea = find.byKey(
       const ValueKey<String>('timeline-frame-ruler-scrub-area'),
     );
-    final start = tester.getTopLeft(scrubArea) + const Offset(48 + 8, 20);
+    // 24px slim cells (R-toolbar round): one cell in from the ruler start,
+    // then a four-cell drag.
+    final start = tester.getTopLeft(scrubArea) + const Offset(24 + 4, 20);
     final gesture = await tester.startGesture(start);
-    await gesture.moveBy(const Offset(48 * 4, 0));
+    await gesture.moveBy(const Offset(24 * 4, 0));
 
     expect(scrubbed, containsAllInOrder(<int>[1, 5]));
     expect(selected, isEmpty, reason: 'moves must not commit');

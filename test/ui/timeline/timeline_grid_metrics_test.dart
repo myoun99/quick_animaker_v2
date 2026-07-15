@@ -8,8 +8,9 @@ void main() {
 
       expect(metrics.minimumVisibleFrameCells, 24);
       expect(metrics.layerControlsWidth, 312);
-      expect(metrics.frameCellWidth, 48);
-      expect(metrics.layerRowHeight, 52);
+      // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
+      expect(metrics.frameCellWidth, 24);
+      expect(metrics.layerRowHeight, 28);
       expect(metrics.verticalScrollbarWidth, 14);
     });
 
@@ -27,16 +28,20 @@ void main() {
       );
     });
 
-    test('frame label cadence adapts to the cell width', () {
+    test('frame label cadence follows the paper-timesheet stride ladder '
+        'anchored at frame 1 (user rule: all → 3f → 6f → 12f → 24f…)', () {
       int cadenceAt(double width) =>
           TimelineGridMetrics(frameCellWidth: width).frameLabelEveryFrames;
 
       expect(cadenceAt(48), 1);
-      expect(cadenceAt(28), 1);
-      expect(cadenceAt(24), 2);
+      expect(cadenceAt(24), 1);
+      expect(cadenceAt(20), 1);
+      expect(cadenceAt(19), 3);
+      expect(cadenceAt(14), 3);
       expect(cadenceAt(8), 6);
       expect(cadenceAt(4), 12);
       expect(cadenceAt(2), 24);
+      expect(cadenceAt(1), 48);
     });
 
     test('custom metrics can be created', () {

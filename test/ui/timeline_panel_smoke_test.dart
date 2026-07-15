@@ -65,13 +65,16 @@ void main() {
       _expectKeyOnce('timeline-playhead-column');
     });
 
-    testWidgets('forwards add-layer callback from grid header boundary', (
+    testWidgets('forwards add-layer callback from the legend flyout', (
       tester,
     ) async {
       var addLayerCallCount = 0;
 
       await tester.pumpWidget(_panel(onAddLayer: () => addLayerCallCount += 1));
-      await tester.tap(_key('timeline-add-layer-button'));
+      await tester.tap(_key('legend-layer'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('legend-layer-add'));
+      await tester.pumpAndSettle();
 
       expect(addLayerCallCount, 1);
     });

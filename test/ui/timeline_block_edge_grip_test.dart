@@ -250,7 +250,11 @@ Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
           frameEndIndexExclusive: 8,
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
-          metrics: TimelineGridMetrics.defaults,
+          // Classic geometry: the drag distances below assume 48px cells.
+          metrics: const TimelineGridMetrics(
+            frameCellWidth: 48,
+            layerRowHeight: 52,
+          ),
           exposureStateForLayer: _stateFor,
           onSelectLayer: (_) {},
           onSelectFrame: (_) {},

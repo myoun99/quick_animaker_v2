@@ -16,6 +16,8 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import 'flyout_test_helpers.dart';
+
 const _renameButtonKey = ValueKey<String>('rename-layer-button');
 const _dialogKey = ValueKey<String>('rename-layer-dialog');
 const _textFieldKey = ValueKey<String>('rename-layer-text-field');
@@ -29,14 +31,12 @@ const _layerBId = LayerId('layer-b');
 const _frameId = FrameId('frame-a');
 
 void main() {
-  testWidgets('Rename Layer button is visible and opens a prefilled dialog', (
-    tester,
-  ) async {
+  testWidgets('Rename Layer lives in the Layer flyout and opens a '
+      'prefilled dialog', (tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.byKey(_renameButtonKey), findsOneWidget);
-    expect(find.byTooltip('Rename Layer'), findsOneWidget);
-    expect(_isIconButtonEnabled(tester, _renameButtonKey), isTrue);
+    expect(find.byKey(_renameButtonKey), findsNothing);
+    expect(await readCommandEnabled(tester, _renameButtonKey), isTrue);
 
     await _tapKey(tester, _renameButtonKey);
 
@@ -44,13 +44,12 @@ void main() {
     expect(_fieldText(tester), 'A');
   });
 
-  testWidgets('Rename Layer button is disabled without an active layer', (
+  testWidgets('Rename Layer is disabled without an active layer', (
     tester,
   ) async {
     await _pumpHome(tester, project: _project(layers: const []));
 
-    expect(find.byKey(_renameButtonKey), findsOneWidget);
-    expect(_isIconButtonEnabled(tester, _renameButtonKey), isFalse);
+    expect(await readCommandEnabled(tester, _renameButtonKey), isFalse);
   });
 
   testWidgets('renaming A to BG updates label and keeps active selection', (
@@ -162,22 +161,14 @@ Future<void> _pumpHome(
   );
 }
 
-Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) async {
-  final finder = find.byKey(key);
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+// Menu-aware (R-toolbar round): rename lives in the Layer ▾ flyout.
+Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
+    tapCommandButton(tester, key);
 
 Future<void> _renameLayer(WidgetTester tester, String name) async {
   await _tapKey(tester, _renameButtonKey);
   await tester.enterText(find.byKey(_textFieldKey), name);
   await _tapKey(tester, _okButtonKey);
-}
-
-bool _isIconButtonEnabled(WidgetTester tester, ValueKey<String> key) {
-  return tester.widget<IconButton>(find.byKey(key)).onPressed != null;
 }
 
 String _fieldText(WidgetTester tester) {

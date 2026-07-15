@@ -22,6 +22,8 @@ import 'package:quick_animaker_v2/src/ui/media/media_asset_drag_data.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
+import '../flyout_test_helpers.dart';
+
 const _importKey = ValueKey<String>('import-audio-button');
 const _seLayerId = LayerId('audio-se');
 const _celLayerId = LayerId('audio-cel');
@@ -95,9 +97,12 @@ Future<void> _pumpHost(
   await tester.pumpAndSettle();
 }
 
-bool _importEnabled(WidgetTester tester) {
-  return tester.widget<IconButton>(find.byKey(_importKey)).onPressed != null;
-}
+// Menu-aware (R-toolbar round): import audio lives in the Layer ▾ flyout.
+Future<bool> _importEnabled(WidgetTester tester) =>
+    readCommandEnabled(tester, _importKey);
+
+Future<void> _tapImport(WidgetTester tester) =>
+    tapCommandButton(tester, _importKey);
 
 void main() {
   testWidgets('import audio is SE-only and places the clip at the playhead '
@@ -116,18 +121,15 @@ void main() {
     // Animation layer active: disabled.
     session.selectLayer(_celLayerId);
     await tester.pumpAndSettle();
-    expect(_importEnabled(tester), isFalse);
+    expect(await _importEnabled(tester), isFalse);
 
     // SE layer at frame 4: imports at the playhead.
     session.selectLayer(_seLayerId);
     session.selectFrameIndex(4);
     await tester.pumpAndSettle();
-    expect(_importEnabled(tester), isTrue);
+    expect(await _importEnabled(tester), isTrue);
 
-    await tester.ensureVisible(find.byKey(_importKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(_importKey));
-    await tester.pumpAndSettle();
+    await _tapImport(tester);
 
     expect(picks, 1);
     Layer seLayer() =>
@@ -161,10 +163,7 @@ void main() {
 
     session.selectLayer(_seLayerId);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(_importKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(_importKey));
-    await tester.pumpAndSettle();
+    await _tapImport(tester);
 
     expect(
       session.layers.firstWhere((layer) => layer.id == _seLayerId).audioClips,

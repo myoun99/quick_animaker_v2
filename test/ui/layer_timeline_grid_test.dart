@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -11,6 +11,13 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_playhead.dart';
+
+/// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
+/// default is pinned in timeline_grid_metrics_test).
+const _testMetrics = TimelineGridMetrics(
+  frameCellWidth: 48,
+  layerRowHeight: 52,
+);
 
 final Matcher _isInsideTestRoot = isA<Rect>()
     .having((rect) => rect.left, 'left', greaterThanOrEqualTo(0))
@@ -179,27 +186,21 @@ void main() {
     expect(
       find.descendant(
         of: stickyHeader,
-        matching: find.byKey(
-          const ValueKey<String>('timeline-add-layer-button'),
-        ),
+        matching: find.byKey(const ValueKey<String>('legend-layer')),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: rail,
-        matching: find.byKey(
-          const ValueKey<String>('timeline-add-layer-button'),
-        ),
+        matching: find.byKey(const ValueKey<String>('legend-layer')),
       ),
       findsNothing,
     );
     expect(
       find.descendant(
         of: viewport,
-        matching: find.byKey(
-          const ValueKey<String>('timeline-add-layer-button'),
-        ),
+        matching: find.byKey(const ValueKey<String>('legend-layer')),
       ),
       findsNothing,
     );
@@ -337,9 +338,7 @@ void main() {
 
     await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
-    final addLayer = find.byKey(
-      const ValueKey<String>('timeline-add-layer-button'),
-    );
+    final addLayer = find.byKey(const ValueKey<String>('legend-layer'));
     final frameHeader = find.byKey(
       const ValueKey<String>('timeline-frame-header-0'),
     );
@@ -454,10 +453,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-controls-rail')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey<String>('legend-layer')), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
       findsOneWidget,
@@ -649,13 +645,16 @@ void main() {
     expect(find.text('Layer 2'), findsOneWidget);
   });
 
-  testWidgets('add layer button calls callback', (tester) async {
+  testWidgets('the legend LAYER flyout calls the add-layer callback', (
+    tester,
+  ) async {
     var called = false;
 
     await tester.pumpWidget(_grid(onAddLayer: () => called = true));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-add-layer-button')),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
+    await tester.pumpAndSettle();
 
     expect(called, isTrue);
   });
@@ -1856,12 +1855,10 @@ void main() {
     (tester) async {
       final frameRange = TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: 24,
-        minimumVisibleFrameCells:
-            TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+        minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
       );
       final frameContentWidth =
-          frameRange.visibleFrameCount *
-          TimelineGridMetrics.defaults.frameCellWidth;
+          frameRange.visibleFrameCount * _testMetrics.frameCellWidth;
       final testWidth = frameContentWidth + 600;
 
       await tester.binding.setSurfaceSize(Size(testWidth, 320));
@@ -1896,12 +1893,10 @@ void main() {
     (tester) async {
       final frameRange = TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: 24,
-        minimumVisibleFrameCells:
-            TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+        minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
       );
       final frameContentWidth =
-          frameRange.visibleFrameCount *
-          TimelineGridMetrics.defaults.frameCellWidth;
+          frameRange.visibleFrameCount * _testMetrics.frameCellWidth;
       final testWidth = frameContentWidth + 600;
 
       await tester.binding.setSurfaceSize(Size(testWidth, 320));
@@ -2140,13 +2135,11 @@ void main() {
 
     final expectedFrameRange = TimelineFrameRange.fromPlaybackDuration(
       playbackFrameCount: 12,
-      minimumVisibleFrameCells:
-          TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+      minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
     );
 
     final expectedContentWidth =
-        expectedFrameRange.visibleFrameCount *
-        TimelineGridMetrics.defaults.frameCellWidth;
+        expectedFrameRange.visibleFrameCount * _testMetrics.frameCellWidth;
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
     );
@@ -2353,8 +2346,7 @@ void _expectSelectedExposureRangeOutline(
   expect(outlineFinder, findsOneWidget);
 
   final positioned = tester.widget<Positioned>(outlineFinder);
-  final expectedWidth =
-      frameIndices.length * TimelineGridMetrics.defaults.frameCellWidth;
+  final expectedWidth = frameIndices.length * _testMetrics.frameCellWidth;
   expect(positioned.width, expectedWidth);
 
   final firstCellRect = tester.getRect(
@@ -2404,6 +2396,10 @@ Widget _grid({
           layers: layers ?? _layers,
           activeLayerId: const LayerId('layer-1'),
           frameCursor: ValueNotifier<int>(currentFrameIndex),
+          // Classic geometry: this file's pixel oracles (taps, scroll
+          // offsets, virtualization windows) assume 48×52 cells; the slim
+          // default is pinned in timeline_grid_metrics_test.
+          metrics: _testMetrics,
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??

@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_kind.dart';
+import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../widgets/panel_flyout.dart';
+import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
 
-/// The layer/frame/cell action toolbar shown above the timeline grid.
+/// The command bar above the timeline grid (CSP-style, R-toolbar round):
+/// only the high-frequency commands stay as direct icons — everything else
+/// lives in the shared flyouts.
 ///
-/// Icon-only with tooltips: layer actions on the left, cell actions on the
-/// right, separated by hairline dividers. Reads all of its state from
-/// [session] and invokes session commands directly. Actions that must run
-/// a dialog first (which needs the hosting widget's [BuildContext]) are
-/// delegated back to the host — entrance unification puts BOTH instance
-/// buttons there: [onCreateInstance] (Add — frame/key/SE/instruction by
-/// kind) and [onEditInstance] (the shared instance-edit dialog).
+/// Layout: [split add-layer][Layer ▾] │ [Add instance][Blank][Mark][Frame ▾]
+/// │ [cut group]. Menu items reuse the retired toolbar buttons' key strings
+/// so tests only gain a menu-open tap. The exposure ± buttons are GONE —
+/// block edge grips replaced them outright (session APIs kept for grips).
 class TimelineActionToolbar extends StatelessWidget {
   const TimelineActionToolbar({
     super.key,
     required this.session,
+    required this.onAddLayer,
     required this.onRenameLayer,
     required this.onDeleteLayer,
     required this.onEditInstance,
@@ -27,6 +30,11 @@ class TimelineActionToolbar extends StatelessWidget {
   });
 
   final EditorSessionManager session;
+
+  /// The unified Add Layer entrance (same kind as the selection); the
+  /// split ▾ adds kind-explicitly via [EditorSessionManager.addLayerOfKind].
+  final VoidCallback onAddLayer;
+
   final VoidCallback onRenameLayer;
   final VoidCallback onDeleteLayer;
 
@@ -39,11 +47,11 @@ class TimelineActionToolbar extends StatelessWidget {
   final VoidCallback onCreateInstance;
 
   /// Opens the audio file picker for the active SE layer (host-provided —
-  /// it needs the platform dialog); null hides nothing, just disables.
+  /// it needs the platform dialog).
   final VoidCallback? onImportAudio;
 
-  /// Sections hidden from the grids; the section toggle buttons read and
-  /// flip this (collapse is gone — hide/show replaced it).
+  /// Sections hidden from the grids; the Layer ▾ show/hide items and the
+  /// rail's fold chevrons both flip this.
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
@@ -78,6 +86,165 @@ class TimelineActionToolbar extends StatelessWidget {
     };
   }
 
+  List<PanelFlyoutEntry> _addLayerEntries() {
+    return [
+      const PanelFlyoutHeader('Add layer'),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-same',
+        label: 'Same as selected',
+        icon: Icons.add,
+        onSelected: onAddLayer,
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-animation',
+        label: 'Animation',
+        onSelected: () => session.addLayerOfKind(LayerKind.animation),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-storyboard',
+        label: 'Storyboard',
+        onSelected: () => session.addLayerOfKind(LayerKind.storyboard),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-art',
+        label: 'Art',
+        onSelected: () => session.addLayerOfKind(LayerKind.art),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-se',
+        label: 'SE',
+        onSelected: () => session.addLayerOfKind(LayerKind.se),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-instruction',
+        label: 'Instruction',
+        onSelected: () => session.addLayerOfKind(LayerKind.instruction),
+      ),
+    ];
+  }
+
+  List<PanelFlyoutEntry> _layerEntries() {
+    final active = session.activeLayer;
+    return [
+      PanelFlyoutItem(
+        keyValue: 'rename-layer-button',
+        label: 'Rename layer…',
+        icon: Icons.drive_file_rename_outline,
+        enabled: active != null,
+        onSelected: onRenameLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'duplicate-layer-button',
+        label: 'Duplicate layer',
+        icon: Icons.copy_outlined,
+        enabled: active != null,
+        onSelected: session.duplicateActiveLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'copy-layer-button',
+        label: 'Copy layer',
+        icon: Icons.content_copy,
+        enabled: active != null,
+        onSelected: session.copyActiveLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'paste-layer-button',
+        label: session.layerClipboardName == null
+            ? 'Paste layer'
+            : 'Paste layer (${session.layerClipboardName})',
+        icon: Icons.content_paste,
+        enabled: session.hasLayerClipboard,
+        onSelected: session.pasteLayerFromClipboard,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'import-audio-button',
+        label: 'Import audio…',
+        icon: Icons.audio_file_outlined,
+        enabled: session.canImportAudioToActiveLayer && onImportAudio != null,
+        onSelected: onImportAudio,
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'toggle-storyboard-layer-button',
+        label: 'Storyboard layer',
+        icon: Icons.auto_stories_outlined,
+        enabled: session.canToggleTargetLayerKind,
+        checked: active?.kind == LayerKind.storyboard ? true : null,
+        onSelected: session.toggleTargetLayerKind,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'toggle-art-layer-button',
+        label: 'Art layer',
+        icon: Icons.landscape_outlined,
+        enabled: session.canToggleTargetLayerArt,
+        checked: active?.kind == LayerKind.art ? true : null,
+        onSelected: session.toggleTargetLayerArt,
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'toggle-se-section-button',
+        label: 'Show SE rows',
+        icon: Icons.music_note_outlined,
+        enabled: onToggleSection != null,
+        checked: !hiddenSections.contains(TimelineSection.se),
+        onSelected: () => onToggleSection?.call(TimelineSection.se),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'toggle-camera-section-button',
+        label: 'Show camera rows',
+        icon: Icons.videocam_outlined,
+        enabled: onToggleSection != null,
+        checked: !hiddenSections.contains(TimelineSection.camera),
+        onSelected: () => onToggleSection?.call(TimelineSection.camera),
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'delete-layer-button',
+        label: 'Delete layer',
+        icon: Icons.delete_outline,
+        danger: true,
+        enabled: session.canDeleteActiveLayer,
+        onSelected: onDeleteLayer,
+      ),
+    ];
+  }
+
+  List<PanelFlyoutEntry> _frameEntries() {
+    return [
+      PanelFlyoutItem(
+        keyValue: 'rename-frame-button',
+        label: 'Edit instance…',
+        icon: Icons.edit_outlined,
+        enabled: _canEditInstance,
+        onSelected: onEditInstance,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'copy-frame-button',
+        label: 'Copy frame',
+        icon: Icons.content_copy,
+        enabled: session.canCopyFrameAtCurrentFrame,
+        onSelected: session.copyFrameAtCurrentFrame,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'paste-linked-frame-button',
+        label: 'Paste linked frame',
+        icon: Icons.link,
+        enabled: session.canPasteLinkedFrameAtCurrentFrame,
+        onSelected: session.pasteLinkedFrameAtCurrentFrame,
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'delete-cell-button',
+        label: 'Delete cell',
+        icon: Icons.delete_outline,
+        danger: true,
+        enabled: session.canDeleteCellAtCurrentFrame,
+        onSelected: session.deleteCellAtCurrentFrame,
+      ),
+    ];
+  }
+
   Widget _iconButton({
     required ValueKey<String> key,
     required String tooltip,
@@ -89,41 +256,6 @@ class TimelineActionToolbar extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon),
-      iconSize: 18,
-      padding: const EdgeInsets.all(5),
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-
-  Widget _group({
-    required ValueKey<String> key,
-    required List<Widget> children,
-  }) {
-    return Row(key: key, mainAxisSize: MainAxisSize.min, children: children);
-  }
-
-  /// Section show/hide toggle (replaces the retired collapse chevrons):
-  /// accent-tinted while the section is hidden.
-  Widget _sectionToggleButton(
-    BuildContext context, {
-    required TimelineSection section,
-    required String buttonKey,
-    required String label,
-    required IconData icon,
-  }) {
-    assert(timelineSectionHideable(section));
-    final hidden = hiddenSections.contains(section);
-    final onToggleSection = this.onToggleSection;
-    return IconButton(
-      key: ValueKey<String>(buttonKey),
-      tooltip: hidden ? 'Show $label' : 'Hide $label',
-      onPressed: onToggleSection == null
-          ? null
-          : () => onToggleSection(section),
-      icon: Icon(icon),
-      isSelected: hidden,
-      selectedIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
       iconSize: 18,
       padding: const EdgeInsets.all(5),
       constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -158,98 +290,32 @@ class TimelineActionToolbar extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _group(
+              Row(
                 key: const ValueKey<String>('timeline-toolbar-layer-group'),
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _iconButton(
-                    key: const ValueKey<String>(
-                      'toggle-storyboard-layer-button',
-                    ),
-                    tooltip: 'Toggle Storyboard Layer',
-                    icon: Icons.auto_stories_outlined,
-                    onPressed: session.canToggleTargetLayerKind
-                        ? session.toggleTargetLayerKind
-                        : null,
+                  SplitIconButton(
+                    buttonKey: 'timeline-toolbar-add-layer-button',
+                    menuKey: 'timeline-toolbar-add-layer-menu',
+                    icon: Icons.add,
+                    tooltip: 'Add layer',
+                    accent: true,
+                    onPressed: onAddLayer,
+                    entriesBuilder: _addLayerEntries,
                   ),
-                  _iconButton(
-                    key: const ValueKey<String>('toggle-art-layer-button'),
-                    tooltip: 'Toggle Art Layer',
-                    icon: Icons.landscape_outlined,
-                    onPressed: session.canToggleTargetLayerArt
-                        ? session.toggleTargetLayerArt
-                        : null,
-                  ),
-                  _sectionToggleButton(
-                    context,
-                    section: TimelineSection.se,
-                    buttonKey: 'toggle-se-section-button',
-                    label: 'SE Rows',
-                    icon: Icons.music_off_outlined,
-                  ),
-                  _sectionToggleButton(
-                    context,
-                    section: TimelineSection.camera,
-                    buttonKey: 'toggle-camera-section-button',
-                    label: 'Camera Rows',
-                    icon: Icons.videocam_off_outlined,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('import-audio-button'),
-                    tooltip: 'Import Audio',
-                    icon: Icons.audio_file_outlined,
-                    onPressed:
-                        session.canImportAudioToActiveLayer &&
-                            onImportAudio != null
-                        ? onImportAudio
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('rename-layer-button'),
-                    tooltip: 'Rename Layer',
-                    icon: Icons.drive_file_rename_outline,
-                    onPressed: session.activeLayer == null
-                        ? null
-                        : onRenameLayer,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('duplicate-layer-button'),
-                    tooltip: 'Duplicate Layer',
-                    icon: Icons.copy_outlined,
-                    onPressed: session.activeLayer == null
-                        ? null
-                        : session.duplicateActiveLayer,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('copy-layer-button'),
-                    tooltip: 'Copy Layer',
-                    icon: Icons.content_copy,
-                    onPressed: session.activeLayer == null
-                        ? null
-                        : session.copyActiveLayer,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('paste-layer-button'),
-                    tooltip: session.layerClipboardName == null
-                        ? 'Paste Layer'
-                        : 'Paste Layer (${session.layerClipboardName})',
-                    icon: Icons.content_paste,
-                    onPressed: session.hasLayerClipboard
-                        ? session.pasteLayerFromClipboard
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('delete-layer-button'),
-                    tooltip: 'Delete Layer',
-                    icon: Icons.delete_outline,
-                    onPressed: session.canDeleteActiveLayer
-                        ? onDeleteLayer
-                        : null,
+                  const SizedBox(width: 4),
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>('timeline-layer-menu-button'),
+                    label: 'Layer',
+                    tooltip: 'Layer commands',
+                    entriesBuilder: _layerEntries,
                   ),
                 ],
               ),
               _groupDivider(context),
-              _group(
-                key: const ValueKey<String>('timeline-toolbar-create-group'),
+              Row(
+                key: const ValueKey<String>('timeline-toolbar-frame-group'),
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   _iconButton(
                     key: const ValueKey<String>('new-frame-button'),
@@ -273,72 +339,17 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? session.toggleMarkAtCurrentFrame
                         : null,
                   ),
-                ],
-              ),
-              _groupDivider(context),
-              _group(
-                key: const ValueKey<String>('timeline-toolbar-copy-group'),
-                children: [
-                  _iconButton(
-                    key: const ValueKey<String>('copy-frame-button'),
-                    tooltip: 'Copy Frame',
-                    icon: Icons.content_copy,
-                    onPressed: session.canCopyFrameAtCurrentFrame
-                        ? session.copyFrameAtCurrentFrame
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('paste-linked-frame-button'),
-                    tooltip: 'Paste Linked Frame',
-                    icon: Icons.link,
-                    onPressed: session.canPasteLinkedFrameAtCurrentFrame
-                        ? session.pasteLinkedFrameAtCurrentFrame
-                        : null,
+                  const SizedBox(width: 4),
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>('timeline-frame-menu-button'),
+                    label: 'Frame',
+                    tooltip: 'Frame commands',
+                    entriesBuilder: _frameEntries,
                   ),
                 ],
               ),
               _groupDivider(context),
-              _group(
-                key: const ValueKey<String>('timeline-toolbar-edit-group'),
-                children: [
-                  _iconButton(
-                    key: const ValueKey<String>('rename-frame-button'),
-                    tooltip: 'Edit Instance',
-                    icon: Icons.edit_outlined,
-                    onPressed: _canEditInstance ? onEditInstance : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('delete-cell-button'),
-                    tooltip: 'Delete Cell',
-                    icon: Icons.delete_outline,
-                    onPressed: session.canDeleteCellAtCurrentFrame
-                        ? session.deleteCellAtCurrentFrame
-                        : null,
-                  ),
-                ],
-              ),
-              _groupDivider(context),
-              _group(
-                key: const ValueKey<String>('timeline-toolbar-exposure-group'),
-                children: [
-                  _iconButton(
-                    key: const ValueKey<String>('decrease-exposure-button'),
-                    tooltip: 'Decrease Exposure',
-                    icon: Icons.remove,
-                    onPressed: session.canDecreaseSelectedExposure
-                        ? session.decreaseSelectedExposure
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('increase-exposure-button'),
-                    tooltip: 'Increase Exposure',
-                    icon: Icons.add,
-                    onPressed: session.canIncreaseSelectedExposure
-                        ? session.increaseSelectedExposure
-                        : null,
-                  ),
-                ],
-              ),
+              CutCommandGroup(session: session),
             ],
           ),
         ),

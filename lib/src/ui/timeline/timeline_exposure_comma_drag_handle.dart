@@ -57,8 +57,14 @@ class TimelineBlockEdgeGrip extends StatefulWidget {
   /// The frame axis direction; geometry and gesture transpose with it.
   final Axis axis;
 
-  /// Pointer-target strip anchored inside the block edge.
+  /// Pointer-target strip anchored inside the block edge — capped at a
+  /// THIRD of the cell extent so a one-frame block at the slim 24px zoom
+  /// keeps a tappable cell body between its two grips (fixed 12px strips
+  /// covered the whole cell and swallowed cell selection).
   static const double hitExtent = 12;
+
+  double get effectiveHitExtent =>
+      hitExtent < frameCellExtent / 3 ? hitExtent : frameCellExtent / 3;
 
   static const double _barThickness = 3.5;
   static const double _barInset = 2.5;
@@ -137,7 +143,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
     final isStartEdge = widget.edge == TimelineBlockEdge.start;
     final hitStart = isStartEdge
         ? widget.blockStartOffset
-        : widget.blockEndOffset - TimelineBlockEdgeGrip.hitExtent;
+        : widget.blockEndOffset - widget.effectiveHitExtent;
     final barLength = widget.crossAxisExtent * 0.55;
     final barColor = _dragging
         ? timelineSelectedFrameBorderColor
@@ -205,7 +211,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
         key: key,
         left: hitStart,
         top: 0,
-        width: TimelineBlockEdgeGrip.hitExtent,
+        width: widget.effectiveHitExtent,
         height: widget.crossAxisExtent,
         child: grip,
       );
@@ -214,7 +220,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       key: key,
       top: hitStart,
       left: 0,
-      height: TimelineBlockEdgeGrip.hitExtent,
+      height: widget.effectiveHitExtent,
       width: widget.crossAxisExtent,
       child: grip,
     );

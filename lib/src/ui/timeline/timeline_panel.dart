@@ -14,9 +14,10 @@ import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import '../widgets/field_slider.dart';
-import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_grid_metrics.dart';
+import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline_section_bracket_rail.dart' show TimelineSectionRailCallbacks;
+import 'timeline_view_cluster.dart';
 import 'timeline_orientation.dart';
 import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
@@ -70,6 +71,9 @@ class TimelinePanel extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
+    this.onToggleSection,
+    this.legend,
+    this.sectionRail,
     this.dragPreview,
   });
 
@@ -182,7 +186,9 @@ class TimelinePanel extends StatefulWidget {
   /// same default.
   static const double minPixelsPerFrame = 4;
   static const double maxPixelsPerFrame = 96;
-  static const double defaultPixelsPerFrame = 48;
+  // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
+  // CSP/TVPaint-density default.
+  static const double defaultPixelsPerFrame = 24;
 
   /// The ACTIVE view's zoom (the host routes it to the timeline or the
   /// storyboard value depending on the shown mode).
@@ -209,6 +215,15 @@ class TimelinePanel extends StatefulWidget {
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
   final Set<TimelineSection> hiddenSections;
+
+  /// Folds/unfolds a hideable section (legend corner + bracket chevrons).
+  final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// The rail legend's bulk commands (horizontal timeline only).
+  final LayerLegendCallbacks? legend;
+
+  /// The section brackets' flyout commands (horizontal timeline only).
+  final TimelineSectionRailCallbacks? sectionRail;
 
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
@@ -242,103 +257,43 @@ class _TimelinePanelState extends State<TimelinePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ONE command-bar row (R-toolbar round): the host's transport +
+          // action toolbar on the left, the shared view cluster pinned
+          // right. The old separate top row is gone.
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
             child: Row(
               children: [
-                // The counter subscribes to the cursor itself: a tick
-                // rebuilds this one Text, nothing else.
-                ValueListenableBuilder<int>(
-                  valueListenable: widget.frameCursor,
-                  builder: (context, cursorFrame, _) => Text(
-                    widget.showSeconds
-                        ? timelineSecondsLabel(
-                            cursorFrame + 1,
-                            widget.projectFps,
-                          )
-                        : '${cursorFrame + 1}',
-                    key: const ValueKey<String>(
-                      'timeline-current-frame-counter',
-                    ),
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  key: const ValueKey<String>(
-                    'timeline-time-display-toggle-button',
-                  ),
-                  tooltip: widget.showSeconds ? 'Show Frames' : 'Show Seconds',
-                  onPressed: widget.onShowSecondsChanged == null
-                      ? null
-                      : () => widget.onShowSecondsChanged!(!widget.showSeconds),
-                  icon: Icon(
-                    widget.showSeconds ? Icons.timer : Icons.timer_outlined,
-                    size: 18,
-                  ),
-                ),
-                // The frame-axis zoom slider is shared by every mode
-                // (timeline, X-sheet AND storyboard).
-                Icon(
-                  Icons.zoom_out,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                SizedBox(
-                  width: 140,
-                  child: FieldSlider(
-                    key: const ValueKey<String>('timeline-zoom-slider'),
-                    min: TimelinePanel.minPixelsPerFrame,
-                    max: TimelinePanel.maxPixelsPerFrame,
-                    value: widget.pixelsPerFrame.clamp(
-                      TimelinePanel.minPixelsPerFrame,
-                      TimelinePanel.maxPixelsPerFrame,
-                    ),
-                    // Zoom reads as percent of the default frame width.
-                    valueText:
-                        '${(widget.pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
-                    displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
-                    height: 18,
-                    onChanged: widget.onPixelsPerFrameChanged,
-                  ),
-                ),
-                Icon(
-                  Icons.zoom_in,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                if (showToolbar)
+                  Expanded(child: widget.timelineActionToolbar!)
+                else
+                  const Spacer(),
                 const SizedBox(width: 8),
-                IconButton(
-                  key: const ValueKey<String>(
-                    'timeline-toolbar-add-layer-button',
-                  ),
-                  tooltip: 'Add layer',
-                  onPressed: widget.onAddLayer,
-                  icon: const Icon(Icons.add),
-                ),
-                IconButton(
-                  key: const ValueKey<String>(
-                    'timeline-orientation-toggle-button',
-                  ),
-                  tooltip: widget.orientation == TimelineOrientation.horizontal
-                      ? 'Show X-sheet'
-                      : 'Show timeline',
-                  onPressed: () => widget.onOrientationChanged(nextOrientation),
-                  icon: const Icon(Icons.swap_horiz),
+                TimelineViewCluster(
+                  frameCursor: widget.frameCursor,
+                  projectFps: widget.projectFps,
+                  showSeconds: widget.showSeconds,
+                  onShowSecondsChanged: widget.onShowSecondsChanged,
+                  pixelsPerFrame: widget.pixelsPerFrame,
+                  onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+                  trailing: [
+                    IconButton(
+                      key: const ValueKey<String>(
+                        'timeline-orientation-toggle-button',
+                      ),
+                      tooltip:
+                          widget.orientation == TimelineOrientation.horizontal
+                          ? 'Show X-sheet'
+                          : 'Show timeline',
+                      onPressed: () =>
+                          widget.onOrientationChanged(nextOrientation),
+                      icon: const Icon(Icons.swap_horiz),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          if (showToolbar)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-              child: widget.timelineActionToolbar,
-            ),
           Expanded(
             child: widget.orientation == TimelineOrientation.horizontal
                 ? LayerTimelineGrid(
@@ -384,6 +339,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
+                    onToggleSection: widget.onToggleSection,
+                    legend: widget.legend,
+                    sectionRail: widget.sectionRail,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

@@ -67,6 +67,8 @@ void main() {
             orientation: TimelineOrientation.horizontal,
             onOrientationChanged: (_) {},
             projectFps: 24,
+            // Classic zoom: this file's pixel oracles assume 48 px/frame.
+            pixelsPerFrame: 48,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
             onRemoveAudioClip: (layerId, clipIndex) =>
                 removed.add((layerId, clipIndex)),

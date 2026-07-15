@@ -79,6 +79,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
+    this.onToggleSection,
+    this.legend,
+    this.sectionRail,
     this.dragPreview,
   });
 
@@ -197,6 +200,15 @@ class LayerTimelineGrid extends StatefulWidget {
   /// the gutter-label toggle.
   /// Sections hidden from the grid entirely (toolbar visibility toggles).
   final Set<TimelineSection> hiddenSections;
+
+  /// Folds/unfolds a hideable section (legend corner + bracket chevrons).
+  final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// The rail legend's bulk commands; null renders a display-only legend.
+  final LayerLegendCallbacks? legend;
+
+  /// The section brackets' flyout commands; null keeps them display-only.
+  final TimelineSectionRailCallbacks? sectionRail;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -411,6 +423,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.lanesForLayer?.call(layer) ?? const [];
 
+  /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
+  /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
+  /// existing per-layer toggle.
+  void _expandAllLanes() {
+    final onToggle = widget.onToggleLayerLanes;
+    if (onToggle == null) {
+      return;
+    }
+    for (final layer in widget.layers) {
+      if (_lanesFor(layer).isNotEmpty &&
+          !widget.expandedLaneLayerIds.contains(layer.id)) {
+        onToggle(layer.id);
+      }
+    }
+  }
+
+  void _collapseAllLanes() {
+    final onToggle = widget.onToggleLayerLanes;
+    if (onToggle == null) {
+      return;
+    }
+    for (final layerId in widget.expandedLaneLayerIds.toList()) {
+      onToggle(layerId);
+    }
+  }
+
   /// One rail row (layer controls or a lane label), extracted so the
   /// windowed rail loop stays readable.
   Widget _railRow(TimelineDisplayRow row) {
@@ -537,6 +575,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                               TimelineLayerControlsHeader(
                                 metrics: _metrics,
                                 onAddLayer: widget.onAddLayer,
+                                legend: widget.legend,
+                                hiddenSections: widget.hiddenSections,
+                                onToggleSection: widget.onToggleSection,
+                                onExpandAllLanes:
+                                    widget.onToggleLayerLanes == null
+                                    ? null
+                                    : _expandAllLanes,
+                                onCollapseAllLanes:
+                                    widget.onToggleLayerLanes == null
+                                    ? null
+                                    : _collapseAllLanes,
                               ),
                               TimelineVerticalScrollbarSlot(
                                 width: _metrics.verticalScrollbarWidth,
@@ -703,6 +752,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             TimelineSectionBracketRail(
                                               rows: rows,
                                               metrics: _metrics,
+                                              callbacks: widget.sectionRail,
                                             ),
                                             Column(
                                               crossAxisAlignment:
