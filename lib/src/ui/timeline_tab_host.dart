@@ -27,6 +27,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_bracket_rail.dart'
     show TimelineSectionRailCallbacks;
 import 'timeline/timeline_section_policy.dart';
@@ -53,6 +54,8 @@ class TimelineTabHost extends StatefulWidget {
     this.onToggleTransformGroup,
     this.hiddenSections = const {},
     this.onToggleSection,
+    this.rowFilter = TimelineRowFilter.none,
+    this.onSetRowFilter,
     this.audioFilePicker,
     this.cameraViewEnabled,
     this.cameraDimOpacity,
@@ -81,6 +84,12 @@ class TimelineTabHost extends StatefulWidget {
   /// hidden sections render no rows; the toolbar buttons toggle them.
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// The rail's row filter (host-owned, survives tab switches): hides
+  /// layer rows failing its predicate. Null [onSetRowFilter] hides the
+  /// filter UI.
+  final TimelineRowFilter rowFilter;
+  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
   /// Injectable for tests; defaults to the platform open-file dialog.
   final Future<String?> Function()? audioFilePicker;
@@ -808,8 +817,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         onToggleLayerLanes: widget.onToggleLayerLanes,
         hiddenSections: widget.hiddenSections,
         onToggleSection: widget.onToggleSection,
+        rowFilter: widget.rowFilter,
+        onSetRowFilter: widget.onSetRowFilter,
+        inactiveDimStrength: _session.inactiveDimStrength,
         // The rail legend's bulk sweeps + the section brackets' flyout —
-        // all session-backed (R-toolbar round).
+        // all session-backed (R-toolbar round); the R2 filter/dim/opacity
+        // facets ride the same struct.
         legend: LayerLegendCallbacks(
           onShowAllLayers: () => _session.setAllLayersVisibility(true),
           onHideAllLayers: () => _session.setAllLayersVisibility(false),
@@ -823,6 +836,23 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
           onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
           onResetAllOpacity: _session.resetAllLayersOpacity,
+          onToggleMarkFilter: (mark) =>
+              widget.onSetRowFilter?.call(widget.rowFilter.toggledMark(mark)),
+          onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
+            widget.rowFilter.copyWith(
+              onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
+            ),
+          ),
+          onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
+            widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
+          ),
+          onToggleFillReferenceOnlyFilter: () => widget.onSetRowFilter?.call(
+            widget.rowFilter.copyWith(
+              fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
+            ),
+          ),
+          onSetInactiveDim: _session.setInactiveDimStrength,
+          onSetAllOpacity: _session.setAllLayersOpacity,
         ),
         sectionRail: widget.onToggleSection == null
             ? null

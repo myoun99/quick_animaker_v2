@@ -16,6 +16,7 @@ import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline_row_filter.dart';
 import 'timeline_section_bracket_rail.dart' show TimelineSectionRailCallbacks;
 import 'timeline_view_cluster.dart';
 import 'timeline_orientation.dart';
@@ -74,6 +75,9 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleSection,
     this.legend,
     this.sectionRail,
+    this.rowFilter = TimelineRowFilter.none,
+    this.onSetRowFilter,
+    this.inactiveDimStrength = 0.0,
     this.dragPreview,
   });
 
@@ -225,6 +229,13 @@ class TimelinePanel extends StatefulWidget {
   /// The section brackets' flyout commands (horizontal timeline only).
   final TimelineSectionRailCallbacks? sectionRail;
 
+  /// The rail's row filter and its editor (R2); shared by both orientations.
+  final TimelineRowFilter rowFilter;
+  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
+
+  /// The lighttable dim strength (legend eye flyout readout).
+  final double inactiveDimStrength;
+
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
 }
@@ -342,6 +353,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleSection: widget.onToggleSection,
                     legend: widget.legend,
                     sectionRail: widget.sectionRail,
+                    rowFilter: widget.rowFilter,
+                    onSetRowFilter: widget.onSetRowFilter,
+                    inactiveDimStrength: widget.inactiveDimStrength,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -386,6 +400,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
+                    rowFilter: widget.rowFilter,
                   ),
           ),
         ],

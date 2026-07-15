@@ -1,14 +1,64 @@
 import 'package:flutter/material.dart';
 
+import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
+import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
+
+/// A small 0–100% picker for the legend's inactive-dim and bulk-opacity
+/// items (both numeric percentages). Commits on OK; cancel leaves state.
+Future<void> _showValueDialog(
+  BuildContext context, {
+  required String title,
+  required double initial,
+  required ValueChanged<double> onCommit,
+}) async {
+  var value = initial.clamp(0.0, 1.0);
+  final result = await showDialog<double>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title, style: const TextStyle(fontSize: 14)),
+      content: SizedBox(
+        width: 240,
+        child: StatefulBuilder(
+          builder: (context, setState) => FieldSlider(
+            key: const ValueKey<String>('legend-value-dialog-slider'),
+            value: value,
+            min: 0,
+            max: 1,
+            label: 'Value',
+            valueText: '${(value * 100).round()}%',
+            displayFactor: 100,
+            onChanged: (next) => setState(() => value = next),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('legend-value-dialog-ok'),
+          onPressed: () => Navigator.of(context).pop(value),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+  if (result != null) {
+    onCommit(result);
+  }
+}
 
 /// The rail legend's bulk commands (session-backed; the host wires them).
 /// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
-/// view-ish ones (eye/mute/fx/opacity) mirror their per-row toggles.
+/// view-ish ones (eye/mute/fx/opacity) mirror their per-row toggles. The
+/// R2 filter/dim/bulk-opacity facets ride the same struct.
 class LayerLegendCallbacks {
   const LayerLegendCallbacks({
     required this.onShowAllLayers,
@@ -23,6 +73,12 @@ class LayerLegendCallbacks {
     required this.onBypassAllFx,
     required this.onEnableAllFx,
     required this.onResetAllOpacity,
+    required this.onToggleMarkFilter,
+    required this.onToggleSheetOnlyFilter,
+    required this.onToggleFxOnlyFilter,
+    required this.onToggleFillReferenceOnlyFilter,
+    required this.onSetInactiveDim,
+    required this.onSetAllOpacity,
   });
 
   final VoidCallback onShowAllLayers;
@@ -37,6 +93,16 @@ class LayerLegendCallbacks {
   final VoidCallback onBypassAllFx;
   final VoidCallback onEnableAllFx;
   final VoidCallback onResetAllOpacity;
+
+  /// R2 row-filter facet toggles.
+  final ValueChanged<LayerMark> onToggleMarkFilter;
+  final VoidCallback onToggleSheetOnlyFilter;
+  final VoidCallback onToggleFxOnlyFilter;
+  final VoidCallback onToggleFillReferenceOnlyFilter;
+
+  /// The lighttable dim strength (0..1) and the numeric bulk-opacity set.
+  final ValueChanged<double> onSetInactiveDim;
+  final ValueChanged<double> onSetAllOpacity;
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
@@ -54,6 +120,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.onToggleSection,
     this.onCollapseAllLanes,
     this.onExpandAllLanes,
+    this.rowFilter = TimelineRowFilter.none,
+    this.marksInUse = const {},
+    this.inactiveDimStrength = 0.0,
   });
 
   final TimelineGridMetrics metrics;
@@ -64,6 +133,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
 
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// The active row filter (for the legend flyouts' check marks).
+  final TimelineRowFilter rowFilter;
+
+  /// Marks currently assigned across the active cut's layers — the
+  /// "show only color X" list is built from these (empty color set skipped).
+  final Set<LayerMark> marksInUse;
+
+  /// The lighttable dim strength (for the eye flyout's slider readout).
+  final double inactiveDimStrength;
 
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
@@ -209,6 +288,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.table_chart_outlined,
                               onSelected: legend.onSheetAllOff,
                             ),
+                            const PanelFlyoutDivider(),
+                            PanelFlyoutItem(
+                              keyValue: 'legend-filter-sheet',
+                              label: 'Show only sheet-on',
+                              icon: Icons.filter_alt_outlined,
+                              checked: rowFilter.onTimesheetOnly,
+                              onSelected: legend.onToggleSheetOnlyFilter,
+                            ),
                           ],
                     child: legendIcon(Icons.table_chart_outlined),
                   ),
@@ -226,6 +313,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.label_off_outlined,
                               onSelected: legend.onClearAllMarks,
                             ),
+                            if (marksInUse.isNotEmpty) ...[
+                              const PanelFlyoutDivider(),
+                              const PanelFlyoutHeader('Show only'),
+                              for (final mark in LayerMark.values)
+                                if (mark != LayerMark.none &&
+                                    marksInUse.contains(mark))
+                                  PanelFlyoutItem(
+                                    keyValue: 'legend-filter-mark-${mark.name}',
+                                    label: layerMarkDisplayName(mark),
+                                    checked: rowFilter.markColors.contains(
+                                      mark,
+                                    ),
+                                    onSelected: () =>
+                                        legend.onToggleMarkFilter(mark),
+                                  ),
+                            ],
                           ],
                     child: legendIcon(Icons.label_outline),
                   ),
@@ -266,6 +369,15 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               icon: Icons.format_color_reset_outlined,
                               onSelected: legend.onClearAllFillReferences,
                             ),
+                            const PanelFlyoutDivider(),
+                            PanelFlyoutItem(
+                              keyValue: 'legend-filter-fill-ref',
+                              label: 'Show only fill references',
+                              icon: Icons.filter_alt_outlined,
+                              checked: rowFilter.fillReferenceOnly,
+                              onSelected:
+                                  legend.onToggleFillReferenceOnlyFilter,
+                            ),
                           ],
                     child: legendIcon(Icons.format_color_fill),
                   ),
@@ -285,6 +397,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               keyValue: 'legend-fx-bypass-all',
                               label: 'Bypass all fx',
                               onSelected: legend.onBypassAllFx,
+                            ),
+                            const PanelFlyoutDivider(),
+                            PanelFlyoutItem(
+                              keyValue: 'legend-filter-fx',
+                              label: 'Show only fx-on',
+                              icon: Icons.filter_alt_outlined,
+                              checked: rowFilter.fxOnly,
+                              onSelected: legend.onToggleFxOnlyFilter,
                             ),
                           ],
                     child: Text(
@@ -321,6 +441,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               label: 'Active only (solo)',
                               icon: Icons.center_focus_strong_outlined,
                               onSelected: legend.onSoloActiveLayer,
+                            ),
+                            const PanelFlyoutDivider(),
+                            PanelFlyoutItem(
+                              keyValue: 'legend-inactive-dim',
+                              label: inactiveDimStrength > 0
+                                  ? 'Inactive dim… '
+                                        '(${(inactiveDimStrength * 100).round()}%)'
+                                  : 'Inactive dim…',
+                              icon: Icons.contrast,
+                              checked: inactiveDimStrength > 0,
+                              onSelected: () => _showValueDialog(
+                                context,
+                                title: 'Inactive layer dim',
+                                initial: inactiveDimStrength,
+                                onCommit: legend.onSetInactiveDim,
+                              ),
                             ),
                           ],
                     child: legendIcon(Icons.visibility_outlined),
@@ -359,6 +495,17 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               label: 'Reset all to 100%',
                               icon: Icons.opacity,
                               onSelected: legend.onResetAllOpacity,
+                            ),
+                            PanelFlyoutItem(
+                              keyValue: 'legend-opacity-set-all',
+                              label: 'Set all to…',
+                              icon: Icons.tune,
+                              onSelected: () => _showValueDialog(
+                                context,
+                                title: 'Set all layers opacity',
+                                initial: 1.0,
+                                onCommit: legend.onSetAllOpacity,
+                              ),
                             ),
                           ],
                     child: Text(
