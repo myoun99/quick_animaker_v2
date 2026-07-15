@@ -38,3 +38,27 @@ Layer requireLayer(
 
   throw StateError('Layer not found in cut $cutId: $layerId');
 }
+
+/// Returns the layer matching [layerId] anywhere in [project] — cut layers
+/// AND the tracks' track-owned SE rows (the same reach as the repository's
+/// updateLayerAnywhere seam). Layer ids are globally unique, so the flag
+/// commands (mark/timesheet/fill-reference) resolve through this instead of
+/// the cut-scoped [requireLayer], which track SE rows are not in.
+Layer requireLayerAnywhere(Project project, LayerId layerId) {
+  for (final track in project.tracks) {
+    for (final layer in track.seLayers) {
+      if (layer.id == layerId) {
+        return layer;
+      }
+    }
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        if (layer.id == layerId) {
+          return layer;
+        }
+      }
+    }
+  }
+
+  throw StateError('Layer not found: $layerId');
+}

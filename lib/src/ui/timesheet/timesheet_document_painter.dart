@@ -1063,7 +1063,7 @@ class TimesheetDocumentPainter extends CustomPainter {
   }
 
   void _paintGroupTitles(Canvas canvas, double halfLeft, double groupTop) {
-    // Contiguous kind runs become group headers (ACTION / S / CELL / CAM).
+    // Contiguous kind runs become group headers (ACTION / SE / CELL / CAM).
     var runStart = 0;
     while (runStart < document.columns.length) {
       final kind = document.columns[runStart].kind;
@@ -1079,7 +1079,7 @@ class TimesheetDocumentPainter extends CustomPainter {
           layout.columnWidthFor(kind);
       final title = switch (kind) {
         TimesheetColumnKind.action => 'ACTION',
-        TimesheetColumnKind.se => 'S',
+        TimesheetColumnKind.se => 'SE',
         TimesheetColumnKind.cel => 'CELL',
         TimesheetColumnKind.camera => 'CAM',
       };

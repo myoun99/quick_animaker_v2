@@ -820,13 +820,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         rowFilter: widget.rowFilter,
         onSetRowFilter: widget.onSetRowFilter,
         inactiveDimStrength: _session.inactiveDimStrength,
+        visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
         // The rail legend's bulk sweeps + the section brackets' flyout —
         // all session-backed (R-toolbar round); the R2 filter/dim/opacity
         // facets ride the same struct.
         legend: LayerLegendCallbacks(
           onShowAllLayers: () => _session.setAllLayersVisibility(true),
           onHideAllLayers: () => _session.setAllLayersVisibility(false),
-          onSoloActiveLayer: _session.soloActiveLayerVisibility,
+          onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
           onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
           onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
           onClearAllMarks: _session.clearAllLayerMarks,

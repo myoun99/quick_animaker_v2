@@ -44,6 +44,7 @@ int sampleCompositeColor({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   Set<LayerId> fxBypassedLayerIds = const {},
+  LayerId? soloVisibleLayerId,
   int paperColor = canvasPaperColor,
 }) {
   final x = point.x.floor();
@@ -57,6 +58,7 @@ int sampleCompositeColor({
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
+    soloVisibleLayerId: soloVisibleLayerId,
   )) {
     if (entry.pose != null) {
       continue;

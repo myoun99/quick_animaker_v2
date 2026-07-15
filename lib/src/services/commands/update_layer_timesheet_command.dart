@@ -25,11 +25,9 @@ class UpdateLayerTimesheetCommand implements Command {
 
   @override
   void execute() {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
+    // Anywhere lookup: track-owned SE rows are not in the cut's layer list
+    // but gate their sheet columns like every row (unified layer controls).
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     _previousOnTimesheet ??= layer.onTimesheet;
 
     repository.updateLayerTimesheet(
@@ -47,7 +45,7 @@ class UpdateLayerTimesheetCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    requireLayer(repository.requireProject(), cutId: cutId, layerId: layerId);
+    requireLayerAnywhere(repository.requireProject(), layerId);
     repository.updateLayerTimesheet(
       cutId: cutId,
       layerId: layerId,

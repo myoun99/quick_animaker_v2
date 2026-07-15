@@ -26,11 +26,9 @@ class UpdateLayerMarkCommand implements Command {
 
   @override
   void execute() {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
+    // Anywhere lookup: track-owned SE rows are not in the cut's layer list
+    // but carry marks like every row (unified layer controls).
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     _previousMark ??= layer.mark;
 
     repository.updateLayerMark(cutId: cutId, layerId: layerId, mark: mark);
@@ -44,7 +42,7 @@ class UpdateLayerMarkCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    requireLayer(repository.requireProject(), cutId: cutId, layerId: layerId);
+    requireLayerAnywhere(repository.requireProject(), layerId);
     repository.updateLayerMark(
       cutId: cutId,
       layerId: layerId,

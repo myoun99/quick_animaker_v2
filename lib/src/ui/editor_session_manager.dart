@@ -143,6 +143,7 @@ class EditorSessionManager extends ChangeNotifier {
         frameStore: brushFrameStore,
         frameKeyOf: brushFrameKeyForCut,
         fxBypassedLayerIdsOf: () => _fxBypassedLayerIds,
+        soloVisibleLayerIdOf: soloVisibleLayerIdFor,
       );
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
@@ -798,6 +799,9 @@ class EditorSessionManager extends ChangeNotifier {
     // layers composite at this extra factor. Applied here — never in the
     // shared composite plan — so export/thumbnails stay untouched.
     final inactiveFactor = 1.0 - _inactiveDimStrength;
+    // The legend's visibility-solo mode: the shared visit filters to the
+    // active layer's group when engaged (same override playback uses).
+    final soloId = soloVisibleLayerIdFor(cut.id);
     // The CUT layers ride the shared composite visit (skip rules, fx
     // sharing and the W5 attach-layer expansion agree with playback by
     // construction); the split around the active layer happens here.
@@ -806,6 +810,7 @@ class EditorSessionManager extends ChangeNotifier {
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
+        soloVisibleLayerId: soloId,
       ))
         entry.layer.id: entry,
     };
@@ -815,7 +820,9 @@ class EditorSessionManager extends ChangeNotifier {
       // its existing cels keep displaying read-only.
       if (layer.id == activeLayerId && layerKindAcceptsBrushInput(layer.kind)) {
         seenActiveLayer = true;
-        activeLayerOpacity = !layer.isVisible
+        // Solo mode overrides the eye: the soloed (active) layer always
+        // displays, like the one-shot solo used to force its eye on.
+        activeLayerOpacity = soloId == null && !layer.isVisible
             ? 0.0
             : _stackLayerOpacity(layer, cut.layers, frameIndex);
         continue;
@@ -838,7 +845,12 @@ class EditorSessionManager extends ChangeNotifier {
     // tracks are stripped, so the plain resolve path suffices).
     for (final layer in trackSeDisplayLayers) {
       final fxEnabled = isLayerFxEnabled(layer.id);
-      if (!layer.isVisible || layer.opacity <= 0) {
+      // Solo mode replaces the eye predicate here too (an SE row can BE
+      // the soloed layer); static opacity still gates.
+      if (soloId != null ? layer.id != soloId : !layer.isVisible) {
+        continue;
+      }
+      if (layer.opacity <= 0) {
         continue;
       }
       final opacity = fxEnabled
@@ -1169,6 +1181,36 @@ class EditorSessionManager extends ChangeNotifier {
       _fxBypassedLayerIds.add(layerId);
     }
     notifyListeners();
+  }
+
+  // --- Visibility solo mode (session view state, not persisted) ------------
+
+  /// The legend eye's SOLO MODE (R3 feedback #3): while ON, only the ACTIVE
+  /// layer displays and the solo FOLLOWS the active layer as it changes —
+  /// a display mode, not a one-shot eye sweep. Eyes/project state stay
+  /// untouched; export and thumbnails ignore it (work aid). The override
+  /// rides the composite signatures via [soloVisibleLayerIdFor], so
+  /// toggling the mode or switching layers self-invalidates the caches.
+  bool _layerVisibilitySoloEnabled = false;
+
+  bool get layerVisibilitySoloEnabled => _layerVisibilitySoloEnabled;
+
+  void toggleLayerVisibilitySolo() {
+    _layerVisibilitySoloEnabled = !_layerVisibilitySoloEnabled;
+    notifyListeners();
+  }
+
+  /// The solo override for [cutId]'s composites: the active layer while the
+  /// mode is on and [cutId] is the active cut — other cuts (a playlist
+  /// pass) compose normally. A camera-active playhead solos nothing (the
+  /// camera row has no composite entry to solo).
+  LayerId? soloVisibleLayerIdFor(CutId cutId) {
+    if (!_layerVisibilitySoloEnabled ||
+        cutId != _editingSession.activeCutId ||
+        activeLayer?.kind == LayerKind.camera) {
+      return null;
+    }
+    return activeLayerId;
   }
 
   // --- Cut display toggles (session view state, not persisted) -------------
@@ -1748,21 +1790,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// TVPaint-style solo: only the ACTIVE layer stays visible.
-  void soloActiveLayerVisibility() {
-    final activeId = activeLayerId;
-    if (activeId == null) {
-      return;
-    }
-    for (final layer in layers) {
-      final shouldShow = layer.id == activeId;
-      if (layer.isVisible != shouldShow) {
-        _layerController.toggleLayerVisibility(layer.id);
-      }
-    }
-    notifyListeners();
-  }
-
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
     for (final layer in layers) {
@@ -1808,12 +1835,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Turns the timesheet flag on/off for every eligible layer — one undo.
-  /// CUT-owned layers only: the per-layer commands resolve through the
-  /// cut-scoped [requireLayer], which track-owned SE rows are not in.
+  /// Track-owned SE rows join the sweep: the flag commands resolve through
+  /// the anywhere lookup now (the SE mark/sheet fix).
   void setAllLayersOnTimesheet(bool onTimesheet) {
     final cutId = _editingSession.activeCutId;
     final commands = <Command>[
-      for (final layer in activeCut.layers)
+      for (final layer in [...activeCut.layers, ...activeTrack.seLayers])
         if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
           UpdateLayerTimesheetCommand(
             repository: _repository,
@@ -1836,12 +1863,12 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears every layer mark of the active cut — one undo (cut-owned
-  /// layers, like the sheet sweep).
+  /// Clears every layer mark of the active cut (track-owned SE rows
+  /// included, like the sheet sweep) — one undo.
   void clearAllLayerMarks() {
     final cutId = _editingSession.activeCutId;
     final commands = <Command>[
-      for (final layer in activeCut.layers)
+      for (final layer in [...activeCut.layers, ...activeTrack.seLayers])
         if (layer.mark != LayerMark.none)
           UpdateLayerMarkCommand(
             repository: _repository,

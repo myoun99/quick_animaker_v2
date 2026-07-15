@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_kind.dart';
-import '../theme/app_theme.dart';
 import '../widgets/panel_flyout.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
@@ -39,10 +38,16 @@ class TimelineSectionRailCallbacks {
 /// are written the paper way: upright glyphs stacked top-to-bottom (never
 /// rotated).
 ///
-/// R-toolbar round: hideable sections grow a fold chevron at the bracket
-/// top, and tapping the bracket opens the section flyout (fold / add layer
-/// here / solo / section-wide eye). Unfolding a hidden section lives on the
-/// legend corner and the Layer ▾ menu — a folded section has no bracket.
+/// R-toolbar round: tapping the bracket opens the section flyout (fold /
+/// add layer here / solo / section-wide eye). Unfolding a hidden section
+/// lives on the legend corner and the Layer ▾ menu — a folded section has
+/// no bracket.
+///
+/// UI-R3 feedback #5/#6: the bracket draws NO box of its own — just a
+/// bottom hairline landing exactly on the section's last row boundary and
+/// the shared right-edge divider, so the gutter and the layer rows read as
+/// ONE table (and the old top fold chevron is gone; folding lives in the
+/// section flyout).
 class TimelineSectionBracketRail extends StatelessWidget {
   const TimelineSectionBracketRail({
     super.key,
@@ -127,46 +132,27 @@ class TimelineSectionBracketRail extends StatelessWidget {
                   height: timelineSectionRunExtent(run, rows, metrics),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerLow,
-                    border: Border.all(color: colorScheme.outline, width: 1),
+                    // One shared table (R3 #5/#6): the bottom hairline sits
+                    // on the run's last row boundary, the right hairline is
+                    // the gutter/rail divider — no enclosing box.
+                    border: Border(
+                      bottom: BorderSide(color: colorScheme.outlineVariant),
+                      right: BorderSide(color: colorScheme.outlineVariant),
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      // The chevron folds DIRECTLY (one tap); the rest of
-                      // the bracket opens the section flyout.
-                      if (callbacks != null &&
-                          timelineSectionHideable(run.section))
-                        InkWell(
-                          key: ValueKey<String>(
-                            'section-fold-${run.section.name}',
-                          ),
-                          onTap: () => callbacks.onToggleSection(run.section),
-                          child: const SizedBox(
-                            height: 14,
-                            width: double.infinity,
-                            child: Icon(
-                              Icons.keyboard_arrow_up,
-                              size: 12,
-                              color: AppColors.accent,
-                            ),
-                          ),
-                        ),
-                      Expanded(
-                        child: Center(
-                          child: ClipRect(
-                            child: UprightVerticalText(
-                              text: timelineSectionLabel(run.section),
-                              style: TextStyle(
-                                fontSize: 9,
-                                letterSpacing: 1.2,
-                                fontWeight: FontWeight.bold,
-                                height: 1.15,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
+                  child: Center(
+                    child: ClipRect(
+                      child: UprightVerticalText(
+                        text: timelineSectionLabel(run.section),
+                        style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.bold,
+                          height: 1.15,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 );
                 if (callbacks == null) {

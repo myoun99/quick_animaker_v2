@@ -103,6 +103,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     Set<LayerId> fxBypassedLayerIds = const {},
+    LayerId? soloVisibleLayerId,
     int paperColor = canvasPaperColor,
   }) {
     final handles = QaNativeEngine.instance?.acquireFloodRaster(
@@ -115,6 +116,7 @@ class LazyCanvasRasterRgb {
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
       fxBypassedLayerIds: fxBypassedLayerIds,
+      soloVisibleLayerId: soloVisibleLayerId,
       paperColor: paperColor,
       handles: handles,
     );
@@ -125,6 +127,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     required Set<LayerId> fxBypassedLayerIds,
+    required LayerId? soloVisibleLayerId,
     required int paperColor,
     required QaFloodNativeHandles? handles,
   }) : nativeHandles = handles,
@@ -149,6 +152,7 @@ class LazyCanvasRasterRgb {
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
+        soloVisibleLayerId: soloVisibleLayerId,
       ))
         if (entry.pose == null) entry,
     ];
@@ -989,6 +993,7 @@ BrushDab? buildFillDab({
   required CanvasPoint point,
   required int color,
   Set<LayerId> fxBypassedLayerIds = const {},
+  LayerId? soloVisibleLayerId,
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
 }) {
@@ -1000,6 +1005,7 @@ BrushDab? buildFillDab({
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
       fxBypassedLayerIds: fxBypassedLayerIds,
+      soloVisibleLayerId: soloVisibleLayerId,
       paperColor: paperColor,
     ),
   );

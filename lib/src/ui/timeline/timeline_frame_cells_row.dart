@@ -48,13 +48,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.commaDrag,
     this.blockMove,
     this.baseLayer,
-    this.sectionStart = false,
   });
-
-  /// Whether this row opens a new timesheet section (drawing/SE/camera);
-  /// draws a heavier divider along the row's top edge without changing the
-  /// row geometry.
-  final bool sectionStart;
 
   final Layer layer;
   final bool active;
@@ -167,21 +161,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
             ),
           ],
         ),
-        if (sectionStart)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 2,
-            child: IgnorePointer(
-              child: Container(
-                key: ValueKey<String>(
-                  'timeline-section-divider-row-${layer.id}',
-                ),
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-          ),
+        // NO extra section-divider overlay (R3 feedback #6): section
+        // boundaries share the same single hairline as every row boundary;
+        // the rail's gutter bracket carries the section identity.
         // NO empty-stretch furniture here (R5-②): uncovered timeline cells
         // are already dark — the gray wash is print-sheet-only.
         // SE audio clips paint over the paper cells, under the writing —

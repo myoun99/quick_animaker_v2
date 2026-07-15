@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -25,6 +26,36 @@ void main() {
 
     s.undo();
     expect([for (final layer in s.activeCut.layers) layer.onTimesheet], before);
+  });
+
+  test('flag commands reach track-owned SE rows (R3 #11: mark/sheet used '
+      'to dead-end in the cut-scoped lookup)', () {
+    final s = session();
+    final seLayer = s.activeTrack.seLayers.first;
+    expect(seLayer.mark, LayerMark.none);
+
+    s.setLayerMark(seLayer.id, LayerMark.red);
+    expect(
+      s.layers.firstWhere((layer) => layer.id == seLayer.id).mark,
+      LayerMark.red,
+    );
+    s.undo();
+    expect(
+      s.layers.firstWhere((layer) => layer.id == seLayer.id).mark,
+      LayerMark.none,
+    );
+
+    final sheetBefore = seLayer.onTimesheet;
+    s.toggleLayerTimesheet(seLayer.id);
+    expect(
+      s.layers.firstWhere((layer) => layer.id == seLayer.id).onTimesheet,
+      !sheetBefore,
+    );
+
+    // The bulk sweeps include the track SE rows now too.
+    s.setLayerMark(seLayer.id, LayerMark.blue);
+    s.clearAllLayerMarks();
+    expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
   });
 
   test('clearAllLayerMarks clears in one undo and no-ops when markless', () {
@@ -55,19 +86,45 @@ void main() {
     );
   });
 
-  test('visibility sweeps: hide all, show all, solo active', () {
+  test('visibility sweeps: hide all, show all', () {
     final s = session();
     s.setAllLayersVisibility(false);
     expect(s.layers.every((layer) => !layer.isVisible), isTrue);
 
     s.setAllLayersVisibility(true);
     expect(s.layers.every((layer) => layer.isVisible), isTrue);
+  });
 
-    final activeId = s.activeLayerId!;
-    s.soloActiveLayerVisibility();
-    for (final layer in s.layers) {
-      expect(layer.isVisible, layer.id == activeId);
-    }
+  test('visibility solo MODE follows the active layer and never touches '
+      'project eyes', () {
+    final s = session();
+    final cutId = s.activeCut.id;
+    expect(s.layerVisibilitySoloEnabled, isFalse);
+    expect(s.soloVisibleLayerIdFor(cutId), isNull);
+
+    s.toggleLayerVisibilitySolo();
+    expect(s.layerVisibilitySoloEnabled, isTrue);
+    final firstActive = s.activeLayerId!;
+    expect(s.soloVisibleLayerIdFor(cutId), firstActive);
+    // Eyes stay authored state — the solo is a display override.
+    expect(s.layers.every((layer) => layer.isVisible), isTrue);
+
+    // Switching the active layer re-solos WITHOUT any further command.
+    final other = s.layers
+        .firstWhere(
+          (layer) =>
+              layer.id != firstActive && layer.kind == LayerKind.animation,
+          orElse: () => s.layers.firstWhere((layer) => layer.id != firstActive),
+        )
+        .id;
+    s.selectLayer(other);
+    expect(s.soloVisibleLayerIdFor(cutId), other);
+
+    // Other cuts never solo (a playlist pass composes them normally).
+    expect(s.soloVisibleLayerIdFor(const CutId('some-other-cut')), isNull);
+
+    s.toggleLayerVisibilitySolo();
+    expect(s.soloVisibleLayerIdFor(cutId), isNull);
   });
 
   test('fx bulk bypass/restore rides the session view state', () {
