@@ -15,12 +15,10 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
-import 'timeline_section_policy.dart';
 
 class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
-    required this.layers,
     required this.rows,
     required this.activeLayerId,
     required this.playbackFrameCount,
@@ -51,9 +49,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.laneEdit,
     this.dragPreview,
   });
-
-  /// Display layers (section-divider positions key off layer indexes).
-  final List<Layer> layers;
 
   /// Display rows: layer rows interleaved with expanded property lanes.
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
@@ -136,7 +131,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 typedef _RowMemoInputs = ({
   Layer layer,
   bool active,
-  bool sectionStart,
   int playbackFrameCount,
   int frameStartIndex,
   int frameEndIndexExclusive,
@@ -190,7 +184,6 @@ class _TimelineFrameRowsScrollBodyState
   bool _inputsMatch(_RowMemoInputs a, _RowMemoInputs b) {
     return identical(a.layer, b.layer) &&
         a.active == b.active &&
-        a.sectionStart == b.sectionStart &&
         a.playbackFrameCount == b.playbackFrameCount &&
         a.frameStartIndex == b.frameStartIndex &&
         a.frameEndIndexExclusive == b.frameEndIndexExclusive &&
@@ -206,16 +199,11 @@ class _TimelineFrameRowsScrollBodyState
         identical(a.dragPreview, b.dragPreview);
   }
 
-  Widget _buildCellsRow(
-    Layer layer, {
-    required Layer baseLayer,
-    required bool sectionStart,
-  }) {
+  Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
     return TimelineFrameCellsRow(
       layer: layer,
       baseLayer: baseLayer,
       active: layer.id == widget.activeLayerId,
-      sectionStart: sectionStart,
       playbackFrameCount: widget.playbackFrameCount,
       frameStartIndex: widget.frameStartIndex,
       frameEndIndexExclusive: widget.frameEndIndexExclusive,
@@ -282,8 +270,6 @@ class _TimelineFrameRowsScrollBodyState
   }
 
   Widget _buildRow(TimelineDisplayRow row) {
-    final sectionStart =
-        !row.isLane && timelineSectionStartsAt(widget.layers, row.layerIndex);
     final rowKey = ValueKey<String>(
       'timeline-row-${row.layer.id}-${row.lane?.laneId ?? 'cells'}',
     );
@@ -299,11 +285,7 @@ class _TimelineFrameRowsScrollBodyState
         layer: row.layer,
         rowBuilder: (context, layer) => row.isLane
             ? _buildLaneRow(row, layer)
-            : _buildCellsRow(
-                layer,
-                baseLayer: row.layer,
-                sectionStart: sectionStart,
-              ),
+            : _buildCellsRow(layer, baseLayer: row.layer),
       ),
     );
 
@@ -314,7 +296,6 @@ class _TimelineFrameRowsScrollBodyState
     final inputs = (
       layer: row.layer,
       active: row.layer.id == widget.activeLayerId,
-      sectionStart: sectionStart,
       playbackFrameCount: widget.playbackFrameCount,
       frameStartIndex: widget.frameStartIndex,
       frameEndIndexExclusive: widget.frameEndIndexExclusive,

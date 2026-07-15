@@ -7,7 +7,8 @@ void main() {
       const metrics = TimelineGridMetrics.defaults;
 
       expect(metrics.minimumVisibleFrameCells, 24);
-      expect(metrics.layerControlsWidth, 312);
+      // 312 → 340: the wider layer-name column (UI-R3 feedback #8).
+      expect(metrics.layerControlsWidth, 340);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);

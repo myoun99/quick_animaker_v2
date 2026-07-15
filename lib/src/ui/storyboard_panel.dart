@@ -1681,9 +1681,9 @@ class _StoryboardSeLabel extends StatelessWidget {
                 // row shows (S1, S3, S2 insertion order survives; W3 ordering
                 // unification).
                 trackLayer?.name ?? 'S${slot + 1}',
+                // Selection reads by COLOR only (user rule): no bold flip.
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
                   color: active
                       ? colorScheme.onSurface
                       : colorScheme.onSurfaceVariant,

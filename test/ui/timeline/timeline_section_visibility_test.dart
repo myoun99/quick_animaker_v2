@@ -171,6 +171,6 @@ void main() {
     );
     // Upright section headings (one semantics node per bracket).
     expect(find.bySemanticsLabel('ACTION'), findsWidgets);
-    expect(find.bySemanticsLabel('CAMERA'), findsWidgets);
+    expect(find.bySemanticsLabel('CAM'), findsWidgets);
   });
 }

@@ -491,8 +491,9 @@ class CutCommandCoordinator {
     required bool onTimesheet,
   }) {
     // Every kind carries the toggle now (unified layer controls): the
-    // camera layer gates the sheet's printed CAM keyframe column.
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    // camera layer gates the sheet's printed CAM keyframe column. Anywhere
+    // lookup — track-owned SE rows are not in the cut's layer list.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     if (layer.onTimesheet == onTimesheet) {
       return;
     }
@@ -512,7 +513,7 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required bool isFillReference,
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     if (layer.isFillReference == isFillReference) {
       return;
     }
@@ -532,7 +533,7 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required LayerMark mark,
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     if (layer.mark == mark) {
       return;
     }

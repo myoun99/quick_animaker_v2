@@ -26,11 +26,9 @@ class UpdateLayerFillReferenceCommand implements Command {
 
   @override
   void execute() {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
+    // Anywhere lookup, like the mark/timesheet flags: layer ids are
+    // globally unique and track-owned SE rows reach the same commands.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     _previous ??= layer.isFillReference;
 
     repository.updateLayerFillReference(
@@ -48,7 +46,7 @@ class UpdateLayerFillReferenceCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    requireLayer(repository.requireProject(), cutId: cutId, layerId: layerId);
+    requireLayerAnywhere(repository.requireProject(), layerId);
     repository.updateLayerFillReference(
       cutId: cutId,
       layerId: layerId,

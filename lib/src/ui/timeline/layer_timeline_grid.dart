@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_block_move_handle.dart';
@@ -33,7 +34,6 @@ import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
 import 'timeline_row_filter.dart';
-import 'timeline_row_filter_bar.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_section_bracket_rail.dart';
@@ -89,6 +89,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.inactiveDimStrength = 0.0,
+    this.visibilitySoloEnabled = false,
     this.dragPreview,
   });
 
@@ -221,12 +222,14 @@ class LayerTimelineGrid extends StatefulWidget {
   /// the active layer is exempt.
   final TimelineRowFilter rowFilter;
 
-  /// Applies a row-filter edit (chip removals, legend toggles); null hides
-  /// the filter chip bar.
+  /// Applies a row-filter edit (legend solo toggles).
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
   /// The lighttable dim strength (for the legend eye flyout readout).
   final double inactiveDimStrength;
+
+  /// Whether the visibility solo mode is engaged (legend eye state color).
+  final bool visibilitySoloEnabled;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -490,12 +493,28 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.lanesForLayer?.call(layer) ?? const [];
 
-  /// Marks assigned across the current layer list — the mark-filter menu's
-  /// "show only color X" list is built from these.
+  /// Marks assigned across the current layer list — the mark-solo menu's
+  /// "solo color X" list is built from these.
   Set<LayerMark> _marksInUse() => {
     for (final layer in widget.layers)
       if (layer.mark != LayerMark.none) layer.mark,
   };
+
+  /// Whether every SE row is muted — the legend mute cell's toggle state
+  /// (no SE rows reads as unmuted, so the first tap mutes).
+  bool _allSeMuted() {
+    var sawSe = false;
+    for (final layer in widget.layers) {
+      if (layer.kind != LayerKind.se) {
+        continue;
+      }
+      sawSe = true;
+      if (!layer.muted) {
+        return false;
+      }
+    }
+    return sawSe;
+  }
 
   /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
   /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
@@ -545,7 +564,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return TimelineLayerControlsRow(
       layer: row.layer,
       active: row.layer.id == widget.activeLayerId,
-      sectionStart: timelineSectionStartsAt(widget.layers, row.layerIndex),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
@@ -642,11 +660,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
                     return Column(
                       children: [
-                        if (widget.onSetRowFilter != null)
-                          TimelineRowFilterBar(
-                            rowFilter: widget.rowFilter,
-                            onSetRowFilter: widget.onSetRowFilter!,
-                          ),
                         KeyedSubtree(
                           key: const ValueKey<String>(
                             'timeline-sticky-header-row',
@@ -663,6 +676,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 rowFilter: widget.rowFilter,
                                 marksInUse: _marksInUse(),
                                 inactiveDimStrength: widget.inactiveDimStrength,
+                                visibilitySoloEnabled:
+                                    widget.visibilitySoloEnabled,
+                                anyLanesExpanded:
+                                    widget.expandedLaneLayerIds.isNotEmpty,
+                                allSeMuted: _allSeMuted(),
                                 onExpandAllLanes:
                                     widget.onToggleLayerLanes == null
                                     ? null
@@ -979,7 +997,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   verticalContentHeight,
                                               child: TimelineFrameGridStack(
                                                 rowsBody: TimelineFrameRowsScrollBody(
-                                                  layers: widget.layers,
                                                   rows: windowRows,
                                                   leadingLayerSpacerHeight:
                                                       leadingRowSpacerHeight,

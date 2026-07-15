@@ -51,8 +51,10 @@ Finder _row(String id) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$id'));
 
 void main() {
-  testWidgets('the legend mark filter drops non-matching rows; the chip bar '
-      'clears it', (tester) async {
+  testWidgets('the legend mark solo drops non-matching rows and toggles '
+      'back off from the same menu item — no chip bar (R3 #1/#2)', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: _project())),
     );
@@ -62,7 +64,7 @@ void main() {
     expect(_row('blue-b'), findsOneWidget);
     expect(_row('plain-c'), findsOneWidget);
 
-    // Open the mark legend flyout and pick "show only red".
+    // Open the mark legend flyout and pick "solo red".
     await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
     await tester.pumpAndSettle();
     await tester.tap(
@@ -76,13 +78,18 @@ void main() {
     expect(_row('blue-b'), findsNothing);
     expect(_row('plain-c'), findsNothing);
 
-    // The chip bar shows the active facet; clearing it restores all rows.
+    // The retired chip bar never appears (the legend icon carries the
+    // engaged state instead).
     expect(
       find.byKey(const ValueKey<String>('row-filter-chip-mark-red')),
-      findsOneWidget,
+      findsNothing,
     );
+
+    // Toggling the same menu item off restores all rows.
+    await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
+    await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('row-filter-clear-all')),
+      find.byKey(const ValueKey<String>('legend-filter-mark-red')),
     );
     await tester.pumpAndSettle();
     expect(_row('blue-b'), findsOneWidget);

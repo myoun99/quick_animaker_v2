@@ -218,7 +218,6 @@ Widget _body({
     home: Scaffold(
       body: Material(
         child: TimelineFrameRowsScrollBody(
-          layers: layers,
           rows: buildTimelineDisplayRows(
             layers: layers,
             expandedLayerIds: const {},

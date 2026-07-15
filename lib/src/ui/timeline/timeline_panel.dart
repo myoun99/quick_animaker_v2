@@ -78,6 +78,7 @@ class TimelinePanel extends StatefulWidget {
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.inactiveDimStrength = 0.0,
+    this.visibilitySoloEnabled = false,
     this.dragPreview,
   });
 
@@ -236,6 +237,9 @@ class TimelinePanel extends StatefulWidget {
   /// The lighttable dim strength (legend eye flyout readout).
   final double inactiveDimStrength;
 
+  /// Whether the visibility solo mode is engaged (legend eye state color).
+  final bool visibilitySoloEnabled;
+
   @override
   State<TimelinePanel> createState() => _TimelinePanelState();
 }
@@ -356,6 +360,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     rowFilter: widget.rowFilter,
                     onSetRowFilter: widget.onSetRowFilter,
                     inactiveDimStrength: widget.inactiveDimStrength,
+                    visibilitySoloEnabled: widget.visibilitySoloEnabled,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

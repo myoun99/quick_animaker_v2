@@ -292,6 +292,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
+                soloVisibleLayerId: session.soloVisibleLayerIdFor(
+                  session.activeCut.id,
+                ),
                 paperColor: session.projectBackground.argb,
               ),
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
@@ -310,6 +313,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 color: color,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
+                soloVisibleLayerId: session.soloVisibleLayerIdFor(
+                  session.activeCut.id,
+                ),
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
               ),

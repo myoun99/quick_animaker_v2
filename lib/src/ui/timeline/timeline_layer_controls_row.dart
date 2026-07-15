@@ -21,7 +21,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
-    this.sectionStart = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -45,10 +44,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// SE rows' speaker button (the audio counterpart of visibility); null
   /// hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
-
-  /// Whether this row opens a new timesheet section (drawing/SE/camera);
-  /// draws a heavier divider along the rail row's top edge.
-  final bool sectionStart;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay
@@ -164,13 +159,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
+                        // Selection reads by COLOR only (user rule): no
+                        // bold flip, so the text never reflows on select.
                         Flexible(
                           child: Text(
                             layer.name,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: active ? FontWeight.bold : null,
-                            ),
                           ),
                         ),
                       ],
@@ -294,28 +288,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
       ),
     );
 
-    if (!sectionStart) {
-      return row;
-    }
-    return Stack(
-      children: [
-        row,
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          child: IgnorePointer(
-            child: Container(
-              key: ValueKey<String>(
-                'timeline-section-divider-rail-${layer.id}',
-              ),
-              color: colorScheme.outline,
-            ),
-          ),
-        ),
-      ],
-    );
+    // Section boundaries draw ONE shared hairline like every row boundary
+    // (R3 feedback #6) — the old extra 2px overlay double-lined them; the
+    // gutter bracket carries the section identity.
+    return row;
   }
 }
 

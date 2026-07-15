@@ -513,7 +513,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       layer: layer,
       baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
-      sectionStart: timelineSectionStartsAt(widget.layers, entry.layerIndex),
       playbackFrameCount: widget.frameCount,
       frameStartIndex: frameRange.startIndex,
       frameEndIndexExclusive: frameRange.endIndexExclusive,
@@ -807,11 +806,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     entries[index].layer.id ==
                                                     widget.activeLayerId,
                                                 metrics: _metrics,
-                                                sectionStart:
-                                                    timelineSectionStartsAt(
-                                                      widget.layers,
-                                                      entries[index].layerIndex,
-                                                    ),
                                                 onSelectLayer:
                                                     widget.onSelectLayer,
                                                 onToggleLayerVisibility: widget
@@ -1140,7 +1134,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.commaDrag,
     this.blockMove,
     this.baseLayer,
-    this.sectionStart = false,
   });
 
   final Layer layer;
@@ -1150,10 +1143,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   /// step never unmounts the handle that owns the live gesture (R12-③).
   final Layer? baseLayer;
   final bool active;
-
-  /// Whether this column opens a new timesheet section; draws a heavier
-  /// divider along the column's left edge.
-  final bool sectionStart;
   final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -1251,21 +1240,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               ),
             ],
           ),
-          if (sectionStart)
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: 2,
-              child: IgnorePointer(
-                child: Container(
-                  key: ValueKey<String>(
-                    'xsheet-section-divider-column-${layer.id}',
-                  ),
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-            ),
+          // NO extra section-divider overlay (R3 feedback #6): section
+          // boundaries share the same single hairline as every column
+          // boundary; the header band carries the section identity.
           // NO empty-stretch furniture here (R5-②): uncovered X-sheet cells
           // are already dark — the gray wash is print-sheet-only.
           // SE audio clips paint over the paper cells, under the writing —
@@ -1423,7 +1400,6 @@ class _LayerHeader extends StatelessWidget {
     required this.metrics,
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
-    this.sectionStart = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -1446,10 +1422,6 @@ class _LayerHeader extends StatelessWidget {
 
   /// SE columns' speaker button (mute); null hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
-
-  /// Whether this column opens a new timesheet section; draws a heavier
-  /// divider along the header's left edge.
-  final bool sectionStart;
 
   /// AE-style property-lane twirl-down: layers with lanes lead their name
   /// row with a chevron (lane COLUMNS open beside the layer's). Headers
@@ -1567,13 +1539,12 @@ class _LayerHeader extends StatelessWidget {
                             'xsheet-layer-name-${layer.id}',
                           ),
                           onTap: () => onSelectLayer(layer.id),
+                          // Selection reads by COLOR only (user rule): no
+                          // bold flip on the active column's name.
                           child: Text(
                             layer.name,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontWeight: active ? FontWeight.bold : null,
-                            ),
                           ),
                         ),
                       ),
@@ -1672,28 +1643,10 @@ class _LayerHeader extends StatelessWidget {
       ),
     );
 
-    if (!sectionStart) {
-      return header;
-    }
-    return Stack(
-      children: [
-        header,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 2,
-          child: IgnorePointer(
-            child: Container(
-              key: ValueKey<String>(
-                'xsheet-section-divider-header-${layer.id}',
-              ),
-              color: colorScheme.outline,
-            ),
-          ),
-        ),
-      ],
-    );
+    // Section boundaries draw ONE shared hairline like every column
+    // boundary (R3 feedback #6) — the extra 2px overlay double-lined them;
+    // the band above carries the section identity.
+    return header;
   }
 }
 

@@ -63,7 +63,7 @@ class LayerLegendCallbacks {
   const LayerLegendCallbacks({
     required this.onShowAllLayers,
     required this.onHideAllLayers,
-    required this.onSoloActiveLayer,
+    required this.onToggleVisibilitySolo,
     required this.onSheetAllOn,
     required this.onSheetAllOff,
     required this.onClearAllMarks,
@@ -83,7 +83,10 @@ class LayerLegendCallbacks {
 
   final VoidCallback onShowAllLayers;
   final VoidCallback onHideAllLayers;
-  final VoidCallback onSoloActiveLayer;
+
+  /// Toggles the visibility SOLO MODE (follows the active layer; R3
+  /// feedback #3) — a mode switch, not a one-shot eye sweep.
+  final VoidCallback onToggleVisibilitySolo;
   final VoidCallback onSheetAllOn;
   final VoidCallback onSheetAllOff;
   final VoidCallback onClearAllMarks;
@@ -123,6 +126,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.rowFilter = TimelineRowFilter.none,
     this.marksInUse = const {},
     this.inactiveDimStrength = 0.0,
+    this.visibilitySoloEnabled = false,
+    this.anyLanesExpanded = false,
+    this.allSeMuted = false,
   });
 
   final TimelineGridMetrics metrics;
@@ -143,6 +149,18 @@ class TimelineLayerControlsHeader extends StatelessWidget {
 
   /// The lighttable dim strength (for the eye flyout's slider readout).
   final double inactiveDimStrength;
+
+  /// Whether the visibility SOLO MODE is on (eye legend state color +
+  /// flyout check).
+  final bool visibilitySoloEnabled;
+
+  /// Whether any layer's lanes are expanded — the lane-column header
+  /// toggle folds/unfolds ALL layers based on this (R3 feedback #5).
+  final bool anyLanesExpanded;
+
+  /// Whether every SE row is muted — the mute legend cell is a direct
+  /// all-SE toggle (R3 feedback #10), colored by this state.
+  final bool allSeMuted;
 
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
@@ -234,8 +252,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       );
     }
 
-    Widget legendIcon(IconData icon) =>
-        Icon(icon, size: 13, color: AppColors.accent);
+    // Legend icons read like the row toggles now (R3 feedback #2): GRAY at
+    // rest, ACCENT while their column's display-solo/state is engaged.
+    final restColor = colorScheme.onSurfaceVariant;
+    Widget legendIcon(IconData icon, {bool engaged = false}) =>
+        Icon(icon, size: 13, color: engaged ? AppColors.accent : restColor);
 
     return Container(
       width: metrics.layerControlsWidth,
@@ -268,7 +289,34 @@ class TimelineLayerControlsHeader extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  const SizedBox(width: layerLaneToggleSlotWidth),
+                  // The lane column's header: fold/unfold EVERY layer's
+                  // lanes in one tap (R3 feedback #5).
+                  if (onExpandAllLanes != null && onCollapseAllLanes != null)
+                    SizedBox(
+                      width: layerLaneToggleSlotWidth,
+                      child: Tooltip(
+                        message: anyLanesExpanded
+                            ? 'Collapse all layers'
+                            : 'Expand all layers',
+                        child: InkWell(
+                          key: const ValueKey<String>('legend-lanes-toggle'),
+                          onTap: anyLanesExpanded
+                              ? onCollapseAllLanes
+                              : onExpandAllLanes,
+                          child: Center(
+                            child: Icon(
+                              anyLanesExpanded
+                                  ? Icons.unfold_less
+                                  : Icons.unfold_more,
+                              size: 13,
+                              color: restColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: layerLaneToggleSlotWidth),
                   cell(
                     keyValue: 'legend-sheet',
                     width: layerTimesheetSlotWidth,
@@ -291,13 +339,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             const PanelFlyoutDivider(),
                             PanelFlyoutItem(
                               keyValue: 'legend-filter-sheet',
-                              label: 'Show only sheet-on',
-                              icon: Icons.filter_alt_outlined,
+                              label: 'Solo sheet-on rows',
+                              icon: Icons.center_focus_strong_outlined,
                               checked: rowFilter.onTimesheetOnly,
                               onSelected: legend.onToggleSheetOnlyFilter,
                             ),
                           ],
-                    child: legendIcon(Icons.table_chart_outlined),
+                    child: legendIcon(
+                      Icons.table_chart_outlined,
+                      engaged: rowFilter.onTimesheetOnly,
+                    ),
                   ),
                   const SizedBox(width: layerControlChipGap),
                   cell(
@@ -315,7 +366,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             ),
                             if (marksInUse.isNotEmpty) ...[
                               const PanelFlyoutDivider(),
-                              const PanelFlyoutHeader('Show only'),
+                              const PanelFlyoutHeader('Solo color'),
                               for (final mark in LayerMark.values)
                                 if (mark != LayerMark.none &&
                                     marksInUse.contains(mark))
@@ -330,7 +381,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                                   ),
                             ],
                           ],
-                    child: legendIcon(Icons.label_outline),
+                    child: legendIcon(
+                      Icons.label_outline,
+                      engaged: rowFilter.markColors.isNotEmpty,
+                    ),
                   ),
                   const SizedBox(width: layerControlChipGap),
                   Expanded(
@@ -372,14 +426,17 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             const PanelFlyoutDivider(),
                             PanelFlyoutItem(
                               keyValue: 'legend-filter-fill-ref',
-                              label: 'Show only fill references',
-                              icon: Icons.filter_alt_outlined,
+                              label: 'Solo fill references',
+                              icon: Icons.center_focus_strong_outlined,
                               checked: rowFilter.fillReferenceOnly,
                               onSelected:
                                   legend.onToggleFillReferenceOnlyFilter,
                             ),
                           ],
-                    child: legendIcon(Icons.format_color_fill),
+                    child: legendIcon(
+                      Icons.format_color_fill,
+                      engaged: rowFilter.fillReferenceOnly,
+                    ),
                   ),
                   cell(
                     keyValue: 'legend-fx',
@@ -401,8 +458,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             const PanelFlyoutDivider(),
                             PanelFlyoutItem(
                               keyValue: 'legend-filter-fx',
-                              label: 'Show only fx-on',
-                              icon: Icons.filter_alt_outlined,
+                              label: 'Solo fx-on rows',
+                              icon: Icons.center_focus_strong_outlined,
                               checked: rowFilter.fxOnly,
                               onSelected: legend.onToggleFxOnlyFilter,
                             ),
@@ -413,7 +470,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         fontSize: 11,
                         fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.accent,
+                        color: rowFilter.fxOnly ? AppColors.accent : restColor,
                       ),
                     ),
                   ),
@@ -438,9 +495,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             ),
                             PanelFlyoutItem(
                               keyValue: 'legend-eye-solo',
-                              label: 'Active only (solo)',
+                              label: 'Solo active layer',
                               icon: Icons.center_focus_strong_outlined,
-                              onSelected: legend.onSoloActiveLayer,
+                              checked: visibilitySoloEnabled,
+                              onSelected: legend.onToggleVisibilitySolo,
                             ),
                             const PanelFlyoutDivider(),
                             PanelFlyoutItem(
@@ -459,29 +517,35 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               ),
                             ),
                           ],
-                    child: legendIcon(Icons.visibility_outlined),
+                    child: legendIcon(
+                      Icons.visibility_outlined,
+                      engaged: visibilitySoloEnabled,
+                    ),
                   ),
-                  cell(
-                    keyValue: 'legend-mute',
+                  // The mute cell is a DIRECT all-SE toggle (R3 feedback
+                  // #10): one tap mutes/unmutes every SE row, colored by
+                  // the muted state — no flyout.
+                  SizedBox(
                     width: layerMuteSlotWidth,
-                    tooltip: 'SE mute column',
-                    entriesBuilder: legend == null
-                        ? null
-                        : () => [
-                            PanelFlyoutItem(
-                              keyValue: 'legend-mute-all',
-                              label: 'Mute all SE',
-                              icon: Icons.volume_off,
-                              onSelected: legend.onMuteAllSe,
-                            ),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-unmute-all',
-                              label: 'Unmute all SE',
-                              icon: Icons.volume_up,
-                              onSelected: legend.onUnmuteAllSe,
-                            ),
-                          ],
-                    child: legendIcon(Icons.volume_up_outlined),
+                    child: Tooltip(
+                      message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
+                      child: InkWell(
+                        key: const ValueKey<String>('legend-mute'),
+                        onTap: legend == null
+                            ? null
+                            : (allSeMuted
+                                  ? legend.onUnmuteAllSe
+                                  : legend.onMuteAllSe),
+                        child: Center(
+                          child: legendIcon(
+                            allSeMuted
+                                ? Icons.volume_off
+                                : Icons.volume_up_outlined,
+                            engaged: allSeMuted,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                   cell(
                     keyValue: 'legend-opacity',

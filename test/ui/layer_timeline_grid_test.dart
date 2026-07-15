@@ -78,7 +78,9 @@ void main() {
   testWidgets(
     'sticky frame ruler lays out full content width without overflow',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(360, 260));
+      // 360 → 420: the rail widened to 340 (R3 #8) and 360 left the frame
+      // viewport degenerate; the ruler still lays out in a NARROW viewport.
+      await tester.binding.setSurfaceSize(const Size(420, 260));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(_grid(playbackFrameCount: 96));
@@ -281,7 +283,7 @@ void main() {
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(312));
+    expect(leftSpacerRect.width, moreOrLessEquals(340));
     expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
     expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
     expect(verticalSlotRect.width, moreOrLessEquals(14));

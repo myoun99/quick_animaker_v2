@@ -248,9 +248,9 @@ String _selectedLayerName(WidgetTester tester) {
     const ValueKey<String>('timeline-selected-layer'),
   );
   final texts = find.descendant(of: selected, matching: find.byType(Text));
-  // Skip the section gutter label (ACTION/SE/CAMERA) that leads a
+  // Skip the section gutter label (ACTION/SE/CAM) that leads a
   // section's first row; the layer name is the next text.
-  const gutterLabels = {'ACTION', 'SE', 'CAMERA'};
+  const gutterLabels = {'ACTION', 'SE', 'CAM'};
   return tester
       .widgetList<Text>(texts)
       .map((text) => text.data)

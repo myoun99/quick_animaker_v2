@@ -141,9 +141,8 @@ void main() {
       );
     }
 
-    testWidgets('horizontal: camera row sits on top with a section divider', (
-      tester,
-    ) async {
+    testWidgets('horizontal: camera row sits on top; no extra divider '
+        'furniture (single shared hairline, R3 #6)', (tester) async {
       await tester.pumpWidget(panel(TimelineOrientation.horizontal));
 
       final cameraTop = tester
@@ -158,25 +157,20 @@ void main() {
           .dy;
       expect(cameraTop, lessThan(drawingTop));
 
-      // The divider marks the first row of the section BELOW the camera
-      // (drawing section starts at layer b in display order).
+      // Section boundaries carry NO extra overlay — one hairline like every
+      // row boundary; the gutter bracket is the section marker.
       expect(
         find.byKey(const ValueKey<String>('timeline-section-divider-rail-b')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('timeline-section-divider-row-b')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('timeline-section-divider-rail-a')),
         findsNothing,
       );
     });
 
-    testWidgets('xsheet: camera column sits rightmost with a divider', (
-      tester,
-    ) async {
+    testWidgets('xsheet: camera column sits rightmost; no extra divider '
+        'furniture', (tester) async {
       await tester.pumpWidget(panel(TimelineOrientation.vertical));
 
       final cameraLeft = tester
@@ -193,11 +187,11 @@ void main() {
 
       expect(
         find.byKey(const ValueKey<String>('xsheet-section-divider-header-cam')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('xsheet-section-divider-column-cam')),
-        findsOneWidget,
+        findsNothing,
       );
     });
   });
