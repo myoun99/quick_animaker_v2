@@ -15,6 +15,11 @@ import '../theme/app_theme.dart';
 /// (R-toolbar round) lines its column icons up over these exact slots.
 /// EVERY kind reserves EVERY slot (Excel-grid rule): slimmed from the old
 /// 24/26/86 so the full set still fits the 312 rail.
+/// Leading slot every rail row reserves for the INLINE section tag
+/// (ACTION/SE/CAM on the section's first row — UI-R5, the bracket gutter
+/// retired); the legend header's sections cell sits over the same slot.
+const double layerSectionLabelSlotWidth = 36;
+
 const double layerTimesheetSlotWidth = 20;
 const double layerMarkSlotWidth = 14;
 const double layerLaneToggleSlotWidth = 16;

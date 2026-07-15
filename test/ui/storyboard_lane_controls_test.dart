@@ -487,10 +487,22 @@ void main() {
       reason: 'strip order mirrors the rail: S rows above the V track',
     );
 
+    // UI-R5: the extra 2px section divider is retired (single shared row
+    // lines); the group reads from the inline section tags instead.
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-section-divider-rail-lane-track'),
       ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-section-tag-lane-track-se'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-section-tag-lane-track-v')),
       findsOneWidget,
     );
   });
@@ -842,65 +854,48 @@ void main() {
       expect(s1Strip.top, s2Strip.bottom);
     });
 
-    testWidgets('the section-bracket gutter leads the rail (timeline '
-        'parity): SE wraps the S rows exactly, V TRACK the track row', (
-      tester,
-    ) async {
+    testWidgets('sections live INSIDE the rows (UI-R5): the inline SE tag '
+        'sits on the TOP S row, the V tag on the track row — the bracket '
+        'gutter is retired', (tester) async {
       await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
-      final seBracket = tester.getRect(
+      // The tag rides the top S row (S2 in a two-slot track).
+      final seTag = tester.getRect(
         find.byKey(
-          const ValueKey<String>('storyboard-section-bracket-se-lane-track'),
-        ),
-      );
-      final vBracket = tester.getRect(
-        find.byKey(
-          const ValueKey<String>('storyboard-section-bracket-v-lane-track'),
+          const ValueKey<String>('storyboard-section-tag-lane-track-se'),
         ),
       );
       final s2 = tester.getRect(
         find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-2')),
       );
-      final s1 = tester.getRect(
-        find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-1')),
+      expect(seTag.top, greaterThanOrEqualTo(s2.top));
+      expect(seTag.bottom, lessThanOrEqualTo(s2.bottom));
+
+      final vTag = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-section-tag-lane-track-v'),
+        ),
       );
       final vRow = tester.getRect(
         find.byKey(
           const ValueKey<String>('storyboard-track-label-row-lane-track'),
         ),
       );
-      expect(seBracket.top, s2.top);
-      expect(seBracket.bottom, s1.bottom);
-      expect(vBracket.top, vRow.top);
-      expect(vBracket.bottom, vRow.bottom);
-      expect(seBracket.right, s2.left, reason: 'gutter sits LEFT of the rail');
-    });
+      expect(vTag.top, greaterThanOrEqualTo(vRow.top));
+      expect(vTag.bottom, lessThanOrEqualTo(vRow.bottom));
 
-    testWidgets('the SE bracket grows with a twirled-down audio lane and '
-        'keeps wrapping the S rows', (tester) async {
-      await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
-
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final seBracket = tester.getRect(
+      // The old gutter brackets are gone.
+      expect(
         find.byKey(
           const ValueKey<String>('storyboard-section-bracket-se-lane-track'),
         ),
-      );
-      final vRow = tester.getRect(
-        find.byKey(
-          const ValueKey<String>('storyboard-track-label-row-lane-track'),
-        ),
+        findsNothing,
       );
       expect(
-        seBracket.bottom,
-        vRow.top,
-        reason: 'the bracket must track the expanded S rows exactly',
+        find.byKey(
+          const ValueKey<String>('storyboard-section-bracket-v-lane-track'),
+        ),
+        findsNothing,
       );
     });
   });

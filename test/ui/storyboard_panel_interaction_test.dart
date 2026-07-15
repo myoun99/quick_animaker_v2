@@ -839,13 +839,13 @@ void main() {
         return _pumpStoryboardPanel(
           tester,
           _singleTrackProject([
-            _cut('cut-a', name: 'Cut A', duration: 60),
-            _cut('cut-b', name: 'Cut B', duration: 60),
+            _cut('cut-a', name: 'Cut A', duration: 200),
+            _cut('cut-b', name: 'Cut B', duration: 200),
           ]),
           activeCutId: const CutId('cut-a'),
           onCutSelected: (_) {},
-          // Far beyond the viewport at either zoom.
-          playheadGlobalFrame: 118,
+          // Far beyond the (now wider, UI-R5) viewport at either zoom.
+          playheadGlobalFrame: 380,
           pixelsPerFrame: pixelsPerFrame,
         );
       }
@@ -952,6 +952,11 @@ Future<void> _pumpStoryboardPanel(
   bool showSeconds = false,
   int projectFps = 24,
 }) async {
+  // The rail widened to the timeline's 372 (UI-R5): keep every cut block
+  // of the three-cut fixtures on screen for the drag gestures.
+  await tester.binding.setSurfaceSize(const Size(1400, 600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(

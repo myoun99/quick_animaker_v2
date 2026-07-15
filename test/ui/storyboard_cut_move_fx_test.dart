@@ -11,6 +11,11 @@ import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
 /// open too (the state the keys get authored in).
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
+    // The rail widened to the timeline's 372 (UI-R5): the default 800px
+    // surface would push the second cut's block off screen.
+    await tester.binding.setSurfaceSize(const Size(1400, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );

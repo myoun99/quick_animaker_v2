@@ -832,7 +832,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         onToggleSection: widget.onToggleSection,
         rowFilter: widget.rowFilter,
         onSetRowFilter: widget.onSetRowFilter,
-        inactiveDimStrength: _session.inactiveDimStrength,
         visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
         // The rail legend's bulk sweeps + the section brackets' flyout —
         // all session-backed (R-toolbar round); the R2 filter/dim/opacity
@@ -866,7 +865,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
             ),
           ),
-          onSetInactiveDim: _session.setInactiveDimStrength,
           // The legend master bar (R4 #6): preview per move, one commit.
           onPreviewLayersOpacity: _session.previewLayersOpacity,
           onCommitLayersOpacity: _session.commitLayersOpacity,

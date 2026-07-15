@@ -17,7 +17,9 @@ class TimelineGridMetrics {
     this.frameCellWidth = 24,
     this.layerRowHeight = 28,
     this.verticalScrollbarWidth = 14,
-    this.sectionLabelGutterWidth = 24,
+    // 24 → 0 (UI-R5): the section-bracket gutter is retired — section
+    // labels live INSIDE their first row now (user rule).
+    this.sectionLabelGutterWidth = 0,
   }) : assert(minimumVisibleFrameCells >= 0),
        assert(layerControlsWidth >= 0),
        assert(frameCellWidth > 0),

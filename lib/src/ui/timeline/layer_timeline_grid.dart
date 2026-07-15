@@ -21,7 +21,11 @@ import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
 import 'layer_label_controls.dart'
-    show layerMuteSlotWidth, layerOpacitySlotWidth, layerVisibilitySlotWidth;
+    show
+        layerMuteSlotWidth,
+        layerOpacitySlotWidth,
+        layerSectionLabelSlotWidth,
+        layerVisibilitySlotWidth;
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -89,7 +93,6 @@ class LayerTimelineGrid extends StatefulWidget {
     this.sectionRail,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
-    this.inactiveDimStrength = 0.0,
     this.visibilitySoloEnabled = false,
     this.dragPreview,
   });
@@ -228,9 +231,6 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Applies a row-filter edit (legend solo toggles).
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
-
-  /// The lighttable dim strength (for the legend eye flyout readout).
-  final double inactiveDimStrength;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -574,8 +574,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 
   /// One rail row (layer controls or a lane label), extracted so the
-  /// windowed rail loop stays readable.
-  Widget _railRow(TimelineDisplayRow row) {
+  /// windowed rail loop stays readable. [section] is non-null on the row
+  /// that OPENS a section — it carries the inline section tag (UI-R5).
+  Widget _railRow(TimelineDisplayRow row, TimelineSection? section) {
     if (row.isLane) {
       // Lane labels show the value AT the cursor: subscribe here so a
       // tick rebuilds only these small cells.
@@ -589,6 +590,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           onSelectFrame: widget.onSelectFrame,
           laneEdit: widget.laneEdit,
           onToggleLaneGroup: widget.onToggleLaneGroup,
+          leadingInset: layerSectionLabelSlotWidth,
         ),
       );
     }
@@ -609,7 +611,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,
+      sectionLabel: section == null ? null : timelineSectionLabel(section),
+      sectionFlyoutEntries: section == null || widget.sectionRail == null
+          ? null
+          : () => timelineSectionFlyoutEntries(section, widget.sectionRail!),
     );
+  }
+
+  /// The layer ids whose rows OPEN a section in display order (the inline
+  /// section tags' homes).
+  Map<LayerId, TimelineSection> _sectionTagsByLayerId(
+    List<TimelineDisplayRow> rows,
+  ) {
+    final tags = <LayerId, TimelineSection>{};
+    TimelineSection? lastSection;
+    for (final row in rows) {
+      if (row.isLane) {
+        continue;
+      }
+      final section = timelineSectionForLayerKind(row.layer.kind);
+      if (section != lastSection) {
+        tags[row.layer.id] = section;
+        lastSection = section;
+      }
+    }
+    return tags;
   }
 
   /// Resolves block-move row deltas against the rows built this pass.
@@ -629,6 +655,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       activeLayerId: widget.activeLayerId,
       fxEnabledOf: widget.layerFxEnabledOf,
     );
+    final sectionTags = _sectionTagsByLayerId(rows);
     _blockMoveResolver
       ..rows = rows
       ..session = widget.blockMove;
@@ -707,7 +734,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 rowFilter: widget.rowFilter,
                                 marksInUse: _marksInUse(),
                                 kindsInUse: _kindsInUse(),
-                                inactiveDimStrength: widget.inactiveDimStrength,
                                 visibilitySoloEnabled:
                                     widget.visibilitySoloEnabled,
                                 anyLanesExpanded:
@@ -880,105 +906,98 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         key: const ValueKey<String>(
                                           'timeline-layer-rows-scroll-body',
                                         ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Timesheet-style bracket: one
-                                            // enclosing gutter cell per
-                                            // section, wrapping its rows.
-                                            TimelineSectionBracketRail(
-                                              rows: rows,
-                                              metrics: _metrics,
-                                              callbacks: widget.sectionRail,
-                                            ),
-                                            _EyeSwipeDetector(
-                                              band: _eyeColumnBand(),
-                                              onStart: (localY) {
-                                                final layer = _layerAtRailY(
+                                        // Sections live INSIDE the rows now
+                                        // (UI-R5): the first row of each
+                                        // section carries the inline tag —
+                                        // no bracket gutter beside the rail.
+                                        child: _EyeSwipeDetector(
+                                          band: _eyeColumnBand(),
+                                          onStart: (localY) {
+                                            final layer = _layerAtRailY(
+                                              localY,
+                                              windowRows,
+                                              leadingRowSpacerHeight,
+                                            );
+                                            if (layer == null) {
+                                              return false;
+                                            }
+                                            _eyeSwipeTargetVisible =
+                                                !layer.isVisible;
+                                            _eyeSwipePainted.clear();
+                                            _paintEyeSwipeAt(layer);
+                                            return true;
+                                          },
+                                          onUpdate: (localY) =>
+                                              _paintEyeSwipeAt(
+                                                _layerAtRailY(
                                                   localY,
                                                   windowRows,
                                                   leadingRowSpacerHeight,
-                                                );
-                                                if (layer == null) {
-                                                  return false;
-                                                }
-                                                _eyeSwipeTargetVisible =
-                                                    !layer.isVisible;
-                                                _eyeSwipePainted.clear();
-                                                _paintEyeSwipeAt(layer);
-                                                return true;
-                                              },
-                                              onUpdate: (localY) =>
-                                                  _paintEyeSwipeAt(
-                                                    _layerAtRailY(
-                                                      localY,
-                                                      windowRows,
+                                                ),
+                                              ),
+                                          onEnd: () {
+                                            _eyeSwipeTargetVisible = null;
+                                            _eyeSwipePainted.clear();
+                                          },
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              // The rail is windowed with
+                                              // the same layer-axis slice
+                                              // as the frame rows; keys
+                                              // keep row state glued to
+                                              // its layer through window
+                                              // shifts.
+                                              if (leadingRowSpacerHeight > 0)
+                                                SizedBox(
+                                                  height:
                                                       leadingRowSpacerHeight,
+                                                ),
+                                              for (final row in windowRows)
+                                                KeyedSubtree(
+                                                  key: ValueKey<String>(
+                                                    'timeline-rail-row-'
+                                                    '${row.layer.id}-'
+                                                    '${row.lane?.laneId ?? 'row'}',
+                                                  ),
+                                                  child: _railRow(
+                                                    row,
+                                                    row.isLane
+                                                        ? null
+                                                        : sectionTags[row
+                                                              .layer
+                                                              .id],
+                                                  ),
+                                                ),
+                                              if (trailingRowSpacerHeight > 0)
+                                                SizedBox(
+                                                  height:
+                                                      trailingRowSpacerHeight,
+                                                ),
+                                              if (widget.layers.isEmpty)
+                                                SizedBox(
+                                                  width:
+                                                      _metrics
+                                                          .layerControlsWidth -
+                                                      _metrics
+                                                          .sectionLabelGutterWidth,
+                                                  height:
+                                                      _metrics.layerRowHeight,
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(8),
+                                                    child: Text(
+                                                      'No layers',
+                                                      style: TextStyle(
+                                                        color: colorScheme
+                                                            .onSurfaceVariant,
+                                                      ),
                                                     ),
                                                   ),
-                                              onEnd: () {
-                                                _eyeSwipeTargetVisible = null;
-                                                _eyeSwipePainted.clear();
-                                              },
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  // The rail is windowed with
-                                                  // the same layer-axis slice
-                                                  // as the frame rows; keys
-                                                  // keep row state glued to
-                                                  // its layer through window
-                                                  // shifts.
-                                                  if (leadingRowSpacerHeight >
-                                                      0)
-                                                    SizedBox(
-                                                      height:
-                                                          leadingRowSpacerHeight,
-                                                    ),
-                                                  for (final row in windowRows)
-                                                    KeyedSubtree(
-                                                      key: ValueKey<String>(
-                                                        'timeline-rail-row-'
-                                                        '${row.layer.id}-'
-                                                        '${row.lane?.laneId ?? 'row'}',
-                                                      ),
-                                                      child: _railRow(row),
-                                                    ),
-                                                  if (trailingRowSpacerHeight >
-                                                      0)
-                                                    SizedBox(
-                                                      height:
-                                                          trailingRowSpacerHeight,
-                                                    ),
-                                                  if (widget.layers.isEmpty)
-                                                    SizedBox(
-                                                      width:
-                                                          _metrics
-                                                              .layerControlsWidth -
-                                                          _metrics
-                                                              .sectionLabelGutterWidth,
-                                                      height: _metrics
-                                                          .layerRowHeight,
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              8,
-                                                            ),
-                                                        child: Text(
-                                                          'No layers',
-                                                          style: TextStyle(
-                                                            color: colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                                                ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
