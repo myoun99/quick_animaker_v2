@@ -19,6 +19,8 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
+import 'layer_label_controls.dart'
+    show layerMuteSlotWidth, layerOpacitySlotWidth, layerVisibilitySlotWidth;
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -30,6 +32,8 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_panel_virtualization_adapter.dart';
+import 'timeline_row_filter.dart';
+import 'timeline_row_filter_bar.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_section_bracket_rail.dart';
@@ -82,6 +86,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleSection,
     this.legend,
     this.sectionRail,
+    this.rowFilter = TimelineRowFilter.none,
+    this.onSetRowFilter,
+    this.inactiveDimStrength = 0.0,
     this.dragPreview,
   });
 
@@ -210,6 +217,17 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The section brackets' flyout commands; null keeps them display-only.
   final TimelineSectionRailCallbacks? sectionRail;
 
+  /// The rail's row FILTER (R2): hides layer rows failing its predicate;
+  /// the active layer is exempt.
+  final TimelineRowFilter rowFilter;
+
+  /// Applies a row-filter edit (chip removals, legend toggles); null hides
+  /// the filter chip bar.
+  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
+
+  /// The lighttable dim strength (for the legend eye flyout readout).
+  final double inactiveDimStrength;
+
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
@@ -226,6 +244,55 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   int _endlessTrailingFrames = 0;
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
+
+  // Krita-style eye-column swipe (R2): a vertical drag over the eye column
+  // toggles every crossed row's visibility to the value LATCHED from the
+  // first row (paint-swipe). Null target = no swipe in progress.
+  bool? _eyeSwipeTargetVisible;
+  final Set<LayerId> _eyeSwipePainted = {};
+
+  /// The eye column's horizontal band within the rail rows' Column, derived
+  /// from the slot layout so it tracks the row's own control order.
+  ({double left, double right}) _eyeColumnBand() {
+    final rowWidth =
+        _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth;
+    // From the row's right edge: 8px padding, opacity(64), mute(18), then
+    // the eye slot(22).
+    const rightPadding = 8.0;
+    final eyeRight =
+        rowWidth - rightPadding - layerOpacitySlotWidth - layerMuteSlotWidth;
+    final eyeLeft = eyeRight - layerVisibilitySlotWidth;
+    // A little tolerance so the thin 22px band is easy to hit with a pen.
+    return (left: eyeLeft - 4, right: eyeRight + 4);
+  }
+
+  /// Resolves a rail-local vertical position to a LAYER row (lane rows and
+  /// spacer gaps return null), given the window slice currently built.
+  Layer? _layerAtRailY(
+    double localY,
+    List<TimelineDisplayRow> windowRows,
+    double leadingSpacerHeight,
+  ) {
+    final indexInWindow =
+        ((localY - leadingSpacerHeight) / _metrics.layerRowHeight).floor();
+    if (indexInWindow < 0 || indexInWindow >= windowRows.length) {
+      return null;
+    }
+    final row = windowRows[indexInWindow];
+    return row.isLane ? null : row.layer;
+  }
+
+  void _paintEyeSwipeAt(Layer? layer) {
+    if (layer == null || _eyeSwipeTargetVisible == null) {
+      return;
+    }
+    if (!_eyeSwipePainted.add(layer.id)) {
+      return;
+    }
+    if (layer.isVisible != _eyeSwipeTargetVisible) {
+      widget.onToggleLayerVisibility(layer.id);
+    }
+  }
 
   @override
   void initState() {
@@ -423,6 +490,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.lanesForLayer?.call(layer) ?? const [];
 
+  /// Marks assigned across the current layer list — the mark-filter menu's
+  /// "show only color X" list is built from these.
+  Set<LayerMark> _marksInUse() => {
+    for (final layer in widget.layers)
+      if (layer.mark != LayerMark.none) layer.mark,
+  };
+
   /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
   /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
   /// existing per-layer toggle.
@@ -501,6 +575,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       expandedLayerIds: widget.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
       hiddenSections: widget.hiddenSections,
+      rowFilter: widget.rowFilter,
+      activeLayerId: widget.activeLayerId,
+      fxEnabledOf: widget.layerFxEnabledOf,
     );
     _blockMoveResolver
       ..rows = rows
@@ -565,6 +642,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
                     return Column(
                       children: [
+                        if (widget.onSetRowFilter != null)
+                          TimelineRowFilterBar(
+                            rowFilter: widget.rowFilter,
+                            onSetRowFilter: widget.onSetRowFilter!,
+                          ),
                         KeyedSubtree(
                           key: const ValueKey<String>(
                             'timeline-sticky-header-row',
@@ -578,6 +660,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 legend: widget.legend,
                                 hiddenSections: widget.hiddenSections,
                                 onToggleSection: widget.onToggleSection,
+                                rowFilter: widget.rowFilter,
+                                marksInUse: _marksInUse(),
+                                inactiveDimStrength: widget.inactiveDimStrength,
                                 onExpandAllLanes:
                                     widget.onToggleLayerLanes == null
                                     ? null
@@ -754,59 +839,91 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               metrics: _metrics,
                                               callbacks: widget.sectionRail,
                                             ),
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                // The rail is windowed with
-                                                // the same layer-axis slice
-                                                // as the frame rows; keys
-                                                // keep row state glued to
-                                                // its layer through window
-                                                // shifts.
-                                                if (leadingRowSpacerHeight > 0)
-                                                  SizedBox(
-                                                    height:
-                                                        leadingRowSpacerHeight,
-                                                  ),
-                                                for (final row in windowRows)
-                                                  KeyedSubtree(
-                                                    key: ValueKey<String>(
-                                                      'timeline-rail-row-'
-                                                      '${row.layer.id}-'
-                                                      '${row.lane?.laneId ?? 'row'}',
+                                            _EyeSwipeDetector(
+                                              band: _eyeColumnBand(),
+                                              onStart: (localY) {
+                                                final layer = _layerAtRailY(
+                                                  localY,
+                                                  windowRows,
+                                                  leadingRowSpacerHeight,
+                                                );
+                                                if (layer == null) {
+                                                  return false;
+                                                }
+                                                _eyeSwipeTargetVisible =
+                                                    !layer.isVisible;
+                                                _eyeSwipePainted.clear();
+                                                _paintEyeSwipeAt(layer);
+                                                return true;
+                                              },
+                                              onUpdate: (localY) =>
+                                                  _paintEyeSwipeAt(
+                                                    _layerAtRailY(
+                                                      localY,
+                                                      windowRows,
+                                                      leadingRowSpacerHeight,
                                                     ),
-                                                    child: _railRow(row),
                                                   ),
-                                                if (trailingRowSpacerHeight > 0)
-                                                  SizedBox(
-                                                    height:
-                                                        trailingRowSpacerHeight,
-                                                  ),
-                                                if (widget.layers.isEmpty)
-                                                  SizedBox(
-                                                    width:
-                                                        _metrics
-                                                            .layerControlsWidth -
-                                                        _metrics
-                                                            .sectionLabelGutterWidth,
-                                                    height:
-                                                        _metrics.layerRowHeight,
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            8,
+                                              onEnd: () {
+                                                _eyeSwipeTargetVisible = null;
+                                                _eyeSwipePainted.clear();
+                                              },
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  // The rail is windowed with
+                                                  // the same layer-axis slice
+                                                  // as the frame rows; keys
+                                                  // keep row state glued to
+                                                  // its layer through window
+                                                  // shifts.
+                                                  if (leadingRowSpacerHeight >
+                                                      0)
+                                                    SizedBox(
+                                                      height:
+                                                          leadingRowSpacerHeight,
+                                                    ),
+                                                  for (final row in windowRows)
+                                                    KeyedSubtree(
+                                                      key: ValueKey<String>(
+                                                        'timeline-rail-row-'
+                                                        '${row.layer.id}-'
+                                                        '${row.lane?.laneId ?? 'row'}',
+                                                      ),
+                                                      child: _railRow(row),
+                                                    ),
+                                                  if (trailingRowSpacerHeight >
+                                                      0)
+                                                    SizedBox(
+                                                      height:
+                                                          trailingRowSpacerHeight,
+                                                    ),
+                                                  if (widget.layers.isEmpty)
+                                                    SizedBox(
+                                                      width:
+                                                          _metrics
+                                                              .layerControlsWidth -
+                                                          _metrics
+                                                              .sectionLabelGutterWidth,
+                                                      height: _metrics
+                                                          .layerRowHeight,
+                                                      child: Padding(
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              8,
+                                                            ),
+                                                        child: Text(
+                                                          'No layers',
+                                                          style: TextStyle(
+                                                            color: colorScheme
+                                                                .onSurfaceVariant,
                                                           ),
-                                                      child: Text(
-                                                        'No layers',
-                                                        style: TextStyle(
-                                                          color: colorScheme
-                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                     ),
-                                                  ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -1026,6 +1143,72 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Wraps the rail rows' Column and turns a vertical drag STARTING inside
+/// [band] (the eye column's x-range) into a Krita-style paint-swipe.
+/// [onStart] latches (returns false to decline, e.g. the down landed on a
+/// spacer); [onUpdate] paints each crossed row; [onEnd] clears. Uses a
+/// vertical-drag recognizer so single taps still reach the eye buttons and
+/// the outer vertical scroll keeps working outside the band.
+class _EyeSwipeDetector extends StatefulWidget {
+  const _EyeSwipeDetector({
+    required this.band,
+    required this.onStart,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.child,
+  });
+
+  final ({double left, double right}) band;
+  final bool Function(double localY) onStart;
+  final ValueChanged<double> onUpdate;
+  final VoidCallback onEnd;
+  final Widget child;
+
+  @override
+  State<_EyeSwipeDetector> createState() => _EyeSwipeDetectorState();
+}
+
+class _EyeSwipeDetectorState extends State<_EyeSwipeDetector> {
+  bool _engaged = false;
+
+  bool _inBand(Offset local) =>
+      local.dx >= widget.band.left && local.dx <= widget.band.right;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragDown: (details) {
+        _engaged = _inBand(details.localPosition);
+      },
+      onVerticalDragStart: (details) {
+        if (!_engaged) {
+          return;
+        }
+        _engaged = widget.onStart(details.localPosition.dy);
+      },
+      onVerticalDragUpdate: (details) {
+        if (_engaged) {
+          widget.onUpdate(details.localPosition.dy);
+        }
+      },
+      onVerticalDragEnd: (_) {
+        if (_engaged) {
+          widget.onEnd();
+        }
+        _engaged = false;
+      },
+      onVerticalDragCancel: () {
+        if (_engaged) {
+          widget.onEnd();
+        }
+        _engaged = false;
+      },
+      child: widget.child,
     );
   }
 }

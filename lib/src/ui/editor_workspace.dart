@@ -39,6 +39,7 @@ import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
+import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
 import '../services/color_palette_file_service.dart';
@@ -322,6 +323,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _hiddenTimelineSections.value = next;
   }
 
+  /// The rail's row FILTER (R2 view state): hides layer rows failing its
+  /// predicate; survives tab switches, session-only, never persisted.
+  final ValueNotifier<TimelineRowFilter> _timelineRowFilter = ValueNotifier(
+    TimelineRowFilter.none,
+  );
+
+  void _setTimelineRowFilter(TimelineRowFilter filter) {
+    _timelineRowFilter.value = filter;
+  }
+
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
   /// viewport (zoom/pan) and the sheet-ink allow toggle — owned here so
   /// they survive tab switches.
@@ -496,6 +507,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.dispose();
     _expandedTransformGroupLayerIds.dispose();
     _hiddenTimelineSections.dispose();
+    _timelineRowFilter.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
@@ -857,6 +869,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _expandedLaneLayerIds,
               _expandedTransformGroupLayerIds,
               _hiddenTimelineSections,
+              _timelineRowFilter,
             ]),
             builder: (context) => TimelineTabHost(
               session: widget.session,
@@ -879,6 +892,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onToggleTransformGroup: _toggleTransformGroup,
               hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
+              rowFilter: _timelineRowFilter.value,
+              onSetRowFilter: _setTimelineRowFilter,
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
               // the camera panel.

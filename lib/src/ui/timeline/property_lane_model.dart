@@ -2,6 +2,7 @@ import 'dart:ui' show Offset;
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
 /// One property lane under a layer: a NAMED keyed property rendered as its
@@ -134,16 +135,32 @@ class PropertyLaneEditCallbacks {
 /// [hiddenSections] contribute NO rows at all (the toolbar's SE/CAMERA
 /// visibility toggles — the layers themselves are untouched); both
 /// orientations consume the same policy (Axis rule).
+///
+/// [rowFilter] additionally hides individual layer rows failing its
+/// predicate (R2 row filter, a VIEW state); [activeLayerId] is exempt so a
+/// filter can never hide the layer you're editing. [fxEnabledOf] resolves
+/// the session-level fx state the filter's fx-only facet reads.
 List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<Layer> layers,
   required Set<LayerId> expandedLayerIds,
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
   Set<TimelineSection> hiddenSections = const {},
+  TimelineRowFilter rowFilter = TimelineRowFilter.none,
+  LayerId? activeLayerId,
+  bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   final rows = <TimelineDisplayRow>[];
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
     if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
+      continue;
+    }
+    if (rowFilter.isActive &&
+        layer.id != activeLayerId &&
+        !rowFilter.allows(
+          layer,
+          fxEnabled: fxEnabledOf?.call(layer.id) ?? true,
+        )) {
       continue;
     }
     rows.add(TimelineDisplayRow.layer(layer, layerIndex: index));

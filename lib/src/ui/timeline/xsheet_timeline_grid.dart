@@ -26,6 +26,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'property_lane_model.dart';
+import 'timeline_row_filter.dart';
 import 'timeline_grid_metrics.dart';
 import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
@@ -94,6 +95,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
+    this.rowFilter = TimelineRowFilter.none,
     this.dragPreview,
   });
 
@@ -213,6 +215,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Sections hidden from the grid entirely (toolbar visibility toggles;
   /// the section axis runs horizontally here, so hiding drops columns).
   final Set<TimelineSection> hiddenSections;
+
+  /// The rail's row FILTER (R2): drops the columns of layers failing its
+  /// predicate; the active layer is exempt. Shared with the horizontal
+  /// timeline (Axis rule).
+  final TimelineRowFilter rowFilter;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -553,6 +560,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           expandedLayerIds: widget.expandedLaneLayerIds,
           lanesForLayer: _lanesFor,
           hiddenSections: widget.hiddenSections,
+          rowFilter: widget.rowFilter,
+          activeLayerId: widget.activeLayerId,
+          fxEnabledOf: widget.layerFxEnabledOf,
         );
         _blockMoveResolver
           ..rows = entries
