@@ -112,14 +112,33 @@ ThemeData buildAppTheme() {
         disabledForegroundColor: AppColors.textDim.withValues(alpha: 0.5),
       ),
     ),
-    scrollbarTheme: const ScrollbarThemeData(
-      thumbVisibility: WidgetStatePropertyAll<bool>(true),
-      trackVisibility: WidgetStatePropertyAll<bool>(true),
-      thickness: WidgetStatePropertyAll<double>(6),
-      radius: Radius.circular(3),
-      thumbColor: WidgetStatePropertyAll<Color>(AppColors.hairlineStrong),
-      trackColor: WidgetStatePropertyAll<Color>(Color(0xFF232527)),
-      trackBorderColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+    // Stragglers only — every app surface uses AppScrollbar; this keeps a
+    // raw Flutter Scrollbar (if one ever appears) on the same S1 visuals:
+    // thin grey thumb, brighter on hover, accent while dragged, no track.
+    scrollbarTheme: ScrollbarThemeData(
+      thumbVisibility: const WidgetStatePropertyAll<bool>(true),
+      trackVisibility: const WidgetStatePropertyAll<bool>(false),
+      thickness: WidgetStateProperty.resolveWith<double>(
+        (states) =>
+            states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.dragged)
+            ? 6
+            : 4,
+      ),
+      radius: const Radius.circular(3),
+      thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+        if (states.contains(WidgetState.dragged)) {
+          return AppColors.accent;
+        }
+        if (states.contains(WidgetState.hovered)) {
+          return AppColors.textDim;
+        }
+        return AppColors.hairlineStrong;
+      }),
+      trackColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+      trackBorderColor: const WidgetStatePropertyAll<Color>(
+        Colors.transparent,
+      ),
       crossAxisMargin: 2,
       mainAxisMargin: 2,
     ),

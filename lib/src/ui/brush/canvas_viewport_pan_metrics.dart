@@ -41,8 +41,7 @@ class CanvasViewportPanMetrics {
     thumbTravel = (this.trackExtent - thumbExtent)
         .clamp(0.0, double.infinity)
         .toDouble();
-    final pan = axis == Axis.horizontal ? viewport.panX : viewport.panY;
-    final scroll = (-(pan + _contentOffset)).clamp(0.0, maxScroll).toDouble();
+    final scroll = scrollOffset;
     thumbStart = thumbTravel == 0 ? 0 : scroll / maxScroll * thumbTravel;
   }
 
@@ -62,6 +61,27 @@ class CanvasViewportPanMetrics {
   /// The content AABB's start along [axis] relative to the pan (0 without
   /// rotation/flip, where the canvas origin IS the content start).
   late final double _contentOffset;
+
+  /// The viewport's position along [axis] in scroll-offset space
+  /// (0..[maxScroll]) — the seam the shared scrollbar drives through.
+  double get scrollOffset {
+    final pan = axis == Axis.horizontal ? viewport.panX : viewport.panY;
+    return (-(pan + _contentOffset)).clamp(0.0, maxScroll).toDouble();
+  }
+
+  /// The offset-space inverse of [scrollOffset]: only THIS axis's pan is
+  /// written. Never clamp the other axis here — the canvas pans freely (a
+  /// zoomed-in paper may sit at a positive pan), and a both-axes clamp used
+  /// to snap the paper left-aligned the moment the vertical bar was touched.
+  CanvasViewport viewportForScroll(double scroll) {
+    if (maxScroll <= 0) {
+      return viewport;
+    }
+    final clamped = scroll.clamp(0.0, maxScroll).toDouble();
+    return axis == Axis.horizontal
+        ? viewport.copyWith(panX: -clamped - _contentOffset)
+        : viewport.copyWith(panY: -clamped - _contentOffset);
+  }
 
   CanvasViewport panToThumb(double thumbStart) {
     if (!canScroll || thumbTravel <= 0) {

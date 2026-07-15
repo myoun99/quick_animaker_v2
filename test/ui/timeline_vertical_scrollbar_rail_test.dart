@@ -32,24 +32,30 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
-          child: SizedBox(
-            width: 12,
-            height: viewportHeight,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (attachControllerToScrollable)
-                  SingleChildScrollView(
+          // Align breaks the route's tight constraints so the SizedBox
+          // actually sizes the rail (the unified scrollbar derives its
+          // track from real layout, not the passed extents).
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 12,
+              height: viewportHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (attachControllerToScrollable)
+                    SingleChildScrollView(
+                      controller: controller,
+                      child: SizedBox(width: 12, height: contentHeight),
+                    ),
+                  TimelineVerticalScrollbarRail(
                     controller: controller,
-                    child: SizedBox(width: 12, height: contentHeight),
+                    viewportHeight: viewportHeight,
+                    contentHeight: contentHeight,
+                    width: 12,
                   ),
-                TimelineVerticalScrollbarRail(
-                  controller: controller,
-                  viewportHeight: viewportHeight,
-                  contentHeight: contentHeight,
-                  width: 12,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
